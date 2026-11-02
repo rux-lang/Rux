@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Collections::{ EqualsInt32, HashSet, TableSeed };
 import Core::{ Assert, Panic };
 
@@ -16,8 +16,7 @@ func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     Assert(HashInt32(21, 0, 0) == 42, "a call resolves to this program's own declaration");
 

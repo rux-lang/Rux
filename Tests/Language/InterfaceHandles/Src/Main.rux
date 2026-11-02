@@ -1,0 +1,181 @@
+// An interface is used three ways: as a bound, resolved for each concrete type; as a borrowed view, `&I` or `&var I`,
+// for the length of a call; and as a value, which is a copyable handle that addresses an implementation stored
+// elsewhere and owns nothing. A stateless value converts to a handle anywhere; any other handle is made from a pointer
+// inside `unsafe`, whose caller promises the implementation outlives every copy. A container keeps its allocator as
+// such a handle, so it can be returned from the function that made it, and what it owns is destroyed exactly once.
+
+import Allocator::{ AllocError, Allocator, Arena, Layout, SystemAllocator };
+import Collections::Vector;
+import Core::Assert;
+
+interface Counter {
+    func Bump(&var self) -> int;
+    func Total(&self) -> int;
+}
+
+struct Tally {
+    count: int;
+}
+
+extend Tally : Counter {
+    func Bump(&var self) -> int {
+        self.count += 1;
+        return self.count;
+    }
+
+    func Total(&self) -> int {
+        return self.count;
+    }
+}
+
+// Has no state, so a handle made from one needs nothing to point at.
+struct Constant {}
+
+extend Constant : Counter {
+    func Bump(&var self) -> int {
+        return 7;
+    }
+
+    func Total(&self) -> int {
+        return 7;
+    }
+}
+
+// Static dispatch: resolved for each concrete type, with nothing dispatched at run time.
+func BumpTwice<C: Counter>(counter: &var C) -> int {
+    counter.Bump();
+    return counter.Bump();
+}
+
+// Borrowed dynamic dispatch, for the call only.
+func Read(counter: &Counter) -> int {
+    return counter.Total();
+}
+
+func BumpThrough(counter: &var Counter) -> int {
+    return counter.Bump();
+}
+
+// A handle may be returned and stored: a stateless one is valid wherever it is copied.
+func MakeConstant() -> Counter {
+    return Constant {};
+}
+
+// A value whose destructor counts, to check that each one is destroyed exactly once.
+struct Tracked {
+    drops: *var int;
+    id: int;
+}
+
+extend Tracked {
+    func ~Tracked(&var self) {
+        // Safety: every value in this test holds `@drops`, a local of `Main` that outlives it.
+        unsafe { *self.drops = *self.drops + 1; }
+    }
+}
+
+// An allocator with state of its own, which counts the blocks it has handed out and not yet taken back.
+struct Counting {
+    live: int;
+}
+
+extend Counting : Allocator {
+    func Allocate(&var self, layout: Layout) -> *var opaque throws AllocError {
+        var system = SystemAllocator();
+        let block = try system.Allocate(layout);
+        self.live += 1;
+        return block;
+    }
+
+    func Deallocate(&var self, block: *var opaque, layout: Layout) throws AllocError {
+        var system = SystemAllocator();
+        try system.Deallocate(block, layout);
+        self.live -= 1;
+    }
+
+    func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> *var opaque throws AllocError {
+        var system = SystemAllocator();
+        return try system.Reallocate(block, oldLayout, newLayout);
+    }
+}
+
+// A container built in a helper keeps the handle it was given, so it is returned whole.
+func Build(allocator: Allocator, drops: *var int, count: int) -> Vector<Tracked> {
+    var values = Vector<Tracked>(allocator);
+    var id = 0;
+    while id < count {
+        values.Push(Tracked { drops, id });
+        id += 1;
+    }
+    return move values;
+}
+
+// Containers made from copies of one handle all allocate through the counting allocator it addresses.
+func ShareCounting(counting: &var Counting, drops: *var int) {
+    // Safety: `counting` is borrowed for the whole call, so it outlives every container here, which all end with it.
+    let handle = unsafe { @counting as Allocator };
+    var kept = Build(handle, drops, 4);
+    let copied = handle;
+    var other = Build(copied, drops, 1);
+    Assert(counting.live == 2, "both containers allocate through the one counting allocator");
+    other = Build(handle, drops, 2);
+    Assert(counting.live == 2, "a replaced container gives its block back");
+    kept.Clear();
+}
+
+// A container that allocates out of an arena ends before the call does, so before the arena can be reset.
+func FillArena(arena: &var Arena, drops: *var int) {
+    // Safety: `arena` is borrowed for the whole call, so it outlives `pooled` and is not moved or reset meanwhile.
+    var pooled = Build(unsafe { (@arena).Handle() }, drops, 8);
+    Assert(pooled.Length() == 8 && arena.BlockCount() >= 1, "a container allocates out of the arena");
+}
+
+func Main() -> int {
+    // A bound and a writable view reach the same concrete value; a temporary is lent to a read-only view.
+    var tally = Tally { count: 0 };
+    Assert(BumpTwice(tally) == 2, "a bound resolves for the concrete type");
+    Assert(BumpThrough(tally) == 3, "a writable view writes the value it borrows");
+    Assert(Read(tally) == 3, "a read-only view reads it");
+    Assert(Read(Tally { count: 9 }) == 9, "a temporary is lent to a read-only view for the call");
+
+    // A stateless value converts to a handle, which may be returned, copied and stored.
+    let constant = MakeConstant();
+    let copy = constant;
+    Assert(copy.Bump() == 7 && copy.Total() == 7, "a stateless handle is valid wherever it is copied");
+
+    // A handle to a value with state is made from its address, and every copy writes through to that one value.
+    // Safety: `tally` is a local of `Main` that outlives both handles and is never moved.
+    let first = unsafe { @tally as Counter };
+    let second = first;
+    first.Bump();
+    second.Bump();
+    Assert(tally.count == 5, "a handle copies nothing, so every copy reaches the same value");
+
+    // A container made in a helper is returned with its allocator, and each element is destroyed exactly once
+    // across a move of the container and its replacement.
+    var drops = 0;
+    var values = Build(SystemAllocator(), @drops, 3);
+    Assert(values.Length() == 3, "the container returned from its helper keeps its elements");
+    var moved = move values;
+    Assert(drops == 0, "moving the container destroys nothing");
+    moved = Build(SystemAllocator(), @drops, 2);
+    Assert(drops == 3, "replacing it destroys each old element once");
+    moved.Clear();
+    Assert(drops == 5, "and clearing destroys each new one once");
+
+    // A stateful allocator's handle is kept by every container made from it; each block it hands out comes back.
+    var counting = Counting { live: 0 };
+    ShareCounting(counting, @drops);
+    Assert(counting.live == 0, "every block is given back exactly once");
+    Assert(drops == 5 + 4 + 1 + 2, "and every element destroyed exactly once");
+
+    // An arena's handle is made in `unsafe`: its caller promises the arena outlives the containers that use it and
+    // is neither moved nor reset while they hold its allocations, so the containers end first.
+    var arena = Arena(SystemAllocator(), 256);
+    FillArena(arena, @drops);
+    Assert(drops == 20, "the container's elements are destroyed before the arena is reset");
+    arena.Reset();
+    Assert(arena.BytesUsed() == 0, "and the arena then reclaims everything at once");
+    return 0;
+}

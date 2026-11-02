@@ -83,8 +83,7 @@ func Main() -> int {
     Assert(copied.Next() == none, "for advances the cursor variable itself");
     Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the cursor borrows the original elements");
 
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var array = Array::Filled<int32>(allocator, 3, 5);
     for element in array.MutableReferences() {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.

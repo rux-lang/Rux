@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Format::Render;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView };
@@ -122,8 +122,7 @@ func Main() -> int {
     Assert(Refused<char64>(letter, Spec("e")), "and any other style");
 
     // Through Render, as an ordinary variadic argument.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     Assert(Rendered(try? Render(allocator, "[{}]", letter), "[A]"), "a char64 is a Render argument");
     Assert(Rendered(try? Render(allocator, "{:>4}|{}", face, accented), "   😀|é"), "padded, beside another");
 

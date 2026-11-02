@@ -10,7 +10,7 @@ func Check(value: bool16, expected: char8[..], code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
-    let shown: Display = value;
+    let shown: bool16 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
         return code;
     }

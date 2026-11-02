@@ -148,6 +148,12 @@ std::optional<std::string> AnalysisContext::UnsafeOperationOf(const Expr &expres
         const bool toTypedPointer =
             type->kind == TypeRef::Kind::Pointer && !type->inner.empty() && AddsPointeeType(operand, type);
         const bool toFunction = type->kind == TypeRef::Kind::Func && operand->kind != TypeRef::Kind::Func;
+        // A handle made from a pointer is used later without `unsafe`, so the promise that the pointer stays valid is
+        // made here.
+        if (PointerInterfaceHandleSource(operand, type)) {
+            return std::format("making interface value '{}' from pointer '{}'", type.DisplayString(),
+                               operand.DisplayString());
+        }
         if (toTypedPointer || toFunction) {
             return std::format("casting '{}' to '{}'", operand.DisplayString(), type.DisplayString());
         }
@@ -207,6 +213,10 @@ void AnalysisContext::CheckUnsafeOperation(const Expr &expression, const TypeRef
     }
     else if (operation->starts_with("call to extern")) {
         notes.emplace_back("the compiler cannot check what a foreign function does with its arguments");
+    }
+    else if (operation->starts_with("making interface value")) {
+        notes.emplace_back("the handle addresses what the pointer reaches, which must outlive every copy of it and "
+                           "stay in place");
     }
     else if (operation->starts_with("dereferencing") || operation->starts_with("indexing") ||
              operation->starts_with("accessing field")) {

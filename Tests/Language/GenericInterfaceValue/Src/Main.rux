@@ -1,5 +1,5 @@
 // A generic extension implements its interface for every instantiation: a `Box<int32>` and a `Box<bool>` become
-// `Named` interface values, owned or borrowed, each through a table of its own instance's methods.
+// `Named` handles or borrowed views, each through a table of its own instance's methods.
 import Core::Assert;
 
 interface Named {
@@ -17,7 +17,7 @@ extend Box<T> : Named {
     }
 }
 
-func Read(value: Named) -> int {
+func Read(value: &Named) -> int {
     return value.Id();
 }
 
@@ -27,7 +27,8 @@ func Borrowed(value: &Named) -> int {
 
 func Main() -> int {
     let box = Box<int32> { value: 3, id: 7 };
-    let named: Named = box;
+    // Safety: `box` is a local of `Main` that outlives `named` and is never moved.
+    let named = unsafe { @box as Named };
     Assert(named.Id() == 7, "interface value");
     Assert(Read(Box<bool> { value: true, id: 9 }) == 9, "argument");
     Assert(Borrowed(box) == 7, "borrowed");

@@ -82,7 +82,7 @@ func Built(allocator: Allocator, parser: &var JsonParser, what: char8[..]) -> Js
 
 
 // An allocator that counts what is out, so a refused parse can be checked for having given back everything it took
-// before it stopped. Everything mutable lives behind a pointer, since an interface adapter is copied.
+// before it stopped. Everything mutable lives in a state the test keeps.
 struct CountState {
     inner: Allocator;
     live: int32;
@@ -123,8 +123,7 @@ func ParseAndDrop(allocator: Allocator, text: char8[..], state: &CountState, whi
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The scalars.
     var nullValue = Accepts(allocator, "null", "null parses");
@@ -285,24 +284,28 @@ func Main() -> int {
     // absence of a crash.
     var state = CountState { inner: allocator, live: 0 };
     var counting = CountingAllocator { state: @state };
-    let counted: Allocator = counting;
+    var counted: CountingAllocator = counting;
 
-    Refuses(counted, "[1,2,\"three\",", "JsonParseError::Truncated(13)",
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    Refuses(unsafe { @counted as Allocator }, "[1,2,\"three\",", "JsonParseError::Truncated(13)",
             "an array that fails partway through is refused");
     Assert(state.live == 0, "and everything the partial array held is released");
 
-    Refuses(counted, "{\"a\":[1,2],\"b\":\"x\",\"a\":3}", "JsonParseError::DuplicateName(24)",
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    Refuses(unsafe { @counted as Allocator }, "{\"a\":[1,2],\"b\":\"x\",\"a\":3}", "JsonParseError::DuplicateName(24)",
             "an object with a duplicate name is refused");
     Assert(state.live == 0, "and everything the partial object held is released");
 
-    Refuses(counted, "[[[\"deep\",1,2],3],", "JsonParseError::Truncated(18)",
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    Refuses(unsafe { @counted as Allocator }, "[[[\"deep\",1,2],3],", "JsonParseError::Truncated(18)",
             "a nested document that fails is refused");
     Assert(state.live == 0, "and every level of it is released");
 
     // A document that parses and is then dropped ends at the same count, so the check above is measuring cleanup
     // rather than a parser that never allocated.
     var whileHeld: int32 = 0;
-    ParseAndDrop(counted, "[1,2,\"three\"]", state, whileHeld);
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    ParseAndDrop(unsafe { @counted as Allocator }, "[1,2,\"three\"]", state, whileHeld);
     Assert(whileHeld > 0, "and the same document, whole, takes storage");
     Assert(state.live == 0, "which comes back when the document's life ends");
 

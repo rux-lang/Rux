@@ -358,7 +358,10 @@ bool AnalysisContext::CheckNamedFormat(const CallExpr &call, const LiteralExpr &
                                   element->ToString()));
             continue;
         }
-        ConsumeValue(value, type, ValueConsumptionKind::Argument, value.location);
+        // A borrowed format argument lends its value for the call and consumes nothing.
+        if (!element || element->IsUnknown() || (*element)->kind != TypeRef::Kind::Reference) {
+            ConsumeValue(value, type, ValueConsumptionKind::Argument, value.location);
+        }
     }
     namedFormats.insert_or_assign(&literal, std::move(rewritten));
     return true;

@@ -190,11 +190,9 @@ extend TomlParseFailure : Debug {
         try WriteBytes(writer, "TomlParseError::");
         try WriteReasonName(writer, self.reason, FormatSpec::Plain());
         try WriteBytes(writer, " at ");
-        let line: Display = self.line;
-        try line.WriteDisplay(writer, FormatSpec::Plain());
+        try self.line.WriteDisplay(writer, FormatSpec::Plain());
         try WriteAscii(writer, c8':');
-        let column: Display = self.column;
-        return try column.WriteDisplay(writer, FormatSpec::Plain());
+        return try self.column.WriteDisplay(writer, FormatSpec::Plain());
     }
 }
 

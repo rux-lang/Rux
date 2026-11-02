@@ -74,7 +74,8 @@ func Main() -> int {
     Assert(tokens[0] is Number && tokens[1] is Plus, "struct members of a sum are injected too");
     let square = Square { side: 2 };
     let circle = Circle { radius: 1 };
-    let shapes: Shape[2] = [square, circle];
+    // Safety: `square` and `circle` are locals of `Main` that outlive `shapes` and are never moved.
+    let shapes: Shape[2] = unsafe { [@square as Shape, @circle as Shape] };
     var area: int32 = 0;
     for shape in shapes {
         area += shape.Area();

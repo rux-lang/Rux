@@ -144,11 +144,15 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             EmitError(argument.location, std::move(*message), std::move(notes));
             return;
         }
+        const bool refusedInterface = RefusesInterfaceValue(argumentType, parameterType);
+        if (refusedInterface) {
+            std::ranges::copy(InterfaceValueNotes(), std::back_inserter(notes));
+        }
         EmitError(argument.location,
                   std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
                               argumentType.DisplayString(), variadic ? "variadic " : "", parameterName,
                               parameterType.ToString()),
-                  std::move(notes));
+                  std::move(notes), refusedInterface ? std::optional(InterfaceValueHelp(parameterType)) : std::nullopt);
     };
     const auto emitOverloadError = [&](const std::string_view callable, const std::vector<TypeRef> &argumentTypes,
                                        const std::vector<const FuncDecl *> &candidates, const bool isMethod = false,
@@ -667,7 +671,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 EmitError(field->location,
                           std::format("method '{}' of interface '{}' names 'Self', so it can only be called where the "
                                       "implementing type is known",
-                                      field->field, receiverType.ToString()),
+                                      field->field, NamedBaseTypeName(receiverType)),
                           {}, "call it through a generic parameter bounded by the interface");
                 return TypeRef::MakeUnknown();
             }

@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Collections::{ CompareInt32, TreeSet };
 import Core::{ Assert, Panic };
 
@@ -37,8 +37,7 @@ func CountRange(set: &TreeSet<int32>, start: int32, end: int32) -> uint {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Fifty elements arriving in a stride coprime with the count.
     var set = TreeSet<int32>(allocator, CompareInt32);

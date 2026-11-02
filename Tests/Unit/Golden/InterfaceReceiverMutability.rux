@@ -51,9 +51,12 @@ func Exclusive(dial: &var Dial) -> int32 {
 
 func Main() -> int {
     let knob = Knob { level: 1i32 };
-    let fixed: Dial = knob;
+    let fixed: &Dial = knob;
     fixed.Turn(1i32);
-    var held: Dial = knob;
+    // An interface value is a handle, which writes through to the implementation it addresses.
+    var turned = Knob { level: 1i32 };
+    // Safety: `turned` is a local that outlives `held` and is never moved.
+    let held = unsafe { @turned as Dial };
     held.Turn(1i32);
     return held.Level() as int;
 }

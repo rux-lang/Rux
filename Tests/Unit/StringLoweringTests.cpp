@@ -226,7 +226,7 @@ TEST_CASE("slice conditionals never merge descriptor addresses as slice values")
     const LirPackage package = CompileToLir(R"(
         interface Sized { func Size() -> uint; }
         extend char8[..] : Sized { func Size(&self) -> uint { return self.length; } }
-        func Consume(value: Sized) -> uint { return value.Size(); }
+        func Consume(value: &Sized) -> uint { return value.Size(); }
         func Selected(flag: bool) -> char8[..] { return if flag { "abc" } else { "" }; }
         func Converted(flag: bool) -> uint { return Consume(if flag { "abc" } else { "q" }); }
         func Mixed(flag: bool, other: char8[..]) -> char8[..] { return if flag { "abc" } else { other }; }

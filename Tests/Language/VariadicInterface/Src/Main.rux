@@ -60,7 +60,7 @@ extend char8[..] : TinyValue {
     }
 }
 
-func SumTiny(args: TinyValue...) -> int {
+func SumTiny(args: &TinyValue...) -> int {
     var sum: int = 0;
     for val in args {
         sum += val.Value();

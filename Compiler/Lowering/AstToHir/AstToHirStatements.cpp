@@ -54,10 +54,6 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
             capture->name = value->name;
             capture->type = value->type;
             capture->init = LowerYielded(*value->tail->expr, value->target);
-            for (HirStmtPtr &declaration : statementPrelude) {
-                loweredBlock.stmts.push_back(std::move(declaration));
-            }
-            statementPrelude.clear();
             loweredBlock.stmts.push_back(std::move(capture));
             continue;
         }
@@ -193,46 +189,7 @@ HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLo
 }
 
 void AstToHirContext::LowerStmtInto(HirBlock &block, const Stmt &stmt) {
-    HirStmtPtr lowered = LowerStmt(stmt);
-    for (HirStmtPtr &declaration : statementPrelude) {
-        block.stmts.push_back(std::move(declaration));
-    }
-    statementPrelude.clear();
-    block.stmts.push_back(std::move(lowered));
-}
-
-std::string AstToHirContext::InterfaceHolderKey(const InterfaceHolderSite &site) const {
-    return std::format("{}|{}|{}", static_cast<const void *>(site.owner), site.place,
-                       SubstituteCurrentType(site.type).ToString());
-}
-
-void AstToHirContext::DeclareInterfaceHolders(const LetStmt &local) {
-    const std::vector<InterfaceHolderSite> *holders = model.TryGetInterfaceHolders(local);
-    if (holders == nullptr) {
-        return;
-    }
-    for (const InterfaceHolderSite &holder : *holders) {
-        const std::string key = InterfaceHolderKey(holder);
-        if (interfaceHolderBindings.contains(key)) {
-            continue;
-        }
-        const TypeRef type = SubstituteCurrentType(holder.type);
-        const std::string name = std::format("$interface.{}", interfaceValueOrdinal);
-        const std::uint64_t bindingId = RegisterCleanupBinding(name, type, local.location);
-        if (bindingId == 0) {
-            continue;
-        }
-        ++interfaceValueOrdinal;
-        // Declared without a value, so its drop flag says it holds nothing until the first value is stored in it.
-        auto declared = std::make_unique<HirLetStmt>();
-        declared->location = local.location;
-        declared->isMut = true;
-        declared->name = name;
-        declared->type = type;
-        declared->bindingId = bindingId;
-        statementPrelude.push_back(std::move(declared));
-        interfaceHolderBindings.emplace(key, std::make_pair(name, bindingId));
-    }
+    block.stmts.push_back(LowerStmt(stmt));
 }
 
 HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
@@ -244,8 +201,6 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = AstCast<const LetStmt>(&stmt)) {
-        // The holders come first, so a value the initializer makes into an interface value is kept in one of them.
-        DeclareInterfaceHolders(*statement);
         auto lowered = std::make_unique<HirLetStmt>();
         lowered->location = statement->location;
         lowered->isMut = statement->isMut;

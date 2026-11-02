@@ -102,8 +102,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAft
 }
 
 func Main() throws CollectionError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // A new vector allocates nothing at all.
     var numbers = Vector<int32>(allocator);

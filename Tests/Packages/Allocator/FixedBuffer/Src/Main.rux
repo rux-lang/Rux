@@ -1,4 +1,4 @@
-import Allocator::{ AllocError, Allocator, FixedBuffer, FixedBufferHandle, IsEmptyBlock, Layout };
+import Allocator::{ AllocError, Allocator, FixedBuffer, IsEmptyBlock, Layout };
 import Core::{ Assert, Panic };
 import Memory::IsPointerAligned;
 
@@ -14,9 +14,8 @@ func Main() throws AllocError {
     Assert(buffer.BytesUsed() == 0, "an unused allocator has handed out nothing");
     Assert(buffer.BytesRemaining() == 512, "and has its whole buffer left");
 
-    // Safety: `buffer` is a local that outlives `handle` and is never moved.
-    var handle = unsafe { buffer.Handle() };
-    let allocator: Allocator = handle;
+    // Safety: `buffer` is a local that outlives `allocator` and is never moved.
+    let allocator = unsafe { buffer.Handle() };
 
     // A zero-sized layout costs the buffer nothing.
     let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
@@ -128,9 +127,8 @@ func Main() throws AllocError {
     // Safety: a null `storage` gives an allocator that refuses every request, so there is no storage to keep valid.
     var unbacked = unsafe { FixedBuffer(null, 4096) };
     Assert(unbacked.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
-    // Safety: `unbacked` is a local that outlives `unbackedHandle` and is never moved.
-    var unbackedHandle = unsafe { unbacked.Handle() };
-    let empties: Allocator = unbackedHandle;
+    // Safety: `unbacked` is a local that outlives `empties` and is never moved.
+    let empties = unsafe { unbacked.Handle() };
     var refused: *var opaque = null;
     try {
         empties.Allocate(small);

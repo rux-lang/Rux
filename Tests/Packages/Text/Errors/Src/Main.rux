@@ -31,14 +31,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 }
 
 // Whether `value` renders as exactly `expected` through `Display`.
-func Shown(value: Display, expected: char8[..]) -> bool {
+func Shown(value: &Display, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     if (try? value.WriteDisplay(writer, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
-func Inspected(value: Debug, expected: char8[..]) -> bool {
+func Inspected(value: &Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     if (try? value.WriteDebug(writer, FormatSpec::Plain())) is none { return false; }
@@ -46,7 +46,7 @@ func Inspected(value: Debug, expected: char8[..]) -> bool {
 }
 
 // Whether the specification is refused by both renderings rather than applied or ignored.
-func Refused(shown: Display, inspected: Debug, spec: FormatSpec) -> bool {
+func Refused(shown: &Display, inspected: &Debug, spec: FormatSpec) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     if !((try? shown.WriteDisplay(writer, spec)) is none) { return false; }
@@ -58,117 +58,117 @@ func Refused(shown: Display, inspected: Debug, spec: FormatSpec) -> bool {
 func Main() -> int {
     // TextError: every case, in both registers. Each case is a failure, since success travels in the other channel
     // of the fallible an operation returns.
-    let badUtf8: Display = TextError::InvalidUtf8;
+    let badUtf8 = TextError::InvalidUtf8;
     Assert(Shown(badUtf8, "invalid UTF-8"), "bytes that are not text");
-    let badUtf8Debug: Debug = TextError::InvalidUtf8;
+    let badUtf8Debug = TextError::InvalidUtf8;
     Assert(Inspected(badUtf8Debug, "TextError::InvalidUtf8"), "named");
-    let boundary: Display = TextError::NotABoundary;
+    let boundary = TextError::NotABoundary;
     Assert(Shown(boundary, "not a character boundary"), "an offset text may not be cut at");
-    let boundaryDebug: Debug = TextError::NotABoundary;
+    let boundaryDebug = TextError::NotABoundary;
     Assert(Inspected(boundaryDebug, "TextError::NotABoundary"), "named");
 
     // TextFailureKind describes the same failures, and must describe them with the same words.
-    let kindUtf8: Display = TextFailureKind::InvalidUtf8;
+    let kindUtf8 = TextFailureKind::InvalidUtf8;
     Assert(Shown(kindUtf8, "invalid UTF-8"), "the failure-only kind agrees with TextError");
-    let kindBoundary: Display = TextFailureKind::NotABoundary;
+    let kindBoundary = TextFailureKind::NotABoundary;
     Assert(Shown(kindBoundary, "not a character boundary"), "and this one");
-    let kindUtf8Debug: Debug = TextFailureKind::InvalidUtf8;
+    let kindUtf8Debug = TextFailureKind::InvalidUtf8;
     Assert(Inspected(kindUtf8Debug, "TextFailureKind::InvalidUtf8"), "while Debug says which type it came from");
 
     // FormatError: the description says what happened, and Debug adds the payload that says where.
-    let malformed: Display = FormatError::InvalidSpecification(12);
+    let malformed = FormatError::InvalidSpecification(12);
     Assert(Shown(malformed, "malformed format specification"), "a bad specification describes itself");
-    let malformedDebug: Debug = FormatError::InvalidSpecification(12);
+    let malformedDebug = FormatError::InvalidSpecification(12);
     Assert(Inspected(malformedDebug, "FormatError::InvalidSpecification(12)"), "and Debug carries the offset");
-    let atStart: Debug = FormatError::InvalidSpecification(0);
+    let atStart = FormatError::InvalidSpecification(0);
     Assert(Inspected(atStart, "FormatError::InvalidSpecification(0)"), "including an offset of zero");
-    let unsupported: Display = FormatError::UnsupportedRequest;
+    let unsupported = FormatError::UnsupportedRequest;
     Assert(Shown(unsupported, "unsupported formatting request"), "a request the value cannot answer");
-    let unsupportedDebug: Debug = FormatError::UnsupportedRequest;
+    let unsupportedDebug = FormatError::UnsupportedRequest;
     Assert(Inspected(unsupportedDebug, "FormatError::UnsupportedRequest"), "named");
-    let mismatch: Display = FormatError::ArgumentCountMismatch(2, 3);
+    let mismatch = FormatError::ArgumentCountMismatch(2, 3);
     Assert(Shown(mismatch, "argument count does not match the pattern"), "a pattern and its arguments disagreeing");
-    let mismatchDebug: Debug = FormatError::ArgumentCountMismatch(2, 3);
+    let mismatchDebug = FormatError::ArgumentCountMismatch(2, 3);
     Assert(Inspected(mismatchDebug, "FormatError::ArgumentCountMismatch(2, 3)"), "with both counts, expected first");
-    let capacity: Display = FormatError::InsufficientCapacity;
+    let capacity = FormatError::InsufficientCapacity;
     Assert(Shown(capacity, "insufficient capacity"), "a destination too small");
-    let capacityDebug: Debug = FormatError::InsufficientCapacity;
+    let capacityDebug = FormatError::InsufficientCapacity;
     Assert(Inspected(capacityDebug, "FormatError::InsufficientCapacity"), "named");
-    let outOfRange: Display = FormatError::ValueOutOfRange;
+    let outOfRange = FormatError::ValueOutOfRange;
     Assert(Shown(outOfRange, "value out of range for the form requested"), "a value the form cannot express");
-    let outOfRangeDebug: Debug = FormatError::ValueOutOfRange;
+    let outOfRangeDebug = FormatError::ValueOutOfRange;
     Assert(Inspected(outOfRangeDebug, "FormatError::ValueOutOfRange"), "named");
-    let writerFailure: Display = FormatError::WriterFailure;
+    let writerFailure = FormatError::WriterFailure;
     Assert(Shown(writerFailure, "the destination failed"), "the destination failing on its own terms");
-    let writerFailureDebug: Debug = FormatError::WriterFailure;
+    let writerFailureDebug = FormatError::WriterFailure;
     Assert(Inspected(writerFailureDebug, "FormatError::WriterFailure"), "named");
 
     // A wrapped text failure describes itself exactly as the failure it wraps, and nests its name under Debug.
-    let wrapped: Display = FormatError::TextFailure(TextFailureKind::InvalidUtf8);
+    let wrapped = FormatError::TextFailure(TextFailureKind::InvalidUtf8);
     Assert(Shown(wrapped, "invalid UTF-8"), "a wrapped failure describes itself, not its wrapper");
-    let wrappedDebug: Debug = FormatError::TextFailure(TextFailureKind::InvalidUtf8);
+    let wrappedDebug = FormatError::TextFailure(TextFailureKind::InvalidUtf8);
     Assert(Inspected(wrappedDebug, "FormatError::TextFailure(TextFailureKind::InvalidUtf8)"),
            "while Debug shows both names");
-    let wrappedBoundary: Display = FormatError::TextFailure(TextFailureKind::NotABoundary);
+    let wrappedBoundary = FormatError::TextFailure(TextFailureKind::NotABoundary);
     Assert(Shown(wrappedBoundary, "not a character boundary"), "which holds for every kind it can wrap");
 
     // Utf8Error, every case of which names what was wrong with the bytes.
-    let truncated: Display = Utf8Error::Truncated;
+    let truncated = Utf8Error::Truncated;
     Assert(Shown(truncated, "truncated UTF-8 sequence"), "a sequence the bytes ran out of");
-    let truncatedDebug: Debug = Utf8Error::Truncated;
+    let truncatedDebug = Utf8Error::Truncated;
     Assert(Inspected(truncatedDebug, "Utf8Error::Truncated"), "named");
-    let badStart: Display = Utf8Error::InvalidStart;
+    let badStart = Utf8Error::InvalidStart;
     Assert(Shown(badStart, "invalid UTF-8 start byte"), "a byte that cannot open a sequence");
-    let badStartDebug: Debug = Utf8Error::InvalidStart;
+    let badStartDebug = Utf8Error::InvalidStart;
     Assert(Inspected(badStartDebug, "Utf8Error::InvalidStart"), "named");
-    let badContinuation: Display = Utf8Error::InvalidContinuation;
+    let badContinuation = Utf8Error::InvalidContinuation;
     Assert(Shown(badContinuation, "invalid UTF-8 continuation byte"), "and one that cannot continue it");
-    let badContinuationDebug: Debug = Utf8Error::InvalidContinuation;
+    let badContinuationDebug = Utf8Error::InvalidContinuation;
     Assert(Inspected(badContinuationDebug, "Utf8Error::InvalidContinuation"), "named");
 
     // AllocError, presented here because the protocols live here and Allocator does not depend on this package.
     // The allocator's own distinctions survive: a layout it can never serve is not a shortage.
-    let allocUnsupported: Display = AllocError::Unsupported;
+    let allocUnsupported = AllocError::Unsupported;
     Assert(Shown(allocUnsupported, "layout this allocator cannot serve"), "a request retrying will never satisfy");
-    let allocUnsupportedDebug: Debug = AllocError::Unsupported;
+    let allocUnsupportedDebug = AllocError::Unsupported;
     Assert(Inspected(allocUnsupportedDebug, "AllocError::Unsupported"), "named");
-    let allocMemory: Display = AllocError::OutOfMemory;
+    let allocMemory = AllocError::OutOfMemory;
     Assert(Shown(allocMemory, "out of memory"), "and one that a smaller one might");
-    let allocMemoryDebug: Debug = AllocError::OutOfMemory;
+    let allocMemoryDebug = AllocError::OutOfMemory;
     Assert(Inspected(allocMemoryDebug, "AllocError::OutOfMemory"), "named");
-    let allocBlock: Display = AllocError::InvalidBlock;
+    let allocBlock = AllocError::InvalidBlock;
     Assert(Shown(allocBlock, "block this allocator did not hand out"), "a caller's mistake rather than a shortage");
-    let allocBlockDebug: Debug = AllocError::InvalidBlock;
+    let allocBlockDebug = AllocError::InvalidBlock;
     Assert(Inspected(allocBlockDebug, "AllocError::InvalidBlock"), "named");
 
     // PageError, the other low-level type this package already depends on.
-    let pageLength: Display = PageError::InvalidLength;
+    let pageLength = PageError::InvalidLength;
     Assert(Shown(pageLength, "invalid length"), "a length of zero or past the address space");
-    let pageAddress: Display = PageError::InvalidAddress;
+    let pageAddress = PageError::InvalidAddress;
     Assert(Shown(pageAddress, "invalid address"), "an address that is not a page this process owns");
-    let pageMemory: Display = PageError::OutOfMemory;
+    let pageMemory = PageError::OutOfMemory;
     Assert(Shown(pageMemory, "out of memory"), "no storage to back the request");
-    let pagePermission: Display = PageError::PermissionDenied;
+    let pagePermission = PageError::PermissionDenied;
     Assert(Shown(pagePermission, "permission denied"), "a protection the system refused");
-    let pageUnsupported: Display = PageError::Unsupported;
+    let pageUnsupported = PageError::Unsupported;
     Assert(Shown(pageUnsupported, "unsupported on this system"), "a combination this system does not offer");
-    let pageFailed: Display = PageError::Failed;
+    let pageFailed = PageError::Failed;
     Assert(Shown(pageFailed, "the system reported an unnamed failure"), "and the case with no name of its own");
-    let pagePermissionDebug: Debug = PageError::PermissionDenied;
+    let pagePermissionDebug = PageError::PermissionDenied;
     Assert(Inspected(pagePermissionDebug, "PageError::PermissionDenied"), "each named under Debug");
-    let pageFailedDebug: Debug = PageError::Failed;
+    let pageFailedDebug = PageError::Failed;
     Assert(Inspected(pageFailedDebug, "PageError::Failed"), "including the unnamed one");
 
     // Neither rendering answers to a style or a precision. A precision is worth refusing rather than applying: a
     // description cut in half is a sentence that says something else.
-    let refusedShown: Display = TextError::InvalidUtf8;
-    let refusedDebug: Debug = TextError::InvalidUtf8;
+    let refusedShown = TextError::InvalidUtf8;
+    let refusedDebug = TextError::InvalidUtf8;
     Assert(Refused(refusedShown, refusedDebug, Spec(".4")),
            "a precision is refused rather than truncating a description");
     Assert(Refused(refusedShown, refusedDebug, Spec("short")), "and so is a style, invented");
     Assert(Refused(refusedShown, refusedDebug, Spec("rfc3339")), "or borrowed from another domain");
-    let formatShown: Display = FormatError::WriterFailure;
-    let formatDebug: Debug = FormatError::WriterFailure;
+    let formatShown = FormatError::WriterFailure;
+    let formatDebug = FormatError::WriterFailure;
     Assert(Refused(formatShown, formatDebug, Spec(".0")), "which holds for the failure-only type as well");
 
     return 0;

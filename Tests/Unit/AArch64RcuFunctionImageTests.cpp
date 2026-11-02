@@ -32,7 +32,7 @@ TEST_CASE("AArch64 RCU emitter lays a vtable out as a run of relocated function 
 
         func Main() -> int {
             var square = Square { size: 5 };
-            var figure: Figure = square;
+            let figure: &Figure = square;
             return figure.Area();
         }
     )");

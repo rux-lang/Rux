@@ -4,7 +4,7 @@
 // them alike turns a Windows path into a string with a tab in it. Numbers and date-times share a prefix, so
 // the classification of `1979` against `1979-05-27` is checked here rather than assumed.
 
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ String };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
@@ -24,8 +24,7 @@ func FirstError(text: char8[..]) -> TomlLexError {
 
 // The decoded content of the first token, which must be a text token.
 func FirstText(text: char8[..]) -> String {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var lexer = TomlLexer(text);
     let token = lexer.Next();
     var bad = false;
@@ -174,8 +173,7 @@ func Main() -> int {
     Assert(FirstError("\"a\u{1}b\"") == TomlLexError::UnescapedControl, "and a raw control character");
 
     // A surrogate is not a scalar value, so no escape names one.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var surrogateLexer = TomlLexer("\"\\uD800\"");
     let surrogate = surrogateLexer.Next();
     var surrogateBad = false;

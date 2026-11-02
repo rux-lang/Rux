@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Collections::{ EqualsInt32, HashInt32, HashMap, HashSet, TableSeed };
 import Core::{ Assert, Panic, int32 };
 
@@ -16,8 +16,7 @@ func CrowdedHash(value: int32, low: uint64, high: uint64) -> uint64 {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Filled right up to the load factor, then read back. A table that grows exactly when it should still has every
     // key findable at the fullest moment.

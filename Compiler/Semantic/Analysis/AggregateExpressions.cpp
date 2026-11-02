@@ -506,8 +506,17 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                                                            "declaration requires '{}'",
                                                            field.name, expression.typeName, valueType.ToString(),
                                                            fieldType.ToString())),
-                        {std::format("field '{}' declared at line {}, column {}", field.name,
-                                     expectedField->second->location.line, expectedField->second->location.column)});
+                        [&] {
+                            std::vector<std::string> notes{std::format("field '{}' declared at line {}, column {}",
+                                                                       field.name, expectedField->second->location.line,
+                                                                       expectedField->second->location.column)};
+                            if (RefusesInterfaceValue(valueType, fieldType)) {
+                                std::ranges::copy(InterfaceValueNotes(), std::back_inserter(notes));
+                            }
+                            return notes;
+                        }(),
+                        RefusesInterfaceValue(valueType, fieldType) ? std::optional(InterfaceValueHelp(fieldType))
+                                                                    : std::nullopt);
                 }
                 else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
                     ConsumeValue(*field.value, valueType, FieldConsumption(field), field.location);
@@ -599,14 +608,24 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                                     ? *declaredFieldType
                                     : ResolveTypeWithSubstitution(*expectedField->second->type, substitutions);
         if (!valueType.IsUnknown() && !fieldType.IsUnknown() && !CanAssignExprTo(*field.value, valueType, fieldType)) {
-            EmitError(field.location,
-                      AssignmentErrorMessage(
-                          *field.value, fieldType,
-                          std::format("field '{}' in initializer for '{}' has type '{}', but its declaration requires "
-                                      "'{}'",
-                                      field.name, expression.typeName, valueType.ToString(), fieldType.ToString())),
-                      {std::format("field '{}' declared at line {}, column {}", field.name,
-                                   expectedField->second->location.line, expectedField->second->location.column)});
+            EmitError(
+                field.location,
+                AssignmentErrorMessage(
+                    *field.value, fieldType,
+                    std::format("field '{}' in initializer for '{}' has type '{}', but its declaration requires "
+                                "'{}'",
+                                field.name, expression.typeName, valueType.ToString(), fieldType.ToString())),
+                [&] {
+                    std::vector<std::string> notes{std::format("field '{}' declared at line {}, column {}", field.name,
+                                                               expectedField->second->location.line,
+                                                               expectedField->second->location.column)};
+                    if (RefusesInterfaceValue(valueType, fieldType)) {
+                        std::ranges::copy(InterfaceValueNotes(), std::back_inserter(notes));
+                    }
+                    return notes;
+                }(),
+                RefusesInterfaceValue(valueType, fieldType) ? std::optional(InterfaceValueHelp(fieldType))
+                                                            : std::nullopt);
         }
         else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
             ConsumeValue(*field.value, valueType, FieldConsumption(field), field.location);
@@ -891,7 +910,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             !interfaceName.empty() && currentScope->Lookup(interfaceName) &&
             currentScope->Lookup(interfaceName)->kind == Symbol::Kind::Interface) {
             EmitError(field->location,
-                      std::format("interface type '{}' has no member '{}'", objectType.ToString(), field->field));
+                      std::format("interface type '{}' has no member '{}'", interfaceName, field->field));
             return TypeRef::MakeUnknown();
         }
 

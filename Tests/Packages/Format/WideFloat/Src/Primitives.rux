@@ -5,7 +5,7 @@
 // the reference vectors where the vectors have them, and otherwise against the bits the layout says they are.
 
 import Text::{ FormatSpec, TextWriter };
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic, #config, float128, float256, float512, float80 };
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, InfinityBits, PackWide,
                  ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80 };
@@ -60,8 +60,7 @@ func Divide512(left: float512, right: float512) -> float512 {
 
 // The text of each primitive, through the value's `FormatWith`: the only rendering there is.
 func Text80(value: float80, storage: var char8[..]) -> char8[..] {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let wide = Float80::FromValue(value);
@@ -70,8 +69,7 @@ func Text80(value: float80, storage: var char8[..]) -> char8[..] {
 }
 
 func Text128(value: float128, storage: var char8[..]) -> char8[..] {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let wide = Float128::FromValue(value);
@@ -80,8 +78,7 @@ func Text128(value: float128, storage: var char8[..]) -> char8[..] {
 }
 
 func Text256(value: float256, storage: var char8[..]) -> char8[..] {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let wide = Float256::FromValue(value);
@@ -90,8 +87,7 @@ func Text256(value: float256, storage: var char8[..]) -> char8[..] {
 }
 
 func Text512(value: float512, storage: var char8[..]) -> char8[..] {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let wide = Float512::FromValue(value);
@@ -101,29 +97,25 @@ func Text512(value: float512, storage: var char8[..]) -> char8[..] {
 
 // The primitive a text reads to, through the typed parse and `Value`.
 func Read80(text: char8[..]) -> float80 {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let wide = try ParseFloat80(allocator, text) catch { _ => Panic("a float80 text reads") };
     return wide.Value();
 }
 
 func Read128(text: char8[..]) -> float128 {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let wide = try ParseFloat128(allocator, text) catch { _ => Panic("a float128 text reads") };
     return wide.Value();
 }
 
 func Read256(text: char8[..]) -> float256 {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let wide = try ParseFloat256(allocator, text) catch { _ => Panic("a float256 text reads") };
     return wide.Value();
 }
 
 func Read512(text: char8[..]) -> float512 {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let wide = try ParseFloat512(allocator, text) catch { _ => Panic("a float512 text reads") };
     return wide.Value();
 }

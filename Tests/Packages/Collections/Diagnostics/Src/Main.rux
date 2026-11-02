@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Collections::{ CollectionError, CompareInt32, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed, TreeMap,
                       TreeSet, WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
 import Core::{ Assert, Panic, Result };
@@ -42,7 +42,7 @@ extend Tracked {
 extend Tracked : Debug {
     func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         try WriteBytes(writer, "T(");
-        let tag: Debug = self.tag;
+        let tag: int32 = self.tag;
         try tag.WriteDebug(writer, spec);
         return try WriteAscii(writer, c8')');
     }
@@ -127,7 +127,7 @@ func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
-    let shown: Display = error;
+    let shown: CollectionError = error;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -137,14 +137,13 @@ func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
-    let shown: Debug = error;
+    let shown: CollectionError = error;
     if (try? shown.WriteDebug(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let plain = FormatSpec::Plain();
 
     // An ordered map is written in key order, which is the order it keeps whatever order it was filled in.
@@ -321,7 +320,7 @@ func Main() -> int {
     // Safety: `refusalStorage` is a local array of 128 elements.
     var refusalWriter = BufferWriter(unsafe { (@refusalStorage[0])[..128] });
     let refusalSink: &var TextWriter = refusalWriter;
-    let described: Display = CollectionError::IndexOutOfRange;
+    let described = CollectionError::IndexOutOfRange;
     let truncated: Result<(), FormatError> = try .Success(described.WriteDisplay(refusalSink, Spec(".3"))) catch {
         error => .Failure(error),
     };

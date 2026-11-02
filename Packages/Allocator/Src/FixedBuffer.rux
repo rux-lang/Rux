@@ -5,14 +5,15 @@
 // an embedded target with no allocator underneath at all.
 // It owns nothing, so it has no destructor and the buffer's life is entirely the caller's business. What it does
 // have is mutable state, and an allocator that is copied while it is being used would hand out the same storage
-// twice — so `Handle` is what implements `Allocator`, exactly as it is for the arena.
+// twice — so it prohibits copying, and `Handle` gives the `Allocator` handle a container keeps, exactly as for the
+// arena.
 
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Memory::{ AlignUp, Copy };
 
 /// An allocator that advances a pointer through storage it does not own.
 /// Owns no storage and has no destructor, but prohibits copying because duplicated bump state could hand the same
-/// bytes to two callers. Use `Handle` when a storable `Allocator` adapter is needed.
+/// bytes to two callers. Use `Handle` when a stored `Allocator` handle is needed.
 /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer
 #NoCopy
 pub struct FixedBuffer {
@@ -48,14 +49,15 @@ extend FixedBuffer {
         };
     }
 
-    /// A copyable interface adapter pointing at this allocator.
-    /// `self` is borrowed mutably and stays the caller's. Everything allocated through the handle advances this
-    /// allocator's state rather than a copy of it, which is the whole reason the handle exists.
-    /// Safety: the handle borrows the allocator and must not outlive it or survive it being moved.
-    /// @returns a copyable adapter pointing at this buffer
+    /// An `Allocator` handle addressing this buffer, for a container to keep.
+    /// `self` stays the caller's. Everything allocated through the handle advances this allocator's state rather
+    /// than a copy of it.
+    /// Safety: the handle addresses the buffer and must not outlive it or survive it being moved, and nothing may
+    /// `Reset` the buffer while an allocation made through the handle is still in use. Nothing here tracks that.
+    /// @returns a copyable handle addressing this buffer
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#handle
-    pub unsafe func Handle(*var self) -> FixedBufferHandle {
-        return FixedBufferHandle { buffer: self };
+    pub unsafe func Handle(*var self) -> Allocator {
+        return self as Allocator;
     }
 
     /// Rewinds every allocation, making the whole buffer available again.
@@ -83,9 +85,6 @@ extend FixedBuffer {
     pub func BytesRemaining(&self) -> uint {
         return self.capacity - self.used;
     }
-
-    // The handle's operations, kept on the buffer itself so that its fields are reached through a reference and
-    // the handle dereferences its pointer only once per call.
 
     // Takes storage matching a non-zero-sized `layout`, or reports `OutOfMemory` when what remains cannot hold it.
     func Take(&var self, layout: Layout) -> *var opaque throws AllocError {
@@ -136,14 +135,7 @@ extend FixedBuffer {
     }
 }
 
-/// A copyable interface adapter pointing at a `FixedBuffer`.
-/// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle
-pub struct FixedBufferHandle {
-    /// The allocator this borrows. Never null for a handle `FixedBuffer::Handle` produced.
-    buffer: *var FixedBuffer;
-}
-
-extend FixedBufferHandle : Allocator {
+extend FixedBuffer : Allocator {
     /// Takes storage matching `layout` from the buffer.
     /// `result` receives the address when this reports `None`. A zero-sized layout gives the shared empty block and
     /// consumes nothing.
@@ -153,14 +145,12 @@ extend FixedBufferHandle : Allocator {
     /// The storage lives until the allocator is reset, and no longer.
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
-    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle-allocate
-    pub func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#allocate
+    pub func Allocate(&var self, layout: Layout) -> *var opaque throws AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
-        // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
-        // buffer, so `self.buffer` addresses a live `FixedBuffer`.
-        return try unsafe { (*self.buffer).Take(layout) };
+        return try self.Take(layout);
     }
 
     /// Accepts a release and rewinds only the most recent allocation.
@@ -170,13 +160,11 @@ extend FixedBufferHandle : Allocator {
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
-    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle-deallocate
-    pub func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#deallocate
+    pub func Deallocate(&var self, block: *var opaque, layout: Layout) throws AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { throw .InvalidBlock; } return; }
         if block == null { throw .InvalidBlock; }
-        // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
-        // buffer, so `self.buffer` addresses a live `FixedBuffer`.
-        unsafe { (*self.buffer).Rewind(block as uint, layout.size); }
+        self.Rewind(block as uint, layout.size);
     }
 
     /// Grows or shrinks a block, extending the most recent allocation in place where the buffer has room.
@@ -188,8 +176,8 @@ extend FixedBufferHandle : Allocator {
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
-    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle-reallocate
-    pub func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#reallocate
+    pub func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque throws AllocError {
         if oldLayout.alignment != newLayout.alignment { throw .Unsupported; }
         if oldLayout.size == newLayout.size {
@@ -204,9 +192,7 @@ extend FixedBufferHandle : Allocator {
             return EmptyBlockAddress();
         }
 
-        // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
-        // buffer, so `self.buffer` addresses a live `FixedBuffer`.
-        if unsafe { (*self.buffer).ResizeInPlace(block as uint, oldLayout.size, newLayout.size) } {
+        if self.ResizeInPlace(block as uint, oldLayout.size, newLayout.size) {
             return block;
         }
 

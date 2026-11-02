@@ -96,6 +96,15 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             (AstCast<const IndexExpr>(&expr) && !IsIndexOperatorCall(expr)) ||
             (AstCast<const UnaryExpr>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
         if (!addressable) {
+            // A temporary may be lent to a read-only interface view: lowering keeps it in storage of the block it is
+            // written in, as a call's argument or a local's initializer, and destroys it when the block ends.
+            const bool interfaceTarget =
+                targetReferent->kind == TypeRef::Kind::Named && interfaceDecls.contains(targetReferent->name);
+            if (interfaceTarget && !targetType->inner.front().isMut &&
+                (interfaceView || sourceReferent == targetReferent)) {
+                interfaceTemporaries.insert_or_assign(&expr, exprType);
+                return true;
+            }
             return false;
         }
         return targetType->inner.empty() || !targetType->inner.front().isMut || !PlaceIsImmutable(expr);
@@ -261,7 +270,8 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
     }
 
     return exprType.IsAssignableTo(targetType) || (IsNullLiteral(expr) && targetType->kind == TypeRef::Kind::Pointer) ||
-           UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
+           UnsuffixedIntegerLiteralFits(expr, targetType) ||
+           (TypeImplementsInterface(exprType, targetType) && !RefusesInterfaceValue(exprType, targetType));
 }
 
 bool AnalysisContext::CanConstructNative(const NativeConstructExpr &construct, const TypeRef &targetType) {

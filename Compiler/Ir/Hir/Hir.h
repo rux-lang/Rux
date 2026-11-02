@@ -298,9 +298,12 @@ struct HirCallExpr : HirExpr {
 struct HirCoerceToInterfaceExpr : HirExpr {
     HirExprPtr value;
     std::string vtableLabel;
-    /// A reference-to-interface view points at the source place directly. A by-value interface keeps the legacy
-    /// compatibility behavior of materializing its own concrete storage.
+    /// The data half points at the source place directly, or at what a pointer or reference value addresses.
+    /// Otherwise the value is given storage of its own where it is converted.
     bool borrowed = false;
+    /// The source is a stateless value: the data half addresses no storage of it, only the method table, so an
+    /// interface value made from one stays valid wherever it is copied.
+    bool stateless = false;
 };
 
 /// A fixed inline array viewed as a non-owning T[..].

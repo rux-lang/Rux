@@ -48,7 +48,9 @@ extend CaptureSink : Writer {
 
 // Encodes `data` written `chunk` bytes at a time.
 func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Capture) -> bool {
-    var writer = EncodingWriter(CaptureSink { capture: into }, codec);
+    var captureSink = CaptureSink { capture: into };
+    // Safety: `captureSink` is a local of this function that outlives every use of the handle.
+    var writer = EncodingWriter(unsafe { @captureSink as Writer }, codec);
     var at: uint = 0;
     while at < data.length {
         let end = if at + chunk < data.length { at + chunk } else { data.length };
@@ -61,7 +63,9 @@ func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Captu
 
 // Decodes `text` reading `chunk` bytes at a time, and checks the bytes are `expected`.
 func Decodes(codec: StreamCodec, text: char8[..], chunk: uint, expected: char8[..]) -> bool {
-    var reader = DecodingReader(ByteReader(text), codec);
+    var byteReader3 = ByteReader(text);
+    // Safety: `byteReader3` is a local of this function that outlives every use of the handle.
+    var reader = DecodingReader(unsafe { @byteReader3 as Reader }, codec);
     var out: char8[400] = [c8' '; 400];
     var length: uint = 0;
     while true {
@@ -122,7 +126,9 @@ func Main() -> int {
     }
 
     // Text that is not in the form fails when the reader reaches it.
-    var bad = DecodingReader(ByteReader("QUJD!!!!"), StreamCodec::Base64(Base64Variant::Standard));
+    var byteReader2 = ByteReader("QUJD!!!!");
+    // Safety: `byteReader2` is a local of this function that outlives every use of the handle.
+    var bad = DecodingReader(unsafe { @byteReader2 as Reader }, StreamCodec::Base64(Base64Variant::Standard));
     var out: char8[8] = [c8' '; 8];
     var reads: uint = 0;
     while true {
@@ -138,7 +144,9 @@ func Main() -> int {
         }
     }
     // Crockford Base32 skips hyphens.
-    var crockford = DecodingReader(ByteReader("91JP-RV3F"), StreamCodec::Base32(Base32Variant::Crockford));
+    var byteReader = ByteReader("91JP-RV3F");
+    // Safety: `byteReader` is a local of this function that outlives every use of the handle.
+    var crockford = DecodingReader(unsafe { @byteReader as Reader }, StreamCodec::Base32(Base32Variant::Crockford));
     var hello: char8[5] = [c8' '; 5];
     try ReadExact(crockford, hello[..]) catch { _ => return 4 };
     Assert(Same(hello[..], "Hello"), "Crockford with a hyphen");

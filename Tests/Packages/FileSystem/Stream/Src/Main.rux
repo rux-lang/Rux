@@ -9,7 +9,7 @@
 // that keeps its source past the call that made it. Binding the file itself into an interface value there would
 // move the file, since it owns its handle and prohibits copying, and there would be nothing left to close.
 
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic, Result };
 import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, ReadTextLine, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path };
@@ -26,8 +26,7 @@ func View(bytes: char8[..]) -> StringView {
 }
 
 func Main() -> int throws IoError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp");
     let scratch = Path::FromView(holder.View());
 
@@ -83,8 +82,8 @@ func Main() -> int throws IoError {
     try WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma"));
     try lines.Close();
     var back = try File::Open(allocator, scratch, OpenOptions::Reading());
-    let backSource: Reader = back.Stream();
-    var buffered = try BufferedReader(allocator, backSource, 8);
+    // Safety: `back` is a local of this function that outlives `buffered`, the only holder of the handle.
+    var buffered = try BufferedReader(allocator, unsafe { @back as Reader }, 8);
     var builder = StringBuilder(allocator);
     try ReadTextLine(buffered, builder, 64);
     let alpha = builder.TakeString();
@@ -111,13 +110,14 @@ func Main() -> int throws IoError {
     buffered.Release();
     try back.Close();
 
-    // A stored stream over a file that has since been closed is not unsafe, it is refused: the file checks its own
-    // handle, so every operation through the adapter reports `InvalidHandle` rather than reaching a closed one.
-    // This is the one thing the adapter can promise, and it is worth pinning, because it is what makes the
-    // dangerous case — outliving the file itself — the *only* dangerous case.
+    // A handle to a file that has since been closed is not unsafe, it is refused: the file checks its own handle, so
+    // every operation through the interface value reports `InvalidHandle` rather than reaching a closed one. This is
+    // worth pinning, because it is what makes the dangerous case — outliving the file itself — the *only* dangerous
+    // case.
     var closed = try File::Open(allocator, scratch, OpenOptions::Reading());
     Assert(closed.IsOpen(), "a file opens");
-    var stale: Reader = closed.Stream();
+    // Safety: `closed` is a local of this function that outlives `stale`.
+    var stale = unsafe { @closed as Reader };
     try closed.Close();
     var storage2: char8[4];
     storage2[0] = c8'z';
@@ -131,10 +131,11 @@ func Main() -> int throws IoError {
     Assert(refused.kind == IoErrorKind::InvalidHandle, "the stream refuses through the closed file");
     Assert(storage2[0] == c8'z', "having read nothing");
 
-    // And the adapter is the file, not a copy of it: what goes out through one is what the other reports.
+    // And the handle addresses the file, not a copy of it: what goes out through one is what the other reports.
     var shared = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(shared.IsOpen(), "a file opens for writing");
-    var held: Writer = shared.Stream();
+    // Safety: `shared` is a local of this function that outlives `held`.
+    var held = unsafe { @shared as Writer };
     try WriteAll(held, TextBytes("abcd"));
     try Assert(shared.Size() == 4, "and the file itself measures them");
     try shared.Close();

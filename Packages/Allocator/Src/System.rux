@@ -38,23 +38,21 @@ pub const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 
 /// An allocator that asks the operating system for pages.
 /// Carries no state: every instance behaves identically, and one may be created wherever it is needed rather than
-/// passed around. It is `Copy` for that reason.
+/// passed around. Being stateless, it converts to an `Allocator` handle anywhere, and the handle stays valid for the
+/// whole program.
 /// Page-granular, so a small allocation costs a whole page. Use it as the backing store for an arena or a pool
 /// rather than for many small values directly.
 /// @see https://rux-lang.dev/docs/api/allocator/system-allocator
-pub struct SystemAllocator {
-    /// Present so the type is not empty; carries nothing and is never read.
-    reserved: uint8;
-}
+pub struct SystemAllocator {}
 
 extend SystemAllocator {
     /// Constructs a stateless system allocator.
-    /// The result is structural and copyable. Borrow it as `&var Allocator` when a temporary interface view is
-    /// sufficient; no adapter or owning conversion is required.
+    /// The result holds nothing and copies freely. It converts to an `Allocator` handle wherever one is wanted, with
+    /// nothing to keep alive behind it.
     /// @returns the allocator, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#new
     pub func SystemAllocator() -> Self {
-        return Self { reserved: 0 };
+        return Self {};
     }
 
 }

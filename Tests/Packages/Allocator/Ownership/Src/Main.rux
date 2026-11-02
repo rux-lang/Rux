@@ -189,8 +189,7 @@ func CheckSuccessfulReallocation(allocator: Allocator) throws AllocError {
 }
 
 func Main() throws AllocError {
-    var system = SystemAllocator();
-    let real: Allocator = system;
+    let real = SystemAllocator();
 
     // --- The contract, asked of each allocator ------------------------------------------------------------------
 
@@ -200,18 +199,16 @@ func Main() throws AllocError {
     try CheckSuccessfulReallocation(real);
 
     var arena = Arena(real, 65536);
-    // Safety: `arena` is a local that outlives `arenaHandle` and is never moved.
-    var arenaHandle = unsafe { arena.Handle() };
-    let arenaAllocator: Allocator = arenaHandle;
+    // Safety: `arena` is a local that outlives `arenaAllocator` and is never moved.
+    let arenaAllocator = unsafe { arena.Handle() };
     try CheckAlignment(arenaAllocator, "Arena");
     try CheckZeroSize(arenaAllocator);
     try CheckFailedReallocation(arenaAllocator);
     try CheckSuccessfulReallocation(arenaAllocator);
 
     var pool = Pool(real, 16);
-    // Safety: `pool` is a local that outlives `poolHandle` and is never moved.
-    var poolHandle = unsafe { pool.Handle() };
-    let poolAllocator: Allocator = poolHandle;
+    // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
+    let poolAllocator = unsafe { pool.Handle() };
     try CheckAlignment(poolAllocator, "Pool");
     try CheckZeroSize(poolAllocator);
     try CheckFailedReallocation(poolAllocator);
@@ -220,9 +217,8 @@ func Main() throws AllocError {
     var storage: byte[65536];
     // Safety: `storage` is a local array of 65536 bytes, touched only through `buffer` until `buffer` is done.
     var buffer = unsafe { FixedBuffer(@storage[0] as *var opaque, 65536) };
-    // Safety: `buffer` is a local that outlives `bufferHandle` and is never moved.
-    var bufferHandle = unsafe { buffer.Handle() };
-    let bufferAllocator: Allocator = bufferHandle;
+    // Safety: `buffer` is a local that outlives `bufferAllocator` and is never moved.
+    let bufferAllocator = unsafe { buffer.Handle() };
     try CheckAlignment(bufferAllocator, "FixedBuffer");
     try CheckZeroSize(bufferAllocator);
     try CheckFailedReallocation(bufferAllocator);
@@ -236,9 +232,8 @@ func Main() throws AllocError {
     // Safety: `counted` outlives both handles, which are last used before it moves into `relocated` below.
     var first = unsafe { counted.Handle() };
     // Safety: as for `first`, the handle is last used before `counted` moves.
-    var second = unsafe { counted.Handle() };
+    let secondAllocator = unsafe { counted.Handle() };
     let firstAllocator: Allocator = first;
-    let secondAllocator: Allocator = second;
 
     let unit = LayoutOr(128, 8);
     let throughFirst = try firstAllocator.Allocate(unit);
@@ -272,9 +267,8 @@ func Main() throws AllocError {
     Assert(relocated.BytesUsed() == afterFirst, "a moved arena carries its accounting with it");
     Assert(relocated.BlockCount() == 1, "and the block it holds");
 
-    // Safety: `relocated` is a local that outlives `afterMove` and is not moved again.
-    var afterMove = unsafe { relocated.Handle() };
-    let movedAllocator: Allocator = afterMove;
+    // Safety: `relocated` is a local that outlives `movedAllocator` and is not moved again.
+    let movedAllocator = unsafe { relocated.Handle() };
     let fromMoved = try movedAllocator.Allocate(unit);
     Assert(relocated.BytesUsed() > afterFirst, "advancing the arena at its new home");
     Assert(fromMoved != afterReset, "with an address distinct from the one still outstanding");
@@ -283,17 +277,15 @@ func Main() throws AllocError {
     // storage the caller owns, so a handle taken after a move serves out of the very same bytes.
     // Safety: `storage` is a local array of 65536 bytes; `buffer` is done with it, so only `moving` touches it now.
     var moving = unsafe { FixedBuffer(@storage[0] as *var opaque, 65536) };
-    // Safety: `beforeMoveHandle` is last used before `moving` moves into `carried` below.
-    var beforeMoveHandle = unsafe { moving.Handle() };
-    let beforeMoveAllocator: Allocator = beforeMoveHandle;
+    // Safety: `beforeMoveAllocator` is last used before `moving` moves into `carried` below.
+    let beforeMoveAllocator = unsafe { moving.Handle() };
     let early = try beforeMoveAllocator.Allocate(unit);
     let earlyUsed = moving.BytesUsed();
 
     var carried = move moving;
     Assert(carried.BytesUsed() == earlyUsed, "a moved fixed buffer carries its accounting");
-    // Safety: `carried` is a local that outlives `lateHandle` and is not moved again.
-    var lateHandle = unsafe { carried.Handle() };
-    let lateAllocator: Allocator = lateHandle;
+    // Safety: `carried` is a local that outlives `lateAllocator` and is not moved again.
+    let lateAllocator = unsafe { carried.Handle() };
     let late = try lateAllocator.Allocate(unit);
     Assert(late != early, "handing out storage it had not already given away");
     Assert((late as uint) >= (@storage[0] as uint), "out of the caller's own bytes, which never moved");

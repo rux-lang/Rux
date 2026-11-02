@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ Concat, Repeat, String, StringView };
 
@@ -11,8 +11,7 @@ func View(bytes: char8[..]) -> StringView {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let hello = View("Hello, ");
     let world = View("world!");

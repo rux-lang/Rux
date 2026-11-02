@@ -152,12 +152,8 @@ protected:
     std::size_t returnOrdinal = 0;
     /// Names the hidden locals a value block, an `if` value and a binding condition introduce.
     std::size_t blockValueOrdinal = 0;
-    /// Names the value an interface value owns, which a scope destroys like a local of its own.
+    /// Names the temporary an interface view borrows, which its block destroys like a local of its own.
     std::size_t interfaceValueOrdinal = 0;
-    /// The holders of the function being lowered, by `InterfaceHolderKey`: each one's hidden name and binding.
-    std::unordered_map<std::string, std::pair<std::string, std::uint64_t>> interfaceHolderBindings;
-    /// Declarations a statement needs ahead of it in its block: the holders a local keeps its interface values in.
-    std::vector<HirStmtPtr> statementPrelude;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
 
@@ -213,12 +209,8 @@ protected:
 
     [[nodiscard]] HirBlock LowerBlock(const Block &block, const BlockValue *value = nullptr);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
-    /// Lowers `stmt` into `block`, after the declarations it needs ahead of it.
+    /// Lowers `stmt` into `block`.
     void LowerStmtInto(HirBlock &block, const Stmt &stmt);
-    /// Identifies one holder of the function being lowered, with the holder's type as this instance spells it.
-    [[nodiscard]] std::string InterfaceHolderKey(const InterfaceHolderSite &site) const;
-    /// Declares, ahead of `local`, the holders its interface values keep their values in.
-    void DeclareInterfaceHolders(const LetStmt &local);
     /// Opens a loop whose HIR node has the label `label`, which stays where it is until the loop ends.
     CleanupPlanner::LoopToken BeginLoop(std::string &label, bool handler = false);
     void EndLoop(CleanupPlanner::LoopToken token);
@@ -376,6 +368,9 @@ protected:
     /// An `if` value whose condition binds names: the then branch runs inside the tests and the `else` branch after
     /// them, each storing its value in a hidden local the block yields.
     [[nodiscard]] HirExprPtr LowerBindingIfValue(const MatchExpr &expression);
+    /// Lends the temporary `value` to the interface view `coercion` makes, in storage the enclosing block keeps.
+    [[nodiscard]] HirExprPtr BorrowInterfaceTemporary(std::unique_ptr<HirCoerceToInterfaceExpr> coercion,
+                                                      HirExprPtr value, SourceLocation location);
     /// `value` at `targetType`, when both are scalars and analysis accepted one where the other was expected.
     [[nodiscard]] static HirExprPtr ConvertScalar(HirExprPtr value, const TypeRef &targetType);
     [[nodiscard]] std::unique_ptr<HirArrayExpr>

@@ -106,9 +106,61 @@ bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, con
     return false;
 }
 
+bool AnalysisContext::IsInterfaceValueType(const TypeRef &type) const {
+    if (type.IsUnknown()) {
+        return false;
+    }
+    if (type.IsOptional() && type->inner.size() == 1) {
+        return IsInterfaceValueType(type->inner.front());
+    }
+    return type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
+}
+
+bool AnalysisContext::IsStatelessType(const TypeRef &type) const {
+    if (type.IsUnknown() || type->kind != TypeRef::Kind::Named) {
+        return false;
+    }
+    auto declaration = structDecls.find(type->name);
+    if (declaration == structDecls.end()) {
+        declaration = structDecls.find(BaseTypeName(type->name));
+    }
+    if (declaration == structDecls.end() || !declaration->second->fields.empty()) {
+        return false;
+    }
+    // A destructor is behaviour an interface value could not run, since it owns nothing.
+    return !const_cast<AnalysisContext &>(*this).MayNeedDestruction(type);
+}
+
+bool AnalysisContext::RefusesInterfaceValue(const TypeRef &source, const TypeRef &target) const {
+    if (source.IsUnknown() || target.IsUnknown() || !IsInterfaceValueType(target) || IsInterfaceValueType(source) ||
+        source.IsNoneValue()) {
+        return false;
+    }
+    const TypeRef interface = target.IsOptional() ? target->inner.front() : target;
+    // A borrowed value is refused as its referent is: a handle made from it would outlive the borrow.
+    const TypeRef value =
+        source->kind == TypeRef::Kind::Reference && !source->inner.empty() ? source->inner.front() : source;
+    if (IsInterfaceValueType(value)) {
+        return true;
+    }
+    return TypeImplementsInterface(value, interface) && !IsStatelessType(value);
+}
+
+std::vector<std::string> AnalysisContext::InterfaceValueNotes() const {
+    return {"an interface value is a handle to an implementation stored elsewhere and copies nothing, so only a "
+            "stateless value converts to one"};
+}
+
+std::string AnalysisContext::InterfaceValueHelp(const TypeRef &target) const {
+    const TypeRef interface = target.IsOptional() && !target->inner.empty() ? target->inner.front() : target;
+    return std::format("borrow it as '&{0}', bound a generic parameter by '{0}', or make a handle from a pointer to "
+                       "it inside 'unsafe'",
+                       interface.ToString());
+}
+
 bool AnalysisContext::CanConvertToInterface(const TypeRef &argument, const TypeRef &parameter) const {
     if (parameter->kind != TypeRef::Kind::Reference || parameter->inner.empty()) {
-        return TypeImplementsInterface(argument, parameter);
+        return TypeImplementsInterface(argument, parameter) && !RefusesInterfaceValue(argument, parameter);
     }
     TypeRef source =
         argument->kind == TypeRef::Kind::Reference && !argument->inner.empty() ? argument->inner.front() : argument;
@@ -167,8 +219,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , argumentSlots(output.argumentSlots)
     , namedFormats(output.namedFormats)
     , asmSymbolDeclarations(output.asmSymbolDeclarations)
-    , interfaceHolderSites(output.interfaceHolderSites)
-    , interfaceHolders(output.interfaceHolders)
+    , interfaceTemporaries(output.interfaceTemporaries)
     , defaultConstructors(output.defaultConstructors)
     , symbolIdentities(output.symbolIdentities)
     , vtableIdentities(output.vtableIdentities)

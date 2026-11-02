@@ -412,6 +412,9 @@ std::optional<std::string> AnalysisContext::UnfitCharacterLiteralMessage(const E
 // Keeps the wording consistent across let, return, assignment, const,
 // AnalysisContext::and field positions.
 std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const TypeRef &targetType, std::string fallback) {
+    if (const TypeRef source = CheckedExpressionType(expr); RefusesInterfaceValue(source, targetType)) {
+        return std::format("cannot make interface value '{}' from '{}'", targetType.ToString(), source.DisplayString());
+    }
     if (IsIntegerLiteralOutOfRangeFor(expr, targetType)) {
         return std::format("integer literal is out of range for type '{}'", targetType.ToString());
     }

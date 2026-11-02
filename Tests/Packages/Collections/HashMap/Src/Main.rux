@@ -171,8 +171,7 @@ func VerifySliceEquality() {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     VerifyEntryHashes(allocator);
     VerifySliceEquality();
 

@@ -92,7 +92,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 }
 
 // An allocator that counts what is out, so a refused document can be checked for having given back everything it
-// took before it stopped. Everything mutable lives behind a pointer, since an interface adapter is copied.
+// took before it stopped. Everything mutable lives in a state the test keeps.
 struct CountState {
     inner: Allocator;
     live: int32;
@@ -133,8 +133,7 @@ func ParseAndDrop(allocator: Allocator, text: char8[..], state: &CountState, whi
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     // The ordinary shapes, which have to work before the refusals mean anything.
     var simple = Accepts(allocator, "title = \"TOML\"\ncount = 3", "a key and a value");
     Assert(Member(simple, View("title")).AsText() is .Some(view) && view.Length() == 4, "the string is there");
@@ -271,18 +270,22 @@ func Main() -> int {
     // are released, and the count is what says so.
     var state = CountState { inner: allocator, live: 0 };
     var counting = CountingAllocator { state: @state };
-    let tracked: Allocator = counting;
+    var tracked: CountingAllocator = counting;
 
-    Assert(Refuses(tracked, "a = \"one\"\nb = \"two\"\na = \"three\"", "TomlParseError::DuplicateKey"),
+    // Safety: `tracked` is a local of this function that outlives every use of the handle.
+    let trackedHandle = unsafe { @tracked as Allocator };
+    Assert(Refuses(trackedHandle, "a = \"one\"\nb = \"two\"\na = \"three\"", "TomlParseError::DuplicateKey"),
            "a document that fails on its last line is refused");
     Assert(state.live == 0, "and everything the partial document held is released");
 
-    Assert(Refuses(tracked, "[t]\nx = \"a\"\ny = \"b\"\nport = 010",
+    // Safety: `tracked` is a local of this function that outlives every use of the handle.
+    Assert(Refuses(unsafe { @tracked as Allocator }, "[t]\nx = \"a\"\ny = \"b\"\nport = 010",
                    "TomlParseError::BadValue(TomlScalarError::Malformed(0))"),
            "a document with a bad value after good ones is refused");
     Assert(state.live == 0, "and so is everything that one held");
 
-    Assert(Refuses(tracked, "a = { b = \"deep\", c = [\"x\", \"y\"] }\na.d = 1",
+    // Safety: `tracked` is a local of this function that outlives every use of the handle.
+    Assert(Refuses(unsafe { @tracked as Allocator }, "a = { b = \"deep\", c = [\"x\", \"y\"] }\na.d = 1",
                    "TomlParseError::ExtendedInlineTable"),
            "a nested document that fails is refused");
     Assert(state.live == 0, "including every level of it");
@@ -290,7 +293,8 @@ func Main() -> int {
     // The same document without its last line parses and takes storage, so the counts above are measuring
     // cleanup rather than a parser that never allocated.
     var whileHeld: int32 = 0;
-    ParseAndDrop(tracked, "a = \"one\"\nb = \"two\"", state, whileHeld);
+    // Safety: `tracked` is a local of this function that outlives every use of the handle.
+    ParseAndDrop(unsafe { @tracked as Allocator }, "a = \"one\"\nb = \"two\"", state, whileHeld);
     Assert(whileHeld > 0, "a whole document takes storage");
     Assert(state.live == 0, "which comes back when the document's life ends");
 

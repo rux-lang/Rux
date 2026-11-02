@@ -29,7 +29,7 @@ TEST_CASE("interface method arguments retain coercions around defaults and varia
         extend Value : Reader { func Read(&self) -> int { return self.number; } }
         interface Caller {
             func Apply(value: &Reader, count: uint = 7u) -> int;
-            func Sum(seed: int, values: Reader...) -> int;
+            func Sum(seed: int, values: &Reader...) -> int;
         }
         func Invoke(caller: Caller, value: &Value) -> int { return caller.Apply(value); }
         func Spread(caller: Caller, value: Value) -> int { return caller.Sum(3, value, value); }

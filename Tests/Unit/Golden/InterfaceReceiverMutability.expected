@@ -1,4 +1,4 @@
 24:17: error: method 'Adjust' of 'Knob' writes through its receiver, but requirement 'Adjust' of interface 'Gauge' only reads it
 40:9: error: cannot call 'Turn' through immutable reference '&Dial'
 44:9: error: cannot call 'Turn' through immutable reference '&T'
-55:10: error: cannot call 'Turn' on immutable 'fixed'
+55:10: error: cannot call 'Turn' through immutable reference '&Dial'

@@ -22,8 +22,7 @@ import Core::Assert;
 // number is read rather than inferred, and the refusing allocator counts blocks out against blocks back, so a
 // container that gave up its elements but kept its storage is visible too.
 
-// Everything mutable lives behind a pointer, so the copies an interface adapter makes all observe the same refusal
-// and the same counts.
+// Everything mutable lives in a state the test keeps, so it reads the refusal and the counts afterwards.
 struct StorageState {
     backing: Allocator;
     // Whether the next request is refused. Set around exactly the operation a test wants to fail.
@@ -111,8 +110,9 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterFi
 // from what the vector's destruction does. `afterRefusal` reports the counter at the moment the refusal came back.
 func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefusal: *var int32) {
     var guarded = Refusing(state);
-    let allocator: Allocator = guarded;
-    var vector = Vector<Counted>(allocator);
+    var allocator: RefusingAllocator = guarded;
+    // Safety: `allocator` is a local of this function that outlives every use of the handle.
+    var vector = Vector<Counted>(unsafe { @allocator as Allocator });
     var index: uint = 0;
     while index < 4 {
         vector.Push(Counted { counter, tag: index as int32 });
@@ -143,8 +143,7 @@ func PushRefused(vector: &var Vector<int64>, value: int64) -> AllocError? {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let plain: Allocator = system;
+    let plain = SystemAllocator();
 
     // A zero-sized element. The run gets a real address rather than the shared empty one, and everything else about
     // the container is ordinary.
@@ -187,9 +186,10 @@ func Main() -> int {
     // A growth the allocator refuses, at the first of the plumbing's two sites: a container with no block yet.
     var state = StorageState { backing: plain, refusing: true, live: 0, requests: 0 };
     var refusing = Refusing(@state);
-    let hostile: Allocator = refusing;
+    var hostile: RefusingAllocator = refusing;
 
-    var reserved = Vector<int64>(hostile);
+    // Safety: `hostile` is a local of this function that outlives every use of the handle.
+    var reserved = Vector<int64>(unsafe { @hostile as Allocator });
     Assert(Refused(reserved, 16) == .Some(AllocError::OutOfMemory), "asking a refusing allocator for capacity fails");
     Assert(state.requests == 1, "having actually asked");
     // A container with no block yet meets the same refusal on its first growth.
@@ -202,7 +202,8 @@ func Main() -> int {
     // The second site: a reallocation, where the container already has a block and elements in it. This is the one
     // that matters — the failed call must leave the old block valid, because it is the only pointer to them.
     state.refusing = false;
-    var populated = Vector<int64>(hostile);
+    // Safety: `hostile` is a local of this function that outlives every use of the handle.
+    var populated = Vector<int64>(unsafe { @hostile as Allocator });
     var value: int64 = 0;
     while value < 8 {
         populated.Push(value);
@@ -246,7 +247,8 @@ func Main() -> int {
     Assert(copy.AsSlice().data != populated.AsSlice().data, "in a block of its own");
 
     // A map's first insertion needs a table, and a refused one reports why and leaves the map empty.
-    var table = HashMap<int32, int32>(hostile, HashInt32, EqualsInt32);
+    // Safety: `hostile` is a local of this function that outlives every use of the handle.
+    var table = HashMap<int32, int32>(unsafe { @hostile as Allocator }, HashInt32, EqualsInt32);
     state.refusing = true;
     var insertRefused = false;
     try table.TryInsert(1, 10) catch { error => { insertRefused = error == AllocError::OutOfMemory; } };
@@ -257,7 +259,8 @@ func Main() -> int {
     Assert(table.Get(1) == .Some(10), "the same insertion succeeds once the allocator is willing");
 
     // A deque grows through the same plumbing.
-    var queue = Deque<int64>(hostile);
+    // Safety: `hostile` is a local of this function that outlives every use of the handle.
+    var queue = Deque<int64>(unsafe { @hostile as Allocator });
     queue.PushBack(7);
     Assert(queue.Length() == 1 && queue.Get(0) == .Some(7), "a deque grows through the same plumbing");
 

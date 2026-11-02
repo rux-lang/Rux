@@ -1,0 +1,65 @@
+// A handle to a stateful implementation is made from a pointer to it, and the promise that the implementation outlives
+// every copy of the handle is made in 'unsafe': outside one the cast is refused, as is a call of an 'unsafe func' that
+// makes a handle. A read-only pointer cannot reach a requirement that writes its receiver, and a temporary is lent only
+// to a read-only view.
+
+interface Counter {
+    func Bump(&var self) -> int;
+}
+
+interface Named {
+    func Id(&self) -> int;
+}
+
+struct Cell {
+    value: int;
+}
+
+extend Cell : Counter {
+    func Bump(&var self) -> int {
+        self.value += 1;
+        return self.value;
+    }
+}
+
+extend Cell : Named {
+    func Id(&self) -> int {
+        return self.value;
+    }
+}
+
+struct Arena {
+    used: int;
+}
+
+extend Arena : Counter {
+    func Bump(&var self) -> int {
+        self.used += 1;
+        return self.used;
+    }
+}
+
+extend Arena {
+    // Safety: the handle must not outlive the arena or survive it being moved.
+    unsafe func Handle(*var self) -> Counter {
+        return self as Counter;
+    }
+}
+
+func Count(counter: &var Counter) -> int {
+    return counter.Bump();
+}
+
+func Main() -> int {
+    var cell = Cell { value: 0 };
+    let outside = @cell as Counter;
+    let fixed = Cell { value: 1 };
+    // Safety: `fixed` is a local that outlives `reading`.
+    let reading = unsafe { @fixed as Counter };
+    // Safety: `fixed` is a local that outlives `named`.
+    let named = unsafe { @fixed as Named };
+    var arena = Arena { used: 0 };
+    let handle = arena.Handle();
+    let lent = Count(Cell { value: 3 });
+    return named.Id() + lent;
+}

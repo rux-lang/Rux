@@ -70,8 +70,7 @@ func SumOf(allocator: Allocator) -> int32 {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The ordinary shape: numbers copied in, walked, and released with the array.
     Assert(SumOf(allocator) == 10, "an array holds what was copied into it and iterates over it");

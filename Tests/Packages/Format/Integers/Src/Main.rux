@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ #target, Assert };
 import Format::Render;
 import Text::{ FormatError, String, StringView };
@@ -80,8 +80,7 @@ func TopBitHex(outcome: String?, zeros: uint) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Zero renders as one digit in every base, and carries no prefix without the alternate flag.
     Assert(Same(try? Render(allocator, "{}", 0i32), "0"), "zero is one digit in decimal");

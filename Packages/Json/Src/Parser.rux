@@ -140,8 +140,7 @@ func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) throws Format
     try WriteBytes(writer, "JsonParseError::");
     try WriteBytes(writer, name);
     try WriteAscii(writer, c8'(');
-    let offset: Display = at;
-    try offset.WriteDisplay(writer, FormatSpec::Plain());
+    try at.WriteDisplay(writer, FormatSpec::Plain());
     return try WriteAscii(writer, c8')');
 }
 
@@ -176,8 +175,7 @@ func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) 
     try WriteBytes(writer, "JsonParseError::Lexical(");
     try WriteLexicalName(writer, reason);
     try WriteBytes(writer, ", ");
-    let offset: Display = at;
-    try offset.WriteDisplay(writer, FormatSpec::Plain());
+    try at.WriteDisplay(writer, FormatSpec::Plain());
     return try WriteAscii(writer, c8')');
 }
 

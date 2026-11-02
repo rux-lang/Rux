@@ -798,6 +798,9 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
                 coercion->type = targetType;
                 coercion->borrowed = true;
                 coercion->vtableLabel = InterfaceVtableLabel(*implementationType, referent->name);
+                if (model.IsInterfaceTemporary(expression)) {
+                    return BorrowInterfaceTemporary(std::move(coercion), std::move(lowered), expression.location);
+                }
                 coercion->value = std::move(lowered);
                 return coercion;
             }
@@ -835,69 +838,8 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             if (interface != interfaceDecls.end() && !interface->second->methods.empty()) {
                 coercion->vtableLabel = InterfaceVtableLabel(*implementationType, targetType->name);
             }
-            // A value stored in a local's interface value is kept in that local's holder for its place and type, which
-            // lives as long as the local: storing it destroys the value the holder kept before, and the interface value
-            // borrows the holder.
-            if (const InterfaceHolderSite *site = model.TryGetInterfaceHolderSite(expression)) {
-                if (const auto holder = interfaceHolderBindings.find(InterfaceHolderKey(*site));
-                    holder != interfaceHolderBindings.end()) {
-                    const auto &[holderName, holderBinding] = holder->second;
-                    const TypeRef heldType = lowered->type;
-                    const auto named = [&] {
-                        auto reference = std::make_unique<HirVarExpr>();
-                        reference->location = expression.location;
-                        reference->name = holderName;
-                        reference->type = heldType;
-                        return reference;
-                    };
-                    auto store = std::make_unique<HirAssignExpr>();
-                    store->location = expression.location;
-                    store->op = TokenKind::Assign;
-                    store->target = named();
-                    store->value = std::move(lowered);
-                    store->overwriteCleanup = cleanupPlanner.ActionFor(holderBinding);
-                    store->type = heldType;
-                    auto statement = std::make_unique<HirExprStmt>();
-                    statement->location = expression.location;
-                    statement->expr = std::move(store);
-                    coercion->value = named();
-                    coercion->borrowed = true;
-                    auto scope = std::make_unique<HirBlockExpr>();
-                    scope->location = expression.location;
-                    scope->type = targetType;
-                    scope->block.location = expression.location;
-                    scope->block.stmts.push_back(std::move(statement));
-                    scope->value = std::move(coercion);
-                    return scope;
-                }
-            }
-            // Any other value with a destructor that an interface value takes over lives in a hidden local of the scope
-            // the coercion is written in, which destroys it when the scope ends, as it would a named local; the
-            // interface value borrows it. Without one, nothing destroyed what the interface value held.
-            const std::string hiddenName = std::format("$interface.{}", interfaceValueOrdinal);
-            if (const std::uint64_t bindingId = RegisterCleanupBinding(hiddenName, lowered->type, expression.location);
-                bindingId != 0) {
-                ++interfaceValueOrdinal;
-                auto hidden = std::make_unique<HirLetStmt>();
-                hidden->location = expression.location;
-                hidden->name = hiddenName;
-                hidden->type = lowered->type;
-                hidden->bindingId = bindingId;
-                auto held = std::make_unique<HirVarExpr>();
-                held->location = expression.location;
-                held->name = hiddenName;
-                held->type = lowered->type;
-                hidden->init = std::move(lowered);
-                coercion->value = std::move(held);
-                coercion->borrowed = true;
-                auto scope = std::make_unique<HirBlockExpr>();
-                scope->location = expression.location;
-                scope->type = targetType;
-                scope->block.location = expression.location;
-                scope->block.stmts.push_back(std::move(hidden));
-                scope->value = std::move(coercion);
-                return scope;
-            }
+            // Only a stateless value converts to an interface value, so the handle has nothing to point at.
+            coercion->stateless = true;
             coercion->value = std::move(lowered);
             return coercion;
         }
@@ -919,6 +861,39 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         lowered->type = targetType;
     }
     return lowered;
+}
+
+HirExprPtr AstToHirContext::BorrowInterfaceTemporary(std::unique_ptr<HirCoerceToInterfaceExpr> coercion,
+                                                     HirExprPtr value, const SourceLocation location) {
+    // A temporary with a destructor lives in a hidden local of the block the view is made in, which destroys it when
+    // the block ends, as it would a named local; the view borrows it. Plain data is given storage where it is lent.
+    const std::string hiddenName = std::format("$interface.{}", interfaceValueOrdinal);
+    const std::uint64_t bindingId = RegisterCleanupBinding(hiddenName, value->type, location);
+    if (bindingId == 0) {
+        coercion->borrowed = false;
+        coercion->value = std::move(value);
+        return coercion;
+    }
+    ++interfaceValueOrdinal;
+    const TypeRef heldType = value->type;
+    auto hidden = std::make_unique<HirLetStmt>();
+    hidden->location = location;
+    hidden->name = hiddenName;
+    hidden->type = heldType;
+    hidden->bindingId = bindingId;
+    hidden->init = std::move(value);
+    auto held = std::make_unique<HirVarExpr>();
+    held->location = location;
+    held->name = hiddenName;
+    held->type = heldType;
+    coercion->value = std::move(held);
+    auto scope = std::make_unique<HirBlockExpr>();
+    scope->location = location;
+    scope->type = coercion->type;
+    scope->block.location = location;
+    scope->block.stmts.push_back(std::move(hidden));
+    scope->value = std::move(coercion);
+    return scope;
 }
 
 HirExprPtr AstToHirContext::ConvertScalar(HirExprPtr value, const TypeRef &targetType) {

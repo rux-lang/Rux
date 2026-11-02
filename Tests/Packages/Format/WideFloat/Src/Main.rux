@@ -5,7 +5,7 @@
 // check by eye, and Primitives.rux carries the same checks across to the primitives themselves.
 
 import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128,
                  ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
@@ -38,8 +38,7 @@ func StartsWith(text: char8[..], prefix: char8[..]) -> bool {
 
 // Renders `bits` under `layout` into `storage` and hands back what was written.
 func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var char8[..]) -> char8[..] {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     Assert((try? WriteWideFloat(allocator, writer, spec, bits, layout)) is .Some(_), "rendering succeeds");
@@ -59,14 +58,12 @@ func Precision(places: uint) -> FormatSpec {
 
 // The bits `text` reads to under `layout`, which must read.
 func Bits(text: char8[..], layout: &FloatLayout) -> uint512 {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     return try ParseWideFloat(allocator, text, layout) catch { _ => Panic("a text that should read") };
 }
 
 func Refused(text: char8[..], layout: &FloatLayout) -> bool {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     return (try? ParseWideFloat(allocator, text, layout)) is none;
 }
 
@@ -209,8 +206,7 @@ func Main() -> int {
     // arithmetic its text needs allocates and Display offers nowhere to say from where. These four used to
     // implement Display anyway by reaching for the system allocator, which is the hidden allocation this checks is
     // gone — there is no longer a rendering of one of these that does not name an allocator.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var cursor = ByteCursor(room);
     let writer: &var TextWriter = cursor;
     let one = Float128::FromBits(0x3FFF0000000000000000000000000000u128);

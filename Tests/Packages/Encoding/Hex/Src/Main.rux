@@ -71,7 +71,7 @@ func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char
     var storage: char8[600];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    let shown: Display = ViewHex(bytes, letterCase);
+    let shown: HexView = ViewHex(bytes, letterCase);
     if (try? shown.WriteDisplay(sink, Spec(spec))) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -80,7 +80,7 @@ func RefusedBySpec(bytes: byte[..], spec: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    let shown: Display = ViewHex(bytes);
+    let shown: HexView = ViewHex(bytes);
     var caught: FormatError? = none;
     try {
         shown.WriteDisplay(sink, Spec(spec));

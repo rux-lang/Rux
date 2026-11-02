@@ -222,8 +222,7 @@ func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Ascending insertion, which is what turns an uncoloured binary search tree into a linked list of 64 nodes. A
     // depth of at most twelve is the bound the colouring promises for this many entries, and the whole reason for

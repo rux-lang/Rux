@@ -407,7 +407,7 @@ void Parser::ValidateFormatParameters(const std::vector<Param> &params) {
     if (format && (params.empty() || !params.back().isVariadic || params.back().name == "...")) {
         EmitError(format->formatLocation,
                   std::format("'#Format' parameter '{}' must be followed by a variadic parameter", format->name),
-                  "declare the arguments the placeholders take as the last parameter, as in 'args: Display...'");
+                  "declare the arguments the placeholders take as the last parameter, as in 'args: &Display...'");
     }
 }
 

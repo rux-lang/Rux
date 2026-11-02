@@ -39,7 +39,7 @@ func ShownWith(value: NanoId, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[32];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    let shown: Display = value;
+    let shown: NanoId = value;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }

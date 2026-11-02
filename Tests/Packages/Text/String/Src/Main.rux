@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ String, StringView, TextError };
 
@@ -10,8 +10,7 @@ import Text::{ String, StringView, TextError };
 // the invariant that makes the rest of the package cheap: what a string holds is UTF-8, checked once on the way in.
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let empty = String(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "a new string holds nothing");

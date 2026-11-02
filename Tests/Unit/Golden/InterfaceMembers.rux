@@ -16,7 +16,7 @@ extend Tile : Shape {
 
 func Main() -> int {
     let tile = Tile { side: 3i32 };
-    let shape: Shape = tile;
+    let shape: &Shape = tile;
     let side = shape.side;
     let table = shape.vtable;
     let data = shape.data;

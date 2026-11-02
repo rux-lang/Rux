@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic, int32, int64, uint8 };
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter,
@@ -34,7 +34,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 // A helper in this package taking Text's interface and Text's writer, so the borrowed forms cross a package
 // boundary in both directions: the value came from Core, the interface from Text, the implementation from Format.
-func Render(value: Display, spec: FormatSpec, into: &var TextWriter) throws FormatError {
+func Render(value: &Display, spec: FormatSpec, into: &var TextWriter) throws FormatError {
     return try value.WriteDisplay(into, spec);
 }
 
@@ -53,7 +53,7 @@ func Main() -> int {
     // Through an interface value, which is where the conformance has to be found dynamically rather than resolved
     // at the call.
     writer.Clear();
-    let shown: Display = value;
+    let shown: int32 = value;
     let viaInterface: &var TextWriter = writer;
     Assert((try? shown.WriteDisplay(viaInterface, plain)) is .Some(_), "a call through an interface value renders");
     Assert(Same(writer.Written(), "-42"), "to the same text");
@@ -62,7 +62,7 @@ func Main() -> int {
     // type's package nor the implementation's.
     writer.Clear();
     let viaText: &var TextWriter = writer;
-    let asDisplay: Display = value;
+    let asDisplay: int32 = value;
     Assert((try? WriteValue(viaText, asDisplay, plain)) is .Some(_),
            "Text's WriteValue reaches Format's implementation");
     Assert(Same(writer.Written(), "-42"), "with the same result");
@@ -75,7 +75,7 @@ func Main() -> int {
 
     // Debug is a second interface over the same type, and resolves independently of Display.
     writer.Clear();
-    let inspected: Debug = value;
+    let inspected: int32 = value;
     let viaDebug: &var TextWriter = writer;
     Assert((try? WriteDebugValue(viaDebug, inspected, plain)) is .Some(_), "the Debug conformance resolves too");
     Assert(Same(writer.Written(), "-42"), "and for an integer says the same thing");
@@ -89,7 +89,7 @@ func Main() -> int {
     writer.Clear();
     let based: &var TextWriter = writer;
     let byte: uint8 = 255u8;
-    let byteShown: Display = byte;
+    let byteShown: uint8 = byte;
     Assert((try? Render(byteShown, Spec("#x"), based)) is .Some(_), "a style crosses it too");
     Assert(Same(writer.Written(), "0xff"), "and reaches the implementation that understands it");
 
@@ -116,8 +116,7 @@ func Main() -> int {
     Assert(Same(writer.Written(), "count=7"), "each rendered by its own package's implementation");
 
     // And through the allocating entry point, which is the same route ending in a String rather than a buffer.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let rendered = if (try? Render(allocator, "{:>6}", -42i32)) is .Some(built) { Same(built.View().Bytes(), "   -42") } else { false };
     Assert(rendered, "the allocating entry point reaches the same implementation");
     return 0;

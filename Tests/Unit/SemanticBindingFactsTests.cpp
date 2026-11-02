@@ -27,7 +27,7 @@ TEST_CASE("semantic model retains resolved callable bindings") {
         // Safety: `Native` takes only scalar arguments
         unsafe func Main() {
             let number = Number { value: 7i32 };
-            let reader: Reader = number;
+            let reader: &Reader = number;
             let chosen = Choose(1i32);
             let generic = Identity<int64>(2i64);
             let gathered = Gather(1i32, 2i32, 3i32);
@@ -104,7 +104,7 @@ TEST_CASE("semantic model retains resolved callable bindings") {
     CHECK_EQ(interfaceCall.dispatch, ResolvedCallableBinding::DispatchKind::Interface);
     CHECK(interfaceCall.selectedDeclaration == interfaceDecl->methods[0].get());
     REQUIRE(interfaceCall.receiverType.has_value());
-    CHECK_EQ(interfaceCall.receiverType->ToString(), "Reader");
+    CHECK_EQ(interfaceCall.receiverType->ToString(), "&Reader");
 
     const auto &external = bindingFor(callAt(7));
     CHECK_EQ(external.dispatch, ResolvedCallableBinding::DispatchKind::Direct);

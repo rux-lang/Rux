@@ -12,8 +12,7 @@ func Matches(actual: StringView, expected: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let hello = try String::FromBytes(allocator, "Hello World!") catch { _ => return 1 };
 
@@ -36,30 +35,30 @@ func Main() -> int {
     // Debug quotes; Display does not. The difference is what makes an empty string visible.
     var builder = StringBuilder(allocator);
     let empty = String(allocator);
-    let shownPlain: Display = empty.View();
+    let shownPlain: StringView = empty.View();
     let plainWriter: &var TextWriter = builder;
     if (try? shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain())) is none { return 20; }
     if builder.Length() != 0 { return 21; }
-    let shownDebug: Debug = empty.View();
+    let shownDebug: StringView = empty.View();
     let emptyDebugWriter: &var TextWriter = builder;
     if (try? shownDebug.WriteDebug(emptyDebugWriter, FormatSpec::Plain())) is none { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
     // A character slice containing a text literal renders and quotes the same way.
     builder.Clear();
-    let shownText: Display = "Hello World!";
+    let shownText: &Display = "Hello World!";
     let textWriter: &var TextWriter = builder;
     if (try? shownText.WriteDisplay(textWriter, FormatSpec::Plain())) is none { return 30; }
     if !Matches(builder.View(), "Hello World!") { return 31; }
 
     builder.Clear();
-    let shownTextDebug: Debug = "";
+    let shownTextDebug: &Debug = "";
     let textDebugWriter: &var TextWriter = builder;
     if (try? shownTextDebug.WriteDebug(textDebugWriter, FormatSpec::Plain())) is none { return 32; }
     if !Matches(builder.View(), "\"\"") { return 33; }
 
     builder.Clear();
-    let shownHello: Debug = hello.View();
+    let shownHello: StringView = hello.View();
     let helloDebugWriter: &var TextWriter = builder;
     if (try? shownHello.WriteDebug(helloDebugWriter, FormatSpec::Plain())) is none { return 24; }
     if !Matches(builder.View(), "\"Hello World!\"") { return 25; }

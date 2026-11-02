@@ -418,6 +418,27 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     }
 
     if (const auto *cast = AstCast<const CastExpr>(&expression)) {
+        // A pointer cast to an interface makes a handle whose data half is the pointer itself.
+        const TypeRef castTarget = ResolvedExpressionType(*cast);
+        if (castTarget->kind == TypeRef::Kind::Named && interfaceDecls.contains(castTarget->name)) {
+            HirExprPtr pointer = LowerExpr(*cast->operand);
+            if (pointer->type->kind == TypeRef::Kind::Pointer && !pointer->type->inner.empty()) {
+                TypeRef pointee = pointer->type->inner.front();
+                pointee.isMut = false;
+                std::optional<TypeRef> implementationType = InterfaceImplementationType(pointee, castTarget);
+                auto coercion = std::make_unique<HirCoerceToInterfaceExpr>();
+                coercion->location = cast->location;
+                coercion->type = castTarget;
+                coercion->borrowed = true;
+                const auto interface = interfaceDecls.find(castTarget->name);
+                if (interface != interfaceDecls.end() && !interface->second->methods.empty()) {
+                    coercion->vtableLabel =
+                        InterfaceVtableLabel(implementationType.value_or(pointee), castTarget->name);
+                }
+                coercion->value = std::move(pointer);
+                return coercion;
+            }
+        }
         auto lowered = std::make_unique<HirCastExpr>();
         lowered->location = cast->location;
         lowered->targetType = ResolvedExpressionType(*cast);

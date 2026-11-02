@@ -8,7 +8,7 @@ import Core::{ Assert, Panic };
 import Path::{ OsString, Path };
 import FileSystem::{ DeleteDirectory, MakeDirectory };
 
-// Everything mutable lives behind a pointer, since an interface adapter is copied.
+// Everything mutable lives in a state the test keeps, so it reads the counts afterwards.
 struct CountState {
     inner: Allocator;
     live: int32;
@@ -51,24 +51,27 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let base: Allocator = system;
+    let base = SystemAllocator();
     var state = CountState { inner: base, live: 0, taken: 0 };
-    let counted: Allocator = CountingAllocator { state: @state };
+    var counted = CountingAllocator { state: @state };
 
     // Refused by the platform after the path was converted: the parent does not exist.
     var missingHolder = OsString(base);
     let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", missingHolder);
-    Assert((try? MakeDirectory(counted, missing)) is none, "a directory under a missing parent is refused");
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    let countedHandle = unsafe { @counted as Allocator };
+    Assert((try? MakeDirectory(countedHandle, missing)) is none, "a directory under a missing parent is refused");
     Assert(state.taken == 1, "after the path was converted");
     Assert(state.live == 0, "and the converted path is given back exactly once");
 
     // A call that succeeds gives its copy back too, and so does the one that undoes it.
     var madeHolder = OsString(base);
     let made = PathOf(base, "Bin/FileSystemNativePath.tmp", madeHolder);
-    try MakeDirectory(counted, made) catch { _ => Panic("a directory is made") };
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    try MakeDirectory(unsafe { @counted as Allocator }, made) catch { _ => Panic("a directory is made") };
     Assert(state.live == 0, "a call that succeeds gives its copy back");
-    try DeleteDirectory(counted, made) catch { _ => Panic("and deleted") };
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    try DeleteDirectory(unsafe { @counted as Allocator }, made) catch { _ => Panic("and deleted") };
     Assert(state.taken == 3 && state.live == 0, "and so does the call that undoes it");
     return 0;
 }

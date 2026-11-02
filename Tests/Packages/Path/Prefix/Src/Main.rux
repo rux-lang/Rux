@@ -13,8 +13,7 @@ func PathText(allocator: Allocator, text: char8[..]) -> OsString {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Text survives the round trip through native units, multi-byte characters included.
     let owned = PathText(allocator, "héllo/wörld");

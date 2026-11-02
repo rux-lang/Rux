@@ -177,8 +177,7 @@ func CheckScript(allocator: Allocator) {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     CheckScript(allocator);
     CheckPauses(allocator);
 

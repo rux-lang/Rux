@@ -3,7 +3,7 @@
 // refuses to be. An integer is not a float here even when the float is whole, and a local date-time has no
 // offset — inventing one is how a meeting ends up an hour out.
 
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ String, StringView };
 import Time::{ Date, TimeOfDay, UtcOffset };
@@ -14,8 +14,7 @@ func View(bytes: char8[..]) -> StringView {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Each kind reports itself, and answers only the accessor that matches.
     var integer = TomlValue::Integer(allocator, -17);

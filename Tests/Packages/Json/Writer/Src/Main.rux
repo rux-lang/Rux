@@ -57,8 +57,7 @@ func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var wrote = false;
 
     // The scalars.

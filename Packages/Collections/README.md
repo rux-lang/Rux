@@ -69,8 +69,7 @@ An operation that reports an ordinary miss does it with an optional — `Get`, `
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::Vector;
 
-var system = SystemAllocator();
-let allocator: Allocator = system;
+let allocator = SystemAllocator();
 var numbers = Vector<int32>(allocator);
 numbers.Push(1);
 try numbers.TryReserve(1024) catch { _ => return 1 };
@@ -223,8 +222,7 @@ import Text::{ FormatError, FormatSpec, TextWriter };
 import Format::*;
 
 func Show() throws FormatError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var numbers = Vector<int32>(allocator);
     numbers.Push(1);
     numbers.Push(2);

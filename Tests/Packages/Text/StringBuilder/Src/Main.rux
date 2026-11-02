@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ String, StringBuilder, StringView, TextError };
 
@@ -10,8 +10,7 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // whole character rather than by checking afterwards.
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     var builder = StringBuilder(allocator);
     Assert(builder.IsEmpty() && builder.Length() == 0, "a new builder holds nothing");

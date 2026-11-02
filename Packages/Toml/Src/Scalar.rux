@@ -88,8 +88,7 @@ extend TomlScalarError : Debug {
             .TooLong(_) => try WriteBytes(writer, "TooLong")
         }
         try WriteAscii(writer, c8'(');
-        let at: Display = self.Offset();
-        try at.WriteDisplay(writer, FormatSpec::Plain());
+        try self.Offset().WriteDisplay(writer, FormatSpec::Plain());
         return try WriteAscii(writer, c8')');
     }
 }

@@ -42,7 +42,7 @@ func Reported(failure: IoError?, reason: FormatError) -> IoError? {
 /// @param value the value to write
 /// @returns what the stream reported, or the translated formatting failure on a healthy stream, or `none`
 /// @see https://rux-lang.dev/docs/api/io/print#print-value
-pub func PrintValue(value: Display) -> IoError? {
+pub func PrintValue(value: &Display) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
@@ -54,7 +54,7 @@ pub func PrintValue(value: Display) -> IoError? {
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line#print-value-line
-pub func PrintValueLine(value: Display) -> IoError? {
+pub func PrintValueLine(value: &Display) -> IoError? {
     return Terminate(PrintValue(value));
 }
 
@@ -99,7 +99,7 @@ pub func Print(value: char8[..]) -> IoError? {
 /// @param format the format string, with a placeholder for each argument
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(#Format format: char8[..], args: Display...) -> IoError? {
+pub func Print(#Format format: char8[..], args: &Display...) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;

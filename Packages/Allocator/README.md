@@ -41,11 +41,25 @@ A zero-sized layout is legal and gives a non-null aligned address that nothing m
 
 `Rc<T>` and `Arc<T>` share their value instead: each handle owns one count and is move-only, `Clone` makes another handle to the same value and adds to the count, and the value is destroyed when the last handle goes. Both implement `Core::Cloneable`. `Rc` counts with plain arithmetic for one thread, so it is declared `#Unsendable` and cannot be a thread's context; `Arc` counts atomically, so its clones can be made and dropped on any thread. Both lend the value for reading through `Get`, a `&T` that keeps the handle borrowed, and for writing through `GetMutable`, a `&var T?` that is present only while a single handle exists. There are no weak handles, so a cycle of handles is never freed.
 
-Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and `FixedBuffer(storage, capacity)`. The `FixedBuffer` constructor is an `unsafe func`, because it keeps a raw address: its caller promises that the storage stays valid, and untouched by anything else, for as long as the buffer or any handle to it is used. `Layout::Of` retains its name because it validates and returns `Layout?`, so `Layout::Of(size, alignment) ?? throw AllocError::Unsupported` turns an unrepresentable layout into an error.
+Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and `FixedBuffer(storage, capacity)`. The `FixedBuffer` constructor is an `unsafe func`, because it keeps a raw address: its caller promises that the storage stays valid, and untouched by anything else, for as long as the buffer or any handle to it is used. Each of the three implements `Allocator` itself, so it can be borrowed as `&var Allocator` for a call without a handle. `Layout::Of` retains its name because it validates and returns `Layout?`, so `Layout::Of(size, alignment) ?? throw AllocError::Unsupported` turns an unrepresentable layout into an error.
 
 An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice the size of the last, so a long-lived arena stops going back to the system. `Reset` rewinds every allocation while keeping the largest block, so a second round of the same work asks the system for nothing. `BytesUsed` sums what every block has handed out, alignment padding included; the tail a block is left with when a request moves on to a new block is not counted.
 
-Borrow a concrete implementation directly for a short-lived interface view, for example `let view: &var Allocator = system`. Arena, pool, and fixed-buffer handles are storable adapters for allocators whose mutable state must stay with an owner. A handle stores a raw pointer because references cannot be fields or returned, so `Arena::Handle`, `Pool::Handle`, and `FixedBuffer::Handle` are each an `unsafe func`: called inside an `unsafe` block, whose caller promises that the handle does not outlive its allocator or survive a move of it. Nothing checks that, and a handle held past it points at released or moved storage.
+There are three ways to take an allocator. A function that allocates for the length of a call borrows it, as `&var Allocator`, or bounds a generic by it, `func Build<A: Allocator>(allocator: &var A)`, which resolves each call for the concrete type with nothing dispatched at run time. A value that keeps its allocator — every container, string and box here — keeps an `Allocator` value, which is a copyable handle that addresses an implementation and owns nothing. `SystemAllocator` carries no state, so it converts to a handle wherever one is wanted and the handle stays valid for the whole program: `Vector<int>(SystemAllocator())` and `let allocator = SystemAllocator();` are the everyday spellings. An `Arena`, `Pool` or `FixedBuffer` has state of its own, so its handle comes only from `Handle`, an `unsafe func` whose caller promises that the allocator outlives every copy of the handle, is not moved while one exists, and is not reset while an allocation made through one is still in use. Nothing checks that, and a handle held past it points at released or moved storage:
+
+```rux
+import Allocator::{ Arena, SystemAllocator };
+import Collections::Vector;
+
+func Main() -> int {
+    var arena = Arena(SystemAllocator(), 4096);
+    // Safety: `arena` outlives `values`, which is the only holder of the handle, and is neither moved nor reset
+    // while `values` exists.
+    var values = Vector<int>(unsafe { arena.Handle() });
+    values.Push(4);
+    return values.Length() as int - 1;
+}
+```
 
 An arena accepts a release rather than refusing one, so it can stand in for any allocator in generic code that releases what it takes. Ordinary releases do nothing; the most recent allocation is rewound, which is what lets a growing collection in an arena avoid wasting every earlier size it passed through.
 

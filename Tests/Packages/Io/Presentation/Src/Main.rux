@@ -16,7 +16,7 @@ import Text::{ BufferWriter, Display, FormatError, FormatSpec, TextFailureKind, 
 // a line into a buffer too small for it checks the bytes rather than the return value, because the return value was
 // already right and the bytes were not: a failing line used to move the cursor anyway.
 // A stream that refuses is a `Writer` this test supplies, since none of this can be forced through standard output.
-// Its state lives behind a pointer so that the copies an interface adapter makes all see the same stream.
+// Its state lives in a value the test keeps, so it reads what the stream was given afterwards.
 
 struct StreamState {
     // What has been taken, so a test can check exactly which bytes went out.
@@ -76,7 +76,7 @@ extend Owned {
 extend Owned : Display {
     func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         try WriteBytes(writer, "owned-");
-        let tag: Display = self.tag;
+        let tag: int32 = self.tag;
         return try tag.WriteDisplay(writer, spec);
     }
 }
@@ -162,9 +162,10 @@ func Main() -> int {
     var state = StreamState { written: [c8'\0'; 64], length: 0, allowed: 0, refusal: IoErrorKind::StorageFull,
                               calls: 0 };
     var stream = RecordingStream { state: @state };
-    let sink: Writer = stream;
+    var sink: RecordingStream = stream;
     var failure: IoError? = none;
-    var adapter = StreamWriter(sink, @failure);
+    // Safety: `sink` is a local of this function that outlives every use of the handle.
+    var adapter = StreamWriter(unsafe { @sink as Writer }, @failure);
     let writer: &var TextWriter = adapter;
 
     try {
@@ -193,9 +194,10 @@ func Main() -> int {
     var second = StreamState { written: [c8'\0'; 64], length: 0, allowed: 64, refusal: IoErrorKind::StorageFull,
                                calls: 0 };
     var open = RecordingStream { state: @second };
-    let target: Writer = open;
+    var target: RecordingStream = open;
     var healthy: IoError? = none;
-    var good = StreamWriter(target, @healthy);
+    // Safety: `target` is a local of this function that outlives every use of the handle.
+    var good = StreamWriter(unsafe { @target as Writer }, @healthy);
     let out: &var TextWriter = good;
 
     var destroyed: int32 = 0;
@@ -216,9 +218,10 @@ func Main() -> int {
     var third = StreamState { written: [c8'\0'; 64], length: 0, allowed: 64, refusal: IoErrorKind::StorageFull,
                               calls: 0 };
     var thirdStream = RecordingStream { state: @third };
-    let thirdSink: Writer = thirdStream;
+    var thirdSink: RecordingStream = thirdStream;
     var thirdFailure: IoError? = none;
-    var thirdAdapter = StreamWriter(thirdSink, @thirdFailure);
+    // Safety: `thirdSink` is a local of this function that outlives every use of the handle.
+    var thirdAdapter = StreamWriter(unsafe { @thirdSink as Writer }, @thirdFailure);
     let thirdOut: &var TextWriter = thirdAdapter;
 
     var bad = Refuses {};
@@ -246,9 +249,10 @@ func Main() -> int {
     var fourth = StreamState { written: [c8'\0'; 64], length: 0, allowed: 7, refusal: IoErrorKind::StorageFull,
                                calls: 0 };
     var fourthStream = RecordingStream { state: @fourth };
-    let fourthSink: Writer = fourthStream;
+    var fourthSink: RecordingStream = fourthStream;
     var fourthFailure: IoError? = none;
-    var fourthAdapter = StreamWriter(fourthSink, @fourthFailure);
+    // Safety: `fourthSink` is a local of this function that outlives every use of the handle.
+    var fourthAdapter = StreamWriter(unsafe { @fourthSink as Writer }, @fourthFailure);
     let fourthOut: &var TextWriter = fourthAdapter;
     try {
         WriteValueLine(fourthOut, value);

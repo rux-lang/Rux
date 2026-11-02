@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Collections::{ Array, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
 import Core::{ Assert, Panic, Result };
 import Format::WriteFormat;
@@ -38,7 +38,7 @@ extend Tracked {
 extend Tracked : Debug {
     func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         try WriteBytes(writer, "T(");
-        let tag: Debug = self.tag;
+        let tag: int32 = self.tag;
         try tag.WriteDebug(writer, spec);
         return try WriteAscii(writer, c8')');
     }
@@ -89,8 +89,7 @@ func ShownDeque(value: &Deque<int32>, spec: FormatSpec, expected: char8[..]) -> 
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let plain = FormatSpec::Plain();
 
     // A vector is its elements in order, bracketed. The empty case is a visible pair of brackets rather than

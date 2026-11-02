@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ #target, Assert, Panic };
 import Path::{ OsString, OsStringView, OsUnit };
 
@@ -8,8 +8,7 @@ import Path::{ OsString, OsStringView, OsUnit };
 // unit count differs per platform in a way the test states rather than papers over.
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let empty = OsString(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "new native text holds nothing");

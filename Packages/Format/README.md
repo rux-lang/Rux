@@ -46,8 +46,7 @@ func Main() -> int throws FormatError {
     try WriteFormat(writer, "count={}", 42i64);
 
     // Or into a string of its own, which is the one place rendering allocates.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     return if (try? Render(allocator, "pi={:.2}", 3.14159f64)) is .Some(_) { 0 } else { 1 };
 }
 ```

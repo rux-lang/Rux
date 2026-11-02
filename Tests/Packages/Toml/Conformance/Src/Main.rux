@@ -1079,8 +1079,7 @@ func IsStructural(outcome: &Result<TomlValue, TomlParseFailure>) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var storage: char8[8192];
     var second: char8[8192];
 

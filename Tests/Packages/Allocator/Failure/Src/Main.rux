@@ -8,7 +8,7 @@ import Core::{ Assert, Panic };
 // question: that a failure left nothing behind. A partial construction that leaks is the failure mode worth catching
 // here, and it is invisible to any test that only looks at the error code.
 
-// Everything mutable lives behind a pointer so copied interface adapters observe the same failure budget and counts.
+// Everything mutable lives in a state the test keeps, so it reads the failure budget and counts afterwards.
 struct FailureState {
     backing: Allocator;
     // How many more allocations succeed before this starts refusing.
@@ -69,14 +69,15 @@ func Failing(state: *var FailureState) -> FailingAllocator {
 }
 
 func Main() throws AllocError {
-    var system = SystemAllocator();
-    let real: Allocator = system;
+    let real = SystemAllocator();
     let small = Layout::Of(64, 8) ?? Layout { size: 64, alignment: 8 };
 
     // The harness itself: it must refuse when told to and count what it hands out.
     var state = FailureState { backing: real, allowed: 0, attempts: 0, live: 0 };
     var failing = Failing(@state);
-    let starved: Allocator = failing;
+    var starved: FailingAllocator = failing;
+    // Safety: `starved` is a local of `Main` that outlives every container below and is never moved.
+    let budget = unsafe { @starved as Allocator };
     try {
         starved.Allocate(small);
         Panic("the allocator was expected to refuse");
@@ -96,7 +97,7 @@ func Main() throws AllocError {
     state.allowed = 0;
     state.attempts = 0;
     var refused = AllocError::InvalidBlock;
-    var unboxed = try Box::TryCreate<int64>(starved, 7) catch {
+    var unboxed = try Box::TryCreate<int64>(budget, 7) catch {
         error => {
             refused = error;
             Box<int64>(SystemAllocator(), 0)
@@ -108,7 +109,7 @@ func Main() throws AllocError {
 
     // The same box succeeds with a budget, and gives its storage back when its life ends.
     state.allowed = 1;
-    var kept = Box<int64>(starved, 9);
+    var kept = Box<int64>(budget, 9);
     Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
     let taken = kept.Take();
@@ -118,18 +119,18 @@ func Main() throws AllocError {
 
     // Shared handles report a refusal the same way through `TryCreate`, and leak nothing.
     state.allowed = 0;
-    Assert((try? Rc::TryCreate<int64>(starved, 3)) is none, "a counted handle refused by the allocator reports it");
-    Assert((try? Arc::TryCreate<int64>(starved, 4)) is none, "and so does an atomically counted one");
+    Assert((try? Rc::TryCreate<int64>(budget, 3)) is none, "a counted handle refused by the allocator reports it");
+    Assert((try? Arc::TryCreate<int64>(budget, 4)) is none, "and so does an atomically counted one");
     Assert(state.live == 0, "leaving nothing allocated");
     state.allowed = 1;
-    var shared = try Rc::TryCreate<int64>(starved, 5) catch { _ => Rc<int64>(SystemAllocator(), 0) };
+    var shared = try Rc::TryCreate<int64>(budget, 5) catch { _ => Rc<int64>(SystemAllocator(), 0) };
     let sharedValue: int64 = shared.Get();
     Assert(sharedValue == 5 && state.live == 1, "with a budget the handle is made from it");
 
     // An arena that cannot take its first block fails at the first request and takes nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var arena = Arena(starved, 256);
+    var arena = Arena(budget, 256);
     // Safety: `arena` is a local that outlives `handle` and is never moved.
     var handle = unsafe { arena.Handle() };
     let arenaAllocator: Allocator = handle;
@@ -161,10 +162,9 @@ func Main() throws AllocError {
     // A pool that cannot take a chunk refuses, and takes nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var pool = Pool(starved, 4);
-    // Safety: `pool` is a local that outlives `poolHandle` and is never moved.
-    var poolHandle = unsafe { pool.Handle() };
-    let poolAllocator: Allocator = poolHandle;
+    var pool = Pool(budget, 4);
+    // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
+    let poolAllocator = unsafe { pool.Handle() };
     var fromPool: *var opaque = null;
     try {
         poolAllocator.Allocate(small);

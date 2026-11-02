@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::Assert;
 import Format::{ MaximumPrecision, Render };
 import Text::{ FormatError, String, StringView };
@@ -32,8 +32,7 @@ func Refused(reason: FormatError) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The ordinary case, at both widths.
     Assert(Same(try? Render(allocator, "{:.2}", 3.14159), "3.14"), "a precision names digits after the point");

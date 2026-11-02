@@ -62,16 +62,6 @@ extend AtomicWrite {
         return Self { scratch: move scratch, target: move held, pending: true };
     }
 
-    /// A stored writer over the partial file.
-    /// Only for a value that must keep the stream, such as a buffered writer. Writing to the replacement for the
-    /// duration of a call borrows the `AtomicWrite` itself, which is a `Writer`.
-    /// The `AtomicWrite` must outlive the result and must not be moved while it exists. See `FileStream`.
-    /// @returns a stream over the partial file, held by address
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#stream
-    pub func Stream(&var self) -> FileStream {
-        return self.scratch.file.Stream();
-    }
-
     /// The name the finished file will take.
     /// @returns the path the contents will take when committed
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#target

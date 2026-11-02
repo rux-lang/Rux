@@ -34,8 +34,7 @@ import Io::PrintLine;
 import Text::{ String, TextError };
 
 func Main() throws TextError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let greeting = try String::FromBytes(allocator, "Hello");
     PrintLine(greeting);
 }

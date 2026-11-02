@@ -19,7 +19,7 @@ func Main() -> int {
     var area = square.Area();
     Assert(area == 25, "Expected area of the square to be 25");
 
-    var fig : Figure = square;
+    let fig: &Figure = square;
     Assert(fig.Area() == 25, "Expected area of the figure to be 25");
     return 0;
 }

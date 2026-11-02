@@ -27,7 +27,9 @@ extend CountingSink : Writer {
 func Main() -> int {
     Assert(CompiledLevel() == Level::Warn, "the build define sets the compiled level");
     var count = Count { writes: 0 };
-    var logger = Logger(SystemAllocator(), CountingSink { count: @count }, LogFormat::Text);
+    var countingSink = CountingSink { count: @count };
+    // Safety: `countingSink` is a local of this function that outlives every use of the handle.
+    var logger = Logger(SystemAllocator(), unsafe { @countingSink as Writer }, LogFormat::Text);
     logger.SetLevel(Level::Trace);
     logger.Trace("dropped");
     logger.Debug("dropped");

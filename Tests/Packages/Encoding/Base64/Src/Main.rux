@@ -145,7 +145,7 @@ func Shown(bytes: byte[..], form: Base64Variant, spec: char8[..], expected: char
     var storage: char8[600];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    let shown: Display = ViewBase64(bytes, form);
+    let shown: Base64View = ViewBase64(bytes, form);
     if (try? shown.WriteDisplay(sink, Spec(spec))) is none { return false; }
     return Same(writer.Written(), expected);
 }

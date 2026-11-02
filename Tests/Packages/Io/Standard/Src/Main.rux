@@ -2,7 +2,7 @@
 // The standard streams under the test runner are redirected, which is itself the point: the redirection path is
 // the one a program in a pipeline lives on, and these writes must land as the raw bytes they are.
 
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Io::{ BufferedWriter, StandardError, StandardIn, StandardOut, WriteAll, Writer };
 
@@ -31,10 +31,10 @@ func Main() -> int {
     };
 
     // The handle is a plain byte Writer, so the buffered writer stacks on it unchanged.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
-    let sink: Writer = out;
-    var buffered = try BufferedWriter(allocator, sink, 64) catch {
+    let allocator = SystemAllocator();
+    var sink: StandardOut = out;
+    // Safety: `sink` is a local of this function that outlives every use of the handle.
+    var buffered = try BufferedWriter(allocator, unsafe { @sink as Writer }, 64) catch {
         _ => Panic("the buffered writer takes its buffer")
     };
     let piece = try buffered.Write(TextBytes("buffered ")) catch { _ => Panic("a piece is gathered") };

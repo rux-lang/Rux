@@ -70,10 +70,10 @@ struct Point {
 extend Point : Display {
     func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         try WriteAscii(writer, c8'(');
-        let first: Display = self.x;
+        let first: int32 = self.x;
         try first.WriteDisplay(writer, FormatSpec::Plain());
         try WriteBytes(writer, ", ");
-        let second: Display = self.y;
+        let second: int32 = self.y;
         try second.WriteDisplay(writer, FormatSpec::Plain());
         return try WriteAscii(writer, c8')');
     }
@@ -161,27 +161,31 @@ func InvalidUtf8(reason: FormatError) -> bool {
 func PropagationCases(allocator: Allocator) {
     var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
     var counting = CountingAllocator { inner: allocator, counts: @counts };
-    let counted: Allocator = counting;
+    var counted: CountingAllocator = counting;
     try {
-        Render(counted, "é 😀 {} {:>>>}", 1, 2);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, "é 😀 {} {:>>>}", 1, 2);
         Assert(false, "embedded specification positions count UTF-8 bytes");
     } catch {
         refusal => Assert(InvalidAt(refusal, 15), "embedded specification positions count UTF-8 bytes"),
     }
     try {
-        Render(counted, Pattern("é 😀 {} {bad}"), 1, 2);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, Pattern("é 😀 {} {bad}"), 1, 2);
         Assert(false, "a malformed later placeholder retains its absolute byte offset");
     } catch {
         refusal => Assert(InvalidAt(refusal, 12), "a malformed later placeholder retains its absolute byte offset"),
     }
     try {
-        Render(counted, "é {} tail {", 1);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, "é {} tail {", 1);
         Assert(false, "an unterminated later placeholder points at its opening byte");
     } catch {
         refusal => Assert(InvalidAt(refusal, 11), "an unterminated later placeholder points at its opening byte"),
     }
     try {
-        Render(counted, Pattern("é {} {} {}"), 1);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, Pattern("é {} {} {}"), 1);
         Assert(false, "both words of argument-count failures survive Render");
     } catch {
         refusal => Assert(MismatchOf(refusal, 3, 1), "both words of argument-count failures survive Render"),
@@ -192,7 +196,8 @@ func PropagationCases(allocator: Allocator) {
     var calls = 0;
     let refusing = RefusingValue { calls: @calls };
     try {
-        Render(counted, "head {} tail", refusing);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, "head {} tail", refusing);
         Assert(false, "a renderer failure propagates through WriteFormat and Render");
     } catch {
         refusal => Assert(InvalidAt(refusal, 73), "a renderer failure propagates through WriteFormat and Render"),
@@ -218,13 +223,15 @@ func PropagationCases(allocator: Allocator) {
     Assert((try? WriteFormat(checked, "prefix {} {:>>>}", refusing, 2)) is none,
            "the whole pattern is validated first");
     Assert(calls == 2 && writer.Length() == 0, "late validation failure invokes no renderer and writes no prefix");
-    Assert(Matches(try? Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"),
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    Assert(Matches(try? Render(unsafe { @counted as Allocator }, "é 😀 {{}} {}", 12), "é 😀 {} 12"),
            "successful Unicode rendering preserves its output");
     Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
            "a successful returned string releases its transferred allocation once");
     let malformed: char8[4] = [c8'o', c8'k', 0xC3u8 as char8, c8'('];
     try {
-        Render(counted, malformed);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, malformed);
         Assert(false, "malformed literal bytes preserve the nested text failure");
     } catch {
         refusal => Assert(InvalidUtf8(refusal), "malformed literal bytes preserve the nested text failure"),
@@ -233,7 +240,8 @@ func PropagationCases(allocator: Allocator) {
            "a malformed UTF-8 suffix releases its partially filled builder once");
     let truncated: char8[2] = [c8'x', 0xF0u8 as char8];
     try {
-        Render(counted, truncated);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, truncated);
         Assert(false, "a truncated supplementary character is rejected");
     } catch {
         refusal => Assert(InvalidUtf8(refusal), "a truncated supplementary character is rejected"),
@@ -243,8 +251,7 @@ func PropagationCases(allocator: Allocator) {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     PropagationCases(allocator);
 
     // Text outside a placeholder is copied through, and a pattern with nothing to substitute is copied entire.
@@ -424,18 +431,21 @@ func Main() -> int {
     // failure and is invisible to a check that only reads the result.
     var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
     var counting = CountingAllocator { inner: allocator, counts: @counts };
-    let counted: Allocator = counting;
-    if !Matches(try? Render(counted, "{} ok", 1), "1 ok") { return 100; }
+    var counted: CountingAllocator = counting;
+    // Safety: `counted` is a local of this function that outlives every use of the handle.
+    if !Matches(try? Render(unsafe { @counted as Allocator }, "{} ok", 1), "1 ok") { return 100; }
     if counts.live != 0 { return 101; }
     try {
-        Render(counted, "abcdefghijklmnop {", 1);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, "abcdefghijklmnop {", 1);
         if !(false) { return 102; }
     } catch {
         refusal => { if !InvalidAt(refusal, 17) { return 102; } }
     }
     if counts.live != 0 { return 103; }
     try {
-        Render(counted, Pattern("abcdefghijklmnop {}"), 1, 2);
+        // Safety: `counted` is a local of this function that outlives every use of the handle.
+        Render(unsafe { @counted as Allocator }, Pattern("abcdefghijklmnop {}"), 1, 2);
         if !(false) { return 104; }
     } catch {
         refusal => { if !MismatchOf(refusal, 1, 2) { return 104; } }

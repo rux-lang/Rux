@@ -1,5 +1,5 @@
 import Core::uint;
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Collections::{ CollectionError, EqualsInt32, HashInt32, HashSet, TableSeed };
 import Core::{ Assert, Panic };
 
@@ -22,8 +22,7 @@ extend Tracked {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     var set = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     Assert(set.IsEmpty(), "a new set is empty");

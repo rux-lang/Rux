@@ -47,8 +47,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
 }
 
 func Main() -> int throws IoError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemXfer.tmp", dirHolder);

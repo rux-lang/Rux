@@ -40,8 +40,7 @@ func EndsWith(buffer: &PathBuffer, tail: char8[..]) -> bool {
 }
 
 func Main() -> int throws IoError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The working directory is absolute, and reading it does not disturb anything.
     var here = try CurrentDirectory(allocator);

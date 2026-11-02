@@ -460,10 +460,13 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         if (letStatement->init && letStatement->type && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
             !initializerAccepted) {
+            const bool refusedInterface = RefusesInterfaceValue(initializerType, declarationType);
             EmitError(letStatement->location,
                       AssignmentErrorMessage(*letStatement->init, declarationType,
                                              std::format("cannot assign '{}' to '{}'", initializerType.DisplayString(),
-                                                         declarationType.ToString())));
+                                                         declarationType.ToString())),
+                      refusedInterface ? InterfaceValueNotes() : std::vector<std::string>{},
+                      refusedInterface ? std::optional(InterfaceValueHelp(declarationType)) : std::nullopt);
         }
         if (initializerAccepted && !nullReferenceInitializer && !HoldsBorrow(declarationType)) {
             ConsumeValue(*letStatement->init, initializerType, ValueConsumptionKind::Initialization,
@@ -481,8 +484,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (initializerAccepted && TypeHoldsView(declarationType)) {
             initialViews = LocalArraysViewed(*letStatement->init, declarationType);
         }
-        const bool makesFrameInterface =
-            initializerAccepted && MakesFrameInterfaceValue(*letStatement->init, initializerType, declarationType);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = letStatement->name;
@@ -492,17 +493,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr || defaultConstructor);
         if (defined && !initialViews.empty()) {
             viewSources[defined] = std::move(initialViews);
-        }
-        if (defined && initializerAccepted && makesFrameInterface) {
-            frameInterfaceLocals.insert(defined);
-        }
-        if (defined) {
-            localDeclarations[defined] = letStatement;
-            // A value with a destructor made into the local's interface value is kept with the local, where a later
-            // value of the same type stored there replaces it.
-            if (initializerAccepted && makesFrameInterface && IsHolderCoercion(initializerType, declarationType)) {
-                RecordInterfaceHolder(*letStatement->init, *letStatement, "", initializerType);
-            }
         }
         if (defined && initializerAccepted && HoldsBorrow(declarationType)) {
             RegisterReferenceBinding(*defined, *letStatement->init, BorrowedReference(declarationType));
@@ -858,47 +848,16 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
         }
         else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
                  !CanAssignExprTo(*value, valueType, currentReturnType)) {
+            const bool refusedInterface = RefusesInterfaceValue(valueType, currentReturnType);
             EmitError(location,
                       AssignmentErrorMessage(*value, currentReturnType,
                                              std::format("'return' value must have type '{}', but found '{}'",
-                                                         currentReturnType.ToString(), valueType.DisplayString())));
+                                                         currentReturnType.ToString(), valueType.DisplayString())),
+                      refusedInterface ? InterfaceValueNotes() : std::vector<std::string>{},
+                      refusedInterface ? std::optional(InterfaceValueHelp(currentReturnType)) : std::nullopt);
         }
         else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown()) {
             returnAccepted = true;
-            // An interface value made here would hold storage of this function, which the return ends; one the
-            // function was handed, or got from a call, is passed on as it is.
-            const bool returnsInterface =
-                currentReturnType->kind == TypeRef::Kind::Named && interfaceDecls.contains(currentReturnType->name);
-            const bool returnsOptionalInterface = currentReturnType.IsOptional() &&
-                                                  currentReturnType->inner.size() == 1 &&
-                                                  currentReturnType->inner.front()->kind == TypeRef::Kind::Named &&
-                                                  interfaceDecls.contains(currentReturnType->inner.front()->name);
-            const bool valueIsInterface =
-                valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name);
-            const auto *returnedName = AstCast<const IdentExpr>(value);
-            const Symbol *returnedLocal = returnedName ? currentScope->Lookup(returnedName->name) : nullptr;
-            if ((returnsInterface || returnsOptionalInterface) && returnedLocal &&
-                frameInterfaceLocals.contains(returnedLocal)) {
-                const std::string function =
-                    currentFunctionDecl ? std::format("'{}'", currentFunctionDecl->name) : "the function";
-                EmitError(
-                    location,
-                    std::format("cannot return interface value '{}', which holds a value made in {}",
-                                returnedLocal->name, function),
-                    {std::format("'{}' points at storage {} gives up when it returns", returnedLocal->name, function)},
-                    "return the concrete type, and let the caller make the interface value");
-                returnAccepted = false;
-            }
-            else if (returnsInterface && !valueIsInterface) {
-                EmitError(location,
-                          std::format("cannot return '{}' as interface value '{}'", valueType.ToString(),
-                                      currentReturnType.ToString()),
-                          {"an interface value made at a return would point at storage the function gives up when it "
-                           "returns"},
-                          std::format("return '{}' itself, and let the caller make the interface value",
-                                      valueType.ToString()));
-                returnAccepted = false;
-            }
         }
     }
     // A unit result, or a fallible whose success carries the unit, completes without a written value: `return;` is

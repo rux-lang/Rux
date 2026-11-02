@@ -97,8 +97,9 @@ func Thrown(reader: &var JsonEventReader) -> JsonReadError? {
 // The error that stops a reader over `text`, served three bytes at a time, after whatever events arrive first.
 func Refusal(allocator: Allocator, text: char8[..]) -> JsonReadError? {
     var state = SliceState { bytes: text, offset: 0, step: 3 };
-    let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader(allocator, handle, JsonLimits::Default());
+    var handle = SliceHandle { state: @state };
+    // Safety: `handle` is a local of this function that outlives every use of the handle.
+    var reader = JsonEventReader(allocator, unsafe { @handle as Reader }, JsonLimits::Default());
     var steps: uint = 0;
     while steps < 64 {
         let event = try reader.Next() catch { error => return error };
@@ -162,13 +163,13 @@ func SameAsParser(allocator: Allocator, text: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // A small document, event by event, served three bytes at a time so every token straddles a read.
     var state = SliceState { bytes: TextBytes("{\"name\":42,\"list\":[true,null,\"x\"]}"), offset: 0, step: 3 };
-    let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader(allocator, handle, JsonLimits::Default());
+    var handle = SliceHandle { state: @state };
+    // Safety: `handle` is a local of this function that outlives every use of the handle.
+    var reader = JsonEventReader(allocator, unsafe { @handle as Reader }, JsonLimits::Default());
     Assert(Arrives(reader, JsonEvent::ObjectStart), "the object opens");
     Assert(reader.Depth() == 1, "and the depth follows");
     Assert(Arrives(reader, JsonEvent::Name), "a member name arrives");
@@ -223,8 +224,9 @@ func Main() -> int {
     written = written + 1;
 
     var bigState = SliceState { bytes: big[..written], offset: 0, step: 4 };
-    let bigHandle: Reader = SliceHandle { state: @bigState };
-    var bigReader = JsonEventReader(allocator, bigHandle, JsonLimits::Default());
+    var bigHandle = SliceHandle { state: @bigState };
+    // Safety: `bigHandle` is a local of this function that outlives every use of the handle.
+    var bigReader = JsonEventReader(allocator, unsafe { @bigHandle as Reader }, JsonLimits::Default());
     Assert(Arrives(bigReader, JsonEvent::ArrayStart), "the array opens");
     var seen: uint = 0;
     while Arrives(bigReader, JsonEvent::Number) {
@@ -236,8 +238,9 @@ func Main() -> int {
 
     // Structural mistakes are still caught, which a reader that only emitted tokens would leave to the caller.
     var mismatchedState = SliceState { bytes: TextBytes("{\"a\":1]"), offset: 0, step: 16 };
-    let mismatchedHandle: Reader = SliceHandle { state: @mismatchedState };
-    var mismatched = JsonEventReader(allocator, mismatchedHandle, JsonLimits::Default());
+    var mismatchedHandle = SliceHandle { state: @mismatchedState };
+    // Safety: `mismatchedHandle` is a local of this function that outlives every use of the handle.
+    var mismatched = JsonEventReader(allocator, unsafe { @mismatchedHandle as Reader }, JsonLimits::Default());
     Assert(Arrives(mismatched, JsonEvent::ObjectStart), "the object opens");
     Assert(Arrives(mismatched, JsonEvent::Name), "a name arrives");
     Assert(Arrives(mismatched, JsonEvent::Number), "and a value");
@@ -249,8 +252,9 @@ func Main() -> int {
     var shallow = JsonLimits::Default();
     shallow.maximumDepth = 2;
     var deepState = SliceState { bytes: TextBytes("[[[1]]]"), offset: 0, step: 16 };
-    let deepHandle: Reader = SliceHandle { state: @deepState };
-    var deep = JsonEventReader(allocator, deepHandle, shallow);
+    var deepHandle = SliceHandle { state: @deepState };
+    // Safety: `deepHandle` is a local of this function that outlives every use of the handle.
+    var deep = JsonEventReader(allocator, unsafe { @deepHandle as Reader }, shallow);
     Assert(Arrives(deep, JsonEvent::ArrayStart), "the first level opens");
     Assert(Arrives(deep, JsonEvent::ArrayStart), "and the second");
     Assert(StoppedAt(Thrown(deep), "JsonParseError::TooDeep"), "and the third is refused for being too deep");
@@ -259,8 +263,9 @@ func Main() -> int {
     // A failure is positioned in the document rather than in the buffer, however many refills dropped the bytes
     // before it: the brace is byte 14 of the document, though only byte 2 of the last read.
     var offsetState = SliceState { bytes: TextBytes("[1, 2, 3, 4, 5}"), offset: 0, step: 4 };
-    let offsetHandle: Reader = SliceHandle { state: @offsetState };
-    var offsets = JsonEventReader(allocator, offsetHandle, JsonLimits::Default());
+    var offsetHandle = SliceHandle { state: @offsetState };
+    // Safety: `offsetHandle` is a local of this function that outlives every use of the handle.
+    var offsets = JsonEventReader(allocator, unsafe { @offsetHandle as Reader }, JsonLimits::Default());
     Assert(Arrives(offsets, JsonEvent::ArrayStart), "the array opens");
     var numbers: uint = 0;
     while Arrives(offsets, JsonEvent::Number) {
@@ -274,8 +279,9 @@ func Main() -> int {
 
     // A source that breaks is reported as itself, not as a byte the lexer did not expect.
     var brokenState = SliceState { bytes: TextBytes("[1, 2"), offset: 0, step: 4 };
-    let brokenHandle: Reader = BrokenHandle { state: @brokenState };
-    var broken = JsonEventReader(allocator, brokenHandle, JsonLimits::Default());
+    var brokenHandle = BrokenHandle { state: @brokenState };
+    // Safety: `brokenHandle` is a local of this function that outlives every use of the handle.
+    var broken = JsonEventReader(allocator, unsafe { @brokenHandle as Reader }, JsonLimits::Default());
     Assert(Arrives(broken, JsonEvent::ArrayStart), "the array opens");
     Assert(Arrives(broken, JsonEvent::Number), "and its first number arrives");
     let stopped = Thrown(broken) ?? Panic("then the broken source stops the reader");
@@ -286,8 +292,9 @@ func Main() -> int {
 
     // One that breaks before the first byte is an error too, not an empty document.
     var silentState = SliceState { bytes: TextBytes(""), offset: 0, step: 4 };
-    let silentHandle: Reader = BrokenHandle { state: @silentState };
-    var silent = JsonEventReader(allocator, silentHandle, JsonLimits::Default());
+    var silentHandle = BrokenHandle { state: @silentState };
+    // Safety: `silentHandle` is a local of this function that outlives every use of the handle.
+    var silent = JsonEventReader(allocator, unsafe { @silentHandle as Reader }, JsonLimits::Default());
     Assert(Thrown(silent) is .Some(.Source(_, 0)), "a source broken from the start is not an empty document");
     silent.Release();
 

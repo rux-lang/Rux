@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Io::PrintLine;
 import Text::String;
 
@@ -59,8 +59,7 @@ func Main() -> int {
     // Safety: `wideBits` is a local `uint128`, as wide as a `char128`, so the retyped read stays inside it.
     PrintLine(unsafe { *((@wideBits) as *char128) });
 
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let text = try String::FromBytes(allocator, "string-value") catch { _ => return 1 };
     PrintLine(text);
     PrintLine("slice-value");

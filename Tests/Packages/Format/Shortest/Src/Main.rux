@@ -92,8 +92,7 @@ func FromBits64(bits: uint64) -> float64 {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The two values that say whether the renderer is exact at all.
     Assert(Same(try? Render(allocator, "{}", 0.1), "0.1"),

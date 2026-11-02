@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ #target, Assert, Panic };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextWriter };
@@ -36,7 +36,7 @@ func Shown(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    let shown: Display = view;
+    let shown: OsStringView = view;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -46,7 +46,7 @@ func Inspected(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> boo
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    let shown: Debug = view;
+    let shown: OsStringView = view;
     if (try? shown.WriteDebug(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -57,7 +57,7 @@ func PathShown(path: Path, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    let shown: Display = path;
+    let shown: Path = path;
     if (try? shown.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -66,7 +66,7 @@ func PathInspected(path: Path, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    let shown: Debug = path;
+    let shown: Path = path;
     if (try? shown.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -109,17 +109,16 @@ func Refused(view: OsStringView, spec: FormatSpec) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    let shown: Display = view;
+    let shown: OsStringView = view;
     if !((try? shown.WriteDisplay(sink, spec)) is none) { return false; }
-    let inspected: Debug = view;
+    let inspected: OsStringView = view;
     var second = BufferWriter(storage[..128]);
     let other: &var TextWriter = second;
     return (try? inspected.WriteDebug(other, spec)) is none;
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Ordinary text renders as itself in both forms; only the quoting differs.
     let plain = OsString::FromText(allocator, "usr/local/bin");

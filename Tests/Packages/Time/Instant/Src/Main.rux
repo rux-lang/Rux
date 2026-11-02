@@ -18,7 +18,7 @@ import Time::{ Duration, Instant, SleepFor, TimeError };
 func TicksShown(reading: Instant, ticks: &var uint64) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
-    let shown: Debug = reading;
+    let shown: Instant = reading;
     if (try? shown.WriteDebug(writer, FormatSpec::Plain())) is none { return false; }
     let text = writer.Written();
     let opening = "Instant(nanoseconds: ";
@@ -46,7 +46,7 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
-    let shown: Debug = reading;
+    let shown: Instant = reading;
     return (try? shown.WriteDebug(writer, spec)) is none;
 }
 

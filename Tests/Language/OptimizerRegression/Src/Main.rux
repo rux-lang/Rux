@@ -125,7 +125,7 @@ func Main() -> int {
     Assert(Apply(operation, 40) == 41, "indirect call remains reachable");
 
     let stored = StoredValue { value: 42 };
-    let source: ValueSource = stored;
+    let source: StoredValue = stored;
     Assert(source.Value() == 42, "interface vtable dispatch remains reachable");
     Assert(CrossModule(41) == 42, "cross-module private dependency remains reachable");
     Assert(LoopRegisterValues(10, 7) == 370, "nested loop values and indirect calls");

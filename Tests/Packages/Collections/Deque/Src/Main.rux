@@ -35,8 +35,7 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // A new deque allocates nothing.
     var queue = Deque<int32>(allocator);

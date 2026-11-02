@@ -205,7 +205,7 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) throws F
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/io/print-line#write-format-line
 pub func WriteFormatLine(writer: &var TextWriter, #Format format: char8[..],
-                         args: Display...) throws FormatError {
+                         args: &Display...) throws FormatError {
     try WriteFormat(writer, format, args...);
     return try writer.Write("\n");
 }

@@ -78,7 +78,8 @@ func Main() -> int {
     }
 
     var file = try RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { _ => Panic("the log opens") };
-    var logger = Logger(allocator, (@file).Stream(), LogFormat::Text);
+    // Safety: `file` is a local of this function that outlives the logger and is never moved.
+    var logger = Logger(allocator, unsafe { @file as Writer }, LogFormat::Text);
     logger.SetTimestamps(false);
 
     // Every record is the same length, so the file holds as many whole records as fit under the limit, and the

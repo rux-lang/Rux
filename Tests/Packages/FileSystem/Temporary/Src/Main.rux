@@ -45,8 +45,7 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
 }
 
 func Main() -> int throws IoError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The system's temporary directory is a directory that exists.
     var root = try TemporaryDirectory(allocator);

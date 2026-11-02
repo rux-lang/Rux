@@ -15,8 +15,7 @@ func Matches(allocator: Allocator, rendered: char8[..], expected: char8[..]) -> 
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Small values render as their narrow selves, whatever the width behind them.
     let small = Rendered(allocator, try? Render(allocator, "{}", 42u128));

@@ -287,14 +287,8 @@ const NamedFormatArguments *SemanticModel::TryGetNamedFormat(const LiteralExpr &
     return named == facts.namedFormats.end() ? nullptr : &named->second;
 }
 
-const InterfaceHolderSite *SemanticModel::TryGetInterfaceHolderSite(const Expr &value) const noexcept {
-    const auto site = facts.interfaceHolderSites.find(&value);
-    return site == facts.interfaceHolderSites.end() ? nullptr : &site->second;
-}
-
-const std::vector<InterfaceHolderSite> *SemanticModel::TryGetInterfaceHolders(const LetStmt &local) const noexcept {
-    const auto holders = facts.interfaceHolders.find(&local);
-    return holders == facts.interfaceHolders.end() ? nullptr : &holders->second;
+bool SemanticModel::IsInterfaceTemporary(const Expr &value) const noexcept {
+    return facts.interfaceTemporaries.contains(&value);
 }
 
 const Decl *SemanticModel::TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept {

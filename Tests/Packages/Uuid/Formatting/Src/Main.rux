@@ -81,7 +81,7 @@ func Shown(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let sink: &var TextWriter = writer;
-    let shown: Display = value;
+    let shown: Uuid = value;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -91,7 +91,7 @@ func Inspected(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let sink: &var TextWriter = writer;
-    let shown: Debug = value;
+    let shown: Uuid = value;
     if (try? shown.WriteDebug(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -102,7 +102,7 @@ func RefusedByWriter(value: Uuid, spec: FormatSpec, room: uint) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..room]);
     let sink: &var TextWriter = writer;
-    let shown: Display = value;
+    let shown: Uuid = value;
     var caught: FormatError? = none;
     try {
         shown.WriteDisplay(sink, spec);
@@ -121,7 +121,7 @@ func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let sink: &var TextWriter = writer;
-    let shown: Display = value;
+    let shown: Uuid = value;
     var caught: FormatError? = none;
     try {
         shown.WriteDisplay(sink, spec);
@@ -296,7 +296,7 @@ func Main() -> int {
     var shownText: char8[64];
     var shownWriter = BufferWriter(shownText[..64]);
     let shownSink: &var TextWriter = shownWriter;
-    let displayed: Display = value;
+    let displayed: Uuid = value;
     Assert((try? displayed.WriteDisplay(shownSink, Spec("urn"))) is .Some(_), "the URN rendering succeeds");
     Assert(Parsed(shownWriter.Written()).Equals(value), "and parses back to the same identifier");
 

@@ -1,11 +1,10 @@
 import Text::{ FormatSpec, TextWriter };
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::Assert;
 import Format::{ ByteCursor, FloatLayout, WriteWideFloat };
 
 func Check(bits: uint512, expected: char8[..]) {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let layout = FloatLayout::Binary512();
     var storage: char8[256];
     var cursor = ByteCursor(storage[..256]);

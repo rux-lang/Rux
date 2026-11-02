@@ -93,8 +93,7 @@ func CountRange(map: &TreeMap<int32, int32>, start: int32, end: int32) -> uint {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let missing = Missing();
 
     // Fifty keys arriving in a stride coprime with the count, so nothing about the order helps them come out sorted.

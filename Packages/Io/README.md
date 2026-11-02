@@ -39,7 +39,7 @@ Every stream operation that can fail throws an `IoError`, so every call to one i
 `Display` writes into a `TextWriter` and a stream takes bytes, so something has to stand between them. `ConsoleWriter` is that adapter over standard output and `StreamWriter` is it over any `Writer` — a file, a buffered writer, a pipe — which is what lets a value describe itself anywhere other than standard output or memory:
 
 ```rux
-import Io::{ IoError, StandardOut, StreamWriter, WriteValueLine };
+import Io::{ IoError, StandardOut, StreamWriter, WriteValueLine, Writer };
 import Text::TextWriter;
 
 func Main() -> int {
@@ -49,7 +49,9 @@ func Main() -> int {
     // The adapter turns a stream into a text writer. It cannot return an I/O error through the text protocol, so
     // it keeps the first one it saw in `failure` — which is why that is checked afterwards rather than at the call.
     var failure: IoError? = none;
-    var adapter = StreamWriter(out, @failure);
+    // The adapter keeps a `Writer` handle that addresses `out` rather than copying it.
+    // Safety: `out` is a local that outlives `adapter` and stays where it is.
+    var adapter = StreamWriter(unsafe { @out as Writer }, @failure);
     let text: &var TextWriter = adapter;
 
     // The type argument is required: the function is generic over the value so that it can borrow it rather than
@@ -66,20 +68,19 @@ Neither error type can hold the other's failures, so the crossing is made explic
 
 `ToIoError` comes back the other way, and the distinction it preserves is the one that decides what to do next: a request that was wrong is `InvalidInput` and will be wrong again, while a destination that failed came back as an `IoError` in the first place. Bytes that were not text are `InvalidText`; a bounded destination that filled is `LimitExceeded`. Nothing is stuffed into `IoError`'s `raw`, which is `errno` or the Win32 code and is meant to be looked up; a caller who needs to know which formatting failure it was builds a writer and calls `Text::WriteValue` themselves.
 
-`WriteValueLine` and `WriteFormatLine` write a value or a pattern followed by a newline, and write the newline **only if** what came before it went out whole. A line is a value and its terminator together, so a value that could not be written must not be followed by one. Every `PrintLine` overload follows the same rule. `WriteValueLine` takes its value by bound rather than as an interface value, so the value is borrowed rather than given up: binding a move-only value to a `Display` transfers ownership of it, which would let such a value be written exactly once.
+`WriteValueLine` and `WriteFormatLine` write a value or a pattern followed by a newline, and write the newline **only if** what came before it went out whole. A line is a value and its terminator together, so a value that could not be written must not be followed by one. Every `PrintLine` overload follows the same rule. `WriteValueLine` takes its value by bound rather than as an interface view, so the call is resolved for the value's own type and nothing is dispatched at run time; `WriteValue` and the variadic `args: &Display...` of the format functions borrow theirs as `&Display` views, which a temporary may be lent to for the call.
 
-Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views, and a named stream passed straight into one of them borrows without any binding: `try WriteAll(file, contents)`. The borrow neither copies nor consumes the stream, and it ends at the call. `BufferedReader` and `BufferedWriter` must keep their streams after construction, so they store ordinary interface handles; a stream that cannot be stored that way — because binding it would move it — supplies a stored adapter of its own, such as `FileSystem::FileStream`, whose representation is private and whose lifetime contract is documented where it lives. The `BufferedReader` and `BufferedWriter` constructors throw `Other` when their buffer cannot be allocated, so they are called as `try BufferedReader(allocator, source, capacity)`. Both buffered types prohibit copying, move with `move`, and release their owned buffers through `~BufferedReader` and `~BufferedWriter`.
+Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views, and a named stream passed straight into one of them borrows without any binding: `try WriteAll(file, contents)`. The borrow neither copies nor consumes the stream, and it ends at the call. `BufferedReader`, `BufferedWriter` and `StreamWriter` must keep their streams after construction, so they store a `Reader` or `Writer` interface value: a copyable handle that addresses the stream and owns nothing. A handle to a stream with state is made from its address, `unsafe { @file as Reader }`, whose caller promises that the stream outlives the adapter and is not moved while it holds the handle. The `BufferedReader` and `BufferedWriter` constructors throw `Other` when their buffer cannot be allocated, so they are called as `try BufferedReader(allocator, source, capacity)`. Both buffered types prohibit copying, move with `move`, and release their owned buffers through `~BufferedReader` and `~BufferedWriter`.
 
 ## Example
 
 ```rux
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Io::{ PrintLine, ReadLine };
 import Text::StringBuilder;
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var name = StringBuilder(allocator);
     PrintLine("What is your name?");
     try ReadLine(name) catch { _ => return 1 };

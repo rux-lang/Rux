@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter };
 
@@ -16,7 +16,7 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    let value: Display = view;
+    let value: StringView = view;
     if (try? value.WriteDisplay(writer, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -25,7 +25,7 @@ func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
 func Inspected(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    let value: Debug = view;
+    let value: StringView = view;
     if (try? value.WriteDebug(writer, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -114,13 +114,12 @@ func Main() -> int {
     var storage: char8[32];
     var writer = BufferWriter(storage[..32]);
     let styled: &var TextWriter = writer;
-    let shown: Display = hello;
+    let shown: StringView = hello;
     Assert((try? shown.WriteDisplay(styled, Spec("iso8601"))) is none, "a style on text is refused");
     Assert(writer.Length() == 0, "and nothing was written before the refusal");
 
     // A String presents as the view it spans, and is untouched by having been rendered.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let owned = try String::FromBytes(allocator, "owned") catch { _ => Panic("the owned string is built") };
     Assert(Shown(owned.View(), plain, "owned"), "an owned string displays its text");
     Assert(Inspected(owned.View(), plain, "\"owned\""), "and inspects quoted");

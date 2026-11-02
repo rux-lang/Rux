@@ -51,8 +51,9 @@ extend SliceHandle : Reader {
 func StreamCounts(allocator: Allocator, text: char8[..], scalars: &var uint, opens: &var uint,
                   names: &var uint) -> bool {
     var state = SliceState { bytes: text, offset: 0 };
-    let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader(allocator, handle, JsonLimits::Default());
+    var handle = SliceHandle { state: @state };
+    // Safety: `handle` is a local of this function that outlives every use of the handle.
+    var reader = JsonEventReader(allocator, unsafe { @handle as Reader }, JsonLimits::Default());
     scalars = 0;
     opens = 0;
     names = 0;
@@ -103,8 +104,7 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var wrote = false;
 
     // Well-formed documents: each parses, writes, parses again, and the two writings agree. That round

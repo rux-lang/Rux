@@ -9,8 +9,7 @@ import Text::{ FormatError, String, StringView };
 // fifteen, which was one short of a round trip.
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let rendered = Rendered(allocator, try? Render(allocator, "Integer: {}, Float: {}", 255, 3.141592653589793));
 

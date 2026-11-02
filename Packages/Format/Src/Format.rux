@@ -116,7 +116,7 @@ func ValidatePattern(format: char8[..]) -> uint throws FormatError {
 /// @param format the pattern to write
 /// @returns success when the whole pattern and every argument were accepted
 /// @see https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: Display...) throws FormatError {
+pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &Display...) throws FormatError {
     let expected = try ValidatePattern(format);
     if expected != args.length {
         throw .ArgumentCountMismatch(expected, args.length);
@@ -178,7 +178,7 @@ pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: D
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced
 /// @see https://rux-lang.dev/docs/api/format/render
-pub func Render(allocator: Allocator, #Format format: char8[..], args: Display...) -> String throws FormatError {
+pub func Render(allocator: Allocator, #Format format: char8[..], args: &Display...) -> String throws FormatError {
     var builder = StringBuilder(allocator);
     builder.Reserve(format.length + args.length * 8);
     let sink: &var TextWriter = builder;

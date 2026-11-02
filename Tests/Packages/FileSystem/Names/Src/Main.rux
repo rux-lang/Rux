@@ -65,8 +65,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
 }
 
 func Main() -> int throws IoError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", dirHolder);

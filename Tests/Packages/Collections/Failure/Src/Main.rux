@@ -1,5 +1,5 @@
 import Core::uint;
-import Allocator::{ AllocError, Allocator, SystemAllocator };
+import Allocator::{ AllocError, SystemAllocator };
 import Collections::CollectionError;
 import Collections::HashMap;
 import Collections::Vector;
@@ -35,8 +35,7 @@ func MapRefusal(map: &var HashMap<int32, int32>, additional: uint) -> AllocError
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // A count whose byte size cannot be addressed is rejected before anything is allocated.
     var empty = Vector<int64>(allocator);

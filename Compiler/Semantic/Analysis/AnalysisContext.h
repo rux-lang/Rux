@@ -433,14 +433,21 @@ private:
     void RecordViewSources(const Symbol &local, const Expr &value, const TypeRef &type);
     /// Reports a value that leaves the function, as `what` says, while it views one of the function's local arrays.
     void CheckViewEscape(const Expr &value, const TypeRef &type, SourceLocation location, std::string_view what);
-    /// Whether storing `value` as `targetType` makes an interface value that points at this function's storage: a
-    /// concrete value made into one, or a local that may already hold one.
-    [[nodiscard]] bool MakesFrameInterfaceValue(const Expr &value, const TypeRef &valueType, const TypeRef &targetType);
-    /// Keeps `value`, a concrete value with a destructor made into an interface value stored at `place` of `owner`, in
-    /// the holder for that place and type.
-    void RecordInterfaceHolder(const Expr &value, const LetStmt &owner, std::string place, const TypeRef &type);
-    /// Whether storing a `valueType` as `targetType` makes an interface value from a concrete value with a destructor.
-    [[nodiscard]] bool IsHolderCoercion(const TypeRef &valueType, const TypeRef &targetType);
+    /// Whether `type` is an interface value, a handle to an implementation stored elsewhere, or an optional one.
+    [[nodiscard]] bool IsInterfaceValueType(const TypeRef &type) const;
+    /// Whether `type` carries no state: a structure without fields or a destructor, so an interface value made from
+    /// one needs no storage to point at.
+    [[nodiscard]] bool IsStatelessType(const TypeRef &type) const;
+    /// Whether converting a `source` value to `target` would make an interface value from a concrete value with state,
+    /// which no implicit conversion does: the value would have to be copied into storage the handle points at.
+    [[nodiscard]] bool RefusesInterfaceValue(const TypeRef &source, const TypeRef &target) const;
+    /// The note and help for a refused interface value, made from a `source` as `target`.
+    [[nodiscard]] std::vector<std::string> InterfaceValueNotes() const;
+    [[nodiscard]] std::string InterfaceValueHelp(const TypeRef &target) const;
+    /// The implementation a cast of the raw pointer `operand` to interface `target` makes a handle of, or nothing when
+    /// the cast is not one: `p as Allocator` with `p: *var Arena` points the handle at the arena the pointer reaches.
+    [[nodiscard]] std::optional<TypeRef> PointerInterfaceHandleSource(const TypeRef &operand,
+                                                                      const TypeRef &target) const;
     /// After an assignment: a store into a local records the views it took; a store that outlives the call, into a
     /// module variable or through a pointer or reference, may not take a view of a local array.
     void CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType, SourceLocation location);
@@ -1236,8 +1243,7 @@ private:
     std::unordered_map<const CallExpr *, std::vector<std::size_t>> &argumentSlots;
     std::unordered_map<const LiteralExpr *, NamedFormatArguments> &namedFormats;
     std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;
-    std::unordered_map<const Expr *, InterfaceHolderSite> &interfaceHolderSites;
-    std::unordered_map<const LetStmt *, std::vector<InterfaceHolderSite>> &interfaceHolders;
+    std::unordered_map<const Expr *, TypeRef> &interfaceTemporaries;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
@@ -1355,12 +1361,6 @@ private:
     std::unordered_set<const Symbol *> functionLocals;
     /// For each local holding views, the local arrays those views may point into.
     std::unordered_map<const Symbol *, std::vector<const Symbol *>> viewSources;
-    /// The locals that may hold an interface value made in the function, which points at the function's own storage.
-    std::unordered_set<const Symbol *> frameInterfaceLocals;
-    /// The declaration of each local a `let` or `var` introduced, which owns the holders of its interface values.
-    std::unordered_map<const Symbol *, const LetStmt *> localDeclarations;
-    /// The scope each local of the functions being checked was declared in.
-    std::unordered_map<const Symbol *, const Scope *> localScopes;
     bool checkingPlainAssignmentTarget = false;
     bool checkingBorrowProjectionRoot = false;
     /// The field path, such as `start.x`, that the local about to be read is read through, so a part written on its

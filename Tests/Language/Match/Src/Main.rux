@@ -153,7 +153,7 @@ func Main() -> int {
     Assert(DayName(0).length == 6 && DayName(1).length == 7, "a view-typed match keeps its producing arms");
     let box = Box { side: 3i32 };
     let present = true;
-    let measured: Measured = match present {
+    let measured: Box = match present {
         true => box,
         false => Panic("nothing to measure")
     };

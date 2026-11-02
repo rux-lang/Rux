@@ -21,8 +21,7 @@ struct Labeled {
 const Greeting: int32 = 42;
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let key = 7;
     let value = 2.5;

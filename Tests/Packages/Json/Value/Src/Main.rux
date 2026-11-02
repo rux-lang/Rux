@@ -42,8 +42,7 @@ func AcceptedNumber(allocator: Allocator, text: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The tags, each recognised as itself.
     var nullValue = JsonValue::Null(allocator);

@@ -20,9 +20,9 @@ extend int[..] : SliceValue {
 extend Consumer : TextConsumer {
     func Read(&self, text: char8[..]) -> int { return TextHash(text); }
 }
-func ThroughInterface(value: SliceValue) -> int { return value.Hash(); }
+func ThroughInterface(value: &SliceValue) -> int { return value.Hash(); }
 func ThroughBorrow(value: &SliceValue) -> int { return value.Hash(); }
-func ThroughVariadic(values: SliceValue...) -> int {
+func ThroughVariadic(values: &SliceValue...) -> int {
     var result = 0;
     for value in values { result += value.Hash(); }
     return result;

@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Ordering, Panic };
 import Text::{ String, StringView };
 
@@ -14,8 +14,7 @@ func View(bytes: char8[..]) -> StringView {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let empty = View("");
     let a = View("apple");

@@ -55,8 +55,10 @@ extend ScriptHandle : Reader {
 func CheckBytes(allocator: Allocator, bytes: char8[..], step: uint, limit: uint,
                 expectedKind: IoErrorKind?, expected: char8[..]) {
     var state = ScriptState { bytes, offset: 0, step };
-    let source: Reader = ScriptHandle { state: @state };
-    var reader = try BufferedReader(allocator, source, 16) catch { _ => Panic("the reader takes its buffer") };
+    var source = ScriptHandle { state: @state };
+    // Safety: `source` is a local of this function that outlives every use of the handle.
+    let sourceHandle = unsafe { @source as Reader };
+    var reader = try BufferedReader(allocator, sourceHandle, 16) catch { _ => Panic("the reader takes its buffer") };
     var builder = StringBuilder(allocator);
     var reported: IoErrorKind? = none;
     try {
@@ -72,8 +74,7 @@ func CheckBytes(allocator: Allocator, bytes: char8[..], step: uint, limit: uint,
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // A plain line, whole and in one piece.
     CheckBytes(allocator, TextBytes("alpha\nbeta"), 64, 256, none, "alpha");
@@ -108,8 +109,10 @@ func Main() -> int {
 
     // Reading on after a line: the reader's position is exactly past the ending.
     var state = ScriptState { bytes: TextBytes("one\ntwo\nthree"), offset: 0, step: 64 };
-    let source: Reader = ScriptHandle { state: @state };
-    var reader = try BufferedReader(allocator, source, 16) catch { _ => Panic("the reader takes its buffer") };
+    var source = ScriptHandle { state: @state };
+    // Safety: `source` is a local of this function that outlives every use of the handle.
+    let sourceHandle = unsafe { @source as Reader };
+    var reader = try BufferedReader(allocator, sourceHandle, 16) catch { _ => Panic("the reader takes its buffer") };
     var builder = StringBuilder(allocator);
     try ReadTextLine(reader, builder, 64) catch { _ => Panic("the first line reads") };
     let one = builder.TakeString();

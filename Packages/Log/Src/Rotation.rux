@@ -1,6 +1,6 @@
 // A log file that is moved aside for a fresh one before it grows past a size, keeping a few of the older files.
-// The file is a `Writer`, so a `Logger` writes to it like any other destination; `RotatingFile::Stream` is the
-// stored form a `Logger` keeps, as `File::Stream` is for a plain file.
+// The file is a `Writer`, so a `Logger` writes to it like any other destination, through a handle made from its
+// address with `unsafe { @file as Writer }`, as for a plain file.
 
 import Allocator::Allocator;
 import FileSystem::{ File, OpenOptions, Rename };
@@ -85,14 +85,6 @@ extend RotatingFile {
     pub func Close(&var self) throws IoError {
         return try self.file.Close();
     }
-
-    /// A stored borrow of this file for a `Logger`, which keeps its destination.
-    /// The file must outlive the stream and must not be moved while one exists; nothing tracks either.
-    /// @returns a stream writing through this file
-    /// @see https://rux-lang.dev/docs/api/log/rotating-file#stream
-    pub func Stream(*var self) -> RotatingStream {
-        return RotatingStream { target: self };
-    }
 }
 
 extend RotatingFile : Writer {
@@ -115,35 +107,6 @@ extend RotatingFile : Writer {
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#flush
     pub func Flush(&var self) throws IoError {
         return try self.file.Flush();
-    }
-}
-
-/// A stored borrow of a `RotatingFile` that speaks `Writer`, for a `Logger` to keep.
-/// The address is private, and `RotatingFile::Stream` is the only way to obtain one.
-/// @see https://rux-lang.dev/docs/api/log/rotating-stream
-pub struct RotatingStream {
-    /// The file being borrowed.
-    target: *var RotatingFile;
-}
-
-extend RotatingStream : Writer {
-    /// Writes through the borrowed file, which may move its current file aside first.
-    /// @param bytes the bytes to write
-    /// @returns how many bytes were taken
-    /// @see https://rux-lang.dev/docs/api/log/rotating-stream#write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
-        // Safety: `RotatingFile::Stream`, the only way to make a stream, requires the file to outlive it and stay in
-        // place while it exists, so `target` addresses a live `RotatingFile`.
-        return try unsafe { (*self.target).Write(bytes) };
-    }
-
-    /// Flushes the borrowed file.
-    /// @returns success when everything written reached the system
-    /// @see https://rux-lang.dev/docs/api/log/rotating-stream#flush
-    pub func Flush(&var self) throws IoError {
-        // Safety: `RotatingFile::Stream`, the only way to make a stream, requires the file to outlive it and stay in
-        // place while it exists, so `target` addresses a live `RotatingFile`.
-        return try unsafe { (*self.target).Flush() };
     }
 }
 

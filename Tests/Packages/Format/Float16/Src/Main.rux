@@ -32,7 +32,7 @@ func Shows(value: float16, prefix: char8[..], expected: char8[..]) -> bool {
     var storage: char8[64];
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
-    let shown: Display = value;
+    let shown: float16 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
         return false;
     }
@@ -131,7 +131,7 @@ func Main() -> int {
     var storage: char8[64];
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
-    let debugged: Debug = 0.33325f16;
+    let debugged: float16 = 0.33325f16;
     if (try? debugged.WriteDebug(writer, FormatSpec::Plain())) is none { return 50; }
     if !Same(cursor.Written(), "0.3333") { return 51; }
 

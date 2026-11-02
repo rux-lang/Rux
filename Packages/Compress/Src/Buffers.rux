@@ -1,7 +1,7 @@
 // Compressing and decompressing whole buffers, for data already in memory.
 // Both run the streaming reader and writer over a source that reads a slice and a sink that appends to storage this
-// function owns. An interface value holds its own copy of what it was made from, so the sink writes through the
-// storage's address, and the function collects the bytes from there when the stream is done.
+// function owns. The streams keep a handle to the source or sink, made from the address of a local that outlives
+// them, and the function collects the bytes from the storage when the stream is done.
 
 import Allocator::{ Allocator, Layout };
 import Collections::Vector;
@@ -108,7 +108,9 @@ unsafe func Release(gathered: *var Gathered) {
 pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: Level = Level::Default)
     -> Vector<byte> throws IoError {
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
-    var writer = try CompressWriter(allocator, GatherSink { target: @gathered }, format, level);
+    var sink = GatherSink { target: @gathered };
+    // Safety: `sink` is a local that outlives `writer`, the only holder of the handle, and is never moved.
+    var writer = try CompressWriter(allocator, unsafe { @sink as Writer }, format, level);
     var written: uint = 0;
     // Safety: `data` is readable for its length, and `byte` and `char8` are both single bytes.
     let text = unsafe { (data.data as *char8)[..data.length] };
@@ -144,7 +146,9 @@ pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vec
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
     // Safety: `data` is readable for its length, and `byte` and `char8` are both single bytes.
     let text = unsafe { (data.data as *char8)[..data.length] };
-    var reader = try DecompressReader(allocator, SliceSource { data: text, at: 0 }, format);
+    var source = SliceSource { data: text, at: 0 };
+    // Safety: `source` is a local that outlives `reader`, the only holder of the handle, and is never moved.
+    var reader = try DecompressReader(allocator, unsafe { @source as Reader }, format);
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
         let count = try reader.Read(chunk[..]) catch {

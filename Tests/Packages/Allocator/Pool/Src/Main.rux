@@ -19,8 +19,7 @@ func Main() throws AllocError {
     Assert(ClassIndexFor(Layout::Of(16, 32) ?? zero) == PoolClassCount,
            "an alignment stricter than a chunk is taken at has no class either");
 
-    var system = SystemAllocator();
-    let backing: Allocator = system;
+    let backing = SystemAllocator();
 
     // Four blocks to a chunk, so exhausting a class takes a handful of requests rather than dozens.
     var pool = Pool(backing, 4);
@@ -30,9 +29,8 @@ func Main() throws AllocError {
     Assert(pool.ClassSize(PoolClassCount - 1) == PoolLargestClass, "and the last is the largest");
     Assert(pool.ClassSize(PoolClassCount) == 0, "with nothing past the last");
 
-    // Safety: `pool` is a local that outlives `handle` and is never moved.
-    var handle = unsafe { pool.Handle() };
-    let allocator: Allocator = handle;
+    // Safety: `pool` is a local that outlives `allocator` and is never moved.
+    let allocator = unsafe { pool.Handle() };
 
     // A zero-sized layout costs the pool nothing.
     let empty = try allocator.Allocate(zero);
@@ -148,13 +146,11 @@ func Main() throws AllocError {
     var storage: byte[64];
     // Safety: `storage` is a local array of 64 bytes that outlives `tiny` and is touched only through it.
     var tiny = unsafe { FixedBuffer(@storage[0] as *var opaque, 64) };
-    // Safety: `tiny` is a local that outlives `tinyHandle` and is never moved.
-    var tinyHandle = unsafe { tiny.Handle() };
-    let starved: Allocator = tinyHandle;
+    // Safety: `tiny` is a local that outlives `starved` and is never moved.
+    let starved = unsafe { tiny.Handle() };
     var starvedPool = Pool(starved, 32);
-    // Safety: `starvedPool` is a local that outlives `starvedHandle` and is never moved.
-    var starvedHandle = unsafe { starvedPool.Handle() };
-    let starvedAllocator: Allocator = starvedHandle;
+    // Safety: `starvedPool` is a local that outlives `starvedAllocator` and is never moved.
+    let starvedAllocator = unsafe { starvedPool.Handle() };
     var refused: *var opaque = null;
     try {
         starvedAllocator.Allocate(small);

@@ -455,10 +455,13 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
             if (!compatible) {
+                const bool refusedInterface = RefusesInterfaceValue(value, target);
                 EmitError(assignment->location,
                           AssignmentErrorMessage(
                               *assignment->value, target,
-                              std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
+                              std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())),
+                          refusedInterface ? InterfaceValueNotes() : std::vector<std::string>{},
+                          refusedInterface ? std::optional(InterfaceValueHelp(target)) : std::nullopt);
             }
             else if (simpleAssignment) {
                 const bool arrowMove = assignment->op == TokenKind::MoveArrow;
@@ -521,6 +524,10 @@ bool AnalysisContext::CastTypesAreCompatible(const TypeRef &operand, const TypeR
         return IsAddressValue(operand) && IsAddressValue(target);
     }
 
+    if (const std::optional<TypeRef> implementation = PointerInterfaceHandleSource(operand, target)) {
+        return TypeImplementsInterface(*implementation, target);
+    }
+
     const CaseTypeDeclaration operandCase = CastCaseType(operand);
     const CaseTypeDeclaration targetCase = CastCaseType(target);
     if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
@@ -543,7 +550,38 @@ AnalysisContext::CaseTypeDeclaration AnalysisContext::CastCaseType(const TypeRef
     return CaseTypeNamed(BaseTypeName(value->name));
 }
 
+std::optional<TypeRef> AnalysisContext::PointerInterfaceHandleSource(const TypeRef &operand,
+                                                                     const TypeRef &target) const {
+    if (operand.IsUnknown() || target.IsUnknown() || operand->kind != TypeRef::Kind::Pointer ||
+        operand->inner.empty() || target->kind != TypeRef::Kind::Named || !interfaceDecls.contains(target->name)) {
+        return std::nullopt;
+    }
+    TypeRef implementation = operand->inner.front();
+    implementation.isMut = false;
+    if (implementation.IsOpaque() || implementation->kind == TypeRef::Kind::TypeParam) {
+        return std::nullopt;
+    }
+    return implementation;
+}
+
 void AnalysisContext::CheckCast(const TypeRef &operand, const TypeRef &target, const SourceLocation location) {
+    // A handle made from a read-only pointer may not reach a requirement that writes its receiver, since every call
+    // through the handle would then write what the pointer only reads.
+    if (const std::optional<TypeRef> implementation = PointerInterfaceHandleSource(operand, target);
+        implementation && !operand->inner.front().isMut && TypeImplementsInterface(*implementation, target)) {
+        const InterfaceDecl &interface = *interfaceDecls.at(target->name);
+        const auto writing = std::ranges::find_if(interface.methods, [](const std::unique_ptr<FuncDecl> &requirement) {
+            return RequirementWritesReceiver(*requirement);
+        });
+        if (writing != interface.methods.end()) {
+            EmitError(location,
+                      std::format("cannot make interface value '{}' from read-only pointer '{}'", target.ToString(),
+                                  operand.ToString()),
+                      {std::format("requirement '{}' writes its receiver", (*writing)->name)},
+                      "take the address of a 'var' place, which gives a '*var' pointer");
+            return;
+        }
+    }
     // A cast may retype an address but never add write access to what a read-only pointer reaches, so a value seen
     // through a `*T` stays unwritten whatever type the address is given. Untyped memory is the explicit escape:
     // `*opaque` to `*var T` retypes an address nothing typed, and `*T` to `*var opaque` writes nothing by itself, as

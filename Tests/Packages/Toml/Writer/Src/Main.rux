@@ -69,8 +69,7 @@ func Parsed(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var storage: char8[4096];
     var second: char8[4096];
     // A document written and read and written again is the same the second time, which is the property a file

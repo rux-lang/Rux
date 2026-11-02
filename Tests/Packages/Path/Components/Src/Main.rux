@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Path::{ IsSeparator, OsString, OsStringView, Path, PathBuffer, PreferredSeparator };
 
@@ -41,8 +41,7 @@ func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     Assert(IsSeparator(PreferredSeparator()), "the preferred separator separates");
 

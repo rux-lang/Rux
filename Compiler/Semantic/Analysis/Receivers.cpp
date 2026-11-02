@@ -193,12 +193,17 @@ bool AnalysisContext::CheckWritableReceiver(const CallExpr &call, const Expr &re
     return false;
 }
 
-/// An interface value is borrowed or held whole, and its requirement decides what the call may do with it: one that
-/// declares `self: &var Self` writes the implementing value, so the view or storage it is called through has to be
-/// writable, exactly as for a concrete receiver.
+/// An interface view is borrowed, and its requirement decides what the call may do with it: one that declares
+/// `self: &var Self` writes the implementing value, so the view it is called through has to be writable, exactly as
+/// for a concrete receiver. An interface value is a handle to its implementation and writes through it.
 bool AnalysisContext::CheckRequirementReceiverMutability(const CallExpr &call, const Expr &receiver,
                                                          const TypeRef &receiverType, const FuncDecl &requirement) {
     if (!RequirementWritesReceiver(requirement)) {
+        return true;
+    }
+    // An interface value is a handle: the call writes the implementation it addresses, never the handle, and every
+    // handle addresses storage it may write -- nothing for a stateless value, or what a '*var' pointer reached.
+    if (receiverType->kind == TypeRef::Kind::Named && interfaceDecls.contains(receiverType->name)) {
         return true;
     }
     return CheckWritableReceiver(call, receiver, receiverType, requirement.name, "&var Self");

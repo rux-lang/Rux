@@ -8,7 +8,7 @@ import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
 import Core::{ Assert, uint };
 import Text::{ String, StringBuilder, StringView };
 
-// Everything mutable lives behind a pointer, so the copies an interface adapter makes all observe the same refusal.
+// Everything mutable lives in a state the test keeps, so it reads the refusal afterwards.
 struct RefusalState {
     backing: Allocator;
     // Whether the next request is refused.
@@ -48,14 +48,14 @@ func ReserveRefused(builder: &var StringBuilder, additional: uint) -> AllocError
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let plain: Allocator = system;
+    let plain = SystemAllocator();
     var state = RefusalState { backing: plain, refusing: false };
     var refusing = RefusingAllocator { state: @state };
-    let hostile: Allocator = refusing;
+    var hostile: RefusingAllocator = refusing;
 
     // A builder holding text keeps it when a growth is refused.
-    var builder = StringBuilder(hostile);
+    // Safety: `hostile` is a local of this function that outlives every use of the handle.
+    var builder = StringBuilder(unsafe { @hostile as Allocator });
     builder.Append("hello");
     let capacity = builder.Capacity();
     state.refusing = true;

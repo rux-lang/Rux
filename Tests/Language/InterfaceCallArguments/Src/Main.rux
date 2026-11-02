@@ -39,7 +39,7 @@ interface Render {
     func Mixed(first: uint, writer: &var Writer, value: Triple, reader: &Reader,
                second: &var Writer, last: uint) -> uint;
     func Defaulted(writer: &var Writer, marker: uint = 7u) -> uint;
-    func Sum(seed: uint, readers: Reader...) -> uint;
+    func Sum(seed: uint, readers: &Reader...) -> uint;
 }
 
 struct Frame {
@@ -66,7 +66,7 @@ extend Frame : Render {
         return writer.Put(self.value) + marker;
     }
 
-    func Sum(&self, seed: uint, readers: Reader...) -> uint {
+    func Sum(&self, seed: uint, readers: &Reader...) -> uint {
         var total = self.value + seed;
         var index = 0u;
         while index < readers.length {
@@ -77,7 +77,7 @@ extend Frame : Render {
     }
 }
 
-func BorrowedWriter(frame: Render) {
+func BorrowedWriter(frame: &Render) {
     var total = 0u;
     var buffer = Buffer { total: @total };
     let borrowed: &var Buffer = buffer;
@@ -85,7 +85,7 @@ func BorrowedWriter(frame: Render) {
            "a borrowed concrete writer is materialized as the required interface view");
 }
 
-func InterfaceArguments(frame: Render) {
+func InterfaceArguments(frame: &Render) {
     var total = 43u;
     var buffer = Buffer { total: @total };
     let immutable: &Buffer = buffer;
@@ -110,10 +110,10 @@ func InterfaceArguments(frame: Render) {
     Assert(frame.Sum(2u) == 33u, "an empty variadic interface list retains the fixed argument");
 }
 
-func Take(value: Reader) -> uint { return value.Get(); }
+func Take(value: &Reader) -> uint { return value.Get(); }
 func Take(value: bool) -> uint { return if value { 1u } else { 0u }; }
 func Borrow(value: &Reader) -> uint { return value.Get(); }
-func TakeMany(seed: uint, values: Reader...) -> uint {
+func TakeMany(seed: uint, values: &Reader...) -> uint {
     var total = seed;
     var index = 0u;
     while index < values.length {
@@ -148,7 +148,7 @@ func GenericArguments() {
 func Main() -> int {
     var total = 0u;
     var buffer = Buffer { total: @total };
-    let frame: Render = Frame { value: 31u };
+    let frame = Frame { value: 31u };
     Assert(frame.Write(buffer, 5u) == 36u && total == 31u,
            "an interface method coerces its concrete writer at the correct argument position");
     BorrowedWriter(frame);

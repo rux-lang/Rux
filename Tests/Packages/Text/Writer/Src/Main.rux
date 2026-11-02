@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::Assert;
 import Text::{ BufferWriter, FormatError, String, StringBuilder, TextFailureKind, TextWriter, WriteAscii, WriteBytes,
                WriteScalar };
@@ -217,8 +217,7 @@ func Main() -> int {
 
     // StringBuilder is the growing writer, so it refuses neither of the above; what it can refuse is allocation,
     // which cannot be provoked here. What is checked is that it accepts and concatenates through the same contract.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     var builder = StringBuilder(allocator);
     try {
         builder.Write("grows");

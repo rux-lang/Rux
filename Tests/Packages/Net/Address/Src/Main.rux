@@ -2,7 +2,7 @@
 // family answers whether it is unspecified, private, link-local or multicast; and the address types render through
 // `{}` like any other value, padded to the placeholder's width.
 
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::Assert;
 import Format::Render;
 import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
@@ -56,8 +56,7 @@ func Main() -> int {
     Assert(Ip("ff02::1").IsMulticast() && !Ip("fe02::1").IsMulticast(), "IPv6 multicast is ff00::/8");
 
     // Display, with the placeholder's width applied.
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
     let socket = SocketAddress(Ip("::ffff:192.0.2.1"), 8080u16);
     let ipv4 = Ipv4Address(127u8, 0u8, 0u8, 1u8);
     let ipv6 = Ipv6Address::Localhost();

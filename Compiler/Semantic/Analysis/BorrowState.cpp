@@ -1229,57 +1229,14 @@ void AnalysisContext::CheckViewEscape(const Expr &value, const TypeRef &type, co
               "return an owned container such as a 'Vector', or take the storage as a parameter");
 }
 
-bool AnalysisContext::MakesFrameInterfaceValue(const Expr &value, const TypeRef &valueType, const TypeRef &targetType) {
-    const auto isInterface = [this](const TypeRef &type) {
-        return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
-    };
-    // An optional interface value holds one in place, so it carries the same storage when present.
-    const auto holdsInterface = [&](const TypeRef &type) {
-        return isInterface(type) ||
-               (!type.IsUnknown() && type.IsOptional() && type->inner.size() == 1 && isInterface(type->inner.front()));
-    };
-    if (!holdsInterface(targetType) || valueType.IsUnknown()) {
-        return false;
-    }
-    if (!holdsInterface(valueType)) {
-        return true;
-    }
-    const auto *identifier = AstCast<const IdentExpr>(&value);
-    const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
-    return symbol != nullptr && frameInterfaceLocals.contains(symbol);
-}
-
-bool AnalysisContext::IsHolderCoercion(const TypeRef &valueType, const TypeRef &targetType) {
-    const auto isInterface = [this](const TypeRef &type) {
-        return !type.IsUnknown() && type->kind == TypeRef::Kind::Named && interfaceDecls.contains(type->name);
-    };
-    return isInterface(targetType) && !valueType.IsUnknown() && !isInterface(valueType) &&
-           MayNeedDestruction(valueType);
-}
-
-void AnalysisContext::RecordInterfaceHolder(const Expr &value, const LetStmt &owner, std::string place,
-                                            const TypeRef &type) {
-    InterfaceHolderSite site{&owner, std::move(place), type};
-    auto &holders = interfaceHolders[&owner];
-    if (std::ranges::none_of(holders, [&](const InterfaceHolderSite &holder) {
-            return holder.place == site.place && holder.type == site.type;
-        })) {
-        holders.push_back(site);
-    }
-    interfaceHolderSites.insert_or_assign(&value, std::move(site));
-}
-
 void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value, const TypeRef &targetType,
                                           const SourceLocation location) {
-    const bool makesFrameInterface = MakesFrameInterfaceValue(value, CheckedExpressionType(value), targetType);
-    if (targetType.IsUnknown() || (!TypeHoldsView(targetType) && !makesFrameInterface)) {
+    if (targetType.IsUnknown() || !TypeHoldsView(targetType)) {
         return;
     }
     // Walk to the name the target is part of, noting whether the way there leaves the local's own storage.
     const Expr *root = &target;
     bool throughIndirection = false;
-    bool throughIndex = false;
-    std::vector<std::string_view> fields;
     const auto indirect = [this](const Expr &object, const bool viewIsIndirect) {
         const TypeRef objectType = CheckedExpressionType(object);
         return objectType->kind == TypeRef::Kind::Pointer || objectType->kind == TypeRef::Kind::Reference ||
@@ -1288,12 +1245,10 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
     while (true) {
         if (const auto *field = AstCast<const FieldExpr>(root)) {
             throughIndirection = throughIndirection || indirect(*field->object, false);
-            fields.push_back(field->field);
             root = field->object.get();
         }
         else if (const auto *index = AstCast<const IndexExpr>(root)) {
             throughIndirection = throughIndirection || indirect(*index->object, true);
-            throughIndex = true;
             root = index->object.get();
         }
         else if (const auto *unary = AstCast<const UnaryExpr>(root); unary && unary->op == TokenKind::Star) {
@@ -1312,52 +1267,6 @@ void AnalysisContext::CheckViewAssignment(const Expr &target, const Expr &value,
         return;
     }
     const bool local = functionLocals.contains(symbol);
-    const bool keptInCall = local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference &&
-                            symbol->type->kind != TypeRef::Kind::Pointer;
-    if (makesFrameInterface) {
-        // A local keeps it, as a view of a local array; storage that outlives the call cannot hold it.
-        if (keptInCall) {
-            frameInterfaceLocals.insert(symbol);
-            // The value is kept with the local it is stored in, so it lives as long as the local and the next value of
-            // its type stored at the same place replaces it. An element of an array has no place of its own here.
-            const auto owner = localDeclarations.find(symbol);
-            // An element has no place of its own, so the value lives in storage of the block that made it: a block
-            // inside the one that declared the array ends, or runs again, while the element still points at it.
-            const TypeRef valueType = CheckedExpressionType(value);
-            if (const auto declared = localScopes.find(symbol);
-                throughIndex && declared != localScopes.end() && declared->second != currentScope &&
-                !valueType.IsUnknown() &&
-                !(valueType->kind == TypeRef::Kind::Named && interfaceDecls.contains(valueType->name))) {
-                EmitError(location,
-                          std::format("an interface value made in this block cannot be stored in an element of '{}', "
-                                      "which outlives the block",
-                                      symbol->name),
-                          {"the value it is made from lives in the block, which a loop runs again and every exit ends"},
-                          std::format("store the concrete values in the array, or make the interface value in the "
-                                      "block that declares '{}'",
-                                      symbol->name));
-            }
-            if (!throughIndex && owner != localDeclarations.end() &&
-                IsHolderCoercion(CheckedExpressionType(value), targetType)) {
-                std::string place;
-                for (auto name = fields.rbegin(); name != fields.rend(); ++name) {
-                    place += place.empty() ? std::string(*name) : std::format(".{}", *name);
-                }
-                RecordInterfaceHolder(value, *owner->second, std::move(place), CheckedExpressionType(value));
-            }
-        }
-        else {
-            const std::string function =
-                currentFunctionDecl ? std::format("'{}'", currentFunctionDecl->name) : "the function";
-            EmitError(location,
-                      std::format("cannot store an interface value made in {} where it outlives the call", function),
-                      {std::format("it points at storage {} gives up when it returns", function)},
-                      "store the concrete value, and make the interface value where it is used");
-        }
-        if (!TypeHoldsView(targetType)) {
-            return;
-        }
-    }
     if (local && !throughIndirection && symbol->type->kind != TypeRef::Kind::Reference) {
         RecordViewSources(*symbol, value, targetType);
         return;

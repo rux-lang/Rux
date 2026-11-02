@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Format::Render;
 import Text::{ FormatError, String, StringView };
@@ -25,8 +25,7 @@ func Refused(reason: FormatError) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // The shortest digits, placed after one leading digit.
     Assert(Same(try? Render(allocator, "{:e}", 123456.0), "1.23456e+05"), "the shortest digits, in scientific form");

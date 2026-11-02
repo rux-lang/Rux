@@ -944,13 +944,21 @@ LirReg HirToLirContext::LowerMatchExpr(const HirMatchExpr &e) {
 void HirToLirContext::StoreCoerceToInterface(const HirCoerceToInterfaceExpr &e, LirReg slot) {
     LirReg concreteSlot = LirNoReg;
     if (e.borrowed) {
-        concreteSlot = e.value->type->kind == TypeRef::Kind::Reference ? LowerExpr(*e.value) : LowerLValue(*e.value);
+        const bool address =
+            e.value->type->kind == TypeRef::Kind::Reference || e.value->type->kind == TypeRef::Kind::Pointer;
+        concreteSlot = address ? LowerExpr(*e.value) : LowerLValue(*e.value);
     }
     else {
         concreteSlot = EmitAlloca(e.value->type);
         // Use the same materialization as a local binding: aggregate expressions may produce storage addresses,
-        // and the interface must own a complete concrete value for the duration of the call.
+        // and the view must reach a complete concrete value for the duration of its use.
         StoreExprIntoSlot(*e.value, concreteSlot, e.value->type);
+        // A stateless value has nothing to read, so the handle points at its method table, which lives as long as
+        // the program, rather than at storage of this frame that a copy of the handle could outlive.
+        if (e.stateless) {
+            concreteSlot =
+                e.vtableLabel.empty() ? EmitConst("0", TypeRef::MakeUInt64()) : EmitGlobalAddr(e.vtableLabel);
+        }
     }
 
     const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());

@@ -50,8 +50,7 @@ func RefusedAt(allocator: Allocator, format: char8[..], offset: uint) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Width and alignment: numbers sit right by default, text left, and a named fill replaces the space.
     let right = Rendered(allocator, try? Render(allocator, "[{:6}]", 42));

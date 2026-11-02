@@ -24,8 +24,7 @@ func NameOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> OsS
 }
 
 func Main() -> int throws IoError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemDir.tmp", dirHolder);

@@ -1,0 +1,4 @@
+55:25: error: making interface value 'Counter' from pointer '*var Cell' requires 'unsafe'
+58:35: error: cannot make interface value 'Counter' from read-only pointer '*Cell'
+62:24: error: call to unsafe method 'Handle' requires 'unsafe'
+63:22: error: argument 1 to 'Count' has type 'Cell', but parameter 'counter' requires '&var Counter'

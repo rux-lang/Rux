@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ CString, StringView, TextError };
 
@@ -8,8 +8,7 @@ import Text::{ CString, StringView, TextError };
 // it, and the bytes are validated because nothing about C promises text.
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // Out: ordinary text picks up its terminator, invisible from the Rux side.
     let text = StringView::FromValidated("hello");

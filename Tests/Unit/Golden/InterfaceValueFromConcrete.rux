@@ -1,0 +1,71 @@
+// An interface value is a handle to an implementation stored elsewhere and copies nothing, so no conversion makes one
+// from a value with state: not an annotation, an argument, a field, a return, an assignment, an optional, an array
+// element, a borrowed view or a generic parameter. A stateless value converts anywhere, and a handle is passed on.
+
+interface Named {
+    func Id(&self) -> int;
+}
+
+struct Plain {
+    id: int;
+}
+
+extend Plain : Named {
+    func Id(&self) -> int {
+        return self.id;
+    }
+}
+
+struct Nothing {}
+
+extend Nothing : Named {
+    func Id(&self) -> int {
+        return 0;
+    }
+}
+
+struct Holder {
+    named: Named;
+}
+
+func Take(value: Named) -> int {
+    return value.Id();
+}
+
+func Make() -> Named {
+    return Plain { id: 4 };
+}
+
+func Escape(view: &Named) -> int {
+    let kept: Named = view;
+    return kept.Id();
+}
+
+func Erase<T: Named>(value: T) -> int {
+    let erased: Named = value;
+    return erased.Id();
+}
+
+func Stateless() -> Named {
+    return Nothing {};
+}
+
+func Forward(value: Named) -> Named {
+    let copy = value;
+    return copy;
+}
+
+func Main() -> int {
+    let plain = Plain { id: 1 };
+    let annotated: Named = plain;
+    let passed = Take(plain);
+    let held = Holder { named: plain };
+    var replaced: Named = Nothing {};
+    replaced = plain;
+    let present: Named? = plain;
+    let items: Named[1] = [plain];
+    let borrowed: &Named = plain;
+    let temporary: &Named = Plain { id: 2 };
+    let fine = Take(Nothing {});
+    return borrowed.Id() + temporary.Id() + fine + Forward(Stateless()).Id();
+}

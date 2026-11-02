@@ -17,7 +17,7 @@ func Displayed(error: DecodeError, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    let shown: Display = error;
+    let shown: DecodeError = error;
     if (try? shown.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -26,7 +26,7 @@ func Inspected(error: DecodeError, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    let inspected: Debug = error;
+    let inspected: DecodeError = error;
     if (try? inspected.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }

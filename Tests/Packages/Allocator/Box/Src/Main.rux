@@ -40,8 +40,7 @@ func BoxAndTake(allocator: Allocator, destroyed: *var int32) throws AllocError {
 }
 
 func Main() throws AllocError {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     // An ordinary box holds its value and lends it where it sits in the box's own storage.
     var boxed = Box<int64>(allocator, 42);

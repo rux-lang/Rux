@@ -13,9 +13,9 @@ extend Point : Equatable {
 }
 
 func Main() {
-    // Through an interface value the implementing type is unknown, so a method
+    // Through an interface view the implementing type is unknown, so a method
     // naming 'Self' cannot be paired with an operand here.
-    let left: Equatable = Point { x: 1i32 };
-    let right: Equatable = Point { x: 2i32 };
+    let left: &Equatable = Point { x: 1i32 };
+    let right: &Equatable = Point { x: 2i32 };
     let same = left.Equals(right);
 }

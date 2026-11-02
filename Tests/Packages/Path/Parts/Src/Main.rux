@@ -39,8 +39,7 @@ func Native(allocator: Allocator, text: char8[..]) -> OsString {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let deep = Native(allocator, "/a/b/c.tar.gz");
     let deepPath = PathOf(deep);

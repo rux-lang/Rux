@@ -1,4 +1,4 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::SystemAllocator;
 import Core::{ Assert, Panic };
 import Text::{ Replace, StringView, ToAsciiLower, ToAsciiUpper };
 
@@ -10,8 +10,7 @@ func View(bytes: char8[..]) -> StringView {
 }
 
 func Main() -> int {
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let allocator = SystemAllocator();
 
     let text = View("one,two,,three");
     let replaced = Replace(allocator, text, View(","), View(" - "));
