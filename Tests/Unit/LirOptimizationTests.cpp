@@ -237,6 +237,53 @@ TEST_CASE("LIR propagation joins constants and exposes a constant branch to CFG 
     CHECK(blocks[4].label == "taken");
 }
 
+TEST_CASE("LIR propagation folds float addition, subtraction and multiplication") {
+    LirFunc function;
+    function.name = "FoldFloats";
+    function.blocks.resize(1);
+    const auto constant = [&](const LirReg dst, const char *value) {
+        LirInstr instruction;
+        instruction.dst = dst;
+        instruction.op = LirOpcode::Const;
+        instruction.type = TypeRef::MakeFloat64();
+        instruction.strArg = value;
+        function.blocks[0].instrs.push_back(std::move(instruction));
+    };
+    const auto binary = [&](const LirReg dst, const LirOpcode op) {
+        LirInstr instruction;
+        instruction.dst = dst;
+        instruction.op = op;
+        instruction.type = TypeRef::MakeFloat64();
+        instruction.srcs = {0, 1};
+        function.blocks[0].instrs.push_back(std::move(instruction));
+    };
+    constant(0, "1.5");
+    constant(1, "0.5");
+    binary(2, LirOpcode::Add);
+    binary(3, LirOpcode::Sub);
+    binary(4, LirOpcode::Mul);
+    function.blocks[0].term = ReturnValue();
+
+    LirModule module;
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    Optimization::LirPassPipeline pipeline(BuildProfile::Release);
+    pipeline.Add(std::make_unique<Optimization::LirConstantPropagation>());
+    const auto report = pipeline.Run(package);
+
+    CHECK_FALSE(report.HasErrors());
+    const auto &instructions = package.modules[0].funcs[0].blocks[0].instrs;
+    REQUIRE(instructions.size() == 5);
+    for (std::size_t index = 2; index < instructions.size(); ++index) {
+        CHECK(instructions[index].op == LirOpcode::Const);
+    }
+    CHECK(instructions[2].strArg == "0x1.0p1");
+    CHECK(instructions[3].strArg == "0x1.0p0");
+    CHECK(instructions[4].strArg == "0x1.8p-1");
+}
+
 TEST_CASE("LIR propagation copies only into pure users") {
     LirFunc function;
     function.name = "CopyJoin";

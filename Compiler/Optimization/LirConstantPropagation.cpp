@@ -325,7 +325,24 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const KnownValue left = Resolve(values, instruction.srcs[0]);
         const KnownValue right = Resolve(values, instruction.srcs[1]);
         if (left.constant && right.constant) {
-            if (auto result = EvaluateBinary(*token, *left.constant, *right.constant)) {
+            // A float operation has no wrapping form: it rounds, so it folds as the plain operator.
+            TokenKind op = *token;
+            if (left.constant->GetKind() == TypedConstant::Kind::Floating) {
+                switch (op) {
+                case TokenKind::PlusPercent:
+                    op = TokenKind::Plus;
+                    break;
+                case TokenKind::MinusPercent:
+                    op = TokenKind::Minus;
+                    break;
+                case TokenKind::StarPercent:
+                    op = TokenKind::Star;
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (auto result = EvaluateBinary(op, *left.constant, *right.constant)) {
                 return KnownValue{result, std::nullopt};
             }
         }
