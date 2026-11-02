@@ -662,6 +662,11 @@ std::string AstToHirContext::LowerLiteralValue(const LiteralExpr &expression) co
         return DecodeCharLiteral(expression.token.text);
     }
     if (expression.token.kind == TokenKind::StringLiteral) {
+        // A format string written with named placeholders reaches the formatter in its positional form, the names'
+        // values following as arguments.
+        if (const NamedFormatArguments *named = model.TryGetNamedFormat(expression)) {
+            return DecodeStringLiteral(named->positional);
+        }
         return DecodeStringLiteral(expression.token.text);
     }
     if (expression.token.kind == TokenKind::IntLiteral || expression.token.kind == TokenKind::FloatLiteral) {

@@ -692,7 +692,7 @@ TEST_CASE("a format string the compiler cannot count is left to the run-time che
             Show(pattern, one);
             let values: int32[2] = [1i32, 2i32];
             Show("{}", values[..]...);
-            Show("{0} {name}", one);
+            Show("{0} {+}", one);
             Show("{", one);
             Plain("{} {}", one);
             Show("\u{7B}\u{7D}", one);

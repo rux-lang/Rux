@@ -239,6 +239,15 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
     for (std::size_t i = fixedCount; i < call.args.size(); ++i) {
         slice->elements.push_back(LowerArgumentAs(*call.args[i], elementType));
     }
+    // The values a format string's named placeholders stand for follow, as the arguments its positional form takes.
+    for (std::size_t i = 0; i < std::min(call.args.size(), fixedCount); ++i) {
+        const auto *literal = AstCast<const LiteralExpr>(call.args[i].get());
+        if (const NamedFormatArguments *named = literal ? model.TryGetNamedFormat(*literal) : nullptr) {
+            for (const auto &value : named->values) {
+                slice->elements.push_back(LowerArgumentAs(*value, elementType));
+            }
+        }
+    }
     arguments.push_back(std::move(slice));
     return arguments;
 }

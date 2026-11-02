@@ -1,0 +1,19 @@
+// A named placeholder names a binding or a field path in scope: a name nothing declares is reported where the
+// placeholder writes it, one literal names every placeholder or none, and an expression inside the braces is passed
+// as an argument instead. A literal for a parameter without '#Format()' is plain text.
+func Log(#Format() format: char8[..], values: int32...) {}
+func Show(text: char8[..]) {}
+
+func Main() -> int {
+    let count = 3i32;
+    Log("{count} of {total}");
+    Log("{count} and {}", count);
+    Log("{count} twice", count);
+    Log("{Twice(count)}");
+    Show("{total} is text here");
+    return 0;
+}
+
+func Twice(value: int32) -> int32 {
+    return value * 2i32;
+}

@@ -1,0 +1,4 @@
+9:22: error: name 'total' is not defined in this scope
+10:9: error: format string mixes named and positional placeholders
+11:26: error: a format string with named placeholders takes no arguments after it
+12:11: error: format placeholder '{Twice(count)}' must name a binding or a field path

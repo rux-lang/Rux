@@ -8,6 +8,7 @@
 #include "Types/Type.h"
 #include "Types/TypeProperties.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -359,6 +360,14 @@ struct InterfaceHolderSite {
     friend bool operator==(const InterfaceHolderSite &, const InterfaceHolderSite &) = default;
 };
 
+/// A format string written with named placeholders, as `"{key} = {value:>8}"`: the positional form the formatter reads,
+/// as string-literal token text with each placeholder's name removed, and the values the names stand for, which the
+/// call passes after its own arguments, in placeholder order. Analysis builds the value expressions and owns them.
+struct NamedFormatArguments {
+    std::string positional;
+    std::vector<std::shared_ptr<const Expr>> values;
+};
+
 struct SemanticFacts {
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> constantReferences;
@@ -414,6 +423,8 @@ struct SemanticFacts {
     /// For a call whose argument labels skip parameters with default values, the parameter each argument binds, in
     /// the selected declaration's argument parameters.
     std::unordered_map<const CallExpr *, std::vector<std::size_t>> argumentSlots;
+    /// Each format-string literal written with named placeholders and passed to a `#Format` parameter.
+    std::unordered_map<const LiteralExpr *, NamedFormatArguments> namedFormats;
     /// The function or module variable each name in an asm body stands for, which lowering spells by linker name.
     std::unordered_map<const AsmOperand *, const Decl *> asmSymbolDeclarations;
     /// The holder each value made into an interface value is kept in, and the holders each local declares.
@@ -527,6 +538,9 @@ struct SemanticModel {
     [[nodiscard]] const std::string *TryGetFunctionLiteralName(const FuncLiteralExpr &literal) const noexcept;
     /// The parameter each argument of `call` binds when its labels skip parameters, or null when they bind in order.
     [[nodiscard]] const std::vector<std::size_t> *TryGetArgumentSlots(const CallExpr &call) const noexcept;
+    /// The positional form and the values of a format string written with named placeholders, or null for any other
+    /// literal.
+    [[nodiscard]] const NamedFormatArguments *TryGetNamedFormat(const LiteralExpr &literal) const noexcept;
     /// The function or module variable an asm operand's symbol names, or null for a label or an extern.
     [[nodiscard]] const Decl *TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept;
     /// The holder a value made into an interface value is kept in, or null for one its scope keeps.

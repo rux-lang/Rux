@@ -287,6 +287,11 @@ const std::vector<std::size_t> *SemanticModel::TryGetArgumentSlots(const CallExp
     return slots == facts.argumentSlots.end() ? nullptr : &slots->second;
 }
 
+const NamedFormatArguments *SemanticModel::TryGetNamedFormat(const LiteralExpr &literal) const noexcept {
+    const auto named = facts.namedFormats.find(&literal);
+    return named == facts.namedFormats.end() ? nullptr : &named->second;
+}
+
 const InterfaceHolderSite *SemanticModel::TryGetInterfaceHolderSite(const Expr &value) const noexcept {
     const auto site = facts.interfaceHolderSites.find(&value);
     return site == facts.interfaceHolderSites.end() ? nullptr : &site->second;

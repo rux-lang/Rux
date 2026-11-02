@@ -172,7 +172,7 @@ func PropagationCases(allocator: Allocator) {
     var counting = CountingAllocator { inner: allocator, counts: @counts };
     let counted: Allocator = counting;
     Assert(InvalidAt(Render(counted, "é 😀 {} {:>>>}", 1, 2), 15), "embedded specification positions count UTF-8 bytes");
-    Assert(InvalidAt(Render(counted, "é 😀 {} {bad}", 1, 2), 12), "a malformed later placeholder retains its absolute byte offset");
+    Assert(InvalidAt(Render(counted, Pattern("é 😀 {} {bad}"), 1, 2), 12), "a malformed later placeholder retains its absolute byte offset");
     Assert(InvalidAt(Render(counted, "é {} tail {", 1), 11), "an unterminated later placeholder points at its opening byte");
     Assert(MismatchOf(Render(counted, Pattern("é {} {} {}"), 1), 3, 1), "both words of argument-count failures survive Render");
     Assert(counts.live == 0 && counts.allocations == 4 && counts.releases == 4 && counts.invalidReleases == 0,
@@ -248,10 +248,11 @@ func Main() -> int {
     if !InvalidAt(Render(allocator, "a{b"), 1) { return 54; }
 
     // Between the braces, a specification opens with a colon and nothing else does. Positional and named arguments
-    // are not part of this grammar, so the offset is the first character that is not a colon.
-    if !InvalidAt(Render(allocator, "{x} {}", 1), 1) { return 55; }
+    // are not part of the run-time grammar, so the offset is the first character that is not a colon. A literal with
+    // a named placeholder is rewritten while compiling, so these patterns reach the formatter as values.
+    if !InvalidAt(Render(allocator, Pattern("{x} {}"), 1), 1) { return 55; }
     if !InvalidAt(Render(allocator, "{0}", 1), 1) { return 56; }
-    if !InvalidAt(Render(allocator, "ok {name}", 1), 4) { return 57; }
+    if !InvalidAt(Render(allocator, Pattern("ok {name}"), 1), 4) { return 57; }
 
     // A specification that does not parse is a refusal, and its offset is into the pattern rather than into the
     // specification — which is the case a test checking only the reason would pass with every offset at zero.

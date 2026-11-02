@@ -1248,6 +1248,7 @@ private:
     std::unordered_map<const Expr *, ResolvedCallableBinding> &functionReferenceBindings;
     std::unordered_map<const FuncLiteralExpr *, std::string> &functionLiterals;
     std::unordered_map<const CallExpr *, std::vector<std::size_t>> &argumentSlots;
+    std::unordered_map<const LiteralExpr *, NamedFormatArguments> &namedFormats;
     std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;
     std::unordered_map<const Expr *, InterfaceHolderSite> &interfaceHolderSites;
     std::unordered_map<const LetStmt *, std::vector<InterfaceHolderSite>> &interfaceHolders;
@@ -1692,6 +1693,11 @@ private:
     /// declaration's variadic parameter collects, and reports a mismatch. A spread argument, a format that is not a
     /// literal, and a malformed pattern are left to the run-time check.
     void CheckFormatArguments(const CallExpr &call, const FuncDecl &declaration, bool isMethod);
+    /// Rewrites a format-string literal written with named placeholders, as `"{key} = {value}"`, into its positional
+    /// form and the values its names stand for, checked as the variadic arguments they become. Returns false when the
+    /// literal has no named placeholder, leaving it to the positional count.
+    bool CheckNamedFormat(const CallExpr &call, const LiteralExpr &literal, const FuncDecl &declaration,
+                          std::size_t providedCount);
     /// The element type the destination of `array` fixes, when it fixes one its elements can be converted to.
     [[nodiscard]] std::optional<TypeRef> ExpectedArrayElementType(const ArrayExpr &array) const;
 

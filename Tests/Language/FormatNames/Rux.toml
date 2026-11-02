@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FormatNames"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Named placeholders in format strings: bindings and field paths, with and without a spec"
+
+[Dependencies]
+Allocator = { Path = "../../../Packages/Allocator" }
+Core = { Path = "../../../Packages/Core" }
+Format = { Path = "../../../Packages/Format" }
+Text = { Path = "../../../Packages/Text" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"
