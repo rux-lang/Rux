@@ -342,6 +342,7 @@ void AnalysisContext::RecordPatternBinding(const Pattern &pattern, Symbol &symbo
     // need belongs to the subject.
     patternBindingModes.insert_or_assign(&pattern, view ? PatternBindingMode::View : PatternBindingMode::Alias);
     symbol.isSubsetView = view;
+    symbol.isBorrowedBinding = true;
     symbol.isMut = currentPatternBorrow == PatternBorrow::Exclusive && !view;
 }
 

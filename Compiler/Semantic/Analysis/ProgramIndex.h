@@ -36,6 +36,9 @@ struct Symbol {
     /// A binding that views several members of a borrowed sum: it can be inspected and copied, but its tags belong
     /// to the subject, so it is never borrowed, addressed, or moved.
     bool isSubsetView = false;
+    /// A binding a pattern made over a borrowed subject: it names the subject's storage, which the binding does not
+    /// own, so it is never moved out of.
+    bool isBorrowedBinding = false;
     bool isPublic = false;
     bool isEffectivelyPublic = false;
     std::string ownerPackage;

@@ -1,0 +1,22 @@
+// A pattern over a borrowed subject binds names to the subject's own storage, so nothing may be moved out of them;
+// a pattern over an owned subject, written `match move subject`, binds values it may move.
+struct Token { id: int; }
+
+extend Token {
+    func ~Token(&var self) {}
+}
+
+func Take(token: Token) -> int { return token.id; }
+
+func FromReference(holder: &(Token?)) -> int {
+    if holder is .Some(token) { return Take(move token); }
+    return 0;
+}
+
+func FromOwned(holder: Token?) -> int {
+    return match move holder { .Some(token) => Take(move token), none => 0 };
+}
+
+func Main() -> int {
+    return 0;
+}

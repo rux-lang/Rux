@@ -905,6 +905,16 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
             break;
         }
     }
+    // A pattern over a borrowed subject binds a name to the subject's own storage, which belongs to whoever lent it.
+    if (const auto *identifier = AstCast<const IdentExpr>(root)) {
+        if (const Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->isBorrowedBinding) {
+            EmitError(location,
+                      std::format("cannot move out of '{}', which a pattern bound to borrowed storage", symbol->name),
+                      {"a pattern over a borrowed subject names the subject's storage rather than owning a value"},
+                      "match an owned value to take its payload, as in 'match move subject', or clone the binding");
+            return false;
+        }
+    }
     if (const auto global = globalReferences.find(root); global != globalReferences.end()) {
         const auto *module = AstCast<const GlobalDecl>(global->second);
         const auto *external = AstCast<const ExternVarDecl>(global->second);

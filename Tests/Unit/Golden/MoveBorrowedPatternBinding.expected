@@ -1,0 +1,1 @@
+12:45: error: cannot move out of 'token', which a pattern bound to borrowed storage
