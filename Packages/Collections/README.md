@@ -55,7 +55,7 @@ Running out of memory terminates the program. `Push`, `Insert`, `Reserve`, `Clon
 
 A `Try*` operation throws `Unsupported` for a size no allocator could serve, and otherwise what the allocator refused with; `AllocError::IsTransient` says whether trying again could help.
 
-What is left for a caller to handle is an index the collection does not have. `Set`, `Replace` and a vector's `Insert` report it through `! CollectionError`, whose one case is `IndexOutOfRange`:
+What is left for a caller to handle is an index the collection does not have. `Set`, `Replace` and a vector's `Insert` throw `CollectionError`, whose one case is `IndexOutOfRange`, so a call to one is marked with `try`:
 
 ```rux
 enum CollectionError: uint8 {
@@ -88,7 +88,7 @@ Containers talk to the allocator in elements rather than bytes, through three he
 
 ## Ownership
 
-Every owning container prohibits copying. Hand one to a consuming function with `<-`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
+Every owning container prohibits copying. Hand one to a consuming function with `move`, as in `Consume(move values)`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
 
 Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`, `HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
@@ -100,7 +100,7 @@ A container destroys an element it does not know is droppable by relocating it f
 
 ## Elements that own something
 
-`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. Pass a named move-only element explicitly, for example `values.Push(<-value)`. Each element is destroyed exactly once, when it is removed without being returned or when its container dies. `Pop`, removals, and consuming iterators move elements back out.
+`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. Pass a named move-only element explicitly, for example `values.Push(move value)`. Each element is destroyed exactly once, when it is removed without being returned or when its container dies. `Pop`, removals, and consuming iterators move elements back out.
 
 `Array`'s constructors copy, so an array of owning elements has to be built through a vector first.
 
@@ -112,7 +112,7 @@ Whether handing a value to a generic container consumes it depends on what its e
 
 All three borrow their storage. The storage must outlive the iterator and every pointer it yields. Array and Vector provide `References()` and `MutableReferences()`; the writable form borrows the container mutably when the cursor is created and visits only initialized elements.
 
-`IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
+`IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(move values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
 
 A `for` loop over an iterator _variable_ advances that variable, so a loop that stops early leaves it where the walk stopped and a later loop or `Next` call resumes there. Iterate over a fresh iterator, or over the container, to walk from the start without touching the caller's.
 
@@ -145,7 +145,7 @@ let count = counts.GetOrInsert(word, 0);
 count = count + 1;
 ```
 
-One probe when the key is present, and the key named once. `Replace` is the other half: it stores a value and hands back the one that was there, where `Insert` throws it away.
+`GetOrInsert` lends the stored value as a `&var V`, so the write goes straight into the map. One probe when the key is present, and the key named once. `Replace` is the other half: it stores a value and hands back the one that was there, where `Insert` throws it away.
 
 `RemoveEntry` hands back both halves, so a key that owns something leaves intact too — and it hands back the _stored_ key rather than the one looked up. The two compare equal, but a key type carrying anything the equality ignores makes them different values, and the map's is the one it kept.
 

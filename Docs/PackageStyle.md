@@ -116,7 +116,7 @@ The block follows the prose directly, with no empty `///` line before it: a tag 
 
 - `@typeParam` is required for every declared type parameter.
 - `@param` is required for every named callable parameter except the `self` receiver. An unnamed variadic tail has no tag.
-- `@returns` is required for every value-returning callable, excluding destructors and functions marked `#NoReturn()`.
+- `@returns` is required for every value-returning callable, excluding destructors and functions marked `#NoReturn`.
 - `@see` carries the canonical API URL. A field or a case may rely on the URL of the type that contains it rather than repeating one.
 
 A bare URL written as prose is not a structured reference. `@see` is what gives a URL a defined documentation role, and it is what the generator renders into a See Also section. An unresolved external `@see` target may still render as code text rather than a live link; adopting the tag does not promise otherwise.

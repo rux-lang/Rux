@@ -8,7 +8,7 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## The constraint that chooses the algorithm
 
-Ordinary rendering allocates no working storage. That is a release constraint rather than a preference: `Display` is what a value implements to describe itself, an implementation is reached from a placeholder in the middle of writing something else, and a rendering that can fail for want of memory makes every `{}` a fallible operation for a reason that has nothing to do with the value. So a narrow float's conversion has to run in storage whose size is known when the code is compiled.
+Ordinary rendering allocates no working storage. That is a release constraint rather than a preference: `Display` is what a value implements to describe itself, an implementation is reached from a placeholder in the middle of writing something else, and a rendering that can fail for want of memory makes every `{}` a call that can throw for a reason that has nothing to do with the value. So a narrow float's conversion has to run in storage whose size is known when the code is compiled.
 
 That rules out the table-driven shortest-representation algorithms in their published forms. Grisu3, Ryū and Schubfach are all faster than what is chosen here, and all three carry lookup tables of pre-computed powers — Ryū's is roughly ten kilobytes for `float64` — which would have to be generated, checked and carried as data. Grisu3 additionally has a fallback path for the inputs it cannot answer, and a fallback is exactly what the plan forbids.
 
