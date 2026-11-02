@@ -14,9 +14,8 @@ bool Parser::CanStartType() const noexcept {
                      TokenKind::SelfKeyword, TokenKind::VarKeyword, TokenKind::Bang});
 }
 
-/// A complete type: a sum, optionally followed by one `!` and the error sum, or a leading `!` and the error sum for a
-/// unit success. `|` binds more tightly than `!`, so `A | B ! E | F` is `(A | B) ! (E | F)`, and a second
-/// unparenthesized `!` is reported rather than read as a nested fallible.
+/// A complete type: a sum. The removed fallible spelling `T ! E` (or `! E`) is reported and read as one, so a function
+/// signature that still writes it parses on.
 TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
     const auto loc = CurrentLocation();
     TypeExprPtr success;
@@ -26,20 +25,14 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
             return success;
         }
     }
+    EmitError(CurrentLocation(), "'T ! E' is not a type",
+              "declare the error after the return type, as in '-> T throws E', or store an outcome in 'Result<T, E>'");
     Advance(); // consume '!'
     auto fallible = std::make_unique<FallibleTypeExpr>();
     fallible->location = loc;
     fallible->success = std::move(success);
     fallible->error = ParseSumType("add the error type after '!'");
-    if (const auto *optional = AstCast<const OptionalTypeExpr>(fallible->error.get());
-        optional && !optional->parenthesized) {
-        EmitError(optional->location, "an optional error type must be grouped",
-                  "write 'T ! (E?)' for an optional error, or '(T ! E)?' for an optional result");
-    }
-    if (Check(TokenKind::Bang)) {
-        EmitError(CurrentLocation(), "a type contains at most one unparenthesized '!'",
-                  "group the nested fallible, as in '(T ! E) ! F' or 'T ! (E ! F)'");
-        Advance();
+    while (Match(TokenKind::Bang)) {
         ParseSumType();
     }
     return fallible;
@@ -376,13 +369,6 @@ void Parser::ParseThrowsClause(std::optional<TypeExprPtr> &returnType) {
     }
     const SourceLocation location = CurrentLocation();
     Advance(); // consume 'throws'
-    if (returnType && *returnType) {
-        if (const auto *fallible = AstCast<const FallibleTypeExpr>(returnType->get());
-            fallible && !fallible->parenthesized) {
-            EmitError(location, "a function that returns 'T ! E' cannot also declare 'throws'",
-                      "write the error once, as in '-> T throws E'");
-        }
-    }
     auto fallible = std::make_unique<FallibleTypeExpr>();
     fallible->throwsClause = true;
     fallible->success = returnType ? std::move(*returnType) : nullptr;

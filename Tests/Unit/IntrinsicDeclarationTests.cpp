@@ -795,7 +795,7 @@ TEST_CASE("duplicate extension constants are rejected") {
 TEST_CASE("ordinary generic Slice methods retain ordinary receiver identity") {
     auto parsed = ParseIntrinsicSource(R"(
 struct UserView<T> { pub value: T; }
-extend UserView<T> { pub func Value(self: &UserView<T>) -> T { return self.value; } }
+extend UserView<T> { pub func Value(&self) -> T { return self.value; } }
 func Main() -> uint8 { let value = UserView<uint8> { value: 7u8 }; return value.Value(); }
 )");
     const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
@@ -823,7 +823,7 @@ TEST_CASE("an intrinsic function the compiler does not implement is rejected") {
     auto parsed = ParseIntrinsicSource(R"(
 struct Target {}
 intrinsic func Frobnicate(value: int) -> int;
-extend Target { intrinsic func Measure(self: &Target) -> uint; }
+extend Target { intrinsic func Measure(&self) -> uint; }
 )");
     const auto messages = DiagnosticMessages(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze());
     REQUIRE_EQ(messages.size(), 2);
@@ -837,15 +837,12 @@ pub struct Target {}
 pub struct Compiler {}
 pub struct Config {}
 pub enum TargetFeature { SSE2 }
-extend Target { pub intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool; }
-extend Compiler { pub intrinsic func HasFeature(self: &Compiler, feature: char8[..]) -> bool; }
+extend Target { pub intrinsic func HasFeature(&self, feature: TargetFeature) -> bool; }
+extend Compiler { pub intrinsic func HasFeature(&self, feature: char8[..]) -> bool; }
 extend Config {
-    pub intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
-    pub intrinsic func Has(self: &Config, name: char8[..]) -> bool;
+    pub intrinsic func Get(&self, name: char8[..]) -> char8[..];
+    pub intrinsic func Has(&self, name: char8[..]) -> bool;
 }
-pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
-pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
-pub intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;
 pub intrinsic func Assert(condition: bool, message: char8[..]);
 pub intrinsic func DebugAssert(condition: bool, message: char8[..]);
 pub intrinsic func Panic(message: char8[..]);

@@ -33,10 +33,10 @@ import Allocator::{ Allocator, SystemAllocator };
 import Io::PrintLine;
 import Text::{ String, TextError };
 
-func Main() -> ! TextError {
+func Main() throws TextError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let greeting = String::FromBytes(allocator, "Hello")?;
+    let greeting = try String::FromBytes(allocator, "Hello");
     PrintLine(greeting);
 }
 ```

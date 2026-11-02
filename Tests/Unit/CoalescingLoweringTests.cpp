@@ -47,14 +47,12 @@ const HirMatchExpr &RequireCoalescingMatch(const HirFunc &function, const std::s
 }
 } // namespace
 
-TEST_CASE("coalescing parses right-associatively between logical-or and ternary") {
+TEST_CASE("coalescing parses right-associatively between logical-or and assignment") {
     Lexer lexer(R"(
         func Read() -> int32 { return 1i32; }
         func Main(a: int32, b: int32, c: int32, flag: bool) {
             let chain = a ?? b ?? c;
             let logical = flag || flag ?? c;
-            let conditional = a ?? b ? c : a;
-            let arms = flag ? a ?? b : c ?? a;
             let propagated = Read()? ?? c;
             a = b ?? c;
         }
@@ -90,22 +88,11 @@ TEST_CASE("coalescing parses right-associatively between logical-or and ternary"
     REQUIRE(logicalLeft != nullptr);
     CHECK_EQ(logicalLeft->op, TokenKind::PipePipe);
 
-    const auto *conditional = dynamic_cast<const TernaryExpr *>(initializer(2));
-    REQUIRE(conditional != nullptr);
-    const auto *condition = dynamic_cast<const BinaryExpr *>(conditional->condition.get());
-    REQUIRE(condition != nullptr);
-    CHECK_EQ(condition->op, TokenKind::QuestionQuestion);
-
-    const auto *arms = dynamic_cast<const TernaryExpr *>(initializer(3));
-    REQUIRE(arms != nullptr);
-    CHECK(dynamic_cast<const BinaryExpr *>(arms->thenExpr.get()) != nullptr);
-    CHECK(dynamic_cast<const BinaryExpr *>(arms->elseExpr.get()) != nullptr);
-
-    const auto *propagated = dynamic_cast<const BinaryExpr *>(initializer(4));
+    const auto *propagated = dynamic_cast<const BinaryExpr *>(initializer(2));
     REQUIRE(propagated != nullptr);
     CHECK(dynamic_cast<const TryExpr *>(propagated->left.get()) != nullptr);
 
-    const auto *assignmentStatement = dynamic_cast<const ExprStmt *>(main->body->stmts[5].get());
+    const auto *assignmentStatement = dynamic_cast<const ExprStmt *>(main->body->stmts[3].get());
     REQUIRE(assignmentStatement != nullptr);
     const auto *assignment = dynamic_cast<const AssignExpr *>(assignmentStatement->expr.get());
     REQUIRE(assignment != nullptr);
@@ -151,8 +138,7 @@ TEST_CASE("coalescing moves a move-only payload out as a plain read of its bindi
     const HirPackage package = LowerCoalescingSource(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         func Fallback() -> Handle { return Handle { value: 9i32 }; }
         func Pick(option: Handle?) -> int32 {

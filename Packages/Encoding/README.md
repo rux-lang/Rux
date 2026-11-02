@@ -30,9 +30,9 @@ import Encoding::{ Base64Decode, Base64DecodedLength, Base64Encode, Base64Encode
 func RoundTrip() -> bool {
     let message = "Many hands make light work.";
     var text: char8[64];
-    let written = Base64Encode(message, text[..], Base64Variant::UrlUnpadded) catch { else => 0 };
+    let written = try Base64Encode(message, text[..], Base64Variant::UrlUnpadded) catch { _ => 0 };
     var bytes: byte[64];
-    let read = Base64Decode(text[..written], bytes[..], Base64Variant::UrlUnpadded) catch { else => 0 };
+    let read = try Base64Decode(text[..written], bytes[..], Base64Variant::UrlUnpadded) catch { _ => 0 };
     return read == message.length && written == Base64EncodedLength(message.length, Base64Variant::UrlUnpadded);
 }
 ```

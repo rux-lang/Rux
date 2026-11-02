@@ -35,7 +35,7 @@ pub func Identity<T>(value: T) -> T {
 }
 
 extend Point {
-    pub func Twice(self: &Point) -> int32 {
+    pub func Twice(&self) -> int32 {
         return self.x * 2;
     }
 }
@@ -172,7 +172,7 @@ module App::Part{0} {{
     }}
 
     extend Counter{0} {{
-        pub func Bump(self: &var Counter{0}, by: uint32) {{
+        pub func Bump(&var self, by: uint32) {{
             self.value += by;
         }}
     }}
@@ -307,7 +307,7 @@ TEST_CASE("compiler driver never keeps a module that holds the build's time") {
                                          "    pub func Seconds() -> uint64 {\n        return #build.timestamp;\n"
                                          "    }\n}\n");
     write(appRoot / "Src" / "Main.rux", "import App::Stamp::Seconds;\n\nfunc Main() -> int {\n"
-                                        "    return Seconds() > 0u64 ? 0 : 1;\n}\n");
+                                        "    return if Seconds() > 0u64 { 0 } else { 1 };\n}\n");
     const auto manifest = Manifest::Load(appRoot / "Rux.toml");
     REQUIRE(manifest.Ok());
     std::vector<Diagnostic> diagnostics;

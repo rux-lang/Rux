@@ -37,8 +37,8 @@ func Lookup(key: int32) -> int32?? {
 
 func Classify(found: int32??) -> int32 {
     return match found {
-        value?? => value,
-        none? => -1i32,
+        .Some(.Some(value)) => value,
+        .Some(none) => -1i32,
         none => -2i32
     };
 }
@@ -46,7 +46,7 @@ func Classify(found: int32??) -> int32 {
 func Typed(found: int32??) -> int32 {
     return match found {
         stored: int32? => match stored {
-            value? => value,
+            .Some(value) => value,
             none => -1i32
         },
         none => -2i32
@@ -56,7 +56,7 @@ func Typed(found: int32??) -> int32 {
 func First(values: int32?[..]) -> int32? {
     for value in values {
         match value {
-            present? => return present,
+            .Some(present) => return present,
             none => {}
         }
     }
@@ -67,8 +67,8 @@ func Sum(left: int32?, right: int32?) -> int32? {
     return left? + right?;
 }
 
-func Required(value: int32?) -> int32 ! NotFound {
-    return value ?? fail NotFound {};
+func Required(value: int32?) -> int32 throws NotFound {
+    return value ?? throw NotFound {};
 }
 
 func Expensive(calls: *var int32) -> int32 {
@@ -130,14 +130,8 @@ func Main() -> int {
     let nested: int32?? = .Some(none);
     Assert((nested ?? .Some(1i32)) == none, "a present absence is a value, not absence");
 
-    let found = match Required(.Some(8i32)) {
-        .Success(value) => value,
-        .Failure(_) => -1i32
-    };
-    let notFound = match Required(none) {
-        .Success(value) => value,
-        .Failure(_) => -1i32
-    };
+    let found = try Required(.Some(8i32)) catch { _ => -1i32 };
+    let notFound = try Required(none) catch { _ => -1i32 };
     Assert(found == 8i32 && notFound == -1i32, "'?? fail' turns absence into failure");
 
     var total = 0i32;
@@ -169,10 +163,10 @@ func Main() -> int {
 
     // An annotation gives its type to every arm of a match, so 'none' and a plain value are both its arms.
     let n: int32 = 3;
-    let annotated: int32? = match n { 0 => none, else => n };
+    let annotated: int32? = match n { 0 => none, _ => n };
     Assert(annotated == .Some(3i32), "a plain arm becomes the present value of the annotated optional");
     let zero: int32 = 0;
-    let missing: int32? = match zero { 0 => none, else => zero };
+    let missing: int32? = match zero { 0 => none, _ => zero };
     Assert(missing == none, "a 'none' arm takes the annotated optional type");
     return 0;
 }

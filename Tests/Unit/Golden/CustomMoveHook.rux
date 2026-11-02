@@ -15,15 +15,15 @@ struct Relocated {
 }
 
 extend Relocated {
-    func <-(self: &var Relocated, other: Relocated) {}
+    func <-(&var self, other: Relocated) {}
 }
 
+#NoMove
 struct Pinned {
     value: int32;
 }
 
 extend Pinned {
-    func <-(&var self, other: Pinned);
 }
 
 func Main() -> int {

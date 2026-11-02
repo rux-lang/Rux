@@ -275,11 +275,6 @@ private:
         else if (auto *unary = AstCast<UnaryExpr>(expr)) {
             ResolveExpr(unary->operand.get());
         }
-        else if (auto *ternary = AstCast<TernaryExpr>(expr)) {
-            ResolveExpr(ternary->condition.get());
-            ResolveExpr(ternary->thenExpr.get());
-            ResolveExpr(ternary->elseExpr.get());
-        }
         else if (auto *call = AstCast<CallExpr>(expr)) {
             ResolveExpr(call->callee.get());
             for (auto &arg : call->args) {

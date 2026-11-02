@@ -499,9 +499,7 @@ void AnalysisContext::CheckStructDecl(const StructDecl &d) {
         if (!seen.insert(field.name).second) {
             EmitError(field.location, std::format("duplicate field '{}' in struct '{}'", field.name, d.name));
         }
-        const auto *array = AstCast<const ArrayTypeExpr>(field.type.get());
-        const bool isFlexibleTail = array && !array->size && i + 1 == d.fields.size();
-        ValidateArrayType(*field.type, isFlexibleTail);
+        ValidateArrayType(*field.type);
         ValidateStoredType(ResolveType(*field.type), field.location,
                            std::format("field '{}' in struct '{}'", field.name, d.name));
     }
@@ -1011,9 +1009,6 @@ bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const 
     }
     if (const auto *binary = AstCast<const BinaryExpr>(&expression)) {
         return check(binary->left.get()) && check(binary->right.get());
-    }
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
-        return check(ternary->condition.get()) && check(ternary->thenExpr.get()) && check(ternary->elseExpr.get());
     }
     if (const auto *cast = AstCast<const CastExpr>(&expression)) {
         return check(cast->operand.get());

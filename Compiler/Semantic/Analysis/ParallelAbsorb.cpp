@@ -155,7 +155,6 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.vtableIdentities = OwnEntries(mine.vtableIdentities, base.vtableIdentities);
     own.constraintWitnesses = OwnEntries(mine.constraintWitnesses, base.constraintWitnesses);
     own.propagations = OwnEntries(mine.propagations, base.propagations);
-    own.mappedPropagations = OwnEntries(mine.mappedPropagations, base.mappedPropagations);
     own.coalescings = OwnEntries(mine.coalescings, base.coalescings);
     own.throwSites = OwnEntries(mine.throwSites, base.throwSites);
     own.throwStatements = OwnEntries(mine.throwStatements, base.throwStatements);
@@ -323,10 +322,6 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
                            [](R &r) -> auto & { return r.facts.constraintWitnesses; });
         },
         [&] { MergeLaterWins(facts.propagations, records, [](R &r) -> auto & { return r.facts.propagations; }); },
-        [&] {
-            MergeLaterWins(facts.mappedPropagations, records,
-                           [](R &r) -> auto & { return r.facts.mappedPropagations; });
-        },
         [&] { MergeLaterWins(facts.coalescings, records, [](R &r) -> auto & { return r.facts.coalescings; }); },
         [&] { MergeLaterWins(facts.throwSites, records, [](R &r) -> auto & { return r.facts.throwSites; }); },
         [&] { MergeLaterWins(facts.throwStatements, records, [](R &r) -> auto & { return r.facts.throwStatements; }); },

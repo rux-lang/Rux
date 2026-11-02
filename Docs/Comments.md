@@ -34,7 +34,7 @@ Use one documentation form consistently within a short API description. Adjacent
 /// Fails with `ParseError` when `input` is malformed, and produces no value at all.
 /// @param input the source text
 /// @returns the parsed value, or why `input` is not one
-func Parse(input: String) -> Value ! ParseError;
+func Parse(input: String) -> Value throws ParseError;
 ```
 
 Block documentation is equivalent. `rux fmt` indents multiline content by four spaces without a star margin:
@@ -46,7 +46,7 @@ Block documentation is equivalent. `rux fmt` indents multiline content by four s
     @param input the source text
     @returns the parsed value, or why `input` is not one
 */
-func Parse(input: String) -> Value ! ParseError;
+func Parse(input: String) -> Value throws ParseError;
 ```
 
 Documentation content is normalized to LF Markdown. A line comment loses `///` and one optional following space. A block loses boundary-only lines, common indentation, and one aligned `*` margin plus its optional space. Meaningful blank lines, authored wrapping, nested Markdown indentation, and fenced code are preserved.

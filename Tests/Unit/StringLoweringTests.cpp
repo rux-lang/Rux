@@ -185,10 +185,10 @@ TEST_CASE("char64 literals lower as full-width decoded scalar constants") {
 
 TEST_CASE("character patterns lower decoded code points at every width") {
     const LirPackage package = CompileToLir(R"(
-        func Byte(value: char8) -> int { return match value { c8'A' => 1, else => 2 }; }
-        func Unit(value: char16) -> int { return match value { c16'λ' => 1, else => 2 }; }
-        func Scalar(value: char32) -> int { return match value { c32'\u{1F600}' => 1, else => 2 }; }
-        func Wide(value: char64) -> int { return match value { c64'😀' => 1, else => 2 }; }
+        func Byte(value: char8) -> int { return match value { c8'A' => 1, _ => 2 }; }
+        func Unit(value: char16) -> int { return match value { c16'λ' => 1, _ => 2 }; }
+        func Scalar(value: char32) -> int { return match value { c32'\u{1F600}' => 1, _ => 2 }; }
+        func Wide(value: char64) -> int { return match value { c64'😀' => 1, _ => 2 }; }
     )");
     for (const auto &[name, expected] : std::vector<std::pair<std::string, std::string>>{
              {"Byte", "65"}, {"Unit", "955"}, {"Scalar", "128512"}, {"Wide", "128512"}}) {
@@ -206,7 +206,7 @@ TEST_CASE("equivalent character spellings diagnose duplicate match patterns") {
         CAPTURE(prefix);
         const std::string type = "char" + prefix.substr(1);
         const std::string source = "func Select(value: " + type + ") -> int { return match value { " + prefix +
-                                   "'A' => 1, " + prefix + R"('\u{41}' => 2, else => 3 }; })";
+                                   "'A' => 1, " + prefix + R"('\u{41}' => 2, _ => 3 }; })";
         Lexer lexer(source, "characters.rux");
         auto lexed = lexer.Tokenize();
         REQUIRE_FALSE(lexed.HasErrors());
@@ -225,11 +225,11 @@ TEST_CASE("equivalent character spellings diagnose duplicate match patterns") {
 TEST_CASE("slice conditionals never merge descriptor addresses as slice values") {
     const LirPackage package = CompileToLir(R"(
         interface Sized { func Size() -> uint; }
-        extend char8[..] : Sized { func Size(self: &char8[..]) -> uint { return self.length; } }
+        extend char8[..] : Sized { func Size(&self) -> uint { return self.length; } }
         func Consume(value: Sized) -> uint { return value.Size(); }
-        func Selected(flag: bool) -> char8[..] { return flag ? "abc" : ""; }
-        func Converted(flag: bool) -> uint { return Consume(flag ? "abc" : "q"); }
-        func Mixed(flag: bool, other: char8[..]) -> char8[..] { return flag ? "abc" : other; }
+        func Selected(flag: bool) -> char8[..] { return if flag { "abc" } else { "" }; }
+        func Converted(flag: bool) -> uint { return Consume(if flag { "abc" } else { "q" }); }
+        func Mixed(flag: bool, other: char8[..]) -> char8[..] { return if flag { "abc" } else { other }; }
     )");
     for (const std::string name : {"Selected", "Converted", "Mixed"}) {
         CAPTURE(name);

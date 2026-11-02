@@ -226,33 +226,6 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
-        Pad();
-        out << "TernaryExpr\n";
-        ++indent;
-        Pad();
-        out << "Condition\n";
-        ++indent;
-        if (ternary->condition) {
-            Print(*ternary->condition);
-        }
-        --indent;
-        Pad();
-        out << "Then\n";
-        ++indent;
-        if (ternary->thenExpr) {
-            Print(*ternary->thenExpr);
-        }
-        --indent;
-        Pad();
-        out << "Else\n";
-        ++indent;
-        if (ternary->elseExpr) {
-            Print(*ternary->elseExpr);
-        }
-        --indent;
-        --indent;
-    }
     else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         Pad();
         out << "RangeExpr " << (range->inclusive ? "..." : "..") << '\n';
@@ -447,27 +420,6 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
-        Pad();
-        out << "CatchExpr\n";
-        ++indent;
-        if (recovery->subject) {
-            Print(*recovery->subject);
-        }
-        for (const auto &arm : recovery->arms) {
-            Pad();
-            out << "Arm\n";
-            ++indent;
-            if (arm.pattern) {
-                printPattern(*arm.pattern);
-            }
-            if (arm.body) {
-                Print(*arm.body);
-            }
-            --indent;
-        }
-        --indent;
-    }
     else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
         Pad();
         out << (marked->form == TryMarkExpr::Form::Optional ? "TryMarkExpr try?\n"
@@ -488,18 +440,6 @@ void ExpressionPrinter::Print(const Expr &expression) {
                 Print(*arm.body);
             }
             --indent;
-        }
-        --indent;
-    }
-    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
-        Pad();
-        out << "MappedTryExpr '" << mapped->binding << "'\n";
-        ++indent;
-        if (mapped->operand) {
-            Print(*mapped->operand);
-        }
-        if (mapped->mapper) {
-            Print(*mapped->mapper);
         }
         --indent;
     }

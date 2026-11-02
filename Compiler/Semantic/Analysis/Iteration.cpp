@@ -102,9 +102,8 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
         shape.itemType = subject->inner[0];
         return shape;
     }
-    // A pointer and a flexible array tail can be indexed but have no length, so a loop over one would have nothing to
-    // stop at.
-    if (subject->kind == TypeRef::Kind::Pointer || (subject->kind == TypeRef::Kind::Array && !subject->arrayLength)) {
+    // A pointer can be indexed but has no length, so a loop over one would have nothing to stop at.
+    if (subject->kind == TypeRef::Kind::Pointer) {
         return std::nullopt;
     }
     if (auto element = IndexElementType(subject)) {
@@ -196,20 +195,14 @@ void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeR
     if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
         if (methods->second.contains(std::string(kNextMethod))) {
             notes.push_back(
-                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> T?' returning a "
-                            "native optional",
-                            subject.ToString(), typeName));
+                std::format("type '{}' declares 'Next', but not as 'func Next(&var self) -> T?' returning a native "
+                            "optional",
+                            subject.ToString()));
         }
         else if (methods->second.contains(std::string(kIterateMethod))) {
             notes.push_back(
                 std::format("type '{}' declares 'Iterate', but it does not return an iterator", subject.ToString()));
         }
-    }
-    if (subject->kind == TypeRef::Kind::Array && !subject->arrayLength) {
-        EmitError(location, std::format("cannot iterate over flexible array '{}'", subject.ToString()),
-                  {"a flexible array tail has no length; the struct records how many elements it holds"},
-                  "iterate a slice of it with the recorded count, as in 'for value in tail[..count]'");
-        return;
     }
     if (subject->kind == TypeRef::Kind::Pointer) {
         EmitError(location, std::format("cannot iterate over pointer '{}'", subject.ToString()),
@@ -276,7 +269,7 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
             declaration.location,
             std::format("iterator method 'Iterate' on '{}' must return an iterator", currentExtendedType.ToString()),
             {std::format("type '{}' has no 'Next' returning an optional", iteratorType.ToString())},
-            "give the returned type 'func Next(self: &var T) -> Item?'");
+            "give the returned type 'func Next(&var self) -> Item?'");
     }
 }
 } // namespace Rux::SemanticDetail

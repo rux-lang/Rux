@@ -51,10 +51,10 @@ import Allocator::SystemAllocator;
 import Io::IoError;
 import Process::Command;
 
-func Version() -> bool ! IoError {
+func Version() -> bool throws IoError {
     var command = Command(SystemAllocator(), "git");
     command.Argument("--version");
-    let captured = command.Capture(SystemAllocator())?;
+    let captured = try command.Capture(SystemAllocator());
     return captured.Status().Success() && captured.Output().length > 0;
 }
 ```

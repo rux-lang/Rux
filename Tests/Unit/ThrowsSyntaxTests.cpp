@@ -80,7 +80,6 @@ TEST_CASE("a throws clause follows the return type or the parameter list") {
         func Read(c: char) -> int throws DigitError { return 1; }
         func Close() throws IoError {}
         func Load() -> Config throws IoError | ParseError { return Config {}; }
-        func Older() -> int ! DigitError { return 1; }
     )");
     const FallibleTypeExpr &read = ThrowsClause(Function(result, "Read").returnType);
     REQUIRE(read.success);
@@ -94,18 +93,13 @@ TEST_CASE("a throws clause follows the return type or the parameter list") {
     const auto *sum = dynamic_cast<const SumTypeExpr *>(load.error.get());
     REQUIRE(sum != nullptr);
     CHECK(sum->members.size() == 2);
-
-    const auto &older = Function(result, "Older").returnType;
-    const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(older->get());
-    REQUIRE(fallible != nullptr);
-    CHECK_FALSE(fallible->throwsClause);
 }
 
 TEST_CASE("function types and interface requirements declare throws") {
     const ParseResult result = ParseClean(R"(
         interface Source {
-            func Next(self: &var Self) -> int32 throws Closed;
-            func Reset(self: &var Self) throws Closed;
+            func Next(&var self) -> int32 throws Closed;
+            func Reset(&var self) throws Closed;
         }
         func Apply(step: func(int32) -> int32 throws Closed, done: func() throws Closed) {}
     )");
@@ -125,16 +119,10 @@ TEST_CASE("function types and interface requirements declare throws") {
     CHECK(ThrowsClause(done->returnType).success == nullptr);
 }
 
-TEST_CASE("a fallible return type and a throws clause are not combined") {
-    const ParseResult result = ParseSource("func Both() -> int ! IoError throws ParseError { return 1; }");
-    CHECK(HasError(result, "a function that returns 'T ! E' cannot also declare 'throws'"));
-}
-
-TEST_CASE("throw is a statement and a diverging value, and fail is its older spelling") {
+TEST_CASE("throw is a statement and a diverging value, and the removed fail is reported") {
     const ParseResult result = ParseClean(R"(
         func Run(value: int?) -> int throws Fault {
             throw Fault {};
-            fail Fault {};
             let present = value ?? throw Fault {};
             return match present { 0 => throw Fault {}, _ => present };
         }
@@ -143,15 +131,13 @@ TEST_CASE("throw is a statement and a diverging value, and fail is its older spe
     const auto *thrown = dynamic_cast<const FailStmt *>(run.body->stmts[0].get());
     REQUIRE(thrown != nullptr);
     CHECK(thrown->throwSpelling);
-    const auto *failed = dynamic_cast<const FailStmt *>(run.body->stmts[1].get());
-    REQUIRE(failed != nullptr);
-    CHECK_FALSE(failed->throwSpelling);
-    const auto *coalesce = dynamic_cast<const BinaryExpr *>(&StatementExpression(run, 2));
+    const auto *coalesce = dynamic_cast<const BinaryExpr *>(&StatementExpression(run, 1));
     REQUIRE(coalesce != nullptr);
     const auto *fallback = dynamic_cast<const DivergeExpr *>(coalesce->right.get());
     REQUIRE(fallback != nullptr);
     CHECK(fallback->kind == DivergeExpr::Kind::Fail);
     CHECK(fallback->throwSpelling);
+    CHECK(HasError(ParseSource("func F() throws Fault { fail Fault {}; }"), "'fail' is not supported"));
 }
 
 TEST_CASE("try covers the whole expression to its right") {
@@ -195,11 +181,10 @@ TEST_CASE("try covers the whole expression to its right") {
     CHECK(dynamic_cast<const TryMarkExpr *>(call->args[1].get())->form == TryMarkExpr::Form::Optional);
 }
 
-TEST_CASE("catch after a try operand takes the arms, and inside nested expressions is postfix again") {
+TEST_CASE("catch after a try operand takes the arms, and a catch without try is reported") {
     const ParseResult result = ParseClean(R"(
         func Run() -> int {
             let value = try A() + B() catch { .Empty => 0, e: IoError if e.code > 1 => 1, _ => 2, };
-            let older = try Use(C() catch { _ => 3 });
             return value;
         }
     )");
@@ -212,12 +197,7 @@ TEST_CASE("catch after a try operand takes the arms, and inside nested expressio
     CHECK(dynamic_cast<const GuardedPattern *>(value->arms[1].pattern.get()) != nullptr);
     CHECK(dynamic_cast<const WildcardPattern *>(value->arms[2].pattern.get()) != nullptr);
 
-    const auto *older = dynamic_cast<const TryMarkExpr *>(&StatementExpression(run, 1));
-    REQUIRE(older != nullptr);
-    CHECK(older->form == TryMarkExpr::Form::Propagate);
-    const auto *use = dynamic_cast<const CallExpr *>(older->operand.get());
-    REQUIRE(use != nullptr);
-    CHECK(dynamic_cast<const CatchExpr *>(use->args.front().get()) != nullptr);
+    CHECK(HasError(ParseSource("func F() { let v = Use(C() catch { _ => 3 }); }"), "'catch' must follow 'try'"));
 }
 
 TEST_CASE("a try block holds its statements and its catch arms") {

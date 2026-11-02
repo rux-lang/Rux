@@ -60,7 +60,7 @@ Output = "Artifacts"
 #NoMove
 struct Cell { value: int32; }
 extend Cell {
-    func ~Cell(self: &var Cell) {}
+    func ~Cell(&var self) {}
 }
 func Borrow(shared: &Cell, exclusive: &var Cell) -> int { return shared.value; }
 enum State: uint8 { Idle = 1, Ready = 2 }

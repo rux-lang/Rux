@@ -30,7 +30,7 @@ The wrapping operators `+%`, `-%` and `*%`, and their compound forms `+%=`, `-%=
 
 An operation whose operands are known while compiling and whose exact result does not fit is a compile error rather than a program that always stops: `const Sum: uint8 = 200u8 + 100u8;` reports `integer overflow in '+': the constant result does not fit 'uint8'`, with the result and the type's range as a note, while `200u8 +% 100u8` is the constant `44`.
 
-Every integer type has methods, in Core, for the cases where overflow is an expected answer rather than a mistake: `a.CheckedAdd(b)`, `CheckedSub` and `CheckedMul` return `T?`, none when the result does not fit, and `SaturatingAdd`, `SaturatingSub` and `SaturatingMul` clamp to the type's minimum or maximum. As with associated constants, the type is imported to use them: `import Core::uint64;`. The older `Core::CheckedAdd(left, right, @result) -> bool` on `uint64` remains until the packages migrate.
+Every integer type has methods, in Core, for the cases where overflow is an expected answer rather than a mistake: `a.CheckedAdd(b)`, `CheckedSub` and `CheckedMul` return `T?`, none when the result does not fit, and `SaturatingAdd`, `SaturatingSub` and `SaturatingMul` clamp to the type's minimum or maximum. As with associated constants, the type is imported to use them: `import Core::uint64;`.
 
 An integer `as` to another integer type keeps the value or stops the program with `Panic: integer cast out of range`: `300 as uint8`, `-1 as uint64` and `uint64::Max as int64` all stop, and a constant like them is a compile error. A conversion every source value survives, such as `int32` to `int64` or `uint8` to `int16`, has no check. `value.Truncate<T>()` keeps the low bits on purpose — a `uint64` holding `0x1234` truncates to the `uint8` `0x34`, and an `int64` holding `-1` to `uint64::Max` — and a wider `T` extends by the source's signedness, as `as` does. Generic code, whose type parameters have no such method, converts with `Core::ConvertWrapping`.
 
@@ -103,8 +103,8 @@ pub union Word {
 
 extend Buffer {
     pub func Buffer() -> Buffer { /* ... */ }
-    pub func Length(self: &Buffer) -> uint { return self.length; }
-    func Capacity(self: &Buffer) -> uint { /* package helper */ }
+    pub func Length(&self) -> uint { return self.length; }
+    func Capacity(&self) -> uint { /* package helper */ }
 }
 ```
 
@@ -258,7 +258,7 @@ An ordinary `match` inspects native values one level at a time:
 ```rux
 func Describe(outcome: (Options | Defaults) ! (DecodeError | IoError)) -> int32 {
     return match outcome {
-        .Success(options: Options) => options.verbose ? 2i32 : 1i32,
+        .Success(options: Options) => if options.verbose { 2i32 } else { 1i32 },
         .Success(_: Defaults) => 0i32,
         .Failure(DecodeError::InvalidDigit(position)) => position,
         _ => -1i32
@@ -346,7 +346,7 @@ func DivisionTable(polynomial: uint32) -> uint32[256] {
     for index in 0..256 {
         var register = index as uint32;
         for _ in 0..8 {
-            register = (register & 1) != 0 ? (register >> 1) ^ polynomial : register >> 1;
+            register = if (register & 1) != 0 { (register >> 1) ^ polynomial } else { register >> 1 };
         }
         table[index] = register;
     }
@@ -589,7 +589,7 @@ An intrinsic declaration names a function, constant or value the compiler suppli
 
 Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated constant values are the floating-point limits `Max`, `Lowest`, `MinPositive`, `Epsilon`, `Infinity` and `NaN`, at every float width: `pub intrinsic const Max: float128;` declared without an initializer inside an extension of `float128` takes the largest finite `float128` from the compiler, and the declared type must be the extended type. `MinPositive` is the smallest positive normal value, `Epsilon` the distance from one to the next value above it, and `NaN` a quiet NaN. Any other name is rejected with "intrinsic associated constants support only floating-point Infinity, NaN, Max, Lowest, MinPositive and Epsilon". Core declares `Infinity` and `NaN` this way at every width and all six for `float80` and wider; other limits and metadata belong in ordinary source initializers. A `when` condition retains each floating-point width and uses exact compiler arithmetic, so finite limits, infinities, NaNs and values beyond the `float64` range work at every width. An unsuffixed float literal in a typed float constant's initializer is read at the constant's own width, so `const Single: float32 = 1.5;` is the `float32` nearest 1.5 in a condition as it is at run time. Integer casts in conditions retain or truncate all bits at the requested width. A cast to a character width never truncates: it is checked by the width's own rule, and a value the width cannot hold makes the condition invalid.
 
-`intrinsic func` names a function the compiler implements itself, so only the ones it knows are accepted: `CheckedAdd`, `CheckedSub`, `CheckedMul`, `ConvertBits`, `Zeroize`, `Assert`, `DebugAssert`, `Panic`, `#Error`, and `#Warn`, the methods `Target.HasFeature`, `Compiler.HasFeature`, `Config.Get`, and `Config.Has`, and a `Truncate<T>` method in an extension of an integer type, which converts to the integer type `T` without the range check `as` adds. Any other name is rejected with `'Frobnicate' is not a supported intrinsic function`. The compiler emits each call for one signature, so a declaration must match it exactly: `Assert` and `DebugAssert` take `(condition: bool, message: char8[..])`, `Panic`, `#Error`, and `#Warn` take `(message: char8[..])`, and none of them returns a value.
+`intrinsic func` names a function the compiler implements itself, so only the ones it knows are accepted: `ConvertBits`, `Zeroize`, `Assert`, `DebugAssert`, `Panic`, `#Error`, and `#Warn`, the methods `Target.HasFeature`, `Compiler.HasFeature`, `Config.Get`, and `Config.Has`, and a `Truncate<T>` method in an extension of an integer type, which converts to the integer type `T` without the range check `as` adds. Any other name is rejected with `'Frobnicate' is not a supported intrinsic function`. The compiler emits each call for one signature, so a declaration must match it exactly: `Assert` and `DebugAssert` take `(condition: bool, message: char8[..])`, `Panic`, `#Error`, and `#Warn` take `(message: char8[..])`, and none of them returns a value.
 
 `intrinsic #name: Root;` declares a value the compiler supplies, where `Root` is one of `Target`, `Build`, `Source`, `Compiler`, and `Config`. The struct `Root` names may declare any subset of the fields the compiler fills in for that root, and no others, and every declared field must have the type the compiler supplies. A `struct Target { wordSize: uint; }` behind `intrinsic #target: Target;` is rejected because nothing would fill `wordSize`; declaring `pointerBits` as anything other than `uint` is rejected because lowering supplies that field as a `uint` value.
 
@@ -810,8 +810,8 @@ A propagated failure follows ordinary return behavior: it captures the failure b
 `value? else (e => mapper)` propagates like `value?` but converts the error first. It applies only to a native fallible in a fallible function. On success the mapper never runs and the success continues unchanged. On failure `e` owns the complete error payload, including every member of an error sum, and the mapper runs once; its value must convert to the enclosing function's error channel, and the operation then fails with it:
 
 ```rux
-func LoadConfig(path: char8[..]) -> Options ! ConfigError {
-    let value = ReadAt(path)? else (e => ToConfigError(e, path));
+func LoadConfig(path: char8[..]) -> Options throws ConfigError {
+    let value = try ReadAt(path) catch { e => throw ToConfigError(e, path) };
     return value;
 }
 ```
@@ -825,10 +825,10 @@ The mapper is not a closure: it reads and moves surrounding locals under the ord
 `outcome catch { arms }` recovers from the failure of exactly one outer fallible level. The subject is evaluated once; a success passes through unchanged, inner levels and all, and a failure is matched by the arms, whose patterns see only the error payload:
 
 ```rux
-func LoadWithDefaults() -> Options | Defaults ! IoError {
-    return Read() catch {
+func LoadWithDefaults() -> Options | Defaults throws IoError {
+    return try Read() catch {
         _: ParseError => Defaults {},
-        e: IoError => fail e
+        e: IoError => throw e
     };
 }
 ```
@@ -912,11 +912,11 @@ struct Vect {
 }
 
 extend Vect {
-    func [](self: &Vect, index: uint) -> int {
+    func [](&self, index: uint) -> int {
         return self.data[index];
     }
 
-    func []=(self: &var Vect, index: uint, value: int) {
+    func []=(&var self, index: uint, value: int) {
         self.data[index] = value;
     }
 }
@@ -928,7 +928,7 @@ Nothing fixes the index type. Overloads of either operator are separated by it, 
 
 ```rux
 extend Vect {
-    func [](self: &Vect, span: int..int) -> int[..] {
+    func [](&self, span: int..int) -> int[..] {
         return self.data[span];
     }
 }
@@ -946,7 +946,7 @@ A destructor is a body-bearing special function named after its type with a lead
 
 ```rux
 extend String {
-    func ~String(self: &var String) {
+    func ~String(&var self) {
         Free(self.data);
     }
 }

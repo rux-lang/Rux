@@ -30,7 +30,6 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
     }
     CheckReceiverPlacement(declaration, isMethod);
     ValidateIteratorConvention(declaration, isMethod);
-    ValidateCheckedArithmeticIntrinsic(declaration);
     ValidateZeroizeIntrinsic(declaration);
     ValidateIntrinsicFunction(declaration);
 

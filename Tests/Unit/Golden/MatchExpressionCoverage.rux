@@ -26,7 +26,7 @@ func Main() -> int {
     let origin = match point { Point { x: 0, y: 0 } => 1i32 };
     let word = match text { "on" => 1i32, "off" => 0i32 };
     let split = match point { Point { x, y } => x + y };
-    let other = match letter { 'a' => 1i32, else => 0i32 };
+    let other = match letter { 'a' => 1i32, _ => 0i32 };
     match n {
         1 => {}
     }

@@ -1,5 +1,5 @@
 // Contextual cases: `.Case` and `.Case(...)` name a case without its type wherever the type is already known -- an
-// annotated binding, a parameter, a field, a return value, a `fail` operand, an assignment to a typed place, or an arm
+// annotated binding, a parameter, a field, a return value, a `throw` operand, an assignment to a typed place, or an arm
 // of a match whose type is known. The expected type is the only place the case is looked up. A user variant that is
 // itself the expected type takes over `.Some(...)` when it declares a `Some` case, and `.Success(...)` and
 // `.Failure(...)` when it declares those; the type a `try` expression is expected to have is its operand's and its
@@ -100,12 +100,12 @@ func Fill(value: int32) -> Slot {
     return .Some(value);
 }
 
-func Load(value: int32) -> int32 ! Problem {
+func Load(value: int32) -> int32 throws Problem {
     if value == 0i32 {
-        fail .NotFound;
+        throw .NotFound;
     }
     if value < 0i32 {
-        fail .Invalid(value);
+        throw .Invalid(value);
     }
     return value;
 }
@@ -175,10 +175,10 @@ func Main() -> int {
     let native: int32? = .Some(3i32);
     Assert((native ?? 0i32) == 3i32, "without such a variant '.Some' is the native optional");
 
-    Assert((match Load(0i32) { .Failure(.NotFound) => 1i32, _ => 0i32 }) == 1i32, "a 'fail' operand");
-    Assert((match Load(-2i32) { .Failure(.Invalid(value)) => value, _ => 0i32 }) == -2i32,
-           "a 'fail' operand with a payload");
-    Assert((match Load(4i32) { .Success(value) => value, _ => 0i32 }) == 4i32, "a success passes through");
+    Assert((try Load(0i32) catch { .NotFound => 1i32, _ => 0i32 }) == 1i32, "a 'throw' operand");
+    Assert((try Load(-2i32) catch { .Invalid(value) => value, _ => 0i32 }) == -2i32,
+           "a 'throw' operand with a payload");
+    Assert((try Load(4i32) catch { _ => 0i32 }) == 4i32, "a success passes through");
 
     Assert(Keep(6i32) is .Success(6i32), "a 'try' operand takes the expected type");
     Assert(Keep(-3i32) is .Failure(.Invalid(-3i32)), "and so does a 'catch' arm");

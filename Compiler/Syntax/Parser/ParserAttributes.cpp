@@ -91,13 +91,17 @@ std::string Parser::DecodeStringLiteralText(const std::string &text) {
     return out;
 }
 
-/// The parentheses after an attribute that takes no arguments may be left out, so `#Test` and `#Test()` are the same
-/// attribute. Whatever is written inside them is reported and skipped.
+/// An attribute that takes no arguments is written without parentheses, as `#Test`. Parentheses after one are reported
+/// and skipped with whatever is written inside them.
 void Parser::ParseEmptyAttributeArguments(const std::string_view name) {
     if (!Match(TokenKind::LeftParen)) {
         return;
     }
-    if (!Check(TokenKind::RightParen)) {
+    if (Check(TokenKind::RightParen)) {
+        EmitError(Previous().location, std::format("'#{}' is written without parentheses", name),
+                  std::format("write '#{}'", name));
+    }
+    else {
         EmitError(CurrentLocation(), std::format("'#{}' does not accept arguments", name));
         while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
             Advance();
@@ -112,7 +116,7 @@ void Parser::ParseEmptyAttributeArguments(const std::string_view name) {
 /// calling convention, `#NoReturn` marks a function that never returns to its caller, `#Test` marks a function that a
 /// test build of its package runs, `#Unsendable` marks a type whose values stay on the thread that made them, and
 /// `#NoCopy` and `#NoMove` mark a type whose values are never duplicated or never leave their storage. An attribute
-/// that takes no arguments is written without parentheses; empty ones are still accepted.
+/// that takes no arguments is written without parentheses.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();

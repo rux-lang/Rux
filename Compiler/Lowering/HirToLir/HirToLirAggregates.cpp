@@ -782,29 +782,6 @@ void HirToLirContext::CopySliceValue(LirReg srcSlot, LirReg dstSlot, const TypeR
     EmitStore(len, dstLenPtr, TypeRef::MakeUInt64());
 }
 
-void HirToLirContext::StoreTernaryInit(const HirTernaryExpr &e, LirReg slot, const TypeRef &type) {
-    LirReg cond = LowerExpr(*e.condition);
-    const std::uint32_t thenBlock = NewBlock("ternary.store.then");
-    const std::uint32_t elseBlock = NewBlock("ternary.store.else");
-    const std::uint32_t mergeBlock = NewBlock("ternary.store.merge");
-    Branch(cond, thenBlock, elseBlock);
-
-    // An arm that never returns closes its own block and does not reach the merge.
-    SetBlock(thenBlock);
-    StoreExprIntoSlot(*e.thenExpr, slot, type);
-    if (!IsTerminated()) {
-        Jump(mergeBlock);
-    }
-
-    SetBlock(elseBlock);
-    StoreExprIntoSlot(*e.elseExpr, slot, type);
-    if (!IsTerminated()) {
-        Jump(mergeBlock);
-    }
-
-    SetBlock(mergeBlock);
-}
-
 void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, const TypeRef &type) {
     if (auto *init = HirCast<const HirStructInitExpr>(&expr)) {
         StoreStructInit(*init, slot);
@@ -820,10 +797,6 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
     }
     if (auto *initRangeExpr = HirCast<const HirRangeExpr>(&expr)) {
         StoreRangeInit(*initRangeExpr, slot);
-        return;
-    }
-    if (auto *initTernaryExpr = HirCast<const HirTernaryExpr>(&expr)) {
-        StoreTernaryInit(*initTernaryExpr, slot, type);
         return;
     }
     if (auto *initMatchExpr = HirCast<const HirMatchExpr>(&expr)) {
@@ -895,61 +868,6 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         return;
     }
     EmitStore(EmitCastIfNeeded(val, expr.type, type), slot, type);
-}
-
-LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
-    // Slice arms can produce either a descriptor address (literals/ranges) or its value (locals/calls). Build the
-    // selected descriptor in one slot before loading a value, so a phi never merges addresses as sixteen-byte data.
-    if (IsViewType(e.type)) {
-        const LirReg slot = EmitAlloca(e.type);
-        StoreTernaryInit(e, slot, e.type);
-        return EmitLoad(slot, e.type);
-    }
-    LirReg cond = LowerExpr(*e.condition);
-    const std::uint32_t thenBlock = NewBlock("ternary.then");
-    const std::uint32_t elseBlock = NewBlock("ternary.else");
-    const std::uint32_t mergeBlock = NewBlock("ternary.merge");
-    Branch(cond, thenBlock, elseBlock);
-    SetBlock(thenBlock);
-    LirReg thenVal = LowerExpr(*e.thenExpr);
-    // The block that reaches the merge is the one the arm ends in, which is the one it started in only when the arm
-    // built no control flow of its own. An arm holding another conditional ends somewhere further on, and naming
-    // the block it started in gave the merge a phi listing a block that does not branch to it and none of the
-    // blocks that do -- a program the verifier refuses rather than one that runs wrongly, but only because the
-    // verifier is there to catch it.
-    // An arm that never returns closes its own block, reaches no merge, and contributes no value to the phi.
-    const std::uint32_t thenIdx = builder->CurrentBlock();
-    const bool thenReaches = !IsTerminated();
-    if (thenReaches) {
-        thenVal = EmitCastIfNeeded(thenVal, e.thenExpr->type, e.type);
-        Jump(mergeBlock);
-    }
-    SetBlock(elseBlock);
-    LirReg elseVal = LowerExpr(*e.elseExpr);
-    const std::uint32_t elseIdx = builder->CurrentBlock();
-    const bool elseReaches = !IsTerminated();
-    if (elseReaches) {
-        elseVal = EmitCastIfNeeded(elseVal, e.elseExpr->type, e.type);
-        Jump(mergeBlock);
-    }
-    SetBlock(mergeBlock);
-    if (!thenReaches && !elseReaches) {
-        Unreachable();
-        return thenVal;
-    }
-    LirReg result = NewReg();
-    LirInstr phi;
-    phi.dst = result;
-    phi.op = LirOpcode::Phi;
-    phi.type = e.type;
-    if (thenReaches) {
-        phi.phiPreds.emplace_back(thenVal, thenIdx);
-    }
-    if (elseReaches) {
-        phi.phiPreds.emplace_back(elseVal, elseIdx);
-    }
-    Emit(std::move(phi));
-    return result;
 }
 
 void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const TypeRef &type) {

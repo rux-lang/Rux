@@ -104,26 +104,6 @@ const Stmt &OnlyStatement(const ParseResult &parsed) {
 }
 } // namespace
 
-TEST_CASE("the sum binds more tightly than the fallible operator") {
-    CHECK_EQ(ParameterShape("A | B"), "sum(A, B)");
-    CHECK_EQ(ParameterShape("A | B | C"), "sum(A, B, C)");
-    CHECK_EQ(ParameterShape("A ! E"), "fal(A, E)");
-    CHECK_EQ(ParameterShape("A | B ! E | F"), "fal(sum(A, B), sum(E, F))");
-    CHECK_EQ(ParameterShape("! E"), "fal(unit, E)");
-    CHECK_EQ(ParameterShape("! E | F"), "fal(unit, sum(E, F))");
-    CHECK_EQ(ParameterShape("() ! E"), "fal(tuple(), E)");
-}
-
-TEST_CASE("nested fallibles and optional errors are written grouped") {
-    CHECK_EQ(ParameterShape("(A ! E) ! F"), "fal(fal(A, E), F)");
-    CHECK_EQ(ParameterShape("A ! (E ! F)"), "fal(A, fal(E, F))");
-    CHECK_EQ(ParameterShape("A ! (E?)"), "fal(A, opt(E))");
-    CHECK_EQ(ParameterShape("(A ! E)?"), "opt(fal(A, E))");
-    CHECK_EQ(ParameterShape("A? ! E"), "fal(opt(A), E)");
-    CHECK(Reports("func F(value: A ! E ! F) {}", "a type contains at most one unparenthesized '!'"));
-    CHECK(Reports("func F(value: A ! E?) {}", "an optional error type must be grouped"));
-}
-
 TEST_CASE("optional suffixes keep every level and apply left to right") {
     CHECK_EQ(ParameterShape("int32?"), "opt(int32)");
     CHECK_EQ(ParameterShape("int32??"), "opt(opt(int32))");
@@ -143,61 +123,11 @@ TEST_CASE("an optional sum member must be grouped") {
     CHECK(Reports("func F(value: A? | B) {}", "an optional sum member must be grouped"));
 }
 
-TEST_CASE("pointer and reference operands include suffixes and stop before a sum or fallible, and `&T?` is optional") {
-    CHECK_EQ(ParameterShape("*A?"), "ptr(opt(A))");
-    CHECK_EQ(ParameterShape("(*A)?"), "opt(ptr(A))");
-    CHECK_EQ(ParameterShape("&A?"), "opt(ref(A))");
-    CHECK_EQ(ParameterShape("&var A?"), "opt(ref(A))");
-    CHECK_EQ(ParameterShape("&(A?)"), "ref(opt(A))");
-    CHECK_EQ(ParameterShape("&A[..]?"), "opt(ref(slice(A)))");
-    CHECK_EQ(ParameterShape("&A??"), "opt(opt(ref(A)))");
-    CHECK_EQ(ParameterShape("*A | B"), "sum(ptr(A), B)");
-    CHECK_EQ(ParameterShape("&(A | B)"), "ref(sum(A, B))");
-    CHECK_EQ(ParameterShape("*A ! E"), "fal(ptr(A), E)");
-    CHECK_EQ(ParameterShape("var char8[..] | B"), "sum(varslice(char8), B)");
-}
-
 TEST_CASE("function return types stay complete and function members are grouped") {
     CHECK_EQ(ParameterShape("func() -> A | B"), "func()->sum(A, B)");
-    CHECK_EQ(ParameterShape("func() -> A ! E"), "func()->fal(A, E)");
+    CHECK_EQ(ParameterShape("func() -> A throws E"), "func()->fal(A, E)");
     CHECK_EQ(ParameterShape("(func() -> A) | B"), "sum(func()->A, B)");
     CHECK(Reports("func F(value: B | func() -> A) {}", "a function type in a sum must be grouped"));
-}
-
-TEST_CASE("every native form is a generic argument") {
-    CHECK_EQ(ParameterShape("Box<A | B>"), "Box<sum(A, B)>");
-    CHECK_EQ(ParameterShape("Box<T ! E>"), "Box<fal(T, E)>");
-    CHECK_EQ(ParameterShape("Box<! E>"), "Box<fal(unit, E)>");
-    CHECK_EQ(ParameterShape("Box<T?>"), "Box<opt(T)>");
-    // Split because "??>" would be read as a trigraph.
-    CHECK_EQ(ParameterShape("Box<int32?"
-                            "?>"),
-             "Box<opt(opt(int32))>");
-    CHECK_EQ(ParameterShape("Box<&T>"), "Box<ref(T)>");
-    CHECK_EQ(ParameterShape("Box<Box<A | B>>"), "Box<Box<sum(A, B)>>");
-    CHECK_EQ(ParameterShape("Box<(func() -> A) | B>"), "Box<sum(func()->A, B)>");
-    CHECK_EQ(ParameterShape("Map<K, V?>"), "Map<K, opt(V)>");
-}
-
-TEST_CASE("a separated question mark after a cast target stays a conditional") {
-    const ParseResult conditional = ParseSource("func F(flag: bool) { let x = flag as bool ? 1 : 2; }");
-    const auto *let = dynamic_cast<const LetStmt *>(&OnlyStatement(conditional));
-    REQUIRE(let != nullptr);
-    CHECK(dynamic_cast<const TernaryExpr *>(let->init.get()) != nullptr);
-
-    const ParseResult cast = ParseSource("func F(value: int32) { let x = value as int32?; }");
-    const auto *castLet = dynamic_cast<const LetStmt *>(&OnlyStatement(cast));
-    REQUIRE(castLet != nullptr);
-    const auto *castExpr = dynamic_cast<const CastExpr *>(castLet->init.get());
-    REQUIRE(castExpr != nullptr);
-    CHECK_EQ(Shape(castExpr->type.get()), "opt(int32)");
-}
-
-TEST_CASE("a fallible cast or test target must be grouped") {
-    CHECK(Reports("func F(x: A) { let y = x is A ! E; }", "a fallible type after 'is' must be grouped"));
-    CHECK(Reports("func F(x: A) { let y = x as A ! E; }", "a fallible type after 'as' must be grouped"));
-    const ParseResult grouped = ParseSource("func F(x: A) { let y = x is (A ! E); }");
-    CHECK(grouped.diagnostics.empty());
 }
 
 TEST_CASE("empty parentheses are the unit value") {

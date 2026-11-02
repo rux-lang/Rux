@@ -99,9 +99,6 @@ static std::string PrintExprCore(const HirExpr &expr) {
         }
         return assignment;
     }
-    if (auto *e = HirCast<const HirTernaryExpr>(&expr)) {
-        return std::format("{} ? {} : {}", PrintExpr(*e->condition), PrintExpr(*e->thenExpr), PrintExpr(*e->elseExpr));
-    }
     if (auto *e = HirCast<const HirRangeExpr>(&expr)) {
         std::string lo = e->lo ? PrintExpr(*e->lo) : "";
         std::string hi = e->hi ? PrintExpr(*e->hi) : "";

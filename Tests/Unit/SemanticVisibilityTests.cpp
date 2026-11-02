@@ -83,7 +83,7 @@ TEST_CASE("private declarations and members are shared by every file in their pa
             struct Secret { value: int; }
             extend Secret {
                 func Secret(value: int) -> Secret { return Secret { value: value }; }
-                func Read(self: &Secret) -> int { return self.value; }
+                func Read(&self) -> int { return self.value; }
             }
             func MakeSecret(value: int) -> Secret { return Secret(value); }
         )"},
@@ -231,8 +231,8 @@ TEST_CASE("public aggregate members constructors associated functions methods an
         extend Counter {
             pub func Counter(value: int) -> Counter { return Counter { value: value, hidden: 0 }; }
             pub func Zero() -> Counter { return Counter(0); }
-            pub func Read(self: &Counter) -> int { return self.value; }
-            pub func +(self: &Counter, other: Counter) -> Counter { return Counter(self.value + other.value); }
+            pub func Read(&self) -> int { return self.value; }
+            pub func +(&self, other: Counter) -> Counter { return Counter(self.value + other.value); }
         }
         pub union Bits { pub signed: int32, raw: uint32 }
     )"}});
@@ -248,7 +248,7 @@ TEST_CASE("generic instantiations enforce operator visibility from the generic p
         import Library::Before;
         pub struct Ranked { value: int; }
         extend Ranked {
-            pub func <(self: &Ranked, other: Ranked) -> bool { return self.value < other.value; }
+            pub func <(&self, other: Ranked) -> bool { return self.value < other.value; }
         }
         func Main() -> bool {
             return Before<Ranked>(Ranked { value: 1 }, Ranked { value: 2 });
@@ -261,7 +261,7 @@ TEST_CASE("generic instantiations enforce operator visibility from the generic p
         import Library::Before;
         pub struct Ranked { value: int; }
         extend Ranked {
-            func <(self: &Ranked, other: Ranked) -> bool { return self.value < other.value; }
+            func <(&self, other: Ranked) -> bool { return self.value < other.value; }
         }
         func Main() -> bool {
             return Before<Ranked>(Ranked { value: 1 }, Ranked { value: 2 });
@@ -310,8 +310,8 @@ TEST_CASE("private fields methods constructors associated functions and operator
         extend Secret {
             func Secret(value: int) -> Secret { return Secret { value: value, hidden: 0 }; }
             func Make() -> Secret { return Secret { value: 1, hidden: 0 }; }
-            func Read(self: &Secret) -> int { return self.hidden; }
-            func +(self: &Secret, other: Secret) -> Secret { return other; }
+            func Read(&self) -> int { return self.hidden; }
+            func +(&self, other: Secret) -> Secret { return other; }
         }
         pub func Seed() -> Secret { return Secret { value: 1, hidden: 2 }; }
         pub union Bits { pub open: int32, closed: uint32 }
@@ -365,7 +365,7 @@ TEST_CASE("public interface dispatch may use a private concrete implementation")
         pub interface CounterView { func Read() -> int; }
         pub struct Counter { pub value: int; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int { return self.value; }
+            func Read(&self) -> int { return self.value; }
         }
         pub func MakeCounter() -> Counter { return Counter { value: 5 }; }
     )"}});
@@ -379,7 +379,7 @@ TEST_CASE("public interface dispatch may use a private concrete implementation")
         pub interface CounterView { func Read() -> int; }
         pub struct Counter { pub value: int; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int { return self.value; }
+            func Read(&self) -> int { return self.value; }
         }
         pub func MakeCounter() -> Counter { return Counter { value: 5 }; }
     )"}});
@@ -399,7 +399,7 @@ TEST_CASE("generated lifecycle operations and private destructors remain compile
                                              {{"api.rux", R"(
         pub struct Plain { pub value: int; }
         pub struct Tracked { pub value: int; }
-        extend Tracked { func ~Tracked(self: &var Tracked) {} }
+        extend Tracked { func ~Tracked(&var self) {} }
         pub func MakePlain() -> Plain { return Plain { value: 2 }; }
         pub func MakeTracked() -> Tracked { return Tracked { value: 3 }; }
     )"}});
@@ -410,8 +410,9 @@ TEST_CASE("private capability prohibitions apply across packages") {
     const std::string dependency = R"(
         pub struct Owning { pub value: int; }
         extend Owning { func ~Owning(&var self) {} }
+        #NoCopy
         pub struct NoCopy { pub value: int; }
-        extend NoCopy { func =(self: &var NoCopy, other: &NoCopy); }
+        extend NoCopy { }
         #NoCopy
         pub struct Marked { pub value: int; }
         pub func OwningValue() -> Owning { return Owning { value: 1 }; }
@@ -463,7 +464,7 @@ TEST_CASE("effective public API closure rejects private types in every exposed p
             pub PublicVariable: Hidden;
         }
         extend PublicStruct<int> {
-            pub func Exposed(self: &PublicStruct<int>, value: Hidden) -> Hidden { return value; }
+            pub func Exposed(&self, value: Hidden) -> Hidden { return value; }
         }
     )"}});
 
@@ -508,7 +509,7 @@ TEST_CASE("pub nested below a private module remains package-private and is exem
             pub func Leaky(value: Hidden) -> Hidden { return value; }
         }
         extend LatePrivate {
-            pub func Reveal(self: &LatePrivate) {}
+            pub func Reveal(&self) {}
         }
         struct LatePrivate {}
         func SamePackage(value: Hidden) -> Hidden { return Internal::Leaky(value); }
@@ -545,7 +546,7 @@ TEST_CASE("nominal ownership survives file order generic layouts and extension l
             pub type Exported = Record;
         )"},
                                          {"library-methods.rux", R"(
-            extend Record { pub func Read(self: &Record) -> int64 { return self.second; } }
+            extend Record { pub func Read(&self) -> int64 { return self.second; } }
             pub func Make() -> Exported { return Record { first: 17i64, second: 25i64 }; }
             pub func Wrap<T>(value: T) -> Holder<T, Record> {
                 return Holder<T, Record> { value: value, marker: Make() };
@@ -559,7 +560,7 @@ TEST_CASE("nominal ownership survives file order generic layouts and extension l
         )"},
                                              {"application-methods.rux", R"(
             import Library::{ Error, Exported, Make, Wrap };
-            extend Record { func Read(self: &Record) -> int32 { return self.value; } }
+            extend Record { func Read(&self) -> int32 { return self.value; } }
             func Main() -> int {
                 let local = Record { value: 7i32 };
                 let imported: Exported = Make();

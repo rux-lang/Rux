@@ -270,7 +270,7 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             extend Total : Adder {
-                func Add(self: &Total, seed: int32, values: int128...) -> int128 {
+                func Add(&self, seed: int32, values: int128...) -> int128 {
                     return self.base;
                 }
             }
@@ -302,15 +302,15 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             extend Total {
-                func Sum(self: &Total, values: int128...) -> int128 {
+                func Sum(&self, values: int128...) -> int128 {
                     return self.base;
                 }
 
-                func Add(self: &var Total, label: int32, values: int64...) -> int64 {
+                func Add(&var self, label: int32, values: int64...) -> int64 {
                     return 0i64;
                 }
 
-                func Pick<T>(self: &Total, index: uint, values: T...) -> T {
+                func Pick<T>(&self, index: uint, values: T...) -> T {
                     return values[index];
                 }
 
@@ -324,13 +324,13 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             extend Bag<T> {
-                func Count(self: &Bag<T>, values: T...) -> uint {
+                func Count(&self, values: T...) -> uint {
                     return values.length;
                 }
             }
 
             extend int64 {
-                func Plus(self: int64, values: int64...) -> int64 {
+                func Plus(self, values: int64...) -> int64 {
                     return self;
                 }
             }
@@ -402,7 +402,7 @@ TEST_SUITE("VariadicWideningLowering") {
     TEST_CASE("a requirement that spells out its receiver collects the arguments after it") {
         const HirPackage package = LowerToHir(R"(
             interface Adder {
-                func Add(self: &Self, seed: int32, values: int128...) -> int128;
+                func Add(&self, seed: int32, values: int128...) -> int128;
             }
 
             struct Total {
@@ -410,7 +410,7 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             extend Total : Adder {
-                func Add(self: &Total, seed: int32, values: int128...) -> int128 {
+                func Add(&self, seed: int32, values: int128...) -> int128 {
                     return self.base;
                 }
             }
@@ -441,19 +441,19 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             extend Total {
-                func Sum(self: &Total, values: int128...) -> int128 {
+                func Sum(&self, values: int128...) -> int128 {
                     return self.base;
                 }
 
-                func Add(self: &var Total, label: int32, values: int64...) -> int64 {
+                func Add(&var self, label: int32, values: int64...) -> int64 {
                     return 0i64;
                 }
 
-                func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 {
+                func Scale(&self, amount: int64, factor: int64 = 2i64) -> int64 {
                     return amount * factor;
                 }
 
-                func Take(self: Total, extra: int64) -> int64 {
+                func Take(self, extra: int64) -> int64 {
                     return extra;
                 }
             }
@@ -463,7 +463,7 @@ TEST_SUITE("VariadicWideningLowering") {
             }
 
             extend Bag<T> {
-                func Count(self: &Bag<T>, values: T...) -> uint {
+                func Count(&self, values: T...) -> uint {
                     return values.length;
                 }
             }
@@ -537,10 +537,10 @@ TEST_SUITE("VariadicWideningLowering") {
 
     TEST_CASE("a Self variadic requirement uses its concrete generic implementation element") {
         const HirPackage package = LowerToHir(R"(
-            interface Merger { func Merge(self: &Self, others: Self...) -> uint; }
+            interface Merger { func Merge(&self, others: Self...) -> uint; }
             struct Item<T> { value: T; }
             extend Item<T> : Merger {
-                func Merge(self: &Item<T>, others: Item<T>...) -> uint { return others.length; }
+                func Merge(&self, others: Item<T>...) -> uint { return others.length; }
             }
             func MergeItems<T: Merger>(item: &T, other: T) -> uint { return item.Merge(other); }
             func Main() -> uint {

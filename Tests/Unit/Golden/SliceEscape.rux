@@ -48,13 +48,13 @@ unsafe func ThroughPointer(spec: *var Spec) {
     spec.options = options[..];
 }
 
-func Fallible() -> int32[..] ! bool {
+func Fallible() -> int32[..] throws bool {
     let options: int32[2] = [1, 2];
     return options[..];
 }
 
 extend Spec {
-    func WithOptions(self: &Spec, options: int32[..]) -> Spec {
+    func WithOptions(&self, options: int32[..]) -> Spec {
         return Spec { name: self.name, options: options };
     }
 }

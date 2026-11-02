@@ -20,5 +20,5 @@ intrinsic func Assert(condition: int, message: char8[..]);
 intrinsic func Panic(message: char8[..]) -> int;
 intrinsic func #Warn(message: char8[..], extra: int);
 extend Target {
-    intrinsic func Measure(self: &Target) -> uint;
+    intrinsic func Measure(&self) -> uint;
 }

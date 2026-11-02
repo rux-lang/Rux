@@ -90,8 +90,7 @@ std::size_t Blocks(const LirFunc &function, const std::string_view prefix) {
 const std::string kOwner = R"(
     struct Handle { value: int32; }
     extend Handle {
-        func =(self: &var Handle, other: &Handle);
-        func ~Handle(self: &var Handle) { self.value = 0i32; }
+        func ~Handle(&var self) { self.value = 0i32; }
     }
 )";
 } // namespace
@@ -202,7 +201,7 @@ TEST_CASE("tuple variant construction records reverse partial cleanup with varia
     const HirPackage package = DropHir(kOwner + R"(
         variant Choice { Empty, Pair(Handle, Handle, int32) }
         func Build(first: Handle, second: Handle) -> Choice {
-            return Choice::Pair(<-first, <-second, 7i32);
+            return Choice::Pair(move first, move second, 7i32);
         }
     )");
     const HirFunc &build = HirFunction(package, "Build");
@@ -227,7 +226,7 @@ TEST_CASE("named variant construction records completed payload cleanup by field
     const HirPackage package = DropHir(kOwner + R"(
         variant Record { Empty, Value { first: Handle; count: int32; second: Handle; } }
         func Build(first: Handle, second: Handle) -> Record {
-            return Record::Value { first: <-first, count: 7i32, second: <-second };
+            return Record::Value { first: move first, count: 7i32, second: move second };
         }
     )");
     const HirFunc &build = HirFunction(package, "Build");
@@ -248,7 +247,7 @@ TEST_CASE("named variant construction records completed payload cleanup by field
 TEST_CASE("variant values in returns and loops keep one flag-guarded glue call per binding") {
     const LirPackage package = DropLir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
-        func Make(value: Handle) -> Held { return Held::Full(<-value); }
+        func Make(value: Handle) -> Held { return Held::Full(move value); }
         func Run(flag: bool) {
             loop {
                 let held = Make(Handle { value: 1i32 });
@@ -272,7 +271,7 @@ TEST_CASE("variant direct destructors run before active payload destruction") {
     const HirPackage hir = DropHir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
         extend Held {
-            func ~Held(self: &var Held) {}
+            func ~Held(&var self) {}
         }
         func Use(value: Held) {}
     )");
@@ -286,7 +285,7 @@ TEST_CASE("variant direct destructors run before active payload destruction") {
     const LirPackage lir = DropLir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
         extend Held {
-            func ~Held(self: &var Held) {}
+            func ~Held(&var self) {}
         }
         func Use(value: Held) {}
     )");
@@ -302,7 +301,7 @@ TEST_CASE("scalar enum destruction never enters variant payload dispatch") {
     const LirPackage package = DropLir(R"(
         enum Status: uint8 { Ready = 1, Busy = 2 }
         extend Status {
-            func ~Status(self: &var Status) {}
+            func ~Status(&var self) {}
         }
         func Use(value: Status) {}
     )");
@@ -325,13 +324,13 @@ TEST_CASE("propagation rolls back every completed variant payload in reverse ord
         enum Error: uint8 { Bad = 1 }
         variant Choice { Empty, Build(Handle, Handle, int32) }
 
-        func Read(ok: bool) -> int32 ! Error {
+        func Read(ok: bool) -> int32 throws Error {
             if ok { return 7i32; }
-            fail Error::Bad;
+            throw Error::Bad;
         }
 
-        func Build(ok: bool) -> Choice ! Error {
-            return Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok)?);
+        func Build(ok: bool) -> Choice throws Error {
+            return try Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok));
         }
     )");
     const auto handle = std::ranges::find(package.dropGlues, TypeRef::MakeNamed("Handle"), &DropGluePlan::type);

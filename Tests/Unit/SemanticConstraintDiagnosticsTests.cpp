@@ -118,11 +118,11 @@ const std::string kMeasuredPrelude = R"(
     }
     struct Square { size: int; }
     extend Square : Measured {
-        func Measure(self: &Square) -> int { return self.size * self.size; }
+        func Measure(&self) -> int { return self.size * self.size; }
     }
     struct Segment { length: int; }
     extend Segment {
-        func Measure(self: &Segment) -> int { return self.length; }
+        func Measure(&self) -> int { return self.length; }
     }
     func Total<T: Measured>(value: T) -> int { return value.Measure(); }
 )";
@@ -135,7 +135,7 @@ const std::string kDisplayPrelude = R"(
     }
     struct Labeled { value: int; }
     extend Labeled : Display {
-        func Show(self: &Labeled) -> int { return self.value; }
+        func Show(&self) -> int { return self.value; }
     }
     struct Plain { value: int; }
     func Render<T: Display>(value: T) -> int { return 0; }
@@ -181,7 +181,7 @@ TEST_CASE("a type declaring every required method satisfies the bound without a 
         }
         struct Structural { value: int; }
         extend Structural {
-            func Show(self: &Structural) -> int { return self.value; }
+            func Show(&self) -> int { return self.value; }
         }
         func Render<T: Display>(value: T) -> int { return 0; }
         func Main() {
@@ -213,7 +213,7 @@ TEST_CASE("every bound of a multiply constrained parameter is checked independen
         }
         struct Half { value: int; }
         extend Half : Display {
-            func Show(self: &Half) -> int { return self.value; }
+            func Show(&self) -> int { return self.value; }
         }
         func Render<T: Display + Sized>(value: T) -> int { return 0; }
         func Main() {
@@ -351,7 +351,7 @@ TEST_CASE("an extend block borrows the bounds of the type it extends") {
         struct Cell<T: Display> { item: T; }
         func Render<T: Display>(count: int) -> int { return count; }
         extend Cell<T> {
-            func Count(self: &Cell<T>) -> int { return Render<T>(1); }
+            func Count(&self) -> int { return Render<T>(1); }
         }
     )");
 
@@ -364,7 +364,7 @@ TEST_CASE("an extend block borrows the bounds of the type it extends") {
         struct Cell<T> { item: T; }
         func Render<T: Display>(count: int) -> int { return count; }
         extend Cell<T> {
-            func Count(self: &Cell<T>) -> int { return Render<T>(1); }
+            func Count(&self) -> int { return Render<T>(1); }
         }
     )");
 
@@ -512,7 +512,7 @@ TEST_CASE("a method of a generic extend block calls the bound of the type it ext
     const HirPackage package = LowerSource(kMeasuredPrelude + R"(
         struct Cell<T: Measured> { item: T; }
         extend Cell<T> {
-            func Inside(self: &Cell<T>) -> int { return self.item.Measure(); }
+            func Inside(&self) -> int { return self.item.Measure(); }
         }
         func Main() -> int {
             let cell = Cell<Square> { item: Square { size: 4 } };
@@ -544,7 +544,7 @@ pub interface Measured {
 pub struct Square { pub size: int; }
 
 extend Square : Measured {
-    func Measure(self: &Square) -> int { return self.size * self.size; }
+    func Measure(&self) -> int { return self.size * self.size; }
 }
 
 pub func Total<T: Measured>(value: T) -> int { return value.Measure(); }
@@ -563,7 +563,7 @@ TEST_CASE("interface arguments do not require importing the nested interface nam
         pub interface Measured { func Measure() -> int; }
         pub struct Square { pub size: int; }
         extend Square : Measured {
-            func Measure(self: &Square) -> int { return self.size * self.size; }
+            func Measure(&self) -> int { return self.size * self.size; }
         }
         pub interface Caller { func Read(value: &Measured) -> int; }
         pub func Read(value: &Measured) -> int { return value.Measure(); }
@@ -587,11 +587,11 @@ TEST_CASE("interface arguments do not require importing the nested interface nam
 // that appears only in a bound is deduced from the method the bounded argument provides.
 constexpr const char *kCursorPrelude = R"(
     pub interface Cursor<T> {
-        func Next(self: &var Self) -> T?;
+        func Next(&var self) -> T?;
     }
     pub struct Counter { at: int32; end: int32; }
     extend Counter {
-        pub func Next(self: &var Counter) -> int32? {
+        pub func Next(&var self) -> int32? {
             if self.at >= self.end { return none; }
             self.at = self.at + 1;
             return self.at - 1;
@@ -599,7 +599,7 @@ constexpr const char *kCursorPrelude = R"(
     }
     pub struct Mapped<I: Cursor<T>, T, U> { source: I; transform: func(T) -> U; }
     extend Mapped<I, T, U> {
-        pub func Next(self: &var Mapped<I, T, U>) -> U? {
+        pub func Next(&var self) -> U? {
             let item = self.source.Next() ?? return none;
             return self.transform(item);
         }
@@ -609,7 +609,7 @@ constexpr const char *kCursorPrelude = R"(
     }
     pub struct Taken<I: Cursor<T>, T> { source: I; left: uint; }
     extend Taken<I, T> {
-        pub func Next(self: &var Taken<I, T>) -> T? {
+        pub func Next(&var self) -> T? {
             if self.left == 0 { return none; }
             self.left = self.left - 1;
             return self.source.Next();
@@ -661,18 +661,18 @@ TEST_CASE("a generic interface bound rejects a method whose types disagree with 
 TEST_CASE("a generic interface is refused as a value type and checks its type argument counts") {
     const auto diagnostics = AnalyzeSource(R"(
         interface Cursor<T> {
-            func Next(self: &var Self) -> T?;
+            func Next(&var self) -> T?;
         }
         interface Plain {
             func Size() -> int;
         }
         struct Counter { at: int32; }
         extend Counter : Cursor {
-            func Next(self: &var Counter) -> int32? { return none; }
+            func Next(&var self) -> int32? { return none; }
         }
         struct Sized { at: int32; }
         extend Sized : Plain<int32> {
-            func Size(self: &Sized) -> int { return 0; }
+            func Size(&self) -> int { return 0; }
         }
         func Stored(value: Cursor<int32>) -> int { return 0; }
         func Bare<I: Cursor>(source: I) -> int { return 0; }
@@ -693,7 +693,7 @@ TEST_CASE("a generic interface's parameters cannot carry bounds") {
     const auto diagnostics = AnalyzeSource(R"(
         interface Shown { func Show() -> int; }
         interface Cursor<T: Shown> {
-            func Next(self: &var Self) -> T?;
+            func Next(&var self) -> T?;
         }
     )");
     REQUIRE_EQ(diagnostics.size(), 1);

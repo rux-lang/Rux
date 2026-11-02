@@ -195,11 +195,6 @@ void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names)
             names.push_back(typed->name);
         }
     }
-    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        if (presence->inner) {
-            AppendPatternNames(*presence->inner, names);
-        }
-    }
     else if (const auto *range = AstCast<const RangePattern>(&pattern)) {
         if (range->lo) {
             AppendPatternNames(*range->lo, names);
@@ -832,11 +827,6 @@ private:
                            scopeNames);
             }
         }
-        else if (const auto *presencePat = AstCast<const PresencePattern>(&pattern)) {
-            if (presencePat->inner) {
-                VisitPattern(*presencePat->inner, scopeNames);
-            }
-        }
         else if (const auto *rangePat = AstCast<const RangePattern>(&pattern)) {
             if (rangePat->lo) {
                 VisitPattern(*rangePat->lo, scopeNames);
@@ -913,17 +903,6 @@ private:
             }
             if (assignExpr->value) {
                 VisitExpr(*assignExpr->value);
-            }
-        }
-        else if (const auto *ternExpr = AstCast<const TernaryExpr>(&expr)) {
-            if (ternExpr->condition) {
-                VisitExpr(*ternExpr->condition);
-            }
-            if (ternExpr->thenExpr) {
-                VisitExpr(*ternExpr->thenExpr);
-            }
-            if (ternExpr->elseExpr) {
-                VisitExpr(*ternExpr->elseExpr);
             }
         }
         else if (const auto *rangeExpr = AstCast<const RangeExpr>(&expr)) {
@@ -1032,21 +1011,6 @@ private:
                 }
             }
         }
-        else if (const auto *catchExpr = AstCast<const CatchExpr>(&expr)) {
-            if (catchExpr->subject) {
-                VisitExpr(*catchExpr->subject);
-            }
-            for (const auto &arm : catchExpr->arms) {
-                if (arm.pattern) {
-                    std::vector<std::string> names;
-                    AppendPatternNames(*arm.pattern, names);
-                    VisitPattern(*arm.pattern, names);
-                }
-                if (arm.body) {
-                    VisitExpr(*arm.body);
-                }
-            }
-        }
         else if (const auto *marked = AstCast<const TryMarkExpr>(&expr)) {
             if (marked->operand) {
                 VisitExpr(*marked->operand);
@@ -1060,14 +1024,6 @@ private:
                 if (arm.body) {
                     VisitExpr(*arm.body);
                 }
-            }
-        }
-        else if (const auto *mapped = AstCast<const MappedTryExpr>(&expr)) {
-            if (mapped->operand) {
-                VisitExpr(*mapped->operand);
-            }
-            if (mapped->mapper) {
-                VisitExpr(*mapped->mapper);
             }
         }
         else if (const auto *construct = AstCast<const NativeConstructExpr>(&expr)) {

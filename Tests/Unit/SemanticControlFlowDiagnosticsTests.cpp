@@ -69,7 +69,7 @@ TEST_CASE("conditions and loop exits name the construct and the offending type o
             if 1 {} else if "text" {}
             while 2 {}
             do {} while 3;
-            let selected = 4 ? 1 : 2;
+            let selected = if 4 { 1 } else { 2 };
         }
         func Exits() {
             break;
@@ -86,7 +86,6 @@ TEST_CASE("conditions and loop exits name the construct and the offending type o
     CHECK(HasMessage(diagnostics, "condition for 'else if' must have type 'bool', but found 'char8[..]'"));
     CHECK(HasMessage(diagnostics, "condition for 'while' must have type 'bool', but found 'int'"));
     CHECK(HasMessage(diagnostics, "condition for 'do-while' must have type 'bool', but found 'int'"));
-    CHECK(HasMessage(diagnostics, "condition for '?:' must have type 'bool', but found 'int'"));
     CHECK(HasMessage(diagnostics, "'break' can only be used inside 'while', 'for', or 'loop'"));
     CHECK(HasMessage(diagnostics, "'continue' can only be used inside 'while', 'for', or 'loop'"));
     CHECK(HasMessage(diagnostics, "'break' refers to unknown loop label 'missing'"));
@@ -143,28 +142,28 @@ TEST_CASE("case pattern diagnostics distinguish enum enumerators from variant ca
         func MissingEnum(mode: Mode) {
             match mode {
                 Mode::Missing => 1,
-                else => 2
+                _ => 2
             }
         }
 
         func MissingVariant(signal: Signal) {
             match signal {
                 Signal::Missing => 1,
-                else => 2
+                _ => 2
             }
         }
 
         func UnitPayload(signal: Signal) {
             match signal {
                 Signal::Ready(value) => 1,
-                else => 2
+                _ => 2
             }
         }
 
         func WrongOwner(mode: Mode) {
             match mode {
                 Signal::Waiting => 1,
-                else => 2
+                _ => 2
             }
         }
 
@@ -172,14 +171,14 @@ TEST_CASE("case pattern diagnostics distinguish enum enumerators from variant ca
             match event {
                 Event::Named { value, value: other } => 1,
                 Event::Pair { unknown: item, flag } => 2,
-                else => 3
+                _ => 3
             }
         }
 
         func NotCaseType(value: int) {
             match value {
                 .Ready => 1,
-                else => 2
+                _ => 2
             }
         }
     )");

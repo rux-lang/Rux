@@ -404,49 +404,6 @@ TypeRef AnalysisContext::CheckShortCircuitExpression(const BinaryExpr &expressio
     return CheckBinary(expression.op, left, right, *expression.left, *expression.right, expression.location);
 }
 
-TypeRef AnalysisContext::CheckTernaryExpression(const TernaryExpr &expression) {
-    const TypeRef condition = ReadBorrowedScalar(*expression.condition, CheckExpr(*expression.condition));
-    CheckBooleanCondition(condition, expression.condition->location, "?:");
-    const TrackedFlow branchEntry = SaveTrackedFlow();
-
-    const TypeRef thenType = CheckExpr(*expression.thenExpr);
-    ConsumeValue(*expression.thenExpr, thenType, ValueConsumptionKind::ConditionalArm, expression.thenExpr->location);
-    const TrackedFlow thenExit = SaveTrackedFlow();
-
-    RestoreTrackedFlow(branchEntry);
-    const TypeRef elseType = CheckExpr(*expression.elseExpr);
-    ConsumeValue(*expression.elseExpr, elseType, ValueConsumptionKind::ConditionalArm, expression.elseExpr->location);
-    const TrackedFlow elseExit = SaveTrackedFlow();
-    MergeTrackedFlows({thenExit, elseExit});
-    // As with match arms, a diverging branch never decides the type, and the two values must agree: the else value
-    // converts to the then type, or the then value to the else type. A branch whose native type is still open, such as
-    // `none`, is left to the expected type of the context.
-    const TypeRef thenValue = IsDivergingExpression(*expression.thenExpr) ? TypeRef::MakeUnknown() : thenType;
-    const TypeRef elseValue = IsDivergingExpression(*expression.elseExpr) ? TypeRef::MakeUnknown() : elseType;
-    if (thenValue.IsUnknown()) {
-        return elseValue.IsUnknown() ? thenType : elseValue;
-    }
-    if (elseValue.IsUnknown() || CanAssignExprTo(*expression.elseExpr, elseValue, thenValue)) {
-        return thenValue;
-    }
-    if (CanAssignExprTo(*expression.thenExpr, thenValue, elseValue)) {
-        return elseValue;
-    }
-    // Two integer or two floating-point branches are typed together by the context, which may hold an unsuffixed
-    // literal that fits only there, such as a `uint128` bound.
-    const bool contextualNumbers =
-        (thenValue.IsInteger() && elseValue.IsInteger()) ||
-        (thenValue.IsNumeric() && !thenValue.IsInteger() && elseValue.IsNumeric() && !elseValue.IsInteger());
-    if (!contextualNumbers && !thenValue.MentionsIncompleteNative() && !elseValue.MentionsIncompleteNative()) {
-        EmitError(expression.elseExpr->location,
-                  std::format("conditional branch type mismatch: expected '{}', found '{}'", thenValue.DisplayString(),
-                              elseValue.DisplayString()),
-                  {}, "make both branches produce the same type");
-        return TypeRef::MakeUnknown();
-    }
-    return thenValue;
-}
-
 /// Whether a pattern binds anything a value can be taken out into.
 ///
 /// A wildcard or a literal reads the subject and keeps nothing; an enum pattern with a named position, a struct
@@ -459,9 +416,6 @@ bool PatternBindsValue(const Pattern &pattern) {
     // `v: T` binds its selection, while `_: T` only selects; `p?` binds whatever `p` binds.
     if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         return !typed->name.empty();
-    }
-    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        return presence->inner && PatternBindsValue(*presence->inner);
     }
     if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args,

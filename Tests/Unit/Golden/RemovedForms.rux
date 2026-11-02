@@ -1,0 +1,25 @@
+// Removed forms that only analysis can recognize: a postfix `?` on a call that throws, and a bodyless lifecycle
+// operator, which `#NoCopy` and `#NoMove` replaced.
+
+struct ParseError {}
+
+struct Cell {
+    value: int32;
+}
+
+extend Cell {
+    func =(&var self, other: &Cell);
+    func <-(&var self, other: Cell);
+}
+
+func Read() -> int32 throws ParseError {
+    return 1i32;
+}
+
+func Forward() -> int32 throws ParseError {
+    return Read()?;
+}
+
+func Main() -> int {
+    return 0;
+}

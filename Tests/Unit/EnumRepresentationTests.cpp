@@ -98,7 +98,7 @@ const std::string kOptionPrelude = R"(
     variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Advance(self: &var Counter) -> Option<int32> {
+        func Advance(&var self) -> Option<int32> {
             if self.value >= self.limit { return Option::None<int32>(); }
             let current = self.value;
             self.value = self.value + 1i32;

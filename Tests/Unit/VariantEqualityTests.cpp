@@ -116,7 +116,7 @@ TEST_CASE("nested variant and custom payload equality lower recursively") {
     const LirPackage package = LowerVariantSource(R"(
         struct Label { value: int32; }
         extend Label {
-            func ==(self: &Label, other: Label) -> bool { return self.value == other.value; }
+            func ==(&self, other: Label) -> bool { return self.value == other.value; }
         }
         variant Inner { None, Number(int32) }
         variant Outer { Empty, Nested(Inner), Named { label: Label; } }

@@ -28,8 +28,8 @@ func Square(value: uint64) -> uint64 {
 }
 
 func Main() -> int {
-    var handle = Spawn(Square, 12u64) catch { else => return 1 };
-    return handle.Join() == 144u64 ? 0 : 2;
+    var handle = try Spawn(Square, 12u64) catch { _ => return 1 };
+    return if handle.Join() == 144u64 { 0 } else { 2 };
 }
 ```
 

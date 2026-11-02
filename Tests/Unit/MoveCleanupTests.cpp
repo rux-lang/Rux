@@ -11,8 +11,7 @@ TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration ord
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func Take(value: Handle) {}
@@ -24,7 +23,7 @@ TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration ord
                 first;
             }
             let last = Handle { value: 3 };
-            Take(<-last);
+            Take(move last);
         }
     )");
 
@@ -75,17 +74,16 @@ TEST_CASE("returns evaluate their value before conditionally destroying every li
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func Choose(parameter: Handle, selectNested: bool) -> Handle {
             let outer = Handle { value: 1 };
             if selectNested {
                 let nested = Handle { value: 2 };
-                return <-nested;
+                return move nested;
             }
-            return <-parameter;
+            return move parameter;
         }
     )");
 
@@ -126,8 +124,7 @@ TEST_CASE("loop exits carry every cleanup between the statement and its selected
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func Run(flag: bool) {
@@ -173,24 +170,23 @@ TEST_CASE("move assignment schedules conditional destruction before replacing dr
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         struct Owner { handle: Handle; }
 
         func Replace(destination: Handle, source: Handle) {
-            var target <- destination;
-            target <- source;
+            var target = move destination;
+            target = move source;
         }
 
         func ReplaceField(owner: Owner, source: Handle) {
-            var target <- owner;
-            target.handle <- source;
+            var target = move owner;
+            target.handle = move source;
         }
 
         func Initialize(source: Handle) {
             var destination: Handle;
-            destination <- source;
+            destination = move source;
         }
     )");
 
@@ -240,20 +236,19 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         struct Owner { first: Handle; copy: int32; last: Handle; }
         variant Choice { Both(Handle, Handle) }
 
         func Build(first: Handle, last: Handle) -> Owner {
-            return Owner { first: <-first, copy: 1, last: <-last };
+            return Owner { first: move first, copy: 1, last: move last };
         }
 
         func Aggregate(a: Handle, b: Handle, c: Handle, d: Handle, e: Handle, f: Handle) {
-            let array = [<-a, <-b];
-            let tuple = (<-c, 1, <-d);
-            let choice = Choice::Both(<-e, <-f);
+            let array = [move a, move b];
+            let tuple = (move c, 1, move d);
+            let choice = Choice::Both(move e, move f);
         }
     )");
 
@@ -297,35 +292,34 @@ namespace {
 constexpr const char *kPlaceReplacementSource = R"(
     struct Handle { value: int32; }
     extend Handle {
-        func =(self: &var Handle, other: &Handle);
-        func ~Handle(self: &var Handle) {}
+        func ~Handle(&var self) {}
     }
     struct Owner { handle: Handle; pair: (Handle, int32); items: Handle[2]; }
     struct Grid { cell: Handle; }
     extend Grid {
-        func []=(self: &var Grid, index: uint, value: Handle) {}
+        func []=(&var self, index: uint, value: Handle) {}
     }
 
     func Local(owner: Owner, a: Handle, b: Handle, c: Handle) {
-        var target <- owner;
-        target.handle <- a;
-        target.pair.0 <- b;
-        target.items[1] <- c;
+        var target = move owner;
+        target.handle = move a;
+        target.pair.0 = move b;
+        target.items[1] = move c;
     }
-    func Borrowed(owner: &var Owner, a: Handle) { owner.handle <- a; }
-    func Viewed(items: var Handle[..], a: Handle) { items[0] <- a; }
+    func Borrowed(owner: &var Owner, a: Handle) { owner.handle = move a; }
+    func Viewed(items: var Handle[..], a: Handle) { items[0] = move a; }
     // Safety: `slot` must address a live, writable `Owner`
-    unsafe func Raw(slot: *var Owner, a: Handle) { slot.handle <- a; }
+    unsafe func Raw(slot: *var Owner, a: Handle) { slot.handle = move a; }
     // Safety: `slots` must address writable `Handle` elements at every index the body uses
     unsafe func RawElements(slots: *var Handle, a: Handle, b: Handle) {
-        slots[1] <- a;
-        *slots <- b;
+        slots[1] = move a;
+        *slots = move b;
     }
     func Whole(a: Handle, b: Handle) {
-        var target <- a;
-        target <- b;
+        var target = move a;
+        target = move b;
     }
-    func Indexer(grid: &var Grid, a: Handle) { grid[0] <- a; }
+    func Indexer(grid: &var Grid, a: Handle) { grid[0] = move a; }
 )";
 
 const FuncDecl &RequireFuncDecl(const Module &module, const std::string_view name) {

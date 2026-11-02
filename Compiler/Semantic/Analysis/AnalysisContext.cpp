@@ -25,9 +25,9 @@ namespace {
     return AstCast<const IdentExpr>(&expression) || AstCast<const SelfExpr>(&expression) ||
            AstCast<const UnaryExpr>(&expression) || AstCast<const MoveExpr>(&expression) ||
            AstCast<const PostfixExpr>(&expression) || AstCast<const BinaryExpr>(&expression) ||
-           AstCast<const AssignExpr>(&expression) || AstCast<const TernaryExpr>(&expression) ||
-           AstCast<const IndexExpr>(&expression) || AstCast<const FieldExpr>(&expression) ||
-           AstCast<const CastExpr>(&expression) || AstCast<const IsExpr>(&expression);
+           AstCast<const AssignExpr>(&expression) || AstCast<const IndexExpr>(&expression) ||
+           AstCast<const FieldExpr>(&expression) || AstCast<const CastExpr>(&expression) ||
+           AstCast<const IsExpr>(&expression);
 }
 } // namespace
 
@@ -177,7 +177,6 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , dropGluePlans(output.dropGluePlans)
     , constraintWitnesses(output.constraintWitnesses)
     , propagations(output.propagations)
-    , mappedPropagations(output.mappedPropagations)
     , throwSites(output.throwSites)
     , throwStatements(output.throwStatements)
     , tryBlockHandlers(output.tryBlockHandlers)

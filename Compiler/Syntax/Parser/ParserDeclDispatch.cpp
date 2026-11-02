@@ -195,7 +195,8 @@ Param Parser::ParseParam(const bool allowVariadic) {
         return parameter;
     }
 
-    if (Match(TokenKind::VarKeyword)) {
+    const bool removedVar = Match(TokenKind::VarKeyword);
+    if (removedVar) {
         const std::string name = Check(TokenKind::SelfKeyword) ? "self"
                                : Check(TokenKind::Ident)       ? Peek().text
                                                                : "value";
@@ -204,10 +205,21 @@ Param Parser::ParseParam(const bool allowVariadic) {
                       ": &var T' to mutate caller storage");
     }
 
-    // The long form of a receiver, `self: &Vector`, names the type the short form takes from the `extend` block. It
-    // stays accepted while sources move to the short form.
+    // The removed long form of a receiver, `self: &Vector`, is reported and read with the type it names.
     if (Match(TokenKind::SelfKeyword)) {
         parameter.name = "self";
+        if (Check(TokenKind::Colon) && !removedVar) {
+            const bool reference = Peek(1).Is(TokenKind::Amp);
+            const bool pointer = Peek(1).Is(TokenKind::Star);
+            const bool writable = (reference || pointer) && Peek(2).Is(TokenKind::VarKeyword);
+            const std::string shorthand = std::format("{}{}self",
+                                                      reference ? "&"
+                                                      : pointer ? "*"
+                                                                : "",
+                                                      writable ? "var " : "");
+            EmitError(Previous().location, "a receiver does not name its type",
+                      std::format("write '{}'; the 'extend' block or interface gives the type", shorthand));
+        }
         if (!Match(TokenKind::Colon)) {
             EmitExpected(CurrentLocation(), "',' or ')' after the receiver 'self'",
                          "write '&self' to read the receiver, '&var self' to write it, or 'self' to take it by value");

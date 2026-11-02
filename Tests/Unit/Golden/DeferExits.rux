@@ -1,8 +1,8 @@
 // A deferred statement runs while its scope is already being left, so it cannot leave it another way: no 'return',
 // 'fail', '?', or 'break' or 'continue' out of it. A loop written inside the deferred statement is its own to leave.
-func Parse(text: char8[..]) -> int ! int {
-    defer fail 1;
-    defer Parse(text)?;
+func Parse(text: char8[..]) -> int throws int {
+    defer throw 1;
+    defer try Parse(text);
     return 0;
 }
 

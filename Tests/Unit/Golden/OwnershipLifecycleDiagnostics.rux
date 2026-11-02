@@ -1,9 +1,9 @@
+#NoCopy
+#NoMove
 struct Cell { value: int32; }
 
 extend Cell {
-    func =(self: &Cell, other: &Cell);
-    func <-(self: &var Cell, other: &Cell);
-    func ~Other(self: &var Cell) {}
+    func ~Other(&var self) {}
 }
 
 func Escape(value: &Cell) -> &Cell {

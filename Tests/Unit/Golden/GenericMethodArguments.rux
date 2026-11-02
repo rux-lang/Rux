@@ -2,7 +2,7 @@ interface Scored { func Score() -> int; }
 struct Factory {}
 extend Factory {
     func Width<T>() -> uint { return sizeof(T); }
-    func Read<T: Scored>(self: &Factory, value: &T) -> int { return value.Score(); }
+    func Read<T: Scored>(&self, value: &T) -> int { return value.Score(); }
 }
 func Main() -> int {
     let factory = Factory {};

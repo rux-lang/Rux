@@ -40,15 +40,15 @@ const SemanticDiagnostic &RequireDiagnostic(const std::vector<SemanticDiagnostic
 const std::string kPropagationPrelude = R"(
     enum ParseError: int32 { Empty, Bad }
     enum IoError: int32 { Closed }
-    func Read(flag: bool) -> int32 ! ParseError { return 7i32; }
+    func Read(flag: bool) -> int32 throws ParseError { return 7i32; }
     func Lookup(flag: bool) -> int32? { return 1i32; }
 )";
 } // namespace
 
 TEST_CASE("a propagated outcome evaluates to its success payload") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Doubled(flag: bool) -> int32 ! ParseError {
-            let value: int32 = Read(flag)?;
+        func Doubled(flag: bool) -> int32 throws ParseError {
+            let value: int32 = try Read(flag);
             return value * 2i32;
         }
         func Found(flag: bool) -> int32? {
@@ -62,25 +62,24 @@ TEST_CASE("a propagated outcome evaluates to its success payload") {
 
 TEST_CASE("the conditional operator keeps its own parse beside the propagation operator") {
     const auto diagnostics = AnalyzeSource(R"(
-        func Pick(flag: bool) -> int32 { return flag ? 1i32 : 2i32; }
+        func Pick(flag: bool) -> int32 { return if flag { 1i32 } else { 2i32 }; }
     )");
 
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("propagation rejects a value that is neither a native fallible nor an optional") {
+TEST_CASE("propagation rejects a value that is not an optional") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Bad(flag: bool) -> int32 ! ParseError {
+        func Bad(flag: bool) -> int32 throws ParseError {
             let value: int32 = 3i32?;
             return value;
         }
     )");
 
     REQUIRE_FALSE(diagnostics.empty());
-    CHECK_EQ(diagnostics[0].message,
-             "'int32' cannot be propagated with '?' because it is neither a native fallible nor an optional");
+    CHECK_EQ(diagnostics[0].message, "'int32' cannot be propagated with '?' because it is not an optional");
     REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "'?' propagates a native fallible 'T ! E' or an optional 'T?'");
+    CHECK_EQ(*diagnostics[0].help, "'?' propagates the absence of an optional 'T?'");
 }
 
 TEST_CASE("an Option-shaped variant is an ordinary variant that cannot be propagated") {
@@ -101,46 +100,12 @@ TEST_CASE("an Option-shaped variant is an ordinary variant that cannot be propag
 
     for (const std::string_view type : {"Maybe<int32>", "LocalMaybe"}) {
         const SemanticDiagnostic &rejected = RequireDiagnostic(
-            diagnostics,
-            std::format("'{}' cannot be propagated with '?' because it is neither a native fallible nor an optional",
-                        type));
+            diagnostics, std::format("'{}' cannot be propagated with '?' because it is not an optional", type));
         REQUIRE_EQ(rejected.notes.size(), 1);
         CHECK_EQ(rejected.notes[0], "a variant with 'Some' and 'None' cases is an ordinary variant; only a native "
                                     "optional propagates absence");
         REQUIRE(rejected.help.has_value());
         CHECK_EQ(*rejected.help, "return 'T?' and propagate a native optional, or match the variant");
-    }
-}
-
-TEST_CASE("a Result-shaped variant is an ordinary variant that cannot be propagated") {
-    const auto diagnostics = AnalyzeSource(R"(
-        enum ParseError: int32 { Bad }
-        variant Attempt<T, E> { Success(T), Error(E) }
-        variant LocalAttempt { Success(int32), Error(ParseError) }
-
-        func Read() -> Attempt<int32, ParseError> {
-            return Attempt::Success<int32, ParseError>(7i32);
-        }
-        func Generic() -> Attempt<int32, ParseError> {
-            let value = Read()?;
-            return Attempt::Success<int32, ParseError>(value);
-        }
-        func ReadLocal(value: LocalAttempt) -> LocalAttempt {
-            let item = value?;
-            return LocalAttempt::Success(item);
-        }
-    )");
-
-    for (const std::string_view type : {"Attempt<int32, ParseError>", "LocalAttempt"}) {
-        const SemanticDiagnostic &rejected = RequireDiagnostic(
-            diagnostics,
-            std::format("'{}' cannot be propagated with '?' because it is neither a native fallible nor an optional",
-                        type));
-        REQUIRE_EQ(rejected.notes.size(), 1);
-        CHECK_EQ(rejected.notes[0], "a variant with 'Success' and 'Error' cases is an ordinary variant; only a native "
-                                    "fallible propagates a failure");
-        REQUIRE(rejected.help.has_value());
-        CHECK_EQ(*rejected.help, "return 'T ! E' and propagate a native fallible, or match the variant");
     }
 }
 
@@ -161,9 +126,7 @@ TEST_CASE("scalar enums named like outcomes are ordinary values") {
 
     for (const std::string_view type : {"ResultLookalike", "OptionLookalike"}) {
         const SemanticDiagnostic &rejected = RequireDiagnostic(
-            diagnostics,
-            std::format("'{}' cannot be propagated with '?' because it is neither a native fallible nor an optional",
-                        type));
+            diagnostics, std::format("'{}' cannot be propagated with '?' because it is not an optional", type));
         CHECK(rejected.notes.empty());
     }
 }
@@ -188,96 +151,27 @@ TEST_CASE("every variant with outcome case names is ordinary, whatever its paylo
         }
     )");
 
-    const SemanticDiagnostic &missingError = RequireDiagnostic(
-        diagnostics,
-        "'MissingError' cannot be propagated with '?' because it is neither a native fallible nor an optional");
+    const SemanticDiagnostic &missingError =
+        RequireDiagnostic(diagnostics, "'MissingError' cannot be propagated with '?' because it is not an optional");
     REQUIRE_EQ(missingError.notes.size(), 1);
     CHECK_EQ(missingError.notes[0], "a variant with 'Success' and 'Error' cases is an ordinary variant; only a native "
                                     "fallible propagates a failure");
     for (const std::string_view type : {"PayloadNone", "NamedOption"}) {
         const SemanticDiagnostic &rejected = RequireDiagnostic(
-            diagnostics,
-            std::format("'{}' cannot be propagated with '?' because it is neither a native fallible nor an optional",
-                        type));
+            diagnostics, std::format("'{}' cannot be propagated with '?' because it is not an optional", type));
         REQUIRE_EQ(rejected.notes.size(), 1);
         CHECK_EQ(rejected.notes[0], "a variant with 'Some' and 'None' cases is an ordinary variant; only a native "
                                     "optional propagates absence");
     }
 }
 
-TEST_CASE("propagation requires an enclosing return type that can carry the failure") {
-    const auto noReturn = AnalyzeSource(kPropagationPrelude + R"(
-        func Discard(flag: bool) { let value: int32 = Read(flag)?; }
-    )");
-
-    REQUIRE_FALSE(noReturn.empty());
-    CHECK_EQ(noReturn[0].message,
-             "'?' propagates native fallible 'int32 ! ParseError', but the enclosing function returns nothing");
-    REQUIRE(noReturn[0].help.has_value());
-    CHECK_EQ(*noReturn[0].help,
-             "declare the function's error channel, as in '-> T ! E', or handle the failure with 'match'");
-
-    const auto plainReturn = AnalyzeSource(kPropagationPrelude + R"(
-        func Counted(flag: bool) -> int32 { return Read(flag)?; }
-    )");
-
-    REQUIRE_FALSE(plainReturn.empty());
-    CHECK_EQ(plainReturn[0].message,
-             "'?' propagates native fallible 'int32 ! ParseError', but the enclosing function returns 'int32'");
-}
-
-TEST_CASE("propagation does not cross between a native fallible and a native optional") {
-    const auto optionalInFallible = AnalyzeSource(kPropagationPrelude + R"(
-        func Mixed(flag: bool) -> int32 ! ParseError {
-            let value: int32 = Lookup(flag)?;
-            return value;
-        }
-    )");
-
-    REQUIRE_FALSE(optionalInFallible.empty());
-    CHECK_EQ(optionalInFallible[0].message,
-             "'?' propagates the absence of 'int32?', but the enclosing function returns 'int32 ! ParseError'");
-    REQUIRE(optionalInFallible[0].help.has_value());
-    CHECK_EQ(*optionalInFallible[0].help, "declare an optional result, as in '-> T?', or supply a fallback with '?"
-                                          "?'");
-
-    const auto fallibleInOptional = AnalyzeSource(kPropagationPrelude + R"(
-        func Mixed(flag: bool) -> int32? {
-            let value: int32 = Read(flag)?;
-            return value;
-        }
-    )");
-
-    REQUIRE_FALSE(fallibleInOptional.empty());
-    CHECK_EQ(fallibleInOptional[0].message,
-             "'?' propagates native fallible 'int32 ! ParseError', but the enclosing function returns 'int32?'");
-}
-
-TEST_CASE("propagation never converts an error type") {
-    const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Rethrown(flag: bool) -> int32 ! IoError {
-            let value: int32 = Read(flag)?;
-            return value;
-        }
-    )");
-
-    REQUIRE_FALSE(diagnostics.empty());
-    CHECK_EQ(diagnostics[0].message,
-             "'?' propagates error type 'ParseError', but the enclosing function fails with 'IoError'");
-    REQUIRE_EQ(diagnostics[0].notes.size(), 1);
-    CHECK_EQ(diagnostics[0].notes[0], "'?' moves an error into the outer failure only by identity, sum member "
-                                      "injection, or subset widening; it never converts an error");
-    REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "map the error to 'IoError' with '? else (e => ...)', or match the value");
-}
-
 TEST_CASE("a propagated payload keeps its own type in a chained expression") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Sum(flag: bool) -> int32 ! ParseError {
-            return Read(flag)? + Read(flag)?;
+        func Sum(flag: bool) -> int32 throws ParseError {
+            return try Read(flag) + Read(flag);
         }
-        func Mistyped(flag: bool) -> int32 ! ParseError {
-            let value: bool = Read(flag)?;
+        func Mistyped(flag: bool) -> int32 throws ParseError {
+            let value: bool = try Read(flag);
             return 1i32;
         }
     )");
@@ -286,27 +180,15 @@ TEST_CASE("a propagated payload keeps its own type in a chained expression") {
     CHECK_EQ(diagnostics[0].message, "cannot assign 'int32' to 'bool8'");
 }
 
-TEST_CASE("propagation requires explicit transfer of a named move-only outcome") {
-    const auto diagnostics = AnalyzeSource(R"(
-        struct Token { value: int32; }
-        extend Token { func =(self: &var Token, other: &Token); }
-        func Forward(input: int32 ! Token) -> int32 ! Token {
-            let value = input?;
-            return value;
-        }
-    )");
-    const auto &error = RequireDiagnostic(diagnostics, "cannot copy 'int32 ! Token', which prohibits copying");
-    CHECK_EQ(error.help, "write '(move input)?' to transfer it");
-}
-
 TEST_CASE("propagation records an explicit operand transfer for later reads") {
     const auto diagnostics = AnalyzeSource(R"(
+        #NoCopy
         struct Token { value: int32; }
-        extend Token { func =(self: &var Token, other: &Token); }
+        extend Token { }
         func Forward(input: Token?) -> Token? {
-            let value = (<-input)?;
-            let again = (<-input)?;
-            return <-value;
+            let value = (move input)?;
+            let again = (move input)?;
+            return move value;
         }
     )");
     RequireDiagnostic(diagnostics, "value 'input' is used after it was moved");
@@ -315,13 +197,13 @@ TEST_CASE("propagation records an explicit operand transfer for later reads") {
 TEST_CASE("propagation validates hidden payload transfers at generic instantiation") {
     const auto diagnostics = AnalyzeSource(R"(
         func Forward<T>(input: T?) -> T? {
-            let value = (<-input)?;
-            return <-value;
+            let value = (move input)?;
+            return move value;
         }
+        #NoCopy
+        #NoMove
         struct Pinned { value: int32; }
         extend Pinned {
-            func =(self: &var Pinned, other: &Pinned);
-            func <-(self: &var Pinned, other: Pinned);
         }
         func Read(value: &int32) {
             Forward<&int32>(none);

@@ -112,27 +112,6 @@ const std::string kErrors = R"(
 )";
 } // namespace
 
-TEST_CASE("constructors select their own level's tag") {
-    const HirPackage package = LowerSource(kErrors + R"(
-        func Build(value: int32, error: ParseError) {
-            let success: int32 ! ParseError = .Success(value);
-            let failure: int32 ! ParseError = .Failure(error);
-            let present: int32? = .Some(value);
-        }
-    )");
-    const HirFunc &build = RequireFunction(package, "Build");
-
-    const HirEnumConstructExpr &success = Construct(LetInit(build, 0), std::to_string(NativeSuccessTag));
-    CHECK_EQ(success.type, TypeRef::MakeFallible(TypeRef::MakeInt32(), TypeRef::MakeNamed("ParseError")));
-    CHECK(dynamic_cast<const HirVarExpr *>(&Payload(success)) != nullptr);
-
-    const HirEnumConstructExpr &failure = Construct(LetInit(build, 1), std::to_string(NativeFailureTag));
-    CHECK_EQ(Payload(failure).type.ToString(), "ParseError");
-
-    const HirEnumConstructExpr &present = Construct(LetInit(build, 2), std::to_string(NativePresentTag));
-    CHECK_EQ(present.type, TypeRef::MakeOptional(TypeRef::MakeInt32()));
-}
-
 TEST_CASE("every nested optional state is built directly") {
     const HirPackage package = LowerSource(R"(
         func States() {
@@ -152,11 +131,10 @@ TEST_CASE("every nested optional state is built directly") {
     CHECK_EQ(Payload(innerValue).type, TypeRef::MakeInt32());
 }
 
-TEST_CASE("contextual conversions wrap presence and success around the value") {
+TEST_CASE("contextual conversions wrap presence around the value") {
     const HirPackage package = LowerSource(kErrors + R"(
         func Wrap(value: int32) {
             let present: int32? = value;
-            let successful: int32? ! ParseError = value;
             let presentOuter: int32?? = present;
         }
     )");
@@ -165,12 +143,8 @@ TEST_CASE("contextual conversions wrap presence and success around the value") {
     const HirEnumConstructExpr &present = Construct(LetInit(wrap, 0), "1");
     CHECK(dynamic_cast<const HirVarExpr *>(&Payload(present)) != nullptr);
 
-    const HirEnumConstructExpr &successful = Construct(LetInit(wrap, 1), "0");
-    const HirEnumConstructExpr &innerPresent = Construct(Payload(successful), "1");
-    CHECK_EQ(Payload(innerPresent).type, TypeRef::MakeInt32());
-
     // Identity wins at each level, so an optional assigned to an optional of optionals becomes present.
-    const HirEnumConstructExpr &presentOuter = Construct(LetInit(wrap, 2), "1");
+    const HirEnumConstructExpr &presentOuter = Construct(LetInit(wrap, 1), "1");
     CHECK_EQ(Payload(presentOuter).type, TypeRef::MakeOptional(TypeRef::MakeInt32()));
 }
 
@@ -195,9 +169,8 @@ TEST_CASE("widening rebuilds each alternative under the destination's tags") {
         struct A {}
         struct B {}
         struct C {}
-        func Widen(pair: A | C, outcome: int32 ! ParseError, optional: A?) {
+        func Widen(pair: A | C, optional: A?) {
             let wider: A | B | C = pair;
-            let channel: int32 ! (ParseError | IoError) = outcome;
             let payload: (A | B)? = optional;
         }
     )");
@@ -212,30 +185,22 @@ TEST_CASE("widening rebuilds each alternative under the destination's tags") {
     CHECK_EQ(fromC->discriminant, "1");
     Construct(*wider->arms[1].body, "2");
 
-    const auto *channel = dynamic_cast<const HirMatchExpr *>(&LetInit(widen, 1));
-    REQUIRE(channel != nullptr);
-    REQUIRE_EQ(channel->arms.size(), 2);
-    const HirEnumConstructExpr &failure = Construct(*channel->arms[1].body, "1");
-    // The failure payload is injected into the wider error sum; the success passes through unchanged.
-    Construct(Payload(failure), "1");
-    CHECK(dynamic_cast<const HirVarExpr *>(&Payload(Construct(*channel->arms[0].body, "0"))) != nullptr);
-
-    const auto *payload = dynamic_cast<const HirMatchExpr *>(&LetInit(widen, 2));
+    const auto *payload = dynamic_cast<const HirMatchExpr *>(&LetInit(widen, 1));
     REQUIRE(payload != nullptr);
     REQUIRE_EQ(payload->arms.size(), 2);
     CHECK(Construct(*payload->arms[0].body, "0").payloads.empty());
     Construct(Payload(Construct(*payload->arms[1].body, "1")), "0");
 }
 
-TEST_CASE("unit completion and fail return explicit outer cases") {
+TEST_CASE("unit completion and throw return explicit outer cases") {
     const HirPackage package = LowerSource(kErrors + R"(
-        func Early(stop: bool) -> ! ParseError {
+        func Early(stop: bool) throws ParseError {
             if stop {
                 return;
             }
         }
-        func Fails(error: ParseError) -> int32 ! ParseError {
-            fail error;
+        func Fails(error: ParseError) -> int32 throws ParseError {
+            throw error;
         }
         func Unit() -> () {}
     )");
@@ -302,7 +267,7 @@ TEST_CASE("diverging arm bodies lower to the statement they spell") {
         func Pick(value: int32) -> int32 {
             match value {
                 1i32 => return 1i32,
-                else => {}
+                _ => {}
             }
             return 0i32;
         }

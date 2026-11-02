@@ -29,7 +29,7 @@ func Run() -> int {
     let options: OptionSpec[2] = [Flag("verbose", 'v', "Say more"), ValueOption("output", 'o', "FILE", "Where to write")];
     let positionals: PositionalSpec[1] = [Required("input", "What to read")];
     let spec = Command("tool", "Converts files").WithVersion("1.0.0").WithOptions(options[..]).WithPositionals(positionals[..]);
-    let parsed = ParseProcess(@spec) catch { else => return 2 };
+    let parsed = try ParseProcess(@spec) catch { _ => return 2 };
     if parsed.HelpRequested() || parsed.VersionRequested() { return 0; }
     return parsed.Count("verbose") as int;
 }

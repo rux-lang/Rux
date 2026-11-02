@@ -65,7 +65,7 @@ struct TypeRef {
         Float512,
         Pointer,          // *T  — inner[0] = pointee
         Reference,        // &T  — inner[0] = referent
-        Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
+        Array,            // T[N] — inner[0] = element
         Range,            // start..end — inner[0] = element
         RangeInclusive,   // start..=end — inner[0] = element
         RangeFrom,        // start.. — inner[0] = element

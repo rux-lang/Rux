@@ -25,13 +25,13 @@ The module names describe where each declaration comes from; they are not part o
 import Test::{ ExpectEqual, ExpectText, TestFailure };
 
 func Greeting(name: char8[..]) -> char8[..] {
-    return name.length == 0 ? "hello" : "hello, friend";
+    return if name.length == 0 { "hello" } else { "hello, friend" };
 }
 
-#Test()
-func GreetsAnyone() -> ! TestFailure {
-    ExpectText(Greeting(""), "hello")?;
-    ExpectEqual(Greeting("ann").length, 13u)?;
+#Test
+func GreetsAnyone() throws TestFailure {
+    try ExpectText(Greeting(""), "hello");
+    try ExpectEqual(Greeting("ann").length, 13u);
 }
 ```
 

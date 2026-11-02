@@ -34,13 +34,13 @@ func AddOne(total: Mutex<uint64>) -> () {
 
 func Main() -> int {
     let total = Mutex<uint64>(0u64);
-    var first = Spawn(AddOne, total.Clone()) catch { else => return 1 };
-    var second = Spawn(AddOne, total.Clone()) catch { else => return 1 };
+    var first = try Spawn(AddOne, total.Clone()) catch { _ => return 1 };
+    var second = try Spawn(AddOne, total.Clone()) catch { _ => return 1 };
     first.Join();
     second.Join();
     let guard = total.Lock();
     let count: uint64 = guard.Get();
-    return count == 2u64 ? 0 : 2;
+    return if count == 2u64 { 0 } else { 2 };
 }
 ```
 

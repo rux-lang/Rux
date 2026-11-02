@@ -23,38 +23,12 @@ bool AnyContains(const std::vector<std::string> &errors, const std::string_view 
 }
 } // namespace
 
-TEST_CASE("fail selects the outer failure channel of the enclosing function") {
-    CHECK(Errors(R"(
-        struct E {}
-        func Fails(error: E) -> int32 ! E { fail error; }
-        func UnitError() -> int32 ! () { fail (); }
-        func NestedError(error: E) -> int32 ! (int32 ! E) { fail .Failure(error); }
-        func OptionalError() -> int32 ! (E?) { fail none; }
-    )")
-              .empty());
-
-    const auto wrongPayload = Errors(R"(
-        struct E {}
-        struct Other {}
-        func Fails() -> int32 ! E { fail Other {}; }
-    )");
-    CHECK(AnyContains(wrongPayload, "'fail' value must have type 'E', but found 'Other'"));
-
-    const auto outside = Errors(R"(
-        struct E {}
-        func Plain() -> int32 { fail E {}; }
-        func Nothing() { fail E {}; }
-    )");
-    CHECK(AnyContains(outside, "'fail' needs an enclosing fallible function, but this function returns 'int32'"));
-    CHECK(AnyContains(outside, "'fail' needs an enclosing fallible function, but this function returns no value"));
-}
-
 TEST_CASE("a unit success completes without a written value") {
     CHECK(Errors(R"(
         struct E {}
-        func Shorthand() -> ! E {}
-        func Spelled() -> () ! E {}
-        func Early(stop: bool) -> ! E {
+        func Shorthand() throws E {}
+        func Spelled() -> () throws E {}
+        func Early(stop: bool) throws E {
             if stop {
                 return;
             }
@@ -69,12 +43,10 @@ TEST_CASE("a unit success completes without a written value") {
         struct E {}
         func OptionalUnit() -> ()? {}
         func SumUnit() -> () | int32 {}
-        func OptionalCompletion() -> (() ! E)? {}
         func EarlyOptional() -> ()? { return; }
     )");
     CHECK(AnyContains(contained, "function 'OptionalUnit' must return a value of type '()?'"));
     CHECK(AnyContains(contained, "function 'SumUnit' must return a value of type '() | int32'"));
-    CHECK(AnyContains(contained, "function 'OptionalCompletion' must return a value of type '(! E)?'"));
     CHECK(AnyContains(contained, "'return' requires a value of type '()?'"));
 }
 
@@ -82,8 +54,8 @@ TEST_CASE("a non-unit success still needs a value, and Core::Unit is not the uni
     const auto errors = Errors(R"(
         struct E {}
         struct Unit {}
-        func Missing() -> int32 ! E {}
-        func Named() -> Unit ! E {}
+        func Missing() -> int32 throws E {}
+        func Named() -> Unit throws E {}
     )");
     CHECK(AnyContains(errors, "function 'Missing' must return a value of type 'int32 ! E'"));
     CHECK(AnyContains(errors, "function 'Named' must return a value of type 'Unit ! E'"));
@@ -102,21 +74,9 @@ TEST_CASE("a void function is not a unit-returning value") {
     CHECK(errors.front().contains("'func()'"));
 }
 
-TEST_CASE("return converts through the native rules and refuses an ambiguous meaning") {
-    const auto errors = Errors(R"(
-        struct E {}
-        type R = int32 ! E;
-        func Ambiguous(value: R) -> (int32 | R) ! E { return value; }
-        func Explicit(value: R) -> (int32 | R) ! E { return .Success(value); }
-        func Plain(value: int32) -> int32? ! E { return value; }
-    )");
-    REQUIRE_EQ(errors.size(), 1);
-    CHECK(errors.front().contains("is ambiguous"));
-}
-
 TEST_CASE("diverging bodies never decide the type of the expression they stand in") {
     CHECK(Errors(R"(
-        #NoReturn()
+        #NoReturn
         func Stop() {
             loop {}
         }
@@ -125,12 +85,12 @@ TEST_CASE("diverging bodies never decide the type of the expression they stand i
                 1 => 10i32,
                 2 => return 20i32,
                 3 => Stop(),
-                else => 30i32
+                _ => 30i32
             };
             loop {
                 let next: int32 = match chosen {
                     10 => break,
-                    else => chosen
+                    _ => chosen
                 };
             }
             return chosen;
@@ -142,12 +102,12 @@ TEST_CASE("diverging bodies never decide the type of the expression they stand i
 TEST_CASE("a fallible entry point is accepted") {
     CHECK(Errors(R"(
         struct E {}
-        func Main() -> ! E {}
+        func Main() throws E {}
     )")
               .empty());
     CHECK(Errors(R"(
         struct E {}
-        func Main() -> int ! E { return 0; }
+        func Main() -> int throws E { return 0; }
     )")
               .empty());
 }

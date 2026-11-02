@@ -37,7 +37,7 @@ TEST_CASE("named constants infer once in declaration scope before and after gene
         const First = 6.25;
         func Main() -> int {
             let First = false;
-            return Read<int32>() == 7.75 && Read<int64>() == 7.75 ? 0 : 1;
+            return if Read<int32>() == 7.75 && Read<int64>() == 7.75 { 0 } else { 1 };
         }
     )");
     CHECK(diagnostics.empty());
@@ -71,7 +71,7 @@ TEST_CASE("a field reached through a pointer to a generic instantiation substitu
         // Safety: `node` must address a live list whose `next` links end in null
         unsafe func Total(node: *var Node<int32>) -> int32 {
             node.value = node.value + 1i32;
-            return node.next == null ? node.value : node.value + Total(node.next);
+            return if node.next == null { node.value } else { node.value + Total(node.next) };
         }
 
         // Safety: `pair` must address a live `Pair<int32, int64>`
@@ -102,14 +102,14 @@ TEST_CASE("an instantiation passed as a type argument waits for the parameter it
         }
 
         extend Holder<T> {
-            func Size(self: &Holder<T>) -> uint {
+            func Size(&self) -> uint {
                 return Width<Node<T>>();
             }
         }
 
         func Main() -> int {
             var holder = Holder<int32> { seed: 1 };
-            return holder.Size() == 8u ? 0 : 1;
+            return if holder.Size() == 8u { 0 } else { 1 };
         }
     )");
 
@@ -135,7 +135,7 @@ TEST_CASE("generic function type parameters are automatically inferred from argu
             let b: (int32, int32) = MakePair(100i32, 200i32);
             let x: int32 = 10i32;
             let ok: bool = Inspect(x);
-            return ok ? a + b.0 : 0i32;
+            return if ok { a + b.0 } else { 0i32 };
         }
     )");
 
@@ -189,7 +189,7 @@ TEST_CASE("nested struct literal inside if condition parses correctly") {
 TEST_CASE("ternary expression types unify integer constants contextually") {
     const auto diagnostics = AnalyzeSource(R"(
         func Select(cond: bool) -> uint64 {
-            return cond ? 0 : 1;
+            return if cond { 0 } else { 1 };
         }
 
         func Main() -> uint64 {
@@ -203,14 +203,14 @@ TEST_CASE("ternary expression types unify integer constants contextually") {
 
 TEST_CASE("contextual ternaries check both arms against the required integer range") {
     for (const std::string source : {
-             "func Select(c: bool) -> uint8 { return c ? 0 : 256; }",
-             "func Select(c: bool) -> uint8 { return c ? -1 : 0; }",
-             "func Select(c: bool) -> int8 { return c ? -129 : 127; }",
-             "func Select(c: bool) -> int8 { return c ? -128 : 128; }",
-             "func Take(n: uint8) {} func Call(c: bool) { Take(c ? 256 : 1); }",
-             "func Call(c: bool) { let n: uint8 = c ? 1 : 256; }",
-             "func Call(c: bool) { var n: uint8 = 0; n = c ? 256 : 1; }",
-             "func Select(c: bool, d: bool) -> uint8 { return c ? 0 : (d ? 1 : 256); }",
+             "func Select(c: bool) -> uint8 { return if c { 0 } else { 256 }; }",
+             "func Select(c: bool) -> uint8 { return if c { -1 } else { 0 }; }",
+             "func Select(c: bool) -> int8 { return if c { -129 } else { 127 }; }",
+             "func Select(c: bool) -> int8 { return if c { -128 } else { 128 }; }",
+             "func Take(n: uint8) {} func Call(c: bool) { Take(if c { 256 } else { 1 }); }",
+             "func Call(c: bool) { let n: uint8 = if c { 1 } else { 256 }; }",
+             "func Call(c: bool) { var n: uint8 = 0; n = if c { 256 } else { 1 }; }",
+             "func Select(c: bool, d: bool) -> uint8 { return if c { 0 } else { (if d { 1 } else { 256 }) }; }",
          }) {
         CAPTURE(source);
         const auto diagnostics = AnalyzeSource(source);
@@ -241,12 +241,10 @@ TEST_CASE("inference preserves explicit type arguments and mutable borrow requir
 TEST_CASE("nested contextual ternaries accept wide unsigned and signed literal boundaries") {
     const auto diagnostics = AnalyzeSource(R"(
         func Unsigned(first: bool, second: bool) -> uint128 {
-            return first ? (second ? 18446744073709551616 : 0) :
-                           (second ? 1 : 340282366920938463463374607431768211455);
+            return if first { (if second { 18446744073709551616 } else { 0 }) } else { (if second { 1 } else { 340282366920938463463374607431768211455 }) };
         }
         func Signed(condition: bool) -> int128 {
-            return condition ? -170141183460469231731687303715884105728 :
-                               170141183460469231731687303715884105727;
+            return if condition { -170141183460469231731687303715884105728 } else { 170141183460469231731687303715884105727 };
         }
     )");
     CHECK(diagnostics.empty());

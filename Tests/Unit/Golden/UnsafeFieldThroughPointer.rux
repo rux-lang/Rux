@@ -5,7 +5,7 @@ struct Pair {
 }
 
 extend Pair {
-    func Sum(self: *Pair) -> int {
+    func Sum(*self) -> int {
         return self.first + self.second;
     }
 }

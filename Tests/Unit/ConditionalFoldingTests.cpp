@@ -92,7 +92,7 @@ func MatchMode() -> int {
     when Mode::Small {
         Mode::Fast => { return 1; }
         Mode::Small => { return 2; }
-        else => { return 3; }
+        _ => { return 3; }
     }
     return 0;
 }
@@ -128,7 +128,7 @@ when Mode::Fast == Mode::Fast {
 func MatchMode() -> int {
     when Mode::Small {
         Mode::Fast => { return 1; }
-        else => { return 2; }
+        _ => { return 2; }
     }
     return 0;
 }
@@ -337,12 +337,12 @@ struct Animal {}
 
 extend Animal {
     when #target.os == OperatingSystem::Windows {
-        func Sound(self: &Animal) -> int { return 1; }
+        func Sound(&self) -> int { return 1; }
     } else {
-        func Sound(self: &Animal) -> int { return 2; }
+        func Sound(&self) -> int { return 2; }
     }
 
-    func Legs(self: &Animal) -> int { return 4; }
+    func Legs(&self) -> int { return 4; }
 }
 )");
     const auto model = Analyze(parsed.module, "Linux");
@@ -551,7 +551,7 @@ func Do() -> int {
     when #target.os {
         .Windows => { return 1; }
         .Linux => { return 2; }
-        else => { return 3; }
+        _ => { return 3; }
     }
 }
 )";
@@ -577,7 +577,7 @@ func Do() -> int {
     when #target.os {
         .Windows, .Linux => { return 1; }
         .macOS => { return 2; }
-        else => { return 3; }
+        _ => { return 3; }
     }
 }
 )";
@@ -606,7 +606,7 @@ import Core::{ #target, OperatingSystem };
 func Do() -> int {
     when #target.os {
         OperatingSystem::Windows => 1,
-        else => 2
+        _ => 2
     }
     return 0;
 }
@@ -644,7 +644,7 @@ import Core::{ #target, #Error };
 func Do() -> int {
     when #target.os {
         .Windows => { return 1; }
-        else => #Error("unsupported")
+        _ => #Error("unsupported")
     }
     return 0;
 }
@@ -666,7 +666,7 @@ import Core::{ #target, #Error };
 
 when #target.os {
     .Windows, .Linux => import Core::{ OperatingSystem }
-    else => #Error("unsupported")
+    _ => #Error("unsupported")
 }
 )";
     // Either grouped pattern keeps the imported item, without a trailing ';'.
@@ -689,7 +689,7 @@ import Core::{ #target, #Error };
 
 when #target.os {
     .Windows => { func Tag() -> int { return 1; } }
-    else => #Error("unsupported")
+    _ => #Error("unsupported")
 }
 )";
     auto windows = ParseSource(source);
@@ -894,7 +894,7 @@ TEST_CASE("compile-time evaluation distinguishes fields operand types values ove
           "compile-time constant 'TooLarge' overflows its unsigned 8-bit type");
 
     auto duplicate =
-        ParseSource(prefix + "when 1 { 1 => { return 1; } 1 => { return 2; } else => { return 3; } }\n" + suffix);
+        ParseSource(prefix + "when 1 { 1 => { return 1; } 1 => { return 2; } _ => { return 3; } }\n" + suffix);
     CHECK(std::ranges::any_of(Analyze(duplicate.module).diagnostics, [](const auto &diagnostic) {
         return diagnostic.message == "duplicate compile-time 'when' pattern 1";
     }));

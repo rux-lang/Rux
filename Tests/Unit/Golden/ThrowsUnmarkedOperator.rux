@@ -6,7 +6,7 @@ struct Money {
 }
 
 extend Money {
-    func +(self: &Money, other: Money) -> Money throws Overflow {
+    func +(&self, other: Money) -> Money throws Overflow {
         if self.cents > 1000000i64 {
             throw Overflow {};
         }

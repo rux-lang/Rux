@@ -68,48 +68,7 @@ std::vector<std::string> Errors(const Analyzed &analyzed) {
     return errors;
 }
 
-bool Reports(const Analyzed &analyzed, const std::string_view text) {
-    return std::ranges::any_of(analyzed.model.diagnostics,
-                               [&](const SemanticDiagnostic &diagnostic) { return diagnostic.message.contains(text); });
-}
 } // namespace
-
-TEST_CASE("constructors build values in every value position") {
-    const auto analyzed = Analyze(R"(
-        struct E {}
-        struct Holder { result: int32 ! E; }
-        func Store(result: int32 ! E) {}
-        func Use(error: E) {
-            let accepted: int32 ! E = .Success(1i32);
-            let rejected: int32 ! E = .Failure(error);
-            let present: int32? = .Some(3i32);
-            let holder = Holder { result: .Failure(error) };
-            let items: (int32 ! E)[2] = [.Success(1i32), .Failure(error)];
-            Store(.Failure(error));
-        }
-    )");
-    CHECK(Errors(*analyzed).empty());
-    // A constructor of the expected form records no wrapper.
-    CHECK(RouteOf(*analyzed, Initializer(Function(*analyzed, "Use"), 0)).empty());
-}
-
-TEST_CASE("the channel a constructor selects types its operand") {
-    const auto analyzed = Analyze(R"(
-        struct E {}
-        func Use(error: E) {
-            let same: int32 ! int32 = .Failure(2i32);
-            let other: int32 ! int32 = .Success(1i32);
-            let optionalError: int32 ! (E?) = .Failure(none);
-            let nested: int32 ! (int32 ! E) = .Failure(.Failure(error));
-            let wrongPayload: int32? = .Some(true);
-            let wrongChannel: int32 ! E = .Failure(1i32);
-        }
-    )");
-    const std::vector<std::string> errors = Errors(*analyzed);
-    REQUIRE_EQ(errors.size(), 2);
-    CHECK(errors[0].contains("cannot assign"));
-    CHECK(errors[1].contains("cannot assign"));
-}
 
 TEST_CASE("every nested optional state is constructible") {
     const auto analyzed = Analyze(R"(
@@ -125,62 +84,6 @@ TEST_CASE("every nested optional state is constructible") {
     const auto *storedAbsence = dynamic_cast<const NativeConstructExpr *>(&Initializer(use, 1));
     REQUIRE(storedAbsence != nullptr);
     CHECK_EQ(RouteOf(*analyzed, *storedAbsence->operand), std::vector{Kind::Absent});
-}
-
-TEST_CASE("the context may wrap a constructor of the other form") {
-    const auto analyzed = Analyze(R"(
-        struct E {}
-        func Use() {
-            let present: int32? ! E = .Some(1i32);
-            let succeeded: (int32 ! E)? = .Success(1i32);
-        }
-    )");
-    CHECK(Errors(*analyzed).empty());
-    const FuncDecl &use = Function(*analyzed, "Use");
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 0)), std::vector{Kind::Success});
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 1)), std::vector{Kind::Presence});
-}
-
-TEST_CASE("a fallible constructor needs its other channel from the context") {
-    const auto analyzed = Analyze(R"(
-        func Use() {
-            let unknown = .Success(1i32);
-            let inferred = .Some(1i32);
-        }
-    )");
-    CHECK(Reports(*analyzed, "cannot infer the type of 'unknown' from a native constructor with an unknown channel"));
-    CHECK_FALSE(Reports(*analyzed, "cannot infer the type of 'inferred'"));
-    CHECK_EQ(ResolvedType(analyzed->model, Initializer(Function(*analyzed, "Use"), 1)),
-             TypeRef::MakeOptional(TypeRef::MakeInt32()));
-}
-
-TEST_CASE("a constructor meeting another form is refused, and a variant that is the expected type takes its case") {
-    const auto analyzed = Analyze(R"(
-        variant Option<T> {
-            Some(T),
-            None
-        }
-        variant Result<T, E> {
-            Success(T),
-            Error(E)
-        }
-        struct E {}
-        func Use() {
-            let legacy: Option<int32> = .Some(1i32);
-            let legacyResult: Result<int32, E> = .Success(1i32);
-            let scalar: int32 = .Some(1i32);
-            let optional: int32? = .Success(1i32);
-        }
-    )");
-    // A user variant that is the expected type and declares the case builds its own case.
-    CHECK_FALSE(Reports(*analyzed, "'.Some(...)' constructs a native optional; write"));
-    CHECK_FALSE(Reports(*analyzed, "'.Success(...)' constructs a native fallible; write"));
-    const FuncDecl &use = Function(*analyzed, "Use");
-    CHECK(analyzed->model.TryGetContextualCase(Initializer(use, 0)) != nullptr);
-    CHECK(analyzed->model.TryGetContextualCase(Initializer(use, 1)) != nullptr);
-    CHECK(analyzed->model.TryGetContextualCase(Initializer(use, 2)) == nullptr);
-    CHECK(Reports(*analyzed, "'.Some(...)' constructs a native optional, but the expected type is 'int32'"));
-    CHECK(Reports(*analyzed, "'.Success(...)' constructs a native fallible, but the expected type is 'int32?'"));
 }
 
 TEST_CASE("a native value without a written native type is an ordinary value") {

@@ -501,7 +501,7 @@ func Main() -> int {
                     42);
 }
 
-TEST_CASE("only an exhaustive match whose last arm can fail carries the unmatched trap") {
+TEST_CASE("only an exhaustive match whose last arm can throw carries the unmatched trap") {
     const LirPackage package = CompileChecks(R"(enum Status: uint16 { Ok = 200, NotFound = 404 }
 
 func Covered(status: Status) -> int {
@@ -509,7 +509,7 @@ func Covered(status: Status) -> int {
 }
 
 func Defaulted(status: Status) -> int {
-    return match status { .Ok => 1, else => 2 };
+    return match status { .Ok => 1, _ => 2 };
 }
 
 func Flag(flag: bool) -> int {

@@ -271,13 +271,6 @@ struct HirAssignExpr : HirExpr {
     bool isVolatile = false;
 };
 
-// cond ? thenExpr : elseExpr
-struct HirTernaryExpr : HirExpr {
-    HirExprPtr condition;
-    HirExprPtr thenExpr;
-    HirExprPtr elseExpr;
-};
-
 // lo..hi
 struct HirRangeExpr : HirExpr {
     HirExprPtr lo;

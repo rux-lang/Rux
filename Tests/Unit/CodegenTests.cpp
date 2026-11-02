@@ -292,7 +292,7 @@ TEST_CASE("RCU System V calls pass two-word aggregates in two registers") {
 
         func Main() -> int {
             let value = Pair { first: 10, second: 20 };
-            return Consume(value) == 20 ? 0 : 1;
+            return if Consume(value) == 20 { 0 } else { 1 };
         }
     )");
 
@@ -328,7 +328,7 @@ TEST_CASE("RCU System V calls return large aggregates through hidden storage") {
 
         func Main() -> int {
             let value = MakeTriple();
-            return value.third == 30 ? 0 : 1;
+            return if value.third == 30 { 0 } else { 1 };
         }
     )");
 

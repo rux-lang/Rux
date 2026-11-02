@@ -248,7 +248,7 @@ TEST_CASE("semantic analysis produces the same model on one thread and on many")
             pub value: uint32;
         }
         extend Counter {
-            pub func Bump(self: &var Counter, by: uint32) { self.value += by; }
+            pub func Bump(&var self, by: uint32) { self.value += by; }
         }
         pub func Pick<T>(first: T, second: T, takeFirst: bool) -> T {
             if takeFirst { return first; }

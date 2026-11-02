@@ -6,12 +6,12 @@ struct Pair {
     b: int32;
 }
 
+#NoCopy
 struct Token {
     id: int32;
 }
 
 extend Token {
-    func =(self: &var Token, other: &Token);
 }
 
 func Observe(pair: &Pair) {
@@ -27,7 +27,7 @@ func Copy<T>(slot: &var T, value: T) {
 }
 
 func CopyGeneric(slot: &var Token, token: Token) {
-    Copy(slot, <-token);
+    Copy(slot, move token);
 }
 
 func Rebind(pair: &var Pair) {

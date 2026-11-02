@@ -216,23 +216,7 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
-    // An arm that was already checked keeps its recorded type: checking it again would run outside the scope of the
-    // bindings it was checked under, and would track its moves a second time.
-    const auto checkedType = [&](const Expr &arm) {
-        const auto checked = expressionTypes.find(&arm);
-        return checked != expressionTypes.end() ? checked->second : CheckExpr(arm);
-    };
-
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expr)) {
-        const TypeRef thenType = checkedType(*ternary->thenExpr);
-        const TypeRef elseType = checkedType(*ternary->elseExpr);
-        if (CanAssignExprTo(*ternary->thenExpr, thenType, targetType) &&
-            CanAssignExprTo(*ternary->elseExpr, elseType, targetType)) {
-            return true;
-        }
-    }
-
-    // A match reaches a native or scalar expected type arm by arm, the way a ternary does, so `none` in one arm and
+    // A match reaches a native or scalar expected type arm by arm, so `none` in one arm and
     // `.Some(v)` in another both take the expected type, as does an unsuffixed `0` taking `int32`. The match then has
     // that type: converting its provisional type as a whole would treat an open `opaque?` as absence whichever arm ran,
     // and would read a literal arm at the default `int` width.
@@ -395,16 +379,10 @@ std::optional<std::uint64_t> AnalysisContext::EvalArrayLength(const Expr &expr) 
     return static_cast<std::uint64_t>(*value);
 }
 
-// Validate array extents AnalysisContext::and reject flexible arrays everywhere except the
-// final, top-level field of a struct. A nested T[] is never a tail field.
-void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail) {
+// Validates the array extents a written type spells, at every depth.
+void AnalysisContext::ValidateArrayType(const TypeExpr &type) {
     if (const auto *array = AstCast<const ArrayTypeExpr>(&type)) {
-        if (!array->size) {
-            if (!allowFlexibleTail) {
-                EmitError(array->location, "flexible array type is only allowed as the final field of a struct");
-            }
-        }
-        else if (!EvalArrayLength(*array->size)) {
+        if (array->size && !EvalArrayLength(*array->size)) {
             // A range where the length goes is the nearest miss to the slice spelling, so it is answered as one.
             std::optional<std::string> help;
             if (AstCast<const RangeExpr>(array->size.get())) {

@@ -69,37 +69,38 @@ const std::string kCallProgram = R"(
     func UnitReturn() -> () {}
     func UnitParam(value: (), next: int32) -> int32 { return next; }
     func Value(value: int32?) -> int32 {
-        return match value { v? => v, none => 0i32 };
+        return match value { .Some(v) => v, none => 0i32 };
     }
     func Many(a: int32?, b: int32?, c: int32?, d: int32?, e: int32?, f: int32?, g: int32?, h: int32?) -> int32 {
         return Value(a) + Value(b) + Value(c) + Value(d) + Value(e) + Value(f) + Value(g) + Value(h);
     }
-    func Total(value: Big ! E) -> int64 {
-        return match value { .Success(big) => big.a + big.d, .Failure(e) => e.code as int64 };
+    func Total(value: Big) -> int64 {
+        return value.a + value.d;
     }
-    func BigMany(a: Big ! E, b: Big ! E, c: Big ! E, d: Big ! E, e: Big ! E) -> int64 {
+    func BigMany(a: Big, b: Big, c: Big, d: Big, e: Big) -> int64 {
         return Total(a) + Total(b) + Total(c) + Total(d) + Total(e);
     }
-    func Make(seed: int64) -> Big ! E {
+    func Make(seed: int64) -> Big throws E {
         return Big { a: seed, b: seed, c: seed, d: seed };
     }
     func Tag(flag: bool) -> ()? {
-        return flag ? .Some(()) : none;
+        return if flag { .Some(()) } else { none };
     }
-    func Nest() -> ((int32 ! E)?) ! E {
-        return .Success(.Some(.Failure(E { code: 5i32 })));
+    func Nest(stop: bool) -> int32?? throws E {
+        if stop { throw E { code: 5i32 }; }
+        return .Some(none);
     }
     func Collapse<T, U>(value: T) -> T | U {
         return value;
     }
-    func Main() -> int {
+    func Main() -> int throws E {
         let unit = UnitReturn();
         let unitParam = UnitParam(unit, 4i32);
         let missing: int32? = none;
         let many = Many(1i32, 2i32, 3i32, 4i32, 5i32, missing, 7i32, 8i32);
-        let big = BigMany(Make(1i64), Make(2i64), Make(3i64), Make(4i64), Make(5i64));
+        let big = try BigMany(Make(1i64), Make(2i64), Make(3i64), Make(4i64), Make(5i64));
         let tag = Tag(true);
-        let nested = Nest();
+        let nested = try Nest(false);
         let collapsed = Collapse<int32, int32>(1i32);
         return 0;
     }

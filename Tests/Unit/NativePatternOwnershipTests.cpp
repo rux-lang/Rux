@@ -23,18 +23,13 @@ bool AnyContains(const std::vector<std::string> &errors, const std::string_view 
     return std::ranges::any_of(errors, [&](const std::string &error) { return error.contains(text); });
 }
 
-std::size_t CountContaining(const std::vector<std::string> &errors, const std::string_view text) {
-    return static_cast<std::size_t>(
-        std::ranges::count_if(errors, [&](const std::string &error) { return error.contains(text); }));
-}
-
 constexpr std::string_view kDeclarations = R"(
     struct Options { verbose: bool; }
     struct Defaults {}
     struct Count { value: int32; }
+    #NoCopy
     struct Owned { handle: int32; }
     extend Owned {
-        func =(self: &var Owned, other: &Owned);
     }
     struct ParseError {}
     func UseOptions(options: Options) {}
@@ -58,7 +53,7 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
             };
             let again = match value {
                 options: Options => options.verbose,
-                else => false
+                _ => false
             };
             return verbose && again;
         }
@@ -69,14 +64,14 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
         }
         func Read(value: &(Owned?)) -> bool {
             return match value {
-                owned? => Look(owned),
+                .Some(owned) => Look(owned),
                 none => false
             };
         }
         func Passed(value: &(Options | Defaults)) {
             match value {
                 options: Options => Inspect(options),
-                else => {}
+                _ => {}
             }
         }
     )")
@@ -86,45 +81,11 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
         func Shared(value: &(Options | Defaults)) {
             match value {
                 options: Options => { options.verbose = true; },
-                else => {}
+                _ => {}
             }
         }
     )");
     CHECK(AnyContains(written, "cannot modify immutable variable 'options'"));
-}
-
-TEST_CASE("an exclusive subject is written through single-member bindings only") {
-    CHECK(ErrorsIn(R"(
-        func Write(value: &var (Options | Defaults)) {
-            match value {
-                options: Options => { options.verbose = true; },
-                else => {}
-            }
-        }
-        func WritePresent(value: &var (Count?)) {
-            match value {
-                count? => { count.value = 3i32; },
-                none => {}
-            }
-        }
-        func WriteChannel(value: &var (Count ! ParseError)) {
-            match value {
-                .Success(count) => { count.value = 3i32; },
-                .Failure(_) => {}
-            }
-        }
-    )")
-              .empty());
-
-    const auto subset = ErrorsIn(R"(
-        func Write(value: &var (Options | Defaults | Count)) {
-            match value {
-                any: Options | Defaults => { any = Defaults {}; },
-                else => {}
-            }
-        }
-    )");
-    CHECK(AnyContains(subset, "cannot modify immutable variable 'any'"));
 }
 
 TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
@@ -135,9 +96,9 @@ TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
                     InspectAny(any);
                     let address = @any;
                     let stored: &(Options | Defaults) = any;
-                    let moved = <-any;
+                    let moved = move any;
                 },
-                else => {}
+                _ => {}
             }
         }
     )");
@@ -156,11 +117,11 @@ TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
                     InspectAny(owned);
                     let verbose = match any {
                         options: Options => options.verbose,
-                        else => false
+                        _ => false
                     };
                     let tested = any is Options;
                 },
-                else => {}
+                _ => {}
             }
         }
     )")
@@ -170,32 +131,32 @@ TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
 TEST_CASE("an owned subject is consumed once by a match that binds") {
     CHECK(ErrorsIn(R"(
         func Transfer(value: Owned?) {
-            match <-value {
-                owned? => Keep(<-owned),
+            match move value {
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
         }
         func Copied(value: Options | Defaults) {
             match value {
                 options: Options => UseOptions(options),
-                else => {}
+                _ => {}
             }
             match value {
                 options: Options => UseOptions(options),
-                else => {}
+                _ => {}
             }
         }
         func Inspects(value: Owned?) -> bool {
             let present = match value {
-                _? => true,
+                .Some(_) => true,
                 none => false
             };
             let typed = match value {
                 _: Owned => true,
                 none => false
             };
-            match <-value {
-                owned? => Keep(<-owned),
+            match move value {
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
             return present && typed;
@@ -206,7 +167,7 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
     const auto implicit = ErrorsIn(R"(
         func Implicit(value: Owned?) {
             match value {
-                owned? => Keep(<-owned),
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
         }
@@ -215,12 +176,12 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
 
     const auto twice = ErrorsIn(R"(
         func Twice(value: Owned?) {
-            match <-value {
-                owned? => Keep(<-owned),
+            match move value {
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
-            match <-value {
-                owned? => Keep(<-owned),
+            match move value {
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
         }
@@ -233,9 +194,9 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
     const auto errors = ErrorsIn(R"(
         func Consume(owned: Owned) -> bool { return true; }
         func Guarded(value: Owned?) {
-            match <-value {
-                owned? if Consume(<-owned) => {},
-                owned? => Keep(<-owned),
+            match move value {
+                .Some(owned) if Consume(move owned) => {},
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
         }
@@ -244,9 +205,9 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
 
     CHECK(ErrorsIn(R"(
         func Guarded(value: Owned?) {
-            match <-value {
-                owned? if Look(owned) => Keep(<-owned),
-                owned? => Keep(<-owned),
+            match move value {
+                .Some(owned) if Look(owned) => Keep(move owned),
+                .Some(owned) => Keep(move owned),
                 none => {}
             }
         }
@@ -254,69 +215,14 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
               .empty());
 }
 
-TEST_CASE("constructor operands transfer by value exactly once") {
-    CHECK(ErrorsIn(R"(
-        func Construct(owned: Owned, other: Owned, last: Owned) {
-            let present: Owned? = .Some(<-owned);
-            let success: Owned ! ParseError = .Success(<-other);
-            let failure: int32 ! Owned = .Failure(<-last);
-        }
-        func Copies(options: Options) {
-            let first: Options? = .Some(options);
-            let second: Options ! ParseError = .Success(options);
-        }
-    )")
-              .empty());
-
-    const auto implicit = ErrorsIn(R"(
-        func Construct(owned: Owned) {
-            let present: Owned? = .Some(owned);
-        }
-    )");
-    CHECK(AnyContains(implicit, "cannot copy 'Owned', which prohibits copying"));
-
-    const auto twice = ErrorsIn(R"(
-        func Construct(owned: Owned) {
-            let present: Owned? = .Some(<-owned);
-            let again: Owned ! ParseError = .Success(<-owned);
-        }
-    )");
-    CHECK_EQ(CountContaining(twice, "'owned'"), 1);
-}
-
-TEST_CASE("return and fail require explicit transfers of move-only values") {
-    CHECK(ErrorsIn(R"(
-        func Returns(owned: Owned) -> Owned ! ParseError {
-            return <-owned;
-        }
-        func Fails(owned: Owned) -> int32 ! Owned {
-            fail <-owned;
-        }
-        func Wraps(owned: Owned) -> Owned ! ParseError {
-            return .Success(<-owned);
-        }
-    )")
-              .empty());
-
-    const auto implicit = ErrorsIn(R"(
-        func Returns(owned: Owned) -> Owned ! ParseError {
-            return owned;
-        }
-        func Fails(owned: Owned) -> int32 ! Owned {
-            fail owned;
-        }
-    )");
-    CHECK_EQ(CountContaining(implicit, "cannot copy 'Owned', which prohibits copying"), 2);
-}
-
 TEST_CASE("arms merge the ownership states they leave") {
     const auto errors = ErrorsIn(R"(
         func Merge(value: int32 | bool, owned: Owned) {
             match value {
-                number: int32 => Keep(<-owned),
+                number: int32 => Keep(move owned),
                 flag: bool => {}
             }
-            Keep(<-owned);
+            Keep(move owned);
         }
     )");
     CHECK(AnyContains(errors, "'owned'"));

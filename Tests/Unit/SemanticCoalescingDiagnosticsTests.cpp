@@ -39,7 +39,7 @@ bool HasCoalescingNote(const std::vector<SemanticDiagnostic> &diagnostics, const
 TEST_CASE("coalescing accepts native optionals and generic payloads") {
     const auto diagnostics = AnalyzeCoalescing(R"(
         func Generic<T>(option: T?, fallback: T) -> T {
-            return (<-option) ?? <-fallback;
+            return (move option) ?? move fallback;
         }
         func Reuse(option: int32?) -> int32 {
             let first = option ?? 1i32;
@@ -65,9 +65,9 @@ TEST_CASE("coalescing diagnoses invalid operands and fallbacks") {
 
         func Scalar() -> int32 { return 1i32 ?? 2i32; }
         func Pointer(value: *int32) -> *int32 { return value ?? null; }
-        func Legacy(value: Option<int32>) -> int32 { return (<-value) ?? 0i32; }
-        func Error(value: Result<int32, Failure>) -> int32 { return (<-value) ?? 0i32; }
-        func Fallback(value: int32?) -> int32 { return (<-value) ?? false; }
+        func Legacy(value: Option<int32>) -> int32 { return (move value) ?? 0i32; }
+        func Error(value: Result<int32, Failure>) -> int32 { return (move value) ?? 0i32; }
+        func Fallback(value: int32?) -> int32 { return (move value) ?? false; }
     )");
 
     CHECK(HasCoalescingError(diagnostics, "requires an optional left operand, but found 'int32'"));
@@ -83,11 +83,10 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     const auto implicitOperand = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         func Test(option: Handle?, fallback: Handle) {
-            let selected = option ?? <-fallback;
+            let selected = option ?? move fallback;
         }
     )");
     CHECK(HasCoalescingError(implicitOperand, "cannot copy 'Handle?', which owns resources"));
@@ -95,11 +94,10 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     const auto implicitFallback = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         func Test(option: Handle?, fallback: Handle) {
-            let selected = (<-option) ?? fallback;
+            let selected = (move option) ?? fallback;
         }
     )");
     CHECK(HasCoalescingError(implicitFallback, "cannot copy 'Handle', which owns resources"));
@@ -107,13 +105,12 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     const auto conditionalMove = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         func Take(value: Handle) {}
         func Test(option: Handle?, fallback: Handle) {
-            let selected = (<-option) ?? <-fallback;
-            Take(<-fallback);
+            let selected = (move option) ?? move fallback;
+            Take(move fallback);
         }
     )");
     CHECK(HasCoalescingError(conditionalMove, "value 'fallback' may have been moved on some control-flow paths"));
@@ -164,7 +161,7 @@ TEST_CASE("coalescing an optional reference borrows, and a generic payload is ne
 
     const auto generic = AnalyzeCoalescing(R"(
         func Generic<T>(option: T?, fallback: T) -> T {
-            return (<-option) ?? <-fallback;
+            return (move option) ?? move fallback;
         }
         func Take(value: &int32) {}
         func Test(value: &int32) {
@@ -174,16 +171,16 @@ TEST_CASE("coalescing an optional reference borrows, and a generic payload is ne
     CHECK(HasCoalescingError(generic, "cannot be or hold a reference"));
 
     const auto prohibited = AnalyzeCoalescing(R"(
+        #NoCopy
+        #NoMove
         struct Pinned { value: int32; }
         extend Pinned {
-            func =(self: &var Pinned, other: &Pinned);
-            func <-(self: &var Pinned, other: Pinned);
         }
         func Generic<T>(option: T?, fallback: T) -> T {
-            return (<-option) ?? <-fallback;
+            return (move option) ?? move fallback;
         }
         func Test(option: Pinned?, fallback: Pinned) {
-            let direct = (<-option) ?? <-fallback;
+            let direct = (move option) ?? move fallback;
             let deferred = Generic<Pinned>(none, Pinned { value: 1i32 });
         }
     )");

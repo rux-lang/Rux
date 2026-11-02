@@ -151,7 +151,7 @@ func Main() -> int {
     var count = 0;
     if count == 0 { count += 1 } else { count -= 1 }
     Assert(count == 1, "a statement branch may end without ';'");
-    let ternary = count > 0 ? 1 : 2;
+    let ternary = if count > 0 { 1 } else { 2 };
     Assert(ternary == 1, "the conditional operator is still accepted");
     return 0;
 }

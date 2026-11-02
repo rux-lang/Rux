@@ -10,7 +10,7 @@ struct RawHandle {
     fd: int;
 }
 
-#NoCopy()
+#NoCopy
 variant Slot {
     Empty,
     Held(int),
@@ -28,18 +28,18 @@ struct Node {
     next: *var Node;
 }
 
-#NoMove()
+#NoMove
 union Bits {
     word: uint32,
     bytes: uint8[4],
 }
 
+#NoCopy
 struct Older {
     value: int;
 }
 
 extend Older {
-    func =(&var self, other: &Older);
 }
 
 var closed: int = 0;

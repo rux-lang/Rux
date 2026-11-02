@@ -58,8 +58,8 @@ TEST_CASE("linter warns on bad function name") {
 TEST_CASE("linter accepts symbolic operator function names") {
     auto result = Rux::Linting::Lint(R"(
         extend Number {
-            func +(self: &Self, other: Number) -> Number;
-            func ==(self: &Self, other: Number) -> bool;
+            func +(&self, other: Number) -> Number;
+            func ==(&self, other: Number) -> bool;
         }
     )",
                                      "operators.rux");
@@ -71,8 +71,8 @@ TEST_CASE("linter accepts the indexing operator names") {
     auto result = Rux::Linting::Lint(R"(
         struct Vect { data: int[4]; }
         extend Vect {
-            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+            func [](&self, index: uint) -> int { return self.data[index]; }
+            func []=(&var self, index: uint, value: int) { self.data[index] = value; }
         }
     )",
                                      "indexer.rux");
@@ -82,11 +82,10 @@ TEST_CASE("linter accepts the indexing operator names") {
 
 TEST_CASE("linter accepts lifecycle operation names") {
     auto result = Rux::Linting::Lint(R"(
+        #NoMove
         struct Cell { value: int32; }
         extend Cell {
-            func =(self: &var Cell, other: &Cell);
-            func <-(self: &var Cell, other: Cell);
-            func ~Cell(self: &var Cell) {}
+            func ~Cell(&var self) {}
         }
     )",
                                      "lifecycle.rux");

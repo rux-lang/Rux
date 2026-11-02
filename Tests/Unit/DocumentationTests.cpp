@@ -114,14 +114,11 @@ TEST_CASE("documentation covers only effectively public declarations and members
 
 TEST_CASE("documentation renders reference and lifecycle signatures as source syntax") {
     auto parsed = Parse(R"(
+        #NoMove
         struct Cell { value: int32; }
         extend Cell {
-            /// Copy is intentionally unavailable.
-            func =(self: &var Cell, other: &Cell);
-            /// Moving is intentionally unavailable.
-            func <-(self: &var Cell, other: Cell);
             /// Destroy a cell.
-            func ~Cell(self: &var Cell) {}
+            func ~Cell(&var self) {}
         }
         /// Observe borrowed cells.
         func Observe(shared: &Cell, exclusive: &var Cell);
@@ -135,9 +132,7 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
         *loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site", .includePrivate = true});
     REQUIRE(generated.ok);
     const std::string html = Read(root / "site" / "index.html");
-    CHECK(html.contains("func =(self: &amp;var Cell, other: &amp;Cell)"));
-    CHECK(html.contains("func &lt;-(self: &amp;var Cell, other: Cell)"));
-    CHECK(html.contains("func ~Cell(self: &amp;var Cell)"));
+    CHECK(html.contains("func ~Cell(&amp;var self)"));
     CHECK(html.contains("func Observe(shared: &amp;Cell, exclusive: &amp;var Cell)"));
 
     std::error_code error;

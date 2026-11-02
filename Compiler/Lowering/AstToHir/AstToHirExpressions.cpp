@@ -106,7 +106,6 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
         assert(!AstCast<const PostfixExpr>(&expression) && "postfix expression is missing a semantic type fact");
         assert(!AstCast<const BinaryExpr>(&expression) && "binary expression is missing a semantic type fact");
         assert(!AstCast<const AssignExpr>(&expression) && "assignment is missing a semantic type fact");
-        assert(!AstCast<const TernaryExpr>(&expression) && "ternary expression is missing a semantic type fact");
         assert(!AstCast<const IndexExpr>(&expression) && "index expression is missing a semantic type fact");
         assert(!AstCast<const FieldExpr>(&expression) && "field expression is missing a semantic type fact");
         assert(!AstCast<const CastExpr>(&expression) && "cast expression is missing a semantic type fact");
@@ -391,18 +390,6 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         // A write through a reference stores its referent, which the dereferenced target already carries.
         lowered->type = model.HasReferenceWrite(*assignment->target) ? lowered->target->type
                                                                      : ResolvedExpressionType(*assignment->target);
-        return lowered;
-    }
-
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
-        auto lowered = std::make_unique<HirTernaryExpr>();
-        lowered->location = ternary->location;
-        lowered->condition = LowerExpr(*ternary->condition);
-        lowered->type = ResolvedExpressionType(*ternary);
-        lowered->thenExpr = IsNullLiteral(*ternary->thenExpr) ? LowerExprAs(*ternary->thenExpr, lowered->type)
-                                                              : LowerExpr(*ternary->thenExpr);
-        lowered->elseExpr = IsNullLiteral(*ternary->elseExpr) ? LowerExprAs(*ternary->elseExpr, lowered->type)
-                                                              : LowerExpr(*ternary->elseExpr);
         return lowered;
     }
 

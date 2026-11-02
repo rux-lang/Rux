@@ -1,4 +1,3 @@
-16:16: error: receiver of requirement 'Reset' in interface 'Misdeclared' must be '&Self' or '&var Self'
 24:17: error: method 'Adjust' of 'Knob' writes through its receiver, but requirement 'Adjust' of interface 'Gauge' only reads it
 40:9: error: cannot call 'Turn' through immutable reference '&Dial'
 44:9: error: cannot call 'Turn' through immutable reference '&T'

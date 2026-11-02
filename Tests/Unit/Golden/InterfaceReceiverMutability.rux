@@ -8,12 +8,12 @@ interface Gauge {
 }
 
 interface Dial {
-    func Turn(self: &var Self, amount: int32);
-    func Level(self: &Self) -> int32;
+    func Turn(&var self, amount: int32);
+    func Level(&self) -> int32;
 }
 
 interface Misdeclared {
-    func Reset(self: &var Misdeclared);
+    func Reset(&var self);
 }
 
 struct Knob {
@@ -21,17 +21,17 @@ struct Knob {
 }
 
 extend Knob : Gauge {
-    func Adjust(self: &var Knob, amount: int32) {
+    func Adjust(&var self, amount: int32) {
         self.level += amount;
     }
 }
 
 extend Knob : Dial {
-    func Turn(self: &var Knob, amount: int32) {
+    func Turn(&var self, amount: int32) {
         self.level += amount;
     }
 
-    func Level(self: &Knob) -> int32 {
+    func Level(&self) -> int32 {
         return self.level;
     }
 }

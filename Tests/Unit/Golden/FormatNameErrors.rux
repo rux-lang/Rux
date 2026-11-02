@@ -1,7 +1,7 @@
 // A named placeholder names a binding or a field path in scope: a name nothing declares is reported where the
 // placeholder writes it, one literal names every placeholder or none, and an expression inside the braces is passed
 // as an argument instead. A literal for a parameter without '#Format()' is plain text.
-func Log(#Format() format: char8[..], values: int32...) {}
+func Log(#Format format: char8[..], values: int32...) {}
 func Show(text: char8[..]) {}
 
 func Main() -> int {

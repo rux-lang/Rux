@@ -90,33 +90,12 @@ void RequireBackEndsAccept(HirPackage package) {
 }
 } // namespace
 
-TEST_CASE("native case patterns test the level's tag before its payload") {
-    HirPackage package = LowerSource(R"(
-        struct E { code: int32; }
-        func Nested(outcome: (int32 ! E) ! E) -> int32 {
-            return match outcome {
-                .Success(.Success(value)) => value,
-                .Success(.Failure(inner)) => inner.code,
-                .Failure(outer) => outer.code
-            };
-        }
-    )");
-    const auto &arms = ReturnedMatchArms(RequireFunction(package, "Nested"));
-    REQUIRE_EQ(arms.size(), 3);
-    const HirEnumPattern &successSuccess = Case(*arms[0].pattern, "0");
-    REQUIRE_EQ(successSuccess.args.size(), 1);
-    Case(*successSuccess.args.front(), "0");
-    Case(*Case(*arms[1].pattern, "0").args.front(), "1");
-    Case(*arms[2].pattern, "1");
-    RequireBackEndsAccept(std::move(package));
-}
-
 TEST_CASE("the presence suffix lowers exactly like its constructor spelling") {
     HirPackage package = LowerSource(R"(
         func Suffix(found: int32??) -> int32 {
             return match found {
-                value?? => value,
-                none? => 1i32,
+                .Some(.Some(value)) => value,
+                .Some(none) => 1i32,
                 none => 2i32
             };
         }
@@ -288,19 +267,20 @@ TEST_CASE("an arm that never returns stores no value") {
         intrinsic func Panic(message: char8[..]);
         struct IoError {}
         struct Big { a: int64; b: int64; c: int64; }
-        func Read() -> int32 ! IoError { return 1i32; }
-        func ReadBig() -> Big ! IoError { return Big { a: 1, b: 2, c: 3 }; }
+        func Read() -> int32 throws IoError { return 1i32; }
+        func ReadBig() -> Big throws IoError { return Big { a: 1, b: 2, c: 3 }; }
+        func Read2() -> int32? { return 1i32; }
         func Matched() -> int32 {
-            let value = match Read() { .Success(value) => value, .Failure(_) => Panic("failed") };
+            let value = match Read2() { .Some(value) => value, none => Panic("failed") };
             return value;
         }
         func Recovered() -> int64 {
-            let big = ReadBig() catch { e => Panic("failed") };
+            let big = try ReadBig() catch { e => Panic("failed") };
             return big.c;
         }
         func Chosen(flag: bool) -> int64 {
-            let value = flag ? 1i32 : Panic("failed");
-            let big: Big = flag ? Big { a: 1, b: 2, c: 3 } : Panic("failed");
+            let value = if flag { 1i32 } else { Panic("failed") };
+            let big: Big = if flag { Big { a: 1, b: 2, c: 3 } } else { Panic("failed") };
             return big.a + value as int64;
         }
     )"));

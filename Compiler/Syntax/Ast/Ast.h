@@ -238,11 +238,6 @@ struct TypedPattern : Pattern {
     TypeExprPtr type;
 };
 
-/// `pattern?`: exact shorthand for `.Some(pattern)`, matching one present optional level.
-struct PresencePattern : Pattern {
-    PatternPtr inner;
-};
-
 /// `none`: the outer absence of an optional.
 struct NonePattern : Pattern {};
 
@@ -377,18 +372,11 @@ struct BinaryExpr : Expr {
     ExprPtr right;
 };
 
-/// a = b, a <- b, a += b, etc.
+/// a = b, a += b, etc.
 struct AssignExpr : Expr {
     TokenKind op;
     ExprPtr target;
     ExprPtr value;
-};
-
-// cond ? thenExpr : elseExpr
-struct TernaryExpr : Expr {
-    ExprPtr condition;
-    ExprPtr thenExpr;
-    ExprPtr elseExpr;
 };
 
 // lo..hi
@@ -520,21 +508,6 @@ struct MatchExpr : Expr {
     Form form = Form::Match;
     ExprPtr subject;
     std::vector<Arm> arms;
-};
-
-/// `subject catch { pattern => body, ... }`: postfix recovery over the subject's outer fallible level. Its arms match
-/// the error payload and use the same arm grammar as a match.
-struct CatchExpr : Expr {
-    ExprPtr subject;
-    std::vector<MatchExpr::Arm> arms;
-};
-
-/// `operand? else (binding => mapper)`: propagation that converts the complete error with `mapper` before failing.
-struct MappedTryExpr : Expr {
-    ExprPtr operand;
-    std::string binding;
-    SourceLocation bindingLocation;
-    ExprPtr mapper;
 };
 
 /// A native value constructor: `.Success(value)`, `.Failure(error)`, or `.Some(value)`.

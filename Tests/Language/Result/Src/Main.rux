@@ -1,30 +1,39 @@
-// A native fallible: a success or a failure, asked about, recovered from, and matched.
+// Core's `Result`: an ordinary variant that stores an outcome, built from a throwing call and matched.
 
 import Core::Assert;
+import Core::Result;
+
+func Half(value: int) -> int throws int {
+    if value % 2 != 0 { throw value; }
+    return value / 2;
+}
+
+func Store(value: int) -> Result<int, int> {
+    return try .Success(Half(value)) catch { error => .Failure(error) };
+}
 
 func Main() -> int {
-    let resSuccess: int ! int = .Success(42);
-    let resError: int ! int = .Failure(500);
+    let resSuccess: Result<int, int> = .Success(42);
+    let resError: Result<int, int> = .Failure(500);
 
     Assert(resSuccess is .Success(_), "resSuccess should be a success");
     Assert(!(resSuccess is .Failure(_)), "resSuccess should not be a failure");
     Assert(resError is .Failure(_), "resError should be a failure");
     Assert(!(resError is .Success(_)), "resError should not be a success");
 
-    Assert((resSuccess catch { _ => 0 }) == 42, "catch on a success should pass 42 through");
-    Assert((resError catch { _ => 100 }) == 100, "catch on a failure should recover with 100");
-
     let val = match resSuccess {
         .Success(v) => v,
-        .Failure(_) => 0
+        .Failure(_) => 0,
     };
     Assert(val == 42, "match on resSuccess should be 42");
 
     let errVal = match resError {
         .Success(_) => 0,
-        .Failure(e) => e
+        .Failure(e) => e,
     };
     Assert(errVal == 500, "match on resError should be 500");
 
+    Assert(Store(8) is .Success(4), "a returned value is stored as a success");
+    Assert(Store(7) is .Failure(7), "a thrown error is stored as a failure");
     return 0;
 }

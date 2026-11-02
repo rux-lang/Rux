@@ -1,0 +1,5 @@
+6:22: error: 'T ! E' is not a type
+10:20: error: 'T ! E' is not a type
+13:5: error: 'fail' is not supported
+17:20: error: '? else' is not supported
+21:19: error: 'catch' must follow 'try'

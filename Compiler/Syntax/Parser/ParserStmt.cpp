@@ -292,6 +292,7 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     }
     else if (Match(TokenKind::MoveArrow)) {
         const SourceLocation moveLocation = Previous().location;
+        EmitError(moveLocation, "'<-' is not a binding operator", "write 'let name = move source'");
         auto move = std::make_unique<MoveExpr>();
         move->location = moveLocation;
         move->operand = ParseRequiredExpr("after '<-' in the binding");
@@ -648,6 +649,9 @@ std::unique_ptr<FailStmt> Parser::ParseFailStmt() {
     auto s = std::make_unique<FailStmt>();
     s->location = CurrentLocation();
     s->throwSpelling = Advance().kind == TokenKind::ThrowKeyword;
+    if (!s->throwSpelling) {
+        RejectFailKeyword(s->location);
+    }
     const std::string_view keyword = s->throwSpelling ? "throw" : "fail";
     s->value = ParseRequiredExpr(std::format("after '{}'", keyword));
     ExpectBefore(TokenKind::Semicolon, std::format("';' after the '{}' statement", keyword));
@@ -682,6 +686,10 @@ std::unique_ptr<TryStmt> Parser::ParseTryStmt() {
                   "add 'catch { e => ... }' after the block, or write 'try' before a call to pass its error on");
     }
     return s;
+}
+
+void Parser::RejectFailKeyword(const SourceLocation location) {
+    EmitError(location, "'fail' is not supported", "write 'throw value;'");
 }
 
 void Parser::RejectFinally() {

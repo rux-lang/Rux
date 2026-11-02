@@ -114,32 +114,32 @@ TEST_CASE("native arguments and results generate code for every AArch64 target")
         func UnitReturn() -> () {}
         func UnitParam(value: (), next: int32) -> int32 { return next; }
         func Value(value: float64?) -> float64 {
-            return match value { v? => v, none => 0.0f64 };
+            return match value { .Some(v) => v, none => 0.0f64 };
         }
         func Many(a: float64?, b: float64?, c: float64?, d: float64?, e: float64?, f: float64?) -> float64 {
             return Value(a) + Value(b) + Value(c) + Value(d) + Value(e) + Value(f);
         }
-        func Total(value: Big ! E) -> int64 {
-            return match value { .Success(big) => big.a + big.d, .Failure(e) => e.code as int64 };
+        func Total(value: Big) -> int64 {
+            return value.a + value.d;
         }
-        func BigMany(a: Big ! E, b: Big ! E, c: Big ! E, d: Big ! E, e: Big ! E, f: Big ! E, g: Big ! E, h: Big ! E,
-                     i: Big ! E) -> int64 {
+        func BigMany(a: Big, b: Big, c: Big, d: Big, e: Big, f: Big, g: Big, h: Big, i: Big) -> int64 {
             return Total(a) + Total(b) + Total(i);
         }
-        func Make(seed: int64) -> Big ! E {
+        func Make(seed: int64) -> Big throws E {
             return Big { a: seed, b: seed, c: seed, d: seed };
         }
-        func Nest() -> ((int32 ! E)?) ! E {
-            return .Success(.Some(.Failure(E { code: 5i32 })));
+        func Nest(stop: bool) -> int32?? throws E {
+            if stop { throw E { code: 5i32 }; }
+            return .Some(none);
         }
-        func Main() -> int {
+        func Main() -> int throws E {
             let unit = UnitReturn();
             let unitParam = UnitParam(unit, 4i32);
             let missing: float64? = none;
             let many = Many(1.0f64, 2.0f64, 3.0f64, missing, 5.0f64, 6.0f64);
-            let big = BigMany(Make(1i64), Make(2i64), Make(3i64), Make(4i64), Make(5i64), Make(6i64), Make(7i64),
-                              Make(8i64), Make(9i64));
-            let nested = Nest();
+            let big = try BigMany(Make(1i64), Make(2i64), Make(3i64), Make(4i64), Make(5i64), Make(6i64),
+                                  Make(7i64), Make(8i64), Make(9i64));
+            let nested = try Nest(false);
             return 0;
         }
     )";

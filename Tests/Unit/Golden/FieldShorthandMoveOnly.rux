@@ -6,7 +6,6 @@ struct Buffer {
 }
 
 extend Buffer {
-    func =(&var self, other: &Buffer);
 
     func ~Buffer(&var self) {}
 }

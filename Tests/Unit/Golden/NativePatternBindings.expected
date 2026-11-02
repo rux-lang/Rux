@@ -4,5 +4,4 @@
 41:9: error: pattern 'Helper' cannot bind a new variable because 'Helper' already names a function
 47:9: error: pattern 'T' cannot bind a new variable because 'T' already names a generic parameter
 53:9: error: pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant 'DecodeError'
-60:18: error: pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant 'DecodeError'
-74:9: error: '.None' matches a variant case; use 'none' for native optional 'int32?'
+68:9: error: '.None' matches a variant case; use 'none' for native optional 'int32?'

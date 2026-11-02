@@ -129,9 +129,11 @@ TEST_CASE("semantic layouts and runtime layouts agree for native types") {
     const auto analyzed = Analyze(R"(
         struct Done {}
         struct Holder { marker: (); value: int32; }
-        func Use(optional: int32?, nested: int32??, completion: ! Done, unitOptional: ()?, sum: int8 | int64,
-                 fallible: int64 ! int8, optionalError: int32 ! (int32?), items: int32?[3], pair: ((), int32),
-                 holder: Holder) {}
+        func Use(optional: int32?, nested: int32??, unitOptional: ()?, sum: int8 | int64, items: int32?[3],
+                 pair: ((), int32), holder: Holder) {}
+        func Complete() throws Done {}
+        func Wide() -> int64 throws int8 { return 0i64; }
+        func OptionalError() -> int32 throws (int32?) { return 0i32; }
     )");
     const std::vector<TypeRef> types = {
         Optional,
@@ -151,7 +153,7 @@ TEST_CASE("semantic layouts and runtime layouts agree for native types") {
     }
     // Stride: an array of optionals is three whole optionals.
     CHECK_EQ(analyzed->model.TryGetLayout(TypeRef::MakeArray(Optional, 3))->size, 48);
-    // A zero-sized error leaves the unit-success fallible as its tag alone.
+    // A zero-sized error leaves the outcome of a function that throws it and returns nothing as its tag alone.
     const ResolvedTypeLayout *completion =
         analyzed->model.TryGetLayout(TypeRef::MakeFallible(TypeRef::MakeUnit(), TypeRef::MakeNamed("Done")));
     REQUIRE(completion != nullptr);

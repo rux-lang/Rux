@@ -724,13 +724,6 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateExpression(const Ex
 }
 
 std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateOther(const Expr &expression) {
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
-        const auto condition = EvaluateExpression(*ternary->condition);
-        const auto truth = condition ? Truth(*condition, ternary->condition->location) : std::nullopt;
-        if (!truth)
-            return std::nullopt;
-        return EvaluateAs(*truth ? *ternary->thenExpr : *ternary->elseExpr, ValueType(TypeOf(expression)));
-    }
     if (const auto *test = AstCast<const IsExpr>(&expression)) {
         if (!test->pattern)
             return Unsupported(test->location, "an 'is' test of a type");
@@ -794,9 +787,6 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateOther(const Expr &e
     if (const auto *marked = AstCast<const TryMarkExpr>(&expression);
         marked && marked->form != TryMarkExpr::Form::Optional)
         return EvaluateExpression(*marked->operand);
-    if (AstCast<const TryExpr>(&expression) || AstCast<const MappedTryExpr>(&expression) ||
-        AstCast<const TryMarkExpr>(&expression) || AstCast<const CatchExpr>(&expression))
-        return Unsupported(expression.location, "error propagation and handling");
     return Unsupported(expression.location, "this expression");
 }
 

@@ -30,21 +30,14 @@ TEST_CASE("a public error alias exposes its members across packages, a named wra
         pub variant LoadError {
             Unreadable(ReadError)
         }
-        pub func Read() -> int32 ! ReadError { return 1i32; }
-        pub func Load() -> int32 ! LoadError { return 1i32; }
+        pub func Read() -> int32 throws ReadError { return 1i32; }
+        pub func Load() -> int32 throws LoadError { return 1i32; }
     )";
     CHECK(Errors(AnalyzeWithDep(R"(
         import Store::{ IoError, Load, LoadError, ParseError, Read };
         func Use() -> int32 {
-            let read = match Read() {
-                .Success(value) => value,
-                .Failure(_: ParseError) => 1i32,
-                .Failure(_: IoError) => 2i32
-            };
-            let load = match Load() {
-                .Success(value) => value,
-                .Failure(LoadError::Unreadable(cause)) => 3i32
-            };
+            let read = try Read() catch { _: ParseError => 1i32, _: IoError => 2i32 };
+            let load = try Load() catch { LoadError::Unreadable(cause) => 3i32 };
             return read + load;
         }
     )",
@@ -55,36 +48,11 @@ TEST_CASE("a public error alias exposes its members across packages, a named wra
     const auto partial = Errors(AnalyzeWithDep(R"(
         import Store::{ ParseError, Read };
         func Use() -> int32 {
-            return match Read() {
-                .Success(value) => value,
-                .Failure(_: ParseError) => 1i32
-            };
+            return try Read() catch { _: ParseError => 1i32 };
         }
     )",
                                                "Store", dependency));
-    CHECK(AnyContains(partial, "is not exhaustive; missing .Failure(_: IoError)"));
-}
-
-TEST_CASE("native constants are values, not compile-time integers") {
-    CHECK(Errors(AnalyzeSource(R"(
-        const Done: () = ();
-        const Present: int32? = .Some(3i32);
-        const Failed: int32 ! int32 = .Failure(2i32);
-        func Use() -> int32 {
-            let unit = Done;
-            return (Present ?? 0i32) + match Failed { .Success(value) => value, .Failure(code) => code };
-        }
-    )"))
-              .empty());
-
-    const auto folded = Errors(AnalyzeSource(R"(
-        const Present: int32? = .Some(3i32);
-        const Count: int32 = Present ?? 0i32;
-        func Use() {
-            let values: int32[Count] = [1i32, 2i32, 3i32];
-        }
-    )"));
-    CHECK(AnyContains(folded, "array length must be a non-negative compile-time integer"));
+    CHECK(AnyContains(partial, "missing _: IoError"));
 }
 
 TEST_CASE("pointer and slice spellings keep their grouping") {
@@ -103,22 +71,4 @@ TEST_CASE("pointer and slice spellings keep their grouping") {
     const auto errors = Errors(analyzed);
     REQUIRE_EQ(errors.size(), 1);
     CHECK(errors.front().contains("cannot assign"));
-}
-
-TEST_CASE("an assignment receives only a value of its own type") {
-    const auto errors = Errors(AnalyzeSource(R"(
-        struct E {}
-        struct Text { length: int64; }
-        struct Holder { text: Text; }
-        func Make() -> Text ! E { return Text { length: 3 }; }
-        func Use(holder: &var Holder, other: Text) {
-            holder.text = Make();
-            var local = other;
-            local = Make();
-            holder.text = other;
-        }
-    )"));
-    REQUIRE_EQ(errors.size(), 2);
-    CHECK(errors[0].contains("cannot assign 'Text ! E' to 'Text'"));
-    CHECK(errors[1].contains("cannot assign 'Text ! E' to 'Text'"));
 }

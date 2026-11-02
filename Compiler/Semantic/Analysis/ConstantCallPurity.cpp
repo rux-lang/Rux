@@ -299,13 +299,6 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanExpress
             return offense;
         return scan(assignment->value.get());
     }
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
-        if (auto offense = scan(ternary->condition.get()))
-            return offense;
-        if (auto offense = scan(ternary->thenExpr.get()))
-            return offense;
-        return scan(ternary->elseExpr.get());
-    }
     if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (auto offense = scan(range->lo.get()))
             return offense;
@@ -342,16 +335,6 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanExpress
         if (auto offense = scan(match->subject.get()))
             return offense;
         return ScanArms(match->arms, owner);
-    }
-    if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
-        if (auto offense = scan(recovery->subject.get()))
-            return offense;
-        return ScanArms(recovery->arms, owner);
-    }
-    if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
-        if (auto offense = scan(mapped->operand.get()))
-            return offense;
-        return scan(mapped->mapper.get());
     }
     if (const auto *construct = AstCast<const NativeConstructExpr>(&expression))
         return scan(construct->operand.get());

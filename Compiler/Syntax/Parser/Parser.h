@@ -324,12 +324,14 @@ private:
     [[nodiscard]] static bool PatternMatchesEveryElement(const Pattern &pattern) noexcept;
     std::unique_ptr<MatchStmt> ParseMatchStmt();
     std::unique_ptr<ReturnStmt> ParseReturnStmt();
-    /// `throw error;` or the older `fail error;`.
+    /// `throw error;`; the removed `fail error;` is reported and read the same way.
     std::unique_ptr<FailStmt> ParseFailStmt();
     /// `try { ... } catch { arms }`.
     std::unique_ptr<TryStmt> ParseTryStmt();
     /// Reports `finally`, which Rux does not have, and skips the block after it.
     void RejectFinally();
+    /// Reports the removed `fail` keyword, which `throw` replaced.
+    void RejectFailKeyword(SourceLocation location);
     /// Report a `catch`, `?`, or `??` written directly after a match statement, which takes no postfix operator.
     void RejectPostfixAfterMatchStatement();
     std::unique_ptr<DeferStmt> ParseDeferStmt();
@@ -346,7 +348,7 @@ private:
     ExprPtr ParseTryExpr(bool misplaced);
     ExprPtr ParseAssign();
     ExprPtr ParseRange();
-    ExprPtr ParseTernary();
+    ExprPtr ParseConditionalOperator();
     /// Report `...` where a range operator is read: the inclusive range is spelled `..=`.
     void RejectEllipsisRange();
     ExprPtr ParseCoalesce();
@@ -383,8 +385,8 @@ private:
     [[nodiscard]] bool CheckWhenDefaultArm() const noexcept;
     /// The patterns of one compile-time `when` arm, up to its `=>`: alternatives separated by `|` or `,`.
     void ParseWhenArmPatterns(std::vector<ExprPtr> &patterns);
-    /// The `else (binding => body)` mapping after a tight `?`, which wraps `operand` in a mapped propagation.
-    ExprPtr ParseErrorMapper(SourceLocation location, ExprPtr operand);
+    /// Reads and drops the arms of a removed `? else (e => mapped)`, which was already reported.
+    void SkipErrorMapper();
 
     // Patterns
     PatternPtr ParsePattern();

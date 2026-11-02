@@ -51,7 +51,6 @@ rux_add_component(RuxSemantic
     Analysis/PatternCoverage.cpp
     Analysis/ProgramIndex.cpp
     Analysis/Propagation.cpp
-    Analysis/Recovery.cpp
     Analysis/Throws.cpp
     Analysis/UnsafeOperations.cpp
     Analysis/PublicApi.cpp

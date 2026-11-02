@@ -121,6 +121,9 @@ ExprPtr Parser::ParseAssign() {
         if (Check(op)) {
             const auto loc = CurrentLocation();
             const std::string opText = Advance().text;
+            if (op == TokenKind::MoveArrow) {
+                EmitError(loc, "'<-' is not an assignment operator", "write 'target = move source'");
+            }
             auto right = ParseTryPrefix(); // right-associative, and `x = try F()` marks the value
             if (!right) {
                 EmitMissingExpression(std::format("after '{}'", opText));
@@ -142,7 +145,7 @@ ExprPtr Parser::ParseRange() {
             Check(TokenKind::RightBrace) || Check(TokenKind::Comma) || Check(TokenKind::Semicolon) || IsAtEnd()) {
             return nullptr;
         }
-        return ParseTernary();
+        return ParseConditionalOperator();
     };
 
     // Prefix and full ranges: `..end`, `..=end`, and `..`.
@@ -162,7 +165,7 @@ ExprPtr Parser::ParseRange() {
         return e;
     }
 
-    auto left = ParseTernary();
+    auto left = ParseConditionalOperator();
     if (!left) {
         return nullptr;
     }
@@ -199,31 +202,23 @@ void Parser::RejectEllipsisRange() {
     }
 }
 
-ExprPtr Parser::ParseTernary() {
+/// The removed conditional operator `c ? a : b` is reported and both branches are read, so the expression around it
+/// still parses; the condition stands in for the whole.
+ExprPtr Parser::ParseConditionalOperator() {
     auto cond = ParseCoalesce();
     if (!cond) {
         return nullptr;
     }
 
     if (Match(TokenKind::Question)) {
-        const auto loc = Previous().location;
+        EmitError(Previous().location, "the conditional operator 'c ? a : b' is not supported",
+                  "write 'if c { a } else { b }'");
         const bool savedConditionalThen = std::exchange(inConditionalThen, true);
-        auto thenExpr = ParseCoalesce();
+        static_cast<void>(ParseCoalesce());
         inConditionalThen = savedConditionalThen;
-        if (!thenExpr) {
-            EmitMissingExpression("after '?' in the conditional expression");
+        if (Match(TokenKind::Colon)) {
+            static_cast<void>(ParseConditionalOperator()); // right-associative
         }
-        ExpectBefore(TokenKind::Colon, "':' between the conditional expression branches");
-        auto elseExpr = ParseTernary(); // right-associative
-        if (!elseExpr) {
-            EmitMissingExpression("after ':' in the conditional expression");
-        }
-        auto e = std::make_unique<TernaryExpr>();
-        e->location = loc;
-        e->condition = std::move(cond);
-        e->thenExpr = std::move(thenExpr);
-        e->elseExpr = std::move(elseExpr);
-        return e;
     }
     return cond;
 }
@@ -535,10 +530,13 @@ ExprPtr Parser::ParseUnary() {
         return ParseTryExpr(true);
     }
     // `move value` transfers ownership out of its operand, and binds as tightly as any other prefix operator: `move
-    // a.b` moves the field and `move a + b` is `(move a) + b`. The prefix `<-` is the older spelling of the same node.
+    // a.b` moves the field and `move a + b` is `(move a) + b`. The removed prefix `<-` is reported and read as `move`.
     if (CheckAny({TokenKind::MoveKeyword, TokenKind::MoveArrow})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
+        if (opToken.kind == TokenKind::MoveArrow) {
+            EmitError(loc, "'<-' is not an operator", "write 'move value' to transfer ownership");
+        }
         auto operand = ParseUnary();
         if (!operand) {
             EmitMissingExpression(std::format("after '{}'", opToken.text));
@@ -722,9 +720,11 @@ ExprPtr Parser::ParsePostfix() {
         // its own parse below at its own precedence.
         if (Check(TokenKind::Question) && !Peek().precededBySpace) {
             Advance();
-            // `value? else (e => mapped)` converts the error before failing with it.
+            // The removed `value? else (e => mapped)` is reported and read for recovery.
             if (Check(TokenKind::ElseKeyword) && Peek(1).Is(TokenKind::LeftParen)) {
-                left = ParseErrorMapper(loc, std::move(left));
+                EmitError(CurrentLocation(), "'? else' is not supported",
+                          "write 'try value catch { e => throw mapped }'");
+                SkipErrorMapper();
                 continue;
             }
             auto e = std::make_unique<TryExpr>();
@@ -733,19 +733,17 @@ ExprPtr Parser::ParsePostfix() {
             left = std::move(e);
             continue;
         }
-        // Postfix recovery: expr catch { pattern => body, ... }. It is part of the postfix chain like `?`, so it
-        // attaches to the nearest postfix expression and the chain may continue after its closing brace.
+        // The removed postfix recovery `expr catch { ... }` is reported and its arms are read and dropped; `catch`
+        // follows `try`.
         if (!tryOperandEndsAtCatch && Match(TokenKind::CatchKeyword)) {
-            auto e = std::make_unique<CatchExpr>();
-            e->location = loc;
-            e->subject = std::move(left);
+            EmitError(Previous().location, "'catch' must follow 'try'", "write 'try value catch { ... }'");
             if (Match(TokenKind::LeftBrace)) {
-                ParseArmList(e->arms, "catch");
+                std::vector<MatchExpr::Arm> discarded;
+                ParseArmList(discarded, "catch");
             }
             else {
                 EmitExpected(CurrentLocation(), "'{' to start the catch arms");
             }
-            left = std::move(e);
             continue;
         }
         // Post-increment / post-decrement: expr++ or expr--
@@ -896,25 +894,20 @@ ExprPtr Parser::ParsePrimary() {
         e->name = "#" + Advance().text;
         return e;
     }
-    // Native constructors: .Success(value), .Failure(error), .Some(value). Every other `.Name`, including `.None`,
-    // stays the enum shorthand below.
+    // The native constructor `.Some(value)`. Every other `.Name`, including `.Success` and `.Failure` of Core's
+    // `Result`, stays the contextual case below.
     if (Check(TokenKind::Dot) && Peek(1).Is(TokenKind::Ident) && Peek(2).Is(TokenKind::LeftParen) &&
-        (Peek(1).text == "Success" || Peek(1).text == "Failure" || Peek(1).text == "Some")) {
+        Peek(1).text == "Some") {
         Advance(); // consume '.'
         const std::string name = Advance().text;
         auto e = std::make_unique<NativeConstructExpr>();
         e->location = loc;
-        e->kind = name == "Success" ? NativeConstructExpr::Kind::Success
-                : name == "Failure" ? NativeConstructExpr::Kind::Failure
-                                    : NativeConstructExpr::Kind::Some;
+        e->kind = NativeConstructExpr::Kind::Some;
         auto args = ParseArgList();
         if (args.size() != 1) {
             std::optional<std::string> help;
-            if (name == "Some" && args.empty()) {
+            if (args.empty()) {
                 help = "write 'none' for an absent optional";
-            }
-            else if (name == "Success" && args.empty()) {
-                help = "write '.Success(())' for a unit success";
             }
             EmitError(loc, std::format("'.{}' takes exactly one value", name), std::move(help));
         }
@@ -1095,9 +1088,12 @@ ExprPtr Parser::ParseDivergingExpr() {
     switch (keyword.kind) {
     case TokenKind::FailKeyword:
     case TokenKind::ThrowKeyword:
-        // `throw` always names the error; a unit error is written `throw ()`. `fail` is its older spelling.
+        // `throw` always names the error; a unit error is written `throw ()`. The removed `fail` is reported.
         e->kind = DivergeExpr::Kind::Fail;
         e->throwSpelling = keyword.kind == TokenKind::ThrowKeyword;
+        if (!e->throwSpelling) {
+            RejectFailKeyword(e->location);
+        }
         e->value = ParseRequiredExpr(e->throwSpelling ? "after 'throw'" : "after 'fail'");
         break;
     case TokenKind::ReturnKeyword:
@@ -1170,29 +1166,22 @@ void Parser::ReportNonfinalDefaultArm(const SourceLocation location, const std::
               "move the '_' arm after the other arms");
 }
 
-ExprPtr Parser::ParseErrorMapper(const SourceLocation location, ExprPtr operand) {
+void Parser::SkipErrorMapper() {
     Advance(); // consume 'else'
     Advance(); // consume '('
-    auto e = std::make_unique<MappedTryExpr>();
-    e->location = location;
-    e->operand = std::move(operand);
-    e->bindingLocation = CurrentLocation();
-    e->binding = ExpectBefore(TokenKind::Ident, "a name for the error before '=>' in the error mapping").text;
-    ExpectBefore(TokenKind::FatArrow, "'=>' after the error binding");
-    // The parentheses make a parenthesized context, so a struct literal is allowed even inside a condition.
-    const bool savedStructInitAllowed = structInitAllowed;
-    structInitAllowed = true;
-    e->mapper = CheckDivergingKeyword() ? ParseDivergingExpr() : ParseRequiredExpr("after '=>' in the error mapping");
-    if (Check(TokenKind::Comma)) {
-        EmitError(CurrentLocation(), "an error mapping has one body",
-                  "remove the ','; write '(e => (a, b))' to map the error to a tuple");
-        while (!CheckAny({TokenKind::RightParen, TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
-            Advance();
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, true);
+    int depth = 1;
+    while (!IsAtEnd() && !Check(TokenKind::Semicolon)) {
+        if (Check(TokenKind::LeftParen)) {
+            ++depth;
         }
+        else if (Check(TokenKind::RightParen) && --depth == 0) {
+            break;
+        }
+        Advance();
     }
     structInitAllowed = savedStructInitAllowed;
     ExpectBefore(TokenKind::RightParen, "')' to close the error mapping");
-    return e;
 }
 
 std::vector<ExprPtr> Parser::ParseArgList(std::vector<ArgumentLabel> *labels) {
@@ -1264,8 +1253,9 @@ std::vector<ExprPtr> Parser::ParseArgList(std::vector<ArgumentLabel> *labels) {
 // Patterns
 PatternPtr Parser::ParseMatchArmPattern() {
     const auto loc = CurrentLocation();
-    // `_` is the default arm; `else` is its older spelling and is still read the same way.
+    // `_` is the default arm; the removed `else =>` is reported and read the same way.
     if (Match(TokenKind::ElseKeyword)) {
+        EmitError(loc, "'else' is not a match arm", "use '_' for the default arm");
         auto pattern = std::make_unique<WildcardPattern>();
         pattern->location = loc;
         return pattern;
@@ -1389,22 +1379,11 @@ PatternPtr Parser::ParseRequiredPattern(const std::string_view context) {
 
 PatternPtr Parser::ParsePresenceSuffix(PatternPtr inner) {
     while (Check(TokenKind::Question) || Check(TokenKind::QuestionQuestion)) {
-        // Pattern position has no conditional operator, so a separated `?` is still meant as the suffix; it is read as
-        // one and reported, so the rest of the arm parses normally.
-        if (Peek().precededBySpace) {
-            EmitError(CurrentLocation(), "a presence suffix must touch its pattern", "remove the space before '?'");
-        }
-        if (AstCast<const TypedPattern>(inner.get())) {
-            EmitError(CurrentLocation(), "a presence suffix cannot follow a typed pattern",
-                      "write '.Some(v: A)' to match a present member by type");
-        }
-        const int levels = Advance().kind == TokenKind::QuestionQuestion ? 2 : 1;
-        for (int level = 0; level < levels; ++level) {
-            auto presence = std::make_unique<PresencePattern>();
-            presence->location = inner->location;
-            presence->inner = std::move(inner);
-            inner = std::move(presence);
-        }
+        // The removed presence suffix is reported and dropped, so the rest of the arm parses normally.
+        const bool twoLevels = Advance().kind == TokenKind::QuestionQuestion;
+        EmitError(Previous().location, "a presence suffix is not a pattern",
+                  twoLevels ? "write '.Some(.Some(p))' to match two present levels"
+                            : "write '.Some(p)' to match a present value");
     }
     return inner;
 }
@@ -1451,7 +1430,7 @@ PatternPtr Parser::ParseSinglePattern() {
     if (!inner) {
         return nullptr;
     }
-    // Presence suffix: `value?` is `.Some(value)`, and `value??` peels two levels.
+    // The removed presence suffix `value?` is reported where it is written.
     inner = ParsePresenceSuffix(std::move(inner));
 
     // Range pattern: lo..hi or lo..=hi; `...` is reported and read as `..=`.
@@ -1460,9 +1439,6 @@ PatternPtr Parser::ParseSinglePattern() {
         const auto loc = CurrentLocation();
         RejectEllipsisRange();
         constexpr std::string_view rangeSuffixHelp = "write '.Some(lo..hi)' to match a present value in a range";
-        if (AstCast<const PresencePattern>(inner.get())) {
-            EmitError(inner->location, "a range bound cannot take a presence suffix", std::string(rangeSuffixHelp));
-        }
         const std::string operatorText = Advance().text;
         auto hi = ParsePrimaryPattern();
         if (!hi) {

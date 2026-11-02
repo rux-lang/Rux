@@ -212,8 +212,8 @@ TEST_CASE("Bounded inlining clones branches returns and loop-edge phis") {
 
 TEST_CASE("Bounded inlining leaves mutual recursion and its wrappers callable") {
     auto package = CompileToLir(R"(
-        func First(value: int) -> int { return value == 0 ? 1 : Second(value - 1); }
-        func Second(value: int) -> int { return value == 0 ? 2 : First(value - 1); }
+        func First(value: int) -> int { return if value == 0 { 1 } else { Second(value - 1) }; }
+        func Second(value: int) -> int { return if value == 0 { 2 } else { First(value - 1) }; }
         func Wrap(value: int) -> int { return First(value); }
         func Work(value: int) -> int { return Wrap(value); }
     )",

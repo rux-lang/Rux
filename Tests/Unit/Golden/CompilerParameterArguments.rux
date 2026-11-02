@@ -2,8 +2,8 @@
 struct Config {}
 
 extend Config {
-    intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
-    intrinsic func Has(self: &Config, name: char8[..]) -> bool;
+    intrinsic func Get(&self, name: char8[..]) -> char8[..];
+    intrinsic func Has(&self, name: char8[..]) -> bool;
 }
 
 intrinsic #config: Config;

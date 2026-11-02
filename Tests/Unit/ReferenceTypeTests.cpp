@@ -168,7 +168,7 @@ TEST_CASE("a write through a reference names the reference and its writable spel
 TEST_CASE("a whole value written through a reference replaces the referent and destroys the old one") {
     Lexer lexer(R"(
         struct Handle { value: int32; }
-        extend Handle { func ~Handle(self: &var Handle) {} }
+        extend Handle { func ~Handle(&var self) {} }
         func Replace(slot: &var Handle) {
             slot = Handle { value: 2i32 };
         }
@@ -221,8 +221,8 @@ TEST_CASE("a write to a parameter never suggests declaring it with 'var'") {
     const auto diagnostics = AnalyzeReferences(R"(
         struct Pair { a: int32; b: int32; }
         extend Pair {
-            func Reset(self: &var Pair) { self = Pair { a: 0i32, b: 0i32 }; }
-            func Cleared(self: Pair) -> Pair {
+            func Reset(&var self) { self = Pair { a: 0i32, b: 0i32 }; }
+            func Cleared(self) -> Pair {
                 self = Pair { a: 0i32, b: 0i32 };
                 return self;
             }
@@ -258,7 +258,7 @@ TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {
     SUBCASE("move-only struct") {
         const auto diagnostics = AnalyzeReferences(R"(
             struct Owner { pointer: *var int; }
-            extend Owner { func ~Owner(self: &var Owner) {} }
+            extend Owner { func ~Owner(&var self) {} }
             func Copy(value: &Owner) -> Owner { return value; }
         )");
         CHECK(HasErrorContaining(diagnostics, "reference value '&Owner' cannot escape"));
@@ -271,7 +271,7 @@ TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {
     }
     SUBCASE("explicit reference move") {
         const auto diagnostics = AnalyzeReferences(R"(
-            func Move(value: &int) -> int { return <-value; }
+            func Move(value: &int) -> int { return move value; }
         )");
         CHECK(HasErrorContaining(diagnostics, "cannot move a non-owning reference"));
     }
@@ -316,7 +316,7 @@ TEST_CASE("generic borrowed scalar reads validate every instantiated referent") 
     SUBCASE("generic arithmetic cannot introduce an aggregate copy") {
         const auto diagnostics = AnalyzeReferences(R"(
             struct Pair { first: int; second: int; }
-            extend Pair { func +(self: &Pair, other: Pair) -> Pair { return other; } }
+            extend Pair { func +(&self, other: Pair) -> Pair { return other; } }
             func Add<T>(left: &T, right: T) -> T { return left + right; }
             func Main() {
                 let pair = Pair { first: 1, second: 2 };
@@ -455,7 +455,7 @@ TEST_CASE("borrowed enum values can be inspected by match") {
     const auto diagnostics = AnalyzeReferences(R"(
         variant Choice<T> { Some(T), None }
         extend Choice<T> {
-            func IsSome(self: &Choice<T>) -> bool {
+            func IsSome(&self) -> bool {
                 return match self {
                     .Some(_) => true,
                     .None => false
@@ -477,17 +477,16 @@ TEST_CASE("references cannot transfer borrowed ownership") {
     const auto diagnostics = AnalyzeReferences(R"(
         struct Resource { value: int32; }
         extend Resource {
-            func =(self: &var Resource, other: &Resource);
-            func ~Resource(self: &var Resource) {}
+            func ~Resource(&var self) {}
         }
         struct Holder { resource: Resource; }
         extend Holder {
-            func Take(self: Holder) {}
+            func Take(self) {}
         }
         func Consume(value: Resource) {}
         func Test(shared: &Holder) {
-            Consume(<-shared.resource);
-            (<-shared).Take();
+            Consume(move shared.resource);
+            (move shared).Take();
         }
     )");
 

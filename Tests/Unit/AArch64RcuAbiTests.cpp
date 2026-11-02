@@ -513,7 +513,7 @@ TEST_CASE("AArch64 RCU emitter carries the library an extern declaration names t
 
 TEST_CASE("AArch64 RCU emitter ends a path at a call that does not return") {
     const auto package = CompileToAArch64Lir(R"(
-        #NoReturn()
+        #NoReturn
         func Die() {
             Die();
         }

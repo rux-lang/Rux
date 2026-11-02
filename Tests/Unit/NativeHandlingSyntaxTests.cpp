@@ -49,13 +49,6 @@ std::string Shape(const Expr *expr) {
     if (const auto *field = dynamic_cast<const FieldExpr *>(expr)) {
         return Shape(field->object.get()) + "." + field->field;
     }
-    if (const auto *recovery = dynamic_cast<const CatchExpr *>(expr)) {
-        return "catch(" + Shape(recovery->subject.get()) + ", " + std::to_string(recovery->arms.size()) + " arms)";
-    }
-    if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(expr)) {
-        return "mapped(" + Shape(mapped->operand.get()) + ", " + mapped->binding + " => " +
-               Shape(mapped->mapper.get()) + ")";
-    }
     if (const auto *propagate = dynamic_cast<const TryExpr *>(expr)) {
         return Shape(propagate->operand.get()) + "?";
     }
@@ -69,7 +62,7 @@ std::string Shape(const Expr *expr) {
         return "none";
     }
     if (const auto *diverge = dynamic_cast<const DivergeExpr *>(expr)) {
-        static constexpr const char *kKeywords[] = {"return", "fail", "break", "continue"};
+        static constexpr const char *kKeywords[] = {"return", "throw", "break", "continue"};
         std::string text = kKeywords[static_cast<int>(diverge->kind)];
         if (!diverge->label.empty()) {
             text += " " + diverge->label;
@@ -142,23 +135,10 @@ TEST_CASE("none, fail, and catch are reserved keywords") {
     CHECK(KeywordKind("catch") == TokenKind::CatchKeyword);
     CHECK(Reports("func F() { let none = 1; }", "'none' is a reserved keyword and cannot name a binding"));
     CHECK(Reports("func F() { var none = 1; }", "'none' is a reserved keyword and cannot name a binding"));
-    CHECK_FALSE(ParsesCleanly("func F() { let fail = 1; }"));
+    CHECK_FALSE(ParsesCleanly("func F() { let throw = 1; }"));
     CHECK_FALSE(ParsesCleanly("func F() { let catch = 1; }"));
     // A string spelling is untouched.
     CHECK(ParsesCleanly("func F() { let text = \"none\"; }"));
-}
-
-TEST_CASE("native constructors are dot-prefixed and take one value") {
-    CHECK_EQ(InitializerShape("let a = .Some(1);"), ".Some(1)");
-    CHECK_EQ(InitializerShape("let a = .Success(value);"), ".Success(value)");
-    CHECK_EQ(InitializerShape("let a = .Failure(error);"), ".Failure(error)");
-    CHECK_EQ(InitializerShape("let a = .Some(.Some(none));"), ".Some(.Some(none))");
-    CHECK_EQ(InitializerShape("let a = .Success(());"), ".Success(())");
-    CHECK(Reports("func F() { let a = .Some(); }", "'.Some' takes exactly one value"));
-    CHECK(Reports("func F() { let a = .Success(1, 2); }", "'.Success' takes exactly one value"));
-    // Every other `.Name` keeps the existing shorthand, including `.None`.
-    CHECK_EQ(InitializerShape("let a = .None;"), ".None");
-    CHECK_EQ(InitializerShape("let a = .Other(1);"), "call(.Other, 1)");
 }
 
 TEST_CASE("none is a value") {
@@ -166,56 +146,33 @@ TEST_CASE("none is a value") {
     CHECK_EQ(InitializerShape("let a = count == none;"), "(count == none)");
 }
 
-TEST_CASE("catch attaches to the nearest postfix expression") {
-    CHECK_EQ(InitializerShape("let a = Read() catch { e => 0 };"), "catch(call(Read), 1 arms)");
-    CHECK_EQ(InitializerShape("let a = total + Read() catch { else => 0 };"), "(total + catch(call(Read), 1 arms))");
-    CHECK_EQ(InitializerShape("let a = Read() catch { else => 0 }.Length();"),
-             "call(catch(call(Read), 1 arms).Length)");
-    CHECK_EQ(InitializerShape("let a = (total + Read()) catch { else => 0 };"), "catch((total + call(Read)), 1 arms)");
-    CHECK_EQ(InitializerShape("let a = match x { else => Read() } catch { else => 0 };"), "catch(match, 1 arms)");
-}
-
 TEST_CASE("catch arms share the match arm grammar") {
-    CHECK(ParsesCleanly("func F() { let a = Read() catch { e if e.code > 0 => 1, else => 0 }; }"));
-    CHECK(ParsesCleanly("func F() { let a = Read() catch { e => { Log(e); }, else => fail Other {} }; }"));
-    CHECK(ParsesCleanly("func F() { let a = Read() catch { e => 0, }; }"));
-    CHECK(ParsesCleanly("func F() { let a = Read() catch { .Missing | .Denied => 0, _ => 1 }; }"));
-    CHECK(
-        Reports("func F() { let a = Read() catch { _ => 0, e => 1 }; }", "the default arm must be the last catch arm"));
+    CHECK(ParsesCleanly("func F() { let a = try Read() catch { e if e.code > 0 => 1, _ => 0 }; }"));
+    CHECK(ParsesCleanly("func F() { let a = try Read() catch { e => { Log(e); }, _ => throw Other {} }; }"));
+    CHECK(ParsesCleanly("func F() { let a = try Read() catch { e => 0, }; }"));
+    CHECK(ParsesCleanly("func F() { let a = try Read() catch { .Missing | .Denied => 0, _ => 1 }; }"));
+    CHECK(Reports("func F() { let a = try Read() catch { _ => 0, e => 1 }; }",
+                  "the default arm must be the last catch arm"));
     CHECK(ReportsContaining("func F() { let a = Read() catch e => 0; }", "expected '{' to start the catch arms"));
 }
 
-TEST_CASE("an error mapping follows a tight question mark") {
-    CHECK_EQ(InitializerShape("let a = Read()? else (e => Wrap(e, path));"),
-             "mapped(call(Read), e => call(Wrap, e, path))");
-    CHECK_EQ(InitializerShape("let a = Read()? else (_ => Fixed());"), "mapped(call(Read), _ => call(Fixed))");
-    CHECK_EQ(InitializerShape("let a = Read()? else (e => Wrap(e)).Length();"),
-             "call(mapped(call(Read), e => call(Wrap, e)).Length)");
-    CHECK_EQ(InitializerShape("let a = Read()? else (e => fail Other {});"), "mapped(call(Read), e => fail init)");
-    // Plain propagation is unchanged.
-    CHECK_EQ(InitializerShape("let a = Read()?;"), "call(Read)?");
-    // The parentheses re-enable struct literals inside a condition.
-    CHECK(ParsesCleanly("func F() { if Read()? else (e => Wrap { cause: e }) == expected { } }"));
-    CHECK(Reports("func F() { let a = Read()? else (e => 1, 2); }", "an error mapping has one body"));
-}
-
 TEST_CASE("diverging forms are accepted only as whole bodies") {
-    CHECK_EQ(InitializerShape("let a = b ?? fail c ?? d;"), "(b ?? fail (c ?? d))");
+    CHECK_EQ(InitializerShape("let a = b ?? throw c ?? d;"), "(b ?? throw (c ?? d))");
     CHECK_EQ(InitializerShape("let a = b ?? return;"), "(b ?? return)");
     CHECK_EQ(InitializerShape("let a = b ?? break outer;"), "(b ?? break outer)");
     CHECK_EQ(InitializerShape("let a = b ?? continue;"), "(b ?? continue)");
-    CHECK(ParsesCleanly("func F() { let a = match x { 1 => return x, else => 2 }; }"));
-    CHECK(ParsesCleanly("func F() { match x { 1 => fail Other {}, else => {} } }"));
+    CHECK(ParsesCleanly("func F() { let a = match x { 1 => return x, _ => 2 }; }"));
+    CHECK(ParsesCleanly("func F() { match x { 1 => throw Other {}, _ => {} } }"));
     CHECK(Reports("func F() { let a = return; }", "'return' cannot be used as a value here"));
-    CHECK(Reports("func F() { G(fail x); }", "'fail' cannot be used as a value here"));
-    CHECK(ReportsContaining("func F() { when Level { 1 => fail Other {}, else => {} } }",
+    CHECK(Reports("func F() { G(throw x); }", "'throw' cannot be used as a value here"));
+    CHECK(ReportsContaining("func F() { when Level { 1 => let x = 1, _ => {} } }",
                             "a 'when' arm body that is a statement must be written as a block"));
-    // A struct literal after `fail` in an unparenthesized condition is left to the body, as for any struct literal.
-    CHECK(ParsesCleanly("func F() { if (b ?? fail NotFound {}) == c { } }"));
+    // A struct literal after `throw` in an unparenthesized condition is left to the body, as for any struct literal.
+    CHECK(ParsesCleanly("func F() { if (b ?? throw NotFound {}) == c { } }"));
 }
 
-TEST_CASE("fail is a statement that names its failure") {
-    const ParseResult parsed = ParseSource("func F() { fail NotFound {}; fail (); }");
+TEST_CASE("throw is a statement that names its error") {
+    const ParseResult parsed = ParseSource("func F() { throw NotFound {}; throw (); }");
     REQUIRE(parsed.diagnostics.empty());
     const FuncDecl &function = OnlyFunction(parsed);
     REQUIRE_EQ(function.body->stmts.size(), 2);
@@ -225,16 +182,5 @@ TEST_CASE("fail is a statement that names its failure") {
     REQUIRE(second != nullptr);
     CHECK_EQ(Shape(first->value.get()), "init");
     CHECK_EQ(Shape(second->value.get()), "()");
-    CHECK(ReportsContaining("func F() { fail; }", "expected an expression after 'fail'"));
-}
-
-TEST_CASE("nothing postfix follows a match statement") {
-    CHECK(Reports("func F() { match x { else => Read() } catch { else => 0 }; }",
-                  "'catch' cannot follow a match statement"));
-    CHECK(Reports("func F() { match x { else => Read() }?; }", "'?' cannot follow a match statement"));
-    CHECK(Reports("func F() { match x { else => Read() } ?? 0; }", "'?"
-                                                                   "?' cannot follow a match statement"));
-    CHECK(ParsesCleanly("func F() { let value = match x { else => Read() } catch { else => 0 }; }"));
-    CHECK(ParsesCleanly("func F() { (match x { else => Read() }) catch { else => 0 }; }"));
-    CHECK(ParsesCleanly("func F() { return match x { else => Read() } catch { else => 0 }; }"));
+    CHECK(ReportsContaining("func F() { throw; }", "expected an expression after 'throw'"));
 }

@@ -63,7 +63,7 @@ std::string DiagnosticMessages(const ParseResult &result) {
 } // namespace
 
 TEST_CASE("coalescing parser diagnostics reject declarations and incomplete forms") {
-    const ParseResult declaration = ParseSource("extend int32 { func ?? (self: &int32) -> int32 {} }");
+    const ParseResult declaration = ParseSource("extend int32 { func ?? (&self) -> int32 {} }");
     CHECK(HasDiagnosticContaining(declaration, "operator '?"
                                                "?' is built in and cannot be declared or overloaded"));
 
@@ -615,10 +615,6 @@ TEST_CASE("expression diagnostics name their owning operator and delimiter") {
         {"func F() { let value = ; }", "expected an expression after '=' in the binding before ';'"},
         {"func F() { let value = 1 + ; }", "expected an expression after '+' before ';'"},
         {"func F() { let value = !; }", "expected an expression after unary '!' before ';'"},
-        {"func F() { let value = flag ? : 0; }",
-         "expected an expression after '?' in the conditional expression before ':'"},
-        {"func F() { let value = flag ? 1 : ; }",
-         "expected an expression after ':' in the conditional expression before ';'"},
         {"func F() { let value = Call(1 2); }", "expected ',' between arguments before '2'"},
         {"func F() { let value = Call(1; }", "expected ')' to close the argument list before ';'"},
         {"func F() { let value = items[]; }", "expected an expression after '[' in the index expression before ']'"},
@@ -765,7 +761,7 @@ func F(value: int) {
         (first, second) => 5,
         1..=3 => 6,
         item if item > 0 => 7,
-        else => 8
+        _ => 8
     }
 }
 )");
@@ -817,7 +813,7 @@ TEST_CASE("a when match arm loop always consumes something") {
         func Select() -> int32 {
             when #target.os {
                 .Windows => return 1i32;
-                else => return 2i32;
+                _ => return 2i32;
             }
         }
     )");
@@ -845,7 +841,7 @@ TEST_CASE("a when match arm accepts an expression body and a block body") {
             when #target.os {
                 .Windows => result = 1i32,
                 .Linux => { result = 2i32; }
-                else => result = 3i32
+                _ => result = 3i32
             }
             return result;
         }
@@ -856,8 +852,7 @@ TEST_CASE("a when match arm accepts an expression body and a block body") {
 }
 
 TEST_CASE("a format attribute is recorded on its parameter") {
-    const ParseResult result =
-        ParseSource("func Show(prefix: int32, #Format() format: char8[..], values: int32...) {}");
+    const ParseResult result = ParseSource("func Show(prefix: int32, #Format format: char8[..], values: int32...) {}");
     REQUIRE_FALSE(result.HasErrors());
     REQUIRE_EQ(result.module.items.size(), 1);
     const auto *function = dynamic_cast<const FuncDecl *>(result.module.items.front().get());
@@ -867,7 +862,7 @@ TEST_CASE("a format attribute is recorded on its parameter") {
     CHECK(function->params[1].isFormat);
     CHECK_EQ(function->params[1].name, "format");
     CHECK_EQ(function->params[1].formatLocation.column, 26);
-    CHECK_EQ(function->params[1].location.column, 36);
+    CHECK_EQ(function->params[1].location.column, 34);
     CHECK_FALSE(function->params[2].isFormat);
 }
 
@@ -878,20 +873,59 @@ TEST_CASE("a format attribute is refused where it cannot describe a format strin
     };
 
     const Case cases[] = {
-        {"func F(#Format() a: char8[..], #Format() b: char8[..], values: int32...) {}",
+        {"func F(#Format a: char8[..], #Format b: char8[..], values: int32...) {}",
          "'#Format' is already applied to parameter 'a'"},
-        {"func F(#Format() #Format() a: char8[..], values: int32...) {}", "duplicate '#Format' attribute"},
-        {"func F(#Format() a: char8[..]) {}", "'#Format' parameter 'a' must be followed by a variadic parameter"},
-        {"func F(a: char8[..], #Format() values: int32...) {}",
+        {"func F(#Format #Format a: char8[..], values: int32...) {}", "duplicate '#Format' attribute"},
+        {"func F(#Format a: char8[..]) {}", "'#Format' parameter 'a' must be followed by a variadic parameter"},
+        {"func F(a: char8[..], #Format values: int32...) {}",
          "'#Format' cannot be applied to variadic parameter 'values'"},
-        {"extend Point { func F(#Format() self: &Point, values: int32...) {} }",
+        {"extend Point { func F(#Format &self, values: int32...) {} }",
          "'#Format' cannot be applied to the receiver 'self'"},
         {"func F(#Format(1) a: char8[..], values: int32...) {}", "'#Format' does not accept arguments"},
-        {"func F(#Shape() a: char8[..], values: int32...) {}", "unknown parameter attribute '#Shape'"},
+        {"func F(#Shape a: char8[..], values: int32...) {}", "unknown parameter attribute '#Shape'"},
     };
     for (const Case &entry : cases) {
         CAPTURE(entry.source);
         const ParseResult result = ParseSource(entry.source);
         CHECK_MESSAGE(FindDiagnostic(result, entry.message) != nullptr, DiagnosticMessages(result));
+    }
+}
+
+TEST_CASE("removed spellings report the form that replaced them") {
+    struct Case {
+        std::string_view source;
+        std::string_view message;
+        std::string_view help;
+    };
+
+    constexpr Case cases[] = {
+        {"func F() -> int ! E { return 1; }", "'T ! E' is not a type", "'-> T throws E'"},
+        {"func F() throws E { fail E {}; }", "'fail' is not supported", "write 'throw value;'"},
+        {"func F() -> int throws E { return G()? else (e => e); }", "'? else' is not supported",
+         "write 'try value catch { e => throw mapped }'"},
+        {"func F() -> int { return G() catch { _ => 0 }; }", "'catch' must follow 'try'",
+         "write 'try value catch { ... }'"},
+        {"func F() -> int { return match x { else => 0 }; }", "'else' is not a match arm",
+         "use '_' for the default arm"},
+        {"func F() -> int { return match x { v? => v, _ => 0 }; }", "a presence suffix is not a pattern",
+         "write '.Some(p)' to match a present value"},
+        {"func F() -> int { return match x { v?? => v, _ => 0 }; }", "a presence suffix is not a pattern",
+         "write '.Some(.Some(p))' to match two present levels"},
+        {"extend T { func F(self: &var T) {} }", "a receiver does not name its type",
+         "write '&var self'; the 'extend' block or interface gives the type"},
+        {"#Test() func F() {}", "'#Test' is written without parentheses", "write '#Test'"},
+        {"func F() -> int { return c ? 1 : 2; }", "the conditional operator 'c ? a : b' is not supported",
+         "write 'if c { a } else { b }'"},
+        {"func F() { let a <- b; }", "'<-' is not a binding operator", "write 'let name = move source'"},
+        {"func F() { a <- b; }", "'<-' is not an assignment operator", "write 'target = move source'"},
+        {"func F() { G(<-b); }", "'<-' is not an operator", "write 'move value' to transfer ownership"},
+    };
+    for (const auto &testCase : cases) {
+        CAPTURE(testCase.source);
+        const auto parsed = ParseSource(testCase.source);
+        const auto *diagnostic = FindDiagnostic(parsed, testCase.message);
+        REQUIRE(diagnostic != nullptr);
+        REQUIRE(diagnostic->help.has_value());
+        CHECK(diagnostic->help->contains(testCase.help));
     }
 }

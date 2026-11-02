@@ -7,7 +7,7 @@ struct Point {
 }
 
 extend Point : Equatable {
-    func Equals(self: &Point, other: &Point) -> bool {
+    func Equals(&self, other: &Point) -> bool {
         return self.x == other.x;
     }
 }

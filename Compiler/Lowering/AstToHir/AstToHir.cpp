@@ -141,8 +141,6 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "binary";
     if (AstCast<const AssignExpr>(&expression))
         return "assignment";
-    if (AstCast<const TernaryExpr>(&expression))
-        return "ternary";
     if (AstCast<const RangeExpr>(&expression))
         return "range";
     if (AstCast<const CallExpr>(&expression))
@@ -543,14 +541,8 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     if (const auto *e = AstCast<const DivergeExpr>(&expr)) {
         return LowerDiverge(*e);
     }
-    if (const auto *e = AstCast<const CatchExpr>(&expr)) {
-        return finish(LowerCatch(*e));
-    }
     if (const auto *e = AstCast<const TryMarkExpr>(&expr)) {
         return finish(LowerTryMark(*e));
-    }
-    if (const auto *e = AstCast<const MappedTryExpr>(&expr)) {
-        return finish(LowerMappedTry(*e));
     }
     if (auto *e = AstCast<const SpreadExpr>(&expr)) {
         return finish(LowerExpr(*e->operand));

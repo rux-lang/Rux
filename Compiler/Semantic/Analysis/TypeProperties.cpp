@@ -227,8 +227,8 @@ void AnalysisContext::ValidateIndexOperator(const FuncDecl &method, const TypeRe
     const std::string &type = extendedType.ToString();
     EmitError(method.location,
               std::format("the '{}' operator on '{}' must have signature '{}'", method.name, type,
-                          writes ? std::format("func []=(self: &var {}, index: I, value: E)", type)
-                                 : std::format("func [](self: &{}, index: I) -> E", type)),
+                          writes ? std::string("func []=(&var self, index: I, value: E)")
+                                 : std::string("func [](&self, index: I) -> E")),
               {writes ? "an indexed assignment writes one element and evaluates to nothing"
                       : "an index reads one element and evaluates to it"},
               "the index and element types are the author's to choose; overloads are separated by the index type");
@@ -261,8 +261,8 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
         return receiver->inner.front() == expected;
     }();
     if (!canonical) {
-        EmitError(method.location, std::format("destructor for type '{}' must have signature 'func {}(self: &var {})'",
-                                               typeName, expectedName, extendedType.ToString()));
+        EmitError(method.location, std::format("destructor for type '{}' must have signature 'func {}(&var self)'",
+                                               typeName, expectedName));
     }
     if (!method.body) {
         EmitError(method.location, std::format("destructor '{}' must have a body", expectedName));
@@ -274,11 +274,6 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
         return;
     }
 
-    const auto sameValueType = [](TypeRef left, TypeRef right) {
-        left.isMut = false;
-        right.isMut = false;
-        return left == right;
-    };
     const bool copy = method.name == "=";
     if (copy && method.body) {
         // A copy is always a byte copy of plain data; no user code runs for it, and an owning type is move-only.
@@ -294,34 +289,10 @@ void AnalysisContext::ValidateSpecialOperation(const FuncDecl &method, const Typ
                   "a type that must stay in place uses '#NoMove'");
         return;
     }
-    const auto operationSignature = [&] {
-        if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
-            method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isVariadic ||
-            method.params[1].isVariadic || method.params[0].defaultValue || method.params[1].defaultValue) {
-            return false;
-        }
-
-        const TypeRef receiver = ResolveType(*method.params[0].type);
-        const TypeRef other = ResolveType(*method.params[1].type);
-        if (receiver->kind != TypeRef::Kind::Reference || receiver->inner.empty() || !receiver->inner.front().isMut ||
-            !sameValueType(receiver->inner.front(), extendedType)) {
-            return false;
-        }
-        if (!copy) {
-            return other->kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
-        }
-        return other->kind == TypeRef::Kind::Reference && !other->inner.empty() && !other->inner.front().isMut &&
-               sameValueType(other->inner.front(), extendedType);
-    }();
-    if (operationSignature) {
-        return;
-    }
-
-    const std::string &type = extendedType.ToString();
-    const std::string expected = copy ? std::format("func =(self: &var {0}, other: &{0})", type)
-                                      : std::format("func <-(self: &var {0}, other: {0})", type);
-    EmitError(method.location, std::format("{} special operation for type '{}' must have signature '{}'",
-                                           copy ? "copy" : "move", type, expected));
+    // A bodyless operator was the older way to prohibit the operation; the attribute on the type says it now.
+    EmitError(method.location,
+              std::format("a bodyless 'func {}' does not prohibit {}", method.name, copy ? "copying" : "moving"), {},
+              std::format("mark '{}' with '{}' instead", extendedType.ToString(), copy ? "#NoCopy" : "#NoMove"));
 }
 
 TypeProperties AnalysisContext::ClassifyTypeProperties(const TypeRef &type) {

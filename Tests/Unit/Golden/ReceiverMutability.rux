@@ -7,23 +7,23 @@ struct Counter {
 }
 
 extend Counter {
-    func Read(self: &Counter) -> int {
+    func Read(&self) -> int {
         return self.value;
     }
 
     // Writing through a read-only receiver, which is the same mistake as
     // writing through any other read-only reference.
-    func Bump(self: &Counter) {
+    func Bump(&self) {
         self.value += 1;
     }
 
-    func BumpBy(self: &var Counter, amount: int) {
+    func BumpBy(&var self, amount: int) {
         self.value += amount;
     }
 
     // A receiver taken by value is immutable like every other parameter; a
     // method that changes the caller's value takes `self: &var Counter`.
-    func Doubled(self: Counter) -> Counter {
+    func Doubled(self) -> Counter {
         self.value *= 2;
         return self;
     }

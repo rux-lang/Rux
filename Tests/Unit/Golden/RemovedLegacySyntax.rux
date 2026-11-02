@@ -1,0 +1,37 @@
+// The older spellings that the target syntax replaced: `else =>` arms, presence suffixes, receivers that name their
+// type, empty attribute parentheses, the conditional operator, and the `<-` transfer in its three roles.
+
+struct Token {
+    id: int32;
+}
+
+extend Token {
+    func Id(self: &Token) -> int32 {
+        return self.id;
+    }
+}
+
+#NoReturn()
+func Halt() {
+    while true {}
+}
+
+func Pick(value: int32?, flag: bool) -> int32 {
+    let picked = flag ? 1i32 : 2i32;
+    return match value {
+        found? => found,
+        else => picked
+    };
+}
+
+func Take(token: Token) -> int32 {
+    return token.id;
+}
+
+func Main() -> int {
+    let first = Token { id: 1i32 };
+    let second <- first;
+    var third = Token { id: 2i32 };
+    third <- second;
+    return Take(<-third) as int;
+}

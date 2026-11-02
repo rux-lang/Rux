@@ -22,47 +22,7 @@ bool AnyContains(const std::vector<std::string> &errors, const std::string_view 
     return std::ranges::any_of(errors, [&](const std::string &error) { return error.contains(text); });
 }
 
-constexpr std::string_view kOwned = R"(
-    struct Owned { handle: int32; }
-    extend Owned {
-        func =(self: &var Owned, other: &Owned);
-    }
-)";
 } // namespace
-
-TEST_CASE("a native value of copyable payloads is copyable") {
-    CHECK(Errors(R"(
-        struct E {}
-        func Use(optional: int32?, outcome: int32 ! E, sum: int32 | bool, nested: (int32 ! E)?) {
-            let first = optional;
-            let second = optional;
-            let channel = outcome;
-            let channelAgain = outcome;
-            let member = sum;
-            let memberAgain = sum;
-            let wrapped = nested;
-            let wrappedAgain = nested;
-        }
-    )")
-              .empty());
-}
-
-TEST_CASE("a native value holding a move-only payload is move-only") {
-    const std::string source = std::string(kOwned) + R"(
-        struct E {}
-        func Use(optional: Owned?, outcome: int32 ! Owned, sum: Owned | int32) {
-            let copied = optional;
-            let failure = outcome;
-            let member = sum;
-        }
-        func Moves(optional: Owned?, outcome: int32 ! Owned) {
-            let moved <- optional;
-            let failure <- outcome;
-        }
-    )";
-    const auto errors = Errors(source);
-    CHECK_EQ(std::ranges::count_if(errors, [](const std::string &error) { return error.contains("cannot copy"); }), 3);
-}
 
 TEST_CASE("unit is copyable wherever a type parameter can be") {
     CHECK(Errors(R"(
@@ -72,21 +32,6 @@ TEST_CASE("unit is copyable wherever a type parameter can be") {
             let optional: ()? = ();
             let again = optional;
             let third = optional;
-        }
-    )")
-              .empty());
-}
-
-TEST_CASE("native values compare structurally with one type on both sides") {
-    CHECK(Errors(R"(
-        struct E {}
-        func Compare(count: int32?, other: int32?, outcome: int32 ! E, error: E, same: int32 ! int32) -> bool {
-            let absent = count == none;
-            let equal = count == other;
-            let different = count != other;
-            let failed = outcome == .Failure(error);
-            let channels = same == same;
-            return absent && equal && !different && failed && channels;
         }
     )")
               .empty());

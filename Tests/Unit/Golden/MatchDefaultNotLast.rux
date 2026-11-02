@@ -1,5 +1,5 @@
 // A default arm takes every value the arms before it leave, so no arm can follow it.
-func Read() -> int ! int {
+func Read() -> int throws int {
     return 1;
 }
 
@@ -8,7 +8,7 @@ func Main() -> int {
         _ => {}
         1 => {}
     }
-    let value = Read() catch {
+    let value = try Read() catch {
         _ => 0,
         e => e,
     };

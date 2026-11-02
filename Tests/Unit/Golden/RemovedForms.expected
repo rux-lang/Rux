@@ -1,0 +1,3 @@
+11:5: error: a bodyless 'func =' does not prohibit copying
+12:5: error: a bodyless 'func <-' does not prohibit moving
+20:18: error: '?' does not propagate errors

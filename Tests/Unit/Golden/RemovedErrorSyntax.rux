@@ -1,0 +1,26 @@
+// The error forms that `throws`, `throw`, `try` and `catch` replaced. Each is reported where it is written, with the
+// spelling to write instead, and read the old way so the rest of the file still parses.
+
+struct ParseError {}
+
+func Read() -> int32 ! ParseError {
+    return 1i32;
+}
+
+func Complete() -> ! ParseError {}
+
+func Fail() throws ParseError {
+    fail ParseError {};
+}
+
+func Mapped() -> int32 throws ParseError {
+    return Read()? else (e => e);
+}
+
+func Recovered() -> int32 {
+    return Read() catch { _ => 0i32 };
+}
+
+func Main() -> int {
+    return 0;
+}

@@ -50,7 +50,7 @@ TEST_CASE("struct equality records fields in declaration order and preserves cus
     Lexer lexer(R"(
         struct Pair { first: int64; second: int64; }
         struct Money { cents: int64; }
-        extend Money { func ==(self: &Money, other: &Money) -> bool { return self.cents == other.cents; } }
+        extend Money { func ==(&self, other: &Money) -> bool { return self.cents == other.cents; } }
         struct Container { pair: Pair; money: Money; }
         func Equal(left: Container, right: Container) -> bool { return left == right; }
     )",
@@ -292,7 +292,7 @@ TEST_CASE("semantic model records reusable structural variant equality plans") {
     Lexer lexer(R"(
         struct Label { value: int; }
         extend Label {
-            func ==(self: &Label, other: Label) -> bool { return self.value == other.value; }
+            func ==(&self, other: Label) -> bool { return self.value == other.value; }
         }
         variant Inner {
             None,
@@ -428,7 +428,7 @@ TEST_CASE("semantic model retains declared self parameter type facts") {
     Lexer lexer(R"(
         struct Number { value: int32; }
         extend Number {
-            func Value(self: &Number) -> int32 { return self.value; }
+            func Value(&self) -> int32 { return self.value; }
         }
     )",
                 "self_type.rux");

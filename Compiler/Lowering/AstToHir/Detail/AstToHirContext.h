@@ -302,11 +302,6 @@ protected:
     [[nodiscard]] HirExprPtr LowerNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType);
     /// `option ?? fallback` on a native optional: a match whose absent arm evaluates the fallback.
     [[nodiscard]] HirExprPtr LowerNativeCoalesce(const BinaryExpr &expression);
-    /// `outcome catch { arms }`: a match whose success arm passes the payload through and whose other arms are the
-    /// recovery arms, each matching inside the failure channel.
-    [[nodiscard]] HirExprPtr LowerCatch(const CatchExpr &expression);
-    /// `value? else (e => mapper)`: propagation whose failure arm owns the error as `e` and fails with the mapper.
-    [[nodiscard]] HirExprPtr LowerMappedTry(const MappedTryExpr &expression);
     // Typed throws (AstToHirThrows.cpp). A handler is a hidden loop holding the code it handles, after which its
     // arms match an outcome slot: the code stores its value as the success and leaves; a throw site stores its error
     // as the failure and leaves the loop like a labeled `break`, running the defers and destroying the locals of every
@@ -345,7 +340,6 @@ protected:
     /// after the failure's payload is destroyed.
     [[nodiscard]] HirFunc FallibleEntryWrapper(const HirFunc &body);
 
-    [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
     /// `value.Truncate<T>()`: a conversion that keeps the low bits rather than checking the value; null for any other
     /// call.
     [[nodiscard]] HirExprPtr LowerTruncateCall(const CallExpr &call, const ResolvedCallableBinding &binding);

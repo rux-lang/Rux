@@ -7,7 +7,7 @@ struct Handle { code: int32; }
 
 extend Handle {
     func Clone(&self) -> Handle { return Handle { code: self.code }; }
-    func ~Handle(self: &var Handle) {}
+    func ~Handle(&var self) {}
 }
 
 func Refutable(point: Point) -> int32 {
@@ -18,7 +18,7 @@ func Refutable(point: Point) -> int32 {
 }
 
 func SplitMoving(handle: Handle) -> int32 {
-    let Handle { code: code } <- handle;
+    let Handle { code: code } = move handle;
     return code;
 }
 
@@ -28,13 +28,13 @@ func SplitClone(handle: Handle) -> int32 {
 }
 
 func SplitNested(pair: (Handle, int32)) -> int32 {
-    let (Handle { code: code }, extra) <- pair;
+    let (Handle { code: code }, extra) = move pair;
     return code + extra;
 }
 
 // Binding none of the fields takes nothing apart, so the value is only discarded whole.
 func DiscardWhole(handle: Handle) {
-    let Handle { code: _ } <- handle;
+    let Handle { code: _ } = move handle;
 }
 
 func Shape(point: Point) -> int32 {

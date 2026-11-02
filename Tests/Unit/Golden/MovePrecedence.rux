@@ -1,11 +1,11 @@
 // 'move' binds like any prefix operator: 'move a + b' is '(move a) + b', so only 'a' is consumed, and 'move a.b'
 // names the field rather than the whole value, which is reported as a partial move.
+#NoCopy
 struct Buffer {
     size: int32;
 }
 
 extend Buffer {
-    func =(&var self, other: &Buffer);
 }
 
 struct Holder {

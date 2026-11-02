@@ -17,7 +17,7 @@ TEST_CASE("semantic model retains resolved callable bindings") {
         struct Number { value: int32; }
 
         extend Number : Reader {
-            func Read(self: &Number) -> int32 { return self.value; }
+            func Read(&self) -> int32 { return self.value; }
         }
 
         #Abi(.C)
@@ -194,13 +194,13 @@ TEST_CASE("semantic model records final linker symbol identities") {
 
         struct Number { value: int32; }
         extend Number {
-            func Convert(self: &Number, value: int32) -> int32 { return value; }
-            func Convert(self: &Number, value: bool) -> bool { return value; }
+            func Convert(&self, value: int32) -> int32 { return value; }
+            func Convert(&self, value: bool) -> bool { return value; }
         }
 
         struct Box<T> { value: T; }
         extend Box<T> {
-            func Get(self: &Box<T>) -> T { return self.value; }
+            func Get(&self) -> T { return self.value; }
         }
 
         interface Reader {
@@ -208,7 +208,7 @@ TEST_CASE("semantic model records final linker symbol identities") {
         }
         struct File { value: int32; }
         extend File : Reader {
-            func Read(self: &File) -> int32 { return self.value; }
+            func Read(&self) -> int32 { return self.value; }
         }
 
         #Abi(.C)
@@ -328,8 +328,8 @@ TEST_CASE("AST-to-HIR instantiates symbolic method bindings for each generic rec
     Lexer lexer(R"(
         struct Box<T> { value: T; }
         extend Box<T> {
-            func Read(self: &Box<T>) -> T { return self.value; }
-            func Forward(self: &Box<T>) { self.Read(); }
+            func Read(&self) -> T { return self.value; }
+            func Forward(&self) { self.Read(); }
         }
 
         func Main() -> int64 {

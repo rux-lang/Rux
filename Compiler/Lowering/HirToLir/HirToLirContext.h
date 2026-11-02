@@ -350,10 +350,8 @@ private:
     LirReg LowerLValue(const HirExpr &expression);
 
     void CopySliceValue(LirReg sourceSlot, LirReg destinationSlot, const TypeRef &sliceType);
-    void StoreTernaryInit(const HirTernaryExpr &expression, LirReg slot, const TypeRef &type);
     void StoreExprIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
     void StoreExprValueIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
-    LirReg LowerTernary(const HirTernaryExpr &expression);
     void StoreMatchInit(const HirMatchExpr &expression, LirReg slot, const TypeRef &type);
     LirReg LowerMatchExpr(const HirMatchExpr &expression);
     void StoreCoerceToInterface(const HirCoerceToInterfaceExpr &expression, LirReg slot);

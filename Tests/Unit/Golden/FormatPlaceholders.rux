@@ -1,14 +1,14 @@
 // A literal passed for a '#Format()' parameter has its placeholders counted against the variadic arguments after it.
-func Show(#Format() format: char8[..], values: int32...) {}
+func Show(#Format format: char8[..], values: int32...) {}
 
-func Label(prefix: int32, #Format() format: char8[..], values: int32...) {}
+func Label(prefix: int32, #Format format: char8[..], values: int32...) {}
 
 func Plain(format: char8[..], values: int32...) {}
 
-func Wrong(#Format() format: int32, values: int32...) {}
+func Wrong(#Format format: int32, values: int32...) {}
 
 module Inner {
-    pub func Show(#Format() format: char8[..], values: int32...) {}
+    pub func Show(#Format format: char8[..], values: int32...) {}
 }
 
 func Main() -> int {

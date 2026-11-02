@@ -43,54 +43,6 @@ bool AnalysisContext::ErrorFitsChannel(const TypeRef &error, const TypeRef &chan
     return member(error) || (error.IsSum() && std::ranges::all_of(error->inner, member));
 }
 
-TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef &operandType) {
-    const TypeRef &success = operandType.FallibleSuccess();
-    const TypeRef &error = operandType.FallibleError();
-    if (!currentReturnType.IsFallible()) {
-        const std::string returned =
-            currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.ToString());
-        EmitError(expression.location,
-                  std::format("'?' propagates native fallible '{}', but the enclosing function returns {}",
-                              operandType.ToString(), returned),
-                  {"'?' leaves through the outer failure channel of a fallible function"},
-                  "declare the function's error channel, as in '-> T ! E', or handle the failure with 'match'");
-        return success;
-    }
-    const TypeRef &channel = currentReturnType.FallibleError();
-    const bool dependent = MentionsTypeParameter(error) || MentionsTypeParameter(channel);
-    if (!dependent && !error.IsUnknown() && !channel.IsUnknown() && !ErrorFitsChannel(error, channel)) {
-        EmitError(
-            expression.location,
-            std::format("'?' propagates error type '{}', but the enclosing function fails with '{}'", error.ToString(),
-                        channel.ToString()),
-            {"'?' moves an error into the outer failure only by identity, sum member injection, or subset "
-             "widening; it never converts an error"},
-            std::format("map the error to '{}' with '? else (e => ...)', or match the value", channel.ToString()));
-        return success;
-    }
-
-    // The continuing success and the outgoing error are both moved out of the evaluated operand.
-    const auto validatePayload = [&](const TypeRef &payload) {
-        if (MentionsTypeParameter(payload) && currentFunctionDecl) {
-            deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location, true});
-        }
-        else {
-            static_cast<void>(ValidateOutcomePayload(payload, expression.location, true));
-        }
-    };
-    validatePayload(success);
-    validatePayload(error);
-    ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
-                 expression.operand->location);
-
-    ResolvedPropagation propagation;
-    propagation.payloadType = success;
-    propagation.failureType = error;
-    propagation.returnType = currentReturnType;
-    propagations.insert_or_assign(&expression, propagation);
-    return success;
-}
-
 TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
     const TypeRef &payload = operandType->inner.front();
     // Absence leaves as the enclosing optional's absence, or as the successful absence of `U? ! F`; nothing deeper is
@@ -146,19 +98,22 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         return TypeRef::MakeUnknown();
     }
     if (operandType.IsFallible()) {
-        return CheckNativeTry(expression, operandType);
+        // Errors leave through `try`; a postfix `?` only propagates the absence of an optional.
+        EmitError(expression.location, "'?' does not propagate errors", {},
+                  "write 'try' before the expression to pass the error on");
+        return operandType.FallibleSuccess();
     }
     if (operandType.IsOptional()) {
         return CheckNativeOptionalTry(expression, operandType);
     }
 
     std::vector<std::string> notes;
-    std::string help = "'?' propagates a native fallible 'T ! E' or an optional 'T?'";
+    std::string help = "'?' propagates the absence of an optional 'T?'";
     switch (LegacyOutcomeShapeOf(operandType)) {
     case LegacyOutcomeShape::Result:
         notes.push_back("a variant with 'Success' and 'Error' cases is an ordinary variant; only a native fallible "
                         "propagates a failure");
-        help = "return 'T ! E' and propagate a native fallible, or match the variant";
+        help = "declare 'throws E' and pass errors on with 'try', or match the variant";
         break;
     case LegacyOutcomeShape::Option:
         notes.push_back("a variant with 'Some' and 'None' cases is an ordinary variant; only a native optional "
@@ -169,8 +124,7 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         break;
     }
     EmitError(expression.location,
-              std::format("'{}' cannot be propagated with '?' because it is neither a native fallible nor an optional",
-                          operandType.ToString()),
+              std::format("'{}' cannot be propagated with '?' because it is not an optional", operandType.ToString()),
               std::move(notes), std::move(help));
     return TypeRef::MakeUnknown();
 }

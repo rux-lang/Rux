@@ -112,7 +112,7 @@ TEST_CASE("the imported Panic intrinsic lowers with source context") {
 
 TEST_CASE("#NoReturn marks functions and terminates caller control flow") {
     const auto package = CompileToLir(R"(
-        #NoReturn()
+        #NoReturn
         func Stop(message: char8[..]) {
             Panic(message);
         }
@@ -162,11 +162,11 @@ TEST_CASE("#NoReturn rejects arguments, non-functions, return types, and duplica
         #NoReturn("invalid")
         const Value = 1;
 
-        #NoReturn()
+        #NoReturn
         func Typed() -> int { return 1; }
 
-        #NoReturn()
-        #NoReturn()
+        #NoReturn
+        #NoReturn
         func Duplicate() {}
     )",
                 "test.rux");
@@ -189,7 +189,7 @@ TEST_CASE("#NoReturn rejects arguments, non-functions, return types, and duplica
     }));
 
     const auto returnDiagnostics = Analyze(R"(
-        #NoReturn()
+        #NoReturn
         func Returns() {
             return;
         }

@@ -48,9 +48,9 @@ func Classify(c: char) -> int32 throws DigitError {
     };
 }
 
-func OlderSpelling(c: char) -> int ! DigitError {
+func OlderSpelling(c: char) -> int throws DigitError {
     if c == ' ' {
-        fail .Blank;
+        throw .Blank;
     }
     return 1;
 }

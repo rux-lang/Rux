@@ -8,11 +8,11 @@ struct Vect {
 }
 
 extend Vect {
-    func [](self: &Vect, index: uint) -> int {
+    func [](&self, index: uint) -> int {
         return self.data[index];
     }
 
-    func []=(self: &var Vect, index: uint, value: int) {
+    func []=(&var self, index: uint, value: int) {
         self.data[index] = value;
     }
 }
@@ -22,7 +22,7 @@ struct ReadOnly {
 }
 
 extend ReadOnly {
-    func [](self: &ReadOnly, index: uint) -> int {
+    func [](&self, index: uint) -> int {
         return self.data[index];
     }
 }
@@ -36,11 +36,11 @@ struct Holder {
 }
 
 extend Holder {
-    func [](self: &Holder, index: uint) -> Cell {
+    func [](&self, index: uint) -> Cell {
         return self.inner;
     }
 
-    func []=(self: &var Holder, index: uint, value: Cell) {
+    func []=(&var self, index: uint, value: Cell) {
         self.inner = value;
     }
 }
@@ -56,10 +56,10 @@ struct Malformed {
 }
 
 extend Malformed {
-    func [](self: &Malformed, index: uint) {
+    func [](&self, index: uint) {
     }
 
-    func []=(self: &Malformed, index: uint, value: int) {
+    func []=(&self, index: uint, value: int) {
     }
 }
 

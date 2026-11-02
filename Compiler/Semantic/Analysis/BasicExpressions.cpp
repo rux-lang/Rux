@@ -1199,11 +1199,6 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                           "compare the elements in the order that defines it");
                 return TypeRef::MakeBool();
             }
-            if (!compared->arrayLength) {
-                EmitError(location, std::format("operator '{}' cannot compare flexible array '{}', which has no length",
-                                                operatorName, compared.ToString()));
-                return TypeRef::MakeBool();
-            }
             VariantEqualityPayload plan;
             plan.type = compared;
             std::unordered_set<std::string> activeTypes;
@@ -1707,13 +1702,14 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
                       "read with '[]' and write the result back with a separate '=' assignment");
             return false;
         }
-        EmitError(target.location, std::format("cannot assign through the '[]' operator on '{}'", receiver),
-                  {"the indexer returns a value, so its result is not a place"},
-                  writesTheIndexItself
-                      ? std::format("declare 'func []=(self: &var {}, index: I, value: E)' to assign through the index",
-                                    receiver)
-                      : std::format("read the element into a local, write to that, and store it back through '{}'",
-                                    receiver));
+        EmitError(
+            target.location, std::format("cannot assign through the '[]' operator on '{}'", receiver),
+            {"the indexer returns a value, so its result is not a place"},
+            writesTheIndexItself
+                ? std::format("declare 'func []=(&var self, index: I, value: E)' on '{}' to assign through the index",
+                              receiver)
+                : std::format("read the element into a local, write to that, and store it back through '{}'",
+                              receiver));
         return false;
     }
     // A qualified name is a place only when it names a module variable; every other path names a value.

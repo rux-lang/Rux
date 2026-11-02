@@ -720,7 +720,6 @@ private:
                                                    std::span<const Symbol *const> rebound = {});
     void RecordTrackedLoopExit(std::string_view label, bool isContinue);
     [[nodiscard]] TypeRef CheckShortCircuitExpression(const BinaryExpr &expression);
-    [[nodiscard]] TypeRef CheckTernaryExpression(const TernaryExpr &expression);
     [[nodiscard]] TypeRef CheckMatchExpression(const MatchExpr &expression);
 
     // Value blocks, `if` values and binding `is` tests (Conditionals.cpp).
@@ -785,12 +784,6 @@ private:
     [[nodiscard]] std::vector<const Symbol *> ConditionBindings(const Expr &condition) const;
     /// `flow` restricted to the scopes `shape` has, for a path that leaves scopes opened after `shape` was saved.
     [[nodiscard]] static TrackedFlow ProjectTrackedFlow(const TrackedFlow &flow, const TrackedFlow &shape);
-    /// `outcome catch { arms }`: the success passes through, and the arms recover from the error or leave.
-    [[nodiscard]] TypeRef CheckCatchExpression(const CatchExpr &expression);
-    /// `value? else (e => mapper)`: the success continues, and on failure the mapper's value fails the function.
-    [[nodiscard]] TypeRef CheckMappedTry(const MappedTryExpr &expression);
-    /// Checks recovery arms whose subject was rejected, so their bindings and bodies report nothing spurious.
-    void CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms);
 
     // Typed throws (Throws.cpp).
 
@@ -1050,8 +1043,6 @@ private:
 
     [[nodiscard]] LegacyOutcomeShape LegacyOutcomeShapeOf(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
-    /// `?` on a native fallible: the success continues and the error leaves as the enclosing outer failure.
-    [[nodiscard]] TypeRef CheckNativeTry(const TryExpr &expression, const TypeRef &operandType);
     /// `?` on a native optional: the payload continues and absence leaves as the enclosing absence.
     [[nodiscard]] TypeRef CheckNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType);
     /// `option ?? fallback` on a native optional: the payload, or the fallback evaluated only for absence.
@@ -1062,8 +1053,6 @@ private:
     [[nodiscard]] bool ValidateOutcomePayload(const TypeRef &payload, SourceLocation location,
                                               bool propagation = false);
     [[nodiscard]] TypeRef CheckTypeQueryExpression(const TypeQueryExpr &expression);
-    [[nodiscard]] static bool IsCheckedArithmeticIntrinsic(std::string_view intrinsicName);
-    void ValidateCheckedArithmeticIntrinsic(const FuncDecl &declaration);
     [[nodiscard]] static bool IsAtomicIntrinsic(std::string_view intrinsicName);
     /// Holds a call of an atomic intrinsic to a value type the instructions move and to orders they define.
     void CheckAtomicCall(const CallExpr &call, const FuncDecl &declaration,
@@ -1228,19 +1217,8 @@ private:
     /// `catch` arm taking the error. A structure pattern binding a part there takes the value apart.
     bool currentPatternTakesParts = false;
 
-    /// A `let` holding a native fallible, checked for a read when its scope ends.
-    struct FallibleLocal {
-        const Symbol *symbol = nullptr;
-        const Scope *scope = nullptr;
-    };
-
-    std::vector<FallibleLocal> fallibleLocals;
     /// Locals read as values; an assignment target is not a read.
     std::unordered_set<const Symbol *> readSymbols;
-    /// Reports a native fallible result that an expression statement or a bare match-statement arm discards.
-    void CheckFallibleDiscard(const TypeRef &type, SourceLocation location);
-    /// Reports the fallible locals of the scope being closed that were never read.
-    void CheckUnreadFallibleLocals();
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;
@@ -1266,7 +1244,6 @@ private:
     std::unordered_map<std::string, ResolvedConstraintWitness> &constraintWitnesses;
     /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
     std::unordered_map<const TryExpr *, ResolvedPropagation> &propagations;
-    std::unordered_map<const MappedTryExpr *, ResolvedPropagation> &mappedPropagations;
     /// One entry per accepted throw site, `throw` statement and handler (Throws.cpp), so lowering routes each error
     /// without deciding again where it goes.
     std::unordered_map<const Expr *, ResolvedThrowSite> &throwSites;
@@ -1607,7 +1584,7 @@ private:
     void ResolveReusedParameters(const FuncDecl &function);
     [[nodiscard]] bool SkipsReusedFunction(const FuncDecl &function) const;
     [[nodiscard]] std::optional<std::uint64_t> EvalArrayLength(const Expr &expression) const;
-    void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail = false);
+    void ValidateArrayType(const TypeExpr &type);
     /// The type an expression was already checked to have, checking it only when it has not been: asking twice must
     /// not report its errors twice.
     [[nodiscard]] TypeRef CheckedExpressionType(const Expr &expression);

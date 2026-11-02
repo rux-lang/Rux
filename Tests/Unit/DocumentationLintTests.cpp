@@ -61,7 +61,7 @@ struct Item {}
 extend Item {
     /// Reads the receiver.
     /// @param self The receiver.
-    func Inspect(self: &Item);
+    func Inspect(&self);
 }
 
 /// A type, not a callable.
@@ -130,14 +130,14 @@ func NoValue();
 
 /// Does not return.
 /// @returns Invalid result.
-#NoReturn()
+#NoReturn
 func Exit();
 
 struct Item {}
 extend Item {
     /// Destroys an item.
     /// @returns Invalid result.
-    func ~Item(self: &var Item) {}
+    func ~Item(&var self) {}
 }
 
 /// Not callable.

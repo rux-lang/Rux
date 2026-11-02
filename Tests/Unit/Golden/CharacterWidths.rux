@@ -32,7 +32,7 @@ func Literals() {
     let emoji64 = c64'\u{1F600}';
     let matched = match ascii8 {
         c8'é' => 1,
-        else => 0
+        _ => 0
     };
 }
 

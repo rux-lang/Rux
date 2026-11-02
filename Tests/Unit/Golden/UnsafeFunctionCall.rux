@@ -4,7 +4,7 @@ struct Cell {
 }
 
 extend Cell {
-    unsafe func Read(self: *Cell) -> int {
+    unsafe func Read(*self) -> int {
         return self.value;
     }
 }

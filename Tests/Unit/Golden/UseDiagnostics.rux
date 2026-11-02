@@ -9,7 +9,7 @@ struct Point {
 }
 
 extend Point {
-    func Sum(self: &Point) -> int32 {
+    func Sum(&self) -> int32 {
         let origin = Point { x: 0, y: 0, next: null };
         return self.x + self.y + origin.x;
     }

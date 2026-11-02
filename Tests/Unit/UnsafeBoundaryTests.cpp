@@ -145,7 +145,7 @@ pub unsafe func Load(pointer: *int) -> int {
 }
 
 extend Cell {
-    pub unsafe func Read(self: *Cell) -> int {
+    pub unsafe func Read(*self) -> int {
         return self.value;
     }
 }

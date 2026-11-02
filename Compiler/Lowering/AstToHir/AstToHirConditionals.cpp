@@ -20,9 +20,6 @@ bool PatternBinds(const Pattern &pattern) {
     if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
         return !typed->name.empty();
     }
-    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        return binds(presence->inner);
-    }
     if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args, binds) ||
                std::ranges::any_of(enumeration->namedArgs,

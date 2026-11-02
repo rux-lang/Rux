@@ -30,7 +30,7 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
 const std::string kIterationPrelude = R"(
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: &var Counter) -> int32? {
+        func Next(&var self) -> int32? {
             if self.value >= self.limit { return none; }
             let current = self.value;
             self.value = self.value + 1i32;
@@ -57,7 +57,7 @@ TEST_CASE("a container that hands out an iterator is iterable through it") {
     const auto diagnostics = AnalyzeSource(kIterationPrelude + R"(
         struct Span { limit: int32; }
         extend Span {
-            func Iterate(self: &Span) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
+            func Iterate(&self) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
         }
         func Total() -> int32 {
             let span = Span { limit: 3i32 };
@@ -75,7 +75,7 @@ TEST_CASE("a Next returning an Option-shaped variant is refused at its declarati
         variant Step<T> { Some(T), None }
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: &var Counter) -> Step<int32> {
+            func Next(&var self) -> Step<int32> {
                 return Step::None<int32>();
             }
         }
@@ -95,7 +95,7 @@ TEST_CASE("a Next returning an Option-shaped variant is refused at its declarati
         const auto diagnostics = AnalyzeSource(std::string(declaration) + R"(
             struct Counter { value: int32; }
             extend Counter {
-                func Next(self: &var Counter) -> Step { return Step::Some; }
+                func Next(&var self) -> Step { return Step::Some; }
             }
         )");
         INFO(declaration);
@@ -109,7 +109,7 @@ TEST_CASE("a loop over an iterator whose Next returns an Option-shaped variant i
         variant Step<T> { Some(T), None }
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: &var Counter) -> Step<int32> { return Step::None<int32>(); }
+            func Next(&var self) -> Step<int32> { return Step::None<int32>(); }
         }
         func Walk() {
             var counter = Counter { value: 0i32 };
@@ -126,7 +126,7 @@ TEST_CASE("a method named Next returning a scalar enum is an ordinary method") {
         enum Step: uint8 { None = 1, Some = 2 }
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: &var Counter) -> Step { return Step::None; }
+            func Next(&var self) -> Step { return Step::None; }
         }
     )");
 
@@ -153,7 +153,7 @@ TEST_CASE("a Next that cannot advance its receiver is rejected at its declaratio
     const auto diagnostics = AnalyzeSource(R"(
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: &Counter) -> int32? { return none; }
+            func Next(&self) -> int32? { return none; }
         }
     )");
 
@@ -170,7 +170,7 @@ TEST_CASE("a Next taking arguments is rejected at its declaration") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: &var Counter, step: int32) -> int32? { return none; }
+            func Next(&var self, step: int32) -> int32? { return none; }
         }
     )");
 
@@ -184,7 +184,7 @@ TEST_CASE("a method named Next that reports no end is not the convention's") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Cursor { value: int32; }
         extend Cursor {
-            func Next(self: &Cursor) -> int32 { return self.value + 1i32; }
+            func Next(&self) -> int32 { return self.value + 1i32; }
         }
     )");
 
@@ -198,10 +198,10 @@ TEST_CASE("methods named Next returning non-Option protocols are ordinary method
         struct Reader { value: int32; }
         struct Operation { value: int32; }
         extend Reader {
-            func Next(self: &var Reader) -> Event { return Event::End; }
+            func Next(&var self) -> Event { return Event::End; }
         }
         extend Operation {
-            func Next(self: &var Operation) -> Outcome { return Outcome::Success(self.value); }
+            func Next(&var self) -> Outcome { return Outcome::Success(self.value); }
         }
     )");
 
@@ -212,7 +212,7 @@ TEST_CASE("an Iterate that does not return an iterator is rejected at its declar
     const auto diagnostics = AnalyzeSource(R"(
         struct Span { limit: int32; }
         extend Span {
-            func Iterate(self: &Span) -> int32 { return self.limit; }
+            func Iterate(&self) -> int32 { return self.limit; }
         }
     )");
 
@@ -221,7 +221,7 @@ TEST_CASE("an Iterate that does not return an iterator is rejected at its declar
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0], "type 'int32' has no 'Next' returning an optional");
     REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "give the returned type 'func Next(self: &var T) -> Item?'");
+    CHECK_EQ(*diagnostics[0].help, "give the returned type 'func Next(&var self) -> Item?'");
 }
 
 TEST_CASE("a subject that is not iterable reports what iteration accepts") {
@@ -244,7 +244,7 @@ TEST_CASE("a subject that almost satisfies the convention says which part is wro
     const auto diagnostics = AnalyzeSource(R"(
         struct Cursor { value: int32; }
         extend Cursor {
-            func Next(self: &Cursor) -> int32 { return self.value; }
+            func Next(&self) -> int32 { return self.value; }
         }
         func Walk() {
             var cursor = Cursor { value: 1i32 };
@@ -256,7 +256,7 @@ TEST_CASE("a subject that almost satisfies the convention says which part is wro
     CHECK_EQ(diagnostics[0].message, "cannot iterate over 'Cursor'");
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0],
-             "type 'Cursor' declares 'Next', but not as 'func Next(self: &var Cursor) -> T?' returning a native "
+             "type 'Cursor' declares 'Next', but not as 'func Next(&var self) -> T?' returning a native "
              "optional");
 }
 

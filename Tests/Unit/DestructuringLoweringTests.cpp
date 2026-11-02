@@ -119,8 +119,7 @@ bool CallsGlue(const LirBlock &block) {
 constexpr const char *kTag = R"(
     struct Tag { id: int32; }
     extend Tag {
-        func =(self: &var Tag, other: &Tag);
-        func ~Tag(self: &var Tag) {}
+        func ~Tag(&var self) {}
     }
 )";
 } // namespace
@@ -167,7 +166,7 @@ TEST_CASE("a refutable tuple element branches out before the bindings are set") 
         func Second(pair: (int32, int32)) -> int32 {
             return match pair {
                 (0, value) => value,
-                else => -1i32
+                _ => -1i32
             };
         }
     )"));
@@ -193,7 +192,7 @@ TEST_CASE("a refutable tuple element branches out before the bindings are set") 
 TEST_CASE("a destructuring let records the drop glue of each droppable part it discards") {
     const std::string source = std::string(kTag) + R"(
         func Keep(pair: (Tag, int32, Tag)) -> int32 {
-            let (_, _, kept) <- pair;
+            let (_, _, kept) = move pair;
             return kept.id;
         }
     )";
@@ -216,11 +215,11 @@ TEST_CASE("a structure pattern in let binds substituted fields and discards the 
     const std::string source = std::string(kTag) + R"(
         struct Parcel<T> { label: Tag; contents: T; count: int32; }
         func Keep(parcel: Parcel<Tag>) -> int32 {
-            let Parcel { contents: kept, label: _ } <- parcel;
+            let Parcel { contents: kept, label: _ } = move parcel;
             return kept.id;
         }
         func Whole(tag: Tag) {
-            let Tag { id: _ } <- tag;
+            let Tag { id: _ } = move tag;
         }
     )";
     const HirPackage package = LowerSource(source);
@@ -256,7 +255,7 @@ TEST_CASE("a structure pattern in let binds substituted fields and discards the 
 TEST_CASE("an arm over a consumed tuple destroys the elements it leaves unbound") {
     const LirPackage lir = LowerToLir(LowerSource(std::string(kTag) + R"(
         func Second(pair: (Tag, Tag)) -> int32 {
-            return match <-pair { (_, second) => second.id };
+            return match move pair { (_, second) => second.id };
         }
         func Borrowed(pair: &(Tag, Tag)) -> int32 {
             return match pair { (_, second) => second.id };
@@ -277,7 +276,7 @@ namespace {
 constexpr const char *kCounted = R"(
     struct Counted { id: int32; }
     extend Counted {
-        func ~Counted(self: &var Counted) {}
+        func ~Counted(&var self) {}
     }
 )";
 } // namespace
@@ -291,7 +290,7 @@ TEST_CASE("a match of a named move-only value handed over with move owns it") {
             return match move pair { (_, count) => count };
         }
         func Look(pair: (Counted, int32)) -> int32 {
-            return match pair { (_, 2) => 1i32, else => 0i32 };
+            return match pair { (_, 2) => 1i32, _ => 0i32 };
         }
     )";
     const HirPackage package = LowerSource(source);
@@ -338,7 +337,7 @@ TEST_CASE("a default arm destroys an owned subject the other arms leave") {
             }
         }
         func Moved(pair: (Counted, int32)) {
-            match <-pair {
+            match move pair {
                 (item, 7) => {}
                 _ => {}
             }

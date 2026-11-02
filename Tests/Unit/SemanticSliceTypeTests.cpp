@@ -284,7 +284,7 @@ TEST_CASE("only bounds present in a range are available as members") {
 TEST_CASE("a generic slice extension is rejected once and by what it is") {
     const auto messages = Messages(R"(
         extend T[..] {
-            func Count(self: T[..]) -> uint64 { return self.length; }
+            func Count(self) -> uint64 { return self.length; }
         }
     )");
     REQUIRE_EQ(messages.size(), 1);
@@ -294,7 +294,7 @@ TEST_CASE("a generic slice extension is rejected once and by what it is") {
 TEST_CASE("a concrete slice extension keys its methods on the element") {
     const auto messages = Messages(R"(
         extend int[..] {
-            func Sum(self: int[..]) -> int {
+            func Sum(self) -> int {
                 var total = 0;
                 for value in self { total += value; }
                 return total;
@@ -302,7 +302,7 @@ TEST_CASE("a concrete slice extension keys its methods on the element") {
         }
 
         extend char8[..] {
-            func Count(self: char8[..]) -> uint64 { return self.length; }
+            func Count(self) -> uint64 { return self.length; }
         }
 
         func Main() -> int {

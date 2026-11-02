@@ -1,0 +1,8 @@
+9:13: error: a receiver does not name its type
+14:10: error: '#NoReturn' is written without parentheses
+20:23: error: the conditional operator 'c ? a : b' is not supported
+22:14: error: a presence suffix is not a pattern
+23:9: error: 'else' is not a match arm
+33:16: error: '<-' is not a binding operator
+35:11: error: '<-' is not an assignment operator
+36:17: error: '<-' is not an operator

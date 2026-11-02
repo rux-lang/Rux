@@ -10,10 +10,8 @@
 // Ordinary `+`, `-` and `*` stop the program on overflow, so the checks below compute the wrapped answer with `+%`,
 // `-%` and `*%` and then ask whether it is the true one. The `Checked*` and `Saturating*` methods each integer type
 // carries are built on them.
-// The operation comes first in each name because `CheckedAdd`, `CheckedSub` and `CheckedMul` already name the
-// compiler's own intrinsics, which are emitted inline for `uint64` and are the ones allocation-size arithmetic is
-// written with. These are the general family: any integer width, signed or unsigned, at the cost of being ordinary
-// code rather than an inline sequence.
+// The operation comes first in each name because `CheckedAdd`, `CheckedSub` and `CheckedMul` name the integer methods
+// built on these, which return `T?` instead of writing through a pointer.
 
 /// The largest value the integer type of `sample` can hold.
 /// `sample` is read by value and only its type matters; its value is never used. Returns the maximum by copy.

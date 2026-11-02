@@ -184,12 +184,12 @@ struct Task {
 // A comparison answers with an Ordering rather than a boolean, so one call settles which of the three cases holds.
 func ByPriority(a: Task, b: Task) -> Ordering {
     if a.priority < b.priority { return Ordering::Less; }
-    return a.priority > b.priority ? Ordering::Greater : Ordering::Equal;
+    return if a.priority > b.priority { Ordering::Greater } else { Ordering::Equal };
 }
 
 func ById(a: Task, b: Task) -> Ordering {
     if a.id < b.id { return Ordering::Less; }
-    return a.id > b.id ? Ordering::Greater : Ordering::Equal;
+    return if a.id > b.id { Ordering::Greater } else { Ordering::Equal };
 }
 
 var tasks: Task[3] = [Task { priority: 3, id: 40 },
@@ -276,7 +276,7 @@ struct Record {
 }
 
 extend Record {
-    func ==(self: &Record, other: Record) -> bool {
+    func ==(&self, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }

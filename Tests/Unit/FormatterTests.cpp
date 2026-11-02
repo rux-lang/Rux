@@ -15,13 +15,11 @@ TEST_CASE("formatter leaves canonical source unchanged") {
 
 TEST_CASE("formatter preserves ownership and lifecycle syntax") {
     constexpr std::string_view source = R"(extend Cell {
-    func =(self: &var Cell, other: &Cell);
-    func <-(self: &var Cell, other: Cell);
-    func ~Cell(self: &var Cell) {}
+    func ~Cell(&var self) {}
 }
 func Transfer(source: Cell) -> Cell {
     let destination = move source;
-    let older <- destination;
+    let older = move destination;
     return move older;
 }
 )";

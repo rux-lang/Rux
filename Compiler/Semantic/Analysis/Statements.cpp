@@ -207,37 +207,8 @@ void AnalysisContext::PushScope() {
     moveStates.BeginScope();
 }
 
-void AnalysisContext::CheckFallibleDiscard(const TypeRef &type, const SourceLocation location) {
-    if (!type.IsFallible()) {
-        return;
-    }
-    // A constructor whose other channel no context completed has no type worth spelling.
-    EmitError(location,
-              type.IsIncompleteNative() ? std::string("constructed fallible value is discarded")
-                                        : std::format("fallible result of type '{}' is discarded", type.ToString()),
-              {"a failure that nothing handles is lost"},
-              "propagate it with '?', recover with 'catch', or match both '.Success' and '.Failure'");
-}
-
-void AnalysisContext::CheckUnreadFallibleLocals() {
-    std::erase_if(fallibleLocals, [&](const FallibleLocal &local) {
-        if (local.scope != currentScope) {
-            return false;
-        }
-        // A named local that is never read is a likely mistake rather than a certain one; `let _ = outcome;`, which
-        // certainly discards, is reported where it is written.
-        if (!readSymbols.contains(local.symbol)) {
-            EmitWarning(
-                local.symbol->location,
-                std::format("fallible local '{}' is never read; its failure is never handled", local.symbol->name));
-        }
-        return true;
-    });
-}
-
 void AnalysisContext::PopScope() {
     assert(currentScope->Parent() != nullptr && "cannot pop global scope");
-    CheckUnreadFallibleLocals();
     EndBorrowScope(*currentScope);
     moveStates.EndScope();
     currentScope = currentScope->Parent();
@@ -346,10 +317,7 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
     }
     // A condition that can fail or be absent is one handling step away from a `bool`, which the help names.
     std::optional<std::string> help;
-    if (type.IsFallible() && type->inner.size() == 2 && type->inner[0].IsBool()) {
-        help = std::format("handle the '{}' with 'catch', or propagate it with '?'", type->inner[1].DisplayString());
-    }
-    else if (type.IsOptional() && !type->inner.empty() && type->inner[0].IsBool()) {
+    if (type.IsOptional() && !type->inner.empty() && type->inner[0].IsBool()) {
         help = "give the absent case a value with '?\?', or match the optional";
     }
     EmitError(location,
@@ -366,7 +334,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (const auto *block = AstCast<const BlockExpr>(expressionStatement->expr.get()); block && block->isUnsafe) {
             ReportUnusedUnsafeBlockValue(*block, type);
         }
-        CheckFallibleDiscard(type, expressionStatement->location);
         if (const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get());
             call && CallNeverReturns(*call)) {
             trackedFlowReachable = false;
@@ -374,7 +341,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *letStatement = AstCast<const LetStmt>(&statement)) {
         if (letStatement->type) {
-            ValidateArrayType(**letStatement->type, false);
+            ValidateArrayType(**letStatement->type);
         }
         if (letStatement->init && letStatement->type && AstCast<const ReferenceTypeExpr>(letStatement->type->get())) {
             RejectSubsetViewUse(*letStatement->init, letStatement->location, "be stored as a reference");
@@ -496,13 +463,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
 
         if (letStatement->pattern) {
-            // `_` names nothing, so binding a fallible to it discards it as surely as an expression statement does.
-            if (AstCast<const WildcardPattern>(letStatement->pattern.get()) && declarationType.IsFallible()) {
-                EmitError(letStatement->location,
-                          std::format("fallible result of type '{}' is discarded", declarationType.ToString()),
-                          {"binding a fallible to '_' does not handle its failure"},
-                          "propagate it with '?', recover with 'catch', or match both '.Success' and '.Failure'");
-            }
             CheckLetPattern(*letStatement->pattern, declarationType, letStatement->isMut);
             return;
         }
@@ -535,9 +495,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             if (initializerAccepted && makesFrameInterface && IsHolderCoercion(initializerType, declarationType)) {
                 RecordInterfaceHolder(*letStatement->init, *letStatement, "", initializerType);
             }
-        }
-        if (defined && defined->type.IsFallible()) {
-            fallibleLocals.push_back({defined, currentScope});
         }
         if (defined && initializerAccepted && HoldsBorrow(declarationType)) {
             RegisterReferenceBinding(*defined, *letStatement->init, BorrowedReference(declarationType));
@@ -763,10 +720,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                 }
             }
             else {
-                const TypeRef armType = CheckExpr(*arm.body);
-                if (!IsDivergingExpression(*arm.body)) {
-                    CheckFallibleDiscard(armType, arm.body->location);
-                }
+                static_cast<void>(CheckExpr(*arm.body));
             }
             PopScope();
             if (!coveredAll) {
@@ -1162,25 +1116,6 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
     }
     if (const auto *typedPattern = AstCast<const TypedPattern>(&pattern)) {
         CheckTypedPattern(*typedPattern, subjectType);
-        return;
-    }
-    if (const auto *presencePattern = AstCast<const PresencePattern>(&pattern)) {
-        // `p?` is exactly `.Some(p)`: it needs an optional at its position and checks `p` against the payload.
-        TypeRef payload = TypeRef::MakeUnknown();
-        if (subjectType.IsOptional()) {
-            payload = subjectType->inner.front();
-        }
-        else if (!subjectType.IsUnknown()) {
-            EmitError(presencePattern->location,
-                      std::format("a presence suffix needs an optional subject, but the matched value has type '{}'",
-                                  subjectType.ToString()),
-                      {},
-                      subjectType.IsFallible() ? std::optional<std::string>("match '.Success(...)' or '.Failure(...)'")
-                                               : std::nullopt);
-        }
-        if (presencePattern->inner) {
-            CheckPattern(*presencePattern->inner, payload);
-        }
         return;
     }
     if (AstCast<const NonePattern>(&pattern)) {

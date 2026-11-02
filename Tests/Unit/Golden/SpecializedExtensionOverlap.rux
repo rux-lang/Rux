@@ -6,19 +6,19 @@ struct Pair<T> {
 }
 
 extend Pair<int32> {
-    func Sum(self: &Pair<int32>) -> int32 {
+    func Sum(&self) -> int32 {
         return self.left + self.right;
     }
 }
 
 extend Pair<int64> {
-    func Sum(self: &Pair<int64>) -> int64 {
+    func Sum(&self) -> int64 {
         return self.left + self.right;
     }
 }
 
 extend Pair<T> {
-    func Sum(self: &Pair<T>) -> T {
+    func Sum(&self) -> T {
         return self.left;
     }
 }

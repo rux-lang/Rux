@@ -398,23 +398,6 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         InvalidatePlace(*assignment->target);
         InvalidateAll();
     }
-    else if (auto *ternary = HirCast<HirTernaryExpr>(expr.get())) {
-        OptimizeExpr(ternary->condition, allowSubstitution);
-        if (const auto condition = BooleanLiteral(*ternary->condition)) {
-            HirExprPtr selected = *condition ? std::move(ternary->thenExpr) : std::move(ternary->elseExpr);
-            OptimizeExpr(selected, allowSubstitution);
-            expr = std::move(selected);
-            changed = true;
-        }
-        else {
-            const auto incoming = scopes;
-            OptimizeExpr(ternary->thenExpr, allowSubstitution);
-            scopes = incoming;
-            OptimizeExpr(ternary->elseExpr, allowSubstitution);
-            scopes = incoming;
-            InvalidateAll();
-        }
-    }
     else if (auto *range = HirCast<HirRangeExpr>(expr.get())) {
         OptimizeExpr(range->lo, allowSubstitution);
         OptimizeExpr(range->hi, allowSubstitution);
@@ -611,10 +594,6 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
             return false;
         }
         return IsDiscardable(*binary->left) && IsDiscardable(*binary->right);
-    }
-    if (const auto *ternary = HirCast<const HirTernaryExpr>(&expr)) {
-        return IsDiscardable(*ternary->condition) && IsDiscardable(*ternary->thenExpr) &&
-               IsDiscardable(*ternary->elseExpr);
     }
     if (const auto *range = HirCast<const HirRangeExpr>(&expr)) {
         return (!range->lo || IsDiscardable(*range->lo)) && (!range->hi || IsDiscardable(*range->hi));

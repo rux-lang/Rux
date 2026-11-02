@@ -170,8 +170,7 @@ struct IntrinsicFunction {
     std::string_view signature;
 };
 
-constexpr std::array<IntrinsicFunction, 26> kIntrinsicFunctions{{
-    {"CheckedAdd", false, {}, 0, {}},
+constexpr std::array<IntrinsicFunction, 23> kIntrinsicFunctions{{
     {"ProcessStartFrame", false, {}, 0, {}},
     {"AtomicLoad", false, {}, 0, {}},
     {"AtomicStore", false, {}, 0, {}},
@@ -184,8 +183,6 @@ constexpr std::array<IntrinsicFunction, 26> kIntrinsicFunctions{{
     {"AtomicFetchXor", false, {}, 0, {}},
     {"Fence", false, {}, 0, {}},
     {"SpinHint", false, {}, 0, {}},
-    {"CheckedSub", false, {}, 0, {}},
-    {"CheckedMul", false, {}, 0, {}},
     {"Zeroize", false, {}, 0, {}},
     // The conversion `as` makes, without the range check an integer `as` adds: what `Truncate` is for generic code.
     {"ConvertBits", false, {}, 0, {}},

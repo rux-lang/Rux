@@ -91,18 +91,12 @@ TEST_CASE("every native spelling reads back from an instantiation name unchanged
         struct B {}
         struct E {}
         struct Box<T> { value: T; }
-        func Main(sum: Box<A | B>, optional: Box<int32?>, nested: Box<int32??>, fallible: Box<A ! E>,
-                  unit: Box<! E>, grouped: Box<(A ! E) ! B>, optionalError: Box<A ! (E?)>,
-                  optionalSum: Box<(A | B)?>, slices: Box<int32?[..]>, optionalSlice: Box<int32[..]?>,
+        func Main(sum: Box<A | B>, optional: Box<int32?>, nested: Box<int32??>, optionalSum: Box<(A | B)?>, slices: Box<int32?[..]>, optionalSlice: Box<int32[..]?>,
                   pointer: Box<*(int32?)>, optionalPointer: Box<(*int32)?>, empty: Box<()>,
                   member: Box<A | (B?)>) {
             let a = sum.value;
             let b = optional.value;
             let c = nested.value;
-            let d = fallible.value;
-            let e = unit.value;
-            let f = grouped.value;
-            let g = optionalError.value;
             let h = optionalSum.value;
             let i = slices.value;
             let j = optionalSlice.value;
@@ -119,9 +113,8 @@ TEST_CASE("every native spelling reads back from an instantiation name unchanged
         REQUIRE(binding != nullptr);
         types.push_back(ResolvedType(analyzed->model, *binding->init).ToString());
     }
-    CHECK_EQ(types, std::vector<std::string>{"A | B", "int32?", "int32??", "A ! E", "! E", "(A ! E) ! B", "A ! (E?)",
-                                             "(A | B)?", "int32?[..]", "int32[..]?", "*(int32?)", "(*int32)?", "()",
-                                             "A | (B?)"});
+    CHECK_EQ(types, std::vector<std::string>{"A | B", "int32?", "int32??", "(A | B)?", "int32?[..]", "int32[..]?",
+                                             "*(int32?)", "(*int32)?", "()", "A | (B?)"});
 }
 
 TEST_CASE("reordered and aliased sums are one instantiation") {

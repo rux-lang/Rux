@@ -14,8 +14,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             value: int32;
         }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         struct Wrapper {
@@ -31,8 +30,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             value: T;
         }
         extend GenericOwner<T> {
-            func =(self: &var GenericOwner<T>, other: &GenericOwner<T>);
-            func ~GenericOwner(self: &var GenericOwner<T>) {}
+            func ~GenericOwner(&var self) {}
         }
 
         variant Maybe<T> {
@@ -122,14 +120,14 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
 TEST_CASE("an interface named Drop has no lifecycle semantics") {
     Lexer lexer(R"(
         interface Drop {
-            func Drop(self: &var Self);
+            func Drop(&var self);
         }
 
         struct Plain {
             value: int32;
         }
         extend Plain : Drop {
-            func Drop(self: &var Plain) {}
+            func Drop(&var self) {}
         }
 
         func Observe(value: Plain) {}
@@ -163,15 +161,13 @@ TEST_CASE("an interface named Drop has no lifecycle semantics") {
 TEST_CASE("special operations and lifecycle attributes classify generated and prohibited capabilities") {
     Lexer lexer(R"(
         interface Assignable {
-            func =(self: &var Self, other: &Self);
         }
 
         struct Handle {
             value: int32;
         }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         struct Generated {
@@ -189,12 +185,12 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
             func ~Owning(&var self) {}
         }
 
+        #NoCopy
+        #NoMove
         struct Pinned {
             value: int32;
         }
         extend Pinned {
-            func =(self: &var Pinned, other: &Pinned);
-            func <-(self: &var Pinned, other: Pinned);
         }
 
         struct ContainsPinned {
@@ -215,7 +211,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
             anchor: Anchored;
         }
 
-        #NoMove()
+        #NoMove
         #NoCopy
         variant Spelled { Only }
 
@@ -231,24 +227,13 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
     REQUIRE_FALSE(parsed.HasErrors());
 
     const FuncDecl *observe = nullptr;
-    const ImplDecl *pinnedImplementation = nullptr;
     for (const auto &item : parsed.module.items) {
         if (const auto *function = dynamic_cast<const FuncDecl *>(item.get());
             function && function->name == "Observe") {
             observe = function;
         }
-        if (const auto *implementation = dynamic_cast<const ImplDecl *>(item.get());
-            implementation && implementation->typeName == "Pinned") {
-            pinnedImplementation = implementation;
-        }
     }
     REQUIRE(observe != nullptr);
-    REQUIRE(pinnedImplementation != nullptr);
-    REQUIRE_EQ(pinnedImplementation->methods.size(), 2);
-    CHECK_EQ(pinnedImplementation->methods[0]->name, "=");
-    CHECK_FALSE(pinnedImplementation->methods[0]->body);
-    CHECK_EQ(pinnedImplementation->methods[1]->name, "<-");
-    CHECK_FALSE(pinnedImplementation->methods[1]->body);
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     const SemanticModel model = analyzer.Analyze();
@@ -441,15 +426,15 @@ TEST_CASE("Copyable is decided by the compiler and bounds what generic code may 
     CHECK_EQ(errors[2]->notes.front(), "'Handle' prohibits copying");
 }
 
-TEST_CASE("special operations require canonical implementation signatures") {
+TEST_CASE("bodyless lifecycle operators are replaced by attributes") {
     Lexer lexer(R"(
         struct Bad {
             value: int32;
         }
 
         extend Bad {
-            func =(self: &Bad, other: Bad);
-            func <-(self: &var Bad, other: &Bad);
+            func =(&var self, other: &Bad);
+            func <-(&var self, other: Bad);
             func Ordinary();
         }
 
@@ -470,10 +455,8 @@ TEST_CASE("special operations require canonical implementation signatures") {
         return std::ranges::any_of(model.diagnostics,
                                    [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
     };
-    CHECK(hasMessage("copy special operation for type 'Bad' must have signature "
-                     "'func =(self: &var Bad, other: &Bad)'"));
-    CHECK(hasMessage("move special operation for type 'Bad' must have signature "
-                     "'func <-(self: &var Bad, other: Bad)'"));
+    CHECK(hasMessage("a bodyless 'func =' does not prohibit copying"));
+    CHECK(hasMessage("a bodyless 'func <-' does not prohibit moving"));
     CHECK(hasMessage("function 'Ordinary' has no body"));
     CHECK(hasMessage("special operation '=' may only be declared in an extend block"));
 }
@@ -482,10 +465,10 @@ TEST_CASE("type-named destructors require the canonical owning signature") {
     Lexer lexer(R"(
         struct Bad { value: int32; }
         extend Bad {
-            func ~Other(self: &var Bad) {}
-            func ~Bad(self: &Bad);
+            func ~Other(&var self) {}
+            func ~Bad(&self);
         }
-        func ~Bad(self: &var Bad) {}
+        func ~Bad(value: &var Bad) {}
     )",
                 "invalid_destructors.rux");
     auto lexed = lexer.Tokenize();
@@ -508,7 +491,7 @@ TEST_CASE("type-named destructors require the canonical owning signature") {
                                    [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
     };
     CHECK(hasMessage("destructor '~Other' must be named '~Bad' for type 'Bad'"));
-    CHECK(hasMessage("destructor for type 'Bad' must have signature 'func ~Bad(self: &var Bad)'"));
+    CHECK(hasMessage("destructor for type 'Bad' must have signature 'func ~Bad(&var self)'"));
     CHECK(hasMessage("destructor '~Bad' must have a body"));
     CHECK(hasMessage("destructor '~Bad' may only be declared in an extend block"));
 }
@@ -517,8 +500,7 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
     Lexer lexer(R"(
         struct Leaf { value: int32; }
         extend Leaf {
-            func =(self: &var Leaf, other: &Leaf);
-            func ~Leaf(self: &var Leaf) {}
+            func ~Leaf(&var self) {}
         }
 
         struct Pair<T> {
@@ -529,7 +511,7 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
 
         struct Owner { leaf: Leaf; }
         extend Owner {
-            func ~Owner(self: &var Owner) {}
+            func ~Owner(&var self) {}
         }
 
         struct Unused { leaf: Leaf; }
@@ -640,8 +622,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
     Lexer lexer(R"(
         struct Leaf { value: int32; }
         extend Leaf {
-            func =(self: &var Leaf, other: &Leaf);
-            func ~Leaf(self: &var Leaf) {}
+            func ~Leaf(&var self) {}
         }
 
         struct Pair<T> {
@@ -651,25 +632,25 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
 
         struct Holder<T> { pair: *var Pair<T>; }
         extend Holder<T> {
-            func ~Holder(self: &var Holder<T>) {
+            func ~Holder(&var self) {
                 // Safety: `pair` addresses the `Pair<T>` this holder owns
                 unsafe { Take<T>(self.pair); }
             }
         }
 
         func Make<T>(first: T, second: T) {
-            let pair = Pair<T> { first: <-first, second: <-second };
+            let pair = Pair<T> { first: move first, second: move second };
         }
 
         // Safety: `pair` must address a live `Pair<T>` that the caller gives up
         unsafe func Take<T>(pair: *var Pair<T>) {
-            let taken <- pair[0];
+            let taken = move pair[0];
         }
 
         struct Triple<T> { value: T; }
 
         func Keep<T>(value: T) {
-            let triple = Triple<T> { value: <-value };
+            let triple = Triple<T> { value: move value };
         }
 
         func Main() -> int {
@@ -705,13 +686,12 @@ TEST_CASE("scalar enums stay trivial while variants combine every payload owners
 
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         struct Copier { value: int32; }
         extend Copier {
-            func ~Copier(self: &var Copier) {}
+            func ~Copier(&var self) {}
         }
 
         variant Units { Empty, Ready, Busy }

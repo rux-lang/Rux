@@ -82,7 +82,7 @@ func Main() -> int {
     let allocator: Allocator = system;
     var name = StringBuilder(allocator);
     PrintLine("What is your name?");
-    ReadLine(name) catch { else => return 1 };
+    try ReadLine(name) catch { _ => return 1 };
     let text = name.IntoString();
     PrintLine(text);
     return 0;

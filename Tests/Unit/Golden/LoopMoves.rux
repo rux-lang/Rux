@@ -4,7 +4,7 @@ struct Token {
 }
 
 extend Token {
-    func ~Token(self: &var Token) {}
+    func ~Token(&var self) {}
 }
 
 struct Holder {
@@ -14,39 +14,39 @@ struct Holder {
 func Take(token: Token) {}
 
 func ForBody(first: Token) {
-    var held <- first;
+    var held = move first;
     for i in 0..2 {
         let id = held.id;
-        Take(<-held);
+        Take(move held);
     }
 }
 
 func WhileBody(first: Token, more: bool) {
-    var held <- first;
+    var held = move first;
     while more {
-        Take(<-held);
+        Take(move held);
     }
 }
 
 func LoopBody(first: Token) {
-    var held <- first;
+    var held = move first;
     loop {
-        Take(<-held);
+        Take(move held);
     }
 }
 
 func DoWhileBody(first: Token, more: bool) {
-    var held <- first;
+    var held = move first;
     do {
-        Take(<-held);
+        Take(move held);
     } while more;
 }
 
 func ContinuePath(first: Token, skip: bool) {
-    var held <- first;
+    var held = move first;
     for i in 0..2 {
         if skip {
-            Take(<-held);
+            Take(move held);
             continue;
         }
         let id = held.id;
@@ -56,33 +56,33 @@ func ContinuePath(first: Token, skip: bool) {
 func ParameterEachPass(next: Token) {
     var holder = Holder { token: Token { id: 0 } };
     for i in 0..2 {
-        holder.token <- next;
+        holder.token = move next;
     }
 }
 
 // Accepted: each pass that moves the value gives it a new one before the next pass, leaves the loop, or moves the
 // pass's own loop variable.
 func Replenished(first: Token) {
-    var held <- first;
+    var held = move first;
     for i in 0..2 {
-        Take(<-held);
+        Take(move held);
         held = Token { id: i };
     }
 }
 
 func LeavesAfterMove(first: Token) {
-    var held <- first;
+    var held = move first;
     loop {
-        Take(<-held);
+        Take(move held);
         break;
     }
 }
 
 func ReturnsAfterMove(first: Token, done: bool) {
-    var held <- first;
+    var held = move first;
     while true {
         if done {
-            Take(<-held);
+            Take(move held);
             return;
         }
     }
@@ -105,13 +105,13 @@ extend Tokens {
 
 func MovesItsItem() {
     for item in (Tokens { next: 0 }) {
-        Take(<-item);
+        Take(move item);
     }
 }
 
 func MovesInnerLocal() {
     for i in 0..2 {
         let local = Token { id: i };
-        Take(<-local);
+        Take(move local);
     }
 }

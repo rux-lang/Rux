@@ -76,8 +76,7 @@ const char *HandleSource = R"(
     }
 
     extend Handle {
-        func =(self: &var Handle, other: &Handle);
-        func ~Handle(self: &var Handle) {
+        func ~Handle(&var self) {
             self.slot = 0i32;
         }
     }
@@ -89,7 +88,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             variant Option<T> { Some(T), None }
             func Inspect(input: Option<Handle>) -> int32 {
-                return match <-input {
+                return match move input {
                     .Some(held) => held.slot,
                     .None => 0i32
                 };
@@ -103,7 +102,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let held = Handle { slot: 1i32 };
-                let copied <- held;
+                let copied = move held;
                 return 0;
             }
         )");
@@ -117,7 +116,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(R"(
             struct Owner<T> { value: T; }
             extend Owner<T> {
-                func ~Owner(self: &var Owner<T>) {}
+                func ~Owner(&var self) {}
             }
 
             func Main() -> int {
@@ -170,7 +169,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let first = Handle { slot: 1i32 };
-                let second <- first;
+                let second = move first;
                 return 0;
             }
         )");
@@ -252,14 +251,14 @@ TEST_SUITE("DropGlueLowering") {
                 second: int32;
             }
 
-            func Read(ok: bool) -> int32 ! Error {
+            func Read(ok: bool) -> int32 throws Error {
                 return 7i32;
             }
 
-            func Build(ok: bool) -> Pair ! Error {
-                return Pair {
+            func Build(ok: bool) -> Pair throws Error {
+                return try Pair {
                     first: Handle { slot: 1i32 },
-                    second: Read(ok)?,
+                    second: Read(ok),
                 };
             }
         )");

@@ -120,8 +120,8 @@ TEST_CASE("a native level stores its tag first and its payload after the tag") {
         func Present() -> int32? {
             return .Some(7i32);
         }
-        func Failed() -> int64 ! ParseError {
-            return .Failure(ParseError { code: 3i32 });
+        func Failed() -> int64 throws ParseError {
+            throw ParseError { code: 3i32 };
         }
     )");
     const LirFunc &present = RequireFunction(package, "Present");
@@ -137,11 +137,11 @@ TEST_CASE("payloads wider than a register and nested levels keep their place") {
     const LirPackage package = LowerToLir(R"(
         struct Big { a: int64; b: int64; c: int64; }
         struct E {}
-        func Wide() -> Big ! E {
-            return .Success(Big { a: 1i64, b: 2i64, c: 3i64 });
+        func Wide() -> Big throws E {
+            return Big { a: 1i64, b: 2i64, c: 3i64 };
         }
-        func Nested() -> (int32 ! E)? {
-            return .Some(.Success(4i32));
+        func Nested() -> int32?? {
+            return .Some(.Some(4i32));
         }
     )");
     const LirFunc &wide = RequireFunction(package, "Wide");
@@ -149,7 +149,7 @@ TEST_CASE("payloads wider than a register and nested levels keep their place") {
 
     // The inner level is a complete value of its own type at the outer payload's offset, written by the inner level.
     const LirFunc &nested = RequireFunction(package, "Nested");
-    CHECK(StoresType(nested, TypeRef::MakeFallible(TypeRef::MakeInt32(), TypeRef::MakeNamed("E"))));
+    CHECK(StoresType(nested, TypeRef::MakeOptional(TypeRef::MakeInt32())));
     CHECK_EQ(StoredOffsets(nested, TypeRef::MakeInt32()), std::vector<std::string>{"8"});
     RequireBackEndsAccept(package);
 }
@@ -157,8 +157,8 @@ TEST_CASE("payloads wider than a register and nested levels keep their place") {
 TEST_CASE("a zero-sized payload writes no data bytes") {
     const LirPackage package = LowerToLir(R"(
         struct E {}
-        func Done() -> ! E {
-            return .Success(());
+        func Done() throws E {
+            return;
         }
         func Unit() -> ()? {
             return .Some(());

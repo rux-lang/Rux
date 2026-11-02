@@ -9,13 +9,13 @@ struct Counter {
 }
 
 extend Counter {
-    func Bump(self: &Counter) -> int32 {
+    func Bump(&self) -> int32 {
         return self.value;
     }
 }
 
 interface Source<T> {
-    func Next(self: &var Self) -> T?;
+    func Next(&var self) -> T?;
 }
 
 struct Numbers {
@@ -23,7 +23,7 @@ struct Numbers {
 }
 
 extend Numbers: Source<int32> {
-    func Next(self: &var Numbers) -> int32? {
+    func Next(&var self) -> int32? {
         return none;
     }
 }
@@ -36,7 +36,7 @@ func Curve(value: int32) -> int32 {
     return value;
 }
 
-func Check(text: char8[..]) -> bool ! ParseError {
+func Check(text: char8[..]) -> bool throws ParseError {
     return true;
 }
 

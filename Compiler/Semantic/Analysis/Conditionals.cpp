@@ -27,9 +27,6 @@ void CollectBoundNames(const Pattern &pattern, std::vector<std::string> &names) 
             names.push_back(typed->name);
         }
     }
-    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        visit(presence->inner);
-    }
     else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         std::ranges::for_each(enumeration->args, visit);
         for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {

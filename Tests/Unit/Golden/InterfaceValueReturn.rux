@@ -1,7 +1,7 @@
 // An interface value made in a function, at the return or in a local first, would point at storage the function gives
 // up; one the function was handed is passed on, through a local too.
 interface Named {
-    func Id(self: &Self) -> int;
+    func Id(&self) -> int;
 }
 
 struct Plain {
@@ -9,7 +9,7 @@ struct Plain {
 }
 
 extend Plain : Named {
-    func Id(self: &Plain) -> int {
+    func Id(&self) -> int {
         return self.id;
     }
 }

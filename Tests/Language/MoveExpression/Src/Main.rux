@@ -2,7 +2,7 @@
 // an argument, a return, a destructuring `let`, a match subject, an `is` test and a propagated optional. It is an
 // ordinary prefix operator, so `move a + b` is `(move a) + b`. A move is the value's bytes followed by forgetting the
 // source: no user code runs, the source's destructor does not run, and the value's last owner destroys it exactly
-// once. The older `<-` spelling means the same thing.
+// once.
 
 import Core::Assert;
 
@@ -35,7 +35,7 @@ func Pass(token: Token) -> Token {
 }
 
 func Forward(token: Token?) -> Token? {
-    let present = try (move token);
+    let present = (move token)?;
     return move present;
 }
 
@@ -131,16 +131,6 @@ func Precedence() {
     Assert(sum == 5 && b == 3, "'move a + b' moves only 'a'");
 }
 
-func OlderSpelling() {
-    Reset();
-    let first = Token { id: 1 };
-    let second <- first;
-    var third = Token { id: 2 };
-    third <- second;
-    Assert(Consume(<-third) == 1, "the arrow spelling still moves");
-    Assert(drops == 2 && order == 21, "the arrow spelling destroys each value once");
-}
-
 func Main() -> int {
     Bindings();
     Assignments();
@@ -149,6 +139,5 @@ func Main() -> int {
     Subjects();
     Aggregates();
     Precedence();
-    OlderSpelling();
     return 0;
 }

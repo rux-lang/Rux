@@ -338,13 +338,6 @@ void AnalysisContext::CheckBorrowReturnValue(const Expr &value, const SourceLoca
                                                  ? BorrowOrigin{BorrowOrigin::Kind::Absent, {}, expression.location}
                                                  : self(*binary->right));
         }
-        if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
-            const auto branch = [&](const Expr &arm) {
-                return IsDivergingExpression(arm) ? BorrowOrigin{BorrowOrigin::Kind::Absent, {}, arm.location}
-                                                  : self(arm);
-            };
-            return both(branch(*conditional->thenExpr), branch(*conditional->elseExpr));
-        }
         if (const auto *block = AstCast<const BlockExpr>(&expression)) {
             const auto *tail = block->block && !block->block->stmts.empty()
                                  ? AstCast<const ExprStmt>(block->block->stmts.back().get())

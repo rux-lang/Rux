@@ -99,28 +99,3 @@ TEST_CASE("a sum normalizes again for each instantiation") {
     CHECK_EQ(typeOf(2).ToString(), "Box<int32>");
     CHECK_EQ(typeOf(3).ToString(), "Box<int32> | Box<int64>");
 }
-
-TEST_CASE("arguments deduce type parameters through optionals and fallibles") {
-    const auto analyzedPointer = Analyze(R"(
-        struct ParseError {}
-        func Payload<T>(value: T?) -> T { return Payload(value); }
-        func Channels<T, E>(value: T ! E) -> E { return Channels(value); }
-        func Use(optional: int32??, outcome: int64 ! ParseError) {
-            let fromOptional = Payload(optional);
-            let fromFallible = Channels(outcome);
-        }
-    )");
-    const Analyzed &analyzed = *analyzedPointer;
-    const FuncDecl &use = Function(analyzed, "Use");
-    const auto bindingAt = [&](const std::size_t index) -> const ResolvedCallableBinding & {
-        const auto *call = dynamic_cast<const CallExpr *>(&Initializer(use, index));
-        REQUIRE(call != nullptr);
-        const ResolvedCallableBinding *binding = analyzed.model.TryGetCallableBinding(*call);
-        REQUIRE(binding != nullptr);
-        return *binding;
-    };
-    // One optional level is peeled per optional parameter level, so `int32??` binds `T` to `int32?`.
-    CHECK_EQ(bindingAt(0).substitutions.at("T"), TypeRef::MakeOptional(TypeRef::MakeInt32()));
-    CHECK_EQ(bindingAt(1).substitutions.at("T"), TypeRef::MakeInt64());
-    CHECK_EQ(bindingAt(1).substitutions.at("E"), TypeRef::MakeNamed("ParseError"));
-}

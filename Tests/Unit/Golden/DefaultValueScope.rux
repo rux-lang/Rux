@@ -14,7 +14,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Add(self: &Counter, amount: int = self.value) -> int {
+    func Add(&self, amount: int = self.value) -> int {
         return self.value + amount;
     }
 }

@@ -533,9 +533,6 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
             calleeSymbol->intrinsicName == "SpinHint") {
             return LowerAtomicCall(call, calleeSymbol->intrinsicName);
         }
-        if (HirExprPtr checked = LowerCheckedArithmeticCall(calleeSymbol->intrinsicName, call)) {
-            return checked;
-        }
         if (calleeSymbol->intrinsicName == "ProcessStartFrame") {
             return LowerProcessStartFrame(call);
         }

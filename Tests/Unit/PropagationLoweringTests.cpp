@@ -66,14 +66,14 @@ const HirReturnStmt &RequireEarlyReturn(const HirMatchExpr &match) {
 
 const std::string kPropagationPrelude = R"(
     struct ParseError { code: int32; }
-    func Read(ok: bool) -> int32 ! ParseError { return 1i32; }
+    func Read(ok: bool) -> int32 throws ParseError { return 1i32; }
 )";
 } // namespace
 
 TEST_CASE("propagation lowers to a match that tests the operand's channel") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Doubled(ok: bool) -> int32 ! ParseError {
-            let value = Read(ok)?;
+        func Doubled(ok: bool) -> int32 throws ParseError {
+            let value = try Read(ok);
             return value * 2i32;
         }
     )");
@@ -108,12 +108,11 @@ TEST_CASE("a propagated failure destroys every local that was live when it left"
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
-        func Guarded(ok: bool) -> int32 ! ParseError {
+        func Guarded(ok: bool) -> int32 throws ParseError {
             let handle = Handle { value: 1i32 };
-            let value = Read(ok)?;
+            let value = try Read(ok);
             return value;
         }
     )");
@@ -130,11 +129,10 @@ TEST_CASE("a local declared after the propagation is not destroyed by it") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
-        func Later(ok: bool) -> int32 ! ParseError {
-            let value = Read(ok)?;
+        func Later(ok: bool) -> int32 throws ParseError {
+            let value = try Read(ok);
             let handle = Handle { value: 1i32 };
             return value;
         }
@@ -168,8 +166,8 @@ TEST_CASE("propagating an optional returns the enclosing absence without a paylo
 
 TEST_CASE("two propagations in one expression bind their payloads separately") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Sum(ok: bool) -> int32 ! ParseError {
-            let total = Read(ok)? + Read(ok)?;
+        func Sum(ok: bool) -> int32 throws ParseError {
+            let total = try Read(ok) + Read(ok);
             return total;
         }
     )");
@@ -193,44 +191,20 @@ TEST_CASE("two propagations in one expression bind their payloads separately") {
     CHECK_NE(boundName(*added->left), boundName(*added->right));
 }
 
-TEST_CASE("propagation keeps the storage layout of a nested variant error") {
-    const HirPackage package = LowerSource(R"(
-        variant Reason { First(uint64), Second(uint64) }
-        func Forward(input: ! Reason) -> int32 ! Reason {
-            input?;
-            return 1i32;
-        }
-    )");
-    REQUIRE(RequireFunction(package, "Forward").body.has_value());
-    const auto *statement =
-        dynamic_cast<const HirExprStmt *>(RequireFunction(package, "Forward").body->stmts.front().get());
-    REQUIRE(statement != nullptr);
-    const auto *match = dynamic_cast<const HirMatchExpr *>(statement->expr.get());
-    REQUIRE(match != nullptr);
-    const auto *failure = dynamic_cast<const HirEnumPattern *>(match->arms[1].pattern.get());
-    REQUIRE(failure != nullptr);
-    REQUIRE_EQ(failure->payloadTypes.size(), 1);
-    CHECK_EQ(failure->payloadTypes.front().SizeInBytes(), 16);
-    const auto *bound = dynamic_cast<const HirBindingPattern *>(failure->args.front().get());
-    REQUIRE(bound != nullptr);
-    CHECK_EQ(bound->type.SizeInBytes(), 16);
-}
-
 TEST_CASE("propagation captures its failure before deferred statements and ownership cleanup") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Guard { count: *var int32; }
         extend Guard {
-            func =(self: &var Guard, other: &Guard);
-            func ~Guard(self: &var Guard) {
+            func ~Guard(&var self) {
                 // Safety: `Guarded` points `count` at its caller's `int32`, which outlives the guard
                 unsafe { *self.count += 1i32; }
             }
         }
         // Safety: `count` must address a writable `int32` that outlives the call
-        unsafe func Guarded(count: *var int32) -> int32 ! ParseError {
+        unsafe func Guarded(count: *var int32) -> int32 throws ParseError {
             let guard = Guard { count: count };
             defer *count += 10i32;
-            let value = Read(false)?;
+            let value = try Read(false);
             return value;
         }
     )");
@@ -254,37 +228,16 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
     CHECK_EQ(returned->cleanups.front().name, "guard");
 }
 
-TEST_CASE("propagation moves both active payload channels as plain reads of their bindings") {
-    const HirPackage package = LowerSource(R"(
-        struct Handle { value: int32; }
-        extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
-        }
-        func Forward(input: Handle ! Handle) -> Handle ! Handle {
-            let value = (move input)?;
-            return .Success(move value);
-        }
-    )");
-    // A move is the payload's bytes and runs no code, so each channel reads its hidden binding as it stands.
-    const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
-    CHECK(dynamic_cast<const HirVarExpr *>(match.arms[0].body.get()) != nullptr);
-    const HirReturnStmt &returned = RequireEarlyReturn(match);
-    const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
-    REQUIRE(constructed != nullptr);
-    REQUIRE_EQ(constructed->payloads.size(), 1);
-    CHECK(dynamic_cast<const HirVarExpr *>(constructed->payloads.front().get()) != nullptr);
-}
-
-TEST_CASE("generic propagation emits only concrete function instantiations") {
+TEST_CASE("a generic throwing function emits only concrete instantiations") {
     HirPackage hir = LowerSource(R"(
         variant Reason { At(uint64), Empty }
-        func Forward<T, E>(input: T ! E) -> ! E {
-            input?;
+        func Forward<T, E>(input: T, error: E, stop: bool) -> T throws E {
+            if stop { throw error; }
+            return input;
         }
         func Main() -> int32 {
-            Forward<uint64, Reason>(.Failure(Reason::At(99u64))) catch { else => {} };
-            return 0i32;
+            let value = try Forward<uint64, Reason>(1u64, Reason::At(99u64), true) catch { _ => 0u64 };
+            return value as int32;
         }
     )");
     const HirFunc &declaration = RequireFunction(hir, "Forward");

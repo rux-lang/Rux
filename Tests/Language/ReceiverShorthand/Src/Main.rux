@@ -32,7 +32,7 @@ extend Counter {
         return self.count * 10;
     }
 
-    func LongForm(self: &Self) -> int32 {
+    func LongForm(&self) -> int32 {
         return self.count + 100;
     }
 }

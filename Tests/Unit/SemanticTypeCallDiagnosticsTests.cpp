@@ -121,7 +121,7 @@ TEST_CASE("constructor declarations enforce receiverless exact-type results") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Item { value: int32; }
         extend Item {
-            func Item(self: &Item) -> Item { return Item { value: 0i32 }; }
+            func Item(&self) -> Item { return Item { value: 0i32 }; }
             func Item(value: int32) -> int32 { return value; }
         }
     )");
@@ -208,14 +208,14 @@ TEST_CASE("a method takes variadic and defaulted arguments the way a function do
     const auto accepted = AnalyzeErrors(R"(
         struct Total { base: int128; }
         extend Total {
-            func Sum(self: &Total, values: int128...) -> int128 { return self.base; }
-            func Add(self: &var Total, label: int32, values: int64...) {}
-            func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
-            func Pick<T>(self: &Total, index: uint, values: T...) -> T { return values[index]; }
+            func Sum(&self, values: int128...) -> int128 { return self.base; }
+            func Add(&var self, label: int32, values: int64...) {}
+            func Scale(&self, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
+            func Pick<T>(&self, index: uint, values: T...) -> T { return values[index]; }
             func Of(values: int128...) -> Total { return Total { base: 0i128 }; }
         }
         extend int64 {
-            func Plus(self: int64, values: int64...) -> int64 { return self; }
+            func Plus(self, values: int64...) -> int64 { return self; }
         }
         func Main() {
             var total = Total { base: 0i128 };
@@ -241,9 +241,9 @@ TEST_CASE("a method takes variadic and defaulted arguments the way a function do
     const auto diagnostics = AnalyzeErrors(R"(
         struct Total { base: int64; }
         extend Total {
-            func Add(self: &Total, label: int32, values: int64...) {}
-            func Sum(self: &Total, values: int32...) -> int64 { return self.base; }
-            func Scale(self: &Total, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
+            func Add(&self, label: int32, values: int64...) {}
+            func Sum(&self, values: int32...) -> int64 { return self.base; }
+            func Scale(&self, amount: int64, factor: int64 = 2i64) -> int64 { return amount * factor; }
         }
         func Main() {
             let total = Total { base: 1i64 };
@@ -267,14 +267,14 @@ TEST_CASE("a method called through its type takes its receiver as the first argu
     const auto accepted = AnalyzeErrors(R"(
         struct Pair { a: int32; b: int32; }
         extend Pair {
-            func Get(self: &Pair) -> int32 { return self.a; }
-            func Bump(self: &var Pair, by: int32 = 1i32) { self.a += by; }
-            func Same(self: Pair, other: Pair) -> bool { return self.a == other.a; }
-            func Sum(self: &Pair, values: int64...) -> int64 { return 0i64; }
+            func Get(&self) -> int32 { return self.a; }
+            func Bump(&var self, by: int32 = 1i32) { self.a += by; }
+            func Same(self, other: Pair) -> bool { return self.a == other.a; }
+            func Sum(&self, values: int64...) -> int64 { return 0i64; }
             func Of(a: int32) -> Pair { return Pair { a: a, b: 0i32 }; }
         }
         extend int64 {
-            func Plus(self: int64, values: int64...) -> int64 { return self; }
+            func Plus(self, values: int64...) -> int64 { return self; }
         }
         func Main() {
             var p = Pair { a: 1i32, b: 2i32 };
@@ -296,10 +296,10 @@ TEST_CASE("a method called through its type takes its receiver as the first argu
     const auto diagnostics = AnalyzeErrors(R"(
         struct Pair { a: int32; b: int32; }
         extend Pair {
-            func Get(self: &Pair) -> int32 { return self.a; }
-            func Bump(self: &var Pair, by: int32 = 1i32) { self.a += by; }
-            func Same(self: Pair, other: Pair) -> bool { return self.a == other.a; }
-            func Sum(self: &Pair, values: int64...) -> int64 { return 0i64; }
+            func Get(&self) -> int32 { return self.a; }
+            func Bump(&var self, by: int32 = 1i32) { self.a += by; }
+            func Same(self, other: Pair) -> bool { return self.a == other.a; }
+            func Sum(&self, values: int64...) -> int64 { return 0i64; }
         }
         func Main() {
             let q = Pair { a: 1i32, b: 2i32 };
@@ -347,7 +347,7 @@ TEST_CASE("a named array spreads only into a variadic parameter of its own eleme
         func Sum(values: int64...) -> int64 { return 0i64; }
         struct Total { base: int64; }
         extend Total {
-            func Sum(self: &Total, values: int64...) -> int64 { return self.base; }
+            func Sum(&self, values: int64...) -> int64 { return self.base; }
         }
         func Main() {
             let narrow: int32[2] = [1i32, 2i32];
@@ -384,7 +384,7 @@ TEST_CASE("method diagnostics retain receiver and parameter context") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Counter {}
         extend Counter {
-            func Add(self: &Counter, amount: int) {}
+            func Add(&self, amount: int) {}
         }
         func Main() {
             let counter = Counter {};
@@ -489,7 +489,7 @@ TEST_CASE("narrow and signed enum bases and generic all-unit variants remain val
             After
         }
         interface Display {
-            func Show(self: &Self);
+            func Show(&self);
         }
         variant Signal<T: Display> {
             Waiting,
@@ -662,7 +662,7 @@ TEST_CASE("a cast between two concrete types is still rejected where it is writt
 
 TEST_CASE("a literal format string is counted against the variadic arguments after it") {
     const auto diagnostics = AnalyzeSource(R"(
-        func Show(#Format() format: char8[..], values: int32...) {}
+        func Show(#Format format: char8[..], values: int32...) {}
         func Main() {
             let one = 1i32;
             Show("{} {}", one);
@@ -684,7 +684,7 @@ TEST_CASE("a literal format string is counted against the variadic arguments aft
 
 TEST_CASE("a format string the compiler cannot count is left to the run-time check") {
     const auto diagnostics = AnalyzeSource(R"(
-        func Show(#Format() format: char8[..], values: int32...) {}
+        func Show(#Format format: char8[..], values: int32...) {}
         func Plain(format: char8[..], values: int32...) {}
         func Main() {
             let one = 1i32;
@@ -704,7 +704,7 @@ TEST_CASE("a format string the compiler cannot count is left to the run-time che
 
 TEST_CASE("the format check follows the attribute across packages, not a package name") {
     const std::string dependency = R"(
-        pub func Say(#Format() format: char8[..], values: int32...) {}
+        pub func Say(#Format format: char8[..], values: int32...) {}
         pub func Echo(format: char8[..], values: int32...) {}
     )";
     const auto imported = Rux::Testing::SemanticTestSupport::AnalyzeWithDep(R"(
@@ -722,7 +722,7 @@ TEST_CASE("the format check follows the attribute across packages, not a package
 
 TEST_CASE("a format parameter must be a UTF-8 string slice") {
     const auto diagnostics = AnalyzeSource(R"(
-        func Show(#Format() format: int32, values: int32...) {}
+        func Show(#Format format: int32, values: int32...) {}
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
@@ -734,12 +734,12 @@ TEST_CASE("a method call whose argument the method cannot take is reported, not 
     const auto diagnostics = AnalyzeSource(R"(
         struct Sink { count: uint; }
         extend Sink {
-            func Push(self: &var Sink, value: char8) -> ! int32 { self.count = self.count + 1; }
+            func Push(&var self, value: char8) throws int32 { self.count = self.count + 1; }
             func Take(value: char8) -> uint { return 1; }
         }
-        func Append(sink: &var Sink) -> ! int32 {
+        func Append(sink: &var Sink) throws int32 {
             if sink.count == 0 {
-                sink.Push('z')?;
+                try sink.Push('z');
             }
             let taken = Sink::Take('y');
         }
@@ -784,12 +784,12 @@ TEST_CASE("method overloads are ranked as function overloads are, whatever their
     const auto errors = AnalyzeErrors(R"(
         struct S { value: int32; }
         extend S {
-            func E(self: &S, x: int64) -> bool { return true; }
-            func E(self: &S, x: int32, y: int32 = 0) -> int8 { return 1; }
-            func Wide(self: &S, x: int128) -> int { return 0; }
-            func Wide(self: &S, x: int64) -> int { return 1; }
-            func Narrow(self: &S, x: int64) -> int { return 1; }
-            func Narrow(self: &S, x: int128) -> int { return 0; }
+            func E(&self, x: int64) -> bool { return true; }
+            func E(&self, x: int32, y: int32 = 0) -> int8 { return 1; }
+            func Wide(&self, x: int128) -> int { return 0; }
+            func Wide(&self, x: int64) -> int { return 1; }
+            func Narrow(&self, x: int64) -> int { return 1; }
+            func Narrow(&self, x: int128) -> int { return 0; }
         }
         func Main() -> int {
             let s = S { value: 0 };

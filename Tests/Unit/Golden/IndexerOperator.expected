@@ -1,5 +1,5 @@
-59:5: error: the '[]' operator on 'Malformed' must have signature 'func [](self: &Malformed, index: I) -> E'
-62:5: error: the '[]=' operator on 'Malformed' must have signature 'func []=(self: &var Malformed, index: I, value: E)'
+59:5: error: the '[]' operator on 'Malformed' must have signature 'func [](&self, index: I) -> E'
+62:5: error: the '[]=' operator on 'Malformed' must have signature 'func []=(&var self, index: I, value: E)'
 77:9: error: operator '+=' cannot read and write through the '[]' operator on 'Vect' at once
 78:9: error: operator '++' cannot read and write through the '[]' operator on 'Vect' at once
 82:5: error: cannot modify immutable variable 'frozen'

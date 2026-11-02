@@ -1,0 +1,26 @@
+// A receiver comes first, and an extend block implementing an interface hands each method's receiver to a vtable slot
+// as an address, so a method there cannot take its receiver by value.
+
+struct Vector {
+    x: float64;
+}
+
+interface Shape {
+    func Area(&self) -> float64;
+}
+
+extend Vector {
+    func Late(factor: float64, &self) -> float64 {
+        return factor;
+    }
+}
+
+extend Vector : Shape {
+    func Area(self) -> float64 {
+        return self.x;
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

@@ -17,7 +17,7 @@ variant DecodeError {
 func First(value: Options | Defaults) -> int32 {
     return match value {
         Options => 1i32,
-        else => 2i32
+        _ => 2i32
     };
 }
 
@@ -25,7 +25,7 @@ func Middle(value: int32) -> int32 {
     return match value {
         1i32 => 1i32,
         Settings => 2i32,
-        else => 3i32
+        _ => 3i32
     };
 }
 
@@ -54,12 +54,6 @@ func Case(error: DecodeError) -> int32 {
     };
 }
 
-func Nested(outcome: int32 ! DecodeError) -> int32 {
-    return match outcome {
-        .Success(value) => value,
-        .Failure(Missing) => 1i32
-    };
-}
 
 func Shadow(value: int32, limit: int32) -> int32 {
     let count = 3i32;
@@ -72,6 +66,6 @@ func Shadow(value: int32, limit: int32) -> int32 {
 func Crossed(value: int32?) -> int32 {
     return match value {
         .None => 0i32,
-        else => 1i32
+        _ => 1i32
     };
 }

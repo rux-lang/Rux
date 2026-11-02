@@ -73,12 +73,6 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
     else if (const auto *propagation = AstCast<const TryExpr>(&expression)) {
         CollectExpressionUses(*propagation->operand, uses);
     }
-    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
-        CollectExpressionUses(*mapped->operand, uses);
-        if (mapped->mapper) {
-            CollectExpressionUses(*mapped->mapper, uses);
-        }
-    }
     else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         if (construct->operand) {
             CollectExpressionUses(*construct->operand, uses);
@@ -87,13 +81,6 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
     else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         if (diverge->value) {
             CollectExpressionUses(*diverge->value, uses);
-        }
-    }
-    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
-        CollectExpressionUses(*recovery->subject, uses);
-        for (const auto &arm : recovery->arms) {
-            CollectPatternUses(*arm.pattern, uses);
-            CollectExpressionUses(*arm.body, uses);
         }
     }
     else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
@@ -115,11 +102,6 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
     else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         CollectExpressionUses(*assignment->target, uses);
         CollectExpressionUses(*assignment->value, uses);
-    }
-    else if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
-        CollectExpressionUses(*conditional->condition, uses);
-        CollectExpressionUses(*conditional->thenExpr, uses);
-        CollectExpressionUses(*conditional->elseExpr, uses);
     }
     else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (range->lo) {
@@ -207,9 +189,6 @@ void EraseConditionBindings(const Expr *condition, NameSet &live) {
         }
         else if (const auto *typed = AstCast<const TypedPattern>(&pattern)) {
             live.erase(typed->name);
-        }
-        else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-            visit(presence->inner);
         }
         else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
             std::ranges::for_each(enumeration->args, visit);
@@ -380,12 +359,6 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
     else if (const auto *propagation = AstCast<const TryExpr>(&expression)) {
         RecordExpressionLastUses(*propagation->operand, offsets, result);
     }
-    else if (const auto *mapped = AstCast<const MappedTryExpr>(&expression)) {
-        RecordExpressionLastUses(*mapped->operand, offsets, result);
-        if (mapped->mapper) {
-            RecordExpressionLastUses(*mapped->mapper, offsets, result);
-        }
-    }
     else if (const auto *construct = AstCast<const NativeConstructExpr>(&expression)) {
         if (construct->operand) {
             RecordExpressionLastUses(*construct->operand, offsets, result);
@@ -394,12 +367,6 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
     else if (const auto *diverge = AstCast<const DivergeExpr>(&expression)) {
         if (diverge->value) {
             RecordExpressionLastUses(*diverge->value, offsets, result);
-        }
-    }
-    else if (const auto *recovery = AstCast<const CatchExpr>(&expression)) {
-        RecordExpressionLastUses(*recovery->subject, offsets, result);
-        for (const auto &arm : recovery->arms) {
-            RecordExpressionLastUses(*arm.body, offsets, result);
         }
     }
     else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
@@ -420,11 +387,6 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
     else if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         RecordExpressionLastUses(*assignment->target, offsets, result);
         RecordExpressionLastUses(*assignment->value, offsets, result);
-    }
-    else if (const auto *conditional = AstCast<const TernaryExpr>(&expression)) {
-        RecordExpressionLastUses(*conditional->condition, offsets, result);
-        RecordExpressionLastUses(*conditional->thenExpr, offsets, result);
-        RecordExpressionLastUses(*conditional->elseExpr, offsets, result);
     }
     else if (const auto *range = AstCast<const RangeExpr>(&expression)) {
         if (range->lo) {
@@ -1160,11 +1122,6 @@ std::vector<const Symbol *> AnalysisContext::LocalArraysViewed(const Expr &expre
     };
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return LocalArraysViewed(*move->operand, targetType);
-    }
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expression)) {
-        addAll(LocalArraysViewed(*ternary->thenExpr, targetType));
-        addAll(LocalArraysViewed(*ternary->elseExpr, targetType));
-        return viewed;
     }
     const TypeRef type = typeOf(expression);
     // A fixed array where a view is expected is viewed in place, as `return buffer` from a function returning a slice.

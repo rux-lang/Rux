@@ -787,8 +787,8 @@ TEST_CASE("Pattern binding frame addresses dominate uses without moving initiali
 TEST_CASE("Borrowed pattern addresses dominate arm uses without speculating loads") {
     auto package = CompileToLir(R"(
         struct Payload { number: int; }
-        func Bump(item: &var (Payload ! int32)) {
-            match item { .Failure(_) => {}, .Success(value) => { value.number += 1; } }
+        func Bump(item: &var (Payload?)) {
+            match item { none => {}, .Some(value) => { value.number += 1; } }
         }
     )",
                                 BuildProfile::Debug);
@@ -807,9 +807,9 @@ TEST_CASE("Borrowed pattern addresses dominate arm uses without speculating load
     CHECK(placement.Run(package, {}) == Optimization::PassChange::None);
 }
 
-TEST_CASE("Ternary arms convert contextual integer literals before entering a typed phi") {
+TEST_CASE("If-expression arms convert contextual integer literals before entering a typed phi") {
     auto package = CompileToLir(R"(
-        func Count(rest: uint64) -> uint64 { return rest == 0 ? 0 : rest - 1; }
+        func Count(rest: uint64) -> uint64 { return if rest == 0 { 0 } else { rest - 1 }; }
     )",
                                 BuildProfile::Debug);
     CHECK(SsaErrors(package).empty());

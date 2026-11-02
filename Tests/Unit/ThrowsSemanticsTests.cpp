@@ -42,7 +42,7 @@ constexpr std::string_view kDeclarations = R"(
         if c == ' ' { throw .Blank; }
         return 1;
     }
-    func OldDigit(c: char) -> int ! DigitError { return 1; }
+    func OldDigit(c: char) -> int throws DigitError { return 1; }
     func ReadFile(code: int32) -> int32 throws IoError { return code; }
 )";
 
@@ -280,30 +280,6 @@ TEST_CASE("an arm needs its own try and the arms cover every error") {
         }
     )")),
                       "missing DigitError::NotADigit"));
-}
-
-TEST_CASE("the older spelling keeps working beside throws") {
-    // An unmarked call of an older function is its outcome; under `try` it is a throw site.
-    const Analyzed analyzed = Analyze(WithDeclarations(R"(
-        func Main() -> int throws DigitError {
-            let outcome = OldDigit('1');
-            let value = try OldDigit('2');
-            let older = ReadDigit('3') catch { _ => 0 };
-            return value + older;
-        }
-        func Forward() -> int ! DigitError {
-            return ReadDigit('4')? + ReadDigit('5')? else (e => e);
-        }
-    )"));
-    const FuncDecl &main = Function(analyzed, "Main");
-    CHECK(ResolvedType(*analyzed.model, InitializerOf(main, 0)).ToString() == "int ! DigitError");
-    CHECK(analyzed.model->TryGetThrowSite(InitializerOf(main, 0)) == nullptr);
-    const auto *marked = dynamic_cast<const TryMarkExpr *>(&InitializerOf(main, 1));
-    REQUIRE(marked != nullptr);
-    CHECK(analyzed.model->TryGetThrowSite(*marked->operand) != nullptr);
-    const auto *older = dynamic_cast<const CatchExpr *>(&InitializerOf(main, 2));
-    REQUIRE(older != nullptr);
-    CHECK(analyzed.model->TryGetThrowSite(*older->subject) == nullptr);
 }
 
 TEST_CASE("an error thrown to a handler carries the state at the throw into the arms") {

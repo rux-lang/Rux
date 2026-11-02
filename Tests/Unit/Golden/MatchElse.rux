@@ -1,4 +1,4 @@
-// '_' is the default arm, and 'else' is still read as its older spelling. Either one comes last.
+// '_' is the default arm, and it comes last.
 func Main() -> int {
     let first = match 7 {
         0 => 1,
@@ -6,10 +6,10 @@ func Main() -> int {
     };
     let second = match 7 {
         0 => 1,
-        else => 2,
+        _ => 2,
     };
     let misplaced = match 7 {
-        else => 1,
+        _ => 1,
         0 => 2
     };
     return first + second + misplaced;

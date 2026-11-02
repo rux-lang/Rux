@@ -69,16 +69,16 @@ TEST_CASE("propagation continues with the success or returns the outer failure")
     const HirPackage package = LowerSource(R"(
         struct ParseError {}
         struct IoError {}
-        func Read() -> (int32 ! ParseError) ! IoError { return .Success(.Success(1i32)); }
-        func Forward() -> int32 ! IoError {
-            let inner = Read()?;
+        func Read() -> int32 throws IoError { return 1i32; }
+        func Forward() -> int32 throws IoError {
+            let inner = try Read();
             return 1i32;
         }
     )");
     const HirMatchExpr &match = LetMatch(RequireFunction(package, "Forward"));
     REQUIRE_EQ(match.arms.size(), 2);
-    // The inner fallible continues untouched as the success payload.
-    CHECK_EQ(match.type.ToString(), "int32 ! ParseError");
+    // The success continues as the value of the binding.
+    CHECK_EQ(match.type.ToString(), "int32");
     const auto *success = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
     REQUIRE(success != nullptr);
     CHECK_EQ(success->discriminant, "0");
@@ -93,9 +93,9 @@ TEST_CASE("a propagated error is injected into a wider failure channel") {
     const HirPackage package = LowerSource(R"(
         struct ParseError {}
         struct IoError {}
-        func Read() -> int32 ! ParseError { return 1i32; }
-        func Widen() -> int32 ! (IoError | ParseError) {
-            let value = Read()?;
+        func Read() -> int32 throws ParseError { return 1i32; }
+        func Widen() -> int32 throws (IoError | ParseError) {
+            let value = try Read();
             return value;
         }
     )");
@@ -110,7 +110,7 @@ TEST_CASE("a propagated error is injected into a wider failure channel") {
 TEST_CASE("a fallible Main is wrapped by an integer entry point") {
     const HirPackage package = LowerSource(R"(
         struct IoError {}
-        func Main() -> int ! IoError {
+        func Main() -> int throws IoError {
             return 3;
         }
     )");
@@ -129,56 +129,4 @@ TEST_CASE("a fallible Main is wrapped by an integer entry point") {
     const auto *failed = dynamic_cast<const HirLiteralExpr *>(match->arms[1].body.get());
     REQUIRE(failed != nullptr);
     CHECK_EQ(failed->value, "1");
-}
-
-TEST_CASE("catch passes the success through and matches recovery arms inside the failure") {
-    const HirPackage package = LowerSource(R"(
-        struct IoError { code: int32; }
-        func Count() -> int32 ! IoError { return 1i32; }
-        func Recover(limit: int32) -> int32 {
-            let value = Count() catch {
-                e if e.code > limit => e.code,
-                else => 0i32
-            };
-            return value;
-        }
-    )");
-    const HirMatchExpr &match = LetMatch(RequireFunction(package, "Recover"));
-    CHECK_EQ(match.type, TypeRef::MakeInt32());
-    REQUIRE_EQ(match.arms.size(), 3);
-    const auto *success = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
-    REQUIRE(success != nullptr);
-    CHECK_EQ(success->discriminant, "0");
-    // A guard applies to the whole arm, around the failure case it matches in.
-    const auto *guarded = dynamic_cast<const HirGuardedPattern *>(match.arms[1].pattern.get());
-    REQUIRE(guarded != nullptr);
-    const auto *failure = dynamic_cast<const HirEnumPattern *>(guarded->inner.get());
-    REQUIRE(failure != nullptr);
-    CHECK_EQ(failure->discriminant, "1");
-    const auto *otherwise = dynamic_cast<const HirEnumPattern *>(match.arms[2].pattern.get());
-    REQUIRE(otherwise != nullptr);
-    CHECK_EQ(otherwise->discriminant, "1");
-}
-
-TEST_CASE("a mapped propagation owns the error and fails with the mapper's value") {
-    const HirPackage package = LowerSource(R"(
-        struct ParseError {}
-        struct ConfigError { line: int32; }
-        func Read() -> int32 ! ParseError { return 1i32; }
-        func Load(line: int32) -> int32 ! ConfigError {
-            let value = Read()? else (e => ConfigError { line: line });
-            return value;
-        }
-    )");
-    const HirMatchExpr &match = LetMatch(RequireFunction(package, "Load"));
-    REQUIRE_EQ(match.arms.size(), 2);
-    const auto *failure = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
-    REQUIRE(failure != nullptr);
-    REQUIRE_EQ(failure->args.size(), 1);
-    const auto *binder = dynamic_cast<const HirBindingPattern *>(failure->args.front().get());
-    REQUIRE(binder != nullptr);
-    CHECK_EQ(binder->name, "e");
-    const HirEnumConstructExpr &mapped = ReturnedFailure(match.arms[1]);
-    CHECK_EQ(mapped.discriminant, "1");
-    CHECK_EQ(mapped.payloads.front()->type.ToString(), "ConfigError");
 }

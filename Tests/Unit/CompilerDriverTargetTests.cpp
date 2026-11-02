@@ -220,7 +220,7 @@ pub module Api {
     pub func Answer() -> int {
         return Count(10);
     }
-    func Count(value: int) -> int { return value == 0 ? 0 : value + Count(value - 1); }
+    func Count(value: int) -> int { return if value == 0 { 0 } else { value + Count(value - 1) }; }
 }
 )");
     fixture.SetApplicationType(ManifestPackageType::StaticLibrary);

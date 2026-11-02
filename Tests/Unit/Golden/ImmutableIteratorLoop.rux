@@ -4,7 +4,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(self: &var Counter) -> int32? {
+    func Next(&var self) -> int32? {
         if self.value >= 3 {
             return none;
         }

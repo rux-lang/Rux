@@ -1,8 +1,8 @@
 // The two branches of '?:' must agree on a type, as match arms do.
 func Main() -> int {
     let n = 1;
-    let mixed = n > 2 ? "big" : 7;
-    let widened: int64 = n > 2 ? 1i32 : 2;
-    let wide: uint128 = n > 2 ? 18446744073709551616 : 0;
+    let mixed = if n > 2 { "big" } else { 7 };
+    let widened: int64 = if n > 2 { 1i32 } else { 2 };
+    let wide: uint128 = if n > 2 { 18446744073709551616 } else { 0 };
     return 0;
 }

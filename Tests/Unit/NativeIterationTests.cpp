@@ -25,10 +25,9 @@ bool AnyContains(const std::vector<std::string> &errors, const std::string_view 
 
 TEST_CASE("a Next returning an optional drives a loop with its payload") {
     CHECK(Errors(R"(
-        struct E {}
         struct Counter { next: int32; }
         extend Counter {
-            func Next(self: &var Counter) -> int32? {
+            func Next(&var self) -> int32? {
                 if self.next > 3i32 {
                     return none;
                 }
@@ -38,31 +37,26 @@ TEST_CASE("a Next returning an optional drives a loop with its payload") {
         }
         struct Bag { start: int32; }
         extend Bag {
-            func Iterate(self: &Bag) -> Counter {
+            func Iterate(&self) -> Counter {
                 return Counter { next: self.start };
             }
         }
         struct Lookups { index: int32; }
         extend Lookups {
-            func Next(self: &var Lookups) -> int32?? { return none; }
-        }
-        struct Outcomes { index: int32; }
-        extend Outcomes {
-            func Next(self: &var Outcomes) -> (int32 ! E)? { return none; }
+            func Next(&var self) -> int32?? { return none; }
         }
         struct Units { index: int32; }
         extend Units {
-            func Next(self: &var Units) -> ()? { return none; }
+            func Next(&var self) -> ()? { return none; }
         }
         struct Members { index: int32; }
         extend Members {
-            func Next(self: &var Members) -> (int32 | bool)? { return none; }
+            func Next(&var self) -> (int32 | bool)? { return none; }
         }
-        func Use(counted: Counter, bag: Bag, looked: Lookups, outcome: Outcomes, unit: Units, member: Members) {
+        func Use(counted: Counter, bag: Bag, looked: Lookups, unit: Units, member: Members) {
             // A loop advances an iterator variable in place, so each one is a writable copy of its parameter.
             var counter = counted;
             var lookups = looked;
-            var outcomes = outcome;
             var units = unit;
             var members = member;
             var total = 0i32;
@@ -74,9 +68,6 @@ TEST_CASE("a Next returning an optional drives a loop with its payload") {
             }
             for item in lookups {
                 let optional: int32? = item;
-            }
-            for item in outcomes {
-                let fallible: int32 ! E = item;
             }
             for item in units {
                 let unit: () = item;
@@ -94,11 +85,11 @@ TEST_CASE("only an optional or an Option-shaped variant reports the end") {
         struct E {}
         struct Fallible { index: int32; }
         extend Fallible {
-            func Next(self: &var Fallible) -> int32 ! E { return 1i32; }
+            func Next(&var self) -> int32 throws E { return 1i32; }
         }
         struct Shared { index: int32; }
         extend Shared {
-            func Next(self: &Shared) -> int32? { return none; }
+            func Next(&self) -> int32? { return none; }
         }
         func Use(fallible: Fallible, shared: Shared) {
             for value in fallible {}

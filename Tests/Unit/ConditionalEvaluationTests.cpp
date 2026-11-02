@@ -276,7 +276,7 @@ variant Mode { Fast, Small }
 func Select() -> int {
     when Mode::Fast {
         Mode::Fast => { return 1; }
-        else => { return 2; }
+        _ => { return 2; }
     }
     return 0;
 }
@@ -344,7 +344,7 @@ struct Target {
 }
 
 extend Target {
-    intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
+    intrinsic func HasFeature(&self, feature: TargetFeature) -> bool;
 }
 
 struct Build {
@@ -364,7 +364,7 @@ struct SemanticVersion {
 }
 struct Compiler { version: SemanticVersion; }
 extend Compiler {
-    intrinsic func HasFeature(self: &Compiler, feature: char8[..]) -> bool;
+    intrinsic func HasFeature(&self, feature: char8[..]) -> bool;
 }
 
 struct Source {
@@ -378,8 +378,8 @@ struct Source {
 
 struct Config {}
 extend Config {
-    intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
-    intrinsic func Has(self: &Config, name: char8[..]) -> bool;
+    intrinsic func Get(&self, name: char8[..]) -> char8[..];
+    intrinsic func Has(&self, name: char8[..]) -> bool;
 }
 
 intrinsic #target: Target;

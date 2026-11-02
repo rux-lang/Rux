@@ -654,17 +654,6 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     // Analysis has accepted both arms against this context. Materialize that width before the merge: converting
     // the merged value afterwards cannot recover high words already discarded by an untyped literal's default int.
-    if (const auto *ternary = AstCast<const TernaryExpr>(&expression);
-        ternary && (targetType.IsNumeric() || targetType.IsBool() || targetType.IsChar()) &&
-        !model.HasBorrowedScalarRead(expression)) {
-        auto lowered = std::make_unique<HirTernaryExpr>();
-        lowered->location = expression.location;
-        lowered->type = targetType;
-        lowered->condition = LowerExpr(*ternary->condition);
-        lowered->thenExpr = ConvertScalar(LowerExprAs(*ternary->thenExpr, targetType), targetType);
-        lowered->elseExpr = ConvertScalar(LowerExprAs(*ternary->elseExpr, targetType), targetType);
-        return lowered;
-    }
 
     // Every bool width holds the same two values, so a bool literal is written at the width it is wanted at rather
     // than at `bool`'s and converted afterwards.

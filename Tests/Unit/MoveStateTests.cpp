@@ -188,7 +188,7 @@ TEST_CASE("semantic analysis merges availability across control-flow paths") {
 
 TEST_CASE("loop exits preserve only reachable availability states") {
     Lexer lexer(R"(
-        #NoReturn()
+        #NoReturn
         func Stop() { while true {} }
 
         func Main() -> int32 {
@@ -222,16 +222,16 @@ TEST_CASE("loop exits preserve only reachable availability states") {
 TEST_CASE("a part written into a droppable local that holds no value names why it holds none") {
     Lexer lexer(R"(
 struct Handle { code: int32; }
-extend Handle { func ~Handle(self: &var Handle) {} }
+extend Handle { func ~Handle(&var self) {} }
 struct Holder { handle: Handle; }
 struct Plain { code: int32; }
 
 func Main(holder: Holder) {
     var empty: Holder;
-    empty.handle <- Handle { code: 1 };
-    var moved <- holder;
-    let taken <- moved;
-    moved.handle <- Handle { code: 2 };
+    empty.handle = move Handle { code: 1 };
+    var moved = move holder;
+    let taken = move moved;
+    moved.handle = move Handle { code: 2 };
     var plain: Plain;
     plain.code = 3;
     let read = plain.code;
@@ -264,7 +264,7 @@ func Main(holder: Holder) {
     CHECK_EQ(moved.location.line, 12);
     CHECK_EQ(moved.message, "cannot write field 'handle' of 'moved', which holds no value");
     REQUIRE_FALSE(moved.notes.empty());
-    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:15");
+    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:17");
     REQUIRE(moved.help.has_value());
     CHECK_EQ(*moved.help, "initialize 'moved' whole, as in 'moved = Holder { ... }'");
 }

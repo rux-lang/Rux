@@ -26,7 +26,7 @@ TEST_CASE("interface method arguments retain coercions around defaults and varia
     Lexer lexer(R"(
         interface Reader { func Read() -> int; }
         struct Value { number: int; }
-        extend Value : Reader { func Read(self: &Value) -> int { return self.number; } }
+        extend Value : Reader { func Read(&self) -> int { return self.number; } }
         interface Caller {
             func Apply(value: &Reader, count: uint = 7u) -> int;
             func Sum(seed: int, values: Reader...) -> int;
@@ -97,7 +97,7 @@ TEST_CASE("interface argument conversion preserves exclusive borrow restrictions
     const auto diagnostics = AnalyzeInterfaceReferences(R"(
         interface Reader { func Read() -> int; }
         struct Value { number: int; }
-        extend Value : Reader { func Read(self: &Value) -> int { return self.number; } }
+        extend Value : Reader { func Read(&self) -> int { return self.number; } }
         interface Caller { func Apply(value: &var Reader); }
         func Test(caller: Caller) {
             let value = Value { number: 2 };
@@ -135,15 +135,15 @@ TEST_CASE("interface argument conversion requires the declared bound") {
 
 TEST_CASE("concrete methods accept concrete interface arguments through shared overload conversion") {
     const auto diagnostics = AnalyzeInterfaceReferences(R"(
-        interface Writer { func Put(self: &var Self, value: int); }
+        interface Writer { func Put(&var self, value: int); }
         struct Buffer { count: int; }
         extend Buffer : Writer {
-            func Put(self: &var Buffer, value: int) { self.count += value; }
+            func Put(&var self, value: int) { self.count += value; }
         }
         struct Number { value: int; }
         extend Number {
-            func Render(self: &Number, writer: &var Writer) { writer.Put(self.value); }
-            func Render(self: &Number, value: bool) {}
+            func Render(&self, writer: &var Writer) { writer.Put(self.value); }
+            func Render(&self, value: bool) {}
         }
         func Test() {
             var number = Number { value: 3 };
@@ -160,14 +160,14 @@ TEST_CASE("concrete methods accept concrete interface arguments through shared o
 
 TEST_CASE("concrete method interface arguments still require writable storage") {
     const auto diagnostics = AnalyzeInterfaceReferences(R"(
-        interface Writer { func Put(self: &var Self, value: int); }
+        interface Writer { func Put(&var self, value: int); }
         struct Buffer { count: int; }
         extend Buffer : Writer {
-            func Put(self: &var Buffer, value: int) { self.count += value; }
+            func Put(&var self, value: int) { self.count += value; }
         }
         struct Number { value: int; }
         extend Number {
-            func Render(self: &Number, writer: &var Writer) { writer.Put(self.value); }
+            func Render(&self, writer: &var Writer) { writer.Put(self.value); }
         }
         func Test(number: Number, buffer: &Buffer) { number.Render(buffer); }
     )");
@@ -177,13 +177,13 @@ TEST_CASE("concrete method interface arguments still require writable storage") 
 TEST_CASE("a requirement's receiver decides whether an interface call may write") {
     const auto diagnostics = AnalyzeInterfaceReferences(R"(
         interface Gauge { func Adjust(amount: int32); }
-        interface Dial { func Turn(self: &var Self, amount: int32); }
+        interface Dial { func Turn(&var self, amount: int32); }
         struct Knob { level: int32; }
         extend Knob : Gauge {
-            func Adjust(self: &var Knob, amount: int32) { self.level += amount; }
+            func Adjust(&var self, amount: int32) { self.level += amount; }
         }
         extend Knob : Dial {
-            func Turn(self: &var Knob, amount: int32) { self.level += amount; }
+            func Turn(&var self, amount: int32) { self.level += amount; }
         }
         func Shared(dial: &Dial) { dial.Turn(1i32); }
         func Exclusive(dial: &var Dial) { dial.Turn(1i32); }
@@ -238,13 +238,13 @@ TEST_CASE("interface references are borrowed fat views through HIR and LIR") {
     Lexer lexer(R"(
         interface CounterView {
             func Read() -> int32;
-            func Add(self: &var Self, amount: int32);
+            func Add(&var self, amount: int32);
         }
         interface Marker {}
         struct Counter { value: int32; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int32 { return self.value; }
-            func Add(self: &var Counter, amount: int32) { self.value += amount; }
+            func Read(&self) -> int32 { return self.value; }
+            func Add(&var self, amount: int32) { self.value += amount; }
         }
         func Observe(view: &CounterView) -> int32 { return view.Read(); }
         func Mutate(view: &var CounterView) { view.Add(3i32); }
@@ -332,7 +332,7 @@ TEST_CASE("exclusive interface views require mutable implementing places") {
         struct Counter { value: int32; }
         struct Plain { value: int32; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int32 { return self.value; }
+            func Read(&self) -> int32 { return self.value; }
         }
         func Mutate(view: &var CounterView) {}
         func Test() {
@@ -362,7 +362,7 @@ TEST_CASE("interface-typed fields borrow their existing fat pointer") {
         struct Counter { value: int32; }
         struct Holder { view: CounterView; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int32 { return self.value; }
+            func Read(&self) -> int32 { return self.value; }
         }
         func Observe(view: &var CounterView) -> int32 { return view.Read(); }
         func Use(holder: &var Holder) -> int32 { return Observe(holder.view); }
@@ -403,11 +403,11 @@ TEST_CASE("interface-typed fields borrow their existing fat pointer") {
 TEST_CASE("interface dispatch excludes explicit self from lowered arguments") {
     Lexer lexer(R"(
         interface CounterView {
-            func Read(self: &Self) -> int32;
+            func Read(&self) -> int32;
         }
         struct Counter { value: int32; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int32 { return self.value; }
+            func Read(&self) -> int32 { return self.value; }
         }
         func Observe(view: &CounterView) -> int32 { return view.Read(); }
     )",
@@ -445,7 +445,7 @@ TEST_CASE("AArch64 lowers borrowed interface reference dispatch") {
         interface CounterView { func Read() -> int32; }
         struct Counter { value: int32; }
         extend Counter : CounterView {
-            func Read(self: &Counter) -> int32 { return self.value; }
+            func Read(&self) -> int32 { return self.value; }
         }
         func Observe(view: &CounterView) -> int32 { return view.Read(); }
         func Main() -> int32 {

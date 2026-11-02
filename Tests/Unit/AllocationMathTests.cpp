@@ -59,10 +59,6 @@ const HirExpr &RequireInitializer(const HirFunc &function, const std::size_t sta
     return *binding->init;
 }
 
-const std::string kCheckedPrelude = R"(
-    intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
-    intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;
-)";
 } // namespace
 
 TEST_CASE("both layout queries fold to unsigned constants") {
@@ -128,85 +124,4 @@ TEST_CASE("a layout query over a type with no layout is reported once") {
     CHECK_EQ(reported->message, "cannot determine the alignment of type 'Node'");
     REQUIRE_EQ(reported->notes.size(), 1);
     CHECK_EQ(reported->notes[0], "'alignof' needs a type whose layout is known at compile time");
-}
-
-TEST_CASE("a checked operation becomes the arithmetic and its check, not a call") {
-    const HirPackage package = LowerSource(kCheckedPrelude + R"(
-        func Size(count: uint64) -> bool {
-            var bytes = 0u64;
-            let overflowed = CheckedMul(count, 8u64, @bytes);
-            return overflowed;
-        }
-    )");
-
-    const HirFunc &size = RequireFunction(package, "Size");
-    const auto *inlined = dynamic_cast<const HirBlockExpr *>(&RequireInitializer(size, 1));
-    REQUIRE(inlined != nullptr);
-    CHECK_EQ(inlined->type, TypeRef::MakeBool());
-    // Both operands and the result are named once, then the product is stored through the caller's pointer.
-    REQUIRE_EQ(inlined->block.stmts.size(), 5);
-    CHECK(dynamic_cast<const HirLetStmt *>(inlined->block.stmts[0].get()) != nullptr);
-    CHECK(dynamic_cast<const HirLetStmt *>(inlined->block.stmts[3].get()) != nullptr);
-    CHECK(dynamic_cast<const HirExprStmt *>(inlined->block.stmts[4].get()) != nullptr);
-
-    // The report is the comparison, so the caller branches on a value rather than on a trap.
-    REQUIRE(inlined->value != nullptr);
-    const auto *reported = dynamic_cast<const HirBinaryExpr *>(inlined->value.get());
-    REQUIRE(reported != nullptr);
-    CHECK_EQ(reported->op, TokenKind::AmpAmp);
-}
-
-TEST_CASE("a checked sum reports the wrap by comparing against an operand") {
-    const HirPackage package = LowerSource(kCheckedPrelude + R"(
-        func Sum(left: uint64, right: uint64) -> bool {
-            var total = 0u64;
-            let overflowed = CheckedAdd(left, right, @total);
-            return overflowed;
-        }
-    )");
-
-    const auto *inlined = dynamic_cast<const HirBlockExpr *>(&RequireInitializer(RequireFunction(package, "Sum"), 1));
-    REQUIRE(inlined != nullptr);
-    const auto *reported = dynamic_cast<const HirBinaryExpr *>(inlined->value.get());
-    REQUIRE(reported != nullptr);
-    CHECK_EQ(reported->op, TokenKind::Less);
-}
-
-TEST_CASE("a checked intrinsic declared with the wrong signature is rejected") {
-    const auto wrongOperand = AnalyzeSource(R"(
-        intrinsic func CheckedAdd(left: uint32, right: uint64, result: *var uint64) -> bool;
-    )");
-
-    REQUIRE_EQ(wrongOperand.size(), 1);
-    CHECK_EQ(wrongOperand[0].message, "checked arithmetic intrinsic 'CheckedAdd' must be declared as "
-                                      "'func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool'");
-    REQUIRE_EQ(wrongOperand[0].notes.size(), 1);
-    CHECK_EQ(wrongOperand[0].notes[0], "parameter 'left' has type 'uint32'");
-
-    const auto readOnlyResult = AnalyzeSource(R"(
-        intrinsic func CheckedMul(left: uint64, right: uint64, result: *uint64) -> bool;
-    )");
-
-    REQUIRE_EQ(readOnlyResult.size(), 1);
-    CHECK_EQ(readOnlyResult[0].notes[0], "parameter 'result' has type '*uint64'");
-
-    const auto wrongArity = AnalyzeSource(R"(
-        intrinsic func CheckedSub(left: uint64, right: uint64) -> bool;
-    )");
-
-    REQUIRE_EQ(wrongArity.size(), 1);
-    CHECK_EQ(wrongArity[0].notes[0], "it declares 2 parameters");
-
-    const auto wrongReturn = AnalyzeSource(R"(
-        intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> uint64;
-    )");
-
-    REQUIRE_EQ(wrongReturn.size(), 1);
-    CHECK_EQ(wrongReturn[0].notes[0], "it returns 'uint64'");
-}
-
-TEST_CASE("a correctly declared checked intrinsic is accepted") {
-    const auto diagnostics = AnalyzeSource(kCheckedPrelude);
-
-    CHECK(diagnostics.empty());
 }

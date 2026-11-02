@@ -3,7 +3,7 @@
 // value the function was given is stored anywhere.
 
 interface Named {
-    func Id(self: &Self) -> int;
+    func Id(&self) -> int;
 }
 
 struct Plain {
@@ -11,7 +11,7 @@ struct Plain {
 }
 
 extend Plain : Named {
-    func Id(self: &Plain) -> int {
+    func Id(&self) -> int {
         return self.id;
     }
 }
@@ -21,7 +21,7 @@ struct Holder {
 }
 
 extend Holder {
-    func Fill(self: &var Holder) {
+    func Fill(&var self) {
         let value: Named = Plain { id: 3 };
         self.named = value;
     }

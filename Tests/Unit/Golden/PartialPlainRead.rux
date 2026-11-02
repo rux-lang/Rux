@@ -58,7 +58,7 @@ unsafe func Main() -> int {
     while turns < 2 {
         let seen = looped.x;
         looped.y = seen;
-        let moved <- looped;
+        let moved = move looped;
         turns += 1;
     }
 

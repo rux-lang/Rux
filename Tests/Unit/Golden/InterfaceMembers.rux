@@ -1,7 +1,7 @@
 // An interface value is used through its methods: neither the concrete type's fields nor the data and vtable pair
 // behind the value are members of it.
 interface Shape {
-    func Area(self: &Self) -> int32;
+    func Area(&self) -> int32;
 }
 
 struct Tile {
@@ -9,7 +9,7 @@ struct Tile {
 }
 
 extend Tile : Shape {
-    func Area(self: &Tile) -> int32 {
+    func Area(&self) -> int32 {
         return self.side * self.side;
     }
 }

@@ -397,7 +397,8 @@ TEST_CASE("Lexer uses maximal munch for Option coalescing without changing postf
     CHECK(result.tokens[9].Is(TokenKind::Question));
 }
 
-TEST_CASE("Lexer recognizes ownership transfer arrows without splitting comparisons") {
+TEST_CASE("Lexer reads the removed transfer arrow as one token without splitting comparisons") {
+    // The parser reports `<-` with the `move` spelling that replaced it, so the lexer still reads it whole.
     const auto result = Lex("let destination <- source; left < -right;");
     REQUIRE(result.diagnostics.empty());
     REQUIRE(result.tokens.size() >= 10);

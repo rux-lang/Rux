@@ -28,12 +28,12 @@ import Allocator::SystemAllocator;
 import Io::{ IoError, ReadExact, WriteAll };
 import Net::{ Resolve, TcpStream };
 
-func Greet(host: char8[..]) -> ! IoError {
-    let addresses = Resolve(SystemAllocator(), host, 7)?;
-    var stream = TcpStream::Connect(addresses.AsSlice()[0])?;
-    WriteAll(stream, "hello")?;
+func Greet(host: char8[..]) throws IoError {
+    let addresses = try Resolve(SystemAllocator(), host, 7);
+    var stream = try TcpStream::Connect(addresses.AsSlice()[0]);
+    try WriteAll(stream, "hello");
     var echoed: char8[5] = ['\0'; 5];
-    ReadExact(stream, echoed[..])?;
+    try ReadExact(stream, echoed[..]);
 }
 ```
 

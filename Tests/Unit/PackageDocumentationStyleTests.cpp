@@ -664,7 +664,7 @@ TEST_CASE("A receiver needs no at-param tag") {
                                "    /// Reports how many bytes remain.\n"
                                "    /// @returns The remaining count.\n"
                                "    /// @see https://rux-lang.dev/docs/api/example/reader/remaining\n"
-                               "    pub func Remaining(self: &Reader) -> uint;\n"
+                               "    pub func Remaining(&self) -> uint;\n"
                                "}\n";
     const auto rules = RulesFiredBy(source);
     CHECK_FALSE(Fired(rules, "missing-param"));

@@ -38,11 +38,11 @@ pub union Bits {
 }
 
 pub interface Reader {
-    func Read(self: &Self) -> int;
+    func Read(&self) -> int;
 }
 
 extend Box : Reader {
-    func Read(self: &Box) -> int { return 1; }
+    func Read(&self) -> int { return 1; }
 }
 
 pub module Nested::Leaf {
@@ -134,17 +134,16 @@ asm func Raw() {
     CHECK_EQ(output, expected);
 }
 
-TEST_CASE("AST dumps spell references and lifecycle operations canonically") {
+TEST_CASE("AST dumps spell references, destructors and moves canonically") {
     constexpr std::string_view source = R"(
+#NoMove
 struct Cell { value: int32; }
 extend Cell {
-    func =(self: &var Cell, other: &Cell);
-    func <-(self: &var Cell, other: Cell);
-    func ~Cell(self: &var Cell) {}
+    func ~Cell(&var self) {}
 }
 func Transfer(source: Cell) -> Cell {
     let result = move source;
-    return <- result;
+    return move result;
 }
 )";
 
@@ -162,8 +161,6 @@ func Transfer(source: Cell) -> Cell {
     input.close();
     std::filesystem::remove(path);
 
-    CHECK(output.contains("FuncDecl '=' (self: &var Cell, other: &Cell) [signature]"));
-    CHECK(output.contains("FuncDecl '<-' (self: &var Cell, other: Cell) [signature]"));
     CHECK(output.contains("FuncDecl '~Cell' (self: &var Cell)"));
     const std::size_t firstMove = output.find("MoveExpr move");
     REQUIRE_NE(firstMove, std::string::npos);
@@ -201,9 +198,9 @@ TEST_CASE("AST dumps name the indexing operators by the punctuation they are dec
     constexpr std::string_view source = R"(
 struct Vect { data: int[4]; }
 extend Vect {
-    func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-    func [](self: &Vect, span: int..int) -> int[..] { return self.data[span]; }
-    func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+    func [](&self, index: uint) -> int { return self.data[index]; }
+    func [](&self, span: int..int) -> int[..] { return self.data[span]; }
+    func []=(&var self, index: uint, value: int) { self.data[index] = value; }
 }
 )";
 
@@ -445,75 +442,6 @@ func Main() -> int {
     CHECK_EQ(output, expected);
 }
 
-TEST_CASE("AST dumps separate the propagation operator from the conditional operator") {
-    // The two share one token: written tight against its operand, `?` propagates a failure; separated, it opens a
-    // conditional expression. The dump is where that decision becomes visible.
-    constexpr std::string_view source = R"(
-func Main() -> int {
-    let propagated = Read()?;
-    let chained = Read()?.field;
-    let selected = ready ? first : second;
-    let nested = Read(ready ? first : second)?;
-    return 0;
-}
-)";
-
-    Lexer lexer(std::string(source), "propagation.rux");
-    auto lexed = lexer.Tokenize();
-    REQUIRE_FALSE(lexed.HasErrors());
-
-    Parser parser(std::move(lexed.tokens), "propagation.rux");
-    auto parsed = parser.Parse();
-    REQUIRE_FALSE(parsed.HasErrors());
-
-    const auto path = Rux::Testing::TestTemporaryDirectory() / "rux-parser-propagation.ast";
-    REQUIRE(Parser::DumpAst(parsed, path));
-    std::ifstream input(path);
-    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-    input.close();
-    std::filesystem::remove(path);
-
-    constexpr std::string_view expected = R"(Module "propagation.rux"
-  FuncDecl 'Main' () -> int
-    Block [5 stmts]
-      LetStmt 'propagated' (let)
-        TryExpr
-          CallExpr
-            Callee
-              IdentExpr 'Read'
-      LetStmt 'chained' (let)
-        FieldExpr '.field'
-          TryExpr
-            CallExpr
-              Callee
-                IdentExpr 'Read'
-      LetStmt 'selected' (let)
-        TernaryExpr
-          Condition
-            IdentExpr 'ready'
-          Then
-            IdentExpr 'first'
-          Else
-            IdentExpr 'second'
-      LetStmt 'nested' (let)
-        TryExpr
-          CallExpr
-            Callee
-              IdentExpr 'Read'
-            Args [1]
-              TernaryExpr
-                Condition
-                  IdentExpr 'ready'
-                Then
-                  IdentExpr 'first'
-                Else
-                  IdentExpr 'second'
-      ReturnStmt
-        LiteralExpr (int) '0'
-)";
-    CHECK_EQ(output, expected);
-}
-
 TEST_CASE("AST statement and pattern dumps preserve their text contract") {
     constexpr std::string_view source = R"(
 func Main() -> int {
@@ -552,7 +480,7 @@ func Main() -> int {
         .Named { field: named } => 3,
         Point { x: 0, y: other } => 4,
         (first, second) if true => { left + right; },
-        else => 6
+        _ => 6
     }
     return count;
 }
@@ -700,7 +628,7 @@ func Main() -> int {
 }
 
 TEST_CASE("AST dumps keep the format attribute on its parameter") {
-    constexpr std::string_view source = "func Show(#Format() format: char8[..], values: int32...) {}\n";
+    constexpr std::string_view source = "func Show(#Format format: char8[..], values: int32...) {}\n";
 
     Lexer lexer(std::string(source), "format-dump.rux");
     auto lexed = lexer.Tokenize();

@@ -305,9 +305,6 @@ void CollectBindingNames(const Pattern &pattern, std::vector<std::pair<std::stri
     else if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         visit(guarded->inner);
     }
-    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        visit(presence->inner);
-    }
     else if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         std::ranges::for_each(enumeration->args, visit);
         for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
@@ -382,9 +379,6 @@ void AnalysisContext::CheckGuardKeepsBindings(const GuardedPattern &pattern) {
             if (!typed->name.empty()) {
                 names.emplace_back(typed->name, typed->location);
             }
-        }
-        else if (const auto *presence = AstCast<const PresencePattern>(&candidate)) {
-            visit(presence->inner);
         }
         else if (const auto *enumeration = AstCast<const EnumPattern>(&candidate)) {
             std::ranges::for_each(enumeration->args, visit);
@@ -865,12 +859,6 @@ public:
         if (AstCast<const NonePattern>(&pattern)) {
             return type.IsOptional() ? Space::Of(0, {}) : Space{};
         }
-        if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-            if (!type.IsOptional() || !presence->inner) {
-                return {};
-            }
-            return Space::Of(1, {Translate(*presence->inner, type->inner.front())});
-        }
         if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
             if (const std::optional<Space> native = TranslateNativeCase(*enumeration, type)) {
                 return *native;
@@ -1187,9 +1175,6 @@ bool AnalysisContext::PatternContains(const Pattern &pattern, const Pattern &tar
     const auto contains = [&](const PatternPtr &child) { return child && PatternContains(*child, target); };
     if (const auto *guarded = AstCast<const GuardedPattern>(&pattern)) {
         return contains(guarded->inner);
-    }
-    if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        return contains(presence->inner);
     }
     if (const auto *enumeration = AstCast<const EnumPattern>(&pattern)) {
         return std::ranges::any_of(enumeration->args, contains) ||

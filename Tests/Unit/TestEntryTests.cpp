@@ -26,7 +26,7 @@ CompileResult BuildForTests(DependencyFixture &fixture, std::vector<Diagnostic> 
 TEST_CASE("a test build refuses a package that declares both Main and tests") {
     DependencyFixture fixture;
     fixture.SetApplicationSource(R"(
-#Test()
+#Test
 func Checks() {}
 
 func Main() -> int {
@@ -41,7 +41,7 @@ func Main() -> int {
 TEST_CASE("a test build refuses tests without a Test dependency") {
     DependencyFixture fixture;
     fixture.SetApplicationSource(R"(
-#Test()
+#Test
 func Checks() {}
 )");
     std::vector<Diagnostic> diagnostics;
@@ -65,13 +65,13 @@ pub func Helper() -> int32 {
 TEST_CASE("a test build refuses tests it cannot call") {
     DependencyFixture fixture;
     fixture.SetApplicationSource(R"(
-#Test()
+#Test
 func Counts() -> int32 {
     return 1;
 }
 
 when true {
-    #Test()
+    #Test
     func Conditional() {}
 }
 )");
@@ -84,7 +84,7 @@ when true {
 TEST_CASE("an ordinary build keeps test functions as plain functions") {
     DependencyFixture fixture;
     fixture.SetApplicationSource(R"(
-#Test()
+#Test
 func Checks() {}
 
 func Main() -> int {

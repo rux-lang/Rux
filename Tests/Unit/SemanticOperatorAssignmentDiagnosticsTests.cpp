@@ -119,7 +119,7 @@ TEST_CASE("variant equality accepts structurally comparable payloads") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Label { value: int; }
         extend Label {
-            func ==(self: &Label, other: Label) -> bool { return self.value == other.value; }
+            func ==(&self, other: Label) -> bool { return self.value == other.value; }
         }
         variant Inner {
             None,
@@ -167,7 +167,7 @@ TEST_CASE("generic variant equality requirements are checked per concrete instan
     const auto diagnostics = AnalyzeSource(R"(
         struct Comparable { value: int; }
         extend Comparable {
-            func ==(self: &Comparable, other: Comparable) -> bool { return self.value == other.value; }
+            func ==(&self, other: Comparable) -> bool { return self.value == other.value; }
         }
         union Opaque { value: int }
         variant Maybe<T> { None, Some(T) }
@@ -316,7 +316,7 @@ TEST_CASE("a declared variant ordering operator overrides the built-in restricti
     const auto diagnostics = AnalyzeSource(R"(
         variant Rank { Low, High }
         extend Rank {
-            func <(self: &Rank, other: Rank) -> bool { return false; }
+            func <(&self, other: Rank) -> bool { return false; }
         }
         func Ordered(left: Rank, right: Rank) -> bool { return left < right; }
     )");
@@ -511,12 +511,12 @@ TEST_CASE("a declared indexer answers indexing and selects its overload by index
         struct Coord { row: uint; column: uint; }
         struct Vect { data: int[4]; }
         extend Vect {
-            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-            func [](self: &Vect, at: Coord) -> int { return self.data[at.row]; }
+            func [](&self, index: uint) -> int { return self.data[index]; }
+            func [](&self, at: Coord) -> int { return self.data[at.row]; }
         }
         struct Box<T> { items: T[2]; }
         extend Box<T> {
-            func [](self: &Box<T>, index: uint) -> T { return self.items[index]; }
+            func [](&self, index: uint) -> T { return self.items[index]; }
         }
         func Main() {
             let vect = Vect { data: [1, 2, 3, 4] };
@@ -551,7 +551,7 @@ TEST_CASE("an indexer result is a value, so no assignment or borrow reaches thro
         struct Cell { value: int; }
         struct Holder { inner: Cell; }
         extend Holder {
-            func [](self: &Holder, index: uint) -> Cell { return self.inner; }
+            func [](&self, index: uint) -> Cell { return self.inner; }
         }
         func Borrow(cell: &Cell) {}
         func Main() {
@@ -572,8 +572,8 @@ TEST_CASE("an indexer call reads its whole receiver rather than projecting into 
     const auto diagnostics = AnalyzeSource(R"(
         struct Vect { data: int[4]; }
         extend Vect {
-            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-            func Bump(self: &var Vect) { self.data[0] = self.data[0] + 1; }
+            func [](&self, index: uint) -> int { return self.data[index]; }
+            func Bump(&var self) { self.data[0] = self.data[0] + 1; }
         }
         func Main() {
             var vect = Vect { data: [1, 2, 3, 4] };
@@ -589,13 +589,13 @@ TEST_CASE("an indexer call reads its whole receiver rather than projecting into 
 
 TEST_CASE("an indexer result transfers as a temporary and leaves its receiver whole") {
     const auto diagnostics = AnalyzeSource(R"(
+        #NoCopy
         struct Owned { value: int; }
         extend Owned {
-            func =(self: &var Owned, other: &Owned);
         }
         struct Bag { slot: Owned; }
         extend Bag {
-            func [](self: &Bag, index: uint) -> Owned { return Owned { value: 1 }; }
+            func [](&self, index: uint) -> Owned { return Owned { value: 1 }; }
         }
         func Consume(item: Owned) {}
         func Main() {
@@ -614,14 +614,14 @@ TEST_CASE("a declared indexed assignment writes through the setter and picks its
         struct Coord { row: uint; column: uint; }
         struct Vect { data: int[4]; }
         extend Vect {
-            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
-            func []=(self: &var Vect, at: Coord, value: int) { self.data[at.row] = value; }
-            func Clear(self: &var Vect) { self[0] = 0; }
+            func [](&self, index: uint) -> int { return self.data[index]; }
+            func []=(&var self, index: uint, value: int) { self.data[index] = value; }
+            func []=(&var self, at: Coord, value: int) { self.data[at.row] = value; }
+            func Clear(&var self) { self[0] = 0; }
         }
         struct Box<T> { items: T[2]; }
         extend Box<T> {
-            func []=(self: &var Box<T>, index: uint, value: T) { self.items[index] = value; }
+            func []=(&var self, index: uint, value: T) { self.items[index] = value; }
         }
         func Write(target: &var Vect) { target[1] = 2; }
         func Main() {
@@ -641,7 +641,7 @@ TEST_CASE("an indexed assignment checks its value and index against the setter i
     const auto diagnostics = AnalyzeSource(R"(
         struct Vect { data: int[4]; }
         extend Vect {
-            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+            func []=(&var self, index: uint, value: int) { self.data[index] = value; }
         }
         func Main() {
             var vect = Vect { data: [1, 2, 3, 4] };
@@ -659,7 +659,7 @@ TEST_CASE("an indexed assignment needs a receiver it may write, and conflicts wi
     const auto diagnostics = AnalyzeSource(R"(
         struct Vect { data: int[4]; }
         extend Vect {
-            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+            func []=(&var self, index: uint, value: int) { self.data[index] = value; }
         }
         func ReadOnly(source: &Vect) { source[0] = 1; }
         func Main() {
@@ -682,11 +682,11 @@ TEST_CASE("only the assignment's own target is written, so a nested subscript is
     const auto diagnostics = AnalyzeSource(R"(
         struct Keys { data: uint[4]; }
         extend Keys {
-            func [](self: &Keys, index: uint) -> uint { return self.data[index]; }
+            func [](&self, index: uint) -> uint { return self.data[index]; }
         }
         struct Vect { data: int[4]; }
         extend Vect {
-            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+            func []=(&var self, index: uint, value: int) { self.data[index] = value; }
         }
         func Main() {
             let keys = Keys { data: [0, 1, 2, 3] };
@@ -702,8 +702,8 @@ TEST_CASE("neither indexing operator reads and writes, so a compound assignment 
     const auto diagnostics = AnalyzeSource(R"(
         struct Vect { data: int[4]; }
         extend Vect {
-            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+            func [](&self, index: uint) -> int { return self.data[index]; }
+            func []=(&var self, index: uint, value: int) { self.data[index] = value; }
         }
         func Main() {
             var vect = Vect { data: [1, 2, 3, 4] };
@@ -722,7 +722,7 @@ TEST_CASE("an assignment to a type that only reads names the operator that would
     const auto diagnostics = AnalyzeSource(R"(
         struct Vect { data: int[4]; }
         extend Vect {
-            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+            func [](&self, index: uint) -> int { return self.data[index]; }
         }
         func Main() {
             var vect = Vect { data: [1, 2, 3, 4] };
@@ -734,37 +734,37 @@ TEST_CASE("an assignment to a type that only reads names the operator that would
     CHECK_EQ(diagnostics[0].message, "cannot assign through the '[]' operator on 'Vect'");
     REQUIRE(diagnostics[0].help.has_value());
     CHECK_EQ(*diagnostics[0].help,
-             "declare 'func []=(self: &var Vect, index: I, value: E)' to assign through the index");
+             "declare 'func []=(&var self, index: I, value: E)' on 'Vect' to assign through the index");
 }
 
 TEST_CASE("each indexing operator has one shape, reported where it is declared") {
     // Each malformed declaration is on its own type, so nothing here is also a duplicate overload.
     const auto diagnostics = AnalyzeSource(R"(
         struct NoResult { data: int[4]; }
-        extend NoResult { func [](self: &NoResult, index: uint) {} }
+        extend NoResult { func [](&self, index: uint) {} }
 
         struct WritableRead { data: int[4]; }
-        extend WritableRead { func [](self: &var WritableRead, index: uint) -> int { return 0; } }
+        extend WritableRead { func [](&var self, index: uint) -> int { return 0; } }
 
         struct ReadOnlySelf { data: int[4]; }
-        extend ReadOnlySelf { func []=(self: &ReadOnlySelf, index: uint, value: int) {} }
+        extend ReadOnlySelf { func []=(&self, index: uint, value: int) {} }
 
         struct NoValue { data: int[4]; }
-        extend NoValue { func []=(self: &var NoValue, index: uint) {} }
+        extend NoValue { func []=(&var self, index: uint) {} }
 
         struct WriteResult { data: int[4]; }
-        extend WriteResult { func []=(self: &var WriteResult, index: uint, value: int) -> int { return value; } }
+        extend WriteResult { func []=(&var self, index: uint, value: int) -> int { return value; } }
     )");
 
     REQUIRE_EQ(diagnostics.size(), 5);
     CHECK_EQ(diagnostics[0].message,
-             "the '[]' operator on 'NoResult' must have signature 'func [](self: &NoResult, index: I) -> E'");
+             "the '[]' operator on 'NoResult' must have signature 'func [](&self, index: I) -> E'");
     CHECK_EQ(diagnostics[1].message, "the '[]' operator on 'WritableRead' must have signature "
-                                     "'func [](self: &WritableRead, index: I) -> E'");
+                                     "'func [](&self, index: I) -> E'");
     CHECK_EQ(diagnostics[2].message, "the '[]=' operator on 'ReadOnlySelf' must have signature "
-                                     "'func []=(self: &var ReadOnlySelf, index: I, value: E)'");
+                                     "'func []=(&var self, index: I, value: E)'");
     CHECK_EQ(diagnostics[3].message,
-             "the '[]=' operator on 'NoValue' must have signature 'func []=(self: &var NoValue, index: I, value: E)'");
+             "the '[]=' operator on 'NoValue' must have signature 'func []=(&var self, index: I, value: E)'");
     CHECK_EQ(diagnostics[4].message, "the '[]=' operator on 'WriteResult' must have signature "
-                                     "'func []=(self: &var WriteResult, index: I, value: E)'");
+                                     "'func []=(&var self, index: I, value: E)'");
 }

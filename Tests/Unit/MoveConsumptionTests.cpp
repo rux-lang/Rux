@@ -7,10 +7,10 @@ TEST_CASE("explicit move syntax parses in bindings assignments calls and returns
     Lexer lexer(R"(
         func Take(value: int32) -> int32 { return value; }
         func Transfer(source: int32) -> int32 {
-            let bound <- source;
+            let bound = move source;
             var destination = 0;
-            destination <- bound;
-            return Take(<- destination);
+            destination = move bound;
+            return Take(move destination);
         }
     )",
                 "explicit_move_syntax.rux");
@@ -35,7 +35,8 @@ TEST_CASE("explicit move syntax parses in bindings assignments calls and returns
     REQUIRE(assignmentStatement != nullptr);
     const auto *assignment = dynamic_cast<const AssignExpr *>(assignmentStatement->expr.get());
     REQUIRE(assignment != nullptr);
-    CHECK_EQ(assignment->op, TokenKind::MoveArrow);
+    CHECK_EQ(assignment->op, TokenKind::Assign);
+    CHECK(dynamic_cast<const MoveExpr *>(assignment->value.get()) != nullptr);
 
     const auto *returned = dynamic_cast<const ReturnStmt *>(transfer->body->stmts[3].get());
     REQUIRE(returned != nullptr);
@@ -134,8 +135,7 @@ TEST_CASE("move and the older arrow record the same consumption facts") {
     const std::string source = R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         func Take(handle: Handle) {}
         func Keyword(source: Handle, other: Handle) {
@@ -145,10 +145,10 @@ TEST_CASE("move and the older arrow record the same consumption facts") {
             Take(move target);
         }
         func Arrow(source: Handle, other: Handle) {
-            let bound <- source;
-            var target <- other;
-            target <- bound;
-            Take(<-target);
+            let bound = move source;
+            var target = move other;
+            target = move bound;
+            Take(move target);
         }
     )";
     Lexer lexer(source, "move_facts.rux");
@@ -201,8 +201,7 @@ TEST_CASE("move keeps every ownership guarantee of the older arrow") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         func Take(handle: Handle) {}
         func UseAfter(source: Handle) -> int32 {
@@ -235,47 +234,46 @@ TEST_CASE("explicit moves invalidate copyable places and reject invalid ownershi
         struct Pair { first: int32; second: int32; }
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         // Safety: `pointer` must address a live `Pair`
         unsafe func ThroughPointer(pointer: *Pair) {
-            let pointee <- *pointer;
+            let pointee = move *pointer;
         }
 
         func ThroughReference(pair: &Pair) {
-            let field <- pair.first;
+            let field = move pair.first;
         }
 
         func MoveReference(pair: &Pair) {
-            let alias <- pair;
+            let alias = move pair;
         }
 
         func MoveBorrowed() {
             let pair = Pair { first: 1, second: 2 };
             let alias: &Pair = pair;
-            let moved <- pair;
+            let moved = move pair;
             alias.first;
         }
 
         func MoveBorrowedHandle() {
             let handle = Handle { value: 1 };
             let alias: &Handle = handle;
-            let moved <- handle;
+            let moved = move handle;
             alias.value;
         }
 
         func Main() {
             let source = 1;
-            let destination <- source;
+            let destination = move source;
             source;
 
             var selfMove = 2;
-            selfMove <- selfMove;
+            selfMove = move selfMove;
 
             let pair = Pair { first: 3, second: 4 };
-            let partial <- pair.first;
+            let partial = move pair.first;
         }
     )");
 
@@ -299,18 +297,17 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func Transfer(source: Handle) -> Handle {
-            let local <- source;
-            return <- local;
+            let local = move source;
+            return move local;
         }
 
         func Replace(destination: Handle, source: Handle) {
-            var target <- destination;
-            target <- source;
+            var target = move destination;
+            target = move source;
         }
 
         func Fresh() -> Handle {
@@ -341,7 +338,7 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
     REQUIRE(statement != nullptr);
     const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
     REQUIRE(assignment != nullptr);
-    CHECK_EQ(assignment->op, TokenKind::MoveArrow);
+    CHECK_EQ(assignment->op, TokenKind::Assign);
     REQUIRE(assignment->overwriteCleanup.has_value());
     CHECK_EQ(assignment->overwriteCleanup->bindingId, target->bindingId);
     CHECK_EQ(assignment->value->consumption, ValueConsumptionKind::ExplicitMove);
@@ -361,8 +358,7 @@ TEST_CASE("named move-only values require explicit transfer syntax in every by-v
 
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func Take(value: Handle) {}
@@ -401,11 +397,10 @@ TEST_CASE("explicit syntax consumes move-only values in every by-value context")
 
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         extend Handle {
-            func Consume(self: Handle) {}
+            func Consume(self) {}
         }
         struct Owner { handle: Handle; }
 
@@ -417,44 +412,44 @@ TEST_CASE("explicit syntax consumes move-only values in every by-value context")
 
         func Main(flag: bool) {
             let initialized = NewHandle(1);
-            let movedByInitialization <- initialized;
+            let movedByInitialization = move initialized;
             initialized;
 
             var assigned = NewHandle(2);
             var destination = NewHandle(3);
-            destination <- assigned;
+            destination = move assigned;
             assigned;
 
             let argument = NewHandle(4);
-            Take(<-argument);
+            Take(move argument);
             argument;
 
             let field = NewHandle(5);
-            let owner = Owner { handle: <-field };
+            let owner = Owner { handle: move field };
             field;
 
             let arrayValue = NewHandle(6);
-            let values = [<-arrayValue];
+            let values = [move arrayValue];
             arrayValue;
 
             let tupleValue = NewHandle(7);
-            let tuple = (<-tupleValue, 1);
+            let tuple = (move tupleValue, 1);
             tupleValue;
 
             let receiver = NewHandle(8);
-            (<-receiver).Consume();
+            (move receiver).Consume();
             receiver;
 
             var ternaryLeft = NewHandle(9);
             var ternaryRight = NewHandle(10);
-            let selected = flag ? <-ternaryLeft : <-ternaryRight;
+            let selected = if flag { move ternaryLeft } else { move ternaryRight };
             ternaryLeft;
             ternaryRight;
 
             var reusable = NewHandle(11);
-            let consumed <- reusable;
-            reusable <- NewHandle(12);
-            Take(<-reusable);
+            let consumed = move reusable;
+            reusable = move NewHandle(12);
+            Take(move reusable);
             reusable;
 
             let copy = 12;
@@ -485,18 +480,17 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func ReturnHandle(value: Handle) -> Handle {
-            return <-value;
+            return move value;
         }
 
         func Main() {
             let first = Handle { value: 1 };
-            let second <- first;
-            ReturnHandle(<-second);
+            let second = move first;
+            ReturnHandle(move second);
         }
     )",
                 "move_consumption_facts.rux");
@@ -542,20 +536,19 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
 }
 
 TEST_CASE("an explicit generic store retains ownership transfer for its instantiation") {
-    // `<-` states that the generic value is transferred. The record is keyed by the generic expression that every
+    // `move` states that the generic value is transferred. The record is keyed by the generic expression that every
     // instantiation shares, so it keeps the unsubstituted type: each instantiation substitutes its own type argument
     // when lowering builds the move plan. Recording one instantiation's concrete type here would hand that type's
     // move operation to every other instantiation of the same body.
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         // Safety: `slot` must address a live, writable `T`
         unsafe func Store<T>(slot: *var T, value: T) {
-            *slot <- value;
+            *slot = move value;
         }
 
         func Main() {
@@ -582,7 +575,12 @@ TEST_CASE("an explicit generic store retains ownership transfer for its instanti
     const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
     REQUIRE(assignment != nullptr);
 
-    const ValueConsumption *fact = model.TryGetConsumption(*assignment->value);
+    const auto *move = dynamic_cast<const MoveExpr *>(assignment->value.get());
+    REQUIRE(move != nullptr);
+    const ValueConsumption *fact = model.TryGetConsumption(*move);
+    if (fact == nullptr) {
+        fact = model.TryGetConsumption(*move->operand);
+    }
     REQUIRE(fact != nullptr);
     CHECK_EQ(fact->kind, ValueConsumptionKind::ExplicitMove);
     CHECK_EQ(fact->type, TypeRef::MakeTypeParam("T"));
@@ -595,13 +593,12 @@ TEST_CASE("an explicit move into a match consumes its subject") {
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         variant Held { Full(Handle), Empty }
 
         func Discard(held: Held) {
-            match <-held {
+            match move held {
                 .Full(handle) => {},
                 .Empty => {}
             }
@@ -682,7 +679,7 @@ TEST_CASE("a by-value match owns the copy it makes of a named plain-data subject
         }
 
         func Moved(held: Held) {
-            match <-held {
+            match move held {
                 .Full(_) => {},
                 .Empty => {}
             }
@@ -739,7 +736,7 @@ TEST_CASE("assignment transfers a fresh temporary and never copies a named ownin
         extend Counted {
             func Counted(id: int32) -> Counted { return Counted { id: id }; }
             func Clone(&self) -> Counted { return Counted { id: self.id }; }
-            func ~Counted(self: &var Counted) {}
+            func ~Counted(&var self) {}
         }
         struct Holder { item: Counted; }
         func Make(id: int32) -> Counted { return Counted { id: id }; }
@@ -750,8 +747,8 @@ TEST_CASE("assignment transfers a fresh temporary and never copies a named ownin
             item = Make(1);
             item = Counted { id: 2 };
             item = Counted(3);
-            item = flag ? Make(4) : Make(5);
-            item = match which { 6 => Make(6), else => Make(7) };
+            item = if flag { Make(4) } else { Make(5) };
+            item = match which { 6 => Make(6), _ => Make(7) };
             item = move moved;
             slot = Make(8);
             item = named.Clone();
@@ -777,8 +774,7 @@ TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         struct Number { value: int32; }
 
@@ -809,8 +805,7 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         struct Owner { handle: Handle; }
 
@@ -818,13 +813,13 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
 
         // Safety: `pointer` must address a live `Handle`
         unsafe func Invalid(inputHandle: Handle, inputOwner: Owner, values: Handle[2], pointer: *Handle) {
-            var handle <- inputHandle;
-            var owner <- inputOwner;
-            Take(<-owner.handle);
-            Take(<-values[0]);
-            Take(<-*pointer);
-            handle <- handle;
-            owner.handle <- owner.handle;
+            var handle = move inputHandle;
+            var owner = move inputOwner;
+            Take(move owner.handle);
+            Take(move values[0]);
+            Take(move *pointer);
+            handle = move handle;
+            owner.handle = move owner.handle;
         }
     )");
 
@@ -845,8 +840,7 @@ TEST_CASE("complete moved bindings can be reinitialized and consumed again") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         func NewHandle(value: int32) -> Handle { return Handle { value: value }; }
@@ -854,13 +848,13 @@ TEST_CASE("complete moved bindings can be reinitialized and consumed again") {
 
         func Valid() {
             var reused = NewHandle(1);
-            Take(<-reused);
-            reused <- NewHandle(2);
-            Take(<-reused);
+            Take(move reused);
+            reused = move NewHandle(2);
+            Take(move reused);
 
             var initializedLater: Handle;
-            initializedLater <- NewHandle(3);
-            Take(<-initializedLater);
+            initializedLater = move NewHandle(3);
+            Take(move initializedLater);
         }
     )");
 

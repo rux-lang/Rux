@@ -48,9 +48,6 @@ extend Size {
     /// The widest size there is.
     pub const Widest: uint32 = 0xFFFF_FFFF;
 
-    /// Copying a size is not allowed.
-    func =(self: &var Size, other: &Size);
-
     /// A size `width` wide.
     /// @param width how wide
     /// @returns the size
@@ -61,28 +58,28 @@ extend Size {
 
     /// Twice the width.
     /// @returns the doubled width
-    pub func Doubled(self: &Size) -> uint32 {
+    pub func Doubled(&self) -> uint32 {
         return self.width * 2;
     }
 
     /// Whether two sizes are as wide.
     /// @param other the size to compare with
     /// @returns whether the widths match
-    pub func ==(self: &Size, other: Size) -> bool {
+    pub func ==(&self, other: Size) -> bool {
         return self.width == other.width;
     }
 
     /// Releases nothing.
-    func ~Size(self: &var Size) {}
+    func ~Size(&var self) {}
 
     /// Kept to the package.
-    func Recompute(self: &var Size) {}
+    func Recompute(&var self) {}
 }
 
 extend Size : Measured {
     /// The size itself.
     /// @returns the size
-    pub func Measure(self: &Size) -> Size {
+    pub func Measure(&self) -> Size {
         return Size(self.width);
     }
 }
@@ -285,7 +282,7 @@ constexpr std::string_view Expected = R"json({
         {
           "kind": "constructor",
           "name": "Size",
-          "line": 41,
+          "line": 38,
           "signature": "pub func Size(width: uint32) -> Size",
           "typeParams": [],
           "params": [
@@ -319,8 +316,8 @@ constexpr std::string_view Expected = R"json({
         {
           "kind": "method",
           "name": "Doubled",
-          "line": 47,
-          "signature": "pub func Doubled(self: &Size) -> uint32",
+          "line": 44,
+          "signature": "pub func Doubled(&self) -> uint32",
           "typeParams": [],
           "params": [],
           "receiver": "&Size",
@@ -341,8 +338,8 @@ constexpr std::string_view Expected = R"json({
         {
           "kind": "operator",
           "name": "==",
-          "line": 54,
-          "signature": "pub func ==(self: &Size, other: Size) -> bool",
+          "line": 51,
+          "signature": "pub func ==(&self, other: Size) -> bool",
           "typeParams": [],
           "params": [
             {
@@ -373,8 +370,8 @@ constexpr std::string_view Expected = R"json({
         {
           "kind": "destructor",
           "name": "~Size",
-          "line": 59,
-          "signature": "func ~Size(self: &var Size)",
+          "line": 56,
+          "signature": "func ~Size(&var self)",
           "typeParams": [],
           "params": [],
           "receiver": "&var Size",
@@ -395,8 +392,8 @@ constexpr std::string_view Expected = R"json({
         {
           "kind": "method",
           "name": "Measure",
-          "line": 68,
-          "signature": "pub func Measure(self: &Size) -> Size",
+          "line": 65,
+          "signature": "pub func Measure(&self) -> Size",
           "typeParams": [],
           "params": [],
           "receiver": "&Size",
@@ -473,7 +470,7 @@ constexpr std::string_view Expected = R"json({
       "displayName": "Style",
       "module": "Shapes",
       "source": "Src/Shapes.rux",
-      "line": 74,
+      "line": 71,
       "signature": "pub enum Style",
       "typeParams": [],
       "doc": {
@@ -493,14 +490,14 @@ constexpr std::string_view Expected = R"json({
           "name": "Outline",
           "value": "1",
           "payload": null,
-          "line": 76,
+          "line": 73,
           "doc": "Only the outline."
         },
         {
           "name": "Filled",
           "value": "0x10",
           "payload": null,
-          "line": 78,
+          "line": 75,
           "doc": "Filled in."
         }
       ],
@@ -513,7 +510,7 @@ constexpr std::string_view Expected = R"json({
       "displayName": "ShapeError",
       "module": "Shapes",
       "source": "Src/Shapes.rux",
-      "line": 82,
+      "line": 79,
       "signature": "pub variant ShapeError",
       "typeParams": [],
       "doc": {
@@ -533,21 +530,21 @@ constexpr std::string_view Expected = R"json({
           "name": "Empty",
           "value": null,
           "payload": null,
-          "line": 84,
+          "line": 81,
           "doc": "Nothing was there."
         },
         {
           "name": "Invalid",
           "value": null,
           "payload": "(uint32)",
-          "line": 86,
+          "line": 83,
           "doc": "A byte that does not belong, at this offset."
         },
         {
           "name": "TooLarge",
           "value": null,
           "payload": "{ width: uint32; height: uint32; }",
-          "line": 88,
+          "line": 85,
           "doc": "A shape too large to hold."
         }
       ],
@@ -560,7 +557,7 @@ constexpr std::string_view Expected = R"json({
       "displayName": "Box<T>",
       "module": "Shapes",
       "source": "Src/Shapes.rux",
-      "line": 93,
+      "line": 90,
       "signature": "pub struct Box<T: Measured>",
       "typeParams": [
         {
@@ -590,7 +587,7 @@ constexpr std::string_view Expected = R"json({
           "name": "value",
           "type": "T",
           "public": true,
-          "line": 95,
+          "line": 92,
           "doc": "The value."
         }
       ],
@@ -600,7 +597,7 @@ constexpr std::string_view Expected = R"json({
         {
           "kind": "associated",
           "name": "Create",
-          "line": 102,
+          "line": 99,
           "signature": "pub func Create(value: T) -> Box<T>",
           "typeParams": [],
           "params": [
@@ -638,7 +635,7 @@ constexpr std::string_view Expected = R"json({
       "displayName": "Draw",
       "module": "Shapes",
       "source": "Src/Shapes.rux",
-      "line": 110,
+      "line": 107,
       "signature": "pub func Draw(size: Size)",
       "typeParams": [],
       "doc": {
@@ -737,7 +734,7 @@ TEST_CASE("a JSON snapshot installs as one file per package and documents privat
     const auto content = ReadSnapshotFile(output / "Shapes.json");
     CHECK(content.contains("\"name\": \"Hidden\""));
     CHECK(content.contains("\"name\": \"Recompute\""));
-    CHECK(content.contains("\"signature\": \"func =(self: &var Size, other: &Size)\""));
+    CHECK(content.contains("\"signature\": \"func Recompute(&var self)\""));
     CHECK(content.contains("\"public\": false"));
 
     // Generating again over the managed directory produces the same bytes.

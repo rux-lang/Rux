@@ -30,9 +30,9 @@ bool Reports(const ParseResult &parsed, const std::string &message) {
 TEST_CASE("#Test marks a function as a test, with or without empty parentheses") {
     const auto parsed = ParseSource(R"(
         #Test
-        func Adds() -> ! TestFailure {}
+        func Adds() throws TestFailure {}
 
-        #Test()
+        #Test
         func Older() {}
 
         func Helper() {}
@@ -56,16 +56,16 @@ TEST_CASE("#Test refuses arguments, duplicates, non-functions, parameters and ge
         func WithArgument() {}
 
         #Test
-        #Test()
+        #Test
         func Twice() {}
 
-        #Test()
+        #Test
         const Value = 1;
 
-        #Test()
+        #Test
         func Parameterized(count: int32) {}
 
-        #Test()
+        #Test
         func Generic<T>() {}
     )");
     REQUIRE(parsed.HasErrors());
@@ -80,8 +80,8 @@ TEST_CASE("#Test refuses methods") {
     const auto parsed = ParseSource(R"(
         struct Counter { value: int32; }
         extend Counter {
-            #Test()
-            func Check(self: &Counter) {}
+            #Test
+            func Check(&self) {}
         }
     )");
     REQUIRE(parsed.HasErrors());

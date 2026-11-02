@@ -133,7 +133,7 @@ func Average(a: int32, b: int32) -> int32 { return (a + b) / 2i32; }
 struct Meter { value: int32; }
 extend Meter {
     #Error("read the value directly")
-    func Read(self: &Meter) -> int32 { return self.value; }
+    func Read(&self) -> int32 { return self.value; }
 }
 module Stats {
     #Warn("use Stats::Mean")
@@ -192,9 +192,9 @@ TEST_CASE("duplicate method signatures are rejected") {
         struct Item {}
 
         extend Item {
-            func Run(self: &Item) {}
-            func Run(self: &Item) {}
-            func Run(self: &Item, value: int) {}
+            func Run(&self) {}
+            func Run(&self) {}
+            func Run(&self, value: int) {}
         }
     )");
 
@@ -405,8 +405,7 @@ TEST_CASE("array repeat expressions require copyable elements") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Owner { value: int; }
         extend Owner {
-            func =(self: &var Owner, other: &Owner);
-            func ~Owner(self: &var Owner) {}
+            func ~Owner(&var self) {}
         }
 
         func Main() {
@@ -485,7 +484,7 @@ TEST_CASE("contextual variant patterns diagnose unknown cases") {
         func Read(option: Option) -> int {
             return match option {
                 .Missing => 0,
-                else => 1
+                _ => 1
             };
         }
     )");

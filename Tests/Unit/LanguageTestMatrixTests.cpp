@@ -137,7 +137,7 @@ namespace {
 const std::map<std::string_view, std::string_view> kKeywordOwners = {
     {"as", "As"},
     {"break", "Break"},
-    {"catch", "Catch"},
+    {"catch", "TryCatch"},
     {"const", "Const"},
     {"continue", "Continue"},
     {"defer", "Defer"},
@@ -146,7 +146,7 @@ const std::map<std::string_view, std::string_view> kKeywordOwners = {
     {"enum", "Enum"},
     {"extend", "SliceExtend"},
     {"extern", "Extern"},
-    {"fail", "Fail"},
+    {"fail", "Throw"},
     {"false", "Bool"},
     {"finally", "TryDefer"},
     {"for", "For"},

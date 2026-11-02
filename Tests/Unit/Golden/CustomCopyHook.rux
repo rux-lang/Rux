@@ -20,17 +20,17 @@ struct Grown {
 }
 
 extend Grown {
-    func =(self: &var Grown, other: &Seed) {
+    func =(&var self, other: &Seed) {
         self.value = other.value;
     }
 }
 
+#NoCopy
 struct Handle {
     value: int32;
 }
 
 extend Handle {
-    func =(&var self, other: &Handle);
 }
 
 func Main() -> int {

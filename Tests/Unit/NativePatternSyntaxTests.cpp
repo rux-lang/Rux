@@ -81,9 +81,6 @@ std::string Shape(const Pattern *pattern) {
     if (const auto *typed = dynamic_cast<const TypedPattern *>(pattern)) {
         return (typed->name.empty() ? "_" : typed->name) + ": " + TypeShape(typed->type.get());
     }
-    if (const auto *presence = dynamic_cast<const PresencePattern *>(pattern)) {
-        return "present(" + Shape(presence->inner.get()) + ")";
-    }
     if (dynamic_cast<const NonePattern *>(pattern)) {
         return "none";
     }
@@ -116,10 +113,10 @@ std::string Shape(const Pattern *pattern) {
     return "?";
 }
 
-/// The pattern of the first arm of `match subject { <arm> => 0, else => 1 }`, which must parse cleanly.
+/// The pattern of the first arm of `match subject { <arm> => 0, _ => 1 }`, which must parse cleanly.
 std::string ArmShape(const std::string_view arm) {
     const ParseResult parsed =
-        ParseSource("func F() { let a = match subject { " + std::string(arm) + " => 0, else => 1 }; }");
+        ParseSource("func F() { let a = match subject { " + std::string(arm) + " => 0, _ => 1 }; }");
     for (const auto &diagnostic : parsed.diagnostics) {
         FAIL_CHECK("unexpected diagnostic for '", arm, "': ", diagnostic.message);
     }
@@ -135,7 +132,7 @@ std::string ArmShape(const std::string_view arm) {
 
 bool ArmReports(const std::string_view arm, const std::string_view message) {
     const ParseResult parsed =
-        ParseSource("func F() { let a = match subject { " + std::string(arm) + " => 0, else => 1 }; }");
+        ParseSource("func F() { let a = match subject { " + std::string(arm) + " => 0, _ => 1 }; }");
     for (const auto &diagnostic : parsed.diagnostics) {
         if (diagnostic.message == message) {
             return true;
@@ -162,45 +159,16 @@ TEST_CASE("a typed annotation is a complete type") {
     CHECK_EQ(ArmShape("(left: A, right)"), "(left: A, right)");
 }
 
-TEST_CASE("native case patterns keep the existing case pattern shape") {
-    CHECK_EQ(ArmShape(".Success(value)"), ".Success(value)");
-    CHECK_EQ(ArmShape(".Failure(e: ParseError)"), ".Failure(e: ParseError)");
-    CHECK_EQ(ArmShape(".Some(.Some(value))"), ".Some(.Some(value))");
-    CHECK_EQ(ArmShape(".Success(())"), ".Success(())");
-    CHECK_EQ(ArmShape("DecodeError::Missing"), "DecodeError::Missing");
-    CHECK_EQ(ArmShape("DecodeError::InvalidDigit(position)"), "DecodeError::InvalidDigit(position)");
-}
-
 TEST_CASE("none is a pattern and never a binding") {
     CHECK_EQ(ArmShape("none"), "none");
     CHECK_EQ(ArmShape(".Some(none)"), ".Some(none)");
     CHECK_EQ(ArmShape("()"), "()");
 }
 
-TEST_CASE("the presence suffix wraps one level per question mark") {
-    CHECK_EQ(ArmShape("value?"), "present(value)");
-    CHECK_EQ(ArmShape("_?"), "present(_)");
-    CHECK_EQ(ArmShape("none?"), "present(none)");
-    CHECK_EQ(ArmShape("value??"), "present(present(value))");
-    CHECK_EQ(ArmShape("7i32?"), "present(7i32)");
-    CHECK_EQ(ArmShape(".Ok(x)?"), "present(.Ok(x))");
-    CHECK_EQ(ArmShape("Point { x: a }?"), "present(Point{..})");
-    CHECK_EQ(ArmShape("(a, b)?"), "present((a, b))");
-    CHECK_EQ(ArmShape("value? if value > 0"), "present(value) if ..");
-    CHECK_EQ(ArmShape(".Success(options?)"), ".Success(present(options))");
-}
-
-TEST_CASE("the presence suffix is rejected where its meaning would be unclear") {
-    CHECK(ArmReports("value ?", "a presence suffix must touch its pattern"));
-    CHECK(ArmReports("v: A ?", "a presence suffix cannot follow a typed pattern"));
-    CHECK(ArmReports("1..10?", "a range bound cannot take a presence suffix"));
-    CHECK(ArmReports("1?..10", "a range bound cannot take a presence suffix"));
-}
-
 TEST_CASE("arm lists take a trailing comma, and a block arm needs no comma") {
-    CHECK(ParseSource("func F() { let a = match s { value? => 0, none => 1, }; }").diagnostics.empty());
+    CHECK(ParseSource("func F() { let a = match s { .Some(value) => 0, none => 1, }; }").diagnostics.empty());
     CHECK(ParseSource("func F() { let a = match s { .Some(v) => 0, none => 1, }; }").diagnostics.empty());
-    CHECK(ParseSource("func F() { match s { value? => {}, none => {} } }").diagnostics.empty());
+    CHECK(ParseSource("func F() { match s { .Some(value) => {}, none => {} } }").diagnostics.empty());
     CHECK(ParseSource("func F() { match s { .Some(v) => {} none => {} } }").diagnostics.empty());
     bool reported = false;
     for (const auto &diagnostic : ParseSource("func F() { let a = match s { none => 1 _ => 2 }; }").diagnostics) {
@@ -227,7 +195,7 @@ TEST_CASE("alternatives join whole patterns with '|' and a guard covers all of t
 
 TEST_CASE("'_' is the default arm, and it is last and unguarded") {
     CHECK(ParseSource("func F() { let a = match s { 1 => 0, _ => 1 }; }").diagnostics.empty());
-    CHECK(ParseSource("func F() { let a = match s { 1 => 0, else => 1 }; }").diagnostics.empty());
+    CHECK(ParseSource("func F() { let a = match s { 1 => 0, _ => 1 }; }").diagnostics.empty());
     CHECK(ArmReports("_ if ready", "the default arm '_' cannot have a guard"));
     const auto reports = [](const std::string_view source, const std::string_view message) {
         for (const auto &diagnostic : ParseSource(source).diagnostics) {
@@ -238,14 +206,15 @@ TEST_CASE("'_' is the default arm, and it is last and unguarded") {
         return false;
     };
     CHECK(reports("func F() { let a = match s { _ => 0, 1 => 1 }; }", "the default arm must be the last match arm"));
-    CHECK(reports("func F() { match s { else => {} 1 => {} } }", "the default arm must be the last match arm"));
-    CHECK(
-        reports("func F() { let a = Read() catch { _ => 0, e => 1 }; }", "the default arm must be the last catch arm"));
+    CHECK(reports("func F() { match s { _ => {} 1 => {} } }", "the default arm must be the last match arm"));
+    CHECK(reports("func F() { let a = try Read() catch { _ => 0, e => 1 }; }",
+                  "the default arm must be the last catch arm"));
 }
 
 TEST_CASE("formatting leaves native pattern spellings unchanged") {
-    const std::string source = "func F() {\n    match s {\n        v: A | B => {},\n        value?? => {},\n"
-                               "        none => {},\n        else => {}\n    }\n}\n";
+    const std::string source =
+        "func F() {\n    match s {\n        v: A | B => {},\n        .Some(.Some(value)) => {},\n"
+        "        none => {},\n        _ => {}\n    }\n}\n";
     const auto formatted = Formatting::Format(source);
     CHECK_FALSE(formatted.changed);
     CHECK_EQ(formatted.text, source);
@@ -305,13 +274,6 @@ TEST_CASE("an 'is' pattern before a body leaves the brace to the body") {
     const auto *test = dynamic_cast<const IsExpr *>(statement->condition.get());
     REQUIRE(test != nullptr);
     CHECK_EQ(Shape(test->pattern.get()), ".Done");
-    // The conditional operator's ':' is not a typed pattern's.
-    const ParseResult conditional = ParseSource("func F() { let probe = flag ? value is Circle : false; }");
-    const auto *ternary = dynamic_cast<const TernaryExpr *>(ParsedInitializer(conditional));
-    REQUIRE(ternary != nullptr);
-    const auto *typeTest = dynamic_cast<const IsExpr *>(ternary->thenExpr.get());
-    REQUIRE(typeTest != nullptr);
-    CHECK(typeTest->type != nullptr);
 }
 
 TEST_CASE("an 'if' in value position is a match on its condition") {

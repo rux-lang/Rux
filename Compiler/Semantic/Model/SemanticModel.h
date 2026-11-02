@@ -438,7 +438,6 @@ struct SemanticFacts {
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
-    std::unordered_map<const MappedTryExpr *, ResolvedPropagation> mappedPropagations;
     std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
     /// Every accepted throw site: a call or operator expression a `try` marks, or a `throw` used as a value.
     std::unordered_map<const Expr *, ResolvedThrowSite> throwSites;
@@ -573,8 +572,6 @@ struct SemanticModel {
 
     /// Returns null for a rejected `?`, which has no early return to build.
     [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const TryExpr &expression) const noexcept;
-    /// Returns null for a rejected `? else`, which has no early return to build.
-    [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const MappedTryExpr &expression) const noexcept;
 
     /// Returns null unless `expression` is an accepted throw site: a call or operator a `try` marks, or a `throw`
     /// written as a value.

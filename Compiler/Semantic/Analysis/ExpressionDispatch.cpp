@@ -339,12 +339,6 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
     }
 
-    if (const auto *mapped = AstCast<const MappedTryExpr>(&expr)) {
-        return CheckMappedTry(*mapped);
-    }
-    if (const auto *recovery = AstCast<const CatchExpr>(&expr)) {
-        return CheckCatchExpression(*recovery);
-    }
     if (const auto *marked = AstCast<const TryMarkExpr>(&expr)) {
         return CheckTryMark(*marked);
     }
@@ -358,10 +352,6 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     // `.Case` takes its enum or variant from the type its context expects, and from nothing else.
     if (const auto *e = AstCast<const EnumShorthandExpr>(&expr)) {
         return CheckContextualCase(*e);
-    }
-
-    if (auto *e = AstCast<const TernaryExpr>(&expr)) {
-        return CheckTernaryExpression(*e);
     }
 
     if (auto *e = AstCast<const RangeExpr>(&expr)) {

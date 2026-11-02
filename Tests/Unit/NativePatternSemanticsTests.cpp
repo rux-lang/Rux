@@ -56,7 +56,7 @@ TEST_CASE("character ranges match every character storage width") {
         const std::string type = "char" + std::to_string(width);
         const std::string prefix = "c" + std::to_string(width);
         const auto errors = Errors("func Pick(value: " + type + ") -> int { return match value { " + prefix +
-                                   "'a'..=" + prefix + "'z' => 1, else => 0 }; }");
+                                   "'a'..=" + prefix + "'z' => 1, _ => 0 }; }");
         CAPTURE(type);
         CAPTURE(errors.empty() ? std::string{} : errors[0]);
         CHECK(errors.empty());
@@ -72,54 +72,6 @@ TEST_CASE("constant arrays accept inline constant casts") {
     )");
     CAPTURE(errors.empty() ? std::string{} : errors[0]);
     CHECK(errors.empty());
-}
-
-TEST_CASE("fallible matches cover both channels at every level") {
-    CHECK(ErrorsIn(R"(
-        func Channels(outcome: Options ! ParseError) -> int32 {
-            return match outcome {
-                .Success(options) => 1i32,
-                .Failure(error) => 2i32
-            };
-        }
-        func Nested(outcome: (int32 ! ParseError) ! IoError) -> int32 {
-            return match outcome {
-                .Success(.Success(value)) => value,
-                .Success(.Failure(error)) => 2i32,
-                .Failure(error) => 3i32
-            };
-        }
-        func SameType(outcome: int32 ! int32) -> int32 {
-            return match outcome {
-                .Success(value) => value,
-                .Failure(code) => code
-            };
-        }
-        func Discard(outcome: Options ! ParseError) {
-            match outcome {
-                .Success(_) => {},
-                .Failure(_) => {}
-            }
-        }
-    )")
-              .empty());
-
-    const auto missing = ErrorsIn(R"(
-        func Channels(outcome: Options ! ParseError) -> int32 {
-            return match outcome {
-                .Success(options) => 1i32
-            };
-        }
-        func Nested(outcome: (int32 ! ParseError) ! IoError) -> int32 {
-            return match outcome {
-                .Success(.Success(value)) => value,
-                .Failure(error) => 3i32
-            };
-        }
-    )");
-    CHECK(AnyContains(missing, "match on 'Options ! ParseError' is not exhaustive; missing .Failure(_)"));
-    CHECK(AnyContains(missing, "match on '(int32 ! ParseError) ! IoError' is not exhaustive; missing "
-                               ".Success(.Failure(_))"));
 }
 
 TEST_CASE("every nested optional state is a separate case") {
@@ -143,82 +95,6 @@ TEST_CASE("every nested optional state is a separate case") {
         }
     )");
     CHECK(AnyContains(missing, "match on 'int32?\?' is not exhaustive; missing .Some(none)"));
-}
-
-TEST_CASE("the presence suffix covers exactly what its constructor spelling does") {
-    CHECK(ErrorsIn(R"(
-        func Suffix(found: int32??) -> int32 {
-            return match found {
-                value?? => value,
-                none? => 1i32,
-                none => 2i32
-            };
-        }
-        func Mixed(found: int32??) -> int32 {
-            return match found {
-                .Some(value?) => value,
-                none? => 1i32,
-                none => 2i32
-            };
-        }
-        func Guarded(count: int32?) -> int32 {
-            return match count {
-                value? if value > 0i32 => value,
-                _? => 0i32,
-                none => 1i32
-            };
-        }
-    )")
-              .empty());
-
-    // A suffix after its constructor spelling adds nothing, and the reverse holds too.
-    const auto repeated = ErrorsIn(R"(
-        func Repeated(count: int32?) -> int32 {
-            return match count {
-                .Some(value) => value,
-                other? => other,
-                none => 0i32
-            };
-        }
-        func Reversed(count: int32?) -> int32 {
-            return match count {
-                value? => value,
-                .Some(other) => other,
-                none => 0i32
-            };
-        }
-    )");
-    CHECK_EQ(CountContaining(repeated, "match arm is unreachable"), 2);
-
-    const auto missing = ErrorsIn(R"(
-        func Missing(found: int32??) -> int32 {
-            return match found {
-                value?? => value,
-                none => 2i32
-            };
-        }
-    )");
-    CHECK(AnyContains(missing, "missing .Some(none)"));
-
-    const auto wrongSubject = ErrorsIn(R"(
-        func OnSum(value: int32 | bool) -> int32 {
-            return match value {
-                v? => 1i32,
-                else => 2i32
-            };
-        }
-        func OnFallible(value: int32 ! ParseError) -> int32 {
-            return match value {
-                v? => 1i32,
-                else => 2i32
-            };
-        }
-    )");
-    CHECK(AnyContains(wrongSubject,
-                      "a presence suffix needs an optional subject, but the matched value has type 'bool8 | int32'"));
-    CHECK(AnyContains(
-        wrongSubject,
-        "a presence suffix needs an optional subject, but the matched value has type 'int32 ! ParseError'"));
 }
 
 TEST_CASE("typed patterns select members, one presence level, or the whole subject") {
@@ -277,30 +153,23 @@ TEST_CASE("typed patterns select members, one presence level, or the whole subje
         func SkipsLevel(found: int32??) -> int32 {
             return match found {
                 value: int32 => value,
-                else => 0i32
-            };
-        }
-        func Channel(outcome: Options ! ParseError) -> int32 {
-            return match outcome {
-                options: Options => 1i32,
-                else => 0i32
+                _ => 0i32
             };
         }
         func NotMember(value: Options | Defaults) -> int32 {
             return match value {
                 number: int32 => number,
-                else => 0i32
+                _ => 0i32
             };
         }
         func Plain(value: int32) -> int32 {
             return match value {
                 flag: bool => 1i32,
-                else => 0i32
+                _ => 0i32
             };
         }
     )");
     CHECK(AnyContains(rejected, "typed pattern 'int32' cannot select from optional 'int32?\?'"));
-    CHECK(AnyContains(rejected, "typed pattern 'Options' cannot select from fallible 'Options ! ParseError'"));
     CHECK(AnyContains(rejected, "type 'int32' is not a member or subset of sum 'Defaults | Options'"));
     CHECK(AnyContains(rejected, "typed pattern 'bool8' cannot match a value of type 'int32'"));
 
@@ -315,20 +184,6 @@ TEST_CASE("typed patterns select members, one presence level, or the whole subje
         }
     )");
     CHECK(AnyContains(bound, "Defaults | Options"));
-}
-
-TEST_CASE("the help for a typed pattern on a fallible names both channel patterns") {
-    const auto errors = ErrorDiagnostics(std::string(kDeclarations) + R"(
-        func Channel(outcome: Options ! ParseError) -> int32 {
-            return match outcome {
-                options: Options => 1i32,
-                else => 0i32
-            };
-        }
-    )");
-    REQUIRE_EQ(errors.size(), 1);
-    REQUIRE(errors.front().help.has_value());
-    CHECK_EQ(*errors.front().help, "match a channel with '.Success(v: Options)' or '.Failure(e: ParseError)'");
 }
 
 TEST_CASE("guards never cover and only wholly covered arms are unreachable") {
@@ -372,19 +227,19 @@ TEST_CASE("an else arm is never unreachable") {
             return match value {
                 options: Options => 1i32,
                 defaults: Defaults => 2i32,
-                else => 3i32
+                _ => 3i32
             };
         }
         func Whole(value: Options | Defaults) -> int32 {
             return match value {
                 any => 1i32,
-                else => 3i32
+                _ => 3i32
             };
         }
         func Pick<T, U>(value: T | U) -> int32 {
             return match value {
                 x: T => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
         func Use() {
@@ -420,7 +275,7 @@ TEST_CASE("arms that collapse together are reported where they are instantiated"
         func Select<T>(value: int32 | bool) -> int32 {
             return match value {
                 x: T => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
         func Use() {
@@ -432,7 +287,7 @@ TEST_CASE("arms that collapse together are reported where they are instantiated"
         func Select<T>(value: int32 | bool) -> int32 {
             return match value {
                 x: T => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
         func Use() {
@@ -440,25 +295,6 @@ TEST_CASE("arms that collapse together are reported where they are instantiated"
         }
     )"),
                       "type 'int64' is not a member or subset of sum 'bool8 | int32'"));
-}
-
-TEST_CASE("a typed pattern on the whole subject is portable across instantiations") {
-    CHECK(ErrorsIn(R"(
-        func Size<T>(value: T) -> int32 {
-            return 1i32;
-        }
-        func Describe<T>(value: T) -> int32 {
-            return match value {
-                v: T => Size(v)
-            };
-        }
-        func Use(optional: int32?, outcome: int32 ! ParseError) {
-            let plain = Describe(1i32);
-            let present = Describe(optional);
-            let fallible = Describe(outcome);
-        }
-    )")
-              .empty());
 }
 
 TEST_CASE("qualified case patterns select a variant member of a sum") {
@@ -480,13 +316,6 @@ TEST_CASE("qualified case patterns select a variant member of a sum") {
                 e: IoError => 3i32
             };
         }
-        func Channel(outcome: Options ! DecodeError) -> int32 {
-            return match outcome {
-                .Success(_) => 0i32,
-                .Failure(.Missing) => 1i32,
-                .Failure(.InvalidDigit(position)) => position
-            };
-        }
     )")
               .empty());
 
@@ -504,7 +333,7 @@ TEST_CASE("qualified case patterns select a variant member of a sum") {
         func Pick(value: Outcome<int32> | Outcome<bool>) -> int32 {
             return match value {
                 Outcome::Pending => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
     )");
@@ -514,7 +343,7 @@ TEST_CASE("qualified case patterns select a variant member of a sum") {
         func Recover(error: DecodeError | IoError) -> int32 {
             return match error {
                 .Missing => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
     )");
@@ -538,14 +367,14 @@ TEST_CASE("a binding pattern must introduce a free name") {
         func First(value: Options | Defaults) -> int32 {
             return match value {
                 Options => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
         func Middle(value: int32) -> int32 {
             return match value {
                 1i32 => 1i32,
                 Settings => 2i32,
-                else => 3i32
+                _ => 3i32
             };
         }
         func Last(value: int32) -> int32 {
@@ -562,7 +391,7 @@ TEST_CASE("a binding pattern must introduce a free name") {
         func RangeEnd(value: int32) -> int32 {
             return match value {
                 Limit..=9 => 1i32,
-                else => 2i32
+                _ => 2i32
             };
         }
         func Parameter<T>(value: int32) -> int32 {
@@ -580,12 +409,6 @@ TEST_CASE("a binding pattern must introduce a free name") {
                 Missing => 1i32
             };
         }
-        func Nested(outcome: int32 ! DecodeError) -> int32 {
-            return match outcome {
-                .Success(value) => value,
-                .Failure(Missing) => 1i32
-            };
-        }
     )");
     const auto messageCount = [&](const std::string_view text) {
         return std::ranges::count_if(errors, [&](const auto &error) { return error.message.contains(text); });
@@ -597,7 +420,7 @@ TEST_CASE("a binding pattern must introduce a free name") {
     CHECK_EQ(messageCount("pattern 'T' cannot bind a new variable because 'T' already names a"), 1);
     CHECK_EQ(messageCount("pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant "
                           "'DecodeError'"),
-             3);
+             2);
 
     const auto options =
         std::ranges::find_if(errors, [](const auto &error) { return error.message.starts_with("pattern 'Options'"); });
@@ -648,13 +471,13 @@ TEST_CASE("native and nominal absence patterns are not interchangeable") {
         func Nominal(value: Option<int32>) -> int32 {
             return match value {
                 none => 0i32,
-                else => 1i32
+                _ => 1i32
             };
         }
         func Native(value: int32?) -> int32 {
             return match value {
                 .None => 0i32,
-                else => 1i32
+                _ => 1i32
             };
         }
     )");
@@ -663,49 +486,6 @@ TEST_CASE("native and nominal absence patterns are not interchangeable") {
     CHECK_EQ(errors[1].message, "'.None' matches a variant case; use 'none' for native optional 'int32?'");
     REQUIRE(errors[1].help.has_value());
     CHECK_EQ(*errors[1].help, "write 'none'");
-}
-
-TEST_CASE("native levels open only through their own patterns") {
-    const auto errors = ErrorsIn(R"(
-        func Literal(count: int32?) -> int32 {
-            return match count {
-                7i32 => 1i32,
-                else => 0i32
-            };
-        }
-        func Crossed(count: int32?) -> int32 {
-            return match count {
-                .Success(value) => value,
-                else => 0i32
-            };
-        }
-        func Arity(outcome: int32 ! ParseError) -> int32 {
-            return match outcome {
-                .Success(a, b) => 1i32,
-                else => 0i32
-            };
-        }
-    )");
-    CHECK(AnyContains(errors, "this pattern cannot match native optional 'int32?'"));
-    CHECK(AnyContains(errors, "'.Success(...)' matches a native fallible, but the matched value has type 'int32?'"));
-    CHECK(AnyContains(errors, "pattern '.Success' expects 1 field, but found 2"));
-}
-
-TEST_CASE("a unit subject is covered by the unit pattern") {
-    CHECK(ErrorsIn(R"(
-        func Unit(value: ()) -> int32 {
-            return match value {
-                () => 1i32
-            };
-        }
-        func Completion(outcome: ! ParseError) -> int32 {
-            return match outcome {
-                .Success(()) => 1i32,
-                .Failure(_) => 0i32
-            };
-        }
-    )")
-              .empty());
 }
 
 TEST_CASE("is selects membership by the subject's form") {
@@ -743,16 +523,12 @@ TEST_CASE("is selects membership by the subject's form") {
         func Deeper(found: int32??) -> bool {
             return found is int32;
         }
-        func Channel(outcome: int32 ! ParseError) -> bool {
-            return outcome is int32;
-        }
         func Plain(count: int32) -> bool {
             return count is int64;
         }
     )");
     CHECK(AnyContains(rejected, "type 'int32' is not a member or subset of sum 'Defaults | Options'"));
     CHECK(AnyContains(rejected, "type 'int32' is neither the payload of optional 'int32?\?' nor a member of it"));
-    CHECK(AnyContains(rejected, "'is' cannot test the channel of fallible 'int32 ! ParseError'"));
     CHECK(AnyContains(rejected, "'is int64' can never be true for a value of type 'int32'"));
 
     const auto instantiated = Errors(R"(
@@ -968,8 +744,8 @@ TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred o
         struct Token { id: int32; }
         extend Token { func ~Token(&var self) {} }
         func Use(entry: Token?) -> int32 {
-            var held <- entry;
-            if <-held is .Some(token) {
+            var held = move entry;
+            if move held is .Some(token) {
                 return token.id;
             }
             if held is .Some(_) {

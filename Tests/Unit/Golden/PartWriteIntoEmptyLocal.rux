@@ -1,7 +1,7 @@
 struct Handle { code: int32; }
 
 extend Handle {
-    func ~Handle(self: &var Handle) {}
+    func ~Handle(&var self) {}
 }
 
 struct Holder { handle: Handle; extra: int32; }
@@ -9,12 +9,12 @@ struct Outer { holder: Holder; }
 struct Plain { code: int32; }
 
 func Init(slot: *var Handle) {
-    unsafe { *slot <- Handle { code: 9 }; }
+    unsafe { *slot = move Handle { code: 9 }; }
 }
 
 func DeclaredWithoutValue() {
     var empty: Holder;
-    empty.handle <- Handle { code: 1 };
+    empty.handle = move Handle { code: 1 };
 }
 
 func PlainFieldOfDroppable() {
@@ -23,40 +23,40 @@ func PlainFieldOfDroppable() {
 }
 
 func MovedFrom(holder: Holder) {
-    var moved <- holder;
-    let taken <- moved;
-    moved.handle <- Handle { code: 2 };
+    var moved = move holder;
+    let taken = move moved;
+    moved.handle = move Handle { code: 2 };
 }
 
 func MaybeMoved(holder: Holder, condition: bool) {
-    var moved <- holder;
+    var moved = move holder;
     if condition {
-        let taken <- moved;
+        let taken = move moved;
     }
-    moved.handle <- Handle { code: 3 };
+    moved.handle = move Handle { code: 3 };
 }
 
 func MaybeUninitialized(holder: Holder, condition: bool) {
     var partly: Holder;
     if condition {
-        partly <- holder;
+        partly = move holder;
     }
     partly.extra = 4;
 }
 
 func Nested() {
     var outer: Outer;
-    outer.holder.handle <- Handle { code: 5 };
+    outer.holder.handle = move Handle { code: 5 };
 }
 
 func TupleElement() {
     var pair: (Handle, int32);
-    pair.0 <- Handle { code: 6 };
+    pair.0 = move Handle { code: 6 };
 }
 
 func ArrayElement() {
     var handles: Handle[2];
-    handles[1] <- Handle { code: 7 };
+    handles[1] = move Handle { code: 7 };
 }
 
 func AddressOfPart() {
@@ -65,8 +65,8 @@ func AddressOfPart() {
 }
 
 func InLoop(holder: Holder) {
-    var moved <- holder;
-    let taken <- moved;
+    var moved = move holder;
+    let taken = move moved;
     for i in 0..2 {
         moved.extra = i as int32;
     }
@@ -76,7 +76,7 @@ struct Box<T> { value: T; }
 
 func Generic<T>(value: T) {
     var box: Box<T>;
-    box.value <- value;
+    box.value = move value;
 }
 
 unsafe func Allowed(holder: &var Holder, slot: *var Holder) {
@@ -84,17 +84,17 @@ unsafe func Allowed(holder: &var Holder, slot: *var Holder) {
     plain.code = 1;
     var whole: Holder;
     whole = Holder { handle: Handle { code: 2 }, extra: 0 };
-    whole.handle <- Handle { code: 3 };
-    holder.handle <- Handle { code: 4 };
-    slot.handle <- Handle { code: 5 };
-    let taken <- whole;
+    whole.handle = move Handle { code: 3 };
+    holder.handle = move Handle { code: 4 };
+    slot.handle = move Handle { code: 5 };
+    let taken = move whole;
     whole = Holder { handle: Handle { code: 6 }, extra: 0 };
     whole.extra = 7;
 }
 
 extend Holder {
-    func Reset(self: &var Holder) {
-        self.handle <- Handle { code: 8 };
+    func Reset(&var self) {
+        self.handle = move Handle { code: 8 };
     }
 }
 

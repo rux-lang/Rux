@@ -350,15 +350,6 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         out << "TypedPattern '" << (typed->name.empty() ? "_" : typed->name)
             << "' : " << DeclarationPrinter::TypeString(typed->type.get()) << "\n";
     }
-    else if (const auto *presence = AstCast<const PresencePattern>(&pattern)) {
-        Pad();
-        out << "PresencePattern\n";
-        ++indent;
-        if (presence->inner) {
-            PrintPattern(*presence->inner);
-        }
-        --indent;
-    }
     else if (AstCast<const NonePattern>(&pattern)) {
         Pad();
         out << "NonePattern\n";

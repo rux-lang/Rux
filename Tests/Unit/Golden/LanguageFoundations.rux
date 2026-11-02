@@ -37,13 +37,13 @@ func Missing<T: Display>(value: T) -> int32 {
     return value.Measure();
 }
 
-func Read(ok: bool) -> int32 ! ParseError {
+func Read(ok: bool) -> int32 throws ParseError {
     return 1i32;
 }
 
 // Propagation out of a function that returns neither the same failure nor any at all.
-func Rethrown(ok: bool) -> int32 ! IoError {
-    let value = Read(ok)?;
+func Rethrown(ok: bool) -> int32 throws IoError {
+    let value = try Read(ok);
     return value;
 }
 
@@ -51,7 +51,7 @@ func Discarded(ok: bool) {
     let value = Read(ok)?;
 }
 
-func NotPropagatable() -> int32 ! ParseError {
+func NotPropagatable() -> int32 throws ParseError {
     let value = 3i32?;
     return value;
 }
@@ -62,7 +62,7 @@ struct Cursor {
 }
 
 extend Cursor {
-    func Next(self: &Cursor) -> int32? {
+    func Next(&self) -> int32? {
         return none;
     }
 }
@@ -74,8 +74,6 @@ func Walk() {
 }
 
 // Intrinsics the compiler emits itself, declared with signatures it cannot emit for.
-intrinsic func CheckedAdd(left: uint32, right: uint64, result: *var uint64) -> bool;
-
 intrinsic func Zeroize(memory: *uint8, length: uint64);
 
 // A layout query about a type that has none.

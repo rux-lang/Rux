@@ -69,7 +69,7 @@ std::string CalleeName(const HirExpr &expr) {
 const std::string kIterationPrelude = R"(
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: &var Counter) -> int32? {
+        func Next(&var self) -> int32? {
             if self.value >= self.limit { return none; }
             let current = self.value;
             self.value = self.value + 1i32;
@@ -78,7 +78,7 @@ const std::string kIterationPrelude = R"(
     }
     struct Span { limit: int32; }
     extend Span {
-        func Iterate(self: &Span) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
+        func Iterate(&self) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
     }
 )";
 } // namespace

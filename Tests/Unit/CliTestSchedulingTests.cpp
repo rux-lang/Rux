@@ -16,7 +16,7 @@ TEST_CASE("test rejects invalid worker counts and documents the one-per-core def
     CHECK(help.output.contains("one per logical core"));
 }
 
-TEST_CASE("parallel package tests match serial reports when artifacts collide and tests fail") {
+TEST_CASE("parallel package tests match serial reports when artifacts collide and tests throw") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto root = std::filesystem::path(RUX_TEST_BIN_DIR) / ("rux-parallel-tests-" + std::to_string(nonce));
     const std::string package = "[Manifest]\nVersion = 1\n[Package]\nName = \"Same\"\n"

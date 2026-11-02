@@ -328,10 +328,7 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
                 }
             }
             else {
-                const TypeRef armType = CheckExpr(*arm.body);
-                if (!IsDivergingExpression(*arm.body)) {
-                    CheckFallibleDiscard(armType, arm.body->location);
-                }
+                static_cast<void>(CheckExpr(*arm.body));
             }
         }
         else {

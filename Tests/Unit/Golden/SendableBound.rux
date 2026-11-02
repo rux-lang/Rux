@@ -3,7 +3,7 @@
 
 interface Sendable {}
 
-#Unsendable()
+#Unsendable
 struct Local {
     count: *var int32;
 }

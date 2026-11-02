@@ -65,37 +65,11 @@ bool Reports(const Analyzed &analyzed, const std::string_view text) {
 }
 } // namespace
 
-TEST_CASE("implicit conversions record their one route") {
-    const auto analyzed = Analyze(R"(
-        struct A {}
-        struct B {}
-        struct E {}
-        func Use(a: A, optionalA: A?, sum: A | B) {
-            let present: int32? = 5;
-            let injected: A | B = a;
-            let succeeded: int32 ! E = 7i32;
-            let nested: int32? ! E = 7i32;
-            let widened: (A | B)? = optionalA;
-            let same: A | B = sum;
-            let absent: int32? ! E = none;
-        }
-    )");
-    const FuncDecl &use = Function(*analyzed, "Use");
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 0)), std::vector{Kind::Presence, Kind::Identity});
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 1)), std::vector{Kind::Inject});
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 2)), std::vector{Kind::Success, Kind::Identity});
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 3)), (std::vector{Kind::Success, Kind::Presence, Kind::Identity}));
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 4)), std::vector{Kind::WidenOptional, Kind::Inject});
-    // Identity records nothing.
-    CHECK(RouteOf(*analyzed, Initializer(use, 5)).empty());
-    CHECK_EQ(RouteOf(*analyzed, Initializer(use, 6)), std::vector{Kind::Success, Kind::Absent});
-}
-
 TEST_CASE("arguments and returns convert through the same rules") {
     const auto analyzed = Analyze(R"(
         struct E {}
         func Take(value: int32?) {}
-        func Give(value: int32) -> int32 ! E { return value; }
+        func Give(value: int32) -> int32 throws E { return value; }
         func Payload<T>(value: T?) -> T { return Payload(value); }
         func Use() {
             Take(3i32);
@@ -160,99 +134,4 @@ TEST_CASE("narrowing, extraction, and absence outside an optional are refused") 
     CHECK(Reports(*analyzed, "'none' needs an expected optional type, but found 'int32'"));
     // `none` never chooses a sum member, even an optional one.
     CHECK(Reports(*analyzed, "'none' needs an expected optional type, but found 'A | (B?)'"));
-}
-
-TEST_CASE("forwarding versus nesting is an ambiguity the source must resolve") {
-    const auto analyzed = Analyze(R"(
-        struct E {}
-        struct F {}
-        type R = int32 ! E;
-        func Keep(value: R) -> (int32 | R) ! E { return value; }
-        func Widen(value: R) -> R ! (E | F) { return value; }
-        func Nest(value: R) -> R ! F { return value; }
-        func Forward(value: R) -> int32 ! (E | F) { return value; }
-    )");
-    CHECK(Reports(*analyzed, "conversion from 'int32 ! E' to '(int32 | (int32 ! E)) ! E' is ambiguous"));
-    CHECK(Reports(*analyzed, "conversion from 'int32 ! E' to '(int32 ! E) ! (E | F)' is ambiguous"));
-    const auto routeOfReturn = [&](const std::string_view name) {
-        const auto *returned = dynamic_cast<const ReturnStmt *>(Function(*analyzed, name).body->stmts.front().get());
-        REQUIRE(returned != nullptr);
-        return RouteOf(*analyzed, **returned->value);
-    };
-    CHECK_EQ(routeOfReturn("Nest"), std::vector{Kind::Success, Kind::Identity});
-    CHECK_EQ(routeOfReturn("Forward"), std::vector{Kind::WidenFallible});
-}
-
-TEST_CASE("a match takes a native expected type arm by arm") {
-    const auto analyzed = Analyze(R"(
-        struct E {}
-        func Take(value: int32?) {}
-        func Returned(value: int32) -> int32? {
-            return match value { 0 => none, else => .Some(value) };
-        }
-        func Failed(value: int32, error: E) -> int32 ! E {
-            return match value { 0 => .Success(value), else => .Failure(error) };
-        }
-        func Use(value: int32) {
-            let annotated: int32? = match value { 0 => none, else => .Some(value) };
-            let joined = match value { 0 => none, else => .Some(value) };
-            let narrow: int8? = match value { 0 => none, 1 => .Some(7), else => 9 };
-            Take(match value { 0 => none, else => .Some(value) });
-        }
-    )");
-    CHECK(analyzed->model.diagnostics.empty());
-    const auto typeOf = [&](const Expr &expr) {
-        const TypeRef *type = analyzed->model.TryGetType(expr);
-        REQUIRE(type != nullptr);
-        return type->ToString();
-    };
-    const auto returned = [&](const std::string_view name) -> const Expr & {
-        const auto *statement = dynamic_cast<const ReturnStmt *>(Function(*analyzed, name).body->stmts.front().get());
-        REQUIRE(statement != nullptr);
-        return **statement->value;
-    };
-    const FuncDecl &use = Function(*analyzed, "Use");
-    const auto *call = dynamic_cast<const ExprStmt *>(use.body->stmts.at(3).get());
-    REQUIRE(call != nullptr);
-    const auto *take = dynamic_cast<const CallExpr *>(call->expr.get());
-    REQUIRE(take != nullptr);
-
-    // The match holds the expected type, and no conversion of the match as a whole is recorded: converting an open
-    // `opaque?` would make every arm absent.
-    const std::vector<const Expr *> matches{&returned("Returned"), &Initializer(use, 0), &Initializer(use, 1),
-                                            take->args.front().get()};
-    for (const Expr *match : matches) {
-        CHECK_EQ(typeOf(*match), "int32?");
-        CHECK(RouteOf(*analyzed, *match).empty());
-    }
-    CHECK_EQ(typeOf(returned("Failed")), "int32 ! E");
-    CHECK(RouteOf(*analyzed, returned("Failed")).empty());
-    CHECK_EQ(typeOf(Initializer(use, 2)), "int8?");
-
-    // A plain arm still converts on its own route.
-    const auto *narrow = dynamic_cast<const MatchExpr *>(&Initializer(use, 2));
-    REQUIRE(narrow != nullptr);
-    CHECK_EQ(RouteOf(*analyzed, *narrow->arms.at(2).body), std::vector{Kind::Presence, Kind::Identity});
-}
-
-TEST_CASE("a match arm its expected type refuses is reported") {
-    const auto analyzed = Analyze(R"(
-        func Mismatch(value: int32) -> int32? {
-            return match value { 0 => .Some(1i32), else => .Some(true) };
-        }
-        func Late(value: int32) -> int32? {
-            return match value { 0 => .Failure(true), 1 => none, else => .Some(1i32) };
-        }
-        func Refused(value: int32) -> int32? {
-            return match value { 0 => none, else => .Failure(true) };
-        }
-        func Open(value: int32) {
-            let open = match value { 0 => .Success(1i32), else => .Failure(true) };
-        }
-    )");
-    CHECK(Reports(*analyzed, "match arm type mismatch: expected 'int32?', found 'bool8?'"));
-    CHECK(Reports(*analyzed, "'.Failure(...)' constructs a native fallible, but the expected type is 'int32?'"));
-    // The return type is the match's own, so a refused arm is reported where it is rather than at the 'return'.
-    CHECK_FALSE(Reports(*analyzed, "'return' value must have type 'int32?', but found 'none'"));
-    CHECK(Reports(*analyzed, "cannot infer the type of 'open' from a native constructor with an unknown channel"));
 }

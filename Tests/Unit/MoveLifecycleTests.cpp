@@ -10,8 +10,7 @@ TEST_CASE("named moves read their source as it stands and run no code") {
 
         struct Cell { value: int32; }
         extend Cell {
-            func =(self: &var Cell, other: &Cell);
-            func ~Cell(self: &var Cell) {}
+            func ~Cell(&var self) {}
         }
 
         struct Wrapper { cell: Cell; tag: int32; }
@@ -21,8 +20,8 @@ TEST_CASE("named moves read their source as it stands and run no code") {
             return move local;
         }
         func Older(source: Wrapper) -> Wrapper {
-            let local <- source;
-            return <-local;
+            let local = move source;
+            return move local;
         }
     )";
 
@@ -50,8 +49,7 @@ TEST_CASE("move assignment destroys the replaced destination through its conditi
     const std::string source = R"(
         struct Cell { value: int32; }
         extend Cell {
-            func =(self: &var Cell, other: &Cell);
-            func ~Cell(self: &var Cell) {}
+            func ~Cell(&var self) {}
         }
 
         func Replace(destination: Cell, source: Cell) {
@@ -63,8 +61,8 @@ TEST_CASE("move assignment destroys the replaced destination through its conditi
             destination = move source;
         }
         func Older(destination: Cell, source: Cell) {
-            var target <- destination;
-            target <- source;
+            var target = move destination;
+            target = move source;
         }
     )";
 
@@ -150,8 +148,9 @@ TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
         struct Handle { value: int32; }
     )" + body);
     const std::vector<SemanticDiagnostic> operation = AnalyzeConsumptionDiagnostics(R"(
+        #NoCopy
         struct Handle { value: int32; }
-        extend Handle { func =(&var self, other: &Handle); }
+        extend Handle { }
     )" + body);
 
     for (const auto *diagnostics : {&attribute, &operation}) {
@@ -163,14 +162,14 @@ TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
 
 TEST_CASE("prohibited move operations reject explicit ownership transfer") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        #NoCopy
+        #NoMove
         struct Pinned { value: int32; }
         extend Pinned {
-            func =(self: &var Pinned, other: &Pinned);
-            func <-(self: &var Pinned, other: Pinned);
         }
 
         func Transfer(source: Pinned) {
-            let destination <- source;
+            let destination = move source;
         }
     )");
 
@@ -291,8 +290,7 @@ TEST_CASE("variant moves are byte copies with no per-case dispatch") {
     const std::string source = R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
 
         variant Choice {
@@ -356,13 +354,12 @@ TEST_CASE("consuming a move-only variant reports later use while borrowed inspec
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func =(self: &var Handle, other: &Handle);
-            func ~Handle(self: &var Handle) {}
+            func ~Handle(&var self) {}
         }
         variant Held { Empty, Full(Handle) }
 
         func Consume(value: Held) {
-            match <-value { .Empty => {}, .Full(handle) => {} }
+            match move value { .Empty => {}, .Full(handle) => {} }
             value;
         }
 
