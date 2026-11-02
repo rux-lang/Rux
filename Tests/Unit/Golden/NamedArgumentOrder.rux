@@ -1,0 +1,10 @@
+// Labeled arguments follow the positional ones: an argument without a label after a labeled one is rejected while
+// parsing, whatever the call.
+func Copy(source: int32, target: int32, overwrite: bool = false) -> int32 {
+    return source + target;
+}
+
+func Main() -> int {
+    let mixed = Copy(source: 1, 2);
+    return 0;
+}

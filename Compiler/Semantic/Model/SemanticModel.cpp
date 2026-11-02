@@ -282,6 +282,11 @@ const std::string *SemanticModel::TryGetFunctionLiteralName(const FuncLiteralExp
     return name == facts.functionLiterals.end() ? nullptr : &name->second;
 }
 
+const std::vector<std::size_t> *SemanticModel::TryGetArgumentSlots(const CallExpr &call) const noexcept {
+    const auto slots = facts.argumentSlots.find(&call);
+    return slots == facts.argumentSlots.end() ? nullptr : &slots->second;
+}
+
 const InterfaceHolderSite *SemanticModel::TryGetInterfaceHolderSite(const Expr &value) const noexcept {
     const auto site = facts.interfaceHolderSites.find(&value);
     return site == facts.interfaceHolderSites.end() ? nullptr : &site->second;

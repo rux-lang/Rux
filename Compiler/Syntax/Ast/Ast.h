@@ -398,11 +398,20 @@ struct RangeExpr : Expr {
     bool inclusive;
 };
 
+/// The label written before a call argument, as `create` in `Open(path, create: true)`.
+struct ArgumentLabel {
+    std::string name; ///< empty for a positional argument
+    SourceLocation location;
+};
+
 // f(a, b, c)  or  f<T1, T2>(a, b, c)
 struct CallExpr : Expr {
     ExprPtr callee;
     std::vector<TypeExprPtr> typeArgs;
     std::vector<ExprPtr> args;
+    /// One entry per argument when any argument is labeled, and empty otherwise. Labeled arguments follow the
+    /// positional ones; a label names the parameter its argument binds and never reorders the arguments.
+    std::vector<ArgumentLabel> labels;
 };
 
 // a[i]

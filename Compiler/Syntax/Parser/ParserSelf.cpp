@@ -170,7 +170,7 @@ ExprPtr Parser::ParseSelfExpr(const SourceLocation location) {
     call->location = location;
     call->callee = std::move(callee);
     call->typeArgs = std::move(typeArgs);
-    call->args = ParseArgList();
+    call->args = ParseArgList(&call->labels);
     return call;
 }
 

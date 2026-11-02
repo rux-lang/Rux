@@ -291,9 +291,13 @@ void ExpressionPrinter::Print(const Expr &expression) {
             Pad();
             out << "Args [" << call->args.size() << "]\n";
             ++indent;
-            for (const auto &argument : call->args) {
-                if (argument) {
-                    Print(*argument);
+            for (std::size_t index = 0; index < call->args.size(); ++index) {
+                if (index < call->labels.size() && !call->labels[index].name.empty()) {
+                    Pad();
+                    out << "Label '" << call->labels[index].name << "'\n";
+                }
+                if (call->args[index]) {
+                    Print(*call->args[index]);
                 }
             }
             --indent;

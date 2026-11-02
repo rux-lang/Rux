@@ -201,6 +201,21 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                          const std::vector<TypeRef> &fixedTypes,
                                          const std::optional<TypeRef> &variadicElement) {
         const auto parameters = VisibleParameters(declaration, isMethod);
+        // Labels that skip parameters with default values bind each argument to the parameter they name; the label
+        // check reports any problem with the labels themselves once the call is resolved.
+        if (const auto slots = ArgumentSlots(*e, declaration, isMethod)) {
+            argumentSlots.insert_or_assign(e, *slots);
+            bool accepted = true;
+            for (std::size_t index = 0; index < argTypes.size() && index < slots->size(); ++index) {
+                const std::size_t slot = (*slots)[index];
+                if (slot < fixedTypes.size() && !canPassArgument(index, argTypes[index], fixedTypes[slot])) {
+                    accepted = false;
+                    emitArgumentTypeError(callable, index, argTypes[index], fixedTypes[slot],
+                                          slot < parameters.size() ? parameters[slot] : nullptr, &declaration);
+                }
+            }
+            return accepted;
+        }
         const auto requiredCount = static_cast<std::size_t>(std::ranges::count_if(
             parameters, [](const Param *parameter) { return !parameter->isVariadic && !parameter->defaultValue; }));
         const bool variadic = variadicElement.has_value();

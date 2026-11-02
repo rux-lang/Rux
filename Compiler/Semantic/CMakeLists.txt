@@ -11,6 +11,7 @@ rux_add_component(RuxSemantic
     Analysis/ConstantCallPurity.cpp
     Analysis/ConstantCallStatements.cpp
     Analysis/ContextualCases.cpp
+    Analysis/ArgumentLabels.cpp
     Analysis/Assignments.cpp
     Analysis/CallableResolution.cpp
     Analysis/TypeLayout.cpp

@@ -1210,6 +1210,14 @@ std::vector<TypeRef> AnalysisContext::CheckCallArgumentValues(const CallExpr &ca
 
 void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                                            const std::vector<TypeRef> *parameterTypes) {
+    // Arguments whose labels skip parameters bind the parameters the labels name.
+    std::vector<TypeRef> bound;
+    if (const auto slots = argumentSlots.find(&call); parameterTypes && slots != argumentSlots.end()) {
+        for (const std::size_t slot : slots->second) {
+            bound.push_back(slot < parameterTypes->size() ? (*parameterTypes)[slot] : TypeRef::MakeUnknown());
+        }
+        parameterTypes = &bound;
+    }
     if (parameterTypes) {
         ValidateCallReferenceBorrows(call, *parameterTypes);
     }

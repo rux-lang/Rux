@@ -402,7 +402,9 @@ private:
     PatternPtr ParsePresenceSuffix(PatternPtr inner);
 
     // Expression argument list
-    std::vector<ExprPtr> ParseArgList(); ///< ( expr, ... )
+    /// `( expr, ... )`. Arguments written `name: expr` record their labels in `labels`, which is left empty when none
+    /// is; a caller that passes no `labels` accepts none.
+    std::vector<ExprPtr> ParseArgList(std::vector<ArgumentLabel> *labels = nullptr);
 };
 
 extern template void Parser::ParseArmList<MatchExpr::Arm>(std::vector<MatchExpr::Arm> &, std::string_view,

@@ -56,6 +56,10 @@ The packed form keeps a platform `when` block short enough to compare its arms a
 
 A type's own members live in one `extend Type { ... }` block per file, ordered by topic. A block boundary is kept only where it means something: each interface conformance is its own block holding the methods that carry that interface, so `Next` sits in `extend MyCursor : Iterator { ... }` even though `Iterator` declares no members, and a block with a different header, such as a constrained one, stays separate. Members that belong together are grouped by order and, where a group needs naming, by a `//` comment inside the block rather than by a closing and reopening of the block.
 
+## Parameter names
+
+A caller may label an argument with the name of the parameter it binds, as in `Open(path, create: true)`, so the parameter names of a public function or method are part of its API, as its parameter types are: renaming one breaks every call that labels it. Choose them as carefully as the function's name, keep them stable across releases, and give overloads of one name the same name for the same role. A parameter with a default value is one a caller can skip with a label, so its name matters most.
+
 ## Integer literals
 
 A local declared from a lone integer literal takes its type from an annotation rather than from a literal suffix: `var value: uint32 = 0;`, not `var value = 0u32;`. The type then sits after the name, where every other declaration, parameter and field puts it, and the compiler still checks that the literal fits it.

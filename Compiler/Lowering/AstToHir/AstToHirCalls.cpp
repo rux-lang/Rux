@@ -159,6 +159,28 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
                                      ? 1
                                      : 0;
     const std::size_t fixedCount = binding.variadicBoundary.value_or(parameters.size());
+    // Labels that skipped parameters bind each argument to the parameter they name; every parameter between gets its
+    // default value. The arguments keep their source order, so they are evaluated as written.
+    if (const std::vector<std::size_t> *slots = model.TryGetArgumentSlots(call); slots && !binding.variadicBoundary) {
+        std::vector<HirExprPtr> arguments;
+        arguments.reserve(fixedCount);
+        std::size_t next = 0;
+        for (std::size_t slot = 0; slot < fixedCount; ++slot) {
+            const std::size_t typeIndex = typeOffset + slot;
+            const TypeRef parameterType =
+                typeIndex + 1 < functionType->inner.size() ? functionType->inner[typeIndex] : TypeRef::MakeUnknown();
+            if (next < call.args.size() && next < slots->size() && (*slots)[next] == slot) {
+                arguments.push_back(parameterType.IsUnknown() ? LowerExpr(*call.args[next])
+                                                              : LowerArgumentAs(*call.args[next], parameterType));
+                ++next;
+                continue;
+            }
+            assert(parameters[slot]->defaultValue && "a skipped parameter has no default value");
+            arguments.push_back(
+                LowerDefaultArgument(**parameters[slot]->defaultValue, parameterType, CallSiteLocation(call)));
+        }
+        return arguments;
+    }
     std::vector<HirExprPtr> arguments;
     arguments.reserve(std::max(call.args.size(), fixedCount) + (binding.variadicBoundary ? 1 : 0));
     for (std::size_t i = 0; i < std::min(call.args.size(), fixedCount); ++i) {

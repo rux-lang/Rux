@@ -411,6 +411,9 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, ResolvedCallableBinding> functionReferenceBindings;
     /// The linker name of each function literal analysis accepted, which lowering emits it under.
     std::unordered_map<const FuncLiteralExpr *, std::string> functionLiterals;
+    /// For a call whose argument labels skip parameters with default values, the parameter each argument binds, in
+    /// the selected declaration's argument parameters.
+    std::unordered_map<const CallExpr *, std::vector<std::size_t>> argumentSlots;
     /// The function or module variable each name in an asm body stands for, which lowering spells by linker name.
     std::unordered_map<const AsmOperand *, const Decl *> asmSymbolDeclarations;
     /// The holder each value made into an interface value is kept in, and the holders each local declares.
@@ -522,6 +525,8 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedCallableBinding *TryGetFunctionReferenceBinding(const Expr &reference) const noexcept;
     /// The linker name a function literal is emitted under, or null when analysis did not accept it.
     [[nodiscard]] const std::string *TryGetFunctionLiteralName(const FuncLiteralExpr &literal) const noexcept;
+    /// The parameter each argument of `call` binds when its labels skip parameters, or null when they bind in order.
+    [[nodiscard]] const std::vector<std::size_t> *TryGetArgumentSlots(const CallExpr &call) const noexcept;
     /// The function or module variable an asm operand's symbol names, or null for a label or an extern.
     [[nodiscard]] const Decl *TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept;
     /// The holder a value made into an interface value is kept in, or null for one its scope keeps.

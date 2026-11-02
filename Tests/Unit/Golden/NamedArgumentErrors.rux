@@ -1,0 +1,19 @@
+// A label names a parameter of the declaration the call selected: one that does not exist lists the names there are,
+// labels out of parameter order are rejected because arguments are never reordered, a label may skip only parameters
+// with default values, and a function value has no parameter names at all.
+func Open(path: int32, create: bool = false, truncate: bool = false) -> int32 {
+    return path;
+}
+
+func Copy(source: int32, target: int32, overwrite: bool = false) -> int32 {
+    return source + target;
+}
+
+func Main() -> int {
+    let unknown = Open(1, append: true);
+    let reversed = Open(2, truncate: true, create: true);
+    let skipped = Copy(3, overwrite: true);
+    let value: func(int32, int32, bool) -> int32 = Copy;
+    let unnamed = value(4, 5, overwrite: false);
+    return 0;
+}

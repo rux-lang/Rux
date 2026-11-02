@@ -373,25 +373,38 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                 ++requiredCount;
             }
         }
-        const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                        : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-        if (!arityOk) {
-            return nullptr;
+        // Labels that skip parameters bind each argument to the parameter they name; otherwise argument i binds
+        // parameter i.
+        std::vector<TypeRef> parameterTypes(funcType->inner.begin(), funcType->inner.end() - 1);
+        if (const auto slots =
+                call && call->args.size() == argTypes.size() ? ArgumentSlots(*call, *decl, false) : std::nullopt) {
+            std::vector<TypeRef> bound;
+            for (const std::size_t slot : *slots) {
+                bound.push_back(slot < parameterTypes.size() ? parameterTypes[slot] : TypeRef::MakeUnknown());
+            }
+            parameterTypes = std::move(bound);
         }
-        for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-            if (argTypes[i].IsUnknown() || funcType->inner[i].IsUnknown()) {
+        else {
+            const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
+                                            : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
+            if (!arityOk) {
+                return nullptr;
+            }
+        }
+        for (std::size_t i = 0; i < std::min(argTypes.size(), parameterTypes.size()); ++i) {
+            if (argTypes[i].IsUnknown() || parameterTypes[i].IsUnknown()) {
                 continue;
             }
             // A literal array or tuple is typed element by element, so `[3, 4]` reaches an `int32[2]` parameter.
             const bool literalAggregate =
                 call != nullptr && call->args.size() == argTypes.size() &&
                 (AstCast<const ArrayExpr>(call->args[i].get()) || AstCast<const TupleExpr>(call->args[i].get())) &&
-                CanAssignExprTo(*call->args[i], argTypes[i], funcType->inner[i]);
-            if (!argTypes[i].IsAssignableTo(funcType->inner[i]) && !argTypes[i].CanReadScalarTo(funcType->inner[i]) &&
-                !argTypes[i].CanImplicitlyBorrowTo(funcType->inner[i]) &&
-                !CanConvertToInterface(argTypes[i], funcType->inner[i]) &&
-                !(argTypes[i].IsInteger() && funcType->inner[i].IsInteger()) &&
-                !DefaultLiteralReachesNative(argTypes[i], funcType->inner[i]) && !literalAggregate) {
+                CanAssignExprTo(*call->args[i], argTypes[i], parameterTypes[i]);
+            if (!argTypes[i].IsAssignableTo(parameterTypes[i]) && !argTypes[i].CanReadScalarTo(parameterTypes[i]) &&
+                !argTypes[i].CanImplicitlyBorrowTo(parameterTypes[i]) &&
+                !CanConvertToInterface(argTypes[i], parameterTypes[i]) &&
+                !(argTypes[i].IsInteger() && parameterTypes[i].IsInteger()) &&
+                !DefaultLiteralReachesNative(argTypes[i], parameterTypes[i]) && !literalAggregate) {
                 return nullptr;
             }
         }

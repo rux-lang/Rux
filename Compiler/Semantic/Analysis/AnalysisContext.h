@@ -852,6 +852,22 @@ private:
         bool nested = false;
     };
 
+    // Named arguments (ArgumentLabels.cpp).
+
+    /// The parameter, among those `declaration` takes as arguments, each argument of `call` binds when its labels skip
+    /// parameters with default values, or nothing when the arguments bind in order or the labels do not fit.
+    [[nodiscard]] static std::optional<std::vector<std::size_t>>
+    ArgumentSlots(const CallExpr &call, const FuncDecl &declaration, bool isMethod);
+    /// Checks a call's labels against the declaration it selected and records the parameters they skip.
+    void CheckArgumentLabels(const CallExpr &call);
+    /// Reports the first problem with `call`'s labels for `declaration`; returns whether there was none.
+    bool ValidateArgumentLabels(const CallExpr &call, const FuncDecl &declaration, bool isMethod);
+    /// Checks the labels of a call to a name with one declaration before its arguments are matched, checking the
+    /// arguments themselves when the labels are wrong; returns whether the call should be checked further.
+    bool PrecheckArgumentLabels(const CallExpr &call);
+    /// Calls whose labels were reported before their arguments were matched.
+    std::unordered_set<const CallExpr *> labelsReported;
+
     // Function literals (FunctionLiterals.cpp).
 
     /// Where a function literal being checked is written: the scope its enclosing body had there, which its own body
@@ -1231,6 +1247,7 @@ private:
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Expr *, ResolvedCallableBinding> &functionReferenceBindings;
     std::unordered_map<const FuncLiteralExpr *, std::string> &functionLiterals;
+    std::unordered_map<const CallExpr *, std::vector<std::size_t>> &argumentSlots;
     std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;
     std::unordered_map<const Expr *, InterfaceHolderSite> &interfaceHolderSites;
     std::unordered_map<const LetStmt *, std::vector<InterfaceHolderSite>> &interfaceHolders;

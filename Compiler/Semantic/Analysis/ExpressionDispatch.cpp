@@ -429,7 +429,13 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     if (const auto *e = AstCast<const CallExpr>(&expr)) {
-        return CheckCallExpression(*e);
+        if (!PrecheckArgumentLabels(*e)) {
+            labelsReported.insert(e);
+            return TypeRef::MakeUnknown();
+        }
+        const TypeRef type = CheckCallExpression(*e);
+        CheckArgumentLabels(*e);
+        return type;
     }
 
     if (const std::optional<TypeRef> aggregateType = CheckAggregateExpression(expr)) {

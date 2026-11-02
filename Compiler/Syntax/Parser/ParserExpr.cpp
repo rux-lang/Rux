@@ -612,7 +612,8 @@ ExprPtr Parser::ParsePostfix() {
 
             if (Check(TokenKind::LeftParen) && !name.empty() && !std::isdigit(name[0])) {
                 // Method call: expr.method(args)
-                auto args = ParseArgList();
+                std::vector<ArgumentLabel> labels;
+                auto args = ParseArgList(&labels);
                 // Desugar to CallExpr with FieldExpr callee
                 auto field = std::make_unique<FieldExpr>();
                 field->location = loc;
@@ -624,6 +625,7 @@ ExprPtr Parser::ParsePostfix() {
                 call->location = loc;
                 call->callee = std::move(field);
                 call->args = std::move(args);
+                call->labels = std::move(labels);
                 left = std::move(call);
             }
             else {
@@ -677,24 +679,28 @@ ExprPtr Parser::ParsePostfix() {
         // Generic function call: expr<T1, T2>(args)
         if (IsGenericCallAhead()) {
             auto typeArgs = ParseTypeArgs();
-            auto args = ParseArgList();
+            std::vector<ArgumentLabel> labels;
+            auto args = ParseArgList(&labels);
             auto e = std::make_unique<CallExpr>();
             ++callsRead;
             e->location = loc;
             e->callee = std::move(left);
             e->typeArgs = std::move(typeArgs);
             e->args = std::move(args);
+            e->labels = std::move(labels);
             left = std::move(e);
             continue;
         }
         // Function/direct call: expr(args)
         if (Check(TokenKind::LeftParen)) {
-            auto args = ParseArgList();
+            std::vector<ArgumentLabel> labels;
+            auto args = ParseArgList(&labels);
             auto e = std::make_unique<CallExpr>();
             ++callsRead;
             e->location = loc;
             e->callee = std::move(left);
             e->args = std::move(args);
+            e->labels = std::move(labels);
             left = std::move(e);
             continue;
         }
@@ -1189,12 +1195,32 @@ ExprPtr Parser::ParseErrorMapper(const SourceLocation location, ExprPtr operand)
     return e;
 }
 
-std::vector<ExprPtr> Parser::ParseArgList() {
+std::vector<ExprPtr> Parser::ParseArgList(std::vector<ArgumentLabel> *labels) {
     std::vector<ExprPtr> args;
+    std::vector<ArgumentLabel> written;
+    bool anyLabel = false;
     ExpectBefore(TokenKind::LeftParen, "'(' to start the argument list");
     const bool savedStructInitAllowed = structInitAllowed;
     structInitAllowed = true;
     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+        // `name: value` names the parameter the argument binds. Nothing else in an argument starts with a name and a
+        // single ':', so the label reads unambiguously.
+        ArgumentLabel label;
+        if (Check(TokenKind::Ident) && Peek(1).Is(TokenKind::Colon)) {
+            label.location = CurrentLocation();
+            label.name = Advance().text;
+            Advance(); // ':'
+            if (!labels) {
+                EmitError(label.location, std::format("argument label '{}' is not allowed here", label.name),
+                          "labels name the parameters of a function or method call; remove the label");
+            }
+            anyLabel = true;
+        }
+        else if (anyLabel && labels) {
+            EmitError(CurrentLocation(), "positional argument after a labeled one",
+                      "labeled arguments follow the positional ones; label this argument or move it before the labels");
+        }
+        const std::size_t argumentsBefore = args.size();
         auto e = ParseRequiredExpr(args.empty() ? "after '(' in the argument list" : "after ',' in the argument list");
         if (e && Match(TokenKind::DotDotDot)) {
             const auto loc = e->location;
@@ -1205,6 +1231,9 @@ std::vector<ExprPtr> Parser::ParseArgList() {
         }
         else if (e) {
             args.push_back(std::move(e));
+        }
+        if (args.size() != argumentsBefore) {
+            written.push_back(std::move(label));
         }
         if (Match(TokenKind::Comma)) {
             continue;
@@ -1225,6 +1254,9 @@ std::vector<ExprPtr> Parser::ParseArgList() {
         }
     }
     structInitAllowed = savedStructInitAllowed;
+    if (labels && anyLabel) {
+        *labels = std::move(written);
+    }
     ExpectBefore(TokenKind::RightParen, "')' to close the argument list");
     return args;
 }

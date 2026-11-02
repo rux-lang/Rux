@@ -1,0 +1,77 @@
+// Named arguments: `Open(path, create: true, truncate: false)`. A label names the parameter its argument binds.
+// Labeled arguments follow the positional ones, in parameter order, and may skip parameters that have default
+// values, which then take their defaults. Arguments are never reordered, so they are evaluated in source order. A
+// label is checked against the declaration the call selected by the ordinary rules; it never chooses an overload.
+
+import Core::Assert;
+
+struct Options {
+    flags: int;
+}
+
+func Open(path: int, create: bool = false, truncate: bool = false, mode: int = 420) -> Options {
+    var flags = path * 10000;
+    if create { flags += 1000; }
+    if truncate { flags += 100; }
+    return Options { flags: flags + mode % 100 };
+}
+
+func Pair(first: int, second: int) -> int {
+    return first * 10 + second;
+}
+
+func Pick<T>(value: T, fallback: T, useFallback: bool = false) -> T {
+    return useFallback ? fallback : value;
+}
+
+func Describe(value: int) -> int { return value; }
+func Describe(value: bool) -> int { return value ? 1 : 0; }
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+extend Point {
+    func Moved(&self, dx: int = 0, dy: int = 0) -> Point {
+        return Point { x: self.x + dx, y: self.y + dy };
+    }
+}
+
+// The order arguments are evaluated in, recorded one digit at a time.
+var Trace: int = 0;
+
+func Note(digit: int) -> int {
+    Trace = Trace * 10 + digit;
+    return digit;
+}
+
+func CheckLabels() {
+    Assert(Open(1, create: true, truncate: false).flags == 11020, "every parameter labeled after the positional one");
+    Assert(Open(2, true, truncate: true).flags == 21120, "positional, then labeled");
+    Assert(Pair(first: 3, second: 4) == 34, "every argument labeled");
+    Assert(Describe(value: 7) == 7 && Describe(value: true) == 1, "labels do not take part in overload resolution");
+}
+
+func CheckSkipping() {
+    Assert(Open(3, truncate: true).flags == 30120, "a label skips a parameter with a default");
+    Assert(Open(4, mode: 7).flags == 40007, "a label skips several parameters with defaults");
+    Assert(Open(5, create: true, mode: 9).flags == 51009, "labels skip between each other");
+    Assert(Pick(1, 2, useFallback: true) == 2 && Pick(value: 1, fallback: 2) == 1, "a generic function");
+    let origin = Point { x: 1, y: 1 };
+    let moved = origin.Moved(dy: 5);
+    Assert(moved.x == 1 && moved.y == 6, "a method's label skips a parameter with a default");
+}
+
+func CheckOrder() {
+    Trace = 0;
+    let options = Open(Note(1), create: Note(2) == 2, mode: Note(3));
+    Assert(Trace == 123 && options.flags == 11003, "arguments are evaluated in source order");
+}
+
+func Main() -> int {
+    CheckLabels();
+    CheckSkipping();
+    CheckOrder();
+    return 0;
+}
