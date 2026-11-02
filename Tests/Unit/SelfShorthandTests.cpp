@@ -302,7 +302,7 @@ TEST_CASE("field shorthand of a move-only binding asks for the move written out"
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics.front().message, "cannot copy 'Buffer', which owns resources");
     REQUIRE(diagnostics.front().help.has_value());
-    CHECK_EQ(*diagnostics.front().help, "write 'buffer: move buffer' to transfer it, or 'buffer.Clone()' to copy it");
+    CHECK_EQ(*diagnostics.front().help, "write 'buffer: move buffer' to transfer it");
 }
 
 TEST_CASE("field shorthand of an unknown name reports the name") {

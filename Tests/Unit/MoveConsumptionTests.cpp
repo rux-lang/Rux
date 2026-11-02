@@ -379,7 +379,8 @@ TEST_CASE("named move-only values require explicit transfer syntax in every by-v
     REQUIRE_EQ(diagnostics.size(), 3);
     for (const SemanticDiagnostic &diagnostic : diagnostics) {
         CHECK_EQ(diagnostic.message, "cannot copy 'Handle', which owns resources");
-        CHECK_EQ(diagnostic.help, "write 'move source' to transfer it, or 'source.Clone()' to copy it");
+        // `Handle` declares no `Clone`, so the help offers no copy.
+        CHECK_EQ(diagnostic.help, "write 'move source' to transfer it");
     }
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0],

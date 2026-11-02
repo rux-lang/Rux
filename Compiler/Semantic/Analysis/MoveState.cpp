@@ -1025,8 +1025,15 @@ bool AnalysisContext::RejectImplicitMove(const Expr &expression, const TypeRef &
     notes.push_back(std::format("a named value used by value in {} position is copied, and only plain data copies",
                                 ValueConsumptionKindName(kind)));
     std::string help = std::format("write '{}' to transfer it", TransferSpelling(kind, display));
+    // A copy is offered only where the type has a `Clone` to make one; many owning types, such as a buffer of fixed
+    // capacity, have none.
     if (owning) {
-        help += std::format(", or '{}.Clone()' to copy it", display);
+        const std::size_t diagnosticCount = diags.size();
+        const bool clones = LookupMethod(type, "Clone", {}, true) != nullptr;
+        diags.resize(diagnosticCount);
+        if (clones) {
+            help += std::format(", or '{}.Clone()' to copy it", display);
+        }
     }
     if (generic) {
         help += ", or bound the type parameter by 'Copyable'";

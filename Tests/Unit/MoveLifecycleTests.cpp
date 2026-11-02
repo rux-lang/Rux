@@ -248,7 +248,7 @@ TEST_CASE("a custom copy hook is rejected and copying stays a byte copy or a mov
              "implement 'func Clone(&self) -> Self' on 'Plain' and call it where a copy is needed");
     CHECK_EQ(diagnostics[1].message, "custom copy hooks are not supported");
     CHECK_EQ(diagnostics[2].message, "cannot copy 'Owning', which owns resources");
-    CHECK_EQ(diagnostics[2].help, "write 'move owning' to transfer it, or 'owning.Clone()' to copy it");
+    CHECK_EQ(diagnostics[2].help, "write 'move owning' to transfer it");
 }
 
 TEST_CASE("an explicit Clone replaces a destination with the value it returns") {
