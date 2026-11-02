@@ -16,7 +16,7 @@ import Memory::ZeroizeBlock;
 const BatchSize: uint = 128;
 
 // Writes an identifier drawn from `alphabet`, which the caller has validated, into the whole of `into`.
-func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) -> ! EntropyError {
+func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) throws EntropyError {
     let mask = IndexMask(alphabet.length);
     var batch: byte[128];
     var written: uint = 0;
@@ -27,12 +27,12 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
         // Safety: `batch` is a local array of `BatchSize` bytes and `take` is at most `BatchSize`; on failure,
         // `into.data` addresses the `into.length` writable bytes of the caller's slice, which is not empty there.
         unsafe {
-            FillFrom(source, (@batch[0]) as *var opaque, take) catch {
+            try FillFrom(source, (@batch[0]) as *var opaque, take) catch {
                 error => {
                     ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
                     if into.length > 0 { ZeroizeBlock(into.data as *var opaque, into.length); }
-                    fail error;
-                }
+                    throw error;
+                },
             };
         }
         var index: uint = 0;
@@ -58,9 +58,9 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
 /// @param into the destination, filled completely
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
-pub func GenerateNanoId(into: var char8[..]) -> ! EntropyError {
+pub func GenerateNanoId(into: var char8[..]) throws EntropyError {
     var system = SystemEntropy();
-    return Fill(system, into, NanoIdAlphabet);
+    return try Fill(system, into, NanoIdAlphabet);
 }
 
 /// Fills the whole of `into` with an identifier drawn from `alphabet`, using the operating system's generator.
@@ -71,9 +71,9 @@ pub func GenerateNanoId(into: var char8[..]) -> ! EntropyError {
 /// @param alphabet between two and 256 distinct ASCII characters
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
-pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> ! NanoIdError {
+pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) throws NanoIdError {
     var system = SystemEntropy();
-    return GenerateNanoIdFrom(system, into, alphabet);
+    return try GenerateNanoIdFrom(system, into, alphabet);
 }
 
 /// Fills the whole of `into` with an identifier drawn from `alphabet`, using random bytes from `source`.
@@ -87,10 +87,10 @@ pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> ! NanoIdErr
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id-from
 pub func GenerateNanoIdFrom(source: &var EntropySource, into: var char8[..],
-                            alphabet: char8[..] = NanoIdAlphabet) -> ! NanoIdError {
-    ValidateAlphabet(alphabet)?;
-    Fill(source, into, alphabet) catch {
-        error => fail NanoIdError::Entropy(error)
+                            alphabet: char8[..] = NanoIdAlphabet) throws NanoIdError {
+    try ValidateAlphabet(alphabet);
+    try Fill(source, into, alphabet) catch {
+        error => throw .Entropy(error)
     };
     return;
 }

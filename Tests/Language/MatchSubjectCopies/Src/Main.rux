@@ -76,8 +76,8 @@ func CloneParcel(parcel: &Parcel) -> Parcel {
     };
 }
 
-func Fail(log: *var Log, id: int32) -> int32 ! Tracked {
-    fail Track(log, id);
+func Fail(log: *var Log, id: int32) -> int32 throws Tracked {
+    throw Track(log, id);
 }
 
 func Reset(log: *var Log) {
@@ -234,14 +234,13 @@ func MovedSubjectNotTaken(log: *var Log) {
 }
 
 func CatchMoved(log: *var Log) {
-    let outcome = Fail(log, 1);
-    let id = (move outcome) catch { error => error.id };
+    let id = try Fail(log, 1) catch { error => error.id };
     Mark(log);
     Assert(id == 1, "the arm binds the error handed over");
 }
 
 func CatchTemporary(log: *var Log) {
-    let value = Fail(log, 1) catch { _ => 0i32 };
+    let value = try Fail(log, 1) catch { _ => 0i32 };
     Mark(log);
     Assert(value == 0, "the arm recovers");
 }

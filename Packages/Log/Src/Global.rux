@@ -69,7 +69,7 @@ pub func Log(level: Level, message: char8[..], fields: Field[..]) {
     if !WriteRecord(builder, format, timestamps, level, message, NoFields(), fields) { return; }
     GlobalLock.Acquire();
     var stream = StandardError::Acquire();
-    WriteAll(stream, builder.Bytes()) catch { _ => {} };
+    try WriteAll(stream, builder.Bytes()) catch { _ => {} };
     GlobalLock.Release();
 }
 

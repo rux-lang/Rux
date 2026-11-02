@@ -2,9 +2,8 @@ import Format::ParseBool;
 variant ParseError { Local(uint64) }
 func Main() -> int {
     let local = ParseError::Local(1234567890123);
-    let parsed = ParseBool("true");
-    let valid = match parsed { .Success(value) => value, .Failure(error) => false };
-    if !valid || !(ParseBool("") is .Failure(_)) || !(ParseBool("false!") is .Failure(_)) { return 1; }
+    let valid = (try? ParseBool("true")) ?? false;
+    if !valid || !((try? ParseBool("")) is none) || !((try? ParseBool("false!")) is none) { return 1; }
     let payload = match local { .Local(value) => value };
     if payload != 1234567890123 { return 2; }
     return 0;

@@ -538,11 +538,11 @@ extend TomlLexer {
 /// @returns the decoded text, or why it could not be stored
 /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#toml-decode-text
 pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm,
-                    bad: *var bool) -> String ! TextError {
+                    bad: *var bool) -> String throws TextError {
     // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
     unsafe { *bad = false; }
     if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {
-        return String::FromBytes(allocator, span);
+        return try String::FromBytes(allocator, span);
     }
     let multiline = form == TomlTextForm::MultiLineBasic;
     var builder = StringBuilder(allocator);
@@ -561,7 +561,7 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
             }
             // Safety: `index <= run <= span.length`, so the run lies inside `span`.
             let piece = unsafe { (@span.data[index])[..run - index] };
-            builder.AppendBytes(piece)?;
+            try builder.AppendBytes(piece);
             index = run;
             continue;
         }
@@ -597,28 +597,28 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
                 unsafe { *bad = true; }
                 break;
             }
-            builder.AppendScalar(scalar as char32)?;
+            try builder.AppendScalar(scalar as char32);
         }
         else if kind == 0x62 {
-            builder.AppendAscii(0x08u8 as char8)?;
+            try builder.AppendAscii(0x08u8 as char8);
         }
         else if kind == 0x66 {
-            builder.AppendAscii(0x0Cu8 as char8)?;
+            try builder.AppendAscii(0x0Cu8 as char8);
         }
         else if kind == 0x6E {
-            builder.AppendAscii(0x0Au8 as char8)?;
+            try builder.AppendAscii(0x0Au8 as char8);
         }
         else if kind == 0x72 {
-            builder.AppendAscii(0x0Du8 as char8)?;
+            try builder.AppendAscii(0x0Du8 as char8);
         }
         else if kind == 0x74 {
-            builder.AppendAscii(0x09u8 as char8)?;
+            try builder.AppendAscii(0x09u8 as char8);
         }
         else if kind == 0x65 {
-            builder.AppendAscii(0x1Bu8 as char8)?;
+            try builder.AppendAscii(0x1Bu8 as char8);
         }
         else if kind == 0x22 || kind == 0x5C {
-            builder.AppendAscii(kind as char8)?;
+            try builder.AppendAscii(kind as char8);
         }
         else if multiline && (kind == 0x0A || kind == 0x0D || kind == 0x20 || kind == 0x09) {
             index = index - 1;

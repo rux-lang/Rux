@@ -168,9 +168,10 @@ func FinishWork(work: Work) {
 func Produce(channel: Channel<uint64>) -> () {
     var value: uint64 = 1;
     while value <= Rounds {
-        match channel.Send(value) {
-            .Success(_) => {},
-            .Failure(_) => Assert(false, "an open channel accepts every value")
+        try {
+            channel.Send(value);
+        } catch {
+            _ => Assert(false, "an open channel accepts every value"),
         }
         value = value + 1u64;
     }
@@ -190,20 +191,20 @@ func Consume(channel: Channel<uint64>) -> uint64 {
 func Main() -> int {
     // A bare lock keeps four threads' increments apart.
     var counters: JoinHandle<()>[4] = [
-        Spawn(CountUnderLock, 0u8) catch { _ => return 10 },
-        Spawn(CountUnderLock, 0u8) catch { _ => return 10 },
-        Spawn(CountUnderLock, 0u8) catch { _ => return 10 },
-        Spawn(CountUnderLock, 0u8) catch { _ => return 10 }
+        (try Spawn(CountUnderLock, 0u8) catch { _ => return 10 }),
+        (try Spawn(CountUnderLock, 0u8) catch { _ => return 10 }),
+        (try Spawn(CountUnderLock, 0u8) catch { _ => return 10 }),
+        (try Spawn(CountUnderLock, 0u8) catch { _ => return 10 })
     ];
     for index in 0..Workers { counters[index].Join(); }
     Assert(Unguarded == 4u64 * Rounds, "a lock keeps every increment");
 
     // Once runs its initializer exactly once however many threads ask.
     var setups: JoinHandle<bool>[4] = [
-        Spawn(SetupOnce, 0u8) catch { _ => return 11 },
-        Spawn(SetupOnce, 0u8) catch { _ => return 11 },
-        Spawn(SetupOnce, 0u8) catch { _ => return 11 },
-        Spawn(SetupOnce, 0u8) catch { _ => return 11 }
+        (try Spawn(SetupOnce, 0u8) catch { _ => return 11 }),
+        (try Spawn(SetupOnce, 0u8) catch { _ => return 11 }),
+        (try Spawn(SetupOnce, 0u8) catch { _ => return 11 }),
+        (try Spawn(SetupOnce, 0u8) catch { _ => return 11 })
     ];
     for index in 0..Workers { Assert(setups[index].Join(), "every caller sees the initialization finished"); }
     Assert(SetupRuns == 1u64, "the initializer ran once");
@@ -211,10 +212,10 @@ func Main() -> int {
     // A mutex guards a value shared through cloned handles.
     let total = Mutex<uint64>(0u64);
     var adders: JoinHandle<()>[4] = [
-        Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 },
-        Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 },
-        Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 },
-        Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 }
+        (try Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 }),
+        (try Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 }),
+        (try Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 }),
+        (try Spawn(AddUnderMutex, total.Clone()) catch { _ => return 12 })
     ];
     for index in 0..Workers { adders[index].Join(); }
     Assert(Read(total) == 4u64 * Rounds, "a mutex keeps every increment");
@@ -223,17 +224,19 @@ func Main() -> int {
     // A condition wakes a waiter when the flag it waits for is set.
     let ready = Mutex<bool>(false);
     let signal = Condition();
-    var waiter = Spawn(AwaitFlag, Handoff { ready: ready.Clone(), signal: signal.Clone() }) catch { _ => return 13 };
+    var waiter = try Spawn(AwaitFlag, Handoff { ready: ready.Clone(), signal: signal.Clone() }) catch {
+        _ => return 13,
+    };
     RaiseFlag(ready, signal);
     Assert(waiter.Join(), "the waiter saw the flag");
 
     // A read-write lock lets readers share and keeps the writers' increments.
     let shared = RwLock<uint64>(0u64);
     var mixed: JoinHandle<uint64>[4] = [
-        Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 },
-        Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 },
-        Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 },
-        Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 }
+        (try Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 }),
+        (try Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 }),
+        (try Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 }),
+        (try Spawn(ReadOrWrite, shared.Clone()) catch { _ => return 14 })
     ];
     for index in 0..Workers { mixed[index].Join(); }
     Assert(ReadShared(shared) == Rounds, "every writer's increment is kept");
@@ -241,10 +244,10 @@ func Main() -> int {
     // A semaphore of two lets at most two threads in at once.
     let limited = Limited { permits: Semaphore(2u32), inside: Mutex<uint64>(0u64), peak: Mutex<uint64>(0u64) };
     var users: JoinHandle<()>[4] = [
-        Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 },
-        Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 },
-        Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 },
-        Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 }
+        (try Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 }),
+        (try Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 }),
+        (try Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 }),
+        (try Spawn(UsePermit, ShareLimited(limited)) catch { _ => return 15 })
     ];
     for index in 0..Workers { users[index].Join(); }
     Assert(Read(limited.peak) <= 2u64, "no more threads than permits were inside at once");
@@ -253,10 +256,10 @@ func Main() -> int {
     // A barrier lets four threads through three rounds, with one leader a round.
     let phases = Phases { barrier: Barrier(4u32), leaders: Mutex<uint64>(0u64) };
     var meeters: JoinHandle<()>[4] = [
-        Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 },
-        Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 },
-        Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 },
-        Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 }
+        (try Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 }),
+        (try Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 }),
+        (try Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 }),
+        (try Spawn(MeetThreeTimes, SharePhases(phases)) catch { _ => return 16 })
     ];
     for index in 0..Workers { meeters[index].Join(); }
     Assert(Read(phases.leaders) == 3u64, "each round has exactly one leader");
@@ -265,7 +268,7 @@ func Main() -> int {
     let work = Work { group: WaitGroup(), finished: Mutex<uint64>(0u64) };
     work.group.Add(4u32);
     for index in 0..Workers {
-        var worker = Spawn(FinishWork, Work { group: work.group.Clone(), finished: work.finished.Clone() }) catch {
+        var worker = try Spawn(FinishWork, Work { group: work.group.Clone(), finished: work.finished.Clone() }) catch {
             _ => return 17
         };
         worker.Detach();
@@ -276,21 +279,23 @@ func Main() -> int {
     // Two producers and two consumers pass every value through a small channel exactly once.
     let channel = Channel<uint64>(8u);
     var producers: JoinHandle<()>[2] = [
-        Spawn(Produce, channel.Clone()) catch { _ => return 18 },
-        Spawn(Produce, channel.Clone()) catch { _ => return 18 }
+        (try Spawn(Produce, channel.Clone()) catch { _ => return 18 }),
+        (try Spawn(Produce, channel.Clone()) catch { _ => return 18 })
     ];
     var consumers: JoinHandle<uint64>[2] = [
-        Spawn(Consume, channel.Clone()) catch { _ => return 19 },
-        Spawn(Consume, channel.Clone()) catch { _ => return 19 }
+        (try Spawn(Consume, channel.Clone()) catch { _ => return 19 }),
+        (try Spawn(Consume, channel.Clone()) catch { _ => return 19 })
     ];
     producers[0].Join();
     producers[1].Join();
     channel.Close();
     let received = consumers[0].Join() + consumers[1].Join();
     Assert(received == 2u64 * (Rounds * (Rounds + 1u64) / 2u64), "every value arrived exactly once");
-    match channel.Send(1u64) {
-        .Success(_) => Assert(false, "a closed channel refuses a value"),
-        .Failure(value) => Assert(value == 1u64, "a closed channel hands the value back")
+    try {
+        channel.Send(1u64);
+        Assert(false, "a closed channel refuses a value");
+    } catch {
+        value => Assert(value == 1u64, "a closed channel hands the value back"),
     }
     Assert(channel.IsClosed() && channel.TryReceive() == none, "a closed, empty channel gives nothing");
     return 0;

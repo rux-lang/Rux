@@ -4,7 +4,7 @@
 // its `Iterate`, which borrows the container and hands out an independent iterator; a temporary iterator lives exactly
 // as long as its loop, and items the loop owns are destroyed once each.
 
-import Core::Assert;
+import Core::{ Assert, Result };
 
 struct Missing {}
 
@@ -68,15 +68,17 @@ struct Checked {
 }
 
 extend Checked {
-    func Next(&var self) -> (int32 ! Missing)? {
+    func Next(&var self) -> Result<int32, Missing>? {
         self.index = self.index + 1i32;
         if self.index > 3i32 {
             return none;
         }
         if self.index == 2i32 {
-            return .Some(.Failure(Missing {}));
+            let missing: Result<int32, Missing> = .Failure(Missing {});
+            return .Some(move missing);
         }
-        return .Some(.Success(self.index));
+        let found: Result<int32, Missing> = .Success(self.index);
+        return .Some(move found);
     }
 }
 

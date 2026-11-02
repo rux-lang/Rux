@@ -65,15 +65,15 @@ extend QueryPairs : Iterator {
 /// @param form whether `+` stands for a space
 /// @returns the text, or fails when an escape is malformed or the bytes are not UTF-8
 /// @see https://rux-lang.dev/docs/api/url/query#decode
-pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) -> String ! UrlError {
+pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) -> String throws UrlError {
     var out = Bytes(allocator);
     var index: uint = 0;
     while index < encoded.length {
         let c = encoded[index];
         if c == '%' {
-            if index + 2 >= encoded.length { fail UrlError::InvalidPercentEncoding; }
-            let high = HexValue(encoded[index + 1] as uint8) ?? fail UrlError::InvalidPercentEncoding;
-            let low = HexValue(encoded[index + 2] as uint8) ?? fail UrlError::InvalidPercentEncoding;
+            if index + 2 >= encoded.length { throw .InvalidPercentEncoding; }
+            let high = HexValue(encoded[index + 1] as uint8) ?? throw .InvalidPercentEncoding;
+            let low = HexValue(encoded[index + 2] as uint8) ?? throw .InvalidPercentEncoding;
             out.Push(((high << 4) | low) as char8);
             index = index + 3;
             continue;
@@ -81,7 +81,7 @@ pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) ->
         out.Push(if form && c == '+' { c8' ' } else { c });
         index = index + 1;
     }
-    return String::FromBytes(allocator, out.View()) catch { _ => fail UrlError::InvalidText };
+    return try String::FromBytes(allocator, out.View()) catch { _ => throw .InvalidText };
 }
 
 /// Builds a query from `name=value` pairs, encoding each the way HTML forms do.

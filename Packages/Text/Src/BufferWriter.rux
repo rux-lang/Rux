@@ -90,11 +90,11 @@ extend BufferWriter : TextWriter {
     /// @param bytes the UTF-8 run to append, whole
     /// @returns success when the complete run was appended
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#write
-    pub func Write(&var self, bytes: char8[..]) -> ! FormatError {
+    pub func Write(&var self, bytes: char8[..]) throws FormatError {
         if bytes.length > self.room.length - self.length {
-            fail FormatError::InsufficientCapacity;
+            throw .InsufficientCapacity;
         }
-        Validate(bytes) catch { _ => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
+        try Validate(bytes) catch { _ => throw .TextFailure(TextFailureKind::InvalidUtf8) };
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, the loop condition.

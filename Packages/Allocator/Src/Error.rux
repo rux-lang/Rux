@@ -2,8 +2,8 @@
 // An allocator that fails has to say so in a way the caller can act on, and "null" is not that: it cannot tell a
 // request that was too large from one the system refused from one the allocator was never able to serve. These are
 // the four answers, and every allocator in this package gives one of them.
-// Every case is a failure. An allocator returns its address or completion through a native fallible, `T ! AllocError`,
-// so success is the other channel rather than a member of this enum, and a result nobody handles is diagnosed.
+// Every case is a failure. An allocator returns its address or completion and declares `throws AllocError`, so
+// success is the return value rather than a member of this enum, and a call nobody marks with `try` is diagnosed.
 // The owning types built on an allocator treat a refusal as fatal: a `Box`, an `Rc`, a collection or a string that
 // cannot get storage terminates the program through `AllocationFailed`, and its `Try*` operations hand the
 // `AllocError` back instead to the code that can recover.

@@ -613,10 +613,10 @@ extend SocketAddress {
     /// @param allocator what the text is kept in
     /// @returns the text
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-to-string
-    pub func ToString(&self, allocator: Allocator) -> String ! TextError {
+    pub func ToString(&self, allocator: Allocator) -> String throws TextError {
         var buffer: char8[56] = ['\0'; 56];
         let length = self.WriteText(buffer[..]);
-        return String::FromBytes(allocator, buffer[..length])?;
+        return try String::FromBytes(allocator, buffer[..length]);
     }
 
     /// Whether two socket addresses are the same.
@@ -637,11 +637,11 @@ extend Ipv4Address : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         var text: char8[16] = ['\0'; 16];
         let length = self.WriteText(text[..]);
-        return WriteAligned(writer, spec, text[..length], false);
+        return try WriteAligned(writer, spec, text[..length], false);
     }
 }
 
@@ -652,11 +652,11 @@ extend Ipv6Address : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         var text: char8[48] = ['\0'; 48];
         let length = self.WriteText(text[..]);
-        return WriteAligned(writer, spec, text[..length], false);
+        return try WriteAligned(writer, spec, text[..length], false);
     }
 }
 
@@ -667,11 +667,11 @@ extend IpAddress : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#ip-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         var text: char8[48] = ['\0'; 48];
         let length = self.WriteText(text[..]);
-        return WriteAligned(writer, spec, text[..length], false);
+        return try WriteAligned(writer, spec, text[..length], false);
     }
 }
 
@@ -682,10 +682,10 @@ extend SocketAddress : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         var text: char8[56] = ['\0'; 56];
         let length = self.WriteText(text[..]);
-        return WriteAligned(writer, spec, text[..length], false);
+        return try WriteAligned(writer, spec, text[..length], false);
     }
 }

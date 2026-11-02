@@ -240,7 +240,7 @@ extend Regex {
     /// @param pattern the pattern, in the syntax `Regex` describes
     /// @returns the compiled pattern, or why it could not be compiled and where
     /// @see https://rux-lang.dev/docs/api/regex/regex#new
-    pub func New(allocator: Allocator, pattern: char8[..]) -> Self ! RegexError {
+    pub func New(allocator: Allocator, pattern: char8[..]) -> Self throws RegexError {
         var regex = Self {
             allocator,
             instructions: Vector<Instruction>(allocator),
@@ -257,9 +257,9 @@ extend Regex {
             reverseStart: NoReverse
         };
         var parser = Parser { pattern, at: 0, flags: 0, nodes: Vector<Node>(allocator) };
-        let root = parser.ParseAlternation(regex, 0)?;
-        if parser.at < pattern.length { fail RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
-        regex.CompileProgram(parser.nodes.AsSlice(), root)?;
+        let root = try parser.ParseAlternation(regex, 0);
+        if parser.at < pattern.length { throw RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
+        try regex.CompileProgram(parser.nodes.AsSlice(), root);
         return move regex;
     }
 
@@ -345,7 +345,7 @@ extend Regex {
     /// @returns the match, or `none`
     /// @see https://rux-lang.dev/docs/api/regex/regex#find
     pub func Find(&self, text: char8[..]) -> Match? {
-        return self.FindAt(text, 0)?;
+        return self.FindAt(text, 0);
     }
 
     /// The leftmost match in `text` at or after byte `start`. Anchors and word boundaries still see the text before
@@ -367,7 +367,7 @@ extend Regex {
     /// @returns the groups, or `none` when there is no match
     /// @see https://rux-lang.dev/docs/api/regex/regex#capture
     pub func Capture(&self, text: char8[..]) -> Captures? {
-        return self.CaptureAt(text, 0)?;
+        return self.CaptureAt(text, 0);
     }
 
     /// The leftmost match in `text` at or after byte `start`, with where each group matched.

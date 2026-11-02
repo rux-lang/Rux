@@ -113,7 +113,7 @@ extend Atomic<T> {
     /// @param desired the value to put there
     /// @returns the value before, as success when it was replaced and as failure when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange
-    pub func CompareExchange(&self, expected: T, desired: T) -> T ! T {
+    pub func CompareExchange(&self, expected: T, desired: T) -> T throws T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         let previous = unsafe {
@@ -121,7 +121,7 @@ extend Atomic<T> {
                                   MemoryOrder::SequentiallyConsistent)
         };
         if previous == expected { return previous; }
-        fail previous;
+        throw previous;
     }
 
     /// Replaces the value with `desired` if it is `expected`, with `success` when it does and `failure` when it does
@@ -136,7 +136,7 @@ extend Atomic<T> {
     /// @returns the value before, as success when it was replaced and as failure when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange-with
     pub func CompareExchangeWith(&self, expected: T, desired: T, success: MemoryOrder,
-                                 failure: MemoryOrder) -> T ! T {
+                                 failure: MemoryOrder) -> T throws T {
         let acquireOnFailure = failure == MemoryOrder::Acquire || failure == MemoryOrder::AcquireRelease ||
                                failure == MemoryOrder::SequentiallyConsistent;
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
@@ -166,7 +166,7 @@ extend Atomic<T> {
             })
         };
         if previous == expected { return previous; }
-        fail previous;
+        throw previous;
     }
 
     /// Adds `value`, wrapping on overflow, and returns the value before, as one step, with sequential consistency.

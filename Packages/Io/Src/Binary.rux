@@ -29,9 +29,9 @@ pub enum Endian: int32 {
 /// @param width how many bytes the value occupies
 /// @returns the value read, in the low bytes; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-word
-pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 ! IoError {
+pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 throws IoError {
     var bytes: char8[64];
-    ReadExact(reader, bytes[0..width])?;
+    try ReadExact(reader, bytes[0..width]);
     var word: uint512 = 0;
     var index: uint = 0;
     while index < width {
@@ -51,7 +51,7 @@ pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 !
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-word
-pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint512) -> ! IoError {
+pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint512) throws IoError {
     var bytes: char8[64];
     var word = value;
     var index: uint = 0;
@@ -62,7 +62,7 @@ pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint
         word = word >> 8;
         index = index + 1;
     }
-    return WriteAll(writer, bytes[0..width]);
+    return try WriteAll(writer, bytes[0..width]);
 }
 
 /// Reads a `uint8` in the given order.
@@ -70,8 +70,8 @@ pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint8
-pub func ReadUint8(reader: &var Reader, endian: Endian) -> uint8 ! IoError {
-    let word = ReadWord(reader, endian, 1)?;
+pub func ReadUint8(reader: &var Reader, endian: Endian) -> uint8 throws IoError {
+    let word = try ReadWord(reader, endian, 1);
     return word as uint8;
 }
 
@@ -81,8 +81,8 @@ pub func ReadUint8(reader: &var Reader, endian: Endian) -> uint8 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint8
-pub func WriteUint8(writer: &var Writer, endian: Endian, value: uint8) -> ! IoError {
-    return WriteWord(writer, endian, 1, value as uint512);
+pub func WriteUint8(writer: &var Writer, endian: Endian, value: uint8) throws IoError {
+    return try WriteWord(writer, endian, 1, value as uint512);
 }
 
 /// Reads an `int8`: the unsigned bytes, reinterpreted in two's complement.
@@ -90,8 +90,8 @@ pub func WriteUint8(writer: &var Writer, endian: Endian, value: uint8) -> ! IoEr
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int8
-pub func ReadInt8(reader: &var Reader, endian: Endian) -> int8 ! IoError {
-    let word = ReadUint8(reader, endian)?;
+pub func ReadInt8(reader: &var Reader, endian: Endian) -> int8 throws IoError {
+    let word = try ReadUint8(reader, endian);
     return word.Truncate<int8>();
 }
 
@@ -101,8 +101,8 @@ pub func ReadInt8(reader: &var Reader, endian: Endian) -> int8 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int8
-pub func WriteInt8(writer: &var Writer, endian: Endian, value: int8) -> ! IoError {
-    return WriteUint8(writer, endian, value.Truncate<uint8>());
+pub func WriteInt8(writer: &var Writer, endian: Endian, value: int8) throws IoError {
+    return try WriteUint8(writer, endian, value.Truncate<uint8>());
 }
 
 /// Reads a `uint16` in the given order.
@@ -110,8 +110,8 @@ pub func WriteInt8(writer: &var Writer, endian: Endian, value: int8) -> ! IoErro
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint16
-pub func ReadUint16(reader: &var Reader, endian: Endian) -> uint16 ! IoError {
-    let word = ReadWord(reader, endian, 2)?;
+pub func ReadUint16(reader: &var Reader, endian: Endian) -> uint16 throws IoError {
+    let word = try ReadWord(reader, endian, 2);
     return word as uint16;
 }
 
@@ -121,8 +121,8 @@ pub func ReadUint16(reader: &var Reader, endian: Endian) -> uint16 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint16
-pub func WriteUint16(writer: &var Writer, endian: Endian, value: uint16) -> ! IoError {
-    return WriteWord(writer, endian, 2, value as uint512);
+pub func WriteUint16(writer: &var Writer, endian: Endian, value: uint16) throws IoError {
+    return try WriteWord(writer, endian, 2, value as uint512);
 }
 
 /// Reads an `int16`: the unsigned bytes, reinterpreted in two's complement.
@@ -130,8 +130,8 @@ pub func WriteUint16(writer: &var Writer, endian: Endian, value: uint16) -> ! Io
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int16
-pub func ReadInt16(reader: &var Reader, endian: Endian) -> int16 ! IoError {
-    let word = ReadUint16(reader, endian)?;
+pub func ReadInt16(reader: &var Reader, endian: Endian) -> int16 throws IoError {
+    let word = try ReadUint16(reader, endian);
     return word.Truncate<int16>();
 }
 
@@ -141,8 +141,8 @@ pub func ReadInt16(reader: &var Reader, endian: Endian) -> int16 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int16
-pub func WriteInt16(writer: &var Writer, endian: Endian, value: int16) -> ! IoError {
-    return WriteUint16(writer, endian, value.Truncate<uint16>());
+pub func WriteInt16(writer: &var Writer, endian: Endian, value: int16) throws IoError {
+    return try WriteUint16(writer, endian, value.Truncate<uint16>());
 }
 
 /// Reads a `uint32` in the given order.
@@ -150,8 +150,8 @@ pub func WriteInt16(writer: &var Writer, endian: Endian, value: int16) -> ! IoEr
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint32
-pub func ReadUint32(reader: &var Reader, endian: Endian) -> uint32 ! IoError {
-    let word = ReadWord(reader, endian, 4)?;
+pub func ReadUint32(reader: &var Reader, endian: Endian) -> uint32 throws IoError {
+    let word = try ReadWord(reader, endian, 4);
     return word as uint32;
 }
 
@@ -161,8 +161,8 @@ pub func ReadUint32(reader: &var Reader, endian: Endian) -> uint32 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint32
-pub func WriteUint32(writer: &var Writer, endian: Endian, value: uint32) -> ! IoError {
-    return WriteWord(writer, endian, 4, value as uint512);
+pub func WriteUint32(writer: &var Writer, endian: Endian, value: uint32) throws IoError {
+    return try WriteWord(writer, endian, 4, value as uint512);
 }
 
 /// Reads an `int32`: the unsigned bytes, reinterpreted in two's complement.
@@ -170,8 +170,8 @@ pub func WriteUint32(writer: &var Writer, endian: Endian, value: uint32) -> ! Io
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int32
-pub func ReadInt32(reader: &var Reader, endian: Endian) -> int32 ! IoError {
-    let word = ReadUint32(reader, endian)?;
+pub func ReadInt32(reader: &var Reader, endian: Endian) -> int32 throws IoError {
+    let word = try ReadUint32(reader, endian);
     return word.Truncate<int32>();
 }
 
@@ -181,8 +181,8 @@ pub func ReadInt32(reader: &var Reader, endian: Endian) -> int32 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int32
-pub func WriteInt32(writer: &var Writer, endian: Endian, value: int32) -> ! IoError {
-    return WriteUint32(writer, endian, value.Truncate<uint32>());
+pub func WriteInt32(writer: &var Writer, endian: Endian, value: int32) throws IoError {
+    return try WriteUint32(writer, endian, value.Truncate<uint32>());
 }
 
 /// Reads a `uint64` in the given order.
@@ -190,8 +190,8 @@ pub func WriteInt32(writer: &var Writer, endian: Endian, value: int32) -> ! IoEr
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint64
-pub func ReadUint64(reader: &var Reader, endian: Endian) -> uint64 ! IoError {
-    let word = ReadWord(reader, endian, 8)?;
+pub func ReadUint64(reader: &var Reader, endian: Endian) -> uint64 throws IoError {
+    let word = try ReadWord(reader, endian, 8);
     return word as uint64;
 }
 
@@ -201,8 +201,8 @@ pub func ReadUint64(reader: &var Reader, endian: Endian) -> uint64 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint64
-pub func WriteUint64(writer: &var Writer, endian: Endian, value: uint64) -> ! IoError {
-    return WriteWord(writer, endian, 8, value as uint512);
+pub func WriteUint64(writer: &var Writer, endian: Endian, value: uint64) throws IoError {
+    return try WriteWord(writer, endian, 8, value as uint512);
 }
 
 /// Reads an `int64`: the unsigned bytes, reinterpreted in two's complement.
@@ -210,8 +210,8 @@ pub func WriteUint64(writer: &var Writer, endian: Endian, value: uint64) -> ! Io
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int64
-pub func ReadInt64(reader: &var Reader, endian: Endian) -> int64 ! IoError {
-    let word = ReadUint64(reader, endian)?;
+pub func ReadInt64(reader: &var Reader, endian: Endian) -> int64 throws IoError {
+    let word = try ReadUint64(reader, endian);
     return word.Truncate<int64>();
 }
 
@@ -221,8 +221,8 @@ pub func ReadInt64(reader: &var Reader, endian: Endian) -> int64 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int64
-pub func WriteInt64(writer: &var Writer, endian: Endian, value: int64) -> ! IoError {
-    return WriteUint64(writer, endian, value.Truncate<uint64>());
+pub func WriteInt64(writer: &var Writer, endian: Endian, value: int64) throws IoError {
+    return try WriteUint64(writer, endian, value.Truncate<uint64>());
 }
 
 /// Reads a `uint128` in the given order.
@@ -230,8 +230,8 @@ pub func WriteInt64(writer: &var Writer, endian: Endian, value: int64) -> ! IoEr
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint128
-pub func ReadUint128(reader: &var Reader, endian: Endian) -> uint128 ! IoError {
-    let word = ReadWord(reader, endian, 16)?;
+pub func ReadUint128(reader: &var Reader, endian: Endian) -> uint128 throws IoError {
+    let word = try ReadWord(reader, endian, 16);
     return word as uint128;
 }
 
@@ -241,8 +241,8 @@ pub func ReadUint128(reader: &var Reader, endian: Endian) -> uint128 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint128
-pub func WriteUint128(writer: &var Writer, endian: Endian, value: uint128) -> ! IoError {
-    return WriteWord(writer, endian, 16, value as uint512);
+pub func WriteUint128(writer: &var Writer, endian: Endian, value: uint128) throws IoError {
+    return try WriteWord(writer, endian, 16, value as uint512);
 }
 
 /// Reads an `int128`: the unsigned bytes, reinterpreted in two's complement.
@@ -250,8 +250,8 @@ pub func WriteUint128(writer: &var Writer, endian: Endian, value: uint128) -> ! 
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int128
-pub func ReadInt128(reader: &var Reader, endian: Endian) -> int128 ! IoError {
-    let word = ReadUint128(reader, endian)?;
+pub func ReadInt128(reader: &var Reader, endian: Endian) -> int128 throws IoError {
+    let word = try ReadUint128(reader, endian);
     return word.Truncate<int128>();
 }
 
@@ -261,8 +261,8 @@ pub func ReadInt128(reader: &var Reader, endian: Endian) -> int128 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int128
-pub func WriteInt128(writer: &var Writer, endian: Endian, value: int128) -> ! IoError {
-    return WriteUint128(writer, endian, value.Truncate<uint128>());
+pub func WriteInt128(writer: &var Writer, endian: Endian, value: int128) throws IoError {
+    return try WriteUint128(writer, endian, value.Truncate<uint128>());
 }
 
 /// Reads a `uint256` in the given order.
@@ -270,8 +270,8 @@ pub func WriteInt128(writer: &var Writer, endian: Endian, value: int128) -> ! Io
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint256
-pub func ReadUint256(reader: &var Reader, endian: Endian) -> uint256 ! IoError {
-    let word = ReadWord(reader, endian, 32)?;
+pub func ReadUint256(reader: &var Reader, endian: Endian) -> uint256 throws IoError {
+    let word = try ReadWord(reader, endian, 32);
     return word as uint256;
 }
 
@@ -281,8 +281,8 @@ pub func ReadUint256(reader: &var Reader, endian: Endian) -> uint256 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint256
-pub func WriteUint256(writer: &var Writer, endian: Endian, value: uint256) -> ! IoError {
-    return WriteWord(writer, endian, 32, value as uint512);
+pub func WriteUint256(writer: &var Writer, endian: Endian, value: uint256) throws IoError {
+    return try WriteWord(writer, endian, 32, value as uint512);
 }
 
 /// Reads an `int256`: the unsigned bytes, reinterpreted in two's complement.
@@ -290,8 +290,8 @@ pub func WriteUint256(writer: &var Writer, endian: Endian, value: uint256) -> ! 
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int256
-pub func ReadInt256(reader: &var Reader, endian: Endian) -> int256 ! IoError {
-    let word = ReadUint256(reader, endian)?;
+pub func ReadInt256(reader: &var Reader, endian: Endian) -> int256 throws IoError {
+    let word = try ReadUint256(reader, endian);
     return word.Truncate<int256>();
 }
 
@@ -301,8 +301,8 @@ pub func ReadInt256(reader: &var Reader, endian: Endian) -> int256 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int256
-pub func WriteInt256(writer: &var Writer, endian: Endian, value: int256) -> ! IoError {
-    return WriteUint256(writer, endian, value.Truncate<uint256>());
+pub func WriteInt256(writer: &var Writer, endian: Endian, value: int256) throws IoError {
+    return try WriteUint256(writer, endian, value.Truncate<uint256>());
 }
 
 /// Reads a `uint512` in the given order.
@@ -310,8 +310,8 @@ pub func WriteInt256(writer: &var Writer, endian: Endian, value: int256) -> ! Io
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-uint512
-pub func ReadUint512(reader: &var Reader, endian: Endian) -> uint512 ! IoError {
-    let word = ReadWord(reader, endian, 64)?;
+pub func ReadUint512(reader: &var Reader, endian: Endian) -> uint512 throws IoError {
+    let word = try ReadWord(reader, endian, 64);
     return word as uint512;
 }
 
@@ -321,8 +321,8 @@ pub func ReadUint512(reader: &var Reader, endian: Endian) -> uint512 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-uint512
-pub func WriteUint512(writer: &var Writer, endian: Endian, value: uint512) -> ! IoError {
-    return WriteWord(writer, endian, 64, value as uint512);
+pub func WriteUint512(writer: &var Writer, endian: Endian, value: uint512) throws IoError {
+    return try WriteWord(writer, endian, 64, value as uint512);
 }
 
 /// Reads an `int512`: the unsigned bytes, reinterpreted in two's complement.
@@ -330,8 +330,8 @@ pub func WriteUint512(writer: &var Writer, endian: Endian, value: uint512) -> ! 
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-int512
-pub func ReadInt512(reader: &var Reader, endian: Endian) -> int512 ! IoError {
-    let word = ReadUint512(reader, endian)?;
+pub func ReadInt512(reader: &var Reader, endian: Endian) -> int512 throws IoError {
+    let word = try ReadUint512(reader, endian);
     return word.Truncate<int512>();
 }
 
@@ -341,8 +341,8 @@ pub func ReadInt512(reader: &var Reader, endian: Endian) -> int512 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-int512
-pub func WriteInt512(writer: &var Writer, endian: Endian, value: int512) -> ! IoError {
-    return WriteUint512(writer, endian, value.Truncate<uint512>());
+pub func WriteInt512(writer: &var Writer, endian: Endian, value: int512) throws IoError {
+    return try WriteUint512(writer, endian, value.Truncate<uint512>());
 }
 
 /// Reads a `float32` as the IEEE 754 bit pattern of its width.
@@ -350,8 +350,8 @@ pub func WriteInt512(writer: &var Writer, endian: Endian, value: int512) -> ! Io
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-float32
-pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 ! IoError {
-    var bits = ReadUint32(reader, endian)?;
+pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 throws IoError {
+    var bits = try ReadUint32(reader, endian);
     var value = 0.0f32;
     // Safety: `value` and `bits` are distinct locals of exactly 4 bytes each.
     unsafe { Copy(@value as *var opaque, @bits as *opaque, 4); }
@@ -364,12 +364,12 @@ pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-float32
-pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> ! IoError {
+pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) throws IoError {
     var bits: uint32 = 0;
     var held = value;
     // Safety: `bits` and `held` are distinct locals of exactly 4 bytes each.
     unsafe { Copy(@bits as *var opaque, @held as *opaque, 4); }
-    return WriteUint32(writer, endian, bits);
+    return try WriteUint32(writer, endian, bits);
 }
 
 /// Reads a `float64` as the IEEE 754 bit pattern of its width.
@@ -377,8 +377,8 @@ pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> ! 
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` if the stream had ended, `UnexpectedEnd` if it ended partway
 /// @see https://rux-lang.dev/docs/api/io/binary#read-float64
-pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 ! IoError {
-    var bits = ReadUint64(reader, endian)?;
+pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 throws IoError {
+    var bits = try ReadUint64(reader, endian);
     var value = 0.0f64;
     // Safety: `value` and `bits` are distinct locals of exactly 8 bytes each.
     unsafe { Copy(@value as *var opaque, @bits as *opaque, 8); }
@@ -391,10 +391,10 @@ pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 ! IoError {
 /// @param value the value to write
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/binary#write-float64
-pub func WriteFloat64(writer: &var Writer, endian: Endian, value: float64) -> ! IoError {
+pub func WriteFloat64(writer: &var Writer, endian: Endian, value: float64) throws IoError {
     var bits: uint64 = 0;
     var held = value;
     // Safety: `bits` and `held` are distinct locals of exactly 8 bytes each.
     unsafe { Copy(@bits as *var opaque, @held as *opaque, 8); }
-    return WriteUint64(writer, endian, bits);
+    return try WriteUint64(writer, endian, bits);
 }

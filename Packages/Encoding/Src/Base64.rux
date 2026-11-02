@@ -61,9 +61,9 @@ pub func Base64EncodedLength(length: uint, form: Base64Variant = Base64Variant::
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
 pub func Base64Encode(bytes: byte[..], into: var char8[..],
-                      form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
+                      form: Base64Variant = Base64Variant::Standard) -> uint throws FormatError {
     let needed = Base64EncodedLength(bytes.length, form);
-    if into.length < needed { fail FormatError::InsufficientCapacity; }
+    if into.length < needed { throw .InsufficientCapacity; }
     let urlSafe = IsUrlSafe(form);
     var from: uint = 0;
     var to: uint = 0;
@@ -108,13 +108,13 @@ pub func Base64Encode(bytes: byte[..], into: var char8[..],
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
 pub func Base64Encode(text: char8[..], into: var char8[..],
-                      form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
-    return Base64Encode(BytesOf(text), into, form);
+                      form: Base64Variant = Base64Variant::Standard) -> uint throws FormatError {
+    return try Base64Encode(BytesOf(text), into, form);
 }
 
 // How many characters at the end of a padded text are padding, after checking that only the last two may be and
 // that nothing but padding follows the first. Fails at the first padding character that is out of place.
-func CountPadding(text: char8[..]) -> uint ! DecodeError {
+func CountPadding(text: char8[..]) -> uint throws DecodeError {
     var first = text.length;
     var index: uint = 0;
     while index < text.length {
@@ -123,12 +123,12 @@ func CountPadding(text: char8[..]) -> uint ! DecodeError {
         }
         else if text[index] != '=' && first != text.length {
             // Data after padding: the padding that came before it is what is misplaced.
-            fail DecodeError::InvalidPadding(first);
+            throw .InvalidPadding(first);
         }
         index = index + 1;
     }
     let count = text.length - first;
-    if count > 2 { fail DecodeError::InvalidPadding(first); }
+    if count > 2 { throw .InvalidPadding(first); }
     return count;
 }
 
@@ -141,19 +141,20 @@ func CountPadding(text: char8[..]) -> uint ! DecodeError {
 /// @param form the alphabet and padding the text is expected to use
 /// @returns the number of bytes `Base64Decode` writes for it
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decoded-length
-pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Variant::Standard) -> uint ! DecodeError {
+pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Variant::Standard)
+    -> uint throws DecodeError {
     if IsPadded(form) {
-        if text.length % 4 != 0 { fail DecodeError::InvalidLength(text.length); }
-        let padding = CountPadding(text)?;
+        if text.length % 4 != 0 { throw .InvalidLength(text.length); }
+        let padding = try CountPadding(text);
         return text.length / 4 * 3 - padding;
     }
     var index: uint = 0;
     while index < text.length {
-        if text[index] == '=' { fail DecodeError::InvalidPadding(index); }
+        if text[index] == '=' { throw .InvalidPadding(index); }
         index = index + 1;
     }
     let rest = text.length % 4;
-    if rest == 1 { fail DecodeError::InvalidLength(text.length); }
+    if rest == 1 { throw .InvalidLength(text.length); }
     return text.length / 4 * 3 + (if rest == 0 { 0 } else { rest - 1 });
 }
 
@@ -169,8 +170,8 @@ pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Varian
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decode
 pub func Base64Decode(text: char8[..], into: var byte[..],
-                      form: Base64Variant = Base64Variant::Standard) -> uint ! DecodeError {
-    let needed = Base64DecodedLength(text, form)?;
+                      form: Base64Variant = Base64Variant::Standard) -> uint throws DecodeError {
+    let needed = try Base64DecodedLength(text, form);
     let urlSafe = IsUrlSafe(form);
     // The characters that carry data: everything before the padding, whose shape is already checked.
     var digits = text.length;
@@ -188,16 +189,16 @@ pub func Base64Decode(text: char8[..], into: var byte[..],
         while Base64Value(CharCode(text[index]), urlSafe) >= 0 {
             index = index + 1;
         }
-        fail DecodeError::InvalidCharacter(index);
+        throw .InvalidCharacter(index);
     }
     // A partial group of two characters carries one byte and four unused bits; of three, two bytes and two.
     let rest = digits % 4;
     if rest != 0 {
         let last = Base64Value(CharCode(text[digits - 1]), urlSafe);
         let unused = if rest == 2 { 15 } else { 3 };
-        if (last & unused) != 0 { fail DecodeError::NonCanonical(digits - 1); }
+        if (last & unused) != 0 { throw .NonCanonical(digits - 1); }
     }
-    if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
+    if into.length < needed { throw .InsufficientCapacity(needed); }
 
     var from: uint = 0;
     var to: uint = 0;
@@ -254,24 +255,24 @@ extend Base64View : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-view-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        if spec.HasPrecision() { fail FormatError::UnsupportedRequest; }
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        if spec.HasPrecision() { throw .UnsupportedRequest; }
+        try RejectStyle(spec);
         var before: uint = 0;
         var after: uint = 0;
         PaddingAround(spec, Base64EncodedLength(self.bytes.length, self.form), false, @before, @after);
-        WriteFill(writer, spec, before)?;
+        try WriteFill(writer, spec, before);
         // Ninety-six bytes is a whole number of groups, so only the last block can end in a partial one.
         var block: char8[128];
         var index: uint = 0;
         while index < self.bytes.length {
             let end = if self.bytes.length - index > 96 { index + 96 } else { self.bytes.length };
-            let written = Base64Encode(self.bytes[index..end], block[..], self.form) catch {
-                _ => fail FormatError::InsufficientCapacity
+            let written = try Base64Encode(self.bytes[index..end], block[..], self.form) catch {
+                _ => throw .InsufficientCapacity
             };
-            WriteBytes(writer, block[..written])?;
+            try WriteBytes(writer, block[..written]);
             index = end;
         }
-        return WriteFill(writer, spec, after);
+        return try WriteFill(writer, spec, after);
     }
 }

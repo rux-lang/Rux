@@ -1,6 +1,8 @@
 // The other half of the package: generic producers of native values, compiled as their own module, so every native
 // type crossing between the two modules has to agree on its identity and layout.
 
+import Core::Result;
+
 module GenericSum::Shapes {
     pub struct Box<T> {
         value: T;
@@ -41,25 +43,25 @@ module GenericSum::Shapes {
         return right;
     }
 
-    pub func WithTimeout<E>(error: E, expired: bool) -> int32 ! (E | Timeout) {
+    pub func WithTimeout<E>(error: E, expired: bool) -> int32 throws (E | Timeout) {
         if expired {
-            fail Timeout { after: 30i32 };
+            throw Timeout { after: 30i32 };
         }
-        fail error;
+        throw error;
     }
 
-    pub func Read(text: int32) -> int32 ! ReadError {
+    pub func Read(text: int32) -> int32 throws ReadError {
         if text < 0i32 {
-            fail ParseError { position: -text };
+            throw ParseError { position: -text };
         }
         if text > 1000i32 {
-            fail IoError { code: text };
+            throw IoError { code: text };
         }
         return text;
     }
 
-    pub func Load(text: int32) -> int32 ! LoadError {
-        return Read(text)? else (e => LoadError::Unreadable(e));
+    pub func Load(text: int32) -> int32 throws LoadError {
+        return try Read(text) catch { e => throw LoadError::Unreadable(e) };
     }
 
     pub func Lookup<T>(present: bool, value: T) -> T? {
@@ -69,19 +71,21 @@ module GenericSum::Shapes {
         return none;
     }
 
-    pub func Nest<T, E>(depth: int32, value: T, error: E) -> (T ! E)? {
+    pub func Nest<T, E>(depth: int32, value: T, error: E) -> Result<T, E>? {
         if depth == 0i32 {
             return none;
         }
         if depth == 1i32 {
-            return .Some(.Failure(error));
+            let failed: Result<T, E> = .Failure(error);
+            return .Some(move failed);
         }
-        return .Some(.Success(value));
+        let succeeded: Result<T, E> = .Success(value);
+        return .Some(move succeeded);
     }
 
-    pub func Complete(ok: bool) -> ! IoError {
+    pub func Complete(ok: bool) throws IoError {
         if !ok {
-            fail IoError { code: 1i32 };
+            throw IoError { code: 1i32 };
         }
     }
 }

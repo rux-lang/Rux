@@ -33,7 +33,7 @@ func FailsWith(text: char8[..], into: var char8[..]) -> uint {
     let failure = reader.Failure() ?? return 0;
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(failure.WriteDebug(sink, FormatSpec::Plain()) is .Success(_), "a failure renders");
+    Assert((try? failure.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
     return writer.Length();
 }
 

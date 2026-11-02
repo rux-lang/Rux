@@ -20,16 +20,16 @@ func Checked(value: int32) -> int32 throws Failure {
 }
 
 func Main() -> int {
-    // Which channel a native fallible holds, asked without unwrapping it.
-    let success: int32 ! Failure = .Success(13);
+    // Which case a result holds, asked without unwrapping it.
+    let success: Result<int32, Failure> = .Success(13);
     Assert(success is .Success(_) && !(success is .Failure(_)), "Success channel inspection");
-    let failure: int32 ! Failure = .Failure(Failure::Invalid);
+    let failure: Result<int32, Failure> = .Failure(Failure::Invalid);
     Assert(failure is .Failure(_) && !(failure is .Success(_)), "Failure channel inspection");
-    let completed: ! Failure = .Success(());
+    let completed: Result<(), Failure> = .Success(());
     Assert(completed is .Success(_), "Unit success inspection");
 
-    // Asking borrows, so an outcome whose payload cannot be copied is still there to be matched afterwards.
-    let held: Handle ! Failure = .Success(Handle { value: 23 });
+    // Asking borrows, so a result whose payload cannot be copied is still there to be matched afterwards.
+    let held: Result<Handle, Failure> = .Success(Handle { value: 23 });
     Assert(held is .Success(_), "A move-only outcome is asked without consuming it");
     let heldValue = match move held {
         .Success(handle) => handle.value,

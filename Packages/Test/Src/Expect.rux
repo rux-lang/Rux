@@ -1,6 +1,8 @@
 // Checks that fail a test with a message saying what was expected and what was found.
-// Each check returns `! TestFailure`, so a test passes it on with `?` and stops at the first check that does not hold.
+// Each check declares `throws TestFailure`, so a test marks it with `try` and stops at the first check that does not
+// hold.
 
+import Core::Result;
 import Format::WriteFormat;
 import Test::TestFailure;
 import Text::Display;
@@ -10,8 +12,8 @@ import Text::Display;
 /// @param message what it means, for the failure
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect
-pub func Expect(condition: bool, message: char8[..]) -> ! TestFailure {
-    if !condition { fail TestFailure::Of(message); }
+pub func Expect(condition: bool, message: char8[..]) throws TestFailure {
+    if !condition { throw TestFailure::Of(message); }
 }
 
 /// Fails unless `actual` equals `expected`, saying both.
@@ -20,13 +22,13 @@ pub func Expect(condition: bool, message: char8[..]) -> ! TestFailure {
 /// @param expected what it should have given
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-equal
-pub func ExpectEqual<T: Display>(actual: T, expected: T) -> ! TestFailure {
+pub func ExpectEqual<T: Display>(actual: T, expected: T) throws TestFailure {
     if actual == expected { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{}, but got {}", expected, actual) catch { _ => {} };
+    try WriteFormat(writer, "{}, but got {}", expected, actual) catch { _ => {} };
     failure.Grow(writer);
-    fail failure;
+    throw failure;
 }
 
 /// Fails if `actual` equals `unexpected`.
@@ -35,13 +37,13 @@ pub func ExpectEqual<T: Display>(actual: T, expected: T) -> ! TestFailure {
 /// @param unexpected what it should not have given
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-not-equal
-pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> ! TestFailure {
+pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) throws TestFailure {
     if actual != unexpected { return; }
     var failure = TestFailure::Of("expected anything but ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{}", unexpected) catch { _ => {} };
+    try WriteFormat(writer, "{}", unexpected) catch { _ => {} };
     failure.Grow(writer);
-    fail failure;
+    throw failure;
 }
 
 /// Fails unless `actual` is within `tolerance` of `expected`.
@@ -50,14 +52,14 @@ pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> ! TestFailure {
 /// @param tolerance how far apart they may be
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-near
-pub func ExpectNear(actual: float64, expected: float64, tolerance: float64) -> ! TestFailure {
+pub func ExpectNear(actual: float64, expected: float64, tolerance: float64) throws TestFailure {
     let difference = if actual > expected { actual - expected } else { expected - actual };
     if difference <= tolerance { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{} within {}, but got {}", expected, tolerance, actual) catch { _ => {} };
+    try WriteFormat(writer, "{} within {}, but got {}", expected, tolerance, actual) catch { _ => {} };
     failure.Grow(writer);
-    fail failure;
+    throw failure;
 }
 
 // Appends `text` from `start` for at most `count` bytes, quoted, with line breaks, tabs and other controls escaped.
@@ -85,20 +87,20 @@ func AppendExcerpt(failure: &var TestFailure, text: char8[..], start: uint, coun
 /// @param expected what it should have given
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-text
-pub func ExpectText(actual: char8[..], expected: char8[..]) -> ! TestFailure {
+pub func ExpectText(actual: char8[..], expected: char8[..]) throws TestFailure {
     var at: uint = 0;
     while at < actual.length && at < expected.length && actual[at] == expected[at] { at = at + 1; }
     if at == actual.length && at == expected.length { return; }
     var failure = TestFailure::Of("texts differ at byte ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { _ => {} };
+    try WriteFormat(writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { _ => {} };
     failure.Grow(writer);
     let start = if at > 24u { at - 24u } else { 0u };
     failure.Append("\n  expected ");
     AppendExcerpt(failure, expected, start, 48);
     failure.Append("\n  but got  ");
     AppendExcerpt(failure, actual, start, 48);
-    fail failure;
+    throw failure;
 }
 
 /// The value of `value`, failing when there is none.
@@ -107,10 +109,10 @@ pub func ExpectText(actual: char8[..], expected: char8[..]) -> ! TestFailure {
 /// @param message what its absence means, for the failure
 /// @returns the value, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-some
-pub func ExpectSome<T>(value: T?, message: char8[..]) -> T ! TestFailure {
+pub func ExpectSome<T>(value: T?, message: char8[..]) -> T throws TestFailure {
     match value {
         .Some(present) => return present,
-        none => fail TestFailure::Of(message)
+        none => throw TestFailure::Of(message)
     }
 }
 
@@ -120,37 +122,37 @@ pub func ExpectSome<T>(value: T?, message: char8[..]) -> T ! TestFailure {
 /// @param message what its presence means, for the failure
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-none
-pub func ExpectNone<T>(value: T?, message: char8[..]) -> ! TestFailure {
+pub func ExpectNone<T>(value: T?, message: char8[..]) throws TestFailure {
     match value {
-        .Some(_) => fail TestFailure::Of(message),
+        .Some(_) => throw TestFailure::Of(message),
         none => {}
     }
 }
 
-/// The success of `outcome`, failing when it failed.
+/// The success an outcome holds, failing when it holds a failure.
 /// @typeParam T the success's type
 /// @typeParam E the failure's type
-/// @param outcome what the code gave
+/// @param outcome what the code gave, kept as a `Result`
 /// @param message what its failure means, for the test's failure
 /// @returns the success, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-success
-pub func ExpectSuccess<T, E>(outcome: T ! E, message: char8[..]) -> T ! TestFailure {
-    match outcome {
+pub func ExpectSuccess<T, E>(outcome: Result<T, E>, message: char8[..]) -> T throws TestFailure {
+    match move outcome {
         .Success(value) => return value,
-        .Failure(_) => fail TestFailure::Of(message)
+        .Failure(_) => throw TestFailure::Of(message)
     }
 }
 
-/// The failure of `outcome`, failing the test when it succeeded.
+/// The failure an outcome holds, failing the test when it holds a success.
 /// @typeParam T the success's type
 /// @typeParam E the failure's type
-/// @param outcome what the code gave
+/// @param outcome what the code gave, kept as a `Result`
 /// @param message what its success means, for the test's failure
 /// @returns the failure the code gave, or the test's failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-failure
-pub func ExpectFailure<T, E>(outcome: T ! E, message: char8[..]) -> E ! TestFailure {
-    match outcome {
-        .Success(_) => fail TestFailure::Of(message),
+pub func ExpectFailure<T, E>(outcome: Result<T, E>, message: char8[..]) -> E throws TestFailure {
+    match move outcome {
+        .Success(_) => throw TestFailure::Of(message),
         .Failure(error) => return error
     }
 }

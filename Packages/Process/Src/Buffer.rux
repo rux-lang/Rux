@@ -19,39 +19,39 @@ extend Buffer<T> {
     }
 
     // Makes room for `extra` more values, reporting an allocation the allocator refused.
-    func Reserve(&var self, extra: uint) -> ! IoError {
+    func Reserve(&var self, extra: uint) throws IoError {
         if self.length + extra <= self.capacity { return; }
         var capacity = if self.capacity == 0 { 16u } else { self.capacity * 2u };
         while capacity < self.length + extra {
             capacity = capacity * 2u;
         }
         let wanted = Layout::ForArray<T>(capacity);
-        if wanted == none { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        if wanted == none { throw IoError::Of(IoErrorKind::LimitExceeded); }
         var allocator = self.allocator;
-        let block = allocator.Allocate(wanted ?? Layout::ForValue<T>()) catch {
-            _ => fail IoError::Of(IoErrorKind::LimitExceeded)
+        let block = try allocator.Allocate(wanted ?? Layout::ForValue<T>()) catch {
+            _ => throw IoError::Of(IoErrorKind::LimitExceeded)
         };
         if self.data != null {
             // Safety: `block` has room for `capacity` values, more than `length`, and `self.data` holds `length`
             // values in a separate allocation.
             unsafe { Copy(block, self.data as *opaque, self.length * sizeof(T)); }
-            allocator.Deallocate(self.data as *var opaque, Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>())
-                catch { _ => {} };
+            let layout = Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>();
+            try allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
         }
         // Safety: `block` comes from the allocator with the layout of `capacity` values of `T`.
         self.data = unsafe { block as *var T };
         self.capacity = capacity;
     }
 
-    func Push(&var self, value: T) -> ! IoError {
-        self.Reserve(1)?;
+    func Push(&var self, value: T) throws IoError {
+        try self.Reserve(1);
         // Safety: `Reserve` made room for one value past `length` in `self.data`.
         unsafe { self.data[self.length] = value; }
         self.length = self.length + 1;
     }
 
-    func PushAll(&var self, values: T[..]) -> ! IoError {
-        self.Reserve(values.length)?;
+    func PushAll(&var self, values: T[..]) throws IoError {
+        try self.Reserve(values.length);
         var index: uint = 0;
         while index < values.length {
             // Safety: `Reserve` made room for `values.length` values past `length`, and `index` is below that.
@@ -75,8 +75,8 @@ extend Buffer<T> {
     func ~Buffer(&var self) {
         if self.data == null { return; }
         var allocator = self.allocator;
-        allocator.Deallocate(self.data as *var opaque, Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>())
-            catch { _ => {} };
+        let layout = Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>();
+        try allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
         self.data = null;
     }
 }

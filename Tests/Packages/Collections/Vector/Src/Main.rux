@@ -21,19 +21,10 @@ extend Tracked {
     }
 }
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}
-
 // A scope for a vector of tracked elements, so its destruction happens somewhere observable. `afterPushing` reports
 // what the counter read once everything was in, which is what separates the pushes from the destruction.
 func PushAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPushing: *var int32)
-    -> ! CollectionError {
+    throws CollectionError {
     var vector = Vector<Tracked>(allocator);
     var index: uint = 0;
     while index < count {
@@ -110,7 +101,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAft
     }
 }
 
-func Main() -> ! CollectionError {
+func Main() throws CollectionError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
@@ -194,7 +185,7 @@ func Main() -> ! CollectionError {
     var clone = copied.Clone();
     Assert(clone.Length() == copied.Length(), "with the same length");
     Assert(clone.AsSlice().data != copied.AsSlice().data, "over storage of its own");
-    clone.Set(0, 77) catch { _ => Panic("writing to the clone succeeds") };
+    try clone.Set(0, 77) catch { _ => Panic("writing to the clone succeeds") };
     Assert(copied.Get(0) == .Some(0), "and leaves the original alone");
 
     // Iteration reads what is there and stops at the length rather than the capacity.
@@ -208,7 +199,7 @@ func Main() -> ! CollectionError {
     // destroys nothing at all, because handing a value to `Push` moves it in rather than copying it.
     var destroyed: int32 = 0;
     var afterPushing: int32 = 0;
-    PushAndDrop(allocator, @destroyed, 7, @afterPushing) catch {
+    try PushAndDrop(allocator, @destroyed, 7, @afterPushing) catch {
         _ => Panic("a vector of tracked elements is filled")
     };
     Assert(afterPushing == 0, "pushing seven elements destroys none of them");
@@ -216,7 +207,7 @@ func Main() -> ! CollectionError {
 
     destroyed = 0;
     afterPushing = 0;
-    PushAndDrop(allocator, @destroyed, 0, @afterPushing) catch { _ => Panic("an empty one is made") };
+    try PushAndDrop(allocator, @destroyed, 0, @afterPushing) catch { _ => Panic("an empty one is made") };
     Assert(destroyed == 0, "and destroys nothing");
 
     // Popping moves elements out, so the vector destroys none of them and whoever took them does.
@@ -252,16 +243,20 @@ func Main() -> ! CollectionError {
     var replacedCount: int32 = 0;
     tracked.Push(Tracked { counter: @destroyed, value: 1 });
     tracked.Push(Tracked { counter: @destroyed, value: 2 });
-    tracked.Set(0, Tracked { counter: @replacedCount, value: 10 })?;
+    try tracked.Set(0, Tracked { counter: @replacedCount, value: 10 });
     Assert(destroyed == 1, "setting destroys the element it replaces");
     Assert(replacedCount == 0, "and not the one it stores");
     let stored = tracked.At(0) ?? Panic("the set element is there");
     Assert(stored.value == 10, "which now sits at the index");
-    Assert(Refusal(tracked.Set(5, Tracked { counter: @replacedCount, value: 99 })) == CollectionError::IndexOutOfRange,
-        "setting past the length is refused");
+    try {
+        tracked.Set(5, Tracked { counter: @replacedCount, value: 99 });
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the length is refused"),
+    }
     Assert(replacedCount == 1, "destroying the refused value rather than leaking it");
     Assert(destroyed == 1, "and touching no element");
-    var previous = tracked.Replace(1, Tracked { counter: @replacedCount, value: 20 }) catch {
+    var previous = try tracked.Replace(1, Tracked { counter: @replacedCount, value: 20 }) catch {
         _ => Panic("replacing an element succeeds")
     };
     Assert(previous.value == 2, "replacing hands back the element that was there");
@@ -277,16 +272,20 @@ func Main() -> ! CollectionError {
         ordered.Push((index * 10) as int32);
         index++;
     }
-    ordered.Insert(0, 99) catch { _ => Panic("inserting at the front succeeds") };
+    try ordered.Insert(0, 99) catch { _ => Panic("inserting at the front succeeds") };
     Assert(ordered.Get(0) == .Some(99), "putting the value there");
     Assert(ordered.Get(1) == .Some(0), "and moving what was there along");
     Assert(ordered.Length() == 5, "with one more element than before");
-    ordered.Insert(5, 55) catch { _ => Panic("inserting at exactly the length appends") };
+    try ordered.Insert(5, 55) catch { _ => Panic("inserting at exactly the length appends") };
     Assert(ordered.Get(5) == .Some(55), "putting it at the end");
-    Assert(Refusal(ordered.Insert(7, 1)) == CollectionError::IndexOutOfRange,
-        "and inserting past the length is refused");
+    try {
+        ordered.Insert(7, 1);
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "and inserting past the length is refused"),
+    }
     Assert(ordered.Length() == 6, "changing nothing");
-    ordered.Insert(3, 77) catch { _ => Panic("inserting in the middle succeeds") };
+    try ordered.Insert(3, 77) catch { _ => Panic("inserting in the middle succeeds") };
     Assert(ordered.Get(3) == .Some(77), "putting the value there");
     Assert(ordered.Get(4) == .Some(20), "and moving the rest along");
 

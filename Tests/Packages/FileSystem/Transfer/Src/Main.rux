@@ -2,7 +2,7 @@
 // and a symbolic link is a stored pointer — each proven by mutating one side and watching the other.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory,
@@ -18,43 +18,35 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-// The failure an outcome carries, which the test expects to be there.
-func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match move outcome {
-        .Success(_) => Panic("expected a failure"),
-        .Failure(error) => error
-    };
-}
-
 func WriteWhole(allocator: Allocator, path: Path, content: char8[..]) {
-    var file = File::Open(allocator, path, OpenOptions::Writing()) catch {
+    var file = try File::Open(allocator, path, OpenOptions::Writing()) catch {
         _ => Panic("the file opens for writing")
     };
     Assert(file.IsOpen(), "the file opens for writing");
-    WriteAll(file, content) catch { _ => Panic("and takes its content") };
-    file.Close() catch { _ => Panic("and closes") };
+    try WriteAll(file, content) catch { _ => Panic("and takes its content") };
+    try file.Close() catch { _ => Panic("and closes") };
 }
 
 // Reads the whole file and checks it equals `expected`, byte for byte, length included.
 func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
-    var file = File::Open(allocator, path, OpenOptions::Reading()) catch {
+    var file = try File::Open(allocator, path, OpenOptions::Reading()) catch {
         _ => Panic("the file opens for reading")
     };
     Assert(file.IsOpen(), "the file opens for reading");
     var storage: char8[64];
-    let size = file.Size() catch { _ => Panic("the size is known") };
+    let size = try file.Size() catch { _ => Panic("the size is known") };
     Assert(size == expected.length as uint64, "it is exactly as long as expected");
     let room = storage[..expected.length];
-    ReadExact(file, room) catch { _ => Panic("and reads whole") };
+    try ReadExact(file, room) catch { _ => Panic("and reads whole") };
     var index: uint = 0;
     while index < expected.length {
         Assert(storage[index] == expected[index], "byte for byte");
         index = index + 1;
     }
-    file.Close() catch { _ => Panic("and closes") };
+    try file.Close() catch { _ => Panic("and closes") };
 }
 
-func Main() -> int ! IoError {
+func Main() -> int throws IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
@@ -74,46 +66,53 @@ func Main() -> int ! IoError {
     let s = PathOf(allocator, "Bin/FileSystemXfer.tmp/s.txt", sHolder);
 
     // Fresh ground.
-    DeleteFile(allocator, a) catch { _ => {} };
-    DeleteFile(allocator, b) catch { _ => {} };
-    DeleteFile(allocator, c) catch { _ => {} };
-    DeleteFile(allocator, d) catch { _ => {} };
-    DeleteFile(allocator, h) catch { _ => {} };
-    DeleteFile(allocator, s) catch { _ => {} };
-    DeleteDirectory(allocator, dir) catch { _ => {} };
-    MakeDirectory(allocator, dir)?;
+    try DeleteFile(allocator, a) catch { _ => {} };
+    try DeleteFile(allocator, b) catch { _ => {} };
+    try DeleteFile(allocator, c) catch { _ => {} };
+    try DeleteFile(allocator, d) catch { _ => {} };
+    try DeleteFile(allocator, h) catch { _ => {} };
+    try DeleteFile(allocator, s) catch { _ => {} };
+    try DeleteDirectory(allocator, dir) catch { _ => {} };
+    try MakeDirectory(allocator, dir);
 
     // A copy is the bytes, not an alias: mutate the original and the copy stands still.
     WriteWhole(allocator, a, "the original bytes");
-    CopyFile(allocator, a, b)?;
+    try CopyFile(allocator, a, b);
     CheckWhole(allocator, b, "the original bytes");
     WriteWhole(allocator, a, "changed afterwards");
     CheckWhole(allocator, b, "the original bytes");
 
     // A rename is the same content under a new name, the old name gone.
-    Rename(allocator, b, c)?;
+    try Rename(allocator, b, c);
     CheckWhole(allocator, c, "the original bytes");
-    Assert(Refusal(File::Open(allocator, b, OpenOptions::Reading())).kind == IoErrorKind::NotFound,
-           "the old name is gone");
+    try {
+        File::Open(allocator, b, OpenOptions::Reading());
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::NotFound, "the old name is gone"),
+    }
 
     // Renaming onto an existing name replaces it.
     WriteWhole(allocator, d, "doomed");
-    Rename(allocator, c, d)?;
+    try Rename(allocator, c, d);
     CheckWhole(allocator, d, "the original bytes");
 
     // A hard link is a second equal name: delete the first and the content lives under the second.
-    CreateHardLink(allocator, a, h)?;
-    DeleteFile(allocator, a)?;
+    try CreateHardLink(allocator, a, h);
+    try DeleteFile(allocator, a);
     CheckWhole(allocator, h, "changed afterwards");
 
     // A symbolic link follows on open and deletes as itself. Creation is privilege-gated on Windows, so a
     // PermissionDenied here is an environment, not a defect — the rest is skipped, not faked.
     var linkNameHolder = OsString(allocator);
     let linkTarget = PathOf(allocator, "h.txt", linkNameHolder);
-    match CreateSymbolicLink(allocator, linkTarget, s, false) {
+    let linked: Result<(), IoError> = try .Success(CreateSymbolicLink(allocator, linkTarget, s, false)) catch {
+        error => .Failure(error)
+    };
+    match linked {
         .Success(_) => {
             CheckWhole(allocator, s, "changed afterwards");
-            DeleteFile(allocator, s)?;
+            try DeleteFile(allocator, s);
             CheckWhole(allocator, h, "changed afterwards");
         },
         .Failure(linkError) => {
@@ -122,9 +121,9 @@ func Main() -> int ! IoError {
     }
 
     // Clean ground behind us.
-    DeleteFile(allocator, d)?;
-    DeleteFile(allocator, h)?;
-    DeleteDirectory(allocator, dir)?;
+    try DeleteFile(allocator, d);
+    try DeleteFile(allocator, h);
+    try DeleteDirectory(allocator, dir);
 
     return 0;
 }

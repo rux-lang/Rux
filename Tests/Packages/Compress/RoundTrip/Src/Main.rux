@@ -51,16 +51,18 @@ func SameBytes(left: byte[..], right: byte[..]) -> bool {
 // Decompresses a reference stream and checks it is the fox text.
 func DecodesToFox(stream: byte[..], format: Format) -> bool {
     let fox = Fox();
-    match Decompress(SystemAllocator(), stream, format) {
-        .Success(data) => return SameBytes(data.AsSlice(), fox.AsSlice()),
-        .Failure(_) => return false
+    try {
+        let data = Decompress(SystemAllocator(), stream, format);
+        return SameBytes(data.AsSlice(), fox.AsSlice());
+    } catch {
+        _ => return false,
     }
 }
 
 // Compresses and decompresses `data`, and checks it comes back whole; returns the compressed size, or zero on failure.
 func RoundTrip(data: byte[..], format: Format, level: Level) -> uint {
-    let packed = Compress(SystemAllocator(), data, format, level) catch { _ => return 0 };
-    let unpacked = Decompress(SystemAllocator(), packed.AsSlice(), format) catch { _ => return 0 };
+    let packed = try Compress(SystemAllocator(), data, format, level) catch { _ => return 0 };
+    let unpacked = try Decompress(SystemAllocator(), packed.AsSlice(), format) catch { _ => return 0 };
     if !SameBytes(unpacked.AsSlice(), data) { return 0; }
     return packed.Length();
 }
@@ -99,7 +101,7 @@ func Main() -> int {
     Assert(DecodesToFox(ZlibStream[..], Format::Zlib), "a zlib stream decodes");
     Assert(DecodesToFox(RawStream[..], Format::Raw), "a raw Deflate stream decodes");
     Assert(DecodesToFox(GzipStream[..], Format::Gzip), "a gzip member decodes");
-    let hello = Decompress(SystemAllocator(), FixedStream[..], Format::Zlib) catch { _ => return 10 };
+    let hello = try Decompress(SystemAllocator(), FixedStream[..], Format::Zlib) catch { _ => return 10 };
     Assert(SameBytes(hello.AsSlice(), AsBytes("hello hello hello")), "fixed codes decode");
 
     // Every format and level round-trips data of every shape.
@@ -141,30 +143,36 @@ func Main() -> int {
            "noise is stored rather than inflated");
 
     // Damage and truncation are caught.
-    let packed = Compress(SystemAllocator(), fox.AsSlice(), Format::Gzip) catch { _ => return 11 };
+    let packed = try Compress(SystemAllocator(), fox.AsSlice(), Format::Gzip) catch { _ => return 11 };
     var damaged = Vector<byte>(SystemAllocator());
     damaged.PushSlice(packed.AsSlice());
     damaged.AsMutableSlice()[damaged.Length() - 6u] = damaged.AsSlice()[damaged.Length() - 6u] ^ 0x01u8;
-    match Decompress(SystemAllocator(), damaged.AsSlice(), Format::Gzip) {
-        .Success(_) => Assert(false, "a damaged checksum is caught"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a damaged checksum is invalid input")
+    try {
+        Decompress(SystemAllocator(), damaged.AsSlice(), Format::Gzip);
+        Assert(false, "a damaged checksum is caught");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::InvalidInput, "a damaged checksum is invalid input"),
     }
-    match Decompress(SystemAllocator(), packed.AsSlice()[..packed.Length() - 3u], Format::Gzip) {
-        .Success(_) => Assert(false, "a truncated stream is caught"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a truncated stream is invalid input")
+    try {
+        Decompress(SystemAllocator(), packed.AsSlice()[..packed.Length() - 3u], Format::Gzip);
+        Assert(false, "a truncated stream is caught");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::InvalidInput, "a truncated stream is invalid input"),
     }
-    match Decompress(SystemAllocator(), fox.AsSlice(), Format::Zlib) {
-        .Success(_) => Assert(false, "text is not a zlib stream"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "text is not a zlib stream")
+    try {
+        Decompress(SystemAllocator(), fox.AsSlice(), Format::Zlib);
+        Assert(false, "text is not a zlib stream");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::InvalidInput, "text is not a zlib stream"),
     }
 
     // Text compresses as its UTF-8 bytes, with no cast to bytes first, and a stream held as text decompresses.
     let text = "the same text, the same text, the same text, the same text";
-    let packedText = Compress(SystemAllocator(), text, Format::Gzip) catch { _ => return 13 };
+    let packedText = try Compress(SystemAllocator(), text, Format::Gzip) catch { _ => return 13 };
     // Safety: `byte` and `char8` are both one byte wide with every bit pattern valid, and the slice's data addresses
     // the `packedText.Length()` live bytes of `packedText`, which outlives `asText`.
     let asText = unsafe { (packedText.AsSlice().data as *char8)[..packedText.Length()] };
-    let unpackedText = Decompress(SystemAllocator(), asText, Format::Gzip) catch { _ => return 14 };
+    let unpackedText = try Decompress(SystemAllocator(), asText, Format::Gzip) catch { _ => return 14 };
     Assert(SameBytes(unpackedText.AsSlice(), AsBytes(text)), "text round-trips");
     return 0;
 }

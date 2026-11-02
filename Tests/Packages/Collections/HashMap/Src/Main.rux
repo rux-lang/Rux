@@ -82,15 +82,6 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAf
     }
 }
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}
-
 struct CountedKey {
     value: int32;
     hashes: *var int32;

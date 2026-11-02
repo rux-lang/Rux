@@ -25,7 +25,7 @@ pub interface EntropySource {
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill
-    func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError;
+    func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError;
 }
 
 /// The operating system's generator, as an `EntropySource`.
@@ -57,10 +57,10 @@ extend SystemEntropy : EntropySource {
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill
-    pub func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError {
+    pub func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError {
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes, which is exactly
         // what `FillFromSource` asks of its caller.
-        return unsafe { FillFromSource(buffer, length) };
+        return try unsafe { FillFromSource(buffer, length) };
     }
 }
 
@@ -78,20 +78,20 @@ extend SystemEntropy : EntropySource {
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-from
-pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> ! EntropyError {
+pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) throws EntropyError {
     if length == 0 { return; }
-    if buffer == null { fail EntropyError::Failed; }
+    if buffer == null { throw .Failed; }
 
     var filled: uint = 0;
     while filled < length {
         let remaining = length - filled;
         let take = if remaining > MaxEntropyRequest { MaxEntropyRequest } else { remaining };
         let target = ((buffer as uint) + filled) as *var opaque;
-        source.Fill(target, take) catch {
+        try source.Fill(target, take) catch {
             error => {
                 ZeroizeBlock(buffer, length);
-                fail error;
-            }
+                throw error;
+            },
         };
         filled = filled + take;
     }
@@ -113,18 +113,18 @@ pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length
 /// @returns nothing when every byte was written, or why not — `Interrupted` after `attempts` tries
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-with-retries
 pub unsafe func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
-    -> ! EntropyError {
+    throws EntropyError {
     var remaining = attempts;
     while true {
-        FillFrom(source, buffer, length) catch {
+        try FillFrom(source, buffer, length) catch {
             error => {
                 var reason = error;
                 if !reason.IsTransient() || remaining == 0 {
-                    fail reason;
+                    throw reason;
                 }
                 remaining = remaining - 1;
                 continue;
-            }
+            },
         };
         return;
     }
@@ -139,10 +139,10 @@ pub unsafe func FillWithRetries(source: &var EntropySource, buffer: *var opaque,
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill
-pub unsafe func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
+pub unsafe func Fill(buffer: *var opaque, length: uint) throws EntropyError {
     var system = SystemEntropy();
     let source: &var EntropySource = system;
-    return FillFrom(source, buffer, length);
+    return try FillFrom(source, buffer, length);
 }
 
 /// An unpredictable 64-bit value, which is what a generator wants for a seed.
@@ -150,15 +150,15 @@ pub unsafe func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
 /// Runs in constant time and allocates nothing.
 /// @returns eight unpredictable bytes as a value, or why the draw failed
 /// @see https://rux-lang.dev/docs/api/entropy/next-uint64
-pub func NextUint64() -> uint64 ! EntropyError {
+pub func NextUint64() -> uint64 throws EntropyError {
     var value: uint64 = 0;
     // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
-    (unsafe { Fill(@value as *var opaque, 8) }) catch {
+    try (unsafe { Fill(@value as *var opaque, 8) }) catch {
         error => {
             // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
             unsafe { ZeroizeBlock(@value as *var opaque, 8); }
-            fail error;
-        }
+            throw error;
+        },
     };
     return value;
 }

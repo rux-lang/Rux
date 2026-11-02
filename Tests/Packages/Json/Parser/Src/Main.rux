@@ -50,35 +50,34 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Rendered(reason: &JsonParseError, into: var char8[..]) -> uint {
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(reason.WriteDebug(sink, FormatSpec::Plain()) is .Success(_), "a failure renders");
+    Assert((try? reason.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
     return writer.Length();
 }
 
 // Parses, requires a refusal, and checks its rendering — the case and the offset together.
 func Refuses(allocator: Allocator, text: char8[..], expected: char8[..], what: char8[..]) {
-    let outcome = Parse(allocator, text);
-    Assert(Refusal(outcome, expected), what);
+    try {
+        Parse(allocator, text);
+        Assert(false, what);
+    } catch {
+        refusal => Assert(Refusal(refusal, expected), what),
+    }
 }
 
 func Accepts(allocator: Allocator, text: char8[..], what: char8[..]) -> JsonValue {
-    return Parse(allocator, text) catch { _ => Panic(what) };
+    return try Parse(allocator, text) catch { _ => Panic(what) };
 }
 
 // Whether an outcome a caller already holds is the refusal it should be, rendering and all.
-func Refusal(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => {
-            var storage: char8[96];
-            let length = Rendered(reason, storage[..96]);
-            return Same(storage[..length], expected);
-        }
-    };
+func Refusal(reason: JsonParseError, expected: char8[..]) -> bool {
+    var storage: char8[96];
+    let length = Rendered(reason, storage[..96]);
+    return Same(storage[..length], expected);
 }
 
 // A parser used directly, for the cases that need a limit or a policy the one-call form does not take.
 func Built(allocator: Allocator, parser: &var JsonParser, what: char8[..]) -> JsonValue {
-    return parser.Parse() catch { _ => Panic(what) };
+    return try parser.Parse() catch { _ => Panic(what) };
 }
 
 
@@ -94,25 +93,25 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        let block = (unsafe { self.state.inner.Allocate(layout) })?;
+        let block = try (unsafe { self.state.inner.Allocate(layout) });
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         unsafe { self.state.live = self.state.live + 1; }
         return block;
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { self.state.inner.Deallocate(block, layout)?; }
+        unsafe { try self.state.inner.Deallocate(block, layout); }
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         unsafe { self.state.live = self.state.live - 1; }
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> (*var opaque) ! AllocError {
+        -> *var opaque throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        return unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
+        return try unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
     }
 }
 
@@ -233,36 +232,55 @@ func Main() -> int {
     var shallow = JsonLimits::Default();
     shallow.maximumDepth = 3;
     var deepParser = JsonParser(allocator, "[[[[1]]]]", shallow);
-    var deepOutcome = deepParser.Parse();
-    Assert(Refusal(deepOutcome, "JsonParseError::TooDeep(4)"),
+    try {
+        deepParser.Parse();
+        Assert(false,
            "nesting past the depth limit is refused before the stack is at risk");
+    } catch {
+        refusal => Assert(Refusal(refusal, "JsonParseError::TooDeep(4)"),
+            "nesting past the depth limit is refused before the stack is at risk"),
+    }
     var fittingParser = JsonParser(allocator, "[[[1]]]", shallow);
     var fitting = Built(allocator, fittingParser, "while nesting that fits is accepted");
 
     var few = JsonLimits::Default();
     few.maximumEntries = 2;
     var manyParser = JsonParser(allocator, "[1,2,3]", few);
-    var manyOutcome = manyParser.Parse();
-    Assert(Refusal(manyOutcome, "JsonParseError::TooManyEntries(6)"),
+    try {
+        manyParser.Parse();
+        Assert(false,
            "a container past the entry limit is refused");
+    } catch {
+        refusal => Assert(Refusal(refusal, "JsonParseError::TooManyEntries(6)"),
+            "a container past the entry limit is refused"),
+    }
     var enoughParser = JsonParser(allocator, "[1,2]", few);
     var enough = Built(allocator, enoughParser, "and one that fits is not");
 
     // A lexical failure carries the lexer's own reason inside it rather than in a second field a caller has to
     // know to read, which is what makes it impossible to hold half of one.
     var badParser = JsonParser(allocator, "[01]", JsonLimits::Default());
-    var badOutcome = badParser.Parse();
-    Assert(Refusal(badOutcome, "JsonParseError::Lexical(MalformedNumber, 1)"),
+    try {
+        badParser.Parse();
+        Assert(false,
            "a lexical failure keeps the lexer's own reason and its position");
+    } catch {
+        refusal => Assert(Refusal(refusal, "JsonParseError::Lexical(MalformedNumber, 1)"),
+            "a lexical failure keeps the lexer's own reason and its position"),
+    }
 
     // The same choices through the one-call form, which is what most callers will reach for.
-    let directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
+    let directAll = try ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
         catch { _ => Panic("the one-call form honours a chosen policy") };
     Assert(directAll.Length() == 2, "the one-call form honours a chosen policy");
-    let directRejectOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
-                                        DuplicateKeyPolicy::Reject);
-    Assert(Refusal(directRejectOutcome, "JsonParseError::DuplicateName(12)"),
+    try {
+        ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::Reject);
+        Assert(false,
            "and refuses under the default one, so the choice is per call rather than per program");
+    } catch {
+        refusal => Assert(Refusal(refusal, "JsonParseError::DuplicateName(12)"),
+            "and refuses under the default one, so the choice is per call rather than per program"),
+    }
 
     // A refused parse gives back everything it took. This is the half of the shape that is not visible in the
     // types: a document that fails at its third element has already built two, and an object that fails on a

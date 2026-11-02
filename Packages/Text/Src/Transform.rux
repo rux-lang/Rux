@@ -42,7 +42,7 @@ enum CaseMapping: uint8 {
 }
 
 // Copies `view`, replacing every scalar value by its full mapping of the given kind.
-func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> String ! TextError {
+func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> String throws TextError {
     var builder = StringBuilder(allocator);
     builder.Reserve(view.bytes.length);
     var scalars = view.Scalars();
@@ -57,12 +57,12 @@ func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> St
             CaseMapping::Folded => known = Fold(scalar, mapped[..], @written)
         }
         if !known || written == 0u {
-            builder.AppendScalar(scalar)?;
+            try builder.AppendScalar(scalar);
             continue;
         }
         var index: uint = 0;
         while index < written {
-            builder.AppendScalar(mapped[index])?;
+            try builder.AppendScalar(mapped[index]);
             index = index + 1;
         }
     }
@@ -75,8 +75,8 @@ func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> St
 /// @param view the borrowed text to act on
 /// @returns the text in upper case, or why it could not be made
 /// @see https://rux-lang.dev/docs/api/text/transform#to-upper
-pub func ToUpper(allocator: Allocator, view: StringView) -> String ! TextError {
-    return MapCase(allocator, view, CaseMapping::Upper);
+pub func ToUpper(allocator: Allocator, view: StringView) -> String throws TextError {
+    return try MapCase(allocator, view, CaseMapping::Upper);
 }
 
 /// The text of `view` in lower case by Unicode's full, unconditional mappings. A capital sigma always becomes `σ`,
@@ -85,8 +85,8 @@ pub func ToUpper(allocator: Allocator, view: StringView) -> String ! TextError {
 /// @param view the borrowed text to act on
 /// @returns the text in lower case, or why it could not be made
 /// @see https://rux-lang.dev/docs/api/text/transform#to-lower
-pub func ToLower(allocator: Allocator, view: StringView) -> String ! TextError {
-    return MapCase(allocator, view, CaseMapping::Lower);
+pub func ToLower(allocator: Allocator, view: StringView) -> String throws TextError {
+    return try MapCase(allocator, view, CaseMapping::Lower);
 }
 
 /// The text of `view` case-folded by Unicode's full folding, the form for comparing text without regard to case:
@@ -95,8 +95,8 @@ pub func ToLower(allocator: Allocator, view: StringView) -> String ! TextError {
 /// @param view the borrowed text to act on
 /// @returns the folded text, or why it could not be made
 /// @see https://rux-lang.dev/docs/api/text/transform#fold-case
-pub func FoldCase(allocator: Allocator, view: StringView) -> String ! TextError {
-    return MapCase(allocator, view, CaseMapping::Folded);
+pub func FoldCase(allocator: Allocator, view: StringView) -> String throws TextError {
+    return try MapCase(allocator, view, CaseMapping::Folded);
 }
 
 /// The text of `left` followed by the text of `right`.
@@ -217,14 +217,14 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
         } else {
             value
         };
-        builder.AppendAscii(shifted as char8) catch {
+        try builder.AppendAscii(shifted as char8) catch {
             _ => {
                 // A byte above 0x7F is not ASCII and passes through as it stands, as part of whatever character it
                 // belongs to. `AppendAscii` refuses it, so it goes in as a byte of a sequence instead.
                 var one: char8[1];
                 one[0] = byte;
                 builder.AppendValidated(one[..]);
-            }
+            },
         };
         index = index + 1;
     }

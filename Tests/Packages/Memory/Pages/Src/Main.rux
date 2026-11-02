@@ -5,16 +5,16 @@ import Memory::{ MinimumPageSize, PageAlign, PageAllocate, PageError, PageExecut
 // The page layer is where four systems that agree on nothing are made to look the same, so what is checked here is
 // the shape of the agreement: that a length is rounded up rather than refused, that an empty request is reported
 // rather than quietly accepted, and that a protection actually applies. Every operation that must succeed is
-// propagated with `?`, so a refusal the test did not expect fails `Main` itself.
+// marked with `try`, so a refusal the test did not expect fails `Main` itself.
 
-func Main() -> ! PageError {
+func Main() throws PageError {
     let error = PageError::InvalidLength;
     let copiedError = error;
     Assert(copiedError == error, "page errors copy structurally");
 
     // The real page size is asked of the system, and the query reports whether it got an answer rather than
     // substituting one. A system that will not answer is not a system to guess about.
-    let size = PageSize()?;
+    let size = try PageSize();
     Assert(size >= MinimumPageSize, "a real page is at least the documented minimum");
     Assert((size & (size - 1)) == 0, "and its size is a power of two");
 
@@ -35,14 +35,16 @@ func Main() -> ! PageError {
     Assert(PageAlign(nearTheEnd) == nearTheEnd, "a length that cannot be rounded is returned unchanged");
 
     // An empty request is an arithmetic error at the caller, so it is reported rather than accepted.
-    let refused = match PageAllocate(0, PageRead | PageWrite) {
-        .Failure(reason) => reason == PageError::InvalidLength,
-        .Success(_) => false
-    };
+    var refused = false;
+    try {
+        PageAllocate(0, PageRead | PageWrite);
+    } catch {
+        reason => { refused = reason == PageError::InvalidLength; }
+    }
     Assert(refused, "a zero-length allocation is refused");
 
     // An ordinary allocation, with a length that is not a whole number of pages.
-    let address = PageAllocate(size + 1, PageRead | PageWrite)?;
+    let address = try PageAllocate(size + 1, PageRead | PageWrite);
     Assert(address != null, "the allocation reports where it landed");
 
     // The whole rounded length is usable, not just the length asked for.
@@ -57,7 +59,7 @@ func Main() -> ! PageError {
     Assert(last == 0xC3 as byte, "and so is the last of the rounded length");
 
     // Pages come zeroed, which the next allocation is what shows.
-    let second = PageAllocate(size, PageRead | PageWrite)?;
+    let second = try PageAllocate(size, PageRead | PageWrite);
     // Safety: retyping only; `second` is a live read-write mapping of one page of `size` bytes.
     let secondBytes = unsafe { second as *var byte };
     // Safety: offsets 0 and `size - 1` are inside the live readable page at `second`.
@@ -66,11 +68,11 @@ func Main() -> ! PageError {
 
     // Protection changes are accepted for a range that exists.
     // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
-    unsafe { PageProtect(second, size, PageRead)?; }
+    unsafe { try PageProtect(second, size, PageRead); }
     // Safety: the page at `second` is live and was just made readable.
     Assert(unsafe { *secondBytes } == 0 as byte, "narrowed to read-only, the pages are still readable");
     // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
-    unsafe { PageProtect(second, size, PageRead | PageWrite)?; }
+    unsafe { try PageProtect(second, size, PageRead | PageWrite); }
     // Safety: the page at `second` is live and was just made readable and writable again.
     let rewritten = unsafe {
         *secondBytes = 0x5A as byte;
@@ -81,30 +83,42 @@ func Main() -> ! PageError {
     // The degenerate arguments are reported rather than passed through.
     // Safety: each call is refused by the argument checks that run before any system call, so no page changes.
     unsafe {
-        Assert(Reason(PageProtect(null, size, PageRead)) == PageError::InvalidAddress, "a null address is refused");
-        Assert(Reason(PageProtect(second, 0, PageRead)) == PageError::InvalidLength, "a zero length is refused");
-        Assert(Reason(PageRelease(null, size)) == PageError::InvalidAddress, "and so is releasing null");
-        Assert(Reason(PageRelease(second, 0)) == PageError::InvalidLength, "or releasing nothing");
+        try {
+            PageProtect(null, size, PageRead);
+            Panic("the operation was expected to be refused");
+        } catch {
+            refusal => Assert(refusal == PageError::InvalidAddress, "a null address is refused"),
+        }
+        try {
+            PageProtect(second, 0, PageRead);
+            Panic("the operation was expected to be refused");
+        } catch {
+            refusal => Assert(refusal == PageError::InvalidLength, "a zero length is refused"),
+        }
+        try {
+            PageRelease(null, size);
+            Panic("the operation was expected to be refused");
+        } catch {
+            refusal => Assert(refusal == PageError::InvalidAddress, "and so is releasing null"),
+        }
+        try {
+            PageRelease(second, 0);
+            Panic("the operation was expected to be refused");
+        } catch {
+            refusal => Assert(refusal == PageError::InvalidLength, "or releasing nothing"),
+        }
     }
 
     // A protection of none is legal: it takes the space and refuses every access to it, which is a guard page.
-    let guarded = PageAllocate(size, PageNone)?;
+    let guarded = try PageAllocate(size, PageNone);
     Assert(guarded != null, "an inaccessible allocation still reports an address");
     // Safety: `guarded` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
-    unsafe { PageRelease(guarded, size)?; }
+    unsafe { try PageRelease(guarded, size); }
 
     // Safety: `second` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
-    unsafe { PageRelease(second, size)?; }
+    unsafe { try PageRelease(second, size); }
     // The first allocation is released by the length it asked for.
     // Safety: `address` is the base `PageAllocate` returned for `size + 1` bytes, and nothing uses it afterwards.
-    unsafe { PageRelease(address, size + 1)?; }
+    unsafe { try PageRelease(address, size + 1); }
 }
 
-/// The reason a completion failed. A completion that unexpectedly succeeds panics, so a refusal the test expects
-/// cannot pass by accident.
-func Reason(outcome: ! PageError) -> PageError {
-    return match outcome {
-        .Failure(reason) => reason,
-        .Success(_) => Panic("the operation was expected to be refused")
-    };
-}

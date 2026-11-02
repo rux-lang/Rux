@@ -15,29 +15,33 @@ func PathIn(allocator: Allocator, directory: Path, name: char8[..]) -> PathBuffe
 }
 
 func Exists(allocator: Allocator, path: Path) -> bool {
-    match MetadataOf(allocator, path, false) {
-        .Success(_) => { return true; },
-        .Failure(error) => {
+    try {
+        MetadataOf(allocator, path, false);
+        return true;
+    } catch {
+        error => {
             Assert(error.kind == IoErrorKind::NotFound, "a missing file is the only failure expected");
             return false;
-        }
+        },
     }
 }
 
 // The file's contents, which a log of short records keeps well under the buffer.
 func Contents(allocator: Allocator, path: Path, buffer: var char8[..]) -> char8[..] {
-    var file = File::Open(allocator, path, OpenOptions::Reading()) catch { _ => Panic("the file opens") };
+    var file = try File::Open(allocator, path, OpenOptions::Reading()) catch { _ => Panic("the file opens") };
     var length: uint = 0;
     while true {
-        match file.Read(buffer[length..]) {
-            .Success(read) => { length = length + read; },
-            .Failure(error) => {
+        try {
+            let read = file.Read(buffer[length..]);
+            length = length + read;
+        } catch {
+            error => {
                 Assert(error.IsEnd(), "the file reads to its end");
                 break;
-            }
+            },
         }
     }
-    file.Close() catch { _ => Panic("the file closes") };
+    try file.Close() catch { _ => Panic("the file closes") };
     return buffer[..length];
 }
 
@@ -58,20 +62,22 @@ func WholeRecords(text: char8[..]) -> bool {
 
 func Main() -> int {
     let allocator = SystemAllocator();
-    let temporary = TemporaryDirectory(allocator) catch { _ => Panic("a temporary directory exists") };
-    var directory = TemporaryDirectoryHandle::Create(allocator, temporary.AsPath(), "rux-log-rotation-")
+    let temporary = try TemporaryDirectory(allocator) catch { _ => Panic("a temporary directory exists") };
+    var directory = try TemporaryDirectoryHandle::Create(allocator, temporary.AsPath(), "rux-log-rotation-")
         catch { _ => Panic("the test directory is made") };
     let current = PathIn(allocator, directory.AsPath(), "app.log");
     let first = PathIn(allocator, directory.AsPath(), "app.log.1");
     let second = PathIn(allocator, directory.AsPath(), "app.log.2");
     let third = PathIn(allocator, directory.AsPath(), "app.log.3");
 
-    match RotatingFile::Open(allocator, current.AsPath(), 0, 2) {
-        .Success(_) => Panic("a zero limit is refused"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "as invalid input")
+    try {
+        RotatingFile::Open(allocator, current.AsPath(), 0, 2);
+        Panic("a zero limit is refused");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::InvalidInput, "as invalid input"),
     }
 
-    var file = RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { _ => Panic("the log opens") };
+    var file = try RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { _ => Panic("the log opens") };
     var logger = Logger::New(allocator, (@file).Stream(), LogFormat::Text);
     logger.SetTimestamps(false);
 
@@ -118,10 +124,10 @@ func Main() -> int {
     let text = Contents(allocator, current.AsPath(), buffer[..]);
     Assert(text.length > 100 && WholeRecords(text), "an oversized record is kept whole");
 
-    file.Close() catch { _ => Panic("the log closes") };
+    try file.Close() catch { _ => Panic("the log closes") };
     for path in [current.AsPath(), first.AsPath(), second.AsPath()] {
-        DeleteFile(allocator, path) catch { _ => Panic("the log file is deleted") };
+        try DeleteFile(allocator, path) catch { _ => Panic("the log file is deleted") };
     }
-    directory.Close(allocator) catch { _ => Panic("the test directory is removed") };
+    try directory.Close(allocator) catch { _ => Panic("the test directory is removed") };
     return 0;
 }

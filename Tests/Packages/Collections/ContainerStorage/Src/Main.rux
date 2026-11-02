@@ -39,33 +39,33 @@ struct RefusingAllocator {
 }
 
 extend RefusingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
         unsafe { self.state.requests = self.state.requests + 1; }
         // Safety: `state` points at the test's live `StorageState`.
-        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        if unsafe { self.state.refusing } { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `StorageState`.
-        let block = unsafe { self.state.backing.Allocate(layout) }?;
+        let block = try unsafe { self.state.backing.Allocate(layout) };
         // Safety: `state` points at the test's live `StorageState`.
         unsafe { self.state.live = self.state.live + 1; }
         return block;
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` points at the test's live `StorageState`.
-        unsafe { self.state.backing.Deallocate(block, layout)?; }
+        unsafe { try self.state.backing.Deallocate(block, layout); }
         // Safety: `state` points at the test's live `StorageState`.
         unsafe { self.state.live = self.state.live - 1; }
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> (*var opaque) ! AllocError {
+        -> *var opaque throws AllocError {
         // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
         unsafe { self.state.requests = self.state.requests + 1; }
         // Safety: `state` points at the test's live `StorageState`.
-        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        if unsafe { self.state.refusing } { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `StorageState`.
-        return unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
+        return try unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
     }
 }
 

@@ -135,8 +135,8 @@ extend JoinHandle<R> {
 /// @param context the value the function is called with
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn
-pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
-    return SpawnWith<T, R>(ThreadOptions(), entry, move context);
+pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> throws ThreadError {
+    return try SpawnWith<T, R>(ThreadOptions(), entry, move context);
 }
 
 /// Starts a thread running `entry(context)` as `options` say.
@@ -148,11 +148,11 @@ pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> Joi
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn-with
 pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func(T) -> R, context: T)
-    -> JoinHandle<R> ! ThreadError {
+    -> JoinHandle<R> throws ThreadError {
     let contextOffset = ContextOffset<T, R>();
     let resultOffset = ResultOffset<T, R>();
     let length = PageAlign(resultOffset + sizeof(R));
-    let block = PageAllocate(length, PageRead | PageWrite) catch { _ => fail ThreadError::Exhausted };
+    let block = try PageAllocate(length, PageRead | PageWrite) catch { _ => throw .Exhausted };
     // Safety: `block` is a fresh, page-aligned allocation of `length` bytes, which hold a `Packet<T, R>` and, past it,
     // the context slot at `contextOffset`, each aligned for its type; no other thread sees it yet.
     unsafe {
@@ -164,13 +164,13 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
         (((block as uint) + contextOffset) as *var T)[0] = move context;
     }
     let start: func(*var Packet<T, R>) -> *var opaque = Start;
-    // Safety: `Start` has the shape every system calls a thread's entry with, and `block` stays live for the new thread
-    // because it holds one of the block's two owner counts, which it gives up only when it is done with the block.
-    match unsafe { NativeStart(start as *opaque, block, options.stackSize) } {
-        .Success(thread) => {
-            return JoinHandle<R> { thread, block };
-        },
-        .Failure(error) => {
+    try {
+        // Safety: `Start` has the shape every system calls a thread's entry with, and `block` stays live for the new
+        // thread because it holds one of the block's two owner counts, which it gives up only when it is done with it.
+        let thread = unsafe { NativeStart(start as *opaque, block, options.stackSize) };
+        return JoinHandle<R> { thread, block };
+    } catch {
+        error => {
             // The thread never ran, so the context is still here to destroy.
             // Safety: the thread never ran, so the context written above is live in its slot and nobody else holds
             // `block`.
@@ -178,8 +178,8 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
                 DiscardSlot<T>(((block as uint) + contextOffset) as *var T);
                 Release(block);
             }
-            fail error;
-        }
+            throw error;
+        },
     }
 }
 
@@ -231,7 +231,7 @@ unsafe func LetGo(block: *var opaque) -> bool {
 // out or destroyed.
 unsafe func Release(block: *var opaque) {
     let header = block as *var PacketHeader;
-    PageRelease(block, header.length) catch { _ => {} };
+    try PageRelease(block, header.length) catch { _ => {} };
 }
 
 // Destroys the value in a slot by moving it out.

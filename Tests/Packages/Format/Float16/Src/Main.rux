@@ -33,7 +33,7 @@ func Shows(value: float16, prefix: char8[..], expected: char8[..]) -> bool {
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if shown.WriteDisplay(writer, FormatSpec::Plain()) is .Failure(_) {
+    if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
         return false;
     }
     let actual = cursor.Written();
@@ -46,7 +46,7 @@ func Formats(format: char8[..], value: float16, expected: char8[..]) -> bool {
     var storage: char8[64];
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
-    if WriteFormat(writer, format, value) is .Failure(_) {
+    if (try? WriteFormat(writer, format, value)) is none {
         return false;
     }
     return Same(cursor.Written(), expected);
@@ -132,7 +132,7 @@ func Main() -> int {
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let debugged: Debug = 0.33325f16;
-    if debugged.WriteDebug(writer, FormatSpec::Plain()) is .Failure(_) { return 50; }
+    if (try? debugged.WriteDebug(writer, FormatSpec::Plain())) is none { return 50; }
     if !Same(cursor.Written(), "0.3333") { return 51; }
 
     // Classification by the bits, so an infinity of this width is recognised as one.

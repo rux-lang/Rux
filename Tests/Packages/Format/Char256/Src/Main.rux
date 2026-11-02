@@ -29,7 +29,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { _ => Panic("the test's specification is valid") };
+    spec = try ParseFormatSpec(text) catch { _ => Panic("the test's specification is valid") };
     return spec;
 }
 
@@ -37,11 +37,11 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter(storage[..192]);
-    Assert(value.WriteDisplay(writer, spec) is .Success(_), "a constrained receiver renders");
+    Assert((try? value.WriteDisplay(writer, spec)) is .Some(_), "a constrained receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Display = value;
-    Assert(shown.WriteDisplay(writer, spec) is .Success(_), "an interface receiver renders");
+    Assert((try? shown.WriteDisplay(writer, spec)) is .Some(_), "an interface receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -49,11 +49,11 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 func Inspected<T: Debug>(value: &T, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter(storage[..192]);
-    Assert(value.WriteDebug(writer, FormatSpec::Plain()) is .Success(_), "a constrained debug receiver renders");
+    Assert((try? value.WriteDebug(writer, FormatSpec::Plain())) is .Some(_), "a constrained debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Debug = value;
-    Assert(shown.WriteDebug(writer, FormatSpec::Plain()) is .Success(_), "an interface debug receiver renders");
+    Assert((try? shown.WriteDebug(writer, FormatSpec::Plain())) is .Some(_), "an interface debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -61,15 +61,15 @@ func Inspected<T: Debug>(value: &T, expected: char8[..]) {
 func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
     var storage: char8[16];
     var writer = BufferWriter(storage[..16]);
-    return value.WriteDisplay(writer, spec) is .Failure(_);
+    return (try? value.WriteDisplay(writer, spec)) is none;
 }
 
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
-func Rendered(outcome: String ! FormatError, expected: char8[..]) -> bool {
+func Rendered(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match move outcome {
-        .Success(text) => text.View().Equals(wanted),
-        .Failure(_) => false
+        .Some(text) => text.View().Equals(wanted),
+        none => false
     };
 }
 
@@ -125,8 +125,8 @@ func Main() -> int {
     // Through Render, as an ordinary variadic argument.
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    Assert(Rendered(Render(allocator, "[{}]", letter), "[A]"), "a char256 is a Render argument");
-    Assert(Rendered(Render(allocator, "{:>4}|{}", face, accented), "   😀|é"), "padded, beside another");
+    Assert(Rendered(try? Render(allocator, "[{}]", letter), "[A]"), "a char256 is a Render argument");
+    Assert(Rendered(try? Render(allocator, "{:>4}|{}", face, accented), "   😀|é"), "padded, beside another");
 
     // Values below 2^64 that are not characters render as a char64 of the same number does: the replacement
     // under Display, and the number itself under Debug.

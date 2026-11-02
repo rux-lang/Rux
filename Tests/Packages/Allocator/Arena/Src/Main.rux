@@ -6,7 +6,7 @@ import Memory::IsPointerAligned;
 // asked for, that a request too large for the current block gets a new one, that a reset makes the space available
 // again without going back to the system, and that the blocks are all given back at the end.
 
-func Main() -> ! AllocError {
+func Main() throws AllocError {
     var system = SystemAllocator();
     let backing: Allocator = system;
 
@@ -21,26 +21,26 @@ func Main() -> ! AllocError {
 
     // A zero-sized layout costs the arena nothing.
     let zero = Layout::New(0, 8) ?? Layout { size: 0, alignment: 1 };
-    let empty = allocator.Allocate(zero)?;
+    let empty = try allocator.Allocate(zero);
     Assert(IsEmptyBlock(empty), "and gives the shared empty block");
     Assert(arena.BlockCount() == 0, "without taking a block");
 
     // The first real request takes the first block.
     let small = Layout::New(32, 8) ?? zero;
-    let first = allocator.Allocate(small)?;
+    let first = try allocator.Allocate(small);
     Assert(first != null, "and reports an address");
     Assert(arena.BlockCount() == 1, "which took one block");
     Assert(arena.BytesUsed() == 32, "and consumed exactly what was asked for");
 
     // The next request comes out of the same block, at the next aligned address.
-    let second = allocator.Allocate(small)?;
+    let second = try allocator.Allocate(small);
     Assert(arena.BlockCount() == 1, "out of the same block");
     Assert(arena.BytesUsed() == 64, "advancing the pointer again");
     Assert((second as uint) == (first as uint) + 32, "and landing immediately after the first");
 
     // Alignment is honoured, with the padding counted as used.
     let aligned = Layout::New(8, 16) ?? zero;
-    let third = allocator.Allocate(aligned)?;
+    let third = try allocator.Allocate(aligned);
     Assert(IsPointerAligned(third as *opaque, 16), "and satisfies its alignment");
 
     // Writing through every address must not disturb the others.
@@ -62,7 +62,7 @@ func Main() -> ! AllocError {
     var usedBeforeFiller: uint = 0;
     while arena.BlockCount() == blocksBefore {
         usedBeforeFiller = arena.BytesUsed();
-        filler = allocator.Allocate(small)?;
+        filler = try allocator.Allocate(small);
         taken = taken + 1;
         Assert(taken < 64, "and the block is exhausted in a bounded number of requests");
     }
@@ -74,7 +74,7 @@ func Main() -> ! AllocError {
     let huge = Layout::New(8192, 8) ?? zero;
     var large: *var opaque = null;
     let blocksBeforeHuge = arena.BlockCount();
-    large = allocator.Allocate(huge)?;
+    large = try allocator.Allocate(huge);
     Assert(arena.BlockCount() > blocksBeforeHuge, "by taking a block for itself");
     // Safety: `large` is a live allocation of 8192 bytes, so offsets 0 and 8191 are both inside it.
     let (front, back) = unsafe {
@@ -86,16 +86,16 @@ func Main() -> ! AllocError {
     Assert(front == 0x7F as byte && back == 0x7E as byte, "and the whole of it is usable");
 
     // Releasing the most recent allocation rewinds it; releasing anything else is accepted and does nothing.
-    let recent = allocator.Allocate(small)?;
+    let recent = try allocator.Allocate(small);
     let usedWithRecent = arena.BytesUsed();
-    allocator.Deallocate(recent, small)?;
+    try allocator.Deallocate(recent, small);
     Assert(arena.BytesUsed() == usedWithRecent - 32, "and rewinds the pointer");
-    allocator.Deallocate(first, small)?;
+    try allocator.Deallocate(first, small);
 
     // Growing the most recent allocation extends it in place rather than copying.
-    let growing = allocator.Allocate(small)?;
+    let growing = try allocator.Allocate(small);
     let larger = Layout::New(64, 8) ?? zero;
-    let grown = allocator.Reallocate(growing, small, larger)?;
+    let grown = try allocator.Reallocate(growing, small, larger);
     Assert(grown == growing, "and the most recent allocation grows where it stands");
 
     // Reset rewinds everything and keeps one block, so the next round asks the system for nothing.
@@ -103,7 +103,7 @@ func Main() -> ! AllocError {
     Assert(arena.BlockCount() == 1, "a reset keeps one block");
     Assert(arena.BytesUsed() == 0, "and rewinds it completely");
 
-    let afterReset = allocator.Allocate(small)?;
+    let afterReset = try allocator.Allocate(small);
     Assert(arena.BlockCount() == 1, "without taking another block");
 
     // A second reset on an arena that has only its kept block is idempotent.

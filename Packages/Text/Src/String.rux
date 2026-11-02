@@ -63,7 +63,7 @@ extend String {
     func TryFromValidated(allocator: Allocator, bytes: char8[..]) -> Self throws AllocError {
         if bytes.length == 0 { return String(allocator); }
 
-        let layout = Layout::New(bytes.length, 1) ?? throw AllocError::Unsupported;
+        let layout = Layout::New(bytes.length, 1) ?? throw .Unsupported;
 
         var borrowed = allocator;
         let block = try borrowed.Allocate(layout);
@@ -91,8 +91,8 @@ extend String {
     /// @param bytes the bytes to act on
     /// @returns a string over those bytes, or an empty one when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string#from-bytes
-    pub func FromBytes(allocator: Allocator, bytes: char8[..]) -> Self ! TextError {
-        Validate(bytes) catch { _ => fail TextError::InvalidUtf8 };
+    pub func FromBytes(allocator: Allocator, bytes: char8[..]) -> Self throws TextError {
+        try Validate(bytes) catch { _ => throw .InvalidUtf8 };
         return Self::FromValidated(allocator, bytes);
     }
 
@@ -171,8 +171,8 @@ extend String {
     /// @param end the byte offset one past the last, exclusive
     /// @returns an owned copy of that range, or why it could not be made
     /// @see https://rux-lang.dev/docs/api/text/string#substring
-    pub func Substring(&self, start: uint, end: uint) -> Self ! TextError {
-        let part = self.Part(start, end) ?? fail TextError::NotABoundary;
+    pub func Substring(&self, start: uint, end: uint) -> Self throws TextError {
+        let part = self.Part(start, end) ?? throw .NotABoundary;
         return Self::FromView(self.allocator, part);
     }
 
@@ -212,7 +212,7 @@ extend String {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque,
+            try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;

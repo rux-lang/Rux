@@ -17,10 +17,13 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 // Which refusal a parse reported, as a small code: 1 length, 2 character; negative when the offset is wrong.
 func Refusal(text: char8[..], at: uint) -> int {
-    let reported = match NanoId::Parse(text) {
-        .Failure(error) => error,
-        .Success(_) => return 0
-    };
+    var caught: NanoIdParseError? = none;
+    try {
+        NanoId::Parse(text);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return 0;
     if reported.Offset() != at { return -1; }
     return match reported {
         .WrongLength(_) => 1,
@@ -37,26 +40,26 @@ func ShownWith(value: NanoId, spec: FormatSpec, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = value;
-    if shown.WriteDisplay(sink, spec) is .Failure(_) { return false; }
+    if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Main() -> int {
-    let first = NanoId::Generate() catch { _ => return 1 };
-    let second = NanoId::Generate() catch { _ => return 2 };
+    let first = try NanoId::Generate() catch { _ => return 1 };
+    let second = try NanoId::Generate() catch { _ => return 2 };
     if first.Equals(second) { return 3; }
     if first.Text().length != 21 { return 4; }
 
     // Round trip through text.
-    let reread = NanoId::Parse(first.Text()) catch { _ => return 5 };
+    let reread = try NanoId::Parse(first.Text()) catch { _ => return 5 };
     if !reread.Equals(first) || reread.Compare(first) != Ordering::Equal { return 6; }
 
     let text = "V1StGXR8_Z5jdHi6B-myT";
-    let parsed = NanoId::Parse(text) catch { _ => return 7 };
+    let parsed = try NanoId::Parse(text) catch { _ => return 7 };
     if !Same(parsed.Text(), text) || !Shown(parsed, text) { return 8; }
     // A width pads the identifier like any other text.
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(">23") catch { _ => return 30 };
+    spec = try ParseFormatSpec(">23") catch { _ => return 30 };
     var padded: char8[23] = [' '; 23];
     var at: uint = 2;
     for unit in text {
@@ -64,7 +67,7 @@ func Main() -> int {
         at = at + 1;
     }
     if !ShownWith(parsed, spec, padded[..]) { return 31; }
-    let later = NanoId::Parse("V1StGXR8_Z5jdHi6B-myU") catch { _ => return 9 };
+    let later = try NanoId::Parse("V1StGXR8_Z5jdHi6B-myU") catch { _ => return 9 };
     if parsed.Compare(later) != Ordering::Less || later.Compare(parsed) != Ordering::Greater { return 10; }
     if parsed.Equals(later) { return 11; }
 

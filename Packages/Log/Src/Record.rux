@@ -46,7 +46,7 @@ func PutInteger(builder: &var StringBuilder, value: int64) -> bool {
 }
 
 func PutFloat(builder: &var StringBuilder, value: float64) -> bool {
-    WriteFormat(builder, "{}", value) catch { _ => return false };
+    try WriteFormat(builder, "{}", value) catch { _ => return false };
     return true;
 }
 

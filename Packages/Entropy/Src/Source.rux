@@ -52,16 +52,16 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written in this one pass, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill-from-source
-pub unsafe func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyError {
+pub unsafe func FillFromSource(buffer: *var opaque, length: uint) throws EntropyError {
     if length == 0 { return; }
-    if length > MaxEntropyRequest { fail EntropyError::TooLarge; }
-    if buffer == null { fail EntropyError::Failed; }
+    if length > MaxEntropyRequest { throw .TooLarge; }
+    if buffer == null { throw .Failed; }
 
     when #target.os {
         .Windows => {
             if GetRandom(buffer, length) { return; }
             ZeroizeBlock(buffer, length);
-            fail EntropyError::Failed;
+            throw .Failed;
         },
         .macOS => {
             // Darwin's generator is seeded before any user code runs and has no failure to report.
@@ -80,23 +80,23 @@ pub unsafe func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyEr
                         attempts = attempts + 1;
                         if attempts >= MaxEntropyAttempts {
                             ZeroizeBlock(buffer, length);
-                            fail EntropyError::Interrupted;
+                            throw .Interrupted;
                         }
                         continue;
                     }
                     if number == ENOSYS {
                         ZeroizeBlock(buffer, length);
-                        fail EntropyError::Unsupported;
+                        throw .Unsupported;
                     }
                     ZeroizeBlock(buffer, length);
-                    fail EntropyError::Failed;
+                    throw .Failed;
                 }
                 if taken == 0 {
                     // A source that accepts the call and writes nothing is not going to start; do not spin on it.
                     attempts = attempts + 1;
                     if attempts >= MaxEntropyAttempts {
                         ZeroizeBlock(buffer, length);
-                        fail EntropyError::Failed;
+                        throw .Failed;
                     }
                     continue;
                 }

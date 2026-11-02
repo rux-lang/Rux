@@ -9,15 +9,6 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // what lets `View` cost nothing and `IntoString` skip validation. It is kept by refusing anything that is not a
 // whole character rather than by checking afterwards.
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}
-
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
@@ -26,37 +17,51 @@ func Main() -> int {
     Assert(builder.IsEmpty() && builder.Length() == 0, "a new builder holds nothing");
     Assert(builder.Capacity() == 0, "and has taken no room");
 
-    builder.AppendAscii(c8'h') catch { _ => Panic("an ASCII byte is appended") };
-    builder.AppendAscii(c8'i') catch { _ => Panic("and another") };
+    try builder.AppendAscii(c8'h') catch { _ => Panic("an ASCII byte is appended") };
+    try builder.AppendAscii(c8'i') catch { _ => Panic("and another") };
     Assert(builder.Length() == 2, "the builder holds both");
     Assert(builder.Capacity() >= 2, "with room for them");
     let firstCapacity = builder.Capacity();
 
-    builder.AppendScalar(0xE9u32 as char32) catch { _ => Panic("a two-byte character is appended") };
+    try builder.AppendScalar(0xE9u32 as char32) catch { _ => Panic("a two-byte character is appended") };
     Assert(builder.Length() == 4, "taking two bytes");
-    builder.AppendScalar(0x1F600u32 as char32) catch { _ => Panic("and a four-byte one") };
+    try builder.AppendScalar(0x1F600u32 as char32) catch { _ => Panic("and a four-byte one") };
     Assert(builder.Length() == 8, "taking four");
     Assert(builder.View().ScalarCount() == 4, "so four characters sit in eight bytes");
 
     // What is not a whole character is refused, which is what keeps the invariant.
-    Assert(Refusal(builder.AppendAscii(0xC3u8 as char8)) == TextError::InvalidUtf8,
-           "a lone byte above ASCII is refused");
+    try {
+        builder.AppendAscii(0xC3u8 as char8);
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8, "a lone byte above ASCII is refused"),
+    }
     // Reinterpret raw storage to test the builder's rejection independently of checked character casts.
     var surrogate: uint32 = 0xD000;
     surrogate = surrogate + 0x0800;
     // Safety: `surrogate` is a live local `uint32`, and `char32` has the same size and alignment.
     let surrogateScalar = unsafe { *((@surrogate) as *char32) };
-    Assert(Refusal(builder.AppendScalar(surrogateScalar)) == TextError::InvalidUtf8, "and a surrogate half");
+    try {
+        builder.AppendScalar(surrogateScalar);
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8, "and a surrogate half"),
+    }
     var broken: char8[2];
     broken[0] = 0xE2u8 as char8;
     broken[1] = 0x82u8 as char8;
-    Assert(Refusal(builder.AppendBytes(broken[0..2])) == TextError::InvalidUtf8, "and a sequence that runs out");
+    try {
+        builder.AppendBytes(broken[0..2]);
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8, "and a sequence that runs out"),
+    }
     Assert(builder.Length() == 8, "and none of them changed what the builder holds");
 
     // Growth is by doubling, so a run of appends does not reallocate on every one.
     var index: uint = 0;
     while index < 200 {
-        builder.AppendAscii(c8'x') catch { _ => Panic("there is room for every byte") };
+        try builder.AppendAscii(c8'x') catch { _ => Panic("there is room for every byte") };
         index = index + 1;
     }
     Assert(builder.Length() == 208, "the builder holds everything appended");
@@ -95,7 +100,7 @@ func Main() -> int {
     let sizedCapacity = sized.Capacity();
     index = 0;
     while index < 64 {
-        sized.AppendAscii(c8'y') catch { _ => Panic("the sized builder takes every byte") };
+        try sized.AppendAscii(c8'y') catch { _ => Panic("the sized builder takes every byte") };
         index = index + 1;
     }
     Assert(sized.Capacity() == sizedCapacity, "and filling it exactly needs no more room");

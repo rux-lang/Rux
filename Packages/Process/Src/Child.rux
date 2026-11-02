@@ -124,8 +124,8 @@ extend PipeWriter : Writer {
     /// @param bytes the bytes to write
     /// @returns how many were written, or fails, with a broken pipe once the child closed its end
     /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        if self.pipe == NoPipe { fail IoError::Of(IoErrorKind::InvalidHandle); }
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+        if self.pipe == NoPipe { throw IoError::Of(IoErrorKind::InvalidHandle); }
         if bytes.length == 0 { return 0; }
         when #target.os == .Windows {
             let count = if bytes.length > 0x40000000u { 0x40000000u32 } else { bytes.length as uint32 };
@@ -133,14 +133,14 @@ extend PipeWriter : Writer {
             // Safety: `bytes` is readable for `count` bytes, at most its length, `written` is a local the call writes,
             // and no overlapped structure is passed.
             if unsafe { WriteFile(self.pipe as *opaque, bytes.data as *opaque, count, @written, null) } == 0 {
-                fail FailureOf(LastError());
+                throw FailureOf(LastError());
             }
             return written as uint;
         }
         else {
             // Safety: `bytes` is a slice, readable for `bytes.length` bytes.
             let result = unsafe { Write(self.pipe as int32, bytes.data as *opaque, bytes.length) };
-            if IsError(result) { fail FailureOf(-result); }
+            if IsError(result) { throw FailureOf(-result); }
             return result as uint;
         }
     }
@@ -148,8 +148,8 @@ extend PipeWriter : Writer {
     /// Does nothing: a pipe keeps no buffer of its own.
     /// @returns nothing
     /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-flush
-    pub func Flush(&var self) -> ! IoError {
-        if self.pipe == NoPipe { fail IoError::Of(IoErrorKind::InvalidHandle); }
+    pub func Flush(&var self) throws IoError {
+        if self.pipe == NoPipe { throw IoError::Of(IoErrorKind::InvalidHandle); }
     }
 }
 
@@ -171,8 +171,8 @@ extend PipeReader : Reader {
     /// @param into where to put the bytes
     /// @returns how many were read, or fails with `EndOfStream` once the child closed its end and all was read
     /// @see https://rux-lang.dev/docs/api/process/child#pipe-reader-read
-    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
-        if self.pipe == NoPipe { fail IoError::Of(IoErrorKind::InvalidHandle); }
+    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+        if self.pipe == NoPipe { throw IoError::Of(IoErrorKind::InvalidHandle); }
         if into.length == 0 { return 0; }
         when #target.os == .Windows {
             let count = if into.length > 0x40000000u { 0x40000000u32 } else { into.length as uint32 };
@@ -182,17 +182,17 @@ extend PipeReader : Reader {
             if unsafe { ReadFile(self.pipe as *opaque, into.data as *opaque, count, @read, null) } == 0 {
                 // Safety: `GetLastError` takes nothing and only reads the calling thread's last error.
                 let error = unsafe { GetLastError() };
-                if error == ERROR_BROKEN_PIPE { fail IoError::Of(IoErrorKind::EndOfStream); }
-                fail FailureOf(error as int64);
+                if error == ERROR_BROKEN_PIPE { throw IoError::Of(IoErrorKind::EndOfStream); }
+                throw FailureOf(error as int64);
             }
-            if read == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            if read == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
             return read as uint;
         }
         else {
             // Safety: `into` is a writable slice of `into.length` bytes.
             let result = unsafe { Read(self.pipe as int32, into.data as *var opaque, into.length) };
-            if IsError(result) { fail FailureOf(-result); }
-            if result == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            if IsError(result) { throw FailureOf(-result); }
+            if result == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
             return result as uint;
         }
     }
@@ -258,21 +258,21 @@ extend Child {
     /// so a child reading its input to the end is not left waiting for more. Waiting again returns the same status.
     /// @returns how the child finished
     /// @see https://rux-lang.dev/docs/api/process/child#wait
-    pub func Wait(&var self) -> ExitStatus ! IoError {
+    pub func Wait(&var self) -> ExitStatus throws IoError {
         if self.finished { return self.status; }
         ClosePipe(self.input);
         self.input = NoPipe;
         when #target.os == .Windows {
             // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
             unsafe { WaitForSingleObject(self.process as *opaque, INFINITE); }
-            self.Collect()?;
+            try self.Collect();
         }
         else {
             var status: int32 = 0;
             // Safety: `status` is a local the call writes one `int32` to.
             while unsafe { waitpid(self.process as int32, @status, 0) } < 0 {
                 let error = LastError();
-                if FailureOf(error).kind != IoErrorKind::Interrupted { fail FailureOf(error); }
+                if FailureOf(error).kind != IoErrorKind::Interrupted { throw FailureOf(error); }
             }
             self.status = DecodeStatus(status);
             self.finished = true;
@@ -283,18 +283,18 @@ extend Child {
     /// How the child finished, or none while it still runs, without waiting.
     /// @returns the status once the child has finished
     /// @see https://rux-lang.dev/docs/api/process/child#try-wait
-    pub func TryWait(&var self) -> ExitStatus? ! IoError {
+    pub func TryWait(&var self) -> ExitStatus? throws IoError {
         if self.finished { return self.status; }
         when #target.os == .Windows {
             // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
             if unsafe { WaitForSingleObject(self.process as *opaque, 0) } == WAIT_TIMEOUT { return none; }
-            self.Collect()?;
+            try self.Collect();
         }
         else {
             var status: int32 = 0;
             // Safety: `status` is a local the call writes one `int32` to.
             let result = unsafe { waitpid(self.process as int32, @status, WNOHANG) };
-            if result < 0 { fail FailureOf(LastError()); }
+            if result < 0 { throw FailureOf(LastError()); }
             if result == 0 { return none; }
             self.status = DecodeStatus(status);
             self.finished = true;
@@ -306,31 +306,31 @@ extend Child {
     /// that has already finished does nothing. Wait for it afterwards to learn its status.
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/process/child#kill
-    pub func Kill(&var self) -> ! IoError {
+    pub func Kill(&var self) throws IoError {
         if self.finished { return; }
         when #target.os == .Windows {
             // Safety: terminating reads no memory, and `self.process` is the process handle this child owns.
             if unsafe { TerminateProcess(self.process as *opaque, 1) } == 0 {
                 let error = LastError();
                 // A process that has already ended refuses with access denied.
-                if error != 5 { fail FailureOf(error); }
+                if error != 5 { throw FailureOf(error); }
             }
         }
         else {
             // Safety: `kill` takes two numbers and reads no memory of the caller's.
             if unsafe { kill(self.process as int32, SIGKILL) } < 0 {
                 let error = LastError();
-                if FailureOf(error).kind != IoErrorKind::NotFound { fail FailureOf(error); }
+                if FailureOf(error).kind != IoErrorKind::NotFound { throw FailureOf(error); }
             }
         }
     }
 
     // Reads a finished Windows child's exit code.
-    func Collect(&var self) -> ! IoError {
+    func Collect(&var self) throws IoError {
         when #target.os == .Windows {
             var code: uint32 = 0;
             // Safety: `self.process` is the process handle this child owns, and `code` is a local the call writes.
-            if unsafe { GetExitCodeProcess(self.process as *opaque, @code) } == 0 { fail FailureOf(LastError()); }
+            if unsafe { GetExitCodeProcess(self.process as *opaque, @code) } == 0 { throw FailureOf(LastError()); }
             self.status = ExitStatus { code: code.Truncate<int32>(), signal: 0 };
             self.finished = true;
         }

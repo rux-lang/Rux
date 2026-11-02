@@ -18,9 +18,9 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error };
 /// @param builder receives the line, appended to whatever it already holds
 /// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
 /// @see https://rux-lang.dev/docs/api/io/read-line
-pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
+pub func ReadLine(builder: &var StringBuilder) throws IoError {
     var input = StandardIn::Acquire();
-    return ReadLineFrom(input, builder);
+    return try ReadLineFrom(input, builder);
 }
 
 /// Appends the next line of `reader` to `builder`, without its ending, reading one byte at a time.
@@ -36,7 +36,7 @@ pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
 /// @param builder receives the line, appended to whatever it already holds
 /// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
 /// @see https://rux-lang.dev/docs/api/io/read-line#read-line-from
-pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoError {
+pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) throws IoError {
     var byte: char8[1];
     let room = byte[0..1];
     // A character's leading bytes wait here until its last byte arrives, so only whole characters are appended.
@@ -46,24 +46,24 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
     var sawAnything = false;
     var pendingCarriageReturn = false;
     while true {
-        let filled = reader.Read(room) catch {
+        let filled = try reader.Read(room) catch {
             error if error.IsInterrupted() => continue,
             error if error.IsEnd() => 0,
-            error => fail error
+            error => throw error
         };
         if filled == 0 {
-            if invalid || carryLength > 0 { fail IoError::Of(IoErrorKind::InvalidText); }
+            if invalid || carryLength > 0 { throw IoError::Of(IoErrorKind::InvalidText); }
             if pendingCarriageReturn {
-                builder.AppendAscii(c8'\r') catch { _ => fail IoError::Of(IoErrorKind::Other) };
+                try builder.AppendAscii(c8'\r') catch { _ => throw IoError::Of(IoErrorKind::Other) };
             }
-            if !sawAnything { fail IoError::Of(IoErrorKind::EndOfStream); }
+            if !sawAnything { throw IoError::Of(IoErrorKind::EndOfStream); }
             return;
         }
         sawAnything = true;
         let ch = byte[0];
         if ch == c8'\n' {
             // A character still waiting for its continuation bytes was cut by the ending.
-            if invalid || carryLength > 0 { fail IoError::Of(IoErrorKind::InvalidText); }
+            if invalid || carryLength > 0 { throw IoError::Of(IoErrorKind::InvalidText); }
             return;
         }
         // The rest of a line that is already known to be invalid is read only to reach its ending.
@@ -73,13 +73,11 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
             carryLength = carryLength + 1;
             var reason = Utf8Error::InvalidStart;
             var complete = false;
-            match DecodeAt(carry[0..carryLength], 0) {
-                .Success(_) => {
-                    complete = true;
-                },
-                .Failure(problem) => {
-                    reason = problem;
-                }
+            try {
+                DecodeAt(carry[0..carryLength], 0);
+                complete = true;
+            } catch {
+                problem => reason = problem,
             }
             if complete {
                 builder.AppendValidated(carry[0..carryLength]);
@@ -92,27 +90,28 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
             continue;
         }
         if pendingCarriageReturn {
-            builder.AppendAscii(c8'\r') catch { _ => fail IoError::Of(IoErrorKind::Other) };
+            try builder.AppendAscii(c8'\r') catch { _ => throw IoError::Of(IoErrorKind::Other) };
             pendingCarriageReturn = false;
         }
         if ch == c8'\r' {
             pendingCarriageReturn = true;
         }
         else if (ch as uint8) < 0x80 {
-            builder.AppendAscii(ch) catch { _ => fail IoError::Of(IoErrorKind::Other) };
+            try builder.AppendAscii(ch) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         }
         else {
             // The first byte of a longer character. One that cannot start a character fails the line at once.
             carry[0] = ch;
             carryLength = 1;
-            match DecodeAt(carry[0..1], 0) {
-                .Success(_) => {},
-                .Failure(problem) => {
+            try {
+                DecodeAt(carry[0..1], 0);
+            } catch {
+                problem => {
                     if problem != Utf8Error::Truncated {
                         invalid = true;
                         carryLength = 0;
                     }
-                }
+                },
             }
         }
     }

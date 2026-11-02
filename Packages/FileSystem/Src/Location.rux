@@ -33,7 +33,7 @@ pub const SymbolicLinkLimit: uint = 40;
 /// @param allocator where the storage comes from
 /// @returns the working directory
 /// @see https://rux-lang.dev/docs/api/filesystem/location#current-directory
-pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
+pub func CurrentDirectory(allocator: Allocator) -> OsString throws IoError {
     var units: OsUnit[4096];
     when #target.os == .Windows {
         // The length is reported without the terminator, and a length larger than the buffer means the answer
@@ -42,15 +42,15 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
         // unit is a `char16`.
         let written = unsafe { GetCurrentDirectoryW(4096, @units[0] as *var char16) };
         // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-        if written == 0 { fail TranslateNative(unsafe { GetLastError() } as int32); }
-        if written > 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        if written == 0 { throw TranslateNative(unsafe { GetLastError() } as int32); }
+        if written > 4096 { throw IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits(units[0..written as uint]);
         return OsString::FromView(allocator, view);
     }
     else {
         // Safety: `units` is a local array of 4096 units, and 4096 is the length passed.
         let outcome = unsafe { Getcwd(@units[0], 4096) };
-        if outcome < 0 { fail TranslateNative((0 - outcome) as int32); }
+        if outcome < 0 { throw TranslateNative((0 - outcome) as int32); }
         var length: uint = 0;
         while length < 4096 && units[length] != (0u8 as char8) {
             length = length + 1;
@@ -67,22 +67,22 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
 /// @param path the path to act on
 /// @returns success when the working directory changed
 /// @see https://rux-lang.dev/docs/api/filesystem/location#set-current-directory
-pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
-    let native = NativePath(allocator, path)?;
+pub func SetCurrentDirectory(allocator: Allocator, path: Path) throws IoError {
+    let native = try NativePath(allocator, path);
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
         // release, and a `uint16` unit is a `char16`.
         if unsafe { SetCurrentDirectoryW(native as *char16) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
         let result = unsafe { Chdir(native as *char8) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -95,11 +95,11 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @param path the path to act on
 /// @returns the path made absolute without touching the file system
 /// @see https://rux-lang.dev/docs/api/filesystem/location#absolute
-pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
+pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer throws IoError {
     if IsAbsolute(path) {
         return Normalize(allocator, path);
     }
-    var here = CurrentDirectory(allocator)?;
+    var here = try CurrentDirectory(allocator);
     var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()));
     joined.Push(path.name);
     var simplified = Normalize(allocator, joined.AsPath());
@@ -111,8 +111,8 @@ when #target.os != .Windows {
     // The text a symbolic link at `path` holds, or `none` when it is not a link at all.
     // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
     // is the answer the walk below asks for at every component.
-    func ReadLinkText(allocator: Allocator, path: Path) -> OsString? ! IoError {
-        let native = NativePath(allocator, path)?;
+    func ReadLinkText(allocator: Allocator, path: Path) -> OsString? throws IoError {
+        let native = try NativePath(allocator, path);
         var units: OsUnit[4096];
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, released only after this call, and
         // `units` is a local array of 4096 units, the length passed.
@@ -124,11 +124,11 @@ when #target.os != .Windows {
                 // EINVAL: an ordinary file, which is not a failure of this question.
                 return none;
             }
-            fail TranslateNative(raw);
+            throw TranslateNative(raw);
         }
         if written as uint >= 4096 {
             // readlink truncates silently, so a full buffer cannot be told from a perfect fit.
-            fail IoError::Of(IoErrorKind::LimitExceeded);
+            throw IoError::Of(IoErrorKind::LimitExceeded);
         }
         let view = OsStringView::FromUnits(units[0..written as uint]);
         var target = OsString::FromView(allocator, view);
@@ -172,7 +172,7 @@ when #target.os != .Windows {
     // Walks `path`, appending each component to `resolved` and following any link it lands on.
     // Recursive, because a link's target is itself a path that must be walked the same way — and bounded by the
     // follow count rather than by the nesting, since it is the link chain that can loop.
-    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer, followed: *var uint) -> ! IoError {
+    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer, followed: *var uint) throws IoError {
         if IsAbsolute(path) {
             // An absolute path abandons whatever was resolved so far and starts again from the root.
             var root: OsUnit[1];
@@ -199,7 +199,7 @@ when #target.os != .Windows {
                 }
                 else {
                     resolved.Push(segment);
-                    match ReadLinkText(allocator, resolved.AsPath())? {
+                    match try ReadLinkText(allocator, resolved.AsPath()) {
                         .Some(target) => {
                             // Safety: `followed` is the address of `Canonicalize`'s local count, which outlives
                             // the whole walk.
@@ -207,10 +207,10 @@ when #target.os != .Windows {
                                 *followed = *followed + 1;
                                 *followed
                             };
-                            if count > SymbolicLinkLimit { fail IoError::Of(IoErrorKind::LimitExceeded); }
+                            if count > SymbolicLinkLimit { throw IoError::Of(IoErrorKind::LimitExceeded); }
                             // The link's own name is replaced by whatever it holds, resolved in turn.
                             PopSegment(resolved);
-                            ResolveInto(allocator, Path::FromView(target.View()), resolved, followed)?;
+                            try ResolveInto(allocator, Path::FromView(target.View()), resolved, followed);
                         },
                         none => {}
                     }
@@ -232,16 +232,16 @@ when #target.os != .Windows {
 /// @param path the path to act on
 /// @returns the path with every link and relative component resolved, which needs the file system and so can fail
 /// @see https://rux-lang.dev/docs/api/filesystem/location#canonicalize
-pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
+pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer throws IoError {
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
         // carries no access rights, which is enough here and works on a file this process may not read.
-        let native = NativePath(allocator, path)?;
+        let native = try NativePath(allocator, path);
         let handle = OpenForQuery(native, true);
         ReleaseNativePath(allocator, native, path.name.units.length);
         if (handle as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
         var units: OsUnit[4096];
         // Safety: `handle` is the valid query handle opened above, `units` is a local array of 4096 UTF-16 units
@@ -251,22 +251,22 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         let raw = unsafe { GetLastError() } as int32;
         // Safety: `handle` is the valid query handle opened above, closed here once and not used afterwards.
         unsafe { CloseHandle(handle); }
-        if written == 0 { fail TranslateNative(raw); }
-        if written >= 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        if written == 0 { throw TranslateNative(raw); }
+        if written >= 4096 { throw IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits(units[0..written as uint]);
         return PathBuffer::FromPath(allocator, Path::FromView(view));
     }
     else {
         // No Unix kernel resolves a whole path for a caller — `realpath` is library code over `readlink` — so
         // the walk is done here, component by component, against what each link actually points at.
-        var started = Absolute(allocator, path)?;
+        var started = try Absolute(allocator, path);
         var resolved = PathBuffer(allocator);
         var followed: uint = 0;
-        ResolveInto(allocator, started.AsPath(), resolved, @followed)?;
+        try ResolveInto(allocator, started.AsPath(), resolved, @followed);
         started.Release();
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".
-        MetadataOf(allocator, resolved.AsPath(), true)?;
+        try MetadataOf(allocator, resolved.AsPath(), true);
         return move resolved;
     }
 }

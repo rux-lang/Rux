@@ -194,7 +194,7 @@ extend HashMap<K, V> {
         // The table has room and the probe can still run past what a distance byte holds, when the keys collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `TryEnsureRoom` succeeded, so the capacity is nonzero.
-        return unsafe { self.table.PlaceHashed(move key, move value, hashed) } ?? throw AllocError::Unsupported;
+        return unsafe { self.table.PlaceHashed(move key, move value, hashed) } ?? throw .Unsupported;
     }
 
     /// Takes the entry for `key` out and hands back its value.

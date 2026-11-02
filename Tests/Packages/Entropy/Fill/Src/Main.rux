@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Entropy::{ EntropyError, EntropySource, Fill, FillFrom, FillWithRetries, NextUint64, SystemEntropy };
 
 // The failure paths are what this tests, and they cannot be reached through the real generator: they need a kernel
@@ -18,7 +18,7 @@ struct ScriptedSource {
 }
 
 extend ScriptedSource : EntropySource {
-    func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError {
+    func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError {
         self.calls = self.calls + 1;
 
         // Write a recognizable pattern first, exactly as a real source that fails part-way through would. If the
@@ -33,7 +33,7 @@ extend ScriptedSource : EntropySource {
 
         if self.failures > 0 {
             self.failures = self.failures - 1;
-            fail self.error;
+            throw self.error;
         }
     }
 }
@@ -53,14 +53,14 @@ func AllBytesAre(buffer: byte[..], value: byte) -> bool {
     return true;
 }
 
-func Main() -> ! EntropyError {
+func Main() throws EntropyError {
     var storage: byte[64];
 
     // A source that always succeeds fills the buffer, in a single call.
     var working = Scripted(EntropyError::Failed, 0);
     let workingSource: &var EntropySource = working;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { FillFrom(workingSource, @storage[0] as *var opaque, 64)?; }
+    unsafe { try FillFrom(workingSource, @storage[0] as *var opaque, 64); }
     Assert(working.calls == 1, "in a single call");
     Assert(AllBytesAre(storage[..64], 0x7E), "and what it wrote is what came back");
 
@@ -68,15 +68,25 @@ func Main() -> ! EntropyError {
     var refusing = Scripted(EntropyError::Failed, 1);
     let refusingSource: &var EntropySource = refusing;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    Assert(Refusal(unsafe { FillFrom(refusingSource, @storage[0] as *var opaque, 64) }) == EntropyError::Failed,
-           "a refusal is reported as it was given");
+    try {
+        unsafe { FillFrom(refusingSource, @storage[0] as *var opaque, 64); }
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == EntropyError::Failed, "a refusal is reported as it was given"),
+    }
     Assert(AllBytesAre(storage[..64], 0), "and the partial write is zeroized rather than left");
 
     // A system with no source reports that, and is not retried, because it will not grow one.
     var missing = Scripted(EntropyError::Unsupported, 8);
     let missingSource: &var EntropySource = missing;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    let unsupported = Refusal(unsafe { FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4) });
+    var caughtUnsupported: EntropyError? = none;
+    try {
+        unsafe { FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4); }
+    } catch {
+        error => { caughtUnsupported = error; }
+    }
+    let unsupported = caughtUnsupported ?? Panic("the operation was expected to fail");
     Assert(unsupported == EntropyError::Unsupported, "a system with no source reports it");
     Assert(missing.calls == 1, "and is asked exactly once, however many retries were offered");
 
@@ -84,7 +94,7 @@ func Main() -> ! EntropyError {
     var signalled = Scripted(EntropyError::Interrupted, 2);
     let signalledSource: &var EntropySource = signalled;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4)?; }
+    unsafe { try FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4); }
     Assert(signalled.calls == 3, "taking exactly the two failures and the attempt that worked");
     Assert(AllBytesAre(storage[..64], 0x7E), "and the successful attempt is what the caller keeps");
 
@@ -92,7 +102,13 @@ func Main() -> ! EntropyError {
     var stuck = Scripted(EntropyError::Interrupted, 100);
     let stuckSource: &var EntropySource = stuck;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    let gaveUp = Refusal(unsafe { FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3) });
+    var caughtGaveUp: EntropyError? = none;
+    try {
+        unsafe { FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3); }
+    } catch {
+        error => { caughtGaveUp = error; }
+    }
+    let gaveUp = caughtGaveUp ?? Panic("the operation was expected to fail");
     Assert(gaveUp == EntropyError::Interrupted, "a source that stays interrupted is given up on");
     Assert(stuck.calls == 4, "after the first attempt and exactly the three retries offered");
     Assert(AllBytesAre(storage[..64], 0), "leaving zeros rather than a partly written buffer");
@@ -101,7 +117,13 @@ func Main() -> ! EntropyError {
     var once = Scripted(EntropyError::Interrupted, 100);
     let onceSource: &var EntropySource = once;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    let oneAttempt = Refusal(unsafe { FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0) });
+    var caughtOneAttempt: EntropyError? = none;
+    try {
+        unsafe { FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0); }
+    } catch {
+        error => { caughtOneAttempt = error; }
+    }
+    let oneAttempt = caughtOneAttempt ?? Panic("the operation was expected to fail");
     Assert(oneAttempt == EntropyError::Interrupted, "no retries means one attempt");
     Assert(once.calls == 1, "and exactly one call");
 
@@ -109,15 +131,21 @@ func Main() -> ! EntropyError {
     var untouched = Scripted(EntropyError::Failed, 100);
     let untouchedSource: &var EntropySource = untouched;
     // Safety: a zero length asks for no bytes, so nothing is written.
-    unsafe { FillFrom(untouchedSource, @storage[0] as *var opaque, 0)?; }
+    unsafe { try FillFrom(untouchedSource, @storage[0] as *var opaque, 0); }
     // Safety: a null buffer is refused before the source is asked, which is the behaviour under test.
-    let nullRefusal = Refusal(unsafe { FillFrom(untouchedSource, null, 64) });
+    var caughtNullRefusal: EntropyError? = none;
+    try {
+        unsafe { FillFrom(untouchedSource, null, 64); }
+    } catch {
+        error => { caughtNullRefusal = error; }
+    }
+    let nullRefusal = caughtNullRefusal ?? Panic("the operation was expected to fail");
     Assert(nullRefusal == EntropyError::Failed, "and a null buffer is refused");
     Assert(untouched.calls == 0, "without either one reaching the source");
 
     // The real generator, reached the way a caller reaches it.
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { Fill(@storage[0] as *var opaque, 64)?; }
+    unsafe { try Fill(@storage[0] as *var opaque, 64); }
     Assert(!AllBytesAre(storage[..64], 0), "with something other than zeros");
     Assert(!AllBytesAre(storage[..64], 0x7E), "and something other than the scripted pattern");
 
@@ -125,19 +153,11 @@ func Main() -> ! EntropyError {
     var system = SystemEntropy();
     let systemSource: &var EntropySource = system;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { FillFrom(systemSource, @storage[0] as *var opaque, 64)?; }
+    unsafe { try FillFrom(systemSource, @storage[0] as *var opaque, 64); }
 
     // A seed is a draw like any other, and two of them differ.
-    let firstSeed = NextUint64()?;
-    let secondSeed = NextUint64()?;
+    let firstSeed = try NextUint64();
+    let secondSeed = try NextUint64();
     Assert(firstSeed != secondSeed, "and two seeds differ");
 }
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T>(outcome: T ! EntropyError) -> EntropyError {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}

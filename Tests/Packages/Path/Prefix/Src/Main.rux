@@ -12,15 +12,6 @@ func PathText(allocator: Allocator, text: char8[..]) -> OsString {
     return OsString::FromText(allocator, text);
 }
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}
-
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
@@ -28,7 +19,7 @@ func Main() -> int {
     // Text survives the round trip through native units, multi-byte characters included.
     let owned = PathText(allocator, "héllo/wörld");
     let view = owned.View();
-    let text = view.ToText(allocator) catch { _ => Panic("text goes native and comes back") };
+    let text = try view.ToText(allocator) catch { _ => Panic("text goes native and comes back") };
     let wanted = StringView::FromValidated("héllo/wörld");
     let textView = text.View();
     Assert(textView.Equals(wanted), "unchanged");
@@ -46,8 +37,13 @@ func Main() -> int {
         hostile[2] = 0x62u8 as char8;
     }
     let bad = OsStringView::FromUnits(hostile[0..3]);
-    Assert(Refusal(bad.ToText(allocator)) == TextError::InvalidUtf8,
-           "a name that is not text refuses to become text, and says why");
+    try {
+        bad.ToText(allocator);
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8,
+            "a name that is not text refuses to become text, and says why"),
+    }
 
     // Roots and absoluteness, in the spellings both platforms share.
     let rootedOwned = PathText(allocator, "/etc/hosts");

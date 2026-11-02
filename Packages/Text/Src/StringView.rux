@@ -36,7 +36,7 @@ extend StringView {
     /// @returns a view over those bytes, or `none` when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string-view#from-bytes
     pub func FromBytes(bytes: char8[..]) -> Self? {
-        Validate(bytes) catch { _ => return none };
+        try Validate(bytes) catch { _ => return none };
         return Self { bytes };
     }
 
@@ -113,7 +113,7 @@ extend StringView {
     /// @see https://rux-lang.dev/docs/api/text/string-view#scalar-at
     pub func ScalarAt(&self, index: uint) -> char32? {
         var scalar = 0u32 as char32;
-        let decoded = DecodeAt(self.bytes, index) catch { _ => return none };
+        let decoded = try DecodeAt(self.bytes, index) catch { _ => return none };
         scalar = decoded.scalar;
         return scalar;
     }
@@ -204,15 +204,15 @@ extend ScalarIterator : Iterator {
     pub func Next(&var self) -> char32? {
         var scalar = 0u32 as char32;
         var width: uint = 0;
-        match DecodeAt(self.bytes, self.cursor) {
-            .Success(decoded) => {
-                scalar = decoded.scalar;
-                width = decoded.width;
-            },
-            .Failure(_) => {
+        try {
+            let decoded = DecodeAt(self.bytes, self.cursor);
+            scalar = decoded.scalar;
+            width = decoded.width;
+        } catch {
+            _ => {
                 self.cursor = self.bytes.length;
                 return none;
-            }
+            },
         }
         self.cursor = self.cursor + width;
         return scalar;

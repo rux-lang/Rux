@@ -44,18 +44,14 @@ func RunChild() -> int {
         var input = StandardIn::Acquire();
         var chunk: char8[256] = ['\0'; 256];
         while true {
-            match input.Read(chunk[..]) {
-                .Success(count) => {
-                    var index: uint = 0;
-                    while index < count {
-                        let byte = chunk[index] as uint8;
-                        if byte >= 0x61u8 && byte <= 0x7Au8 { chunk[index] = (byte - 32u8) as char8; }
-                        index = index + 1;
-                    }
-                    WriteAll(output, chunk[..count]) catch { _ => return 2 };
-                },
-                .Failure(_) => return 0
+            let count = try input.Read(chunk[..]) catch { _ => return 0 };
+            var index: uint = 0;
+            while index < count {
+                let byte = chunk[index] as uint8;
+                if byte >= 0x61u8 && byte <= 0x7Au8 { chunk[index] = (byte - 32u8) as char8; }
+                index = index + 1;
             }
+            try WriteAll(output, chunk[..count]) catch { _ => return 2 };
         }
     }
     if ModeIs("flood") {
@@ -64,8 +60,8 @@ func RunChild() -> int {
         line[63] = '\n';
         var count: uint = 0;
         while count < 4000u {
-            WriteAll(error, line[..]) catch { _ => return 3 };
-            WriteAll(output, line[..]) catch { _ => return 3 };
+            try WriteAll(error, line[..]) catch { _ => return 3 };
+            try WriteAll(output, line[..]) catch { _ => return 3 };
             count = count + 1;
         }
         return 0;
@@ -79,7 +75,7 @@ func RunChild() -> int {
         if Present(a) && Is(a ?? OsStringView(), "one") { report[0] = 'A'; }
         if Present(b) && Is(b ?? OsStringView(), "two") { report[1] = 'B'; }
         if !Present(gone) { report[2] = 'G'; }
-        WriteAll(output, report[..]) catch { _ => return 4 };
+        try WriteAll(output, report[..]) catch { _ => return 4 };
         return 0;
     }
     if ModeIs("argument") {
@@ -89,7 +85,7 @@ func RunChild() -> int {
         var index: uint = 0;
         while index < units.length {
             var byte: char8[1] = [units[index] as uint8 as char8];
-            WriteAll(output, byte[..]) catch { _ => return 5 };
+            try WriteAll(output, byte[..]) catch { _ => return 5 };
             index = index + 1;
         }
         return 0;
@@ -98,7 +94,7 @@ func RunChild() -> int {
         // Waits for input that never comes, until it is killed.
         var input = StandardIn::Acquire();
         var chunk: char8[16] = ['\0'; 16];
-        input.Read(chunk[..]) catch { _ => 0u };
+        try input.Read(chunk[..]) catch { _ => 0u };
         return 0;
     }
     // No mode this test starts itself in, such as a filter `rux test` hands every package: the parent's run, then.
@@ -136,7 +132,7 @@ func Main() -> int {
 
     // An exit code comes back.
     let exit = NewSelf(program, "exit");
-    let status = exit.Run() catch { _ => return 10 };
+    let status = try exit.Run() catch { _ => return 10 };
     Assert(!status.Success() && status.Code() == 7, "a child's exit code comes back");
     Assert(status.Signal() == none, "an exit is not a signal");
 
@@ -144,42 +140,44 @@ func Main() -> int {
     var echo = NewSelf(program, "echo");
     echo.StandardInput(Stdio::Pipe);
     echo.StandardOutput(Stdio::Pipe);
-    var child = echo.Spawn() catch { _ => return 11 };
+    var child = try echo.Spawn() catch { _ => return 11 };
     var input = child.TakeInput() ?? return 12;
     var output = child.TakeOutput() ?? return 13;
-    WriteAll(input, "hello, child") catch { _ => return 14 };
+    try WriteAll(input, "hello, child") catch { _ => return 14 };
     input.Close();
     var received: char8[64] = ['\0'; 64];
     var length: uint = 0;
     while true {
-        match output.Read(received[length..]) {
-            .Success(count) => length = length + count,
-            .Failure(error) => {
+        try {
+            let count = output.Read(received[length..]);
+            length = length + count;
+        } catch {
+            error => {
                 Assert(error.kind == IoErrorKind::EndOfStream, "the output ends cleanly");
                 break;
-            }
+            },
         }
     }
     Assert(Same(received[..length], "HELLO, CHILD"), "the child echoed its input");
-    Assert((child.Wait() catch { _ => return 15 }).Success(), "the echoing child exits cleanly");
+    Assert(((try child.Wait() catch { _ => return 15 })).Success(), "the echoing child exits cleanly");
 
     // Captured output keeps both streams whole, however much the child writes to each.
     let flood = NewSelf(program, "flood");
-    let captured = flood.Capture(allocator) catch { _ => return 16 };
+    let captured = try flood.Capture(allocator) catch { _ => return 16 };
     Assert(captured.Status().Success(), "the flooding child exits cleanly");
     Assert(captured.Output().length == 4000u * 64u, "all of the output is captured");
     Assert(captured.Error().length == 4000u * 64u, "all of the error is captured");
 
     // A child sees this process's environment changes and the command's own.
-    SetVariable("RUX_SPAWN_A", "one") catch { _ => return 17 };
-    SetVariable("RUX_SPAWN_GONE", "here") catch { _ => return 18 };
+    try SetVariable("RUX_SPAWN_A", "one") catch { _ => return 17 };
+    try SetVariable("RUX_SPAWN_GONE", "here") catch { _ => return 18 };
     Assert(Is(Variable("RUX_SPAWN_A") ?? OsStringView(), "one"), "a variable set here reads back");
     var environment = NewSelf(program, "environment");
     environment.SetVariable("RUX_SPAWN_B", "two");
     environment.RemoveVariable("RUX_SPAWN_GONE");
-    let report = environment.Capture(allocator) catch { _ => return 19 };
+    let report = try environment.Capture(allocator) catch { _ => return 19 };
     Assert(Same(report.Output(), "ABG"), "the child sees every environment change");
-    RemoveVariable("RUX_SPAWN_A") catch { _ => return 20 };
+    try RemoveVariable("RUX_SPAWN_A") catch { _ => return 20 };
     Assert(!Present(Variable("RUX_SPAWN_A")), "a removed variable is gone");
     var seen = false;
     for variable in Environment() {
@@ -187,33 +185,37 @@ func Main() -> int {
         Assert(!Is(variable.name, "RUX_SPAWN_A"), "a removed variable is not walked");
     }
     Assert(seen, "a variable set here is walked");
-    match SetVariable("BAD=NAME", "x") {
-        .Success(_) => Assert(false, "a name with an equals sign is refused"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a name with an equals sign is refused")
+    try {
+        SetVariable("BAD=NAME", "x");
+        Assert(false, "a name with an equals sign is refused");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::InvalidInput, "a name with an equals sign is refused"),
     }
 
     // An argument with spaces, quotes and backslashes arrives whole.
     var quoting = NewSelf(program, "argument");
     let awkward = "a \"quoted\" arg\\ with \\\\ slashes\\";
     quoting.Argument(awkward);
-    let echoed = quoting.Capture(allocator) catch { _ => return 21 };
+    let echoed = try quoting.Capture(allocator) catch { _ => return 21 };
     Assert(Same(echoed.Output(), awkward), "an awkward argument arrives whole");
 
     // A program that does not exist is reported as not found.
     var missing = Command(allocator, "rux-no-such-program-anywhere");
-    match missing.Spawn() {
-        .Success(_) => Assert(false, "a missing program cannot start"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a missing program is not found")
+    try {
+        missing.Spawn();
+        Assert(false, "a missing program cannot start");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::NotFound, "a missing program is not found"),
     }
 
     // A child can be killed while it waits.
     var waiting = NewSelf(program, "wait");
     waiting.StandardInput(Stdio::Pipe);
-    var sleeper = waiting.Spawn() catch { _ => return 22 };
+    var sleeper = try waiting.Spawn() catch { _ => return 22 };
     let keep = sleeper.TakeInput();
-    sleeper.Kill() catch { _ => return 23 };
-    let killed = sleeper.Wait() catch { _ => return 24 };
+    try sleeper.Kill() catch { _ => return 23 };
+    let killed = try sleeper.Wait() catch { _ => return 24 };
     Assert(!killed.Success(), "a killed child did not succeed");
-    Assert((sleeper.TryWait() catch { _ => return 25 }) != none, "a finished child reports its status");
+    Assert(((try sleeper.TryWait() catch { _ => return 25 })) != none, "a finished child reports its status");
     return 0;
 }

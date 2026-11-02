@@ -9,8 +9,8 @@ import Path::{ OsStringView, OsUnit };
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes, WriteScalar };
 
 /// Why the arguments did not match the command.
-/// Failure-only: a parse is the success channel of `Parsed ! CommandLineError`. Copy; every view and name it carries
-/// borrows the arguments or the specification, which must outlive it.
+/// Failure-only: a parse that succeeds returns `Parsed`, and this is what it throws. Copy; every view and name it
+/// carries borrows the arguments or the specification, which must outlive it.
 /// @see https://rux-lang.dev/docs/api/commandline/command-line-error
 pub variant CommandLineError {
     /// An argument that looks like an option names none the command has. Carries the argument as typed.
@@ -35,7 +35,7 @@ pub variant CommandLineError {
 
 // Writes native text a person can read: UTF-16 decoded on Windows, bytes passed through elsewhere, and anything that
 // is not a well-formed character written as U+FFFD, so that a malformed argument still prints.
-func WriteNative(writer: &var TextWriter, view: OsStringView) -> ! FormatError {
+func WriteNative(writer: &var TextWriter, view: OsStringView) throws FormatError {
     let units = view.Units();
     var index: uint = 0;
     while index < units.length {
@@ -52,7 +52,7 @@ func WriteNative(writer: &var TextWriter, view: OsStringView) -> ! FormatError {
             if scalar >= 0xD800 && scalar <= 0xDFFF {
                 scalar = 0xFFFD;
             }
-            WriteScalar(writer, scalar as char32)?;
+            try WriteScalar(writer, scalar as char32);
         }
         else {
             let first = units[index] as uint8 as uint32;
@@ -84,11 +84,11 @@ func WriteNative(writer: &var TextWriter, view: OsStringView) -> ! FormatError {
             valid = valid && scalar <= 0x10FFFF && !(scalar >= 0xD800 && scalar <= 0xDFFF);
             valid = valid && !(count == 3 && scalar < 0x800) && !(count == 4 && scalar < 0x10000);
             if valid {
-                WriteScalar(writer, scalar as char32)?;
+                try WriteScalar(writer, scalar as char32);
                 index = index + count;
             }
             else {
-                WriteScalar(writer, 0xFFFD as char32)?;
+                try WriteScalar(writer, 0xFFFD as char32);
                 index = index + 1;
             }
         }
@@ -105,48 +105,48 @@ extend CommandLineError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         match self {
             .UnknownOption(argument) => {
-                WriteBytes(writer, "unknown option '")?;
-                WriteNative(writer, argument)?;
-                WriteBytes(writer, "'")?;
+                try WriteBytes(writer, "unknown option '");
+                try WriteNative(writer, argument);
+                try WriteBytes(writer, "'");
             },
             .MissingValue(name) => {
-                WriteBytes(writer, "option '--")?;
-                WriteBytes(writer, name)?;
-                WriteBytes(writer, "' needs a value")?;
+                try WriteBytes(writer, "option '--");
+                try WriteBytes(writer, name);
+                try WriteBytes(writer, "' needs a value");
             },
             .UnexpectedValue(name) => {
-                WriteBytes(writer, "option '--")?;
-                WriteBytes(writer, name)?;
-                WriteBytes(writer, "' takes no value")?;
+                try WriteBytes(writer, "option '--");
+                try WriteBytes(writer, name);
+                try WriteBytes(writer, "' takes no value");
             },
             .UnknownCommand(word) => {
-                WriteBytes(writer, "unknown command '")?;
-                WriteNative(writer, word)?;
-                WriteBytes(writer, "'")?;
+                try WriteBytes(writer, "unknown command '");
+                try WriteNative(writer, word);
+                try WriteBytes(writer, "'");
             },
             .MissingCommand => {
-                WriteBytes(writer, "a command is required")?;
+                try WriteBytes(writer, "a command is required");
             },
             .MissingPositional(name) => {
-                WriteBytes(writer, "missing argument <")?;
-                WriteBytes(writer, name)?;
-                WriteBytes(writer, ">")?;
+                try WriteBytes(writer, "missing argument <");
+                try WriteBytes(writer, name);
+                try WriteBytes(writer, ">");
             },
             .UnexpectedArgument(argument) => {
-                WriteBytes(writer, "unexpected argument '")?;
-                WriteNative(writer, argument)?;
-                WriteBytes(writer, "'")?;
+                try WriteBytes(writer, "unexpected argument '");
+                try WriteNative(writer, argument);
+                try WriteBytes(writer, "'");
             },
             .InvalidValue(name, value) => {
-                WriteBytes(writer, "invalid value '")?;
-                WriteNative(writer, value)?;
-                WriteBytes(writer, "' for '")?;
-                WriteBytes(writer, name)?;
-                WriteBytes(writer, "'")?;
+                try WriteBytes(writer, "invalid value '");
+                try WriteNative(writer, value);
+                try WriteBytes(writer, "' for '");
+                try WriteBytes(writer, name);
+                try WriteBytes(writer, "'");
             }
         }
         return;
@@ -160,8 +160,8 @@ extend CommandLineError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        return self.WriteDisplay(writer, spec);
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        return try self.WriteDisplay(writer, spec);
     }
 }
 

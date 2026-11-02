@@ -43,10 +43,10 @@ extend ByteReader : Reader {
     /// @param into where the bytes go
     /// @returns how many were copied, or fails with `EndOfStream` once every byte has been read
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-reader-read
-    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
         if into.length == 0 { return 0; }
         let left = self.bytes.length - self.position;
-        if left == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+        if left == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
         let count = if left < into.length { left } else { into.length };
         // Safety: `count` is at most both `into.length` and the `left` bytes from `position`, and the caller's
         // slice is not the bytes being read.
@@ -76,9 +76,9 @@ extend ByteReader : Seeker {
     /// @param offset how far, which may be negative
     /// @returns the new position, or fails with `InvalidInput` for one before the start or past the end
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-reader-seek
-    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
+    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 throws IoError {
         let target = SeekTarget(origin, offset, self.position, self.bytes.length) ??
-                     fail IoError::Of(IoErrorKind::InvalidInput);
+                     throw IoError::Of(IoErrorKind::InvalidInput);
         self.position = target;
         return target as uint64;
     }
@@ -132,7 +132,7 @@ extend ByteWriter {
     pub func Release(&var self) {
         if self.data != null {
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
+            try borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
                 _ => {}
             };
         }
@@ -143,21 +143,21 @@ extend ByteWriter {
     }
 
     // Makes room for at least `needed` bytes, doubling so that a run of small writes costs linear time.
-    func Grow(&var self, needed: uint) -> ! IoError {
+    func Grow(&var self, needed: uint) throws IoError {
         if needed <= self.capacity { return; }
         var wanted = if self.capacity < 64u { 64u } else { self.capacity };
         while wanted < needed {
-            if wanted > 0x7FFFFFFFFFFFFFFFu { fail IoError::Of(IoErrorKind::LimitExceeded); }
+            if wanted > 0x7FFFFFFFFFFFFFFFu { throw IoError::Of(IoErrorKind::LimitExceeded); }
             wanted = wanted * 2;
         }
         var borrowed = self.allocator;
-        let block = borrowed.Allocate(Layout { size: wanted, alignment: 1 }) catch {
-            _ => fail IoError::Of(IoErrorKind::LimitExceeded)
+        let block = try borrowed.Allocate(Layout { size: wanted, alignment: 1 }) catch {
+            _ => throw IoError::Of(IoErrorKind::LimitExceeded)
         };
         if self.data != null {
             // Safety: `block` is a fresh allocation of `wanted` bytes, more than the `length` bytes `data` holds.
             unsafe { Copy(block, self.data as *opaque, self.length); }
-            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
+            try borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
                 _ => {}
             };
         }
@@ -176,10 +176,10 @@ extend ByteWriter : Writer {
     /// @param bytes the bytes to write
     /// @returns how many were written, which is all of them, or fails with `LimitExceeded` when storage runs out
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-writer-write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         if bytes.length == 0 { return 0; }
         let end = self.position + bytes.length;
-        self.Grow(end)?;
+        try self.Grow(end);
         // Safety: `Grow` made `capacity` at least `end`, so `data` has room from `position` for all of `bytes`,
         // which is the caller's slice rather than this storage.
         unsafe { Copy(@self.data[self.position] as *var opaque, bytes.data as *opaque, bytes.length); }
@@ -191,7 +191,7 @@ extend ByteWriter : Writer {
     /// Does nothing: the bytes are already where they go.
     /// @returns nothing
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-writer-flush
-    pub func Flush(&var self) -> ! IoError {}
+    pub func Flush(&var self) throws IoError {}
 }
 
 extend ByteWriter : Seeker {
@@ -200,9 +200,9 @@ extend ByteWriter : Seeker {
     /// @param offset how far, which may be negative
     /// @returns the new position, or fails with `InvalidInput` for one before the start or past the end
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-writer-seek
-    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
+    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 throws IoError {
         let target = SeekTarget(origin, offset, self.position, self.length) ??
-                     fail IoError::Of(IoErrorKind::InvalidInput);
+                     throw IoError::Of(IoErrorKind::InvalidInput);
         self.position = target;
         return target as uint64;
     }

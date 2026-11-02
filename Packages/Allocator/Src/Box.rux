@@ -109,7 +109,7 @@ extend Box<T> {
         let layout = Layout::ForValue<T>();
         // The storage came from this allocator with this layout, so a refusal would be the allocator's own bug; the
         // value is already out, and nothing the caller holds depends on the release.
-        self.allocator.Deallocate(held as *var opaque, layout) catch { _ => {} };
+        try self.allocator.Deallocate(held as *var opaque, layout) catch { _ => {} };
         self.pointer = null;
         return .Some(move value);
     }
@@ -124,7 +124,7 @@ extend Box<T> {
             self.pointer = null;
             // Safety: `held` is this box's live value, and the box was cleared above so nothing reaches it again.
             unsafe { DestroyBoxValue<T>(held); }
-            self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { _ => {} };
+            try self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { _ => {} };
         }
     }
 }

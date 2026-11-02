@@ -35,7 +35,7 @@ func Pass(token: Token) -> Token {
 }
 
 func Forward(token: Token?) -> Token? {
-    let present = (move token)?;
+    let present = try (move token);
     return move present;
 }
 

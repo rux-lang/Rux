@@ -81,17 +81,17 @@ extend TomlParseFailure : ParseFailure {
 }
 
 // The description of a lexical refusal, which a parse failure quotes rather than restates.
-func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) -> ! FormatError {
+func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) throws FormatError {
     return match reason {
-        .None => WriteBytes(writer, "no error"),
-        .UnexpectedByte => WriteBytes(writer, "byte that begins no token"),
-        .UnterminatedText => WriteBytes(writer, "string the document ended before closing"),
-        .BadEscape => WriteBytes(writer, "escape sequence TOML does not define"),
-        .BadUnicodeEscape => WriteBytes(writer, "unicode escape naming no scalar value"),
-        .UnescapedControl => WriteBytes(writer, "unescaped control character inside a string"),
-        .MalformedNumber => WriteBytes(writer, "number whose shape TOML does not allow"),
-        .NewlineInText => WriteBytes(writer, "newline inside a string that cannot hold one"),
-        .MalformedDateTime => WriteBytes(writer, "date or time TOML does not spell that way")
+        .None => try WriteBytes(writer, "no error"),
+        .UnexpectedByte => try WriteBytes(writer, "byte that begins no token"),
+        .UnterminatedText => try WriteBytes(writer, "string the document ended before closing"),
+        .BadEscape => try WriteBytes(writer, "escape sequence TOML does not define"),
+        .BadUnicodeEscape => try WriteBytes(writer, "unicode escape naming no scalar value"),
+        .UnescapedControl => try WriteBytes(writer, "unescaped control character inside a string"),
+        .MalformedNumber => try WriteBytes(writer, "number whose shape TOML does not allow"),
+        .NewlineInText => try WriteBytes(writer, "newline inside a string that cannot hold one"),
+        .MalformedDateTime => try WriteBytes(writer, "date or time TOML does not spell that way")
     };
 }
 
@@ -105,72 +105,72 @@ extend TomlParseFailure : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+                          spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self.reason {
-            .Lexical(reason) => WriteLexicalDescription(writer, reason),
-            .Unexpected => WriteBytes(writer, "token that cannot appear here"),
-            .Truncated => WriteBytes(writer, "document ended in the middle of something"),
-            .DuplicateKey => WriteBytes(writer, "key given a value twice in the same table"),
-            .RedefinedTable => WriteBytes(writer, "table defined by a header twice"),
-            .ExtendedInlineTable => WriteBytes(writer, "table written inline and added to afterwards"),
-            .ExtendedDottedTable => WriteBytes(writer, "table made by a dotted key and added to on another line"),
-            .NotATable => WriteBytes(writer, "key path running through something that is not a table"),
-            .NotATableArray => WriteBytes(writer, "header naming something that is not an array of tables"),
-            .BadValue(reason) => reason.WriteDisplay(writer, spec),
-            .BadText => WriteBytes(writer, "string whose escapes name no scalar value"),
-            .TooDeep => WriteBytes(writer, "values nested deeper than the limit allows")
+            .Lexical(reason) => try WriteLexicalDescription(writer, reason),
+            .Unexpected => try WriteBytes(writer, "token that cannot appear here"),
+            .Truncated => try WriteBytes(writer, "document ended in the middle of something"),
+            .DuplicateKey => try WriteBytes(writer, "key given a value twice in the same table"),
+            .RedefinedTable => try WriteBytes(writer, "table defined by a header twice"),
+            .ExtendedInlineTable => try WriteBytes(writer, "table written inline and added to afterwards"),
+            .ExtendedDottedTable => try WriteBytes(writer, "table made by a dotted key and added to on another line"),
+            .NotATable => try WriteBytes(writer, "key path running through something that is not a table"),
+            .NotATableArray => try WriteBytes(writer, "header naming something that is not an array of tables"),
+            .BadValue(reason) => try reason.WriteDisplay(writer, spec),
+            .BadText => try WriteBytes(writer, "string whose escapes name no scalar value"),
+            .TooDeep => try WriteBytes(writer, "values nested deeper than the limit allows")
         };
     }
 }
 
 // The case name alone, which the debug rendering puts the position after.
 func WriteReasonName(writer: &var TextWriter, reason: &TomlParseError,
-                     spec: FormatSpec) -> ! FormatError {
+                     spec: FormatSpec) throws FormatError {
     return match reason {
-        .Lexical(cause) => WriteNested(writer, "Lexical", cause),
-        .Unexpected => WriteBytes(writer, "Unexpected"),
-        .Truncated => WriteBytes(writer, "Truncated"),
-        .DuplicateKey => WriteBytes(writer, "DuplicateKey"),
-        .RedefinedTable => WriteBytes(writer, "RedefinedTable"),
-        .ExtendedInlineTable => WriteBytes(writer, "ExtendedInlineTable"),
-        .ExtendedDottedTable => WriteBytes(writer, "ExtendedDottedTable"),
-        .NotATable => WriteBytes(writer, "NotATable"),
-        .NotATableArray => WriteBytes(writer, "NotATableArray"),
-        .BadValue(cause) => WriteScalarCase(writer, cause, spec),
-        .BadText => WriteBytes(writer, "BadText"),
-        .TooDeep => WriteBytes(writer, "TooDeep")
+        .Lexical(cause) => try WriteNested(writer, "Lexical", cause),
+        .Unexpected => try WriteBytes(writer, "Unexpected"),
+        .Truncated => try WriteBytes(writer, "Truncated"),
+        .DuplicateKey => try WriteBytes(writer, "DuplicateKey"),
+        .RedefinedTable => try WriteBytes(writer, "RedefinedTable"),
+        .ExtendedInlineTable => try WriteBytes(writer, "ExtendedInlineTable"),
+        .ExtendedDottedTable => try WriteBytes(writer, "ExtendedDottedTable"),
+        .NotATable => try WriteBytes(writer, "NotATable"),
+        .NotATableArray => try WriteBytes(writer, "NotATableArray"),
+        .BadValue(cause) => try WriteScalarCase(writer, cause, spec),
+        .BadText => try WriteBytes(writer, "BadText"),
+        .TooDeep => try WriteBytes(writer, "TooDeep")
     };
 }
 
 // `Lexical(BadEscape)`, whose payload is a scalar enum with a name of its own.
-func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError) -> ! FormatError {
-    WriteBytes(writer, name)?;
-    WriteAscii(writer, c8'(')?;
-    WriteLexicalName(writer, cause)?;
-    return WriteAscii(writer, c8')');
+func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError) throws FormatError {
+    try WriteBytes(writer, name);
+    try WriteAscii(writer, c8'(');
+    try WriteLexicalName(writer, cause);
+    return try WriteAscii(writer, c8')');
 }
 
 // `BadValue(TomlScalarError::Malformed(4))`, whose payload renders itself.
 func WriteScalarCase(writer: &var TextWriter, cause: &TomlScalarError,
-                     spec: FormatSpec) -> ! FormatError {
-    WriteBytes(writer, "BadValue(")?;
-    cause.WriteDebug(writer, spec)?;
-    return WriteAscii(writer, c8')');
+                     spec: FormatSpec) throws FormatError {
+    try WriteBytes(writer, "BadValue(");
+    try cause.WriteDebug(writer, spec);
+    return try WriteAscii(writer, c8')');
 }
 
-func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) -> ! FormatError {
+func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) throws FormatError {
     return match reason {
-        .None => WriteBytes(writer, "None"),
-        .UnexpectedByte => WriteBytes(writer, "UnexpectedByte"),
-        .UnterminatedText => WriteBytes(writer, "UnterminatedText"),
-        .BadEscape => WriteBytes(writer, "BadEscape"),
-        .BadUnicodeEscape => WriteBytes(writer, "BadUnicodeEscape"),
-        .UnescapedControl => WriteBytes(writer, "UnescapedControl"),
-        .MalformedNumber => WriteBytes(writer, "MalformedNumber"),
-        .NewlineInText => WriteBytes(writer, "NewlineInText"),
-        .MalformedDateTime => WriteBytes(writer, "MalformedDateTime")
+        .None => try WriteBytes(writer, "None"),
+        .UnexpectedByte => try WriteBytes(writer, "UnexpectedByte"),
+        .UnterminatedText => try WriteBytes(writer, "UnterminatedText"),
+        .BadEscape => try WriteBytes(writer, "BadEscape"),
+        .BadUnicodeEscape => try WriteBytes(writer, "BadUnicodeEscape"),
+        .UnescapedControl => try WriteBytes(writer, "UnescapedControl"),
+        .MalformedNumber => try WriteBytes(writer, "MalformedNumber"),
+        .NewlineInText => try WriteBytes(writer, "NewlineInText"),
+        .MalformedDateTime => try WriteBytes(writer, "MalformedDateTime")
     };
 }
 
@@ -184,17 +184,17 @@ extend TomlParseFailure : Debug {
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
-        WriteBytes(writer, "TomlParseError::")?;
-        WriteReasonName(writer, self.reason, FormatSpec::Plain())?;
-        WriteBytes(writer, " at ")?;
+                        spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
+        try WriteBytes(writer, "TomlParseError::");
+        try WriteReasonName(writer, self.reason, FormatSpec::Plain());
+        try WriteBytes(writer, " at ");
         let line: Display = self.line;
-        line.WriteDisplay(writer, FormatSpec::Plain())?;
-        WriteAscii(writer, c8':')?;
+        try line.WriteDisplay(writer, FormatSpec::Plain());
+        try WriteAscii(writer, c8':');
         let column: Display = self.column;
-        return column.WriteDisplay(writer, FormatSpec::Plain());
+        return try column.WriteDisplay(writer, FormatSpec::Plain());
     }
 }
 
@@ -408,7 +408,9 @@ extend TomlParser {
         let span = self.lexer.TextOf(token);
         if token.kind == TomlTokenKind::Text {
             var bad = false;
-            var decoded = TomlDecodeText(self.allocator, span, token.form, @bad) catch { _ => String(self.allocator) };
+            var decoded = try TomlDecodeText(self.allocator, span, token.form, @bad) catch {
+                _ => String(self.allocator),
+            };
             if bad {
                 self.Stop(TomlStop::BadText);
             }
@@ -416,22 +418,16 @@ extend TomlParser {
         }
         if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4); }
         if token.kind == TomlTokenKind::Integer {
-            return match TomlParseInteger(span) {
-                .Success(value) => TomlValue::Integer(self.allocator, value),
-                .Failure(reason) => self.RefuseScalar(token, reason)
-            };
+            let value = try TomlParseInteger(span) catch { reason => return self.RefuseScalar(token, reason) };
+            return TomlValue::Integer(self.allocator, value);
         }
         if token.kind == TomlTokenKind::Float {
-            return match TomlParseFloat(span) {
-                .Success(value) => TomlValue::Float(self.allocator, value),
-                .Failure(reason) => self.RefuseScalar(token, reason)
-            };
+            let value = try TomlParseFloat(span) catch { reason => return self.RefuseScalar(token, reason) };
+            return TomlValue::Float(self.allocator, value);
         }
         if token.kind == TomlTokenKind::DateTime {
-            return match TomlParseDateTime(span) {
-                .Success(moment) => self.MomentValue(moment),
-                .Failure(reason) => self.RefuseScalar(token, reason)
-            };
+            let moment = try TomlParseDateTime(span) catch { reason => return self.RefuseScalar(token, reason) };
+            return self.MomentValue(moment);
         }
         if token.kind == TomlTokenKind::End {
             self.Stop(TomlStop::Truncated);
@@ -554,7 +550,7 @@ extend TomlParser {
         // A key made of digits — `1234 = "x"` — lexes as an integer and is a perfectly good bare key, so the
         // form for anything that is not a quoted string is the one that copies the bytes unchanged.
         let form = if token.kind == TomlTokenKind::Text { token.form } else { TomlTextForm::Bare };
-        into.ReplaceWith(TomlDecodeText(self.allocator, span, form, @bad) catch { _ => String(self.allocator) });
+        into.ReplaceWith((try TomlDecodeText(self.allocator, span, form, @bad) catch { _ => String(self.allocator) }));
         if bad {
             self.Stop(TomlStop::BadText);
             return false;
@@ -813,7 +809,7 @@ extend TomlParser {
     /// reads configuration; it does not edit files.
     /// @returns the document, or the failure and where it was found
     /// @see https://rux-lang.dev/docs/api/toml/toml-parser#parse
-    pub func Parse(&var self) -> TomlValue ! TomlParseFailure {
+    pub func Parse(&var self) -> TomlValue throws TomlParseFailure {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;
         var current = @root;
@@ -846,7 +842,7 @@ extend TomlParser {
             // Whatever was read before the refusal goes here, at the end of this scope. A configuration read from
             // half a file is worse than none of it: a program started from it runs with some settings applied and
             // some defaulted, which is a state nobody wrote down and nobody tested.
-            fail BuiltFailure(self.outcome);
+            throw BuiltFailure(self.outcome);
         }
         return move root;
     }
@@ -861,7 +857,7 @@ extend TomlParser {
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/toml/toml-parse
-pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue ! TomlParseFailure {
+pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue throws TomlParseFailure {
     var parser = TomlParser(allocator, input, TomlLimits::Default());
-    return parser.Parse();
+    return try parser.Parse();
 }

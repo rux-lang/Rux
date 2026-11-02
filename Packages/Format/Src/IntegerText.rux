@@ -22,10 +22,10 @@ import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, Padding
 /// @returns success when the complete rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/integer-text#write-integer-digits
 pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: char8[..], count: uint,
-                            negative: bool) -> ! FormatError {
+                            negative: bool) throws FormatError {
     // Every integer width, narrow and wide, reaches the writer through here, so this is where an integer says
     // which styles it has meaning for: the four bases, and nothing else.
-    RejectNonBaseStyle(spec)?;
+    try RejectNonBaseStyle(spec);
     var lead: uint = 0;
     if negative || spec.ShowsSign() {
         lead = 1;
@@ -41,15 +41,15 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
     var before: uint = 0;
     var after: uint = 0;
     PaddingAround(spec, lead + zeros + count, true, @before, @after);
-    WriteFill(writer, spec, before)?;
+    try WriteFill(writer, spec, before);
     if negative {
-        WriteAscii(writer, c8'-')?;
+        try WriteAscii(writer, c8'-');
     }
     else if spec.ShowsSign() {
-        WriteAscii(writer, c8'+')?;
+        try WriteAscii(writer, c8'+');
     }
     if spec.IsAlternate() && spec.Base() != FormatBase::Decimal {
-        WriteAscii(writer, c8'0')?;
+        try WriteAscii(writer, c8'0');
         let mark = if spec.Base() == FormatBase::Binary {
             c8'b'
         } else if spec.Base() == FormatBase::Octal {
@@ -57,19 +57,19 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
         } else {
             c8'x'
         };
-        WriteAscii(writer, mark)?;
+        try WriteAscii(writer, mark);
     }
     var padded: uint = 0;
     while padded < zeros {
-        WriteAscii(writer, c8'0')?;
+        try WriteAscii(writer, c8'0');
         padded = padded + 1;
     }
     var index = count;
     while index > 0 {
         index = index - 1;
-        WriteAscii(writer, digits[index])?;
+        try WriteAscii(writer, digits[index]);
     }
-    return WriteFill(writer, spec, after);
+    return try WriteFill(writer, spec, after);
 }
 
 /// Writes an integer under the whole of `spec`: base, sign, alternate prefix, zero-padding and alignment.
@@ -83,7 +83,7 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
 /// @returns success when the complete rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/integer-text#write-integer-spec
 pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: uint64,
-                          negative: bool) -> ! FormatError {
+                          negative: bool) throws FormatError {
     var digits: char8[64];
     var count: uint = 0;
     var radix: uint64 = 10;
@@ -108,7 +108,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, digits[..count], count, negative);
+    return try WriteIntegerDigits(writer, spec, digits[..count], count, negative);
 }
 
 /// Writes one character under `spec`'s width, fill and alignment.
@@ -119,11 +119,11 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
 /// @param scalar the Unicode scalar value to render
 /// @returns success when the padded character was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#format-scalar
-pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) -> ! FormatError {
-    RejectStyle(spec)?;
+pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) throws FormatError {
+    try RejectStyle(spec);
     var encoded: char8[4];
     var written: uint = 0;
     let sink = encoded[..];
-    written = Encode(scalar, sink) catch { _ => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
-    return WriteAligned(writer, spec, encoded[..written], false);
+    written = try Encode(scalar, sink) catch { _ => throw .TextFailure(TextFailureKind::InvalidUtf8) };
+    return try WriteAligned(writer, spec, encoded[..written], false);
 }

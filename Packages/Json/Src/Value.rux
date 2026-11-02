@@ -115,8 +115,8 @@ extend JsonNumber {
     /// @param text the number's text, borrowed for the call
     /// @returns the number, holding a copy of the text; `MalformedNumber` when the text is not a JSON number
     /// @see https://rux-lang.dev/docs/api/json/json-number#new
-    pub func New(allocator: Allocator, text: char8[..]) -> Self ! JsonError {
-        if !IsJsonNumberText(text) { fail JsonError::MalformedNumber; }
+    pub func New(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
+        if !IsJsonNumberText(text) { throw .MalformedNumber; }
         return Self::Lexed(allocator, text);
     }
 
@@ -140,7 +140,7 @@ extend JsonNumber {
     /// @returns whether the text is an integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-int64
     pub func AsInt64(&self, result: *var int64) -> bool {
-        let value = ParseInt64(self.text.View().Bytes()) catch { _ => return false };
+        let value = try ParseInt64(self.text.View().Bytes()) catch { _ => return false };
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `int64`.
         unsafe { *result = value; }
         return true;
@@ -151,7 +151,7 @@ extend JsonNumber {
     /// @returns whether the text is a non-negative integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-uint64
     pub func AsUint64(&self, result: *var uint64) -> bool {
-        let value = ParseUint64(self.text.View().Bytes()) catch { _ => return false };
+        let value = try ParseUint64(self.text.View().Bytes()) catch { _ => return false };
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `uint64`.
         unsafe { *result = value; }
         return true;
@@ -164,7 +164,7 @@ extend JsonNumber {
     /// @returns whether the text converted; the value is the nearest representable one
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-float64
     pub func AsFloat64(&self, result: *var float64) -> bool {
-        let value = ParseFloat64(self.text.View().Bytes()) catch { _ => return false };
+        let value = try ParseFloat64(self.text.View().Bytes()) catch { _ => return false };
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `float64`.
         unsafe { *result = value; }
         return true;
@@ -260,10 +260,10 @@ extend JsonValue {
     /// @param text the number's text, borrowed for the call
     /// @returns that text as a number value; `MalformedNumber` when the text is not a JSON number
     /// @see https://rux-lang.dev/docs/api/json/json-value#number
-    pub func Number(allocator: Allocator, text: char8[..]) -> Self ! JsonError {
+    pub func Number(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Number;
-        held.number = JsonNumber::New(allocator, text)?;
+        held.number = try JsonNumber::New(allocator, text);
         return move held;
     }
 
@@ -281,10 +281,10 @@ extend JsonValue {
     /// @param value the value to act on
     /// @returns that text as a string value, or `InvalidUtf8` when it is not text
     /// @see https://rux-lang.dev/docs/api/json/json-value#text
-    pub func Text(allocator: Allocator, value: char8[..]) -> Self ! TextError {
+    pub func Text(allocator: Allocator, value: char8[..]) -> Self throws TextError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Text;
-        held.text = String::FromBytes(allocator, value)?;
+        held.text = try String::FromBytes(allocator, value);
         return move held;
     }
 

@@ -18,7 +18,7 @@ func Displayed(error: DecodeError, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = error;
-    if shown.WriteDisplay(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? shown.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -27,7 +27,7 @@ func Inspected(error: DecodeError, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let inspected: Debug = error;
-    if inspected.WriteDebug(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? inspected.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -53,10 +53,13 @@ func Main() -> int {
 
     // An error reaches a caller through propagation like any other failure.
     var room: byte[1];
-    let reported = match HexDecode("zz", room[..]) {
-        .Failure(error) => error,
-        .Success(_) => return 11
-    };
+    var caught: DecodeError? = none;
+    try {
+        HexDecode("zz", room[..]);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return 11;
     if (reported.Offset() ?? 99) != 0 { return 12; }
     return 0;
 }

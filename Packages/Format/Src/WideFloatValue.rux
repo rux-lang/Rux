@@ -123,10 +123,10 @@ extend Float80 {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float80#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
-                        spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+                        spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let layout = FloatLayout::Extended80();
-        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
 }
 
@@ -231,10 +231,10 @@ extend Float128 {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float128#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
-                        spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+                        spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let layout = FloatLayout::Binary128();
-        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
 }
 
@@ -339,10 +339,10 @@ extend Float256 {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float256#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
-                        spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+                        spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let layout = FloatLayout::Binary256();
-        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
 }
 
@@ -447,9 +447,9 @@ extend Float512 {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float512#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
-                        spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+                        spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let layout = FloatLayout::Binary512();
-        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
 }

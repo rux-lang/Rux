@@ -9,8 +9,8 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    let first = String::FromBytes(allocator, "One") catch { _ => Panic("the first string is built") };
-    let second = String::FromBytes(allocator, "Two") catch { _ => Panic("and the second") };
+    let first = try String::FromBytes(allocator, "One") catch { _ => Panic("the first string is built") };
+    let second = try String::FromBytes(allocator, "Two") catch { _ => Panic("and the second") };
 
     let opening = Concat(allocator, first.View(), StringView::FromValidated(" join "));
     let joined = Concat(allocator, opening.View(), second.View());

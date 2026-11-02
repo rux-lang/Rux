@@ -4,7 +4,7 @@
 // stays valid at every instantiation by ending in `else`. Native values built in one module are read in another with
 // the same identity and layout, aliases name exactly their members, and a named error wrapper keeps its cause.
 
-import Core::Assert;
+import Core::{ Assert, Result };
 import GenericSum::Shapes::{ Box, Boxes, Choose, Complete, IoError, Load, LoadError, Lookup, Nest, ParseError, Read,
                              ReadError, Timeout, WithTimeout };
 
@@ -65,45 +65,54 @@ func Main() -> int {
     Assert(sameBoxes.value == 7i32, "equal instantiations collapse");
 
     // An error parameter joined with a concrete error.
-    let timedOut = match WithTimeout<IoError>(IoError { code: 4i32 }, true) {
-        .Success(_) => 0i32,
-        .Failure(_: Timeout) => 1i32,
-        .Failure(io: IoError) => io.code
-    };
+    var timedOut = 0i32;
+    try {
+        WithTimeout<IoError>(IoError { code: 4i32 }, true);
+    } catch {
+        _: Timeout => { timedOut = 1i32; },
+        io: IoError => { timedOut = io.code; },
+    }
     Assert(timedOut == 1i32, "the concrete member of a generic error sum");
-    let collapsedError = match WithTimeout<Timeout>(Timeout { after: 9i32 }, false) {
-        .Success(_) => 0i32,
-        .Failure(timeout) => timeout.after
-    };
+    var collapsedError = 0i32;
+    try {
+        WithTimeout<Timeout>(Timeout { after: 9i32 }, false);
+    } catch {
+        timeout => { collapsedError = timeout.after; }
+    }
     Assert(collapsedError == 9i32, "an error parameter equal to the concrete member collapses");
 
     // Values built in the other module keep their payloads exactly.
-    let failure = match Read(-12i32) {
-        .Success(_) => 0i32,
-        .Failure(error) => Describe(error)
-    };
+    var failure = 0i32;
+    try {
+        Read(-12i32);
+    } catch {
+        error => { failure = Describe(error); }
+    }
     Assert(failure == 12i32, "an alias exposes its members across modules");
-    let wrapped = match Load(5000i32) {
-        .Success(_) => 0i32,
-        .Failure(LoadError::Unreadable(cause)) => Describe(cause),
-        .Failure(LoadError::Expired(_)) => -1i32
-    };
+    var wrapped = 0i32;
+    try {
+        Load(5000i32);
+    } catch {
+        LoadError::Unreadable(cause) => { wrapped = Describe(cause); },
+        LoadError::Expired(_) => { wrapped = -1i32; },
+    }
     Assert(wrapped == 5000i32, "a named wrapper keeps the original cause");
 
     Assert(Lookup<int32>(true, 3i32) == .Some(3i32), "a generic presence");
     Assert(Lookup<int32>(false, 3i32) == none, "a generic absence");
     let nestedOptional: int32?? = Lookup<int32?>(true, none);
     Assert(nestedOptional == .Some(none), "a present absence through a type parameter");
-    Assert(Nest<int32, ParseError>(2i32, 4i32, ParseError { position: 1i32 }) == .Some(.Success(4i32)),
+    Assert(Nest<int32, ParseError>(2i32, 4i32, ParseError { position: 1i32 }) is .Some(.Success(4i32)),
            "a nested success");
-    Assert(Nest<int32, ParseError>(1i32, 4i32, ParseError { position: 1i32 }) ==
+    Assert(Nest<int32, ParseError>(1i32, 4i32, ParseError { position: 1i32 }) is
                .Some(.Failure(ParseError { position: 1i32 })),
            "a nested failure is data");
-    Assert(Complete(true) == .Success(()), "a unit success across modules");
+    Assert((try? Complete(true)) is .Some(_), "a unit success across modules");
 
     // A whole-subject typed pattern binds the whole value whatever the parameter stands for.
     Assert(Size<int32?>(none) == 1i32, "an optional argument");
-    Assert(Size<int32 ! IoError>(.Success(1i32)) == 1i32, "a fallible argument");
+    let stored: Result<int32, IoError> = .Success(1i32);
+    Assert(Size<Result<int32, IoError>>(stored) == 1i32, "a stored result argument");
 
     // A pointer to an optional and an optional pointer are different things.
     var slot: int32? = 6i32;

@@ -24,16 +24,16 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     var full = PathBuffer::FromPath(allocator, directory);
     full.Push(name);
 
-    var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing()) catch { _ => Panic(what) };
+    var made = try File::Open(allocator, full.AsPath(), OpenOptions::Writing()) catch { _ => Panic(what) };
     Assert(made.IsOpen(), what);
-    made.Close() catch { _ => Panic("and closes") };
+    try made.Close() catch { _ => Panic("and closes") };
 
     // Enumeration must report the name the way it was written.
-    var walk = ReadDirectory(allocator, directory) catch { _ => Panic("the directory opens for reading") };
+    var walk = try ReadDirectory(allocator, directory) catch { _ => Panic("the directory opens for reading") };
     var found = false;
     var reported = OsString(allocator);
     while true {
-        let next = walk.Next() catch { _ => Panic("the enumeration ends rather than fails") };
+        let next = try walk.Next() catch { _ => Panic("the enumeration ends rather than fails") };
         match move next {
             .Some(entry) => {
                 let view = entry.View();
@@ -53,25 +53,25 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     // Reopening under the reported name proves the round trip is usable, not merely equal.
     var reopenPath = PathBuffer::FromPath(allocator, directory);
     reopenPath.Push(reported.View());
-    var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading()) catch {
+    var reopened = try File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading()) catch {
         _ => Panic("and opens the same file")
     };
     Assert(reopened.IsOpen(), "and opens the same file");
-    reopened.Close() catch { _ => Panic("which closes") };
+    try reopened.Close() catch { _ => Panic("which closes") };
 
-    DeleteFile(allocator, full.AsPath()) catch { _ => Panic("and deletes under the original name") };
+    try DeleteFile(allocator, full.AsPath()) catch { _ => Panic("and deletes under the original name") };
     full.Release();
     reopenPath.Release();
 }
 
-func Main() -> int ! IoError {
+func Main() -> int throws IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", dirHolder);
-    DeleteDirectory(allocator, dir) catch { _ => {} };
-    MakeDirectory(allocator, dir)?;
+    try DeleteDirectory(allocator, dir) catch { _ => {} };
+    try MakeDirectory(allocator, dir);
 
     // Characters no ANSI code page holds, which is what a lossy conversion loses first.
     var cyrillicHolder = OsString(allocator);
@@ -111,10 +111,11 @@ func Main() -> int ! IoError {
         RoundTrip(allocator, dir, hostile, "a name that is not UTF-8 at all is created");
 
         // And its text conversion must fail rather than invent replacement characters.
-        Assert(hostile.ToText(allocator) is .Failure(_), "and refuses to become text rather than being mangled into it");
+        Assert((try? hostile.ToText(allocator)) is none,
+               "and refuses to become text rather than being mangled into it");
     }
 
-    DeleteDirectory(allocator, dir)?;
+    try DeleteDirectory(allocator, dir);
     return 0;
 }
 

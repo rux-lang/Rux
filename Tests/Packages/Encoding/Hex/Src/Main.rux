@@ -20,14 +20,14 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(bytes: byte[..], letterCase: HexCase, expected: char8[..]) -> bool {
     var room: char8[64];
-    let written = HexEncode(bytes, room[..], letterCase) catch { _ => return false };
+    let written = try HexEncode(bytes, room[..], letterCase) catch { _ => return false };
     return written == expected.length && Same(room[..written], expected);
 }
 
 // Whether `text` decodes to exactly the bytes of `expected`.
 func Decoded(text: char8[..], expected: char8[..]) -> bool {
     var room: byte[64];
-    let written = HexDecode(text, room[..]) catch { _ => return false };
+    let written = try HexDecode(text, room[..]) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {
@@ -40,10 +40,13 @@ func Decoded(text: char8[..], expected: char8[..]) -> bool {
 // The reason a decode was refused, as a small code: 1 character, 2 length, 6 capacity, 0 anything else.
 func Refusal(text: char8[..], room: uint, at: uint) -> int {
     var storage: byte[64] = [0x3F; 64];
-    let reported = match HexDecode(text, storage[..room]) {
-        .Failure(error) => error,
-        .Success(_) => return -1
-    };
+    var caught: DecodeError? = none;
+    try {
+        HexDecode(text, storage[..room]);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return -1;
     var index: uint = 0;
     while index < 64 {
         if storage[index] != 0x3F { return -2; }
@@ -59,7 +62,7 @@ func Refusal(text: char8[..], room: uint, at: uint) -> int {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -69,7 +72,7 @@ func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = ViewHex(bytes, letterCase);
-    if shown.WriteDisplay(sink, Spec(spec)) is .Failure(_) { return false; }
+    if (try? shown.WriteDisplay(sink, Spec(spec))) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -78,10 +81,13 @@ func RefusedBySpec(bytes: byte[..], spec: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = ViewHex(bytes);
-    let reported = match shown.WriteDisplay(sink, Spec(spec)) {
-        .Failure(error) => error,
-        .Success(_) => return false
-    };
+    var caught: FormatError? = none;
+    try {
+        shown.WriteDisplay(sink, Spec(spec));
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return false;
     return match reported {
         .UnsupportedRequest => writer.Length() == 0,
         _ => false
@@ -114,12 +120,12 @@ func Main() -> int {
     while value < 256 {
         let one: byte[1] = [value as byte];
         var room: char8[2];
-        HexEncode(one[..], room[..]) catch { _ => return 8 };
+        try HexEncode(one[..], room[..]) catch { _ => return 8 };
         if room[0] != lower[value >> 4] || room[1] != lower[value & 15] { return 9; }
-        HexEncode(one[..], room[..], HexCase::Upper) catch { _ => return 10 };
+        try HexEncode(one[..], room[..], HexCase::Upper) catch { _ => return 10 };
         if room[0] != upper[value >> 4] || room[1] != upper[value & 15] { return 11; }
         var back: byte[1];
-        let read = HexDecode(room[..], back[..]) catch { _ => return 12 };
+        let read = try HexDecode(room[..], back[..]) catch { _ => return 12 };
         if read != 1 || back[0] != (value as byte) { return 13; }
         value = value + 1;
     }
@@ -131,11 +137,11 @@ func Main() -> int {
         pair[0] = c as uint8 as char8;
         var high: byte[1];
         let expected = Reference(c);
-        match HexDecode(pair[..], high[..]) {
-            .Success(_) => {
-                if expected < 0 || high[0] != ((expected as uint) << 4) as byte { return 14; }
-            },
-            .Failure(error) => {
+        try {
+            HexDecode(pair[..], high[..]);
+            if expected < 0 || high[0] != ((expected as uint) << 4) as byte { return 14; }
+        } catch {
+            error => {
                 if expected >= 0 { return 15; }
                 match error {
                     .InvalidCharacter(at) => {
@@ -143,17 +149,17 @@ func Main() -> int {
                     },
                     _ => return 17
                 }
-            }
+            },
         }
         pair[0] = '0';
         pair[1] = c as uint8 as char8;
-        match HexDecode(pair[..], high[..]) {
-            .Success(_) => {
-                if expected < 0 || high[0] != expected as byte { return 18; }
-            },
-            .Failure(_) => {
+        try {
+            HexDecode(pair[..], high[..]);
+            if expected < 0 || high[0] != expected as byte { return 18; }
+        } catch {
+            _ => {
                 if expected >= 0 { return 19; }
-            }
+            },
         }
         c = c + 1;
     }
@@ -164,21 +170,25 @@ func Main() -> int {
     if Refusal("12 4", 64, 2) != 1 || Refusal("12 34", 64, 5) != 2 { return 22; }
     if Refusal("12g4", 64, 2) != 1 { return 23; }
     if Refusal("123456", 2, 3) != 6 { return 24; }
-    match HexDecodedLength("12345") {
-        .Failure(_) => {},
-        .Success(_) => return 25
+    try {
+        HexDecodedLength("12345");
+        return 25;
+    } catch {
+        _ => {},
     }
 
     // An encode into a short destination is refused before anything is written.
     var short: char8[11] = ['?'; 11];
-    match HexEncode(foobar[..], short[..]) {
-        .Failure(error) => {
+    try {
+        HexEncode(foobar[..], short[..]);
+        return 27;
+    } catch {
+        error => {
             match error {
                 .InsufficientCapacity => {},
                 _ => return 26
             }
         },
-        .Success(_) => return 27
     }
     for character in short {
         if character != '?' { return 28; }
@@ -186,7 +196,7 @@ func Main() -> int {
 
     // The text overload encodes the UTF-8 bytes.
     var room: char8[8];
-    let written = HexEncode("é!", room[..]) catch { _ => return 29 };
+    let written = try HexEncode("é!", room[..]) catch { _ => return 29 };
     if !Same(room[..written], "c3a921") { return 30; }
 
     // The view renders through a placeholder, takes its case from the spec, and pads to a width.

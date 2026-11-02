@@ -162,7 +162,7 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
     let count = ArgumentCount();
     while index < count {
         let view = Argument(index) ?? break;
-        let text = view.ToText(SystemAllocator()) catch { _ => return 2 };
+        let text = try view.ToText(SystemAllocator()) catch { _ => return 2 };
         texts.Push(move text);
         index = index + 1;
     }

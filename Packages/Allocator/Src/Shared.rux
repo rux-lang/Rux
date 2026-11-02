@@ -108,7 +108,7 @@ extend Rc<T> {
         if remaining != 0 { return; }
         // Safety: this was the last handle, so nothing else reaches `block.value`, which is destroyed only here.
         unsafe { DestroySharedValue<T>(@block.value); }
-        self.allocator.Deallocate(block as *var opaque, Layout::ForValue<SharedBlock<T>>()) catch { _ => {} };
+        try self.allocator.Deallocate(block as *var opaque, Layout::ForValue<SharedBlock<T>>()) catch { _ => {} };
     }
 }
 
@@ -211,7 +211,7 @@ extend Arc<T> {
         Fence(MemoryOrder::Acquire);
         // Safety: this was the last handle, so nothing else reaches `block.value`, which is destroyed only here.
         unsafe { DestroySharedValue<T>(@block.value); }
-        self.allocator.Deallocate(block as *var opaque, Layout::ForValue<SharedBlock<T>>()) catch { _ => {} };
+        try self.allocator.Deallocate(block as *var opaque, Layout::ForValue<SharedBlock<T>>()) catch { _ => {} };
     }
 }
 

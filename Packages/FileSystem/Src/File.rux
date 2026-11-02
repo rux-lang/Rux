@@ -93,11 +93,11 @@ extend OpenOptions {
     }
 
     // The contradictions, refused before any platform is asked.
-    func Validate(&self) -> ! IoError {
-        if !self.read && !self.write && !self.append { fail IoError::Of(IoErrorKind::InvalidInput); }
-        if self.truncate && !self.write { fail IoError::Of(IoErrorKind::InvalidInput); }
+    func Validate(&self) throws IoError {
+        if !self.read && !self.write && !self.append { throw IoError::Of(IoErrorKind::InvalidInput); }
+        if self.truncate && !self.write { throw IoError::Of(IoErrorKind::InvalidInput); }
         if (self.create || self.createNew) && !self.write && !self.append {
-            fail IoError::Of(IoErrorKind::InvalidInput);
+            throw IoError::Of(IoErrorKind::InvalidInput);
         }
     }
 }
@@ -116,20 +116,20 @@ pub struct File {
 
 // The path, copied to the NUL-terminated form the platform calls take. The block is `(length + 1)` units and
 // must go back to the same allocator, through `ReleaseNativePath`.
-func NativePath(allocator: Allocator, path: Path) -> *var OsUnit ! IoError {
+func NativePath(allocator: Allocator, path: Path) -> *var OsUnit throws IoError {
     let units = path.name.units;
     var index: uint = 0;
     while index < units.length {
         // An embedded NUL would silently truncate the name at the platform boundary: the file acted on would
         // not be the file named. Refused here on every platform.
         // Safety: `index` is below `units.length`, the loop condition.
-        if (unsafe { units.data[index] } as uint32) == 0 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        if (unsafe { units.data[index] } as uint32) == 0 { throw IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
     let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
-                 ?? fail IoError::Of(IoErrorKind::InvalidInput);
+                 ?? throw IoError::Of(IoErrorKind::InvalidInput);
     var borrowed = allocator;
-    let raw = borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
+    let raw = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
     // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
     let copied = unsafe { raw as *var OsUnit };
     index = 0;
@@ -152,7 +152,7 @@ func NativePath(allocator: Allocator, path: Path) -> *var OsUnit ! IoError {
 func ReleaseNativePath(allocator: Allocator, block: *var OsUnit, length: uint) {
     let layout = Layout { size: (length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
     var borrowed = allocator;
-    borrowed.Deallocate(block as *var opaque, layout) catch { _ => {} };
+    try borrowed.Deallocate(block as *var opaque, layout) catch { _ => {} };
 }
 
 extend File {
@@ -164,9 +164,9 @@ extend File {
     /// @param options what may be done with the file, and what to do about existence
     /// @returns the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open
-    pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self ! IoError {
-        options.Validate()?;
-        let native = NativePath(allocator, path)?;
+    pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self throws IoError {
+        try options.Validate();
+        let native = try NativePath(allocator, path);
         defer ReleaseNativePath(allocator, native, path.name.units.length);
         when #target.os == .Windows {
             var access: uint32 = 0;
@@ -204,7 +204,7 @@ extend File {
             };
             if (handle as uint64) == InvalidHandleValue {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                fail TranslateNative(unsafe { GetLastError() } as int32);
+                throw TranslateNative(unsafe { GetLastError() } as int32);
             }
             return Self { handle: handle as *var opaque, open: true };
         }
@@ -232,7 +232,7 @@ extend File {
             // ordinary file is born with.
             // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
             let opened = unsafe { OpenAt(AtFdCwd, native as *char8, flags, 438) };
-            if opened < 0 { fail TranslateNative((0 - opened) as int32); }
+            if opened < 0 { throw TranslateNative((0 - opened) as int32); }
             return Self { handle: opened as int32, open: true };
         }
     }
@@ -249,24 +249,24 @@ extend File {
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     /// @returns success when the descriptor was released; closing twice is not an error
     /// @see https://rux-lang.dev/docs/api/filesystem/file#close
-    pub func Close(&var self) -> ! IoError {
+    pub func Close(&var self) throws IoError {
         if !self.open { return; }
         self.open = false;
         when #target.os == .Windows {
             // Safety: `handle` is this file's open handle, `open` was checked above, and it is closed only once.
             let closed = unsafe { CloseHandle(self.handle) };
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if !closed { fail TranslateNative(unsafe { GetLastError() } as int32); }
+            if !closed { throw TranslateNative(unsafe { GetLastError() } as int32); }
         }
         else {
             let result = Close(self.handle);
-            if result < 0 { fail TranslateNative((0 - result) as int32); }
+            if result < 0 { throw TranslateNative((0 - result) as int32); }
         }
     }
     /// Closes with the outcome discarded: the safety net, not the contract.
     /// @see https://rux-lang.dev/docs/api/filesystem/file#destructor
     func ~File(&var self) {
-        self.Close() catch { _ => {} };
+        try self.Close() catch { _ => {} };
     }
 }
 

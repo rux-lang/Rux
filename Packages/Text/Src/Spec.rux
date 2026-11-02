@@ -258,8 +258,8 @@ func IsDigit(byte: char8) -> bool {
 }
 
 // One malformed-specification failure, carrying where it was found.
-func Malformed(offset: uint) -> FormatSpec ! FormatError {
-    fail FormatError::InvalidSpecification(offset);
+func Malformed(offset: uint) -> FormatSpec throws FormatError {
+    throw .InvalidSpecification(offset);
 }
 
 // Reads a run of digits into `value`, reporting the offset of the digit that would overflow.
@@ -307,7 +307,7 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
 /// @param text the specification body, without the surrounding braces or the colon
 /// @returns the parsed specification, or where it was malformed
 /// @see https://rux-lang.dev/docs/api/text/format-spec#parse-format-spec
-pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
+pub func ParseFormatSpec(text: char8[..]) -> FormatSpec throws FormatError {
     var spec = FormatSpec::Plain();
     var index: uint = 0;
 
@@ -318,7 +318,7 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     if index + 1 < text.length && AlignOf(unsafe { text.data[index + 1] }, @align) {
         // Safety: `index + 1` is below `text.length`, checked above, so `index` is too.
         let fill = unsafe { text.data[index] };
-        if !IsFillByte(fill) { return Malformed(index); }
+        if !IsFillByte(fill) { return try Malformed(index); }
         spec.fill = fill;
         spec.align = align;
         index = index + 2;
@@ -349,7 +349,7 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
 
     var width: uint = 0;
     var after: uint = index;
-    if !ReadNumber(text, index, @width, @after) { return Malformed(after); }
+    if !ReadNumber(text, index, @width, @after) { return try Malformed(after); }
     spec.width = width;
     index = after;
 
@@ -357,9 +357,9 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     if index < text.length && unsafe { text.data[index] } == c8'.' {
         index = index + 1;
         // Safety: the read happens only when `index` is below `text.length`, checked first.
-        if index >= text.length || !IsDigit(unsafe { text.data[index] }) { return Malformed(index); }
+        if index >= text.length || !IsDigit(unsafe { text.data[index] }) { return try Malformed(index); }
         var precision: uint = 0;
-        if !ReadNumber(text, index, @precision, @after) { return Malformed(after); }
+        if !ReadNumber(text, index, @precision, @after) { return try Malformed(after); }
         spec.hasPrecision = true;
         spec.precision = precision;
         index = after;
@@ -367,13 +367,13 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
 
     if index < text.length {
         // Safety: `index` is below `text.length`, checked above.
-        if !IsStyleStart(unsafe { text.data[index] }) { return Malformed(index); }
+        if !IsStyleStart(unsafe { text.data[index] }) { return try Malformed(index); }
         let start = index;
         // Safety: `index` is below `text.length`, checked first in the same condition.
         while index < text.length && IsStyleByte(unsafe { text.data[index] }) {
             index = index + 1;
         }
-        if index != text.length { return Malformed(index); }
+        if index != text.length { return try Malformed(index); }
         // Safety: `start` is below `index`, which equals `text.length`, so the style lies inside `text`.
         spec.style = unsafe { (@text.data[start])[..index - start] };
         spec.base = BaseOfStyle(spec.style);
@@ -403,8 +403,8 @@ func BaseOfStyle(style: char8[..]) -> FormatBase {
 /// @param spec the specification to check
 /// @returns success when no style was named
 /// @see https://rux-lang.dev/docs/api/text/format-spec#reject-style
-pub func RejectStyle(spec: FormatSpec) -> ! FormatError {
-    if spec.HasStyle() { fail FormatError::UnsupportedRequest; }
+pub func RejectStyle(spec: FormatSpec) throws FormatError {
+    if spec.HasStyle() { throw .UnsupportedRequest; }
     return;
 }
 
@@ -416,9 +416,9 @@ pub func RejectStyle(spec: FormatSpec) -> ! FormatError {
 /// @param spec the specification to check
 /// @returns success when no style was named, or the style named a base
 /// @see https://rux-lang.dev/docs/api/text/format-spec#reject-non-base-style
-pub func RejectNonBaseStyle(spec: FormatSpec) -> ! FormatError {
+pub func RejectNonBaseStyle(spec: FormatSpec) throws FormatError {
     if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
-        fail FormatError::UnsupportedRequest;
+        throw .UnsupportedRequest;
     }
     return;
 }

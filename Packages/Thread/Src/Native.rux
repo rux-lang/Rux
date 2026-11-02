@@ -34,27 +34,27 @@ when #target.os {
 // returns the system's name for the thread.
 // Safety: `start` must be a function of the shape the system calls a thread's entry with, and `argument` must stay
 // live until the new thread has read what it needs from it.
-unsafe func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 ! ThreadError {
+unsafe func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 throws ThreadError {
     when #target.os == .Windows {
         var flags: uint32 = 0;
         if stackSize != 0 { flags = STACK_SIZE_PARAM_IS_A_RESERVATION; }
         let handle = CreateThread(null, stackSize as uint64, start, argument as *opaque, flags, null);
-        if handle == null { fail ThreadError::Exhausted; }
+        if handle == null { throw .Exhausted; }
         return handle as uint64;
     }
     else {
         var attributes = PThreadAttributes();
-        if pthread_attr_init(@attributes) != 0 { fail ThreadError::Exhausted; }
+        if pthread_attr_init(@attributes) != 0 { throw .Exhausted; }
         if stackSize != 0 && pthread_attr_setstacksize(@attributes, stackSize) != 0 {
             pthread_attr_destroy(@attributes);
-            fail ThreadError::InvalidStackSize;
+            throw .InvalidStackSize;
         }
         var thread: PThread = 0;
         let status = pthread_create(@thread, @attributes, start, argument);
         pthread_attr_destroy(@attributes);
-        if status == EAGAIN { fail ThreadError::Exhausted; }
-        if status == EINVAL { fail ThreadError::InvalidStackSize; }
-        if status != 0 { fail ThreadError::Failed; }
+        if status == EAGAIN { throw .Exhausted; }
+        if status == EINVAL { throw .InvalidStackSize; }
+        if status != 0 { throw .Failed; }
         return thread;
     }
 }

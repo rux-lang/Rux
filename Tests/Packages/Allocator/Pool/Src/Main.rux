@@ -8,7 +8,7 @@ import Memory::IsPointerAligned;
 // alignment a chunk is taken at, that a request no class can serve goes to the backing allocator, and that a pool
 // over an exhausted backing reports the failure rather than handing out storage it does not have.
 
-func Main() -> ! AllocError {
+func Main() throws AllocError {
     // The class a layout lands in depends only on the layout, which is what makes a release match its allocation.
     let zero = Layout::New(0, 8) ?? Layout { size: 0, alignment: 1 };
     Assert(ClassIndexFor(Layout::New(1, 1) ?? zero) == 0, "one byte lands in the smallest class");
@@ -35,14 +35,14 @@ func Main() -> ! AllocError {
     let allocator: Allocator = handle;
 
     // A zero-sized layout costs the pool nothing.
-    let empty = allocator.Allocate(zero)?;
+    let empty = try allocator.Allocate(zero);
     Assert(IsEmptyBlock(empty), "and gives the shared empty block");
     Assert(pool.ChunkCount() == 0, "without taking a chunk");
-    allocator.Deallocate(empty, zero)?;
+    try allocator.Deallocate(empty, zero);
 
     // The first real request takes one chunk and carves it.
     let small = Layout::New(12, 8) ?? zero;
-    let first = allocator.Allocate(small)?;
+    let first = try allocator.Allocate(small);
     Assert(first != null, "and reports an address");
     Assert(pool.ChunkCount() == 1, "which took exactly one chunk");
     Assert(pool.LiveBlocks() == 1, "with one block handed out of it");
@@ -52,9 +52,9 @@ func Main() -> ! AllocError {
     var second: *var opaque = null;
     var third: *var opaque = null;
     var fourth: *var opaque = null;
-    second = allocator.Allocate(small)?;
-    third = allocator.Allocate(small)?;
-    fourth = allocator.Allocate(small)?;
+    second = try allocator.Allocate(small);
+    third = try allocator.Allocate(small);
+    fourth = try allocator.Allocate(small);
     Assert(pool.ChunkCount() == 1, "all out of the one chunk");
     Assert(pool.LiveBlocks() == 4, "which held exactly four blocks");
 
@@ -76,21 +76,21 @@ func Main() -> ! AllocError {
     Assert(fourthValue == 0x4444444444444444, "and so does the fourth");
 
     // The fifth request finds the class empty and takes another chunk.
-    let fifth = allocator.Allocate(small)?;
+    let fifth = try allocator.Allocate(small);
     Assert(pool.ChunkCount() == 2, "by taking a second chunk");
     Assert(pool.LiveBlocks() == 5, "with five blocks now out");
 
     // A released block is the very next one handed out, which is the whole point of a pool.
-    allocator.Deallocate(third, small)?;
+    try allocator.Deallocate(third, small);
     Assert(pool.LiveBlocks() == 4, "leaving one fewer out");
-    let reused = allocator.Allocate(small)?;
+    let reused = try allocator.Allocate(small);
     Assert((reused as uint) == (third as uint), "and reuses the block just released");
     Assert(pool.ChunkCount() == 2, "without taking another chunk");
 
     // Classes are independent: a bigger request does not touch the smaller class's free list.
     let medium = Layout::New(100, 8) ?? zero;
     Assert(ClassIndexFor(medium) == 3, "a hundred bytes rounds up to the 128-byte class");
-    let big = allocator.Allocate(medium)?;
+    let big = try allocator.Allocate(medium);
     Assert(pool.ChunkCount() == 3, "taking a chunk for its own class");
     Assert(IsPointerAligned(big as *opaque, PoolAlignment), "and is chunk-aligned too");
 
@@ -99,21 +99,21 @@ func Main() -> ! AllocError {
     while classIndex < PoolClassCount {
         let size = pool.ClassSize(classIndex);
         let layout = Layout::New(size, PoolAlignment) ?? zero;
-        let block = allocator.Allocate(layout)?;
+        let block = try allocator.Allocate(layout);
         Assert(IsPointerAligned(block as *opaque, PoolAlignment), "and every class is chunk-aligned");
         Assert(ClassIndexFor(layout) == classIndex, "a class's own size lands back in that class");
-        allocator.Deallocate(block, layout)?;
+        try allocator.Deallocate(block, layout);
         classIndex++;
     }
 
     // Growing inside a class costs nothing, because the block already holds the new size.
     var grown: *var opaque = null;
     let sameClass = Layout::New(15, 8) ?? zero;
-    grown = allocator.Reallocate(first, small, sameClass)?;
+    grown = try allocator.Reallocate(first, small, sameClass);
     Assert((grown as uint) == (first as uint), "without moving the block");
 
     // Growing past the class moves it, and carries the bytes across.
-    let moved = allocator.Reallocate(grown, sameClass, medium)?;
+    let moved = try allocator.Reallocate(grown, sameClass, medium);
     // Safety: `moved` is a live 128-byte block, aligned to 8, that the reallocation just returned.
     let movedValue = unsafe { *(moved as *uint64) };
     Assert(movedValue == 0x1111111111111111, "carrying the contents to the new block");
@@ -124,7 +124,7 @@ func Main() -> ! AllocError {
     var direct: *var opaque = null;
     let chunksBefore = pool.ChunkCount();
     let liveBefore = pool.LiveBlocks();
-    direct = allocator.Allocate(huge)?;
+    direct = try allocator.Allocate(huge);
     Assert(direct != null, "which reports an address");
     Assert(pool.ChunkCount() == chunksBefore, "without the pool taking a chunk");
     Assert(pool.LiveBlocks() == liveBefore, "and without the pool counting it as its own");
@@ -134,14 +134,14 @@ func Main() -> ! AllocError {
         *(direct as *uint64)
     };
     Assert(directValue == 0x5555555555555555, "the direct block is usable storage");
-    allocator.Deallocate(direct, huge)?;
+    try allocator.Deallocate(direct, huge);
 
     // A reset takes every pooled block back at once, keeping the chunks.
     let keptChunks = pool.ChunkCount();
     pool.Reset();
     Assert(pool.LiveBlocks() == 0, "a reset takes every block back");
     Assert(pool.ChunkCount() == keptChunks, "while keeping the chunks");
-    let afterReset = allocator.Allocate(small)?;
+    let afterReset = try allocator.Allocate(small);
     Assert(pool.ChunkCount() == keptChunks, "asking the backing allocator for nothing");
 
     // Exhaustion: a pool over a buffer too small for a chunk reports the failure rather than inventing storage.
@@ -156,19 +156,16 @@ func Main() -> ! AllocError {
     var starvedHandle = unsafe { starvedPool.Handle() };
     let starvedAllocator: Allocator = starvedHandle;
     var refused: *var opaque = null;
-    Assert(Refusal(starvedAllocator.Allocate(small)) == AllocError::OutOfMemory,
-           "a pool whose backing cannot hold a chunk reports the failure");
+    try {
+        starvedAllocator.Allocate(small);
+        Panic("the allocator was expected to refuse");
+    } catch {
+        refusal => Assert(refusal == AllocError::OutOfMemory,
+            "a pool whose backing cannot hold a chunk reports the failure"),
+    }
     Assert(starvedPool.ChunkCount() == 0, "having taken no chunk");
     Assert(starvedPool.LiveBlocks() == 0, "and handed out nothing");
-    refused = starvedAllocator.Allocate(zero)?;
+    refused = try starvedAllocator.Allocate(zero);
 
 }
 
-/// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
-/// refusal cannot pass by accident.
-func Refusal<T>(outcome: T ! AllocError) -> AllocError {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the allocator was expected to refuse")
-    };
-}

@@ -26,247 +26,380 @@ func CodeOf(error: &ParseError) -> int {
 // Whether `outcome` failed with exactly `code` at exactly `at`. The offset is read through `Offset`, which is what
 // a caller embedding this parser in a larger grammar calls, so the test exercises the contract rather than the
 // payload shape.
-func FailedAt(outcome: int64 ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAt(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
-func FailedAt8(outcome: int8 ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAt8(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
-func FailedAtU8(outcome: uint8 ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAtU8(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
-func FailedAtU512(outcome: uint512 ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAtU512(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
-func FailedAtBool(outcome: bool ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAtBool(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
-func FailedAtChar(outcome: char32 ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAtChar(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
-func FailedAtFloat(outcome: float64 ! ParseError, code: int, at: uint) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
-    };
+func FailedAtFloat(reason: ParseError, code: int, at: uint) -> bool {
+    return CodeOf(reason) == code && reason.Offset() == at;
 }
 
 func Main() -> int {
     // The grammar itself, at one width.
-    match ParseInt64("42") {
-        .Success(value) => { if value != 42 { return 1; } },
-        .Failure(_) => { return 2; }
+    try {
+        let value = ParseInt64("42");
+        if value != 42 { return 1; }
+    } catch {
+        _ => return 2,
     }
-    match ParseInt64("-42") {
-        .Success(value) => { if value != -42i64 { return 3; } },
-        .Failure(_) => { return 4; }
+    try {
+        let value = ParseInt64("-42");
+        if value != -42i64 { return 3; }
+    } catch {
+        _ => return 4,
     }
-    match ParseInt64("+42") {
-        .Success(value) => { if value != 42 { return 5; } },
-        .Failure(_) => { return 6; }
+    try {
+        let value = ParseInt64("+42");
+        if value != 42 { return 5; }
+    } catch {
+        _ => return 6,
     }
-    match ParseUint64("0xff") {
-        .Success(value) => { if value != 255 { return 7; } },
-        .Failure(_) => { return 8; }
+    try {
+        let value = ParseUint64("0xff");
+        if value != 255 { return 7; }
+    } catch {
+        _ => return 8,
     }
-    match ParseUint64("0b101") {
-        .Success(value) => { if value != 5 { return 9; } },
-        .Failure(_) => { return 10; }
+    try {
+        let value = ParseUint64("0b101");
+        if value != 5 { return 9; }
+    } catch {
+        _ => return 10,
     }
-    match ParseUint64("0o10") {
-        .Success(value) => { if value != 8 { return 11; } },
-        .Failure(_) => { return 12; }
+    try {
+        let value = ParseUint64("0o10");
+        if value != 8 { return 11; }
+    } catch {
+        _ => return 12,
     }
-    match ParseInt64("-0x10") {
-        .Success(value) => { if value != -16i64 { return 13; } },
-        .Failure(_) => { return 14; }
+    try {
+        let value = ParseInt64("-0x10");
+        if value != -16i64 { return 13; }
+    } catch {
+        _ => return 14,
     }
 
     // What is refused, and why.
-    if ParseInt64("") is .Success(_) { return 20; }
-    if ParseInt64("12a") is .Success(_) { return 21; }
-    if ParseInt64("-") is .Success(_) { return 22; }
-    if ParseInt64("0x") is .Success(_) { return 23; }
-    if ParseUint64("-1") is .Success(_) { return 24; }
-    if ParseUint64("0xG") is .Success(_) { return 25; }
-    if ParseUint64("0b2") is .Success(_) { return 26; }
+    if (try? ParseInt64("")) is .Some(_) { return 20; }
+    if (try? ParseInt64("12a")) is .Some(_) { return 21; }
+    if (try? ParseInt64("-")) is .Some(_) { return 22; }
+    if (try? ParseInt64("0x")) is .Some(_) { return 23; }
+    if (try? ParseUint64("-1")) is .Some(_) { return 24; }
+    if (try? ParseUint64("0xG")) is .Some(_) { return 25; }
+    if (try? ParseUint64("0b2")) is .Some(_) { return 26; }
 
     // The bounds, narrow and wide: the largest in, one past it out.
-    match ParseInt8("127") {
-        .Success(value) => { if value != 127 { return 30; } },
-        .Failure(_) => { return 31; }
+    try {
+        let value = ParseInt8("127");
+        if value != 127 { return 30; }
+    } catch {
+        _ => return 31,
     }
-    if ParseInt8("128") is .Success(_) { return 32; }
-    match ParseInt8("-128") {
-        .Success(value) => { if value != -128i8 { return 33; } },
-        .Failure(_) => { return 34; }
+    if (try? ParseInt8("128")) is .Some(_) { return 32; }
+    try {
+        let value = ParseInt8("-128");
+        if value != -128i8 { return 33; }
+    } catch {
+        _ => return 34,
     }
-    if ParseInt8("-129") is .Success(_) { return 35; }
-    match ParseUint8("255") {
-        .Success(value) => { if value != 255 { return 36; } },
-        .Failure(_) => { return 37; }
+    if (try? ParseInt8("-129")) is .Some(_) { return 35; }
+    try {
+        let value = ParseUint8("255");
+        if value != 255 { return 36; }
+    } catch {
+        _ => return 37,
     }
-    if ParseUint8("256") is .Success(_) { return 38; }
+    if (try? ParseUint8("256")) is .Some(_) { return 38; }
 
-    match ParseUint128("340282366920938463463374607431768211455") {
-        .Success(value) => {
-            if (value % 10) != 5 { return 40; }
-        },
-        .Failure(_) => { return 41; }
+    try {
+        let value = ParseUint128("340282366920938463463374607431768211455");
+        if (value % 10) != 5 { return 40; }
+    } catch {
+        _ => return 41,
     }
-    if ParseUint128("340282366920938463463374607431768211456") is .Success(_) { return 42; }
-    match ParseInt128("-170141183460469231731687303715884105728") {
-        .Success(value) => { if value >= 0 { return 43; } },
-        .Failure(_) => { return 44; }
+    if (try? ParseUint128("340282366920938463463374607431768211456")) is .Some(_) { return 42; }
+    try {
+        let value = ParseInt128("-170141183460469231731687303715884105728");
+        if value >= 0 { return 43; }
+    } catch {
+        _ => return 44,
     }
-    if ParseInt128("170141183460469231731687303715884105728") is .Success(_) { return 45; }
+    if (try? ParseInt128("170141183460469231731687303715884105728")) is .Some(_) { return 45; }
 
     // The widest width takes its largest value, and one more digit is an overflow rather than a wrap.
-    if ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095") is .Failure(_) { return 50; }
-    if ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096") is .Success(_) { return 51; }
+    if (try? ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095")) is none { return 50; }
+    if (try? ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096")) is .Some(_) { return 51; }
 
     // Booleans are the two words and nothing else.
-    match ParseBool("true") {
-        .Success(value) => { if !value { return 60; } },
-        .Failure(_) => { return 61; }
+    try {
+        let value = ParseBool("true");
+        if !value { return 60; }
+    } catch {
+        _ => return 61,
     }
-    match ParseBool("false") {
-        .Success(value) => { if value { return 62; } },
-        .Failure(_) => { return 63; }
+    try {
+        let value = ParseBool("false");
+        if value { return 62; }
+    } catch {
+        _ => return 63,
     }
-    if ParseBool("True") is .Success(_) { return 64; }
-    if ParseBool("1") is .Success(_) { return 65; }
-    if ParseBool("") is .Success(_) { return 66; }
+    if (try? ParseBool("True")) is .Some(_) { return 64; }
+    if (try? ParseBool("1")) is .Some(_) { return 65; }
+    if (try? ParseBool("")) is .Some(_) { return 66; }
 
     // A character is one whole scalar value.
-    match ParseChar("A") {
-        .Success(value) => { if (value as uint32) != 0x41 { return 70; } },
-        .Failure(_) => { return 71; }
+    try {
+        let value = ParseChar("A");
+        if (value as uint32) != 0x41 { return 70; }
+    } catch {
+        _ => return 71,
     }
-    match ParseChar("€") {
-        .Success(value) => { if (value as uint32) != 0x20AC { return 72; } },
-        .Failure(_) => { return 73; }
+    try {
+        let value = ParseChar("€");
+        if (value as uint32) != 0x20AC { return 72; }
+    } catch {
+        _ => return 73,
     }
-    if ParseChar("ab") is .Success(_) { return 74; }
-    if ParseChar("") is .Success(_) { return 75; }
+    if (try? ParseChar("ab")) is .Some(_) { return 74; }
+    if (try? ParseChar("")) is .Some(_) { return 75; }
 
     // Floats: the special spellings formatting writes, the exponent's edges, and the narrower width's bound.
-    match ParseFloat64("NaN") {
-        .Success(value) => { if !IsNan(value) { return 80; } },
-        .Failure(_) => { return 81; }
+    try {
+        let value = ParseFloat64("NaN");
+        if !IsNan(value) { return 80; }
+    } catch {
+        _ => return 81,
     }
-    match ParseFloat64("Inf") {
-        .Success(value) => { if !IsInfinite(value) || value < 0.0 { return 82; } },
-        .Failure(_) => { return 83; }
+    try {
+        let value = ParseFloat64("Inf");
+        if !IsInfinite(value) || value < 0.0 { return 82; }
+    } catch {
+        _ => return 83,
     }
-    match ParseFloat64("-Inf") {
-        .Success(value) => { if !IsInfinite(value) || value > 0.0 { return 84; } },
-        .Failure(_) => { return 85; }
+    try {
+        let value = ParseFloat64("-Inf");
+        if !IsInfinite(value) || value > 0.0 { return 84; }
+    } catch {
+        _ => return 85,
     }
-    if ParseFloat64("Infinity") is .Success(_) { return 86; }
+    if (try? ParseFloat64("Infinity")) is .Some(_) { return 86; }
 
-    match ParseFloat64("1.5e300") {
-        .Success(value) => { if value < 1.0e300 { return 87; } },
-        .Failure(_) => { return 88; }
+    try {
+        let value = ParseFloat64("1.5e300");
+        if value < 1.0e300 { return 87; }
+    } catch {
+        _ => return 88,
     }
-    if ParseFloat64("1e400") is .Success(_) { return 89; }
-    match ParseFloat64("1e-400") {
-        .Success(value) => { if value != 0.0 { return 90; } },
-        .Failure(_) => { return 91; }
+    if (try? ParseFloat64("1e400")) is .Some(_) { return 89; }
+    try {
+        let value = ParseFloat64("1e-400");
+        if value != 0.0 { return 90; }
+    } catch {
+        _ => return 91,
     }
 
-    match ParseFloat32("2.5") {
-        .Success(value) => { if value != 2.5f32 { return 92; } },
-        .Failure(_) => { return 93; }
+    try {
+        let value = ParseFloat32("2.5");
+        if value != 2.5f32 { return 92; }
+    } catch {
+        _ => return 93,
     }
     // A value a float64 holds and a float32 does not is the narrow width's overflow, not a quiet infinity.
-    if ParseFloat32("1e39") is .Success(_) { return 94; }
-    match ParseFloat32("1e-39") {
-        .Success(value) => { if value <= 0.0f32 { return 95; } },
-        .Failure(_) => { return 96; }
+    if (try? ParseFloat32("1e39")) is .Some(_) { return 94; }
+    try {
+        let value = ParseFloat32("1e-39");
+        if value <= 0.0f32 { return 95; }
+    } catch {
+        _ => return 96,
     }
-    match ParseFloat32("-Inf") {
-        .Success(value) => { if value > -3.0e38f32 { return 97; } },
-        .Failure(_) => { return 98; }
+    try {
+        let value = ParseFloat32("-Inf");
+        if value > -3.0e38f32 { return 97; }
+    } catch {
+        _ => return 98,
     }
 
     // Text parses by the same grammar, through the overloads that take a string rather than raw bytes.
-    match ParseInt64("-42") {
-        .Success(value) => { if value != -42i64 { return 100; } },
-        .Failure(_) => { return 101; }
+    try {
+        let value = ParseInt64("-42");
+        if value != -42i64 { return 100; }
+    } catch {
+        _ => return 101,
     }
-    match ParseUint64("0xff") {
-        .Success(value) => { if value != 255 { return 102; } },
-        .Failure(_) => { return 103; }
+    try {
+        let value = ParseUint64("0xff");
+        if value != 255 { return 102; }
+    } catch {
+        _ => return 103,
     }
-    match ParseFloat64("2.5") {
-        .Success(value) => { if value != 2.5 { return 104; } },
-        .Failure(_) => { return 105; }
+    try {
+        let value = ParseFloat64("2.5");
+        if value != 2.5 { return 104; }
+    } catch {
+        _ => return 105,
     }
-    match ParseBool("true") {
-        .Success(value) => { if !value { return 106; } },
-        .Failure(_) => { return 107; }
+    try {
+        let value = ParseBool("true");
+        if !value { return 106; }
+    } catch {
+        _ => return 107,
     }
-    match ParseChar("\u{20AC}") {
-        .Success(value) => { if value as uint32 != 0x20AC { return 108; } },
-        .Failure(_) => { return 109; }
+    try {
+        let value = ParseChar("\u{20AC}");
+        if value as uint32 != 0x20AC { return 108; }
+    } catch {
+        _ => return 109,
     }
-    if ParseInt64("nope") is .Success(_) { return 110; }
+    if (try? ParseInt64("nope")) is .Some(_) { return 110; }
 
     // Where each refusal happened. An empty text has one position and it is zero, which is also its length.
-    Assert(FailedAt(ParseInt64(""), 1, 0), "an empty text is Empty at zero");
-    Assert(FailedAt(ParseInt64("12a"), 2, 2), "a byte that is not a digit is reported at that byte");
-    Assert(FailedAt(ParseInt64("-"), 2, 0), "a sign with nothing after it points at the sign");
-    Assert(FailedAt(ParseInt64("0x"), 2, 1), "and a prefix with no digits points at its mark");
-    Assert(FailedAt(ParseInt64("1 2"), 2, 1), "a space inside a number is reported where it stands");
-    Assert(FailedAt(ParseInt64("0b102"), 2, 4), "and a digit outside the base is reported at itself");
+    try {
+        ParseInt64("");
+        Assert(false, "an empty text is Empty at zero");
+    } catch {
+        refusal => Assert(FailedAt(refusal, 1, 0), "an empty text is Empty at zero"),
+    }
+    try {
+        ParseInt64("12a");
+        Assert(false, "a byte that is not a digit is reported at that byte");
+    } catch {
+        refusal => Assert(FailedAt(refusal, 2, 2), "a byte that is not a digit is reported at that byte"),
+    }
+    try {
+        ParseInt64("-");
+        Assert(false, "a sign with nothing after it points at the sign");
+    } catch {
+        refusal => Assert(FailedAt(refusal, 2, 0), "a sign with nothing after it points at the sign"),
+    }
+    try {
+        ParseInt64("0x");
+        Assert(false, "and a prefix with no digits points at its mark");
+    } catch {
+        refusal => Assert(FailedAt(refusal, 2, 1), "and a prefix with no digits points at its mark"),
+    }
+    try {
+        ParseInt64("1 2");
+        Assert(false, "a space inside a number is reported where it stands");
+    } catch {
+        refusal => Assert(FailedAt(refusal, 2, 1), "a space inside a number is reported where it stands"),
+    }
+    try {
+        ParseInt64("0b102");
+        Assert(false, "and a digit outside the base is reported at itself");
+    } catch {
+        refusal => Assert(FailedAt(refusal, 2, 4), "and a digit outside the base is reported at itself"),
+    }
 
     // The width bound: the whole number is what does not fit, so the offset is its end.
-    Assert(FailedAt8(ParseInt8("128"), 3, 3), "one past the signed maximum overflows at the end of the number");
-    Assert(FailedAt8(ParseInt8("-129"), 3, 4), "and one past the signed minimum, whose sign is part of the length");
-    Assert(FailedAtU8(ParseUint8("256"), 3, 3), "the unsigned maximum likewise");
-    Assert(FailedAtU8(ParseUint8("-1"), 2, 0), "while a sign on an unsigned width is a character, not an overflow");
+    try {
+        ParseInt8("128");
+        Assert(false, "one past the signed maximum overflows at the end of the number");
+    } catch {
+        refusal => Assert(FailedAt8(refusal, 3, 3), "one past the signed maximum overflows at the end of the number"),
+    }
+    try {
+        ParseInt8("-129");
+        Assert(false, "and one past the signed minimum, whose sign is part of the length");
+    } catch {
+        refusal => Assert(FailedAt8(refusal, 3, 4),
+                          "and one past the signed minimum, whose sign is part of the length"),
+    }
+    try {
+        ParseUint8("256");
+        Assert(false, "the unsigned maximum likewise");
+    } catch {
+        refusal => Assert(FailedAtU8(refusal, 3, 3), "the unsigned maximum likewise"),
+    }
+    try {
+        ParseUint8("-1");
+        Assert(false, "while a sign on an unsigned width is a character, not an overflow");
+    } catch {
+        refusal => Assert(FailedAtU8(refusal, 2, 0),
+                          "while a sign on an unsigned width is a character, not an overflow"),
+    }
 
     // Past what the widest integer holds, where the digit that did it is the offset rather than the end.
-    Assert(FailedAtU512(ParseUint512("99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"),
-                        3, 154),
+    try {
+        ParseUint512("99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999");
+        Assert(false,
            "a number past the widest magnitude points at the digit that passed it");
+    } catch {
+        refusal => Assert(FailedAtU512(refusal, 3, 154),
+            "a number past the widest magnitude points at the digit that passed it"),
+    }
 
     // The two values whose text is a word or a character.
-    Assert(FailedAtBool(ParseBool(""), 1, 0), "an empty boolean is Empty");
-    Assert(FailedAtBool(ParseBool("yes"), 2, 0), "and a word that is not one of the two is reported at its start");
-    Assert(FailedAtBool(ParseBool("truex"), 2, 0), "including a correct word with something after it");
-    Assert(FailedAtChar(ParseChar(""), 1, 0), "an empty character is Empty");
-    Assert(FailedAtChar(ParseChar("ab"), 2, 1), "and a second character is reported at itself");
+    try {
+        ParseBool("");
+        Assert(false, "an empty boolean is Empty");
+    } catch {
+        refusal => Assert(FailedAtBool(refusal, 1, 0), "an empty boolean is Empty"),
+    }
+    try {
+        ParseBool("yes");
+        Assert(false, "and a word that is not one of the two is reported at its start");
+    } catch {
+        refusal => Assert(FailedAtBool(refusal, 2, 0),
+                          "and a word that is not one of the two is reported at its start"),
+    }
+    try {
+        ParseBool("truex");
+        Assert(false, "including a correct word with something after it");
+    } catch {
+        refusal => Assert(FailedAtBool(refusal, 2, 0), "including a correct word with something after it"),
+    }
+    try {
+        ParseChar("");
+        Assert(false, "an empty character is Empty");
+    } catch {
+        refusal => Assert(FailedAtChar(refusal, 1, 0), "an empty character is Empty"),
+    }
+    try {
+        ParseChar("ab");
+        Assert(false, "and a second character is reported at itself");
+    } catch {
+        refusal => Assert(FailedAtChar(refusal, 2, 1), "and a second character is reported at itself"),
+    }
 
     // Floats, where an exponent past the format is the number failing rather than a byte.
-    Assert(FailedAtFloat(ParseFloat64(""), 1, 0), "an empty float is Empty");
-    Assert(FailedAtFloat(ParseFloat64("1.2.3"), 2, 3), "a second point is reported where it stands");
-    Assert(FailedAtFloat(ParseFloat64("1e999"), 3, 5), "and an exponent past the format overflows at the end");
+    try {
+        ParseFloat64("");
+        Assert(false, "an empty float is Empty");
+    } catch {
+        refusal => Assert(FailedAtFloat(refusal, 1, 0), "an empty float is Empty"),
+    }
+    try {
+        ParseFloat64("1.2.3");
+        Assert(false, "a second point is reported where it stands");
+    } catch {
+        refusal => Assert(FailedAtFloat(refusal, 2, 3), "a second point is reported where it stands"),
+    }
+    try {
+        ParseFloat64("1e999");
+        Assert(false, "and an exponent past the format overflows at the end");
+    } catch {
+        refusal => Assert(FailedAtFloat(refusal, 3, 5), "and an exponent past the format overflows at the end"),
+    }
 
     return 0;
 }

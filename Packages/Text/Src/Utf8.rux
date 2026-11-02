@@ -33,8 +33,8 @@ pub const MaxEncodedLength: uint = 4;
 /// What was wrong with a byte sequence.
 /// The cases are distinguished because they mean different things about where the bytes came from. `Truncated` is
 /// what a buffer boundary looks like and may just mean read more; the rest mean the bytes are not UTF-8 and no
-/// amount of reading will change that. Every case is a failure: the functions here report success through the other
-/// channel of the native fallible they return.
+/// amount of reading will change that. Every case is a failure: the functions here report success through what they
+/// return, and throw this.
 /// @see https://rux-lang.dev/docs/api/text/utf8-error
 pub enum Utf8Error: int32 {
     /// A sequence starts but the bytes run out before it ends.
@@ -104,11 +104,11 @@ pub func IsContinuation(byte: char8) -> bool {
 /// @param into receives the bytes
 /// @returns how many bytes were written, or why none were
 /// @see https://rux-lang.dev/docs/api/text/utf8#encode
-pub func Encode(scalar: char32, into: var char8[..]) -> uint ! Utf8Error {
+pub func Encode(scalar: char32, into: var char8[..]) -> uint throws Utf8Error {
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
-    if width == 0 { fail Utf8Error::InvalidStart; }
-    if width > into.length { fail Utf8Error::Truncated; }
+    if width == 0 { throw .InvalidStart; }
+    if width > into.length { throw .Truncated; }
 
     if width == 1 {
         into[0] = value as char8;
@@ -193,8 +193,8 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// @param index the byte offset
 /// @returns the scalar and its width, or why the bytes there are not one
 /// @see https://rux-lang.dev/docs/api/text/utf8#decode-at
-pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
-    if index >= bytes.length { fail Utf8Error::Truncated; }
+pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar throws Utf8Error {
+    if index >= bytes.length { throw .Truncated; }
 
     // Safety: `index` is below `bytes.length`, checked above.
     let leading = unsafe { bytes.data[index] } as uint32;
@@ -205,16 +205,16 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
     var low: uint32 = 0;
     var high: uint32 = 0;
     let expected = SecondByteRange(leading, @low, @high);
-    if expected == 0 { fail Utf8Error::InvalidStart; }
-    if index + expected > bytes.length { fail Utf8Error::Truncated; }
+    if expected == 0 { throw .InvalidStart; }
+    if index + expected > bytes.length { throw .Truncated; }
 
     // Safety: `expected` is at least two and `index + expected` is at most `bytes.length`, checked above.
     let second = unsafe { bytes.data[index + 1] } as uint32;
-    if second < low || second > high { fail Utf8Error::InvalidContinuation; }
+    if second < low || second > high { throw .InvalidContinuation; }
     var step: uint = 2;
     while step < expected {
         // Safety: `step` is below `expected`, and `index + expected` is at most `bytes.length`, checked above.
-        if !IsContinuation(unsafe { bytes.data[index + step] }) { fail Utf8Error::InvalidContinuation; }
+        if !IsContinuation(unsafe { bytes.data[index + step] }) { throw .InvalidContinuation; }
         step = step + 1;
     }
 
@@ -234,10 +234,10 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
 /// @param bytes the bytes to act on
 /// @returns nothing when every byte is part of a valid sequence, or where and why the first one is not
 /// @see https://rux-lang.dev/docs/api/text/utf8#validate
-pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
+pub func Validate(bytes: char8[..]) throws Utf8Failure {
     var index: uint = 0;
     while index < bytes.length {
-        let decoded = DecodeAt(bytes, index) catch { reason => fail Utf8Failure { reason, index } };
+        let decoded = try DecodeAt(bytes, index) catch { reason => throw Utf8Failure { reason, index } };
         index = index + decoded.width;
     }
 }

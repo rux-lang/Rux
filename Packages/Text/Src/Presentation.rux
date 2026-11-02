@@ -19,9 +19,9 @@ extend String : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the string's text was accepted
     /// @see https://rux-lang.dev/docs/api/text/string#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         let view = self.View();
-        return view.WriteDisplay(writer, spec);
+        return try view.WriteDisplay(writer, spec);
     }
 }
 
@@ -32,9 +32,9 @@ extend String : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the quoted string was accepted
     /// @see https://rux-lang.dev/docs/api/text/string#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         let view = self.View();
-        return view.WriteDebug(writer, spec);
+        return try view.WriteDebug(writer, spec);
     }
 }
 
@@ -47,9 +47,9 @@ extend StringView : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the view's text was accepted
     /// @see https://rux-lang.dev/docs/api/text/string-view#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        return WriteAligned(writer, spec, Truncated(self, spec), false);
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        return try WriteAligned(writer, spec, Truncated(self, spec), false);
     }
 }
 
@@ -64,11 +64,11 @@ extend StringView : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the quoted view was accepted
     /// @see https://rux-lang.dev/docs/api/text/string-view#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        WriteAscii(writer, c8'"')?;
-        WriteEscaped(writer, Truncated(self, spec))?;
-        return WriteAscii(writer, c8'"');
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        try WriteAscii(writer, c8'"');
+        try WriteEscaped(writer, Truncated(self, spec));
+        return try WriteAscii(writer, c8'"');
     }
 }
 
@@ -84,7 +84,7 @@ extend StringView : Debug {
 /// @param text the UTF-8 text to escape and write
 /// @returns success when the escaped text was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError {
+pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) throws FormatError {
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
@@ -100,10 +100,10 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
         if escapes {
             if index > runStart {
                 // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
-                WriteBytes(writer, unsafe { (@text.data[runStart])[..index - runStart] })?;
+                try WriteBytes(writer, unsafe { (@text.data[runStart])[..index - runStart] });
             }
             let scalar = if isC1 { next } else { code };
-            WriteEscapeFor(writer, byte, scalar)?;
+            try WriteEscapeFor(writer, byte, scalar);
             index = index + (if isC1 { 2u } else { 1u });
             runStart = index;
             continue;
@@ -112,27 +112,27 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
     }
     if index > runStart {
         // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
-        return WriteBytes(writer, unsafe { (@text.data[runStart])[..index - runStart] });
+        return try WriteBytes(writer, unsafe { (@text.data[runStart])[..index - runStart] });
     }
     return;
 }
 
 // The escape for one character. `byte` is the ASCII byte for everything but a C1 control, whose `scalar` is what is
 // spelled instead.
-func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> ! FormatError {
-    if byte == c8'"' { return WriteBytes(writer, "\\\""); }
-    if byte == c8'\\' { return WriteBytes(writer, "\\\\"); }
-    if scalar == 0x0A { return WriteBytes(writer, "\\n"); }
-    if scalar == 0x0D { return WriteBytes(writer, "\\r"); }
-    if scalar == 0x09 { return WriteBytes(writer, "\\t"); }
-    if scalar == 0x00 { return WriteBytes(writer, "\\0"); }
-    WriteBytes(writer, "\\u{")?;
-    WriteHex(writer, scalar)?;
-    return WriteAscii(writer, c8'}');
+func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) throws FormatError {
+    if byte == c8'"' { return try WriteBytes(writer, "\\\""); }
+    if byte == c8'\\' { return try WriteBytes(writer, "\\\\"); }
+    if scalar == 0x0A { return try WriteBytes(writer, "\\n"); }
+    if scalar == 0x0D { return try WriteBytes(writer, "\\r"); }
+    if scalar == 0x09 { return try WriteBytes(writer, "\\t"); }
+    if scalar == 0x00 { return try WriteBytes(writer, "\\0"); }
+    try WriteBytes(writer, "\\u{");
+    try WriteHex(writer, scalar);
+    return try WriteAscii(writer, c8'}');
 }
 
 // The shortest lower-case hexadecimal spelling of `value`, which for an escaped control is two digits at most.
-func WriteHex(writer: &var TextWriter, value: uint32) -> ! FormatError {
+func WriteHex(writer: &var TextWriter, value: uint32) throws FormatError {
     var digits: char8[8];
     var count: uint = 0;
     var rest = value;
@@ -149,7 +149,7 @@ func WriteHex(writer: &var TextWriter, value: uint32) -> ! FormatError {
     var index = count;
     while index > 0 {
         index = index - 1;
-        WriteAscii(writer, digits[index])?;
+        try WriteAscii(writer, digits[index]);
     }
     return;
 }
@@ -164,7 +164,7 @@ func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
     while index < bytes.length && kept < spec.Precision() {
         var width: uint = 0;
         // Safety: `index` is below `bytes.length`, the loop condition, so the prefix lies inside `bytes`.
-        let decoded = DecodeAt(bytes, index) catch { _ => return unsafe { (bytes.data)[..index] } };
+        let decoded = try DecodeAt(bytes, index) catch { _ => return unsafe { (bytes.data)[..index] } };
         width = decoded.width;
         index = index + width;
         kept = kept + 1;

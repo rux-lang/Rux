@@ -31,31 +31,31 @@ const LongestPath: uint = 1u << 20;
 /// @param allocator what the path is kept in
 /// @returns the executable's path
 /// @see https://rux-lang.dev/docs/api/process/executable#current-executable
-pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
+pub func CurrentExecutable(allocator: Allocator) -> PathBuffer throws IoError {
     var units = Buffer<OsUnit>(allocator);
     var room: uint = 260;
     while room <= LongestPath {
         units.Clear();
-        units.Reserve(room)?;
+        try units.Reserve(room);
         when #target.os == .Windows {
             // Safety: `Reserve` gave `units` room for `room` units, the size passed.
             let written = unsafe { GetModuleFileNameW(null, units.data, room as uint32) } as uint;
             // Safety: `GetLastError` takes nothing and only reads the calling thread's last error.
-            if written == 0u { fail FailureOf(unsafe { GetLastError() } as int64); }
+            if written == 0u { throw FailureOf(unsafe { GetLastError() } as int64); }
             // A path that fills the buffer was cut short, terminator and all.
             if written < room {
                 units.length = written;
-                return ToPathBuffer(allocator, units.View());
+                return try ToPathBuffer(allocator, units.View());
             }
         }
         else when #target.os == .Linux {
             // Safety: the path is a NUL-terminated literal, and `Reserve` gave `units` room for `room` bytes.
             let written = unsafe { ReadlinkAt(AtFdCwd, "/proc/self/exe\0".data, units.data, room) };
-            if written < 0 { fail FailureOf(-written); }
+            if written < 0 { throw FailureOf(-written); }
             // The link's text is not terminated, and a text that fills the buffer may have been cut.
             if (written as uint) < room {
                 units.length = written as uint;
-                return ToPathBuffer(allocator, units.View());
+                return try ToPathBuffer(allocator, units.View());
             }
         }
         else when #target.os == .FreeBSD {
@@ -67,10 +67,10 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
                 room = room * 2u;
                 continue;
             }
-            if status < 0 { fail FailureOf(-status); }
+            if status < 0 { throw FailureOf(-status); }
             // The length counts the terminator.
             units.length = if length > 0u { length - 1u } else { 0u };
-            return ToPathBuffer(allocator, units.View());
+            return try ToPathBuffer(allocator, units.View());
         }
         else {
             var size = room as uint32;
@@ -83,7 +83,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
                     length = length + 1;
                 }
                 units.length = length;
-                return ToPathBuffer(allocator, units.View());
+                return try ToPathBuffer(allocator, units.View());
             }
             // Too short: the size needed is reported, so the next attempt fits.
             room = if size as uint > room { size as uint } else { room * 2u };
@@ -91,11 +91,11 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
         }
         room = room * 2u;
     }
-    fail IoError::Of(IoErrorKind::LimitExceeded);
+    throw IoError::Of(IoErrorKind::LimitExceeded);
 }
 
 // Keeps the native units as a path through `allocator`.
-func ToPathBuffer(allocator: Allocator, units: OsUnit[..]) -> PathBuffer ! IoError {
-    if units.length == 0u { fail IoError::Of(IoErrorKind::NotFound); }
+func ToPathBuffer(allocator: Allocator, units: OsUnit[..]) -> PathBuffer throws IoError {
+    if units.length == 0u { throw IoError::Of(IoErrorKind::NotFound); }
     return PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(units)));
 }

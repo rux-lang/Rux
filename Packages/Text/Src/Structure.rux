@@ -1,5 +1,5 @@
 // Showing what is inside an outcome or a sequence, without taking it apart.
-// An optional, a fallible and a slice are the three shapes almost every diagnostic is written around, and none of
+// An optional, a result and a slice are the three shapes almost every diagnostic is written around, and none of
 // them can implement `Debug` on its own: what a `T?` looks like depends entirely on what `T` looks like, and native
 // forms implement no interface at all. So these are handwritten functions with the bound written out —
 // `WriteOptionalDebug<T: Debug>` — which is the shape the language does have. Each instantiation
@@ -19,6 +19,12 @@
 // Sequential containers are in `Rux/Collections`, which borrows a run of elements out of a vector, an array or a
 // deque and calls `WriteSliceDebug` with it. Nothing here knows those types exist.
 
+import Core::Result;
+
+import Core::Result;
+
+import Core::Result;
+
 /// Writes a borrowed optional as `Some(value)` or `none`.
 /// The optional is borrowed and its payload with it, so this can be called on an optional holding a value that
 /// cannot be copied, as many times as wanted, and the optional still holds it afterwards.
@@ -32,43 +38,43 @@
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-optional-debug
 pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
-                                    spec: FormatSpec) -> ! FormatError {
+                                    spec: FormatSpec) throws FormatError {
     match value {
         .Some(payload) => {
-            WriteBytes(writer, "Some(")?;
-            payload.WriteDebug(writer, spec)?;
-            return WriteAscii(writer, c8')');
+            try WriteBytes(writer, "Some(");
+            try payload.WriteDebug(writer, spec);
+            return try WriteAscii(writer, c8')');
         },
         none => {
-            return WriteBytes(writer, "none");
+            return try WriteBytes(writer, "none");
         }
     }
 }
 
-/// Writes a borrowed fallible as `Success(value)` or `Failure(reason)`.
-/// Both payloads are borrowed, so neither channel is consumed by being shown. The names are the native channel
-/// names, so what is written names the case a reader would branch on.
+/// Writes a borrowed `Result` as `Success(value)` or `Failure(reason)`.
+/// Both payloads are borrowed, so neither case is consumed by being shown. The names are the case names, so what
+/// is written names the case a reader would branch on.
 /// `spec` is handed to whichever payload is present and describes it rather than the wrapper.
 /// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal.
 /// @typeParam T the success payload type, which must know how to show itself
 /// @typeParam E the failure payload type, which must know how to show itself
 /// @param writer the destination
-/// @param value the fallible to show, borrowed for the call
+/// @param value the result to show, borrowed for the call
 /// @param spec what to show the payload under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/debug#write-fallible-debug
-pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &(T ! E),
-                                                spec: FormatSpec) -> ! FormatError {
+/// @see https://rux-lang.dev/docs/api/text/debug#write-result-debug
+pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &Result<T, E>,
+                                              spec: FormatSpec) throws FormatError {
     match value {
         .Success(payload) => {
-            WriteBytes(writer, "Success(")?;
-            payload.WriteDebug(writer, spec)?;
-            return WriteAscii(writer, c8')');
+            try WriteBytes(writer, "Success(");
+            try payload.WriteDebug(writer, spec);
+            return try WriteAscii(writer, c8')');
         },
         .Failure(reason) => {
-            WriteBytes(writer, "Failure(")?;
-            reason.WriteDebug(writer, spec)?;
-            return WriteAscii(writer, c8')');
+            try WriteBytes(writer, "Failure(");
+            try reason.WriteDebug(writer, spec);
+            return try WriteAscii(writer, c8')');
         }
     }
 }
@@ -90,16 +96,16 @@ pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: 
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-slice-debug
 pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
-                                   spec: FormatSpec) -> ! FormatError {
-    WriteAscii(writer, c8'[')?;
+                                   spec: FormatSpec) throws FormatError {
+    try WriteAscii(writer, c8'[');
     var index: uint = 0;
     while index < items.length {
         if index != 0 {
-            WriteBytes(writer, ", ")?;
+            try WriteBytes(writer, ", ");
         }
         // Safety: `index` is below `items.length`, the loop condition.
-        unsafe { items.data[index].WriteDebug(writer, spec)?; }
+        unsafe { try items.data[index].WriteDebug(writer, spec); }
         index = index + 1;
     }
-    return WriteAscii(writer, c8']');
+    return try WriteAscii(writer, c8']');
 }

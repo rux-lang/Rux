@@ -9,7 +9,7 @@ func Check(value: char8, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor(storage[..8]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if shown.WriteDisplay(writer, FormatSpec::Plain()) is .Failure(_) {
+    if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
         return code;
     }
     let actual = cursor.Written();
@@ -47,7 +47,7 @@ func Main() -> int {
     var cursor = ByteCursor(storage[..8]);
     let writer: &var TextWriter = cursor;
     let nul: Display = c8'\0';
-    if nul.WriteDisplay(writer, FormatSpec::Plain()) is .Failure(_) { return 20; }
+    if (try? nul.WriteDisplay(writer, FormatSpec::Plain())) is none { return 20; }
     if cursor.Written().length != 1 { return 21; }
     if (cursor.Written()[0] as uint8) != 0 { return 22; }
 
@@ -58,7 +58,7 @@ func Main() -> int {
     var piece = ByteCursor(second[..8]);
     let fragmentWriter: &var TextWriter = piece;
     let fragment: Display = 0xC3u8 as char8;
-    if fragment.WriteDisplay(fragmentWriter, FormatSpec::Plain()) is .Failure(_) { return 30; }
+    if (try? fragment.WriteDisplay(fragmentWriter, FormatSpec::Plain())) is none { return 30; }
     let rendered = piece.Written();
     if rendered.length != 3 { return 31; }
     if (rendered[0] as uint8) != 0xEF { return 32; }

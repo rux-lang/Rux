@@ -53,10 +53,10 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
 /// @param count how many copies to write
 /// @returns success when every copy was accepted
 /// @see https://rux-lang.dev/docs/api/text/format-spec#write-fill
-pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! FormatError {
+pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) throws FormatError {
     var written: uint = 0;
     while written < count {
-        WriteAscii(writer, spec.Fill())?;
+        try WriteAscii(writer, spec.Fill());
         written = written + 1;
     }
     return;
@@ -74,16 +74,16 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! 
 /// @returns success when the padded rendering was accepted in full
 /// @see https://rux-lang.dev/docs/api/text/format-spec#write-aligned
 pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8[..],
-                      numeric: bool) -> ! FormatError {
+                      numeric: bool) throws FormatError {
     let occupied = CountScalars(rendered);
-    if spec.Width() <= occupied { return WriteBytes(writer, rendered); }
+    if spec.Width() <= occupied { return try WriteBytes(writer, rendered); }
 
     var before: uint = 0;
     var after: uint = 0;
     PaddingAround(spec, occupied, numeric, @before, @after);
-    WriteFill(writer, spec, before)?;
-    WriteBytes(writer, rendered)?;
-    return WriteFill(writer, spec, after);
+    try WriteFill(writer, spec, before);
+    try WriteBytes(writer, rendered);
+    return try WriteFill(writer, spec, after);
 }
 
 /// Writes `value`'s text under `spec`, applying the spec's width, fill and alignment around the text the value writes
@@ -98,19 +98,20 @@ pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8
 /// @param spec what the placeholder asked for
 /// @returns success when the padded rendering was accepted in full
 /// @see https://rux-lang.dev/docs/api/text/format-spec#write-display-aligned
-pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: FormatSpec) -> ! FormatError {
+pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: FormatSpec) throws FormatError {
     var unpadded = spec;
     unpadded.width = 0;
-    if spec.width == 0u { return value.WriteDisplay(writer, unpadded); }
+    if spec.width == 0u { return try value.WriteDisplay(writer, unpadded); }
     var room: char8[256];
     var buffer = BufferWriter(room[..]);
     let into: &var TextWriter = buffer;
-    match value.WriteDisplay(into, unpadded) {
-        .Success(_) => {},
-        .Failure(error) => {
-            if error != FormatError::InsufficientCapacity { fail error; }
-            return value.WriteDisplay(writer, unpadded);
-        }
+    try {
+        value.WriteDisplay(into, unpadded);
+    } catch {
+        error => {
+            if error != FormatError::InsufficientCapacity { throw error; }
+            return try value.WriteDisplay(writer, unpadded);
+        },
     }
-    return WriteAligned(writer, spec, buffer.Written(), false);
+    return try WriteAligned(writer, spec, buffer.Written(), false);
 }

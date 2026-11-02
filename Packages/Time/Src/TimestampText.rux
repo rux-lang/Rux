@@ -36,11 +36,11 @@ extend Timestamp {
 
 // The empty style is the calendar form, `rfc3339` and `iso8601` name it explicitly, and `unix` selects the second
 // count. Nothing else is understood, which is what keeps `{:q}` a reported mistake rather than a printed one.
-func RejectTimestampStyle(spec: FormatSpec) -> ! FormatError {
+func RejectTimestampStyle(spec: FormatSpec) throws FormatError {
     if !spec.HasStyle() || spec.StyleIs("rfc3339") || spec.StyleIs("iso8601") || spec.StyleIs("unix") {
         return;
     }
-    fail FormatError::UnsupportedRequest;
+    throw .UnsupportedRequest;
 }
 
 // Writes the signed second count, with the magnitude recomputed rather than read off the fields.
@@ -48,24 +48,24 @@ func RejectTimestampStyle(spec: FormatSpec) -> ! FormatError {
 // — so half a second before the epoch is seconds = -1 with a fraction of 5e8, and printing the fields as they sit
 // would say "-1.5". `Magnitude` is the same recomputation the duration renderer needs, in uint64 for the same
 // reason: the magnitude of the most negative second count has no positive counterpart in int64.
-func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> ! FormatError {
+func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) throws FormatError {
     let span = Duration { seconds: value.seconds, nanoseconds: value.nanoseconds };
     var whole: uint64 = 0;
     var fraction: uint32 = 0;
     let negative = Magnitude(span, @whole, @fraction);
-    if negative { WriteAscii(writer, c8'-')?; }
-    WriteUnsigned(writer, whole)?;
-    return WriteSecondsFraction(writer, fraction, spec);
+    if negative { try WriteAscii(writer, c8'-'); }
+    try WriteUnsigned(writer, whole);
+    return try WriteSecondsFraction(writer, fraction, spec);
 }
 
 // Writes the calendar form, refusing first for a moment the calendar cannot spell.
 // The offset is UTC and is written as `Z`, because a timestamp is UTC: there is no local offset here to lose, and
 // attaching the machine's would claim a place the value never held.
-func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> ! FormatError {
-    if !value.IsInCalendarRange() { return .Failure(FormatError::ValueOutOfRange); }
+func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) throws FormatError {
+    if !value.IsInCalendarRange() { throw FormatError::ValueOutOfRange; }
     let moment = Timestamp { seconds: value.seconds, nanoseconds: value.nanoseconds };
     let shown = OffsetDateTime(DateTime::FromTimestamp(moment, UtcOffset::Utc()), UtcOffset::Utc());
-    return shown.WriteDisplay(writer, spec);
+    return try shown.WriteDisplay(writer, spec);
 }
 
 extend Timestamp : Display {
@@ -83,11 +83,11 @@ extend Timestamp : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
-        RejectTimestampStyle(spec)?;
-        if spec.StyleIs("unix") { return WriteUnixSeconds(writer, self, spec); }
-        return WriteCalendarForm(writer, self, spec);
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
+        try RejectTimestampStyle(spec);
+        if spec.StyleIs("unix") { return try WriteUnixSeconds(writer, self, spec); }
+        return try WriteCalendarForm(writer, self, spec);
     }
 }
 
@@ -98,7 +98,7 @@ extend Timestamp : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        return self.WriteDisplay(writer, spec);
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        return try self.WriteDisplay(writer, spec);
     }
 }

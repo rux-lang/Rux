@@ -27,17 +27,17 @@ when #target.os {
 /// @param to the path it should have afterwards
 /// @returns success when the file is at its new path
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#rename
-pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
-    let fromNative = NativePath(allocator, from)?;
+pub func Rename(allocator: Allocator, from: Path, to: Path) throws IoError {
+    let fromNative = try NativePath(allocator, from);
     defer ReleaseNativePath(allocator, fromNative, from.name.units.length);
-    let toNative = NativePath(allocator, to)?;
+    let toNative = try NativePath(allocator, to);
     defer ReleaseNativePath(allocator, toNative, to.name.units.length);
     when #target.os == .Windows {
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live until
         // the deferred releases, and a `uint16` unit is a `char16`.
         if unsafe { MoveFileExW(fromNative as *char16, toNative as *char16, MOVEFILE_REPLACE_EXISTING) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
@@ -45,7 +45,7 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
         // deferred releases.
         let result = unsafe { RenameAt(AtFdCwd, fromNative as *char8, AtFdCwd, toNative as *char8) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -59,17 +59,17 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
 /// @param link the link to create
 /// @returns success when the new name refers to the same file
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-hard-link
-pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! IoError {
-    let existingNative = NativePath(allocator, existing)?;
+pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) throws IoError {
+    let existingNative = try NativePath(allocator, existing);
     defer ReleaseNativePath(allocator, existingNative, existing.name.units.length);
-    let linkNative = NativePath(allocator, link)?;
+    let linkNative = try NativePath(allocator, link);
     defer ReleaseNativePath(allocator, linkNative, link.name.units.length);
     when #target.os == .Windows {
         // Safety: `linkNative` and `existingNative` are the NUL-terminated UTF-16 copies `NativePath` made above,
         // live until the deferred releases, and a `uint16` unit is a `char16`.
         if unsafe { CreateHardLinkW(linkNative as *char16, existingNative as *char16, null) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
@@ -77,7 +77,7 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! I
         // until the deferred releases.
         let result = unsafe { LinkAt(AtFdCwd, existingNative as *char8, AtFdCwd, linkNative as *char8, 0) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -93,10 +93,10 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! I
 /// @param targetIsDirectory whether the target is a directory, which Windows must be told in advance
 /// @returns success when the link was created; Windows needs a privilege for this
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-symbolic-link
-pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> ! IoError {
-    let targetNative = NativePath(allocator, target)?;
+pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) throws IoError {
+    let targetNative = try NativePath(allocator, target);
     defer ReleaseNativePath(allocator, targetNative, target.name.units.length);
-    let linkNative = NativePath(allocator, link)?;
+    let linkNative = try NativePath(allocator, link);
     defer ReleaseNativePath(allocator, linkNative, link.name.units.length);
     when #target.os == .Windows {
         var flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
@@ -107,7 +107,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
         // live until the deferred releases, and a `uint16` unit is a `char16`.
         if unsafe { CreateSymbolicLinkW(linkNative as *char16, targetNative as *char16, flags) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
@@ -115,7 +115,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
         // deferred releases.
         let result = unsafe { SymlinkAt(targetNative as *char8, AtFdCwd, linkNative as *char8) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -128,50 +128,50 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// @param to the path it should have afterwards
 /// @returns success when the destination holds a copy
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#copy-file
-pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> ! IoError {
+pub func CopyFile(allocator: Allocator, from: Path, to: Path) throws IoError {
     when #target.os == .Windows {
-        let fromNative = NativePath(allocator, from)?;
+        let fromNative = try NativePath(allocator, from);
         defer ReleaseNativePath(allocator, fromNative, from.name.units.length);
-        let toNative = NativePath(allocator, to)?;
+        let toNative = try NativePath(allocator, to);
         defer ReleaseNativePath(allocator, toNative, to.name.units.length);
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live until
         // the deferred releases, and a `uint16` unit is a `char16`.
         if unsafe { CopyFileW(fromNative as *char16, toNative as *char16, 0) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
         // A file opened here and abandoned by a failure is closed by its destructor.
-        var source = File::Open(allocator, from, OpenOptions::Reading())?;
-        var destination = File::Open(allocator, to, OpenOptions::Writing())?;
+        var source = try File::Open(allocator, from, OpenOptions::Reading());
+        var destination = try File::Open(allocator, to, OpenOptions::Writing());
 
         let layout = Layout { size: 65536, alignment: 8 };
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
+        let block = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `block` is a fresh allocation of `layout`, 65536 bytes, released only after the loop below.
         let buffer = unsafe { (block as *var char8)[..65536] };
 
         var failure: IoError? = none;
         var copying = true;
         while copying {
-            match source.Read(buffer) {
-                .Success(filled) => {
-                    // A read of zero is the end however the stream says it, rather than a reason to ask again.
-                    if filled == 0 {
-                        copying = false;
-                    }
-                    else {
-                        let piece = buffer[0..filled];
-                        WriteAll(destination, piece) catch {
-                            error => {
-                                failure = error;
-                                copying = false;
-                            }
-                        };
-                    }
-                },
-                .Failure(error) => {
+            try {
+                let filled = source.Read(buffer);
+                // A read of zero is the end however the stream says it, rather than a reason to ask again.
+                if filled == 0 {
+                    copying = false;
+                }
+                else {
+                    let piece = buffer[0..filled];
+                    try WriteAll(destination, piece) catch {
+                        error => {
+                            failure = error;
+                            copying = false;
+                        },
+                    };
+                }
+            } catch {
+                error => {
                     if error.IsEnd() {
                         copying = false;
                     }
@@ -179,19 +179,16 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> ! IoError {
                         failure = error;
                         copying = false;
                     }
-                }
+                },
             }
         }
 
-        borrowed.Deallocate(block, layout) catch { _ => {} };
+        try borrowed.Deallocate(block, layout) catch { _ => {} };
         // Both files close whatever happened; a close failure is reported only when the copy itself went through.
-        let closedSource = source.Close();
-        let closedDestination = destination.Close();
-        match failure {
-            .Some(error) => fail error,
-            none => {}
-        }
-        closedSource?;
-        closedDestination?;
+        var closeFailure: IoError? = none;
+        try source.Close() catch { error => { closeFailure = error; } };
+        try destination.Close() catch { error => { closeFailure = closeFailure ?? error; } };
+        if failure is .Some(error) { throw error; }
+        if closeFailure is .Some(error) { throw error; }
     }
 }

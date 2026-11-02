@@ -5,8 +5,8 @@
 // `WriterFailure`, with deliberately no room for details, because Text has no vocabulary for a broken pipe and
 // should not pretend to. `IoError` has no case for a placeholder that does not parse.
 // So the crossing is made in both directions, once, here.
-// Going out, `FromIoError` turns what a stream reported into what a formatter understands: success stays success
-// and every failure becomes `WriterFailure`. That is lossy on purpose, and the loss is made good by the adapter,
+// Going out, `FromIoError` turns an error a stream threw into what a formatter understands: every failure becomes
+// `WriterFailure`. That is lossy on purpose, and the loss is made good by the adapter,
 // which records the original `IoError` in an optional slot the caller holds. So the formatter learns exactly what it
 // can act on — stop writing — and the caller learns exactly what happened.
 // Coming back, `ToIoError` turns a formatting failure into something a stream's caller can act on, and the one
@@ -24,17 +24,18 @@
 import Format::WriteFormat;
 import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
 
-/// Turns what a stream reported into what a formatter understands.
-/// Success becomes the formatter's success value; every failure becomes `WriterFailure`, which is the only thing
-/// `FormatError` can say about a destination. The details do not travel this way — an adapter records the original
-/// `IoError` where its caller can read it, which is what keeps the loss from being a loss.
+/// Turns an error a stream threw into what a formatter understands.
+/// Every failure becomes `WriterFailure`, which is the only thing `FormatError` can say about a destination, so a
+/// formatter passes a stream's error on with `try Write(...) catch { error => throw FromIoError(error) }`. The
+/// details do not travel this way — an adapter records the original `IoError` where its caller can read it, which is
+/// what keeps the loss from being a loss.
 /// The end of a stream is a failure here. Nothing is being read, so a write that reports it is a destination that
 /// cannot take the bytes, whatever it calls that.
-/// @param outcome what the stream reported
-/// @returns success for a success, and `WriterFailure` for any failure
+/// @param error what the stream threw
+/// @returns `WriterFailure`, whatever the stream's error was
 /// @see https://rux-lang.dev/docs/api/io/io-error#from-io-error
-pub func FromIoError(outcome: ! IoError) -> ! FormatError {
-    outcome catch { _ => fail FormatError::WriterFailure };
+pub func FromIoError(error: IoError) -> FormatError {
+    return .WriterFailure;
 }
 
 /// Turns a formatting failure into something a stream's caller can act on.
@@ -104,16 +105,16 @@ extend ConsoleWriter : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/console-writer#write
-    pub func Write(&var self, bytes: char8[..]) -> ! FormatError {
+    pub func Write(&var self, bytes: char8[..]) throws FormatError {
         // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over to outlive it.
-        if unsafe { *self.failure } is IoError { fail FormatError::WriterFailure; }
-        PrintBytes(bytes) catch {
+        if unsafe { *self.failure } is IoError { throw .WriterFailure; }
+        try PrintBytes(bytes) catch {
             error => {
                 // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over
                 // to outlive it.
                 unsafe { *self.failure = error; }
-                fail FormatError::WriterFailure;
-            }
+                throw .WriterFailure;
+            },
         };
     }
 }
@@ -155,16 +156,16 @@ extend StreamWriter : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/stream-writer#write
-    pub func Write(&var self, bytes: char8[..]) -> ! FormatError {
+    pub func Write(&var self, bytes: char8[..]) throws FormatError {
         // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over to outlive it.
-        if unsafe { *self.failure } is IoError { fail FormatError::WriterFailure; }
-        WriteAll(self.sink, bytes) catch {
+        if unsafe { *self.failure } is IoError { throw .WriterFailure; }
+        try WriteAll(self.sink, bytes) catch {
             error => {
                 // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over
                 // to outlive it.
                 unsafe { *self.failure = error; }
-                fail FormatError::WriterFailure;
-            }
+                throw .WriterFailure;
+            },
         };
     }
 }
@@ -186,9 +187,9 @@ extend StreamWriter : TextWriter {
 /// @param value the value to write, borrowed for the call
 /// @returns success when both the value and the newline were accepted
 /// @see https://rux-lang.dev/docs/api/io/print-line#write-value-line
-pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! FormatError {
-    value.WriteDisplay(writer, FormatSpec::Plain())?;
-    return writer.Write("\n");
+pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) throws FormatError {
+    try value.WriteDisplay(writer, FormatSpec::Plain());
+    return try writer.Write("\n");
 }
 
 /// Writes `format` with each `{}` replaced by the next argument, then a newline, on the same rule.
@@ -204,7 +205,7 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! For
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/io/print-line#write-format-line
 pub func WriteFormatLine(writer: &var TextWriter, #Format format: char8[..],
-                         args: Display...) -> ! FormatError {
-    WriteFormat(writer, format, args...)?;
-    return writer.Write("\n");
+                         args: Display...) throws FormatError {
+    try WriteFormat(writer, format, args...);
+    return try writer.Write("\n");
 }

@@ -13,7 +13,7 @@ func Absent() -> int32? {
 }
 
 // In a fallible result whose success is optional, `none` is the successful absence.
-func SuccessfullyAbsent() -> int32? ! ParseError {
+func SuccessfullyAbsent() -> int32? throws ParseError {
     return none;
 }
 
@@ -29,7 +29,7 @@ func Main() -> int {
     let missing: int32? = none;
     Assert(missing == none, "an absent value equals none");
     Assert(Absent() == none, "a returned none");
-    Assert(SuccessfullyAbsent() == .Success(none), "none inside a success level");
+    Assert((try? SuccessfullyAbsent()) == .Some(none), "none inside a success level");
 
     // Each optional level has its own absence: `none` is only the outermost one.
     let outer: int32?? = none;

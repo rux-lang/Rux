@@ -29,7 +29,7 @@ func Serve(server: UdpSocket) -> bool {
     var answered: uint = 0;
     while answered < 3u {
         var query: char8[512] = [c8'\0'; 512];
-        let datagram = server.ReceiveFrom(query[..]) catch { _ => return false };
+        let datagram = try server.ReceiveFrom(query[..]) catch { _ => return false };
         // Safety: the datagram filled the first `datagram.length` bytes of the local `query`, and `uint8` has the
         // layout of `char8`.
         let bytes = unsafe { ((@query[0]) as *uint8)[..datagram.length] };
@@ -78,7 +78,7 @@ func Serve(server: UdpSocket) -> bool {
         // Safety: `at` counts the bytes written into the local `reply`, at most its 512, and `char8` has the layout
         // of `uint8`.
         let answer = unsafe { ((@reply[0]) as *char8)[..at] };
-        server.SendTo(answer, datagram.source) catch { _ => return false };
+        try server.SendTo(answer, datagram.source) catch { _ => return false };
         answered = answered + 1;
     }
     return true;
@@ -86,33 +86,37 @@ func Serve(server: UdpSocket) -> bool {
 
 func Main() -> int {
     let allocator = SystemAllocator();
-    let server = UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the name server binds") };
-    let address = server.LocalAddress() catch { _ => Panic("it has an address") };
-    var serving = Spawn(Serve, move server) catch { _ => Panic("the name server starts") };
+    let server = try UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the name server binds") };
+    let address = try server.LocalAddress() catch { _ => Panic("it has an address") };
+    var serving = try Spawn(Serve, move server) catch { _ => Panic("the name server starts") };
 
     let servers: SocketAddress[1] = [address];
     var resolver = Resolver::WithServers(allocator, servers[..]);
     resolver.SetTimeout(Duration::FromSeconds(5));
-    let found = resolver.Lookup(allocator, "example.test", 8080) catch { _ => Panic("the name resolves") };
+    let found = try resolver.Lookup(allocator, "example.test", 8080) catch { _ => Panic("the name resolves") };
     let addresses = found.AsSlice();
     Assert(addresses.length == 2u, "one IPv4 and one IPv6 address");
     Assert(addresses[0].Equals(SocketAddress::Parse("10.1.2.3:8080") ?? Loopback(0)), "IPv4 first");
     Assert(addresses[1].Equals(SocketAddress::Parse("[2001:db8::5]:8080") ?? Loopback(0)), "then IPv6");
-    match resolver.Lookup(allocator, "missing.test", 80) {
-        .Success(_) => Panic("the name does not exist"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a name that does not exist is not found")
+    try {
+        resolver.Lookup(allocator, "missing.test", 80);
+        Panic("the name does not exist");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::NotFound, "a name that does not exist is not found"),
     }
     Assert(serving.Join(), "the name server answered every query");
 
     // A server that never answers: the lookup gives up after its one attempt.
-    let silent = UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the silent server binds") };
-    let quiet: SocketAddress[1] = [silent.LocalAddress() catch { _ => Panic("it has an address") }];
+    let silent = try UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the silent server binds") };
+    let quiet: SocketAddress[1] = [(try silent.LocalAddress() catch { _ => Panic("it has an address") })];
     var patient = Resolver::WithServers(allocator, quiet[..]);
     patient.SetTimeout(Duration::FromMilliseconds(100));
     patient.SetAttempts(1);
-    match patient.Lookup(allocator, "example.test", 80) {
-        .Success(_) => Panic("nobody answered"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::TimedOut, "a server that never answers times out")
+    try {
+        patient.Lookup(allocator, "example.test", 80);
+        Panic("nobody answered");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::TimedOut, "a server that never answers times out"),
     }
     return 0;
 }

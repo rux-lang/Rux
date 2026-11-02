@@ -155,9 +155,9 @@ extend Scanner {
     }
 
     // The next item, none at the end, or why the arguments do not match.
-    func Next(&var self) -> Item? ! CommandLineError {
-        if self.cluster > 0 { return self.NextShort(); }
-        if self.index >= self.end { return .Success(none); }
+    func Next(&var self) -> Item? throws CommandLineError {
+        if self.cluster > 0 { return try self.NextShort(); }
+        if self.index >= self.end { return none; }
         let at = self.index;
         let argument = self.source.At(at);
         let units = argument.Units();
@@ -166,17 +166,17 @@ extend Scanner {
             if UnitAt(units, 1) == 0x2D {
                 if units.length == 2 {
                     self.optionsEnded = true;
-                    return self.Next();
+                    return try self.Next();
                 }
-                return self.Long(argument, at);
+                return try self.Long(argument, at);
             }
             self.cluster = 1;
-            return self.NextShort();
+            return try self.NextShort();
         }
-        return self.Positional(argument, at);
+        return try self.Positional(argument, at);
     }
 
-    func Long(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+    func Long(&var self, argument: OsStringView, at: uint) -> Item? throws CommandLineError {
         let spec = self.Declared();
         let units = argument.Units();
         var equals: uint = 2;
@@ -184,22 +184,22 @@ extend Scanner {
             equals = equals + 1;
         }
         let option = FindLong(spec, Part(units, 2, equals)) ?? 0xFFFFFFFF;
-        if option == 0xFFFFFFFF { fail CommandLineError::UnknownOption(argument); }
+        if option == 0xFFFFFFFF { throw .UnknownOption(argument); }
         if !TakesValue(spec, option) {
-            if equals < units.length { fail CommandLineError::UnexpectedValue(LongName(spec, option)); }
-            return .Success(.Some(Item::Option(option, none, at)));
+            if equals < units.length { throw .UnexpectedValue(LongName(spec, option)); }
+            return .Some(Item::Option(option, none, at));
         }
         if equals < units.length {
-            return .Success(.Some(Item::Option(option, .Some(Part(units, equals + 1, units.length)), at)));
+            return .Some(Item::Option(option, .Some(Part(units, equals + 1, units.length)), at));
         }
-        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(spec, option)); }
+        if self.index >= self.end { throw .MissingValue(LongName(spec, option)); }
         let value = self.source.At(self.index);
         self.index = self.index + 1;
-        return .Success(.Some(Item::Option(option, .Some(value), at)));
+        return .Some(Item::Option(option, .Some(value), at));
     }
 
     // The next short option in the cluster that started at the argument before `index`.
-    func NextShort(&var self) -> Item? ! CommandLineError {
+    func NextShort(&var self) -> Item? throws CommandLineError {
         let at = self.index - 1;
         let argument = self.source.At(at);
         let units = argument.Units();
@@ -208,41 +208,41 @@ extend Scanner {
         let option = FindShort(spec, UnitAt(units, position)) ?? 0xFFFFFFFF;
         if option == 0xFFFFFFFF {
             self.cluster = 0;
-            fail CommandLineError::UnknownOption(argument);
+            throw .UnknownOption(argument);
         }
         if !TakesValue(spec, option) {
             self.cluster = if position + 1 < units.length { position + 1 } else { 0 };
-            return .Success(.Some(Item::Option(option, none, at)));
+            return .Some(Item::Option(option, none, at));
         }
         self.cluster = 0;
         if position + 1 < units.length {
-            return .Success(.Some(Item::Option(option, .Some(Part(units, position + 1, units.length)), at)));
+            return .Some(Item::Option(option, .Some(Part(units, position + 1, units.length)), at));
         }
-        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(spec, option)); }
+        if self.index >= self.end { throw .MissingValue(LongName(spec, option)); }
         let value = self.source.At(self.index);
         self.index = self.index + 1;
-        return .Success(.Some(Item::Option(option, .Some(value), at)));
+        return .Some(Item::Option(option, .Some(value), at));
     }
 
-    func Positional(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+    func Positional(&var self, argument: OsStringView, at: uint) -> Item? throws CommandLineError {
         let spec = self.Declared();
         if spec.commands.length > 0 {
             let command = FindCommand(spec, argument) ?? 0xFFFFFFFF;
-            if command == 0xFFFFFFFF { fail CommandLineError::UnknownCommand(argument); }
+            if command == 0xFFFFFFFF { throw .UnknownCommand(argument); }
             // Everything after the subcommand's name is the subcommand's to read.
             self.index = self.end;
-            return .Success(.Some(Item::Command(command, at)));
+            return .Some(Item::Command(command, at));
         }
         let declared = spec.positionals.length;
-        if declared == 0 { fail CommandLineError::UnexpectedArgument(argument); }
+        if declared == 0 { throw .UnexpectedArgument(argument); }
         var slot = self.positionals;
         if slot >= declared {
             if spec.positionals[declared - 1].kind != PositionalKind::Remaining {
-                fail CommandLineError::UnexpectedArgument(argument);
+                throw .UnexpectedArgument(argument);
             }
             slot = declared - 1;
         }
         self.positionals = self.positionals + 1;
-        return .Success(.Some(Item::Positional(slot, argument, at)));
+        return .Some(Item::Positional(slot, argument, at));
     }
 }

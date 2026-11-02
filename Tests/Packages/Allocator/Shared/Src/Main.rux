@@ -63,10 +63,10 @@ func Counted() -> int {
 
 func Threaded() -> int {
     var shared = Arc::Create<Tracked>(SystemAllocator(), Tracked { value: 1 });
-    var one = Spawn(Churn, shared.Clone()) catch { _ => return 4 };
-    var two = Spawn(Churn, shared.Clone()) catch { _ => return 5 };
-    var three = Spawn(Churn, shared.Clone()) catch { _ => return 6 };
-    var four = Spawn(Churn, shared.Clone()) catch { _ => return 7 };
+    var one = try Spawn(Churn, shared.Clone()) catch { _ => return 4 };
+    var two = try Spawn(Churn, shared.Clone()) catch { _ => return 5 };
+    var three = try Spawn(Churn, shared.Clone()) catch { _ => return 6 };
+    var four = try Spawn(Churn, shared.Clone()) catch { _ => return 7 };
     let sum = one.Join() + two.Join() + three.Join() + four.Join();
     Assert(sum == 80000 && shared.Count() == 1u && Destroys() == 2, "every thread's clones were counted and dropped");
     match shared.GetMutable() {

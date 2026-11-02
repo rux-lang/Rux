@@ -20,7 +20,7 @@ pub interface Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read, which may be fewer than `into` holds; `IsEnd` at the end of the stream
     /// @see https://rux-lang.dev/docs/api/io/reader#read
-    func Read(&var self, into: var char8[..]) -> uint ! IoError;
+    func Read(&var self, into: var char8[..]) -> uint throws IoError;
 }
 
 /// Somewhere bytes go.
@@ -30,12 +30,12 @@ pub interface Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/io/writer#write
-    func Write(&var self, bytes: char8[..]) -> uint ! IoError;
+    func Write(&var self, bytes: char8[..]) -> uint throws IoError;
 
     /// Pushes whatever is held toward the destination.
     /// @returns success when everything held reached the destination
     /// @see https://rux-lang.dev/docs/api/io/writer#flush
-    func Flush(&var self) -> ! IoError;
+    func Flush(&var self) throws IoError;
 }
 
 /// Where a seek starts counting from.
@@ -57,7 +57,7 @@ pub interface Seeker {
     /// @param offset how far to move, which may be negative
     /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/io/seeker#seek
-    func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 ! IoError;
+    func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 throws IoError;
 }
 
 /// How many consecutive zero-progress rounds `WriteAll` tolerates before refusing.
@@ -76,19 +76,19 @@ pub const ZeroProgressLimit: uint = 3;
 /// @param into receives the bytes
 /// @returns success only when `into` was filled; `IsEnd` if the stream ended first, `UnexpectedEnd` if partway
 /// @see https://rux-lang.dev/docs/api/io/reader#read-exact
-pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
+pub func ReadExact(reader: &var Reader, into: var char8[..]) throws IoError {
     var at: uint = 0;
     while at < into.length {
         let rest = into[at..into.length];
-        let filled = reader.Read(rest) catch {
+        let filled = try reader.Read(rest) catch {
             error if error.IsInterrupted() => continue,
             error if error.IsEnd() => 0,
-            error => fail error
+            error => throw error
         };
         if filled == 0 {
             // The end, however the reader said it. A read of zero is taken as the end rather than asked again, so a
             // reader that never moves anything cannot hang the caller.
-            fail IoError::Of(if at == 0 { IoErrorKind::EndOfStream } else { IoErrorKind::UnexpectedEnd });
+            throw IoError::Of(if at == 0 { IoErrorKind::EndOfStream } else { IoErrorKind::UnexpectedEnd });
         }
         at = at + filled;
     }
@@ -104,18 +104,18 @@ pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
 /// @param bytes the bytes to write
 /// @returns success only when every byte was written, looping over short writes
 /// @see https://rux-lang.dev/docs/api/io/writer#write-all
-pub func WriteAll(writer: &var Writer, bytes: char8[..]) -> ! IoError {
+pub func WriteAll(writer: &var Writer, bytes: char8[..]) throws IoError {
     var at: uint = 0;
     var stalled: uint = 0;
     while at < bytes.length {
         let rest = bytes[at..bytes.length];
-        let taken = writer.Write(rest) catch {
+        let taken = try writer.Write(rest) catch {
             error if error.IsInterrupted() => continue,
-            error => fail error
+            error => throw error
         };
         if taken == 0 {
             stalled = stalled + 1;
-            if stalled >= ZeroProgressLimit { fail IoError::Of(IoErrorKind::WriteZero); }
+            if stalled >= ZeroProgressLimit { throw IoError::Of(IoErrorKind::WriteZero); }
         }
         else {
             stalled = 0;

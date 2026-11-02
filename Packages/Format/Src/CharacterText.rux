@@ -38,13 +38,13 @@ pub func IsWideScalarValue(value: uint64) -> bool {
 }
 
 // Writes `value` as `count` lower-case hexadecimal digits, most significant first.
-func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! FormatError {
+func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) throws FormatError {
     let digits = "0123456789abcdef";
     var shift = count * 4;
     while shift > 0 {
         shift = shift - 4;
         // Safety: the index is masked to four bits, so it is below the sixteen bytes of `digits`.
-        WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint64)) & 0xF) as uint] })?;
+        try WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint64)) & 0xF) as uint] });
     }
     return;
 }
@@ -58,18 +58,18 @@ func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! Fo
 /// @param value the numeric value to spell
 /// @returns success when the whole escape was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#write-invalid-escape
-pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> ! FormatError {
+pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) throws FormatError {
     if value <= 0xFF {
-        WriteBytes(writer, "\\x{")?;
-        WriteHexDigits(writer, value, 2)?;
-        return WriteBytes(writer, "}");
+        try WriteBytes(writer, "\\x{");
+        try WriteHexDigits(writer, value, 2);
+        return try WriteBytes(writer, "}");
     }
-    WriteBytes(writer, "\\u{")?;
+    try WriteBytes(writer, "\\u{");
     var digits: uint = 4;
     if value > 0xFFFF { digits = 8; }
     if value > 0xFFFFFFFF { digits = 16; }
-    WriteHexDigits(writer, value, digits)?;
-    return WriteBytes(writer, "}");
+    try WriteHexDigits(writer, value, digits);
+    return try WriteBytes(writer, "}");
 }
 
 /// Whether `value`, read from a character wider than sixty-four bits, is a Unicode scalar value.
@@ -95,20 +95,20 @@ pub func IsScalarValue512(value: uint512) -> bool {
 /// @param value the numeric value to spell
 /// @returns success when the whole escape was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#write-wide-invalid-escape
-pub func WriteWideInvalidEscape(writer: &var TextWriter, value: uint512) -> ! FormatError {
-    if value <= (0xFFFFFFFFFFFFFFFFu64 as uint512) { return WriteInvalidEscape(writer, value as uint64); }
+pub func WriteWideInvalidEscape(writer: &var TextWriter, value: uint512) throws FormatError {
+    if value <= (0xFFFFFFFFFFFFFFFFu64 as uint512) { return try WriteInvalidEscape(writer, value as uint64); }
     var count: uint = 32;
     if value > ((0u128 -% 1u128) as uint512) { count = 64; }
     if value > ((0u256 -% 1u256) as uint512) { count = 128; }
-    WriteBytes(writer, "\\u{")?;
+    try WriteBytes(writer, "\\u{");
     let digits = "0123456789abcdef";
     var shift = count * 4;
     while shift > 0 {
         shift = shift - 4;
         // Safety: the index is masked to four bits, so it is below the sixteen bytes of `digits`.
-        WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint512)) & 0xFu512) as uint] })?;
+        try WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint512)) & 0xFu512) as uint] });
     }
-    return WriteBytes(writer, "}");
+    return try WriteBytes(writer, "}");
 }
 
 /// Writes the `Debug` form of a character wider than sixty-four bits.
@@ -119,14 +119,14 @@ pub func WriteWideInvalidEscape(writer: &var TextWriter, value: uint512) -> ! Fo
 /// @param value the numeric value of the character, at its own width
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#write-wide-character-debug
-pub func WriteWideCharacterDebug(writer: &var TextWriter, value: uint512) -> ! FormatError {
+pub func WriteWideCharacterDebug(writer: &var TextWriter, value: uint512) throws FormatError {
     if value <= (0xFFFFFFFFFFFFFFFFu64 as uint512) {
         let narrow = value as uint64;
-        return WriteCharacterDebug(writer, narrow, IsWideScalarValue(narrow));
+        return try WriteCharacterDebug(writer, narrow, IsWideScalarValue(narrow));
     }
-    WriteAscii(writer, c8'\'')?;
-    WriteWideInvalidEscape(writer, value)?;
-    return WriteAscii(writer, c8'\'');
+    try WriteAscii(writer, c8'\'');
+    try WriteWideInvalidEscape(writer, value);
+    return try WriteAscii(writer, c8'\'');
 }
 
 /// Writes one character's `Debug` form: quoted, and preserved exactly when it is not a character.
@@ -140,15 +140,15 @@ pub func WriteWideCharacterDebug(writer: &var TextWriter, value: uint512) -> ! F
 /// @param whole whether the width this value came from calls it a whole character
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#write-character-debug
-pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool) -> ! FormatError {
-    WriteAscii(writer, c8'\'')?;
+pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool) throws FormatError {
+    try WriteAscii(writer, c8'\'');
     if whole {
-        WriteEscapedScalar(writer, value as uint32)?;
+        try WriteEscapedScalar(writer, value as uint32);
     }
     else {
-        WriteInvalidEscape(writer, value)?;
+        try WriteInvalidEscape(writer, value);
     }
-    return WriteAscii(writer, c8'\'');
+    return try WriteAscii(writer, c8'\'');
 }
 
 /// Writes one scalar as it appears inside a quoted rendering, escaping what would otherwise be ambiguous.
@@ -160,18 +160,18 @@ pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool
 /// @param scalar the Unicode scalar value to write
 /// @returns success when the whole character was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#write-escaped-scalar
-pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> ! FormatError {
-    if scalar == 0x27 { return WriteBytes(writer, "\\'"); }
-    if scalar == 0x22 { return WriteBytes(writer, "\\\""); }
-    if scalar == 0x5C { return WriteBytes(writer, "\\\\"); }
-    if scalar == 0x0A { return WriteBytes(writer, "\\n"); }
-    if scalar == 0x0D { return WriteBytes(writer, "\\r"); }
-    if scalar == 0x09 { return WriteBytes(writer, "\\t"); }
-    if scalar == 0x00 { return WriteBytes(writer, "\\0"); }
+pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) throws FormatError {
+    if scalar == 0x27 { return try WriteBytes(writer, "\\'"); }
+    if scalar == 0x22 { return try WriteBytes(writer, "\\\""); }
+    if scalar == 0x5C { return try WriteBytes(writer, "\\\\"); }
+    if scalar == 0x0A { return try WriteBytes(writer, "\\n"); }
+    if scalar == 0x0D { return try WriteBytes(writer, "\\r"); }
+    if scalar == 0x09 { return try WriteBytes(writer, "\\t"); }
+    if scalar == 0x00 { return try WriteBytes(writer, "\\0"); }
     if scalar < 0x20 || scalar == 0x7F || (scalar >= 0x80 && scalar <= 0x9F) {
-        return WriteInvalidEscape(writer, scalar as uint64);
+        return try WriteInvalidEscape(writer, scalar as uint64);
     }
-    return WriteScalar(writer, scalar as char32);
+    return try WriteScalar(writer, scalar as char32);
 }
 
 /// Reports how much fill a spec asks for on each side of a rendering `occupied` characters wide.

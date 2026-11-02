@@ -48,29 +48,29 @@ func IsZoneName(name: char8[..]) -> bool {
 }
 
 // The whole file at `path`, or fails with `NotFound` when it is not there.
-func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneError {
+func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> throws TimeZoneError {
     let native = OsString::FromText(allocator, path);
-    var file = File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
+    var file = try File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
         error => {
             if error.kind == IoErrorKind::NotFound || error.kind == IoErrorKind::NotDirectory {
-                fail TimeZoneError::NotFound;
+                throw .NotFound;
             }
-            fail TimeZoneError::Unreadable;
-        }
+            throw .Unreadable;
+        },
     };
     var bytes = Vector<byte>(allocator);
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
-        match file.Read(chunk[..]) {
-            .Success(count) => {
-                // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
-                let read = unsafe { (chunk[..count].data as *byte)[..count] };
-                bytes.PushSlice(read);
-            },
-            .Failure(error) => {
+        try {
+            let count = file.Read(chunk[..]);
+            // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
+            let read = unsafe { (chunk[..count].data as *byte)[..count] };
+            bytes.PushSlice(read);
+        } catch {
+            error => {
                 if error.kind == IoErrorKind::EndOfStream { break; }
-                fail TimeZoneError::Unreadable;
-            }
+                throw .Unreadable;
+            },
         }
     }
     return move bytes;
@@ -98,43 +98,45 @@ extend TimeZone {
     /// @param name the zone's name, such as `Europe/Paris`
     /// @returns the zone, or fails with `NotFound`, `InvalidName` or `InvalidData`
     /// @see https://rux-lang.dev/docs/api/timezone/zone#load
-    pub func Load(allocator: Allocator, name: char8[..]) -> Self ! TimeZoneError {
-        if !IsZoneName(name) { fail TimeZoneError::InvalidName; }
+    pub func Load(allocator: Allocator, name: char8[..]) -> Self throws TimeZoneError {
+        if !IsZoneName(name) { throw .InvalidName; }
         var directory = Vector<char8>(allocator);
         match Variable("TZDIR") {
             .Some(value) => {
                 if AsciiText(value, directory) && directory.Length() > 0u {
-                    return Self::LoadFrom(allocator, directory.AsSlice(), name);
+                    return try Self::LoadFrom(allocator, directory.AsSlice(), name);
                 }
             },
             none => {}
         }
         when #target.os == .Windows {
-            fail TimeZoneError::NotFound;
+            throw .NotFound;
         }
         else {
             var index: uint = 0;
             while index < 4u {
-                match Self::LoadFrom(allocator, SystemDirectory(index), name) {
-                    .Success(zone) => return move zone,
-                    .Failure(error) => {
-                        if error != TimeZoneError::NotFound { fail error; }
-                    }
+                try {
+                    let zone = Self::LoadFrom(allocator, SystemDirectory(index), name);
+                    return move zone;
+                } catch {
+                    error => {
+                        if error != TimeZoneError::NotFound { throw error; }
+                    },
                 }
                 index = index + 1;
             }
-            fail TimeZoneError::NotFound;
+            throw .NotFound;
         }
     }
 
     // Loads `name` from `directory`.
-    func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> Self ! TimeZoneError {
+    func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> Self throws TimeZoneError {
         var path = Vector<char8>(allocator);
         path.PushSlice(directory);
         path.Push(c8'/');
         path.PushSlice(name);
-        let data = ReadFile(allocator, path.AsSlice())?;
-        return Self::FromTzif(allocator, name, data.AsSlice())?;
+        let data = try ReadFile(allocator, path.AsSlice());
+        return try Self::FromTzif(allocator, name, data.AsSlice());
     }
 
     /// The zone the system is set to.
@@ -144,9 +146,9 @@ extend TimeZone {
     /// @param allocator what the zone is kept in
     /// @returns the zone, or fails when the system's setting cannot be read
     /// @see https://rux-lang.dev/docs/api/timezone/zone#local
-    pub func Local(allocator: Allocator) -> Self ! TimeZoneError {
+    pub func Local(allocator: Allocator) -> Self throws TimeZoneError {
         when #target.os == .Windows {
-            return Self::WindowsLocal(allocator)?;
+            return try Self::WindowsLocal(allocator);
         }
         else {
             var setting = Vector<char8>(allocator);
@@ -158,24 +160,26 @@ extend TimeZone {
             }
             var text = setting.AsSlice();
             if text.length == 0u {
-                let data = ReadFile(allocator, "/etc/localtime")?;
-                return Self::FromTzif(allocator, "Local", data.AsSlice())?;
+                let data = try ReadFile(allocator, "/etc/localtime");
+                return try Self::FromTzif(allocator, "Local", data.AsSlice());
             }
             if text[0] == ':' { text = text[1..]; }
             if text.length > 0u && text[0] == '/' {
-                let data = ReadFile(allocator, text)?;
-                return Self::FromTzif(allocator, text, data.AsSlice())?;
+                let data = try ReadFile(allocator, text);
+                return try Self::FromTzif(allocator, text, data.AsSlice());
             }
-            match Self::Load(allocator, text) {
-                .Success(zone) => return move zone,
-                .Failure(_) => {}
+            try {
+                let zone = Self::Load(allocator, text);
+                return move zone;
+            } catch {
+                _ => {},
             }
-            return Self::FromRule(allocator, text, text)?;
+            return try Self::FromRule(allocator, text, text);
         }
     }
 
     // The Windows zone, from the system's rules.
-    func WindowsLocal(allocator: Allocator) -> Self ! TimeZoneError {
+    func WindowsLocal(allocator: Allocator) -> Self throws TimeZoneError {
         when #target.os == .Windows {
             var information = TimeZoneInformation {
                 bias: 0, standardName: [0u16; 32], standardDate: EmptyRuleDate(), standardBias: 0,
@@ -183,7 +187,7 @@ extend TimeZone {
             };
             // Safety: `information` is a local `TimeZoneInformation`, which the call fills.
             let status = unsafe { GetTimeZoneInformation(@information) };
-            if status == 0xFFFFFFFFu32 { fail TimeZoneError::Unreadable; }
+            if status == 0xFFFFFFFFu32 { throw .Unreadable; }
             var zone = Self::Empty(allocator, "Local");
             var rule = NoRule();
             rule.present = true;
@@ -206,7 +210,7 @@ extend TimeZone {
             return move zone;
         }
         else {
-            fail TimeZoneError::NotFound;
+            throw .NotFound;
         }
     }
 }

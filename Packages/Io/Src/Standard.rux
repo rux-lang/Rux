@@ -52,7 +52,7 @@ func PlatformFailure(raw: int32) -> IoError {
 }
 
 // One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
-func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoError {
+func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint throws IoError {
     if bytes.length == 0 { return 0; }
     when #target.os == .Windows {
         if !console {
@@ -63,7 +63,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
             let accepted = unsafe { WriteFile(handle, bytes.data as *opaque, count, @written, null) };
             if !accepted {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                fail PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(unsafe { GetLastError() } as int32);
             }
             return written as uint;
         }
@@ -93,7 +93,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
             if units <= 0 {
                 if offset > 0 { return offset; }
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                fail PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(unsafe { GetLastError() } as int32);
             }
             var sent: uint = 0;
             while sent < units as uint {
@@ -106,11 +106,11 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
                 if !accepted {
                     if offset > 0 { return offset; }
                     // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                    fail PlatformFailure(unsafe { GetLastError() } as int32);
+                    throw PlatformFailure(unsafe { GetLastError() } as int32);
                 }
                 if written == 0 {
                     if offset > 0 { return offset; }
-                    fail IoError::Of(IoErrorKind::WriteZero);
+                    throw IoError::Of(IoErrorKind::WriteZero);
                 }
                 sent = sent + written as uint;
             }
@@ -121,7 +121,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
     else {
         // Safety: `bytes` is readable for `bytes.length` bytes, and `handle` is a standard descriptor.
         let result = unsafe { Write(handle, bytes.data as *opaque, bytes.length) };
-        if result < 0 { fail PlatformFailure((0 - result) as int32); }
+        if result < 0 { throw PlatformFailure((0 - result) as int32); }
         return result as uint;
     }
 }
@@ -176,7 +176,7 @@ extend StandardIn : Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/standard-in#read
-    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
         if into.length == 0 { return 0; }
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
@@ -187,7 +187,7 @@ extend StandardIn : Reader {
         }
         if served == into.length { return served; }
         when #target.os == .Windows {
-            if self.console { return self.ReadConsole(into, served); }
+            if self.console { return try self.ReadConsole(into, served); }
             var read: uint32 = 0;
             let room = into.length - served;
             let count = if room > 0x100000 { 0x100000u32 } else { room as uint32 };
@@ -199,11 +199,11 @@ extend StandardIn : Reader {
                 let raw = unsafe { GetLastError() } as int32;
                 if served > 0 { return served; }
                 // A pipe whose writing end has closed reports through a failure; it means the stream is over.
-                if raw == 109 { fail IoError::Of(IoErrorKind::EndOfStream); }
-                fail PlatformFailure(raw);
+                if raw == 109 { throw IoError::Of(IoErrorKind::EndOfStream); }
+                throw PlatformFailure(raw);
             }
             let total = served + read as uint;
-            if total == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            if total == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
             return total;
         }
         else {
@@ -211,10 +211,10 @@ extend StandardIn : Reader {
             let result = unsafe { Read(self.handle, @into[served] as *var opaque, into.length - served) };
             if result < 0 {
                 if served > 0 { return served; }
-                fail PlatformFailure((0 - result) as int32);
+                throw PlatformFailure((0 - result) as int32);
             }
             let total = served + result as uint;
-            if total == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            if total == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
             return total;
         }
     }
@@ -225,7 +225,7 @@ when #target.os == .Windows {
         // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
         // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
         // substitute character first in a read is the console's end-of-input.
-        func ReadConsole(&var self, into: var char8[..], served: uint) -> uint ! IoError {
+        func ReadConsole(&var self, into: var char8[..], served: uint) -> uint throws IoError {
             var wide: char16[257];
             var base: uint = 0;
             if self.hasHeldUnit {
@@ -250,13 +250,13 @@ when #target.os == .Windows {
             if status == 0 {
                 if served > 0 { return served; }
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                fail PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(unsafe { GetLastError() } as int32);
             }
             var total = base + read as uint;
             // Nothing at all, or Ctrl-Z at the start of a line, is how a console says the input is over.
             if total == 0 || (wide[0] as uint16) == 0x1A {
                 if served > 0 { return served; }
-                fail IoError::Of(IoErrorKind::EndOfStream);
+                throw IoError::Of(IoErrorKind::EndOfStream);
             }
             let last = wide[total - 1] as uint16;
             if last >= 0xD800 && last <= 0xDBFF {
@@ -274,7 +274,7 @@ when #target.os == .Windows {
             if converted <= 0 {
                 if served > 0 { return served; }
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                fail PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(unsafe { GetLastError() } as int32);
             }
             var index: uint = 0;
             var at = served;
@@ -329,14 +329,14 @@ extend StandardOut : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-out#write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        return WriteRaw(self.handle, self.console, bytes);
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+        return try WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-out#flush
-    pub func Flush(&var self) -> ! IoError {
+    pub func Flush(&var self) throws IoError {
     }
 }
 
@@ -373,13 +373,13 @@ extend StandardError : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-error#write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        return WriteRaw(self.handle, self.console, bytes);
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+        return try WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-error#flush
-    pub func Flush(&var self) -> ! IoError {
+    pub func Flush(&var self) throws IoError {
     }
 }

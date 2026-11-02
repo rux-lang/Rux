@@ -64,26 +64,26 @@ extend char16[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let units = self[..];
         var before: uint = 0;
         var after: uint = 0;
         MeasurePadding(spec, CountUtf16(units), @before, @after);
-        WriteFill(writer, spec, before)?;
+        try WriteFill(writer, spec, before);
         var index: uint = 0;
         while index < units.length {
             var scalar: uint32 = 0;
             var width: uint = 0;
             if DecodeUtf16(units, index, @scalar, @width) {
-                WriteScalar(writer, scalar as char32)?;
+                try WriteScalar(writer, scalar as char32);
             }
             else {
-                WriteScalar(writer, ReplacementCharacter)?;
+                try WriteScalar(writer, ReplacementCharacter);
             }
             index = index + width;
         }
-        return WriteFill(writer, spec, after);
+        return try WriteFill(writer, spec, after);
     }
 }
 
@@ -97,23 +97,23 @@ extend char16[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let units = self[..];
-        WriteAscii(writer, c8'"')?;
+        try WriteAscii(writer, c8'"');
         var index: uint = 0;
         while index < units.length {
             var scalar: uint32 = 0;
             var width: uint = 0;
             if DecodeUtf16(units, index, @scalar, @width) {
-                WriteEscapedScalar(writer, scalar)?;
+                try WriteEscapedScalar(writer, scalar);
             }
             else {
-                WriteInvalidEscape(writer, scalar as uint64)?;
+                try WriteInvalidEscape(writer, scalar as uint64);
             }
             index = index + width;
         }
-        return WriteAscii(writer, c8'"');
+        return try WriteAscii(writer, c8'"');
     }
 }
 
@@ -126,26 +126,26 @@ extend char32[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let units = self[..];
         var before: uint = 0;
         var after: uint = 0;
         MeasurePadding(spec, units.length, @before, @after);
-        WriteFill(writer, spec, before)?;
+        try WriteFill(writer, spec, before);
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
             let value = unsafe { units.data[index] } as uint32;
             if IsWideScalarValue(value as uint64) {
-                WriteScalar(writer, value as char32)?;
+                try WriteScalar(writer, value as char32);
             }
             else {
-                WriteScalar(writer, ReplacementCharacter)?;
+                try WriteScalar(writer, ReplacementCharacter);
             }
             index = index + 1;
         }
-        return WriteFill(writer, spec, after);
+        return try WriteFill(writer, spec, after);
     }
 }
 
@@ -156,22 +156,22 @@ extend char32[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         let units = self[..];
-        WriteAscii(writer, c8'"')?;
+        try WriteAscii(writer, c8'"');
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
             let value = unsafe { units.data[index] } as uint32;
             if IsWideScalarValue(value as uint64) {
-                WriteEscapedScalar(writer, value)?;
+                try WriteEscapedScalar(writer, value);
             }
             else {
-                WriteInvalidEscape(writer, value as uint64)?;
+                try WriteInvalidEscape(writer, value as uint64);
             }
             index = index + 1;
         }
-        return WriteAscii(writer, c8'"');
+        return try WriteAscii(writer, c8'"');
     }
 }

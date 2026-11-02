@@ -69,14 +69,14 @@ func IsNetworkScheme(scheme: char8[..]) -> bool {
 }
 
 // Builds a normalized URL from pieces, which must include a scheme.
-func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
-    let scheme = pieces.scheme ?? fail UrlError::MissingScheme;
-    if scheme.length == 0 || !IsAlpha(scheme[0] as uint8) { fail UrlError::InvalidScheme; }
+func Compose(allocator: Allocator, pieces: &Pieces) -> Url throws UrlError {
+    let scheme = pieces.scheme ?? throw .MissingScheme;
+    if scheme.length == 0 || !IsAlpha(scheme[0] as uint8) { throw .InvalidScheme; }
     var out = Bytes(allocator);
     var index: uint = 0;
     while index < scheme.length {
         let c = scheme[index] as uint8;
-        if !(IsAlpha(c) || IsDigit(c) || c == 0x2Bu8 || c == 0x2Du8 || c == 0x2Eu8) { fail UrlError::InvalidScheme; }
+        if !(IsAlpha(c) || IsDigit(c) || c == 0x2Bu8 || c == 0x2Du8 || c == 0x2Eu8) { throw .InvalidScheme; }
         out.Push(Lower(c));
         index = index + 1;
     }
@@ -97,11 +97,11 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
                 url.userinfoStart = out.length;
                 var colon: uint = 0;
                 while colon < userinfo.length && userinfo[colon] != ':' { colon = colon + 1; }
-                AppendNormalized(out, userinfo[..colon], Component::Userinfo)?;
+                try AppendNormalized(out, userinfo[..colon], Component::Userinfo);
                 url.usernameEnd = out.length;
                 if colon < userinfo.length {
                     out.Push(c8':');
-                    AppendNormalized(out, userinfo[colon + 1..], Component::Userinfo)?;
+                    try AppendNormalized(out, userinfo[colon + 1..], Component::Userinfo);
                 }
                 url.userinfoEnd = out.length;
                 out.Push(c8'@');
@@ -110,8 +110,8 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         }
         let host = pieces.host;
         if host.length > 0 && host[0] == '[' {
-            if host.length < 2u || host[host.length - 1] != ']' { fail UrlError::InvalidHost; }
-            let groups = ParseIpv6(host[1..host.length - 1]) ?? fail UrlError::InvalidHost;
+            if host.length < 2u || host[host.length - 1] != ']' { throw .InvalidHost; }
+            let groups = ParseIpv6(host[1..host.length - 1]) ?? throw .InvalidHost;
             out.Push(c8'[');
             url.hostStart = out.length;
             AppendIpv6(out, groups);
@@ -121,14 +121,14 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         }
         else {
             url.hostStart = out.length;
-            AppendNormalized(out, host, Component::Host)?;
+            try AppendNormalized(out, host, Component::Host);
             url.hostEnd = out.length;
             url.hostKind = if ParseIpv4(out.View()[url.hostStart..url.hostEnd]) != none {
                 HostKind::Ipv4
             } else {
                 HostKind::Domain
             };
-            if network && url.hostEnd == url.hostStart { fail UrlError::InvalidHost; }
+            if network && url.hostEnd == url.hostStart { throw .InvalidHost; }
         }
         match pieces.port {
             .Some(port) => {
@@ -137,9 +137,9 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
                     var digit: uint = 0;
                     while digit < port.length {
                         let c = port[digit] as uint8;
-                        if !IsDigit(c) { fail UrlError::InvalidPort; }
+                        if !IsDigit(c) { throw .InvalidPort; }
                         value = value * 10u + (c - 0x30u8) as uint;
-                        if value > 65535u { fail UrlError::InvalidPort; }
+                        if value > 65535u { throw .InvalidPort; }
                         digit = digit + 1;
                     }
                     let defaulted = DefaultPort(scheme);
@@ -159,7 +159,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
 
     url.pathStart = out.length;
     var path = Bytes(allocator);
-    AppendNormalized(path, pieces.path, Component::Path)?;
+    try AppendNormalized(path, pieces.path, Component::Path);
     RemoveDotSegments(out, path.View());
     if pieces.hasAuthority && network && out.length == url.pathStart { out.Push(c8'/'); }
     url.pathEnd = out.length;
@@ -169,7 +169,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             out.Push(c8'?');
             url.hasQuery = true;
             url.queryStart = out.length;
-            AppendNormalized(out, query, Component::Query)?;
+            try AppendNormalized(out, query, Component::Query);
             url.queryEnd = out.length;
         },
         none => {}
@@ -179,7 +179,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             out.Push(c8'#');
             url.hasFragment = true;
             url.fragmentStart = out.length;
-            AppendNormalized(out, fragment, Component::Query)?;
+            try AppendNormalized(out, fragment, Component::Query);
         },
         none => {}
     }
@@ -220,9 +220,9 @@ extend Url {
     /// @param text the URL
     /// @returns the URL, or fails with what is wrong with it; a relative reference fails with `MissingScheme`
     /// @see https://rux-lang.dev/docs/api/url/url#parse
-    pub func Parse(allocator: Allocator, text: char8[..]) -> Self ! UrlError {
-        let pieces = SplitReference(text)?;
-        return Compose(allocator, pieces);
+    pub func Parse(allocator: Allocator, text: char8[..]) -> Self throws UrlError {
+        let pieces = try SplitReference(text);
+        return try Compose(allocator, pieces);
     }
 
     /// Resolves `reference` against this URL, as a browser resolves a link on a page, following section 5 of
@@ -231,9 +231,9 @@ extend Url {
     /// @param reference an absolute URL or a relative reference
     /// @returns the resolved URL, kept with this URL's allocator
     /// @see https://rux-lang.dev/docs/api/url/url#resolve
-    pub func Resolve(&self, reference: char8[..]) -> Self ! UrlError {
-        var target = SplitReference(reference)?;
-        if IsSet(target.scheme) { return Compose(self.allocator, target); }
+    pub func Resolve(&self, reference: char8[..]) -> Self throws UrlError {
+        var target = try SplitReference(reference);
+        if IsSet(target.scheme) { return try Compose(self.allocator, target); }
         var merged = Bytes(self.allocator);
         target.scheme = self.Scheme();
         if !target.hasAuthority {
@@ -256,7 +256,7 @@ extend Url {
                 target.path = merged.View();
             }
         }
-        return Compose(self.allocator, target);
+        return try Compose(self.allocator, target);
     }
 
     /// The whole URL, in normalized form.
@@ -365,33 +365,33 @@ extend Url {
     /// @param path the new path, percent-encoded or not
     /// @returns nothing, or fails when the path cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-path
-    pub func SetPath(&var self, path: char8[..]) -> ! UrlError {
+    pub func SetPath(&var self, path: char8[..]) throws UrlError {
         var pieces = self.Pieces();
         var rooted = Bytes(self.allocator);
         if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/'); }
         rooted.PushAll(path);
         pieces.path = rooted.View();
-        self = move Compose(self.allocator, pieces)?;
+        self = try move Compose(self.allocator, pieces);
     }
 
     /// Replaces the query, or removes it with none.
     /// @param query the new query without its `?`, percent-encoded or not
     /// @returns nothing, or fails when the query cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-query
-    pub func SetQuery(&var self, query: char8[..]?) -> ! UrlError {
+    pub func SetQuery(&var self, query: char8[..]?) throws UrlError {
         var pieces = self.Pieces();
         pieces.query = query;
-        self = move Compose(self.allocator, pieces)?;
+        self = try move Compose(self.allocator, pieces);
     }
 
     /// Replaces the fragment, or removes it with none.
     /// @param fragment the new fragment without its `#`, percent-encoded or not
     /// @returns nothing, or fails when the fragment cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-fragment
-    pub func SetFragment(&var self, fragment: char8[..]?) -> ! UrlError {
+    pub func SetFragment(&var self, fragment: char8[..]?) throws UrlError {
         var pieces = self.Pieces();
         pieces.fragment = fragment;
-        self = move Compose(self.allocator, pieces)?;
+        self = try move Compose(self.allocator, pieces);
     }
 
     /// Whether two URLs are the same, which after normalization means the same text.

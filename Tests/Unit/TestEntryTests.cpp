@@ -77,7 +77,7 @@ when true {
 )");
     std::vector<Diagnostic> diagnostics;
     CHECK_FALSE(BuildForTests(fixture, diagnostics).ok);
-    CHECK(Reports(diagnostics, "'#Test' function 'Counts' must return nothing or '! TestFailure'"));
+    CHECK(Reports(diagnostics, "'#Test' function 'Counts' must return nothing or declare 'throws TestFailure'"));
     CHECK(Reports(diagnostics, "a '#Test' function cannot be declared inside 'when'"));
 }
 

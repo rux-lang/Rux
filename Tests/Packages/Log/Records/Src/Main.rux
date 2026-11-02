@@ -19,8 +19,8 @@ struct MemorySink {
 }
 
 extend MemorySink : Writer {
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        if self.broken { fail IoError::Of(IoErrorKind::BrokenPipe); }
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+        if self.broken { throw IoError::Of(IoErrorKind::BrokenPipe); }
         var index: uint = 0;
         while index < bytes.length {
             // Safety: every sink is built with `memory` at the local `memory` of `Main`, which outlives each logger.
@@ -33,7 +33,7 @@ extend MemorySink : Writer {
         return bytes.length;
     }
 
-    pub func Flush(&var self) -> ! IoError {}
+    pub func Flush(&var self) throws IoError {}
 }
 
 func Same(left: char8[..], right: char8[..]) -> bool {

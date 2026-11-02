@@ -10,7 +10,7 @@ import Memory::{ IsPointerAligned, Set };
 struct ByteRun { bytes: uint8[9]; }
 struct Empty {}
 
-func Main() -> ! AllocError {
+func Main() throws AllocError {
     // A layout that exists is valid, so the refusals happen at construction.
     Assert(!(Layout::New(64, 0) is Layout), "an alignment of zero is not a layout");
     Assert(!(Layout::New(64, 3) is Layout), "and neither is one that is not a power of two");
@@ -55,19 +55,19 @@ func Main() -> ! AllocError {
     // A concrete allocator can be borrowed directly as an interface view. The view changes the same allocator and
     // owns nothing, so it cannot accidentally duplicate or outlive allocator state.
     let borrowed: &var Allocator = allocator;
-    let throughView = borrowed.Allocate(layout)?;
-    borrowed.Deallocate(throughView, layout)?;
+    let throughView = try borrowed.Allocate(layout);
+    try borrowed.Deallocate(throughView, layout);
 
     // A zero-sized layout gives the shared empty block rather than null, so no caller has to branch.
     var empty: *var opaque = null;
     let zero = Layout::New(0, 16) ?? layout;
-    empty = allocator.Allocate(zero)?;
+    empty = try allocator.Allocate(zero);
     Assert(empty != null && IsEmptyBlock(empty), "and reports the shared empty block");
     Assert(empty == EmptyBlockAddress(), "which is the same address every time");
-    allocator.Deallocate(empty, zero)?;
+    try allocator.Deallocate(empty, zero);
 
     // An ordinary allocation is aligned to what was asked for, and the whole size is usable.
-    let block = allocator.Allocate(layout)?;
+    let block = try allocator.Allocate(layout);
     Assert(block != null, "and reports an address");
     Assert(IsPointerAligned(block as *opaque, 16), "which satisfies the layout's alignment");
     // Safety: `block` is a live 64-byte allocation, so all 64 bytes are writable and offsets 0 and 63 readable.
@@ -81,21 +81,35 @@ func Main() -> ! AllocError {
     // A stricter alignment than a page still works, because the allocator pads for it.
     var aligned: *var opaque = null;
     let strict = Layout::New(32, 4096) ?? layout;
-    aligned = allocator.Allocate(strict)?;
+    aligned = try allocator.Allocate(strict);
     Assert(IsPointerAligned(aligned as *opaque, 4096), "and really is page-aligned");
-    allocator.Deallocate(aligned, strict)?;
+    try allocator.Deallocate(aligned, strict);
 
     // A release that does not match its allocation is reported rather than corrupting anything.
-    Assert(Refusal(allocator.Deallocate(block, odd)) == AllocError::InvalidBlock, "a mismatched layout is refused");
-    Assert(Refusal(allocator.Deallocate(null, layout)) == AllocError::InvalidBlock, "and so is a null block");
+    try {
+        allocator.Deallocate(block, odd);
+        Panic("the allocator was expected to refuse");
+    } catch {
+        refusal => Assert(refusal == AllocError::InvalidBlock, "a mismatched layout is refused"),
+    }
+    try {
+        allocator.Deallocate(null, layout);
+        Panic("the allocator was expected to refuse");
+    } catch {
+        refusal => Assert(refusal == AllocError::InvalidBlock, "and so is a null block"),
+    }
     var stackValue: uint64 = 0;
-    Assert(Refusal(allocator.Deallocate(@stackValue as *var opaque, layout)) == AllocError::InvalidBlock,
-           "and a pointer this allocator never gave out");
+    try {
+        allocator.Deallocate(@stackValue as *var opaque, layout);
+        Panic("the allocator was expected to refuse");
+    } catch {
+        refusal => Assert(refusal == AllocError::InvalidBlock, "and a pointer this allocator never gave out"),
+    }
 
     // Reallocation keeps what fits and reports the address to use.
     var grown: *var opaque = null;
     let larger = Layout::New(256, 16) ?? layout;
-    grown = allocator.Reallocate(block, layout, larger)?;
+    grown = try allocator.Reallocate(block, layout, larger);
     Assert(grown != null, "and reports where the block now is");
     // Safety: `grown` is the live 256-byte block the reallocation returned, so offsets 0 and 63 are inside it.
     let (grownFront, grownBack) = unsafe {
@@ -106,23 +120,19 @@ func Main() -> ! AllocError {
 
     var shrunk: *var opaque = null;
     let smaller = Layout::New(16, 16) ?? layout;
-    shrunk = allocator.Reallocate(grown, larger, smaller)?;
+    shrunk = try allocator.Reallocate(grown, larger, smaller);
     // Safety: `shrunk` is the live 16-byte block the reallocation returned, so its first byte is readable.
     let shrunkFront = unsafe { *(shrunk as *var byte) };
     Assert(shrunkFront == 0xC3 as byte, "and keeps what still fits");
 
     // The two layouts must share an alignment; anything else is refused rather than silently moved.
     let realigned = Layout::New(16, 32) ?? layout;
-    Assert(Refusal(allocator.Reallocate(shrunk, smaller, realigned)) == AllocError::Unsupported,
-           "changing the alignment is refused");
-    allocator.Deallocate(shrunk, smaller)?;
+    try {
+        allocator.Reallocate(shrunk, smaller, realigned);
+        Panic("the allocator was expected to refuse");
+    } catch {
+        refusal => Assert(refusal == AllocError::Unsupported, "changing the alignment is refused"),
+    }
+    try allocator.Deallocate(shrunk, smaller);
 }
 
-/// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
-/// refusal cannot pass by accident.
-func Refusal<T>(outcome: T ! AllocError) -> AllocError {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the allocator was expected to refuse")
-    };
-}

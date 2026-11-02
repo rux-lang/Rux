@@ -6,10 +6,10 @@
 import Text::{ FormatError, TextWriter, WriteAscii, WriteBytes, WriteScalar };
 
 // Writes `count` spaces.
-func WriteSpaces(writer: &var TextWriter, count: uint) -> ! FormatError {
+func WriteSpaces(writer: &var TextWriter, count: uint) throws FormatError {
     var written: uint = 0;
     while written < count {
-        WriteAscii(writer, c8' ')?;
+        try WriteAscii(writer, c8' ');
         written = written + 1;
     }
     return;
@@ -25,20 +25,20 @@ func OptionWidth(option: &OptionSpec) -> uint {
 }
 
 // Writes an option's left column.
-func WriteOptionColumn(writer: &var TextWriter, option: &OptionSpec) -> ! FormatError {
+func WriteOptionColumn(writer: &var TextWriter, option: &OptionSpec) throws FormatError {
     if option.short != '\0' {
-        WriteAscii(writer, c8'-')?;
-        WriteScalar(writer, option.short)?;
-        WriteBytes(writer, ", --")?;
+        try WriteAscii(writer, c8'-');
+        try WriteScalar(writer, option.short);
+        try WriteBytes(writer, ", --");
     }
     else {
-        WriteBytes(writer, "    --")?;
+        try WriteBytes(writer, "    --");
     }
-    WriteBytes(writer, option.name)?;
+    try WriteBytes(writer, option.name);
     if option.value.length > 0 {
-        WriteBytes(writer, " <")?;
-        WriteBytes(writer, option.value)?;
-        WriteAscii(writer, c8'>')?;
+        try WriteBytes(writer, " <");
+        try WriteBytes(writer, option.value);
+        try WriteAscii(writer, c8'>');
     }
     return;
 }
@@ -66,22 +66,22 @@ func PositionalWidth(positional: &PositionalSpec) -> uint {
 }
 
 // How a positional is written in the usage line: `<name>`, `[name]` or `[name...]`.
-func WritePositionalUsage(writer: &var TextWriter, positional: &PositionalSpec) -> ! FormatError {
+func WritePositionalUsage(writer: &var TextWriter, positional: &PositionalSpec) throws FormatError {
     match positional.kind {
         .Required => {
-            WriteAscii(writer, c8'<')?;
-            WriteBytes(writer, positional.name)?;
-            WriteAscii(writer, c8'>')?;
+            try WriteAscii(writer, c8'<');
+            try WriteBytes(writer, positional.name);
+            try WriteAscii(writer, c8'>');
         },
         .Optional => {
-            WriteAscii(writer, c8'[')?;
-            WriteBytes(writer, positional.name)?;
-            WriteAscii(writer, c8']')?;
+            try WriteAscii(writer, c8'[');
+            try WriteBytes(writer, positional.name);
+            try WriteAscii(writer, c8']');
         },
         .Remaining => {
-            WriteAscii(writer, c8'[')?;
-            WriteBytes(writer, positional.name)?;
-            WriteBytes(writer, "...]")?;
+            try WriteAscii(writer, c8'[');
+            try WriteBytes(writer, positional.name);
+            try WriteBytes(writer, "...]");
         }
     }
     return;
@@ -95,22 +95,22 @@ func WritePositionalUsage(writer: &var TextWriter, positional: &PositionalSpec) 
 /// @param parent the name of the command this one is a subcommand of, or empty
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/commandline/help#write-usage
-pub func WriteUsage(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..] = "") -> ! FormatError {
-    WriteBytes(writer, "Usage: ")?;
+pub func WriteUsage(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..] = "") throws FormatError {
+    try WriteBytes(writer, "Usage: ");
     if parent.length > 0 {
-        WriteBytes(writer, parent)?;
-        WriteAscii(writer, c8' ')?;
+        try WriteBytes(writer, parent);
+        try WriteAscii(writer, c8' ');
     }
-    WriteBytes(writer, spec.name)?;
-    WriteBytes(writer, " [options]")?;
+    try WriteBytes(writer, spec.name);
+    try WriteBytes(writer, " [options]");
     for positional in spec.positionals {
-        WriteAscii(writer, c8' ')?;
-        WritePositionalUsage(writer, positional)?;
+        try WriteAscii(writer, c8' ');
+        try WritePositionalUsage(writer, positional);
     }
     if spec.commands.length > 0 {
-        WriteBytes(writer, " <command>")?;
+        try WriteBytes(writer, " <command>");
     }
-    WriteAscii(writer, c8'\n')?;
+    try WriteAscii(writer, c8'\n');
     return;
 }
 
@@ -122,25 +122,25 @@ pub func WriteUsage(spec: &CommandSpec, writer: &var TextWriter, parent: char8[.
 /// @param parent the name of the command this one is a subcommand of, or empty
 /// @returns success when the whole text was accepted
 /// @see https://rux-lang.dev/docs/api/commandline/help#write-help
-pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..] = "") -> ! FormatError {
+pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..] = "") throws FormatError {
     if spec.summary.length > 0 {
-        WriteBytes(writer, spec.summary)?;
-        WriteBytes(writer, "\n\n")?;
+        try WriteBytes(writer, spec.summary);
+        try WriteBytes(writer, "\n\n");
     }
-    WriteUsage(spec, writer, parent)?;
+    try WriteUsage(spec, writer, parent);
 
     if spec.positionals.length > 0 {
         var width: uint = 0;
         for positional in spec.positionals {
             width = if PositionalWidth(positional) > width { PositionalWidth(positional) } else { width };
         }
-        WriteBytes(writer, "\nArguments:\n")?;
+        try WriteBytes(writer, "\nArguments:\n");
         for positional in spec.positionals {
-            WriteBytes(writer, "  ")?;
-            WritePositionalUsage(writer, positional)?;
-            WriteSpaces(writer, width - PositionalWidth(positional) + 2)?;
-            WriteBytes(writer, positional.help)?;
-            WriteAscii(writer, c8'\n')?;
+            try WriteBytes(writer, "  ");
+            try WritePositionalUsage(writer, positional);
+            try WriteSpaces(writer, width - PositionalWidth(positional) + 2);
+            try WriteBytes(writer, positional.help);
+            try WriteAscii(writer, c8'\n');
         }
     }
 
@@ -158,27 +158,27 @@ pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..
     if listsVersion && OptionWidth(version) > width {
         width = OptionWidth(version);
     }
-    WriteBytes(writer, "\nOptions:\n")?;
+    try WriteBytes(writer, "\nOptions:\n");
     for option in spec.options {
-        WriteBytes(writer, "  ")?;
-        WriteOptionColumn(writer, option)?;
-        WriteSpaces(writer, width - OptionWidth(option) + 2)?;
-        WriteBytes(writer, option.help)?;
-        WriteAscii(writer, c8'\n')?;
+        try WriteBytes(writer, "  ");
+        try WriteOptionColumn(writer, option);
+        try WriteSpaces(writer, width - OptionWidth(option) + 2);
+        try WriteBytes(writer, option.help);
+        try WriteAscii(writer, c8'\n');
     }
     if listsHelp {
-        WriteBytes(writer, "  ")?;
-        WriteOptionColumn(writer, help)?;
-        WriteSpaces(writer, width - OptionWidth(help) + 2)?;
-        WriteBytes(writer, help.help)?;
-        WriteAscii(writer, c8'\n')?;
+        try WriteBytes(writer, "  ");
+        try WriteOptionColumn(writer, help);
+        try WriteSpaces(writer, width - OptionWidth(help) + 2);
+        try WriteBytes(writer, help.help);
+        try WriteAscii(writer, c8'\n');
     }
     if listsVersion {
-        WriteBytes(writer, "  ")?;
-        WriteOptionColumn(writer, version)?;
-        WriteSpaces(writer, width - OptionWidth(version) + 2)?;
-        WriteBytes(writer, version.help)?;
-        WriteAscii(writer, c8'\n')?;
+        try WriteBytes(writer, "  ");
+        try WriteOptionColumn(writer, version);
+        try WriteSpaces(writer, width - OptionWidth(version) + 2);
+        try WriteBytes(writer, version.help);
+        try WriteAscii(writer, c8'\n');
     }
 
     if spec.commands.length > 0 {
@@ -186,13 +186,13 @@ pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..
         for command in spec.commands {
             commandWidth = if command.name.length > commandWidth { command.name.length } else { commandWidth };
         }
-        WriteBytes(writer, "\nCommands:\n")?;
+        try WriteBytes(writer, "\nCommands:\n");
         for command in spec.commands {
-            WriteBytes(writer, "  ")?;
-            WriteBytes(writer, command.name)?;
-            WriteSpaces(writer, commandWidth - command.name.length + 2)?;
-            WriteBytes(writer, command.summary)?;
-            WriteAscii(writer, c8'\n')?;
+            try WriteBytes(writer, "  ");
+            try WriteBytes(writer, command.name);
+            try WriteSpaces(writer, commandWidth - command.name.length + 2);
+            try WriteBytes(writer, command.summary);
+            try WriteAscii(writer, c8'\n');
         }
     }
     return;
@@ -204,13 +204,13 @@ pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..
 /// @param writer the destination
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/commandline/help#write-version
-pub func WriteVersion(spec: &CommandSpec, writer: &var TextWriter) -> ! FormatError {
-    WriteBytes(writer, spec.name)?;
+pub func WriteVersion(spec: &CommandSpec, writer: &var TextWriter) throws FormatError {
+    try WriteBytes(writer, spec.name);
     if spec.version.length > 0 {
-        WriteAscii(writer, c8' ')?;
-        WriteBytes(writer, spec.version)?;
+        try WriteAscii(writer, c8' ');
+        try WriteBytes(writer, spec.version);
     }
-    WriteAscii(writer, c8'\n')?;
+    try WriteAscii(writer, c8'\n');
     return;
 }
 
@@ -221,11 +221,11 @@ extend Parsed {
     /// @param writer the destination
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#write-help
-    pub func WriteHelp(&self, writer: &var TextWriter) -> ! FormatError {
+    pub func WriteHelp(&self, writer: &var TextWriter) throws FormatError {
         // Safety: `self.parent`, tested for null here, is the `CommandSpec` whose `commands` hold this parse's command,
         // and the documented contract of `Parse` keeps it alive for as long as the `Parsed` result.
         let parent = if self.parent == null { "" } else { unsafe { self.parent.name } };
         let declared = self.Declared();
-        return WriteHelp(declared, writer, parent);
+        return try WriteHelp(declared, writer, parent);
     }
 }

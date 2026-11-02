@@ -10,7 +10,7 @@
 // move the file, since it owns its handle and prohibits copying, and there would be nothing left to close.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, ReadTextLine, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ File, OpenOptions };
@@ -21,115 +21,123 @@ func TextBytes(text: char8[..]) -> char8[..] {
     return text;
 }
 
-// The failure an outcome carries, which the test expects to be there.
-func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match move outcome {
-        .Success(_) => Panic("expected a failure"),
-        .Failure(error) => error
-    };
-}
-
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView();
 }
 
-func Main() -> int ! IoError {
+func Main() -> int throws IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp");
     let scratch = Path::FromView(holder.View());
 
     // Write a known body and make it durable.
-    var written = File::Open(allocator, scratch, OpenOptions::Writing())?;
+    var written = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(written.IsOpen(), "the scratch file opens for writing");
-    WriteAll(written, TextBytes("0123456789"))?;
-    written.Sync()?;
-    Assert(written.Size()? == 10, "ten bytes long, measured while open");
-    written.Close()?;
+    try WriteAll(written, TextBytes("0123456789"));
+    try written.Sync();
+    try Assert(written.Size() == 10, "ten bytes long, measured while open");
+    try written.Close();
 
     // Read it back: from the start, from the end, from the middle.
-    var reading = File::Open(allocator, scratch, OpenOptions::Reading())?;
+    var reading = try File::Open(allocator, scratch, OpenOptions::Reading());
     Assert(reading.IsOpen(), "it reopens for reading");
     var storage: char8[16];
     let head = storage[..4];
-    ReadExact(reading, head)?;
+    try ReadExact(reading, head);
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
 
-    Assert(reading.Seek(SeekFrom::End, -4)? == 6, "four back from the end is position six");
-    ReadExact(reading, head)?;
+    try Assert(reading.Seek(SeekFrom::End, -4) == 6, "four back from the end is position six");
+    try ReadExact(reading, head);
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     let room = storage[..4];
-    Assert(Refusal(reading.Read(room)).IsEnd(), "past them is the end");
-    Assert(reading.Seek(SeekFrom::Current, 0)? == 10, "and the position says so");
-    reading.Close()?;
+    try {
+        reading.Read(room);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.IsEnd(), "past them is the end"),
+    }
+    try Assert(reading.Seek(SeekFrom::Current, 0) == 10, "and the position says so");
+    try reading.Close();
 
     // Cutting the file discards the tail and nothing else.
     var cutOptions = OpenOptions();
     cutOptions.write = true;
-    var cutting = File::Open(allocator, scratch, cutOptions)?;
+    var cutting = try File::Open(allocator, scratch, cutOptions);
     Assert(cutting.IsOpen(), "it reopens for cutting");
-    cutting.SetLength(4)?;
-    Assert(cutting.Size()? == 4, "four bytes remain");
-    cutting.Close()?;
+    try cutting.SetLength(4);
+    try Assert(cutting.Size() == 4, "four bytes remain");
+    try cutting.Close();
 
     // Appended writes land at the end no matter where the position was seeked.
-    var appending = File::Open(allocator, scratch, OpenOptions::Appending())?;
+    var appending = try File::Open(allocator, scratch, OpenOptions::Appending());
     Assert(appending.IsOpen(), "it reopens for appending");
-    Assert(appending.Seek(SeekFrom::Start, 0)? == 0, "the position moves to the start");
-    WriteAll(appending, TextBytes("XY"))?;
-    Assert(appending.Size()? == 6, "at the end, not the position");
-    appending.Close()?;
+    try Assert(appending.Seek(SeekFrom::Start, 0) == 0, "the position moves to the start");
+    try WriteAll(appending, TextBytes("XY"));
+    try Assert(appending.Size() == 6, "at the end, not the position");
+    try appending.Close();
 
     // The buffered machinery stacks on a file without knowing it left memory.
-    var lines = File::Open(allocator, scratch, OpenOptions::Writing())?;
+    var lines = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(lines.IsOpen(), "the file opens once more for line content");
-    WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma"))?;
-    lines.Close()?;
-    var back = File::Open(allocator, scratch, OpenOptions::Reading())?;
+    try WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma"));
+    try lines.Close();
+    var back = try File::Open(allocator, scratch, OpenOptions::Reading());
     let backSource: Reader = back.Stream();
-    var buffered = BufferedReader::New(allocator, backSource, 8)?;
+    var buffered = try BufferedReader::New(allocator, backSource, 8);
     var builder = StringBuilder(allocator);
-    ReadTextLine(buffered, builder, 64)?;
+    try ReadTextLine(buffered, builder, 64);
     let alpha = builder.IntoString();
     let alphaWant = View("alpha");
     Assert(alpha.View().Equals(alphaWant), "normalized across the CRLF");
     var second = StringBuilder(allocator);
-    ReadTextLine(buffered, second, 64)?;
+    try ReadTextLine(buffered, second, 64);
     let beta = second.IntoString();
     let betaWant = View("beta");
     Assert(beta.View().Equals(betaWant), "exactly");
     var third = StringBuilder(allocator);
-    ReadTextLine(buffered, third, 64)?;
+    try ReadTextLine(buffered, third, 64);
     let gamma = third.IntoString();
     let gammaWant = View("gamma");
     Assert(gamma.View().Equals(gammaWant), "with everything before the end");
     var last = StringBuilder(allocator);
-    Assert(Refusal(ReadTextLine(buffered, last, 64)).IsEnd(), "and then the end");
+    try {
+        ReadTextLine(buffered, last, 64);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.IsEnd(), "and then the end"),
+    }
     last.Release();
     buffered.Release();
-    back.Close()?;
+    try back.Close();
 
     // A stored stream over a file that has since been closed is not unsafe, it is refused: the file checks its own
     // handle, so every operation through the adapter reports `InvalidHandle` rather than reaching a closed one.
     // This is the one thing the adapter can promise, and it is worth pinning, because it is what makes the
     // dangerous case — outliving the file itself — the *only* dangerous case.
-    var closed = File::Open(allocator, scratch, OpenOptions::Reading())?;
+    var closed = try File::Open(allocator, scratch, OpenOptions::Reading());
     Assert(closed.IsOpen(), "a file opens");
     var stale: Reader = closed.Stream();
-    closed.Close()?;
+    try closed.Close();
     var storage2: char8[4];
     storage2[0] = c8'z';
-    let refused = Refusal(stale.Read(storage2[..4]));
+    var caughtRefused: IoError? = none;
+    try {
+        stale.Read(storage2[..4]);
+    } catch {
+        error => { caughtRefused = error; }
+    }
+    let refused = caughtRefused ?? Panic("the operation was expected to fail");
     Assert(refused.kind == IoErrorKind::InvalidHandle, "the stream refuses through the closed file");
     Assert(storage2[0] == c8'z', "having read nothing");
 
     // And the adapter is the file, not a copy of it: what goes out through one is what the other reports.
-    var shared = File::Open(allocator, scratch, OpenOptions::Writing())?;
+    var shared = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(shared.IsOpen(), "a file opens for writing");
     var held: Writer = shared.Stream();
-    WriteAll(held, TextBytes("abcd"))?;
-    Assert(shared.Size()? == 4, "and the file itself measures them");
-    shared.Close()?;
+    try WriteAll(held, TextBytes("abcd"));
+    try Assert(shared.Size() == 4, "and the file itself measures them");
+    try shared.Close();
 
     return 0;
 }

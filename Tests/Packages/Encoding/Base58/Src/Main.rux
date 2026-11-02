@@ -26,19 +26,22 @@ func SameBytes(actual: byte[..], expected: byte[..]) -> bool {
 
 func Vector(bytes: byte[..], encoded: char8[..]) -> bool {
     var room: char8[64];
-    let written = Base58Encode(bytes, room[..]) catch { _ => return false };
+    let written = try Base58Encode(bytes, room[..]) catch { _ => return false };
     if !Same(room[..written], encoded) { return false; }
     var back: byte[64];
-    let read = Base58Decode(encoded, back[..]) catch { _ => return false };
+    let read = try Base58Decode(encoded, back[..]) catch { _ => return false };
     return SameBytes(back[..read], bytes);
 }
 
 func InvalidAt(text: char8[..], at: uint) -> bool {
     var room: byte[8] = [0x3F; 8];
-    let reported = match Base58Decode(text, room[..]) {
-        .Failure(error) => error,
-        .Success(_) => return false
-    };
+    var caught: DecodeError? = none;
+    try {
+        Base58Decode(text, room[..]);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return false;
     for value in room {
         if value != 0x3F { return false; }
     }
@@ -69,7 +72,7 @@ func Main() -> int {
     // The bound holds for the largest value of a length, which needs the most digits.
     var largest: byte[32] = [0xFF; 32];
     var room: char8[45];
-    let written = Base58Encode(largest[..], room[..Base58EncodedMaxLength(32)]) catch { _ => return 6 };
+    let written = try Base58Encode(largest[..], room[..Base58EncodedMaxLength(32)]) catch { _ => return 6 };
     if written != 44 { return 7; }
 
     // The look-alike characters the alphabet leaves out are refused where they stand.
@@ -77,22 +80,26 @@ func Main() -> int {
 
     // Too short a destination: refused, and left zeroed.
     var short: char8[10] = ['?'; 10];
-    match Base58Encode(helloBytes, short[..]) {
-        .Failure(_) => {},
-        .Success(_) => return 9
+    try {
+        Base58Encode(helloBytes, short[..]);
+        return 9;
+    } catch {
+        _ => {},
     }
     for character in short {
         if character != '\0' { return 10; }
     }
     var shortBytes: byte[4] = [0x3F; 4];
-    match Base58Decode("2NEpo7TZRRrLZSi2U", shortBytes[..]) {
-        .Failure(error) => {
+    try {
+        Base58Decode("2NEpo7TZRRrLZSi2U", shortBytes[..]);
+        return 12;
+    } catch {
+        error => {
             match error {
                 .InsufficientCapacity(_) => {},
                 _ => return 11
             }
         },
-        .Success(_) => return 12
     }
     for value in shortBytes {
         if value != 0 { return 13; }

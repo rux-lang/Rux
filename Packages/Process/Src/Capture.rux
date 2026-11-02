@@ -60,14 +60,12 @@ func DrainPipe(drain: Drain) -> Buffer<char8>? {
 func ReadAll(reader: &var PipeReader, bytes: &var Buffer<char8>) -> bool {
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
-        match reader.Read(chunk[..]) {
-            .Success(count) => {
-                bytes.PushAll(chunk[..count]) catch { _ => return false };
-            },
-            .Failure(error) => {
+        let count = try reader.Read(chunk[..]) catch {
+            error => {
                 return error.kind == IoErrorKind::EndOfStream;
-            }
-        }
+            },
+        };
+        try bytes.PushAll(chunk[..count]) catch { _ => return false };
     }
     return true;
 }
@@ -78,24 +76,24 @@ extend Command {
     /// @param allocator what the captured bytes are kept in
     /// @returns the output, the error and how the program finished
     /// @see https://rux-lang.dev/docs/api/process/command#capture
-    pub func Capture(&self, allocator: Allocator) -> CapturedOutput ! IoError {
-        if self.failure != none { fail self.failure ?? IoError::Of(IoErrorKind::Other); }
-        var child = self.Launch(self.input, Stdio::Pipe, Stdio::Pipe)?;
+    pub func Capture(&self, allocator: Allocator) -> CapturedOutput throws IoError {
+        if self.failure != none { throw self.failure ?? IoError::Of(IoErrorKind::Other); }
+        var child = try self.Launch(self.input, Stdio::Pipe, Stdio::Pipe);
         var output = child.TakeOutput() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
         let error = child.TakeError() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
-        var reader = Spawn(DrainPipe, Drain { reader: move error, allocator })
-            catch { _ => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        var reader = try Spawn(DrainPipe, Drain { reader: move error, allocator })
+            catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
         var outputBytes = Buffer<char8>(allocator);
         let outputRead = ReadAll(output, outputBytes);
         output.Close();
         var drained = reader.Join();
-        let status = child.Wait()?;
-        if !outputRead { fail IoError::Of(IoErrorKind::Other); }
+        let status = try child.Wait();
+        if !outputRead { throw IoError::Of(IoErrorKind::Other); }
         match move drained {
             .Some(errorBytes) => {
                 return CapturedOutput { status, output: move outputBytes, error: move errorBytes };
             },
-            none => fail IoError::Of(IoErrorKind::Other)
+            none => throw IoError::Of(IoErrorKind::Other)
         }
     }
 }

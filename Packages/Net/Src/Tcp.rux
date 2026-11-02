@@ -39,28 +39,28 @@ extend TcpListener {
     /// @param address the address to listen at, such as `127.0.0.1:8080`, or `0.0.0.0:8080` for every address
     /// @returns the listener, or fails with `AddressInUse`, `AddressUnavailable` or `PermissionDenied`
     /// @see https://rux-lang.dev/docs/api/net/tcp#bind
-    pub func Bind(address: SocketAddress) -> Self ! IoError {
-        let handle = OpenSocket(address, true)?;
+    pub func Bind(address: SocketAddress) -> Self throws IoError {
+        let handle = try OpenSocket(address, true);
         var listener = Self { handle };
-        BindSocket(handle, address, true)?;
-        ListenSocket(handle)?;
+        try BindSocket(handle, address, true);
+        try ListenSocket(handle);
         return move listener;
     }
 
     /// Waits for a connection and accepts it.
     /// @returns the connected stream, whose `PeerAddress` says who connected
     /// @see https://rux-lang.dev/docs/api/net/tcp#accept
-    pub func Accept(&self) -> TcpStream ! IoError {
+    pub func Accept(&self) -> TcpStream throws IoError {
         var peer = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Unspecified()), port: 0 };
-        let handle = AcceptSocket(self.handle, @peer)?;
+        let handle = try AcceptSocket(self.handle, @peer);
         return TcpStream { handle };
     }
 
     /// The address the listener is bound to, with the port the system chose for port zero.
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/tcp#listener-local-address
-    pub func LocalAddress(&self) -> SocketAddress ! IoError {
-        return SocketName(self.handle, false)?;
+    pub func LocalAddress(&self) -> SocketAddress throws IoError {
+        return try SocketName(self.handle, false);
     }
 
     /// Makes calls on the listener fail with `WouldBlock` when they would wait, or wait again.
@@ -69,8 +69,8 @@ extend TcpListener {
     /// @param enabled whether calls fail rather than wait
     /// @returns success when the mode is set
     /// @see https://rux-lang.dev/docs/api/net/tcp#listener-set-non-blocking
-    pub func SetNonBlocking(&self, enabled: bool) -> ! IoError {
-        SetSocketNonBlocking(self.handle, enabled)?;
+    pub func SetNonBlocking(&self, enabled: bool) throws IoError {
+        try SetSocketNonBlocking(self.handle, enabled);
     }
 
     /// The listener as a `Poller` watches it, valid while the listener is open.
@@ -91,57 +91,57 @@ extend TcpStream {
     /// @param address where to connect
     /// @returns the stream, or fails with `ConnectionRefused`, `Unreachable` or `TimedOut`
     /// @see https://rux-lang.dev/docs/api/net/tcp#connect
-    pub func Connect(address: SocketAddress) -> Self ! IoError {
-        let handle = OpenSocket(address, true)?;
+    pub func Connect(address: SocketAddress) -> Self throws IoError {
+        let handle = try OpenSocket(address, true);
         var stream = Self { handle };
-        ConnectSocket(handle, address)?;
+        try ConnectSocket(handle, address);
         return move stream;
     }
 
     /// The address of this end of the connection.
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/tcp#local-address
-    pub func LocalAddress(&self) -> SocketAddress ! IoError {
-        return SocketName(self.handle, false)?;
+    pub func LocalAddress(&self) -> SocketAddress throws IoError {
+        return try SocketName(self.handle, false);
     }
 
     /// The address of the other end.
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/tcp#peer-address
-    pub func PeerAddress(&self) -> SocketAddress ! IoError {
-        return SocketName(self.handle, true)?;
+    pub func PeerAddress(&self) -> SocketAddress throws IoError {
+        return try SocketName(self.handle, true);
     }
 
     /// Ends one or both directions of the connection while the socket stays open.
     /// @param direction what to end
     /// @returns nothing, or fails when the connection is already gone
     /// @see https://rux-lang.dev/docs/api/net/tcp#shutdown
-    pub func Shutdown(&self, direction: ShutdownDirection) -> ! IoError {
-        ShutdownSocket(self.handle, direction as int32)?;
+    pub func Shutdown(&self, direction: ShutdownDirection) throws IoError {
+        try ShutdownSocket(self.handle, direction as int32);
     }
 
     /// Sends small writes at once rather than gathering them, which suits request and response exchanges.
     /// @param enabled whether to
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-no-delay
-    pub func SetNoDelay(&self, enabled: bool) -> ! IoError {
-        SetIntegerOption(self.handle, 6, 1, if enabled { 1 } else { 0 })?;
+    pub func SetNoDelay(&self, enabled: bool) throws IoError {
+        try SetIntegerOption(self.handle, 6, 1, if enabled { 1 } else { 0 });
     }
 
     /// How long a read may wait before failing with `TimedOut`, or none to wait without a limit.
     /// @param timeout the limit
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-read-timeout
-    pub func SetReadTimeout(&self, timeout: Duration?) -> ! IoError {
-        SetTimeout(self.handle, true, Nanoseconds(timeout))?;
+    pub func SetReadTimeout(&self, timeout: Duration?) throws IoError {
+        try SetTimeout(self.handle, true, Nanoseconds(timeout));
     }
 
     /// How long a write may wait before failing with `TimedOut`, or none to wait without a limit.
     /// @param timeout the limit
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-write-timeout
-    pub func SetWriteTimeout(&self, timeout: Duration?) -> ! IoError {
-        SetTimeout(self.handle, false, Nanoseconds(timeout))?;
+    pub func SetWriteTimeout(&self, timeout: Duration?) throws IoError {
+        try SetTimeout(self.handle, false, Nanoseconds(timeout));
     }
 
     /// Makes calls on the stream fail with `WouldBlock` when they would wait, or wait again.
@@ -149,8 +149,8 @@ extend TcpStream {
     /// @param enabled whether calls fail rather than wait
     /// @returns success when the mode is set
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-non-blocking
-    pub func SetNonBlocking(&self, enabled: bool) -> ! IoError {
-        SetSocketNonBlocking(self.handle, enabled)?;
+    pub func SetNonBlocking(&self, enabled: bool) throws IoError {
+        try SetSocketNonBlocking(self.handle, enabled);
     }
 
     /// The stream as a `Poller` watches it, valid while the stream is open.
@@ -182,10 +182,10 @@ extend TcpStream : Reader {
     /// @param into where to put the bytes
     /// @returns how many were read, or fails with `EndOfStream` once the peer closed its side
     /// @see https://rux-lang.dev/docs/api/net/tcp#read
-    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
         if into.length == 0u { return 0; }
-        let count = ReceiveSocket(self.handle, into, null)?;
-        if count == 0u { fail IoError::Of(IoErrorKind::EndOfStream); }
+        let count = try ReceiveSocket(self.handle, into, null);
+        if count == 0u { throw IoError::Of(IoErrorKind::EndOfStream); }
         return count;
     }
 }
@@ -195,13 +195,13 @@ extend TcpStream : Writer {
     /// @param bytes the bytes
     /// @returns how many were sent
     /// @see https://rux-lang.dev/docs/api/net/tcp#write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         if bytes.length == 0u { return 0; }
-        return SendSocket(self.handle, bytes, none)?;
+        return try SendSocket(self.handle, bytes, none);
     }
 
     /// Does nothing: a stream sends what is written to it without holding any back.
     /// @returns nothing
     /// @see https://rux-lang.dev/docs/api/net/tcp#flush
-    pub func Flush(&var self) -> ! IoError {}
+    pub func Flush(&var self) throws IoError {}
 }

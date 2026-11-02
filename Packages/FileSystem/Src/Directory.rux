@@ -25,15 +25,15 @@ when #target.os {
 /// @param path the path to act on
 /// @returns success when the directory now exists
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#make-directory
-pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
-    let native = NativePath(allocator, path)?;
+pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
+    let native = try NativePath(allocator, path);
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
         // release, and a `uint16` unit is a `char16`.
         if unsafe { CreateDirectoryW(native as *char16, null) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
@@ -41,7 +41,7 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
         let result = unsafe { MkdirAt(AtFdCwd, native as *char8, 511) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -51,22 +51,22 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @param path the path to act on
 /// @returns success when the directory is gone
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#delete-directory
-pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
-    let native = NativePath(allocator, path)?;
+pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
+    let native = try NativePath(allocator, path);
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
         // release, and a `uint16` unit is a `char16`.
         if unsafe { RemoveDirectoryW(native as *char16) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
         let result = unsafe { UnlinkAt(AtFdCwd, native as *char8, RemoveDirectory) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -76,22 +76,22 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @param path the path to act on
 /// @returns success when the file is gone
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#delete-file
-pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
-    let native = NativePath(allocator, path)?;
+pub func DeleteFile(allocator: Allocator, path: Path) throws IoError {
+    let native = try NativePath(allocator, path);
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
         // release, and a `uint16` unit is a `char16`.
         if unsafe { DeleteFileW(native as *char16) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
         let result = unsafe { UnlinkAt(AtFdCwd, native as *char8, 0) };
         if result < 0 {
-            fail TranslateNative((0 - result) as int32);
+            throw TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -134,7 +134,7 @@ func DirectoryBufferSize() -> uint {
 /// @param path the path to act on
 /// @returns a cursor over the directory's entries
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#read-directory
-pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! IoError {
+pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator throws IoError {
     var iterator = DirectoryIterator {
         allocator,
         handle: NoFile(),
@@ -148,7 +148,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
     let wanted = DirectoryBufferSize();
     let layout = Layout { size: wanted, alignment: 8 };
     var borrowed = allocator;
-    let block = borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
+    let block = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
     // Safety: `block` is a fresh allocation of `wanted` bytes, so it holds `wanted` `char8`s.
     iterator.data = unsafe { block as *var char8 };
     iterator.capacity = wanted;
@@ -157,7 +157,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         // The search takes a pattern, so the path gets a separator and a star appended.
         let units = path.name.units;
         let patternLayout = Layout { size: (units.length + 3) * 2, alignment: 2 };
-        let raw = borrowed.Allocate(patternLayout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
+        let raw = try borrowed.Allocate(patternLayout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `raw` is a fresh allocation of `patternLayout`: `units.length + 3` units at their alignment.
         let pattern = unsafe { raw as *var uint16 };
         var index: uint = 0;
@@ -166,8 +166,8 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
             // Safety: `index` is below `units.length`, the loop condition.
             let unit = unsafe { units.data[index] };
             if (unit as uint32) == 0 {
-                borrowed.Deallocate(raw, patternLayout) catch { _ => {} };
-                fail IoError::Of(IoErrorKind::InvalidInput);
+                try borrowed.Deallocate(raw, patternLayout) catch { _ => {} };
+                throw IoError::Of(IoErrorKind::InvalidInput);
             }
             // Safety: `length` equals `index`, below `units.length`, and `pattern` holds `units.length + 3` units.
             unsafe { pattern[length] = unit; }
@@ -187,10 +187,10 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         // Safety: `pattern` was just NUL-terminated and a `uint16` unit is a `char16`; `iterator.data` is the
         // record buffer of `DirectoryBufferSize()` bytes, one `WIN32_FIND_DATAW`.
         let found = unsafe { FindFirstFileW(pattern as *char16, iterator.data as *var opaque) };
-        borrowed.Deallocate(raw, patternLayout) catch { _ => {} };
+        try borrowed.Deallocate(raw, patternLayout) catch { _ => {} };
         if (found as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            fail TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(unsafe { GetLastError() } as int32);
         }
         iterator.handle = found;
         iterator.pending = true;
@@ -198,11 +198,11 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         return move iterator;
     }
     else {
-        let native = NativePath(allocator, path)?;
+        let native = try NativePath(allocator, path);
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, released only after this call.
         let opened = unsafe { OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0) };
         ReleaseNativePath(allocator, native, path.name.units.length);
-        if opened < 0 { fail TranslateNative((0 - opened) as int32); }
+        if opened < 0 { throw TranslateNative((0 - opened) as int32); }
         iterator.handle = opened as int32;
         iterator.open = true;
         return move iterator;
@@ -215,8 +215,8 @@ extend DirectoryIterator {
     /// enumeration. The `.` and `..` entries are skipped.
     /// @returns the next entry's name, or `none` when the directory is done
     /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-next
-    pub func Next(&var self) -> OsString? ! IoError {
-        if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
+    pub func Next(&var self) -> OsString? throws IoError {
+        if !self.open { throw IoError::Of(IoErrorKind::InvalidHandle); }
         when #target.os == .Windows {
             while true {
                 if !self.pending {
@@ -225,7 +225,7 @@ extend DirectoryIterator {
                     if unsafe { FindNextFileW(self.handle, self.data as *var opaque) } == 0 {
                         // Safety: `GetLastError` takes nothing and reads this thread's last error code.
                         let raw = unsafe { GetLastError() };
-                        if raw != ERROR_NO_MORE_FILES { fail TranslateNative(raw as int32); }
+                        if raw != ERROR_NO_MORE_FILES { throw TranslateNative(raw as int32); }
                         return none;
                     }
                 }
@@ -273,7 +273,7 @@ extend DirectoryIterator {
                             };
                         }
                     }
-                    if filled < 0 { fail TranslateNative((0 - filled) as int32); }
+                    if filled < 0 { throw TranslateNative((0 - filled) as int32); }
                     if filled == 0 { return none; }
                     self.length = filled as uint;
                     self.offset = 0;
@@ -286,7 +286,7 @@ extend DirectoryIterator {
                 if reclen == 0 || self.offset + reclen > self.length {
                     // A zero-length record would loop forever; a torn one reaches past the buffer. Either way
                     // the kernel and this code disagree about the layout, which is worth failing loudly over.
-                    fail IoError::Of(IoErrorKind::Other);
+                    throw IoError::Of(IoErrorKind::Other);
                 }
                 self.offset = self.offset + reclen;
 
@@ -343,7 +343,9 @@ extend DirectoryIterator {
         }
         if self.data != null {
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 }) catch { _ => {} };
+            try borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 }) catch {
+                _ => {},
+            };
             self.data = null;
             self.capacity = 0;
         }

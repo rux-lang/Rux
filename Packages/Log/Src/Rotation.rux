@@ -42,13 +42,13 @@ extend RotatingFile {
     /// @param keep how many older files to keep, as `path.1` to `path.<keep>`
     /// @returns the open file, or why it could not be opened; `InvalidInput` for a zero limit or an overlong path
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#open
-    pub func Open(allocator: Allocator, path: Path, limit: uint64, keep: uint) -> Self ! IoError {
+    pub func Open(allocator: Allocator, path: Path, limit: uint64, keep: uint) -> Self throws IoError {
         if limit == 0 || path.Length() + MaxSuffixUnits > MaxRotatedUnits {
-            fail IoError::Of(IoErrorKind::InvalidInput);
+            throw IoError::Of(IoErrorKind::InvalidInput);
         }
         var owned = PathBuffer::FromPath(allocator, path);
-        var file = File::Open(allocator, owned.AsPath(), OpenOptions::Appending())?;
-        let size = file.Size()?;
+        var file = try File::Open(allocator, owned.AsPath(), OpenOptions::Appending());
+        let size = try file.Size();
         return Self { file: move file, path: move owned, limit, keep, size, allocator };
     }
 
@@ -64,17 +64,17 @@ extend RotatingFile {
     /// and every later write fails with `InvalidHandle` until a rotation succeeds.
     /// @returns success when an empty current file is open
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#rotate
-    pub func Rotate(&var self) -> ! IoError {
-        self.file.Close()?;
+    pub func Rotate(&var self) throws IoError {
+        try self.file.Close();
         var index = self.keep;
         while index > 1 {
-            MoveAside(self.allocator, self.path.AsPath(), index - 1, index)?;
+            try MoveAside(self.allocator, self.path.AsPath(), index - 1, index);
             index = index - 1;
         }
         if self.keep > 0 {
-            MoveAside(self.allocator, self.path.AsPath(), 0, 1)?;
+            try MoveAside(self.allocator, self.path.AsPath(), 0, 1);
         }
-        var reopened = File::Open(self.allocator, self.path.AsPath(), OpenOptions::Writing())?;
+        var reopened = try File::Open(self.allocator, self.path.AsPath(), OpenOptions::Writing());
         self.file = move reopened;
         self.size = 0;
     }
@@ -82,8 +82,8 @@ extend RotatingFile {
     /// Closes the current file, reporting what closing it said.
     /// @returns success when the file is closed
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#close
-    pub func Close(&var self) -> ! IoError {
-        return self.file.Close();
+    pub func Close(&var self) throws IoError {
+        return try self.file.Close();
     }
 
     /// A stored borrow of this file for a `Logger`, which keeps its destination.
@@ -101,11 +101,11 @@ extend RotatingFile : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         if self.size > 0 && self.size + (bytes.length as uint64) > self.limit {
-            self.Rotate()?;
+            try self.Rotate();
         }
-        let written = self.file.Write(bytes)?;
+        let written = try self.file.Write(bytes);
         self.size = self.size + (written as uint64);
         return written;
     }
@@ -113,8 +113,8 @@ extend RotatingFile : Writer {
     /// Flushes the current file, which holds nothing back.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#flush
-    pub func Flush(&var self) -> ! IoError {
-        return self.file.Flush();
+    pub func Flush(&var self) throws IoError {
+        return try self.file.Flush();
     }
 }
 
@@ -131,34 +131,35 @@ extend RotatingStream : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/log/rotating-stream#write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         // Safety: `RotatingFile::Stream`, the only way to make a stream, requires the file to outlive it and stay in
         // place while it exists, so `target` addresses a live `RotatingFile`.
-        return unsafe { (*self.target).Write(bytes) };
+        return try unsafe { (*self.target).Write(bytes) };
     }
 
     /// Flushes the borrowed file.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/log/rotating-stream#flush
-    pub func Flush(&var self) -> ! IoError {
+    pub func Flush(&var self) throws IoError {
         // Safety: `RotatingFile::Stream`, the only way to make a stream, requires the file to outlive it and stay in
         // place while it exists, so `target` addresses a live `RotatingFile`.
-        return unsafe { (*self.target).Flush() };
+        return try unsafe { (*self.target).Flush() };
     }
 }
 
 // Renames the file numbered `from` to the number `to`, where number zero is the current file. A missing file is
 // fine: fewer files have been moved aside yet than are kept.
-func MoveAside(allocator: Allocator, base: Path, from: uint, to: uint) -> ! IoError {
+func MoveAside(allocator: Allocator, base: Path, from: uint, to: uint) throws IoError {
     var fromUnits: OsUnit[MaxRotatedUnits];
     var toUnits: OsUnit[MaxRotatedUnits];
     let source = NumberedPath(base, from, fromUnits[..]);
     let target = NumberedPath(base, to, toUnits[..]);
-    match Rename(allocator, source, target) {
-        .Success(_) => {},
-        .Failure(error) => {
-            if error.kind != IoErrorKind::NotFound { fail error; }
-        }
+    try {
+        Rename(allocator, source, target);
+    } catch {
+        error => {
+            if error.kind != IoErrorKind::NotFound { throw error; }
+        },
     }
 }
 

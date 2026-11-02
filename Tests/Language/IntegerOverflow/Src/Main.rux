@@ -143,12 +143,12 @@ func Reports(report: char8[..], message: char8[..]) -> bool {
 func Expect(program: OsStringView, mode: char8[..], message: char8[..]) {
     var command = Command::FromNative(SystemAllocator(), program);
     command.Argument(mode);
-    match command.Capture(SystemAllocator()) {
-        .Success(captured) => {
-            Assert(!captured.Status().Success(), mode);
-            Assert(Reports(captured.Error(), message), mode);
-        },
-        .Failure(_) => Assert(false, "the child starts")
+    try {
+        let captured = command.Capture(SystemAllocator());
+        Assert(!captured.Status().Success(), mode);
+        Assert(Reports(captured.Error(), message), mode);
+    } catch {
+        _ => Assert(false, "the child starts"),
     }
 }
 

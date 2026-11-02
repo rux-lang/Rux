@@ -7,7 +7,7 @@
 // subject. A match over a closed set needs no `_` arm when it names every case, and the arms below are written without
 // one wherever that is true, so removing a case from a variant would fail to compile rather than silently fall through.
 
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 
 enum Direction: int32 {
     North = 0,
@@ -119,8 +119,8 @@ func Positive(value: int32) -> int32? {
     };
 }
 
-// `.Success` and `.Failure` each leave the other channel open, so no arm here has a whole type of its own.
-func Checked(value: int32) -> int32 ! bool {
+// `.Success` and `.Failure` each name one case of the `Result` the function returns, which is the type of both arms.
+func Checked(value: int32) -> Result<int32, bool> {
     return match value {
         0 => .Failure(true),
         _ => .Success(value)
@@ -276,8 +276,8 @@ func Main() -> int {
     // an annotation, a parameter, or the first arm that has a whole type.
     Assert(Positive(0i32) == none, "a leading none arm takes the returned optional type");
     Assert(OrZero(Positive(6i32)) == 6i32, "and the arm after it is present in that type");
-    Assert((Checked(4i32) catch { _ => -1i32 }) == 4i32, "a success arm takes the returned fallible type");
-    Assert((Checked(0i32) catch { _ => -1i32 }) == -1i32, "and so does a failure arm");
+    Assert(Checked(4i32) is .Success(4i32), "a success arm takes the returned result type");
+    Assert(Checked(0i32) is .Failure(true), "and so does a failure arm");
 
     let subject = 3i32;
     let annotated: int8? = match subject {

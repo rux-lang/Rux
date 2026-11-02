@@ -16,37 +16,35 @@ import Format::{ BitsOfFloat32, BitsOfFloat64, ParseError, ParseFloat32, ParseFl
 // cannot change the answer.
 
 func Bits(text: char8[..]) -> uint64 {
-    return match ParseFloat64(text) {
-        .Success(value) => BitsOfFloat64(value),
-        .Failure(_) => 0xFFFFFFFFFFFFFFFF
-    };
+    return if (try? ParseFloat64(text)) is .Some(value) { BitsOfFloat64(value) } else { 0xFFFFFFFFFFFFFFFF };
 }
 
 func Bits32(text: char8[..]) -> uint32 {
-    return match ParseFloat32(text) {
-        .Success(value) => BitsOfFloat32(value),
-        .Failure(_) => 0xFFFFFFFF
-    };
+    return if (try? ParseFloat32(text)) is .Some(value) { BitsOfFloat32(value) } else { 0xFFFFFFFF };
 }
 
 func Overflows(text: char8[..]) -> bool {
-    return match ParseFloat64(text) {
-        .Success(_) => false,
-        .Failure(reason) => match reason {
+    try {
+        ParseFloat64(text);
+    } catch {
+        reason => return match reason {
             .Overflow(_) => true,
             _ => false
-        }
-    };
+        },
+    }
+    return false;
 }
 
 func Overflows32(text: char8[..]) -> bool {
-    return match ParseFloat32(text) {
-        .Success(_) => false,
-        .Failure(reason) => match reason {
+    try {
+        ParseFloat32(text);
+    } catch {
+        reason => return match reason {
             .Overflow(_) => true,
             _ => false
-        }
-    };
+        },
+    }
+    return false;
 }
 
 func Main() -> int {
@@ -131,7 +129,7 @@ func Main() -> int {
     // The special spellings, exactly as formatting writes them.
     Assert(Bits("Inf") == 0x7FF0000000000000, "an infinity reads as one");
     Assert(Bits("-Inf") == 0xFFF0000000000000u64, "and a negative infinity");
-    Assert(ParseFloat64("NaN") is .Success(_), "and a NaN, which has no one pattern to check");
+    Assert((try? ParseFloat64("NaN")) is .Some(_), "and a NaN, which has no one pattern to check");
 
     // float32 is read at its own precision rather than at a float64's and narrowed, which would round twice. The
     // value below is the case that separates the two: read as a float64 first it lands on a float32 boundary and

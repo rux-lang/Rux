@@ -20,24 +20,24 @@ struct RefusingAllocator {
 }
 
 extend RefusingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` points at a `RefusalState` the test keeps alive for as long as this allocator is used.
-        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        if unsafe { self.state.refusing } { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `RefusalState`.
-        return unsafe { self.state.backing.Allocate(layout) };
+        return try unsafe { self.state.backing.Allocate(layout) };
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` points at the test's live `RefusalState`.
-        return unsafe { self.state.backing.Deallocate(block, layout) };
+        return try unsafe { self.state.backing.Deallocate(block, layout) };
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> (*var opaque) ! AllocError {
+        -> *var opaque throws AllocError {
         // Safety: `state` points at the test's live `RefusalState`.
-        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        if unsafe { self.state.refusing } { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `RefusalState`.
-        return unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
+        return try unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
     }
 }
 
@@ -76,7 +76,7 @@ func Main() -> int {
         error => {
             refusal = error;
             String(plain)
-        }
+        },
     };
     Assert(refusal == AllocError::OutOfMemory, "a refused copy is reported");
     Assert(copy.IsEmpty(), "and makes nothing");

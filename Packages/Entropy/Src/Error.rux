@@ -8,8 +8,8 @@
 // one.
 
 /// Why unpredictable bytes could not be obtained.
-/// Every case is a failure: nothing was written that a caller may rely on. A filled buffer is the success channel of
-/// the `! EntropyError` the fill returns.
+/// Every case is a failure: nothing was written that a caller may rely on. A fill that succeeds returns nothing and
+/// leaves the buffer filled; one that fails throws this.
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-error
 pub enum EntropyError {
     /// This system has no entropy source this package can reach.

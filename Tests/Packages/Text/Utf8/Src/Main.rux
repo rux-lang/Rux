@@ -9,13 +9,15 @@ import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf
 
 // Whether a run of bytes is refused, and refused for the stated reason.
 func Refuses(bytes: char8[..], expected: Utf8Error) -> bool {
-    return match Validate(bytes) {
-        .Success(_) => false,
-        .Failure(problem) => problem.reason == expected
-    };
+    try {
+        Validate(bytes);
+    } catch {
+        problem => return problem.reason == expected,
+    }
+    return false;
 }
 
-func Main() -> ! Utf8Error {
+func Main() throws Utf8Error {
     // The widths, at each boundary and one either side.
     Assert(EncodedLength(0u32 as char32) == 1, "U+0000 takes one byte");
     Assert(EncodedLength(0x7Fu32 as char32) == 1, "and so does the last one-byte value");
@@ -39,10 +41,10 @@ func Main() -> ! Utf8Error {
         let value = samples[index];
         let room = storage[..8];
         // Every scalar value encodes, and decodes again.
-        let written = Encode(value as char32, room)?;
+        let written = try Encode(value as char32, room);
         Assert(written == EncodedLength(value as char32), "in the width the table says");
 
-        let decoded = DecodeAt(storage[0..written], 0)?;
+        let decoded = try DecodeAt(storage[0..written], 0);
         Assert((decoded.scalar as uint32) == value, "to the value it started as");
         Assert(decoded.width == written, "having read exactly what was written");
         Assert(CountScalars(storage[0..written]) == 1, "and counts as one scalar value");

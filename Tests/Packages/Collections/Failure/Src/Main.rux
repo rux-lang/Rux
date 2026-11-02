@@ -75,7 +75,7 @@ func Main() -> int {
 
     // A rejected index is reported as itself, and the container is left alone.
     var rejected = false;
-    populated.Set(populated.Length(), 99) catch {
+    try populated.Set(populated.Length(), 99) catch {
         error => { rejected = error == CollectionError::IndexOutOfRange; }
     };
     if !rejected { return 50; }

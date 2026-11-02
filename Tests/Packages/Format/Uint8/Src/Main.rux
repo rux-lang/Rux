@@ -11,7 +11,7 @@ func Check(value: uint8, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if shown.WriteDisplay(writer, FormatSpec::Plain()) is .Failure(_) {
+    if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
         return code;
     }
     let actual = cursor.Written();

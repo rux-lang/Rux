@@ -23,7 +23,7 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 /// @param limit the most bytes to accept before reporting the line too long
 /// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
 /// @see https://rux-lang.dev/docs/api/io/read-line#read-text-line
-pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) -> ! IoError {
+pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) throws IoError {
     var appended: uint = 0;
     var failure: IoErrorKind? = none;
     var carry: char8[4];
@@ -32,11 +32,11 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
     var sawAnything = false;
     while true {
         var ended = false;
-        reader.Fill() catch {
+        try reader.Fill() catch {
             error if error.IsEnd() => {
                 ended = true;
             },
-            error => fail error
+            error => throw error
         };
         if ended {
             // The stream is over. A sequence still waiting for its continuation bytes was cut by the end,
@@ -48,15 +48,15 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 if appended + 1 > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
-                else if builder.AppendAscii(c8'\r') is .Failure(_) {
+                else if (try? builder.AppendAscii(c8'\r')) is none {
                     failure = IoErrorKind::Other;
                 }
             }
             if failure != none {
                 builder.Clear();
-                fail IoError::Of(failure ?? IoErrorKind::Other);
+                throw IoError::Of(failure ?? IoErrorKind::Other);
             }
-            if !sawAnything { fail IoError::Of(IoErrorKind::EndOfStream); }
+            if !sawAnything { throw IoError::Of(IoErrorKind::EndOfStream); }
             return;
         }
         sawAnything = true;
@@ -80,14 +80,12 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             var width: uint = 0;
             var decodedWhole = false;
             var reason = Utf8Error::InvalidStart;
-            match DecodeAt(joined[0..carryLength + borrowed], 0) {
-                .Success(decoded) => {
-                    width = decoded.width;
-                    decodedWhole = true;
-                },
-                .Failure(problem) => {
-                    reason = problem;
-                }
+            try {
+                let decoded = DecodeAt(joined[0..carryLength + borrowed], 0);
+                width = decoded.width;
+                decodedWhole = true;
+            } catch {
+                problem => reason = problem,
             }
             if !decodedWhole && reason == Utf8Error::Truncated && borrowed == held.length {
                 // Still short — the source is trickling bytes. Take them into the carry and ask again.
@@ -125,7 +123,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 reader.Consume(1);
                 if failure != none {
                     builder.Clear();
-                    fail IoError::Of(failure ?? IoErrorKind::Other);
+                    throw IoError::Of(failure ?? IoErrorKind::Other);
                 }
                 return;
             }
@@ -133,7 +131,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 if appended + 1 > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
-                else if builder.AppendAscii(c8'\r') is .Failure(_) {
+                else if (try? builder.AppendAscii(c8'\r')) is none {
                     failure = IoErrorKind::Other;
                 }
                 else {
@@ -174,12 +172,12 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 var probe = content;
                 var valid = true;
                 var reason = Utf8Error::InvalidStart;
-                Validate(piece) catch {
+                try Validate(piece) catch {
                     problem => {
                         probe = problem.index;
                         reason = problem.reason;
                         valid = false;
-                    }
+                    },
                 };
                 var settled = content;
                 if !valid && reason == Utf8Error::Truncated && !sawFeed && !heldBackCr {
@@ -218,7 +216,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             if sawFeed {
                 if failure != none {
                     builder.Clear();
-                    fail IoError::Of(failure ?? IoErrorKind::Other);
+                    throw IoError::Of(failure ?? IoErrorKind::Other);
                 }
                 return;
             }

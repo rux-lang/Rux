@@ -25,7 +25,7 @@ func IsTrimmed(byte: uint8) -> bool {
 }
 
 // The pieces of `text`, a URL or a relative reference.
-func SplitReference(input: char8[..]) -> Pieces ! UrlError {
+func SplitReference(input: char8[..]) -> Pieces throws UrlError {
     var first: uint = 0;
     var last = input.length;
     while first < last && IsTrimmed(input[first] as uint8) { first = first + 1; }
@@ -60,7 +60,7 @@ func SplitReference(input: char8[..]) -> Pieces ! UrlError {
             if c == '/' || c == '?' || c == '#' { break; }
             end = end + 1;
         }
-        SplitAuthority(text[start..end], @pieces)?;
+        try SplitAuthority(text[start..end], @pieces);
         at = end;
     }
 
@@ -81,7 +81,7 @@ func SplitReference(input: char8[..]) -> Pieces ! UrlError {
 }
 
 // Cuts an authority into user information, host and port.
-func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> ! UrlError {
+func SplitAuthority(authority: char8[..], pieces: *var Pieces) throws UrlError {
     var hostStart: uint = 0;
     var index = authority.length;
     while index > 0 {
@@ -97,11 +97,11 @@ func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> ! UrlError {
     if rest.length > 0 && rest[0] == '[' {
         var close: uint = 1;
         while close < rest.length && rest[close] != ']' { close = close + 1; }
-        if close == rest.length { fail UrlError::InvalidHost; }
+        if close == rest.length { throw .InvalidHost; }
         // Safety: the one caller passes `@` of its own local `Pieces`, live and writable for the whole call.
         unsafe { pieces.host = rest[..close + 1]; }
         if close + 1 < rest.length {
-            if rest[close + 1] != ':' { fail UrlError::InvalidHost; }
+            if rest[close + 1] != ':' { throw .InvalidHost; }
             // Safety: the one caller passes `@` of its own local `Pieces`, live and writable for the whole call.
             unsafe { pieces.port = rest[close + 2..]; }
         }

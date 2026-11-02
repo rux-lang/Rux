@@ -26,7 +26,7 @@ when #target.os {
 /// @param port the port every address gets
 /// @returns the addresses, or fails with `NotFound` when the name has none, or with the resolver's reason
 /// @see https://rux-lang.dev/docs/api/net/resolve#resolve
-pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
+pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> throws IoError {
     var addresses = Vector<SocketAddress>(allocator);
     match IpAddress::Parse(host) {
         .Some(ip) => {
@@ -35,24 +35,24 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
         },
         none => {}
     }
-    if host.length == 0u { fail IoError::Of(IoErrorKind::InvalidInput); }
+    if host.length == 0u { throw IoError::Of(IoErrorKind::InvalidInput); }
     var index: uint = 0;
     while index < host.length {
-        if host[index] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        if host[index] as uint8 == 0u8 { throw IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
     when #target.os == .Linux {
-        return ResolveOnLinux(allocator, host, port)?;
+        return try ResolveOnLinux(allocator, host, port);
     }
     else {
-        return ResolveWithSystem(allocator, host, port, move addresses)?;
+        return try ResolveWithSystem(allocator, host, port, move addresses);
     }
 }
 
 when #target.os != .Linux {
     // Asks the system's resolver, `getaddrinfo`, for `host`'s addresses, adding each once to those in `addresses`.
     func ResolveWithSystem(allocator: Allocator, host: char8[..], port: uint16, addresses: Vector<SocketAddress>)
-        -> Vector<SocketAddress> ! IoError {
+        -> Vector<SocketAddress> throws IoError {
         var results = move addresses;
         StartNetworking();
         var name = Vector<char8>(allocator);
@@ -66,7 +66,7 @@ when #target.os != .Linux {
         // Safety: `name` ends in the NUL pushed above, `hints` is a local `AddressInfo`, and `first` is a local the
         // call writes the head of its list to.
         let code = unsafe { getaddrinfo(name.AsSlice().data, null, @hints, @first) };
-        if code != 0 { fail IoError { kind: IoErrorKind::NotFound, raw: code }; }
+        if code != 0 { throw IoError { kind: IoErrorKind::NotFound, raw: code }; }
         var node = first;
         while node != null {
             // Safety: `node` is a live node of the list `getaddrinfo` returned, which is freed only below.
@@ -92,7 +92,7 @@ when #target.os != .Linux {
         }
         // Safety: `first` is the head `getaddrinfo` returned, freed once, here.
         unsafe { freeaddrinfo(first); }
-        if results.Length() == 0u { fail IoError::Of(IoErrorKind::NotFound); }
+        if results.Length() == 0u { throw IoError::Of(IoErrorKind::NotFound); }
         return move results;
     }
 }

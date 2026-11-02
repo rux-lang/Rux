@@ -111,8 +111,8 @@ func Main() -> int {
     Assert(counter.drops == 7, "the array destroys its own elements once, after every clone");
 
     // The shape `Test::RunBenchmarks` loops over: text in a vector, visited in place.
-    let a = String::FromBytes(SystemAllocator(), "hello") catch { _ => return 1 };
-    let b = String::FromBytes(SystemAllocator(), "world") catch { _ => return 2 };
+    let a = try String::FromBytes(SystemAllocator(), "hello") catch { _ => return 1 };
+    let b = try String::FromBytes(SystemAllocator(), "world") catch { _ => return 2 };
     var texts = Vector<String>(SystemAllocator());
     texts.Push(move a);
     texts.Push(move b);
@@ -122,8 +122,8 @@ func Main() -> int {
         bytes = bytes + unsafe { (*text).Bytes().length };
     }
     Assert(bytes == 10u, "every string is visited");
-    let words: String[2] = [String::FromBytes(SystemAllocator(), "one") catch { _ => return 5 },
-                            String::FromBytes(SystemAllocator(), "two") catch { _ => return 6 }];
+    let words: String[2] = [(try String::FromBytes(SystemAllocator(), "one") catch { _ => return 5 }),
+                            (try String::FromBytes(SystemAllocator(), "two") catch { _ => return 6 })];
     for word in ReferenceIterator<String>(words[..]) {
         // Safety: the reference iterator yields pointers into `words`, which is live for the whole loop.
         bytes = bytes + unsafe { (*word).Bytes().length };

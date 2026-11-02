@@ -120,9 +120,9 @@ func Base32ValueOf(c: char8, form: Base32Variant) -> int32 {
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-encode
 pub func Base32Encode(bytes: byte[..], into: var char8[..],
-                      form: Base32Variant = Base32Variant::Standard) -> uint ! FormatError {
+                      form: Base32Variant = Base32Variant::Standard) -> uint throws FormatError {
     let needed = Base32EncodedLength(bytes.length, form);
-    if into.length < needed { fail FormatError::InsufficientCapacity; }
+    if into.length < needed { throw .InsufficientCapacity; }
     // Bits are gathered into an accumulator eight at a time and taken out five at a time, from the top.
     var buffer: uint64 = 0;
     var bits: uint = 0;
@@ -158,8 +158,8 @@ pub func Base32Encode(bytes: byte[..], into: var char8[..],
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-encode
 pub func Base32Encode(text: char8[..], into: var char8[..],
-                      form: Base32Variant = Base32Variant::Standard) -> uint ! FormatError {
-    return Base32Encode(BytesOf(text), into, form);
+                      form: Base32Variant = Base32Variant::Standard) -> uint throws FormatError {
+    return try Base32Encode(BytesOf(text), into, form);
 }
 
 // Whether a count of data characters is one a final partial group can leave: zero, two, four, five or seven.
@@ -169,7 +169,7 @@ func IsWholeTail(count: uint) -> bool {
 
 // The number of characters that carry data, after checking the text's shape for the form: the length, where
 // padding sits, and for Crockford the hyphens, which are excluded from the count.
-func DataCharacters(text: char8[..], form: Base32Variant) -> uint ! DecodeError {
+func DataCharacters(text: char8[..], form: Base32Variant) -> uint throws DecodeError {
     if form == Base32Variant::Crockford {
         var count: uint = 0;
         var index: uint = 0;
@@ -179,30 +179,30 @@ func DataCharacters(text: char8[..], form: Base32Variant) -> uint ! DecodeError 
             }
             index = index + 1;
         }
-        if !IsWholeTail(count % 8) { fail DecodeError::InvalidLength(text.length); }
+        if !IsWholeTail(count % 8) { throw .InvalidLength(text.length); }
         return count;
     }
     var first = text.length;
     var index: uint = 0;
     while index < text.length {
         if text[index] == '=' {
-            if form != Base32Variant::Standard { fail DecodeError::InvalidPadding(index); }
+            if form != Base32Variant::Standard { throw .InvalidPadding(index); }
             if first == text.length {
                 first = index;
             }
         }
         else if first != text.length {
-            fail DecodeError::InvalidPadding(first);
+            throw .InvalidPadding(first);
         }
         index = index + 1;
     }
     if form == Base32Variant::Standard && text.length % 8 != 0 {
-        fail DecodeError::InvalidLength(text.length);
+        throw .InvalidLength(text.length);
     }
     if !IsWholeTail(first % 8) {
         // Too much padding leaves too few data characters; without padding the length itself is impossible.
-        if first != text.length { fail DecodeError::InvalidPadding(first); }
-        fail DecodeError::InvalidLength(text.length);
+        if first != text.length { throw .InvalidPadding(first); }
+        throw .InvalidLength(text.length);
     }
     return first;
 }
@@ -216,8 +216,9 @@ func DataCharacters(text: char8[..], form: Base32Variant) -> uint ! DecodeError 
 /// @param form the alphabet and padding the text is expected to use
 /// @returns the number of bytes `Base32Decode` writes for it
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-decoded-length
-pub func Base32DecodedLength(text: char8[..], form: Base32Variant = Base32Variant::Standard) -> uint ! DecodeError {
-    let count = DataCharacters(text, form)?;
+pub func Base32DecodedLength(text: char8[..], form: Base32Variant = Base32Variant::Standard)
+    -> uint throws DecodeError {
+    let count = try DataCharacters(text, form);
     return count * 5 / 8;
 }
 
@@ -233,8 +234,8 @@ pub func Base32DecodedLength(text: char8[..], form: Base32Variant = Base32Varian
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-decode
 pub func Base32Decode(text: char8[..], into: var byte[..],
-                      form: Base32Variant = Base32Variant::Standard) -> uint ! DecodeError {
-    let count = DataCharacters(text, form)?;
+                      form: Base32Variant = Base32Variant::Standard) -> uint throws DecodeError {
+    let count = try DataCharacters(text, form);
     let needed = count * 5 / 8;
     // Data characters sit at the front of RFC text; Crockford text interleaves them with hyphens to skip.
     let crockford = form == Base32Variant::Crockford;
@@ -254,15 +255,15 @@ pub func Base32Decode(text: char8[..], into: var byte[..],
         while (crockford && text[index] == '-') || Base32ValueOf(text[index], form) >= 0 {
             index = index + 1;
         }
-        fail DecodeError::InvalidCharacter(index);
+        throw .InvalidCharacter(index);
     }
     // The bits left over after the last whole byte must be zero, or two texts would decode alike.
     let spare = (count * 5) % 8;
     if spare != 0 {
         let mask = (1 << spare) - 1;
-        if (Base32ValueOf(text[last], form) & mask) != 0 { fail DecodeError::NonCanonical(last); }
+        if (Base32ValueOf(text[last], form) & mask) != 0 { throw .NonCanonical(last); }
     }
-    if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
+    if into.length < needed { throw .InsufficientCapacity(needed); }
 
     var buffer: uint64 = 0;
     var bits: uint = 0;

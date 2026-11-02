@@ -125,10 +125,10 @@ extend TomlValue {
     /// @param value the value to act on
     /// @returns that text as a string value, or `InvalidUtf8` when it is not text
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#text
-    pub func Text(allocator: Allocator, value: char8[..]) -> Self ! TextError {
+    pub func Text(allocator: Allocator, value: char8[..]) -> Self throws TextError {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Text;
-        held.text = String::FromBytes(allocator, value)?;
+        held.text = try String::FromBytes(allocator, value);
         return move held;
     }
 

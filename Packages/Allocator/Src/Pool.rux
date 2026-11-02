@@ -193,18 +193,18 @@ extend Pool {
 
     // Takes one chunk from the backing allocator and carves it into blocks of `classIndex`.
     // Safety: `self` must address a live pool.
-    unsafe func TakeChunk(*var self, classIndex: uint) -> ! AllocError {
+    unsafe func TakeChunk(*var self, classIndex: uint) throws AllocError {
         let blockSize = PoolSmallestClass << classIndex;
         let blocks = self.blocksPerChunk;
-        if blocks > uint::Max / blockSize { fail AllocError::Unsupported; }
+        if blocks > uint::Max / blockSize { throw .Unsupported; }
         let payload = blocks * blockSize;
         let header = Self::ChunkHeaderSize();
-        if payload > uint::Max - header { fail AllocError::Unsupported; }
+        if payload > uint::Max - header { throw .Unsupported; }
         let total = header + payload;
 
-        let layout = Layout::New(total, PoolAlignment) ?? fail AllocError::Unsupported;
+        let layout = Layout::New(total, PoolAlignment) ?? throw .Unsupported;
 
-        let storage = self.backing.Allocate(layout)?;
+        let storage = try self.backing.Allocate(layout);
 
         let chunk = storage as *var PoolChunk;
         chunk.previous = self.chunks;
@@ -230,7 +230,7 @@ extend Pool {
             // Safety: as above, by the chunk invariant `chunk` is live until the release below.
             let total = unsafe { chunk.total };
             let layout = Layout::New(total, PoolAlignment) ?? Layout { size: total, alignment: PoolAlignment };
-            self.backing.Deallocate(chunk as *var opaque, layout) catch { _ => {} };
+            try self.backing.Deallocate(chunk as *var opaque, layout) catch { _ => {} };
             chunk = earlier;
         }
         self.chunks = null;
@@ -263,7 +263,7 @@ extend PoolHandle : Allocator {
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle-allocate
-    pub func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
+    pub func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
@@ -272,7 +272,7 @@ extend PoolHandle : Allocator {
         if classIndex >= PoolClassCount {
             // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
             // `self.pool` addresses a live pool.
-            return unsafe { self.pool.backing.Allocate(layout) };
+            return try unsafe { self.pool.backing.Allocate(layout) };
         }
 
         // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
@@ -280,7 +280,7 @@ extend PoolHandle : Allocator {
         if unsafe { self.pool.free[classIndex] } == 0 {
             // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
             // `self.pool` addresses a live pool.
-            unsafe { self.pool.TakeChunk(classIndex)?; }
+            unsafe { try self.pool.TakeChunk(classIndex); }
         }
 
         // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
@@ -305,15 +305,15 @@ extend PoolHandle : Allocator {
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle-deallocate
-    pub func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
-        if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
-        if block == null { fail AllocError::InvalidBlock; }
+    pub func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+        if layout.size == 0 { if !IsEmptyBlock(block) { throw .InvalidBlock; } return; }
+        if block == null { throw .InvalidBlock; }
 
         let classIndex = ClassIndexFor(layout);
         if classIndex >= PoolClassCount {
             // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
             // `self.pool` addresses a live pool.
-            return unsafe { self.pool.backing.Deallocate(block, layout) };
+            return try unsafe { self.pool.backing.Deallocate(block, layout) };
         }
 
         let address = block as uint;
@@ -340,8 +340,8 @@ extend PoolHandle : Allocator {
     /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/pool#pool-handle-reallocate
     pub func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> (*var opaque) ! AllocError {
-        if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
+        -> *var opaque throws AllocError {
+        if oldLayout.alignment != newLayout.alignment { throw .Unsupported; }
         if oldLayout.size == newLayout.size {
             return block;
         }
@@ -351,20 +351,20 @@ extend PoolHandle : Allocator {
         if oldClass >= PoolClassCount && newClass >= PoolClassCount {
             // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
             // `self.pool` addresses a live pool.
-            return unsafe { self.pool.backing.Reallocate(block, oldLayout, newLayout) };
+            return try unsafe { self.pool.backing.Reallocate(block, oldLayout, newLayout) };
         }
         if oldClass == newClass && oldLayout.size != 0 && newLayout.size != 0 {
             return block;
         }
 
-        let fresh = self.Allocate(newLayout)?;
+        let fresh = try self.Allocate(newLayout);
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
         unsafe { Copy(fresh, block as *opaque, keep); }
         // The old block is this pool's or its backing allocator's with this layout, and the new one already holds
         // its contents, so a refused release could only leak it.
-        self.Deallocate(block, oldLayout) catch { _ => {} };
+        try self.Deallocate(block, oldLayout) catch { _ => {} };
         return fresh;
     }
 }

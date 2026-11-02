@@ -63,7 +63,7 @@ func Main() -> int {
 
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let text = String::FromBytes(allocator, "string-value") catch { _ => return 1 };
+    let text = try String::FromBytes(allocator, "string-value") catch { _ => return 1 };
     Print(text); Separator();
     Print("slice-value"); Separator();
     Print("formatted {} {} {{ok}}", 7, 2.5); Separator();

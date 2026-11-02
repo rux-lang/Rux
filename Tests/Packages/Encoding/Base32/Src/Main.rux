@@ -18,14 +18,14 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(text: char8[..], form: Base32Variant, expected: char8[..]) -> bool {
     var room: char8[64];
-    let written = Base32Encode(text, room[..], form) catch { _ => return false };
+    let written = try Base32Encode(text, room[..], form) catch { _ => return false };
     return written == expected.length && written == Base32EncodedLength(text.length, form) &&
            Same(room[..written], expected);
 }
 
 func Decoded(text: char8[..], form: Base32Variant, expected: char8[..]) -> bool {
     var room: byte[64];
-    let written = Base32Decode(text, room[..], form) catch { _ => return false };
+    let written = try Base32Decode(text, room[..], form) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {
@@ -43,10 +43,13 @@ func Vector(plain: char8[..], form: Base32Variant, encoded: char8[..]) -> bool {
 // 6 capacity, and a negative code when the offset is wrong or the destination was touched.
 func Refusal(text: char8[..], form: Base32Variant, room: uint, at: uint) -> int {
     var storage: byte[64] = [0x3F; 64];
-    let reported = match Base32Decode(text, storage[..room], form) {
-        .Failure(error) => error,
-        .Success(_) => return -1
-    };
+    var caught: DecodeError? = none;
+    try {
+        Base32Decode(text, storage[..room], form);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return -1;
     for value in storage {
         if value != 0x3F { return -2; }
     }
@@ -78,10 +81,10 @@ func RoundTrips(form: Base32Variant) -> bool {
     var length: uint = 0;
     while length <= 20 {
         var text: char8[40];
-        let written = Base32Encode(source[..length], text[..], form) catch { _ => return false };
+        let written = try Base32Encode(source[..length], text[..], form) catch { _ => return false };
         if written != Base32EncodedLength(length, form) { return false; }
         var back: byte[20];
-        let read = Base32Decode(text[..written], back[..], form) catch { _ => return false };
+        let read = try Base32Decode(text[..written], back[..], form) catch { _ => return false };
         if read != length { return false; }
         var at: uint = 0;
         while at < length {
@@ -113,10 +116,7 @@ func Main() -> int {
         group[0] = c as uint8 as char8;
         var out: byte[1];
         let expected = Reference(c);
-        let valid = match Base32Decode(group[..], out[..], Base32Variant::StandardUnpadded) {
-            .Success(_) => true,
-            .Failure(_) => false
-        };
+        let valid = (try? Base32Decode(group[..], out[..], Base32Variant::StandardUnpadded)) is .Some(_);
         if valid != (expected >= 0) { return 10; }
         if valid && out[0] != ((expected as uint) << 3) as byte { return 11; }
         c = c + 1;
@@ -142,18 +142,20 @@ func Main() -> int {
     if Refusal("MZX", Base32Variant::StandardUnpadded, 64, 3) != 2 { return 25; }
     if Refusal("M1", Base32Variant::StandardUnpadded, 64, 1) != 1 { return 26; }
     if Refusal("MZXW6YTB", Base32Variant::Standard, 4, 5) != 6 { return 27; }
-    match Base32DecodedLength("MZXW6YQ=") {
-        .Success(length) => {
-            if length != 4 { return 28; }
-        },
-        .Failure(_) => return 29
+    try {
+        let length = Base32DecodedLength("MZXW6YQ=");
+        if length != 4 { return 28; }
+    } catch {
+        _ => return 29,
     }
 
     // A short destination is refused before anything is written.
     var short: char8[7] = ['?'; 7];
-    match Base32Encode("f", short[..]) {
-        .Failure(_) => {},
-        .Success(_) => return 30
+    try {
+        Base32Encode("f", short[..]);
+        return 30;
+    } catch {
+        _ => {},
     }
     for character in short {
         if character != '?' { return 31; }

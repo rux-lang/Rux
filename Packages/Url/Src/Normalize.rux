@@ -32,7 +32,7 @@ extend Bytes {
                 // Safety: `self.data` holds `self.length` bytes of a live block of `self.capacity` bytes, and `block`
                 // was just allocated with room for `capacity`, which is larger.
                 unsafe { Copy(block, self.data as *opaque, self.length); }
-                allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? layout)
+                try allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? layout)
                     catch { _ => {} };
             }
             // Safety: `block` was allocated above with room for `capacity` bytes, and `char8` has size and alignment 1.
@@ -66,7 +66,7 @@ extend Bytes {
     func ~Bytes(&var self) {
         if self.data == null { return; }
         var allocator = self.allocator;
-        allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? Layout::ForValue<char8>())
+        try allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? Layout::ForValue<char8>())
             catch { _ => {} };
     }
 }
@@ -123,15 +123,15 @@ func Lower(c: uint8) -> char8 {
 
 // Appends `text` to `out` in the normalized form of `component`. A host refuses characters it cannot hold rather than
 // escaping them, since an escaped host would name a different machine.
-func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) -> ! UrlError {
+func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) throws UrlError {
     let lower = component == Component::Host;
     var index: uint = 0;
     while index < text.length {
         let c = text[index] as uint8;
         if c == 0x25u8 {
-            if index + 2 >= text.length { fail UrlError::InvalidPercentEncoding; }
-            let high = HexValue(text[index + 1] as uint8) ?? fail UrlError::InvalidPercentEncoding;
-            let low = HexValue(text[index + 2] as uint8) ?? fail UrlError::InvalidPercentEncoding;
+            if index + 2 >= text.length { throw .InvalidPercentEncoding; }
+            let high = HexValue(text[index + 1] as uint8) ?? throw .InvalidPercentEncoding;
+            let low = HexValue(text[index + 2] as uint8) ?? throw .InvalidPercentEncoding;
             let value = (high << 4) | low;
             if IsUnreserved(value) {
                 out.Push(if lower { Lower(value) } else { value as char8 });
@@ -148,7 +148,7 @@ func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) ->
             out.Push(if lower { Lower(c) } else { c as char8 });
         }
         else {
-            if lower { fail UrlError::InvalidHost; }
+            if lower { throw .InvalidHost; }
             out.Push(c8'%');
             out.Push(HexDigit(c >> 4));
             out.Push(HexDigit(c & 0x0Fu8));

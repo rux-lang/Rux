@@ -1,7 +1,7 @@
 // Why a value could not be turned into text.
 // `TextError` next door answers a different question: why storing or validating text failed. Both are failure-only.
-// Every case denotes a failure, there is no `None`, `Ok` or `Success` case, and success lives exclusively in the
-// other channel of the native fallible an operation returns. `TextFailureKind` carries the ways text handling fails
+// Every case denotes a failure, there is no `None`, `Ok` or `Success` case, and success lives exclusively in what an
+// operation that throws returns. `TextFailureKind` carries the ways text handling fails
 // when one of them surfaces through formatting.
 // The categories are split by who is at fault, because that is what a caller can act on. A malformed specification
 // or an argument-count mismatch is the call site's mistake and carries where. An unsupported request or a value out
@@ -23,8 +23,8 @@ pub variant TextFailureKind {
 }
 
 /// Why a formatting operation did not produce the text it was asked for.
-/// Failure-only: every case is a failure, and success is the other channel of the `! FormatError` or
-/// `T ! FormatError` that reports it rather than a case here. Which case arises says who must fix it, so the
+/// Failure-only: every case is a failure, and success is what an operation that `throws FormatError` returns
+/// rather than a case here. Which case arises says who must fix it, so the
 /// categories are not interchangeable and a writer may not invent the ones that belong to the parser or the value.
 /// Copy, and cheap to return: the widest payload is a pair of counts.
 /// @see https://rux-lang.dev/docs/api/text/format-error
@@ -76,8 +76,8 @@ pub func TextFailureOf(error: TextError) -> TextFailureKind {
 
 /// `error` translated across the boundary between this package's status convention and the formatting protocol.
 /// This is the only sanctioned crossing: every text failure becomes a `TextFailure` carrying the reason. It is the
-/// mapper a formatting operation hands a text operation's failure to, as in `builder.Append(view)? else (e =>
-/// FromTextError(e))`.
+/// mapper a formatting operation hands a text operation's failure to, as in `try builder.Append(view) catch {
+/// e => throw FromTextError(e) }`.
 /// @param error why the storage or validation operation failed
 /// @returns the matching formatting failure
 /// @see https://rux-lang.dev/docs/api/text/format-error#from-text-error

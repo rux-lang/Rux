@@ -93,22 +93,24 @@ extend Logger {
         if !self.Enabled(level) { return; }
         self.buffer.Clear();
         if !WriteRecord(self.buffer, self.format, self.timestamps, level, message, self.context, fields) { return; }
-        match WriteAll(self.sink, self.buffer.Bytes()) {
-            .Success(_) => {},
-            .Failure(error) => {
+        try {
+            WriteAll(self.sink, self.buffer.Bytes());
+        } catch {
+            error => {
                 if self.failure == none { self.failure = error; }
-            }
+            },
         }
     }
 
     /// Asks the stream to deliver what it holds.
     /// @see https://rux-lang.dev/docs/api/log/logger#flush
     pub func Flush(&var self) {
-        match self.sink.Flush() {
-            .Success(_) => {},
-            .Failure(error) => {
+        try {
+            self.sink.Flush();
+        } catch {
+            error => {
                 if self.failure == none { self.failure = error; }
-            }
+            },
         }
     }
 

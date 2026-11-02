@@ -96,7 +96,7 @@ extend JsonEventReader {
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a reader positioned before the first event; `Other` when its buffer could not be allocated
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#new
-    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self ! IoError {
+    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self throws IoError {
         var reader = Self {
             source, data: null, capacity: 0, filled: 0, position: 0, consumedBefore: 0, exhausted: false,
             allocator, limits, stack: [0; 16],
@@ -105,7 +105,7 @@ extend JsonEventReader {
         };
         var borrowed = allocator;
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
-        let block = borrowed.Allocate(chunk) catch { _ => fail IoError::Of(IoErrorKind::Other) };
+        let block = try borrowed.Allocate(chunk) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `block` was just allocated with `JsonStreamChunk` bytes, and `char8` has size and alignment 1.
         reader.data = unsafe { block as *var char8 };
         reader.capacity = JsonStreamChunk;
@@ -194,7 +194,7 @@ extend JsonEventReader {
                 copied = copied + 1;
             }
             let previous = Layout { size: self.capacity, alignment: 1 };
-            borrowed.Deallocate(self.data as *var opaque, previous) catch { _ => {} };
+            try borrowed.Deallocate(self.data as *var opaque, previous) catch { _ => {} };
             self.data = grown;
             self.capacity = wanted;
         }
@@ -202,7 +202,7 @@ extend JsonEventReader {
         // Safety: `self.filled` is at most `self.capacity`, the size of the live buffer `self.data`, so the room after
         // it lies inside the buffer.
         let room = unsafe { (@self.data[self.filled])[..self.capacity - self.filled] };
-        let read = self.source.Read(room) catch {
+        let read = try self.source.Read(room) catch {
             error => {
                 self.exhausted = true;
                 if !error.IsEnd() && self.stop == JsonStop::None {
@@ -210,7 +210,7 @@ extend JsonEventReader {
                     self.sourceFailure = .Some(error);
                 }
                 return false;
-            }
+            },
         };
         self.filled = self.filled + read;
         return read > 0;
@@ -222,7 +222,7 @@ extend JsonEventReader {
         if self.data != null {
             var borrowed = self.allocator;
             let held = Layout { size: self.capacity, alignment: 1 };
-            borrowed.Deallocate(self.data as *var opaque, held) catch { _ => {} };
+            try borrowed.Deallocate(self.data as *var opaque, held) catch { _ => {} };
             self.data = null;
             self.capacity = 0;
         }

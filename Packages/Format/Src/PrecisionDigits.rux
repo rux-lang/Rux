@@ -263,19 +263,19 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
 /// @param parts the value taken apart
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/float-text#write-precision
-pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) -> ! FormatError {
+pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) throws FormatError {
     if spec.Precision() > MaximumPrecision {
-        fail FormatError::UnsupportedRequest;
+        throw .UnsupportedRequest;
     }
     var storage: char8[1426];
     var cursor = ByteCursor(storage[2..MaximumFixedLength + 2]);
     if !WritePrecisionFloat(cursor, parts, spec.Precision()) {
-        fail FormatError::UnsupportedRequest;
+        throw .UnsupportedRequest;
     }
     var rendered = cursor.Written();
     if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
         storage[1] = c8'+';
         rendered = storage[1..rendered.length + 2];
     }
-    return WriteAligned(writer, spec, rendered, true);
+    return try WriteAligned(writer, spec, rendered, true);
 }

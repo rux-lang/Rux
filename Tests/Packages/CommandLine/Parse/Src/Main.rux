@@ -74,14 +74,16 @@ func Code(error: &CommandLineError) -> int {
 }
 
 func Fails(spec: *CommandSpec, line: &Line, code: int) -> bool {
-    return match Parse(spec, line.Arguments()) {
-        .Success(_) => false,
-        .Failure(error) => Code(error) == code
-    };
+    try {
+        Parse(spec, line.Arguments());
+    } catch {
+        error => return Code(error) == code,
+    }
+    return false;
 }
 
 func Must(spec: *CommandSpec, line: &Line) -> Parsed {
-    return Parse(spec, line.Arguments()) catch { _ => Panic("the arguments parse") };
+    return try Parse(spec, line.Arguments()) catch { _ => Panic("the arguments parse") };
 }
 
 func Main() -> int {
@@ -114,7 +116,7 @@ func Main() -> int {
     let second = Must(@tool, rich);
     if second.Count("verbose") != 3 || !second.Has("dry-run") { return 3; }
     if !Is(second.Value("output"), "a.txt") || !Is(second.Positional("input"), "in") { return 4; }
-    let jobs = second.Integer("jobs") catch { _ => return 5 };
+    let jobs = try second.Integer("jobs") catch { _ => return 5 };
     if (jobs ?? 0) != 4 { return 6; }
     var files: uint = 0;
     for file in second.Positionals("files") {
@@ -192,23 +194,27 @@ func Main() -> int {
     var low = NewLine();
     low.Add("--jobs=-9223372036854775808");
     low.Add("in");
-    let lowest = Must(@tool, low).Integer("jobs") catch { _ => return 24 };
+    let lowest = try Must(@tool, low).Integer("jobs") catch { _ => return 24 };
     if (lowest ?? 0) != -9223372036854775807 - 1 { return 25; }
     var high = NewLine();
     high.Add("--jobs=9223372036854775808");
     high.Add("in");
-    match Must(@tool, high).Integer("jobs") {
-        .Success(_) => return 26,
-        .Failure(error) => {
+    try {
+        Must(@tool, high).Integer("jobs");
+        return 26;
+    } catch {
+        error => {
             if Code(error) != 8 { return 27; }
-        }
+        },
     }
     var word = NewLine();
     word.Add("-jabc");
     word.Add("in");
-    match Must(@tool, word).Integer("jobs") {
-        .Success(_) => return 28,
-        .Failure(_) => {}
+    try {
+        Must(@tool, word).Integer("jobs");
+        return 28;
+    } catch {
+        _ => {},
     }
 
     // Subcommands own everything after their name; options before it are the parent's.

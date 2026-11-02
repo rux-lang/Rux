@@ -27,7 +27,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -37,7 +37,7 @@ func Shown(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Display = view;
-    if shown.WriteDisplay(sink, spec) is .Failure(_) { return false; }
+    if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -47,7 +47,7 @@ func Inspected(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> boo
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Debug = view;
-    if shown.WriteDebug(sink, spec) is .Failure(_) { return false; }
+    if (try? shown.WriteDebug(sink, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -58,7 +58,7 @@ func PathShown(path: Path, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Display = path;
-    if shown.WriteDisplay(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? shown.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -67,7 +67,7 @@ func PathInspected(path: Path, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Debug = path;
-    if shown.WriteDebug(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? shown.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -77,7 +77,7 @@ func OwnedShown(text: &OsString, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    if text.WriteDisplay(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? text.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -85,7 +85,7 @@ func OwnedInspected(text: &OsString, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    if text.WriteDebug(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? text.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -93,7 +93,7 @@ func BufferShown(buffer: &PathBuffer, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    if buffer.WriteDisplay(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? buffer.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -101,7 +101,7 @@ func BufferInspected(buffer: &PathBuffer, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
-    if buffer.WriteDebug(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
+    if (try? buffer.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -110,11 +110,11 @@ func Refused(view: OsStringView, spec: FormatSpec) -> bool {
     var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Display = view;
-    if !(shown.WriteDisplay(sink, spec) is .Failure(_)) { return false; }
+    if !((try? shown.WriteDisplay(sink, spec)) is none) { return false; }
     let inspected: Debug = view;
     var second = BufferWriter(storage[..128]);
     let other: &var TextWriter = second;
-    return inspected.WriteDebug(other, spec) is .Failure(_);
+    return (try? inspected.WriteDebug(other, spec)) is none;
 }
 
 func Main() -> int {

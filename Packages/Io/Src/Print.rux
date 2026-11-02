@@ -10,26 +10,24 @@ import Format::WriteFormat;
 import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
-func PrintBytes(bytes: char8[..]) -> ! IoError {
+func PrintBytes(bytes: char8[..]) throws IoError {
     var out = StandardOut::Acquire();
-    return WriteAll(out, bytes);
+    try WriteAll(out, bytes);
 }
 
 // The failure a write reported, as the optional every printing call returns.
-func FailureOf(outcome: ! IoError) -> IoError? {
-    outcome catch { error => return error };
+func PrintFailure(bytes: char8[..]) -> IoError? {
+    try PrintBytes(bytes) catch { error => return error };
     return none;
 }
 
-// What one printing call reports, given the slot the adapter recorded into and what the formatter said.
+// What one printing call reports when the formatter threw, given the slot the adapter recorded into.
 // The slot is read first, because a stream failure is the more specific answer: the formatter saw `WriterFailure`
 // and can say nothing about what a broken pipe was, while the slot holds the failure itself. Only once the stream
 // is known to be healthy is the formatter's own failure worth translating, and by then it can only be a fault of
 // the request or of the value.
-func Reported(failure: IoError?, formatted: ! FormatError) -> IoError? {
-    if failure is IoError { return failure; }
-    formatted catch { reason => return ToIoError(reason) };
-    return none;
+func Reported(failure: IoError?, reason: FormatError) -> IoError? {
+    return failure ?? ToIoError(reason);
 }
 
 /// Writes a value's text to standard output.
@@ -48,8 +46,8 @@ pub func PrintValue(value: Display) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
-    let formatted = value.WriteDisplay(writer, FormatSpec::Plain());
-    return Reported(failure, formatted);
+    try value.WriteDisplay(writer, FormatSpec::Plain()) catch { reason => return Reported(failure, reason) };
+    return failure;
 }
 
 /// Writes a value's text to standard output, then a newline.
@@ -73,7 +71,7 @@ pub func PrintValueLine(value: Display) -> IoError? {
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: &String) -> IoError? {
-    return FailureOf(PrintBytes(value.Bytes()));
+    return PrintFailure(value.Bytes());
 }
 
 /// Writes the text a `StringView` borrows to standard output.
@@ -81,7 +79,7 @@ pub func Print(value: &String) -> IoError? {
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: StringView) -> IoError? {
-    return FailureOf(PrintBytes(value.Bytes()));
+    return PrintFailure(value.Bytes());
 }
 
 /// Writes text to standard output.
@@ -89,7 +87,7 @@ pub func Print(value: StringView) -> IoError? {
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: char8[..]) -> IoError? {
-    return FailureOf(PrintBytes(value));
+    return PrintFailure(value);
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
@@ -105,8 +103,8 @@ pub func Print(#Format format: char8[..], args: Display...) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
-    let formatted = WriteFormat(writer, format, args...);
-    return Reported(failure, formatted);
+    try WriteFormat(writer, format, args...) catch { reason => return Reported(failure, reason) };
+    return failure;
 }
 
 /// Writes a `bool8` to standard output.

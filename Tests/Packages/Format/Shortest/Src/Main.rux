@@ -24,11 +24,11 @@ import Text::{ FormatError, String, StringView };
 // asserted as *not* closing with the gap named. Those assertions are inverted here, which is what an exact reader
 // arriving looks like from the outside.
 
-func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
+func Same(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match move outcome {
-        .Success(text) => text.View().Equals(wanted),
-        .Failure(_) => false
+        .Some(text) => text.View().Equals(wanted),
+        none => false
     };
 }
 
@@ -36,32 +36,32 @@ func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
 // and a NaN compares equal to nothing, and both have to survive this.
 func RoundTrips64(allocator: Allocator, value: float64) -> bool {
     var ok = false;
-    match Render(allocator, "{}", value) {
-        .Success(text) => {
-            match ParseFloat64(text.View().Bytes()) {
-                .Success(read) => { ok = BitsOfFloat64(read) == BitsOfFloat64(value); },
-                .Failure(_) => { ok = false; }
-            }
-        },
-        .Failure(_) => {
-            ok = false;
+    try {
+        let text = Render(allocator, "{}", value);
+        try {
+            let read = ParseFloat64(text.View().Bytes());
+            ok = BitsOfFloat64(read) == BitsOfFloat64(value);
+        } catch {
+            _ => ok = false,
         }
+    } catch {
+        _ => ok = false,
     }
     return ok;
 }
 
 func RoundTrips32(allocator: Allocator, value: float32) -> bool {
     var ok = false;
-    match Render(allocator, "{}", value) {
-        .Success(text) => {
-            match ParseFloat32(text.View().Bytes()) {
-                .Success(read) => { ok = BitsOfFloat32(read) == BitsOfFloat32(value); },
-                .Failure(_) => { ok = false; }
-            }
-        },
-        .Failure(_) => {
-            ok = false;
+    try {
+        let text = Render(allocator, "{}", value);
+        try {
+            let read = ParseFloat32(text.View().Bytes());
+            ok = BitsOfFloat32(read) == BitsOfFloat32(value);
+        } catch {
+            _ => ok = false,
         }
+    } catch {
+        _ => ok = false,
     }
     return ok;
 }
@@ -69,19 +69,17 @@ func RoundTrips32(allocator: Allocator, value: float32) -> bool {
 // Whether two values render differently, which two values one bit apart must.
 func RenderDiffers64(allocator: Allocator, left: float64, right: float64) -> bool {
     var same = true;
-    match Render(allocator, "{}", left) {
-        .Success(first) => {
-            match Render(allocator, "{}", right) {
-                .Success(second) => {
-                    let other = second.View();
-                    same = first.View().Equals(other);
-                },
-                .Failure(_) => { same = true; }
-            }
-        },
-        .Failure(_) => {
-            same = true;
+    try {
+        let first = Render(allocator, "{}", left);
+        try {
+            let second = Render(allocator, "{}", right);
+            let other = second.View();
+            same = first.View().Equals(other);
+        } catch {
+            _ => same = true,
         }
+    } catch {
+        _ => same = true,
     }
     return !same;
 }
@@ -98,31 +96,31 @@ func Main() -> int {
     let allocator: Allocator = system;
 
     // The two values that say whether the renderer is exact at all.
-    Assert(Same(Render(allocator, "{}", 0.1), "0.1"),
+    Assert(Same(try? Render(allocator, "{}", 0.1), "0.1"),
            "a tenth prints as a tenth, not as the seventeen digits it really is");
-    Assert(Same(Render(allocator, "{}", 1.0 / 3.0), "0.3333333333333333"),
+    Assert(Same(try? Render(allocator, "{}", 1.0 / 3.0), "0.3333333333333333"),
            "and a third prints to sixteen digits, which is where fifteen stopped round-tripping");
-    Assert(Same(Render(allocator, "{}", 0.2), "0.2"), "and so does a fifth");
-    Assert(Same(Render(allocator, "{}", 0.3), "0.3"), "and three tenths, which is not 0.30000000000000004");
+    Assert(Same(try? Render(allocator, "{}", 0.2), "0.2"), "and so does a fifth");
+    Assert(Same(try? Render(allocator, "{}", 0.3), "0.3"), "and three tenths, which is not 0.30000000000000004");
 
     // Structural values, whose expansions are arithmetic rather than a tool's opinion.
-    Assert(Same(Render(allocator, "{}", 0.0), "0.0"), "the positive zero");
-    Assert(Same(Render(allocator, "{}", -0.0), "-0.0"), "the negative zero keeps its sign");
-    Assert(Same(Render(allocator, "{}", 1.0), "1.0"), "one");
-    Assert(Same(Render(allocator, "{}", 0.5), "0.5"), "a half, which is exact in binary");
-    Assert(Same(Render(allocator, "{}", 0.25), "0.25"), "and a quarter");
-    Assert(Same(Render(allocator, "{}", 2.0), "2.0"), "a power of two");
-    Assert(Same(Render(allocator, "{}", 1024.0), "1024.0"), "and a larger one");
-    Assert(Same(Render(allocator, "{}", -2.25), "-2.25"), "a negative value carries its sign");
+    Assert(Same(try? Render(allocator, "{}", 0.0), "0.0"), "the positive zero");
+    Assert(Same(try? Render(allocator, "{}", -0.0), "-0.0"), "the negative zero keeps its sign");
+    Assert(Same(try? Render(allocator, "{}", 1.0), "1.0"), "one");
+    Assert(Same(try? Render(allocator, "{}", 0.5), "0.5"), "a half, which is exact in binary");
+    Assert(Same(try? Render(allocator, "{}", 0.25), "0.25"), "and a quarter");
+    Assert(Same(try? Render(allocator, "{}", 2.0), "2.0"), "a power of two");
+    Assert(Same(try? Render(allocator, "{}", 1024.0), "1024.0"), "and a larger one");
+    Assert(Same(try? Render(allocator, "{}", -2.25), "-2.25"), "a negative value carries its sign");
 
     // The ends of the float64 range, which are where the workspace bound is reached.
-    Assert(Same(Render(allocator, "{}", 1.7976931348623157e308), "1.7976931348623157e+308"),
+    Assert(Same(try? Render(allocator, "{}", 1.7976931348623157e308), "1.7976931348623157e+308"),
            "the largest finite float64");
-    Assert(Same(Render(allocator, "{}", 5.0e-324), "5.0e-324"),
+    Assert(Same(try? Render(allocator, "{}", 5.0e-324), "5.0e-324"),
            "and the smallest subnormal, whose shortest form is one digit even though its exact expansion is 751");
-    Assert(Same(Render(allocator, "{}", 2.2250738585072014e-308), "2.2250738585072014e-308"),
+    Assert(Same(try? Render(allocator, "{}", 2.2250738585072014e-308), "2.2250738585072014e-308"),
            "the smallest normal, whose lower neighbour is a subnormal and a full gap away");
-    Assert(Same(Render(allocator, "{}", 1.0e-323), "1.0e-323"), "a subnormal two steps up from the smallest");
+    Assert(Same(try? Render(allocator, "{}", 1.0e-323), "1.0e-323"), "a subnormal two steps up from the smallest");
 
     // Closure: rendered, read back, identical bits. This is the check that catches a renderer and a parser that
     // are wrong in the same direction, which no hand-written expectation can.
@@ -188,11 +186,11 @@ func Main() -> int {
 
     // float32 is a different set of neighbours, so rendering it through float64 would give the wrong answer: the
     // shortest decimal for the widened value is longer than the shortest one for the value itself.
-    Assert(Same(Render(allocator, "{}", 0.1f32), "0.1"), "a float32 tenth prints as a tenth");
-    Assert(Same(Render(allocator, "{}", 1.0f32 / 3.0f32), "0.33333334"),
+    Assert(Same(try? Render(allocator, "{}", 0.1f32), "0.1"), "a float32 tenth prints as a tenth");
+    Assert(Same(try? Render(allocator, "{}", 1.0f32 / 3.0f32), "0.33333334"),
            "and a float32 third to eight digits, not to the sixteen a float64 third needs");
-    Assert(Same(Render(allocator, "{}", 3.4028235e38f32), "3.4028235e+38"), "the largest finite float32");
-    Assert(Same(Render(allocator, "{}", 1.1754944e-38f32), "1.1754944e-38"), "and the smallest normal one");
+    Assert(Same(try? Render(allocator, "{}", 3.4028235e38f32), "3.4028235e+38"), "the largest finite float32");
+    Assert(Same(try? Render(allocator, "{}", 1.1754944e-38f32), "1.1754944e-38"), "and the smallest normal one");
     Assert(RoundTrips32(allocator, 0.0f32), "the float32 zero round-trips");
     Assert(RoundTrips32(allocator, -0.0f32), "and the negative one");
     Assert(RoundTrips32(allocator, 0.1f32), "a float32 tenth round-trips");

@@ -28,15 +28,15 @@ func FailureOf(reason: WideDigitFailure) -> FormatError {
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/float-layout#write-wide-float
 pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
-                    layout: &FloatLayout) -> ! FormatError {
+                    layout: &FloatLayout) throws FormatError {
     let value = UnpackWide(bits, layout);
-    if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true); }
-    if value.class == WideClass::Infinity { return WriteAligned(writer, spec, if value.negative {
+    if value.class == WideClass::NaN { return try WriteAligned(writer, spec, "NaN", true); }
+    if value.class == WideClass::Infinity { return try WriteAligned(writer, spec, if value.negative {
         "-Inf"
     } else {
         "Inf"
     }, true); }
-    if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout); }
+    if spec.HasPrecision() { return try WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
     var cursor = ByteCursor(storage[2..256]);
@@ -52,7 +52,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         let room = digits[..];
         var reason = WideDigitFailure::None;
         if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10, @reason) {
-            fail FailureOf(reason);
+            throw FailureOf(reason);
         }
         if value.negative {
             cursor.Push(c8'-');
@@ -70,13 +70,13 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         storage[1] = c8'+';
         rendered = storage[1..rendered.length + 2];
     }
-    return WriteAligned(writer, spec, rendered, true);
+    return try WriteAligned(writer, spec, rendered, true);
 }
 
 // Fixed notation with exactly the requested precision in digits after the point. The text can be as long as the
 // exponent is large, so it is built in storage from the allocator rather than on the stack.
 func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, value: &UnpackedWide,
-                        layout: &FloatLayout) -> ! FormatError {
+                        layout: &FloatLayout) throws FormatError {
     let fraction = spec.Precision();
     let integerRoom = ((layout.bias as uint) * 30103u) / 100000u + 4u;
     let digitRoom = integerRoom + fraction + 4u;
@@ -93,21 +93,17 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let text = unsafe { ((block as *var char8) + digitRoom)[..textRoom] };
     var count: uint = 0;
     var exponent10: int = 0;
-    // A block was allocated above and must be released on every path, so failure is accumulated and returned at
-    // the end rather than propagated with `?`, which would leave the block behind.
-    var failure: ! FormatError = .Success(());
+    // A block was allocated above and must be released on every path, so failure is accumulated and thrown at
+    // the end rather than at the call that met it, which would leave the block behind.
+    var failure: FormatError? = none;
     if value.class != WideClass::Zero {
         let room = digits;
         var reason = WideDigitFailure::None;
         if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10, @reason) {
-            failure = .Failure(FailureOf(reason));
+            failure = FailureOf(reason);
         }
     }
-    let succeeded = match failure {
-        .Success(_) => true,
-        .Failure(_) => false
-    };
-    if succeeded {
+    if failure == none {
         var cursor = ByteCursor(text[1u..textRoom]);
         if value.negative && value.class != WideClass::Zero {
             cursor.Push(c8'-');
@@ -143,12 +139,12 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             rendered = text[..rendered.length + 1u];
         }
         if cursor.Overran() {
-            failure = .Failure(FormatError::ValueOutOfRange);
+            failure = FormatError::ValueOutOfRange;
         }
         else {
-            failure = WriteAligned(writer, spec, rendered, true);
+            try WriteAligned(writer, spec, rendered, true) catch { error => { failure = error; } };
         }
     }
-    allocator.Deallocate(block, blockLayout) catch { _ => {} };
-    return failure;
+    try allocator.Deallocate(block, blockLayout) catch { _ => {} };
+    if failure is .Some(error) { throw error; }
 }

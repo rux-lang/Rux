@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::Assert;
+import Core::{ Assert, Result };
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
 
@@ -30,8 +30,8 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
-        let block = self.inner.Allocate(layout)?;
+    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+        let block = try self.inner.Allocate(layout);
         // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
         unsafe {
             self.counts.live += 1;
@@ -40,13 +40,13 @@ extend CountingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
-        self.inner.Deallocate(block, layout) catch {
+    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+        try self.inner.Deallocate(block, layout) catch {
             error => {
                 // Safety: `counts` points at the test's local `AllocationCounts`, which outlives this allocator.
                 unsafe { self.counts.invalidReleases += 1; }
-                fail error;
-            }
+                throw error;
+            },
         };
         // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
         unsafe {
@@ -56,8 +56,8 @@ extend CountingAllocator : Allocator {
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> (*var opaque) ! AllocError {
-        return self.inner.Reallocate(block, oldLayout, newLayout);
+        -> *var opaque throws AllocError {
+        return try self.inner.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -68,14 +68,14 @@ struct Point {
 }
 
 extend Point : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        WriteAscii(writer, c8'(')?;
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try WriteAscii(writer, c8'(');
         let first: Display = self.x;
-        first.WriteDisplay(writer, FormatSpec::Plain())?;
-        WriteBytes(writer, ", ")?;
+        try first.WriteDisplay(writer, FormatSpec::Plain());
+        try WriteBytes(writer, ", ");
         let second: Display = self.y;
-        second.WriteDisplay(writer, FormatSpec::Plain())?;
-        return WriteAscii(writer, c8')');
+        try second.WriteDisplay(writer, FormatSpec::Plain());
+        return try WriteAscii(writer, c8')');
     }
 }
 
@@ -85,10 +85,10 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         var remaining = self.count;
         while remaining > 0 {
-            WriteBytes(writer, "0123456789abcdef")?;
+            try WriteBytes(writer, "0123456789abcdef");
             remaining = remaining - 1;
         }
         return;
@@ -97,31 +97,28 @@ extend Filler : Display {
 
 // Consumes the outcome and reports whether it succeeded with exactly `expected`. An error is never a match, so a
 // check cannot pass by accident on a failed render.
-func Matches(outcome: String ! FormatError, expected: char8[..]) -> bool {
+func Matches(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match move outcome {
-        .Success(text) => text.View().Equals(wanted),
-        .Failure(_) => false
+        .Some(text) => text.View().Equals(wanted),
+        none => false
     };
 }
 
 // Consumes the outcome and reports the rendered length, or a length no check expects when it failed.
-func RenderedLength(outcome: String ! FormatError) -> uint {
+func RenderedLength(outcome: String?) -> uint {
     return match move outcome {
-        .Success(text) => text.Length(),
-        .Failure(_) => 0
+        .Some(text) => text.Length(),
+        none => 0
     };
 }
 
 // Consumes the outcome and reports whether it failed with `InvalidSpecification` at exactly `at`. Both halves
 // matter: the reason says what kind of mistake it was, and the offset says which character to point at.
-func InvalidAt(outcome: String ! FormatError, at: uint) -> bool {
-    return match move outcome {
-        .Success(_) => false,
-        .Failure(reason) => match reason {
-            .InvalidSpecification(offset) => offset == at,
-            _ => false
-        }
+func InvalidAt(reason: FormatError, at: uint) -> bool {
+    return match reason {
+        .InvalidSpecification(offset) => offset == at,
+        _ => false
     };
 }
 
@@ -133,13 +130,10 @@ func Pattern(text: char8[..]) -> char8[..] {
 }
 
 // Consumes the outcome and reports whether it failed with `ArgumentCountMismatch(expected, supplied)`.
-func MismatchOf(outcome: String ! FormatError, expected: uint, supplied: uint) -> bool {
-    return match move outcome {
-        .Success(_) => false,
-        .Failure(reason) => match reason {
-            .ArgumentCountMismatch(wanted, given) => wanted == expected && given == supplied,
-            _ => false
-        }
+func MismatchOf(reason: FormatError, expected: uint, supplied: uint) -> bool {
+    return match reason {
+        .ArgumentCountMismatch(wanted, given) => wanted == expected && given == supplied,
+        _ => false
     };
 }
 
@@ -149,21 +143,18 @@ struct RefusingValue {
 }
 
 extend RefusingValue : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
         // Safety: `calls` points at the test's local counter, which outlives every render of this value.
         unsafe { *self.calls += 1; }
-        WriteBytes(writer, "partial")?;
-        fail FormatError::InvalidSpecification(73);
+        try WriteBytes(writer, "partial");
+        throw .InvalidSpecification(73);
     }
 }
 
-func InvalidUtf8(outcome: String ! FormatError) -> bool {
-    return match move outcome {
-        .Success(_) => false,
-        .Failure(reason) => match reason {
-            .TextFailure(kind) => match kind { .InvalidUtf8 => true, _ => false },
-            _ => false
-        }
+func InvalidUtf8(reason: FormatError) -> bool {
+    return match reason {
+        .TextFailure(kind) => match kind { .InvalidUtf8 => true, _ => false },
+        _ => false
     };
 }
 
@@ -171,16 +162,41 @@ func PropagationCases(allocator: Allocator) {
     var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
     var counting = CountingAllocator { inner: allocator, counts: @counts };
     let counted: Allocator = counting;
-    Assert(InvalidAt(Render(counted, "é 😀 {} {:>>>}", 1, 2), 15), "embedded specification positions count UTF-8 bytes");
-    Assert(InvalidAt(Render(counted, Pattern("é 😀 {} {bad}"), 1, 2), 12), "a malformed later placeholder retains its absolute byte offset");
-    Assert(InvalidAt(Render(counted, "é {} tail {", 1), 11), "an unterminated later placeholder points at its opening byte");
-    Assert(MismatchOf(Render(counted, Pattern("é {} {} {}"), 1), 3, 1), "both words of argument-count failures survive Render");
+    try {
+        Render(counted, "é 😀 {} {:>>>}", 1, 2);
+        Assert(false, "embedded specification positions count UTF-8 bytes");
+    } catch {
+        refusal => Assert(InvalidAt(refusal, 15), "embedded specification positions count UTF-8 bytes"),
+    }
+    try {
+        Render(counted, Pattern("é 😀 {} {bad}"), 1, 2);
+        Assert(false, "a malformed later placeholder retains its absolute byte offset");
+    } catch {
+        refusal => Assert(InvalidAt(refusal, 12), "a malformed later placeholder retains its absolute byte offset"),
+    }
+    try {
+        Render(counted, "é {} tail {", 1);
+        Assert(false, "an unterminated later placeholder points at its opening byte");
+    } catch {
+        refusal => Assert(InvalidAt(refusal, 11), "an unterminated later placeholder points at its opening byte"),
+    }
+    try {
+        Render(counted, Pattern("é {} {} {}"), 1);
+        Assert(false, "both words of argument-count failures survive Render");
+    } catch {
+        refusal => Assert(MismatchOf(refusal, 3, 1), "both words of argument-count failures survive Render"),
+    }
     Assert(counts.live == 0 && counts.allocations == 4 && counts.releases == 4 && counts.invalidReleases == 0,
            "each validation failure releases its reserved builder once");
 
     var calls = 0;
     let refusing = RefusingValue { calls: @calls };
-    Assert(InvalidAt(Render(counted, "head {} tail", refusing), 73), "a renderer failure propagates through WriteFormat and Render");
+    try {
+        Render(counted, "head {} tail", refusing);
+        Assert(false, "a renderer failure propagates through WriteFormat and Render");
+    } catch {
+        refusal => Assert(InvalidAt(refusal, 73), "a renderer failure propagates through WriteFormat and Render"),
+    }
     Assert(calls == 1 && counts.live == 0 && counts.allocations == 5 && counts.releases == 5,
            "a partial rendering is discarded with exactly one release");
     Assert(counts.invalidReleases == 0, "propagation does not attempt a second builder release");
@@ -188,7 +204,9 @@ func PropagationCases(allocator: Allocator) {
     var room: char8[64];
     var writer = BufferWriter(room[..64]);
     let sink: &var TextWriter = writer;
-    let failed = WriteFormat(sink, "head {} tail", refusing);
+    let failed: Result<(), FormatError> = try .Success(WriteFormat(sink, "head {} tail", refusing)) catch {
+        error => .Failure(error),
+    };
     Assert(failed is .Failure(_) && calls == 2 && writer.Length() == 12, "writer failure stops after the accepted prefix");
     let written = StringView::FromValidated(writer.Written());
     let wanted = StringView::FromValidated("head partial");
@@ -197,17 +215,29 @@ func PropagationCases(allocator: Allocator) {
 
     writer.Clear();
     let checked: &var TextWriter = writer;
-    Assert(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2) is .Failure(_), "the whole pattern is validated first");
+    Assert((try? WriteFormat(checked, "prefix {} {:>>>}", refusing, 2)) is none,
+           "the whole pattern is validated first");
     Assert(calls == 2 && writer.Length() == 0, "late validation failure invokes no renderer and writes no prefix");
-    Assert(Matches(Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"), "successful Unicode rendering preserves its output");
+    Assert(Matches(try? Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"),
+           "successful Unicode rendering preserves its output");
     Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
            "a successful returned string releases its transferred allocation once");
     let malformed: char8[4] = [c8'o', c8'k', 0xC3u8 as char8, c8'('];
-    Assert(InvalidUtf8(Render(counted, malformed)), "malformed literal bytes preserve the nested text failure");
+    try {
+        Render(counted, malformed);
+        Assert(false, "malformed literal bytes preserve the nested text failure");
+    } catch {
+        refusal => Assert(InvalidUtf8(refusal), "malformed literal bytes preserve the nested text failure"),
+    }
     Assert(counts.live == 0 && counts.allocations == 7 && counts.releases == 7 && counts.invalidReleases == 0,
            "a malformed UTF-8 suffix releases its partially filled builder once");
     let truncated: char8[2] = [c8'x', 0xF0u8 as char8];
-    Assert(InvalidUtf8(Render(counted, truncated)), "a truncated supplementary character is rejected");
+    try {
+        Render(counted, truncated);
+        Assert(false, "a truncated supplementary character is rejected");
+    } catch {
+        refusal => Assert(InvalidUtf8(refusal), "a truncated supplementary character is rejected"),
+    }
     Assert(counts.live == 0 && counts.allocations == 8 && counts.releases == 8 && counts.invalidReleases == 0,
            "truncated UTF-8 also follows ordinary cleanup");
 }
@@ -218,76 +248,159 @@ func Main() -> int {
     PropagationCases(allocator);
 
     // Text outside a placeholder is copied through, and a pattern with nothing to substitute is copied entire.
-    if !Matches(Render(allocator, ""), "") { return 10; }
-    if !Matches(Render(allocator, "hello"), "hello") { return 11; }
+    if !Matches(try? Render(allocator, ""), "") { return 10; }
+    if !Matches(try? Render(allocator, "hello"), "hello") { return 11; }
 
     // Each placeholder takes the next argument, in the order they are written.
-    if !Matches(Render(allocator, "point = ({}, {})", 3, 4), "point = (3, 4)") { return 20; }
-    if !Matches(Render(allocator, "{}{}{}", 1, 2, 3), "123") { return 21; }
+    if !Matches(try? Render(allocator, "point = ({}, {})", 3, 4), "point = (3, 4)") { return 20; }
+    if !Matches(try? Render(allocator, "{}{}{}", 1, 2, 3), "123") { return 21; }
 
     // Arguments of different types in one call, each rendered its own way.
-    if !Matches(Render(allocator, "{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A") { return 22; }
+    if !Matches(try? Render(allocator, "{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A") { return 22; }
 
     // The argument count has to match the placeholder count exactly, in both directions, and the failure carries
     // both numbers — expected first, supplied second — because which way the mismatch runs is what a caller fixes.
-    if !MismatchOf(Render(allocator, Pattern("{}"), 1, 2), 1, 2) { return 30; }
-    if !MismatchOf(Render(allocator, Pattern("[{}][{}]"), 1), 2, 1) { return 31; }
-    if !MismatchOf(Render(allocator, Pattern("{}")), 1, 0) { return 32; }
-    if !MismatchOf(Render(allocator, Pattern("none"), 1), 0, 1) { return 33; }
-    if !MismatchOf(Render(allocator, Pattern("{{}} {}"), 1, 2), 1, 2) { return 34; }
+    try {
+        Render(allocator, Pattern("{}"), 1, 2);
+        if !(false) { return 30; }
+    } catch {
+        refusal => { if !MismatchOf(refusal, 1, 2) { return 30; } }
+    }
+    try {
+        Render(allocator, Pattern("[{}][{}]"), 1);
+        if !(false) { return 31; }
+    } catch {
+        refusal => { if !MismatchOf(refusal, 2, 1) { return 31; } }
+    }
+    try {
+        Render(allocator, Pattern("{}"));
+        if !(false) { return 32; }
+    } catch {
+        refusal => { if !MismatchOf(refusal, 1, 0) { return 32; } }
+    }
+    try {
+        Render(allocator, Pattern("none"), 1);
+        if !(false) { return 33; }
+    } catch {
+        refusal => { if !MismatchOf(refusal, 0, 1) { return 33; } }
+    }
+    try {
+        Render(allocator, Pattern("{{}} {}"), 1, 2);
+        if !(false) { return 34; }
+    } catch {
+        refusal => { if !MismatchOf(refusal, 1, 2) { return 34; } }
+    }
 
     // Escaped braces are the only way to write one, and a lone brace of either kind is now a refusal rather than
     // literal text. The offset is the brace itself: that is where the pattern went wrong, not where the scan
     // noticed.
-    if !Matches(Render(allocator, "{{}}"), "{}") { return 40; }
-    if !Matches(Render(allocator, "{{{}}}", 7), "{7}") { return 41; }
-    if !InvalidAt(Render(allocator, "{"), 0) { return 50; }
-    if !InvalidAt(Render(allocator, "}"), 0) { return 51; }
-    if !InvalidAt(Render(allocator, "ab{"), 2) { return 52; }
-    if !InvalidAt(Render(allocator, "ab}cd"), 2) { return 53; }
-    if !InvalidAt(Render(allocator, "a{b"), 1) { return 54; }
+    if !Matches(try? Render(allocator, "{{}}"), "{}") { return 40; }
+    if !Matches(try? Render(allocator, "{{{}}}", 7), "{7}") { return 41; }
+    try {
+        Render(allocator, "{");
+        if !(false) { return 50; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 0) { return 50; } }
+    }
+    try {
+        Render(allocator, "}");
+        if !(false) { return 51; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 0) { return 51; } }
+    }
+    try {
+        Render(allocator, "ab{");
+        if !(false) { return 52; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 2) { return 52; } }
+    }
+    try {
+        Render(allocator, "ab}cd");
+        if !(false) { return 53; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 2) { return 53; } }
+    }
+    try {
+        Render(allocator, "a{b");
+        if !(false) { return 54; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 1) { return 54; } }
+    }
 
     // Between the braces, a specification opens with a colon and nothing else does. Positional and named arguments
     // are not part of the run-time grammar, so the offset is the first character that is not a colon. A literal with
     // a named placeholder is rewritten while compiling, so these patterns reach the formatter as values.
-    if !InvalidAt(Render(allocator, Pattern("{x} {}"), 1), 1) { return 55; }
-    if !InvalidAt(Render(allocator, "{0}", 1), 1) { return 56; }
-    if !InvalidAt(Render(allocator, Pattern("ok {name}"), 1), 4) { return 57; }
+    try {
+        Render(allocator, Pattern("{x} {}"), 1);
+        if !(false) { return 55; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 1) { return 55; } }
+    }
+    try {
+        Render(allocator, "{0}", 1);
+        if !(false) { return 56; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 1) { return 56; } }
+    }
+    try {
+        Render(allocator, Pattern("ok {name}"), 1);
+        if !(false) { return 57; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 4) { return 57; } }
+    }
 
     // A specification that does not parse is a refusal, and its offset is into the pattern rather than into the
     // specification — which is the case a test checking only the reason would pass with every offset at zero.
-    if !InvalidAt(Render(allocator, "{:>>>}", 1), 4) { return 60; }
-    if !InvalidAt(Render(allocator, "ab {:>>>}", 1), 7) { return 61; }
-    if !InvalidAt(Render(allocator, "{} {:>>>}", 1, 2), 7) { return 62; }
+    try {
+        Render(allocator, "{:>>>}", 1);
+        if !(false) { return 60; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 4) { return 60; } }
+    }
+    try {
+        Render(allocator, "ab {:>>>}", 1);
+        if !(false) { return 61; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 7) { return 61; } }
+    }
+    try {
+        Render(allocator, "{} {:>>>}", 1, 2);
+        if !(false) { return 62; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 7) { return 62; } }
+    }
 
     // A style the value refuses is a different failure from one the parser refuses: the first parses and is turned
     // down by the value, and it is reported as unsupported rather than as a malformed pattern.
-    let refusedStyle = match Render(allocator, "{:q}", 1) {
-        .Success(_) => false,
-        .Failure(reason) => match reason { .UnsupportedRequest => true, _ => false }
-    };
+    var refusedStyle = false;
+    try {
+        Render(allocator, "{:q}", 1);
+    } catch {
+        reason => { refusedStyle = match reason { .UnsupportedRequest => true, _ => false }; }
+    }
     if !refusedStyle { return 63; }
 
     // A valid specification still works, which is what makes the refusals above about the malformed ones.
-    if !Matches(Render(allocator, "[{:>6}]", "ab"), "[    ab]") { return 64; }
-    if !Matches(Render(allocator, "{:04}", 7), "0007") { return 65; }
+    if !Matches(try? Render(allocator, "[{:>6}]", "ab"), "[    ab]") { return 64; }
+    if !Matches(try? Render(allocator, "{:04}", 7), "0007") { return 65; }
 
     // A type of this package's own, reached through the interface.
-    if !Matches(Render(allocator, "at {}", Point { x: -1, y: 2 }), "at (-1, 2)") { return 70; }
+    if !Matches(try? Render(allocator, "at {}", Point { x: -1, y: 2 }), "at (-1, 2)") { return 70; }
 
     // Text as the pattern and as an argument. A string renders itself, which is what makes it usable as a
     // variadic argument at all.
-    if !Matches(Render(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
+    if !Matches(try? Render(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
 
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.
-    if RenderedLength(Render(allocator, "<{}>", Filler { count: 100 })) != 1602 { return 80; }
+    if RenderedLength(try? Render(allocator, "<{}>", Filler { count: 100 })) != 1602 { return 80; }
 
     // A destination that runs out of room reports it, and stops: what a refused write did not accept is not
     // written, and nothing after the failing placeholder is either.
     var room: char8[8];
     var writer = BufferWriter(room[..8]);
     let sink: &var TextWriter = writer;
-    let overflowed = WriteFormat(sink, "12345{}<end>", Filler { count: 1 });
+    let overflowed: Result<(), FormatError> =
+        try .Success(WriteFormat(sink, "12345{}<end>", Filler { count: 1 })) catch { error => .Failure(error) };
     let capacity = match overflowed {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
@@ -300,11 +413,11 @@ func Main() -> int {
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
     var second = BufferWriter(room[..8]);
     let other: &var TextWriter = second;
-    if WriteFormat(other, "abc{", 1) is .Success(_) { return 92; }
+    if (try? WriteFormat(other, "abc{", 1)) is .Some(_) { return 92; }
     if second.Length() != 0 { return 93; }
     var third = BufferWriter(room[..8]);
     let last: &var TextWriter = third;
-    if WriteFormat(last, Pattern("abc{}"), 1, 2) is .Success(_) { return 94; }
+    if (try? WriteFormat(last, Pattern("abc{}"), 1, 2)) is .Some(_) { return 94; }
     if third.Length() != 0 { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean
@@ -312,11 +425,21 @@ func Main() -> int {
     var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
     var counting = CountingAllocator { inner: allocator, counts: @counts };
     let counted: Allocator = counting;
-    if !Matches(Render(counted, "{} ok", 1), "1 ok") { return 100; }
+    if !Matches(try? Render(counted, "{} ok", 1), "1 ok") { return 100; }
     if counts.live != 0 { return 101; }
-    if !InvalidAt(Render(counted, "abcdefghijklmnop {", 1), 17) { return 102; }
+    try {
+        Render(counted, "abcdefghijklmnop {", 1);
+        if !(false) { return 102; }
+    } catch {
+        refusal => { if !InvalidAt(refusal, 17) { return 102; } }
+    }
     if counts.live != 0 { return 103; }
-    if !MismatchOf(Render(counted, Pattern("abcdefghijklmnop {}"), 1, 2), 1, 2) { return 104; }
+    try {
+        Render(counted, Pattern("abcdefghijklmnop {}"), 1, 2);
+        if !(false) { return 104; }
+    } catch {
+        refusal => { if !MismatchOf(refusal, 1, 2) { return 104; } }
+    }
     if counts.live != 0 { return 105; }
 
     return 0;

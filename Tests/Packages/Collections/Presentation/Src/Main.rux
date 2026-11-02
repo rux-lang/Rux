@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
 
@@ -36,11 +36,11 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        WriteBytes(writer, "T(")?;
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try WriteBytes(writer, "T(");
         let tag: Debug = self.tag;
-        tag.WriteDebug(writer, spec)?;
-        return WriteAscii(writer, c8')');
+        try tag.WriteDebug(writer, spec);
+        return try WriteAscii(writer, c8')');
     }
 }
 
@@ -57,7 +57,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -66,7 +66,7 @@ func ShownVector(value: &Vector<int32>, spec: FormatSpec, expected: char8[..]) -
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
-    if WriteVectorDebug<int32>(sink, value, spec) is .Failure(_) { return false; }
+    if (try? WriteVectorDebug<int32>(sink, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -75,7 +75,7 @@ func ShownArray(value: &Array<int32>, spec: FormatSpec, expected: char8[..]) -> 
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
-    if WriteArrayDebug<int32>(sink, value, spec) is .Failure(_) { return false; }
+    if (try? WriteArrayDebug<int32>(sink, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -84,7 +84,7 @@ func ShownDeque(value: &Deque<int32>, spec: FormatSpec, expected: char8[..]) -> 
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
-    if WriteDequeDebug<int32>(sink, value, spec) is .Failure(_) { return false; }
+    if (try? WriteDequeDebug<int32>(sink, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -154,9 +154,9 @@ func Main() -> int {
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
-    Assert(WriteVectorDebug<Tracked>(sink, owned, plain) is .Success(_), "a move-only vector is shown");
+    Assert((try? WriteVectorDebug<Tracked>(sink, owned, plain)) is .Some(_), "a move-only vector is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
-    Assert(WriteVectorDebug<Tracked>(sink, owned, plain) is .Success(_), "so it can be shown again");
+    Assert((try? WriteVectorDebug<Tracked>(sink, owned, plain)) is .Some(_), "so it can be shown again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(writer.Written(), "[T(0), T(1), T(2)][T(0), T(1), T(2)]"), "twice, identically");
     Assert(owned.Length() == 3, "and the vector still holds every element");
@@ -173,7 +173,7 @@ func Main() -> int {
     // Safety: `ringStorage` is a local array of 128 elements.
     var ringWriter = BufferWriter(unsafe { (@ringStorage[0])[..128] });
     let ringSink: &var TextWriter = ringWriter;
-    Assert(WriteDequeDebug<Tracked>(ringSink, ring, plain) is .Success(_), "a wrapped move-only deque is shown");
+    Assert((try? WriteDequeDebug<Tracked>(ringSink, ring, plain)) is .Some(_), "a wrapped move-only deque is shown");
     Assert(Same(ringWriter.Written(), "[T(0), T(1), T(2)]"), "front to back across the split");
     Assert(destroyed == 0, "and destroyed none of them");
 
@@ -182,7 +182,9 @@ func Main() -> int {
     // Safety: `small` is a local array of six elements.
     var tight = BufferWriter(unsafe { (@small[0])[..6] });
     let tightSink: &var TextWriter = tight;
-    let refused = WriteVectorDebug<Tracked>(tightSink, owned, plain);
+    let refused: Result<(), FormatError> = try .Success(WriteVectorDebug<Tracked>(tightSink, owned, plain)) catch {
+        error => .Failure(error),
+    };
     let overflowed = match refused {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }

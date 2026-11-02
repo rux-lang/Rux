@@ -108,8 +108,8 @@ extend Command {
     /// @param value the argument
     /// @see https://rux-lang.dev/docs/api/process/command#argument
     pub func Argument(&var self, value: char8[..]) {
-        self.Note(AppendText(self.words, value));
-        self.Note(self.words.Push(0 as OsUnit));
+        try AppendText(self.words, value) catch { error => { self.Note(error); } };
+        try self.words.Push(0 as OsUnit) catch { error => { self.Note(error); } };
         self.wordCount = self.wordCount + 1;
     }
 
@@ -117,8 +117,8 @@ extend Command {
     /// @param value the argument
     /// @see https://rux-lang.dev/docs/api/process/command#native-argument
     pub func NativeArgument(&var self, value: OsStringView) {
-        self.Note(AppendUnits(self.words, value.Units()));
-        self.Note(self.words.Push(0 as OsUnit));
+        try AppendUnits(self.words, value.Units()) catch { error => { self.Note(error); } };
+        try self.words.Push(0 as OsUnit) catch { error => { self.Note(error); } };
         self.wordCount = self.wordCount + 1;
     }
 
@@ -127,8 +127,8 @@ extend Command {
     /// @see https://rux-lang.dev/docs/api/process/command#directory
     pub func Directory(&var self, path: char8[..]) {
         self.directory.Clear();
-        self.Note(AppendText(self.directory, path));
-        self.Note(self.directory.Push(0 as OsUnit));
+        try AppendText(self.directory, path) catch { error => { self.Note(error); } };
+        try self.directory.Push(0 as OsUnit) catch { error => { self.Note(error); } };
     }
 
     /// Gives the child the variable `name` set to `value`, whatever this process's environment holds.
@@ -137,11 +137,11 @@ extend Command {
     /// @see https://rux-lang.dev/docs/api/process/command#set-variable
     pub func SetVariable(&var self, name: char8[..], value: char8[..]) {
         self.CheckName(name);
-        self.Note(self.changes.Push(0x53 as OsUnit));
-        self.Note(AppendText(self.changes, name));
-        self.Note(self.changes.Push(0x3D as OsUnit));
-        self.Note(AppendText(self.changes, value));
-        self.Note(self.changes.Push(0 as OsUnit));
+        try self.changes.Push(0x53 as OsUnit) catch { error => { self.Note(error); } };
+        try AppendText(self.changes, name) catch { error => { self.Note(error); } };
+        try self.changes.Push(0x3D as OsUnit) catch { error => { self.Note(error); } };
+        try AppendText(self.changes, value) catch { error => { self.Note(error); } };
+        try self.changes.Push(0 as OsUnit) catch { error => { self.Note(error); } };
     }
 
     /// Leaves the variable `name` out of the child's environment.
@@ -149,9 +149,9 @@ extend Command {
     /// @see https://rux-lang.dev/docs/api/process/command#remove-variable
     pub func RemoveVariable(&var self, name: char8[..]) {
         self.CheckName(name);
-        self.Note(self.changes.Push(0x52 as OsUnit));
-        self.Note(AppendText(self.changes, name));
-        self.Note(self.changes.Push(0 as OsUnit));
+        try self.changes.Push(0x52 as OsUnit) catch { error => { self.Note(error); } };
+        try AppendText(self.changes, name) catch { error => { self.Note(error); } };
+        try self.changes.Push(0 as OsUnit) catch { error => { self.Note(error); } };
     }
 
     /// Starts the child with no variables but those set on the command.
@@ -186,27 +186,22 @@ extend Command {
     /// @returns the child, or fails: with a part of the command the system could not take, with `NotFound` for a
     ///   program that is not there, or with the system's reason
     /// @see https://rux-lang.dev/docs/api/process/command#spawn
-    pub func Spawn(&self) -> Child ! IoError {
-        if self.failure != none { fail self.failure ?? IoError::Of(IoErrorKind::Other); }
-        return self.Launch(self.input, self.output, self.error);
+    pub func Spawn(&self) -> Child throws IoError {
+        if self.failure != none { throw self.failure ?? IoError::Of(IoErrorKind::Other); }
+        return try self.Launch(self.input, self.output, self.error);
     }
 
     /// Starts the program and waits for it to finish.
     /// @returns how it finished
     /// @see https://rux-lang.dev/docs/api/process/command#run
-    pub func Run(&self) -> ExitStatus ! IoError {
-        var child = self.Spawn()?;
-        return child.Wait()?;
+    pub func Run(&self) -> ExitStatus throws IoError {
+        var child = try self.Spawn();
+        return try child.Wait();
     }
 
     // Remembers the first failure among the command's parts.
-    func Note(&var self, outcome: () ! IoError) {
-        match outcome {
-            .Success(_) => {},
-            .Failure(error) => {
-                if self.failure == none { self.failure = error; }
-            }
-        }
+    func Note(&var self, error: IoError) {
+        if self.failure == none { self.failure = error; }
     }
 
     func CheckName(&var self, name: char8[..]) {
@@ -236,15 +231,15 @@ extend Command {
     }
 
     // The child's environment as `name=value` entries, each followed by a NUL.
-    func EnvironmentEntries(&self) -> Buffer<OsUnit> ! IoError {
+    func EnvironmentEntries(&self) -> Buffer<OsUnit> throws IoError {
         var entries = Buffer<OsUnit>(self.allocator);
         if !self.clearEnvironment {
             for variable in Environment() {
                 if self.LastChange(variable.name) != none { continue; }
-                entries.PushAll(variable.name.Units())?;
-                entries.Push(0x3D as OsUnit)?;
-                entries.PushAll(variable.value.Units())?;
-                entries.Push(0 as OsUnit)?;
+                try entries.PushAll(variable.name.Units());
+                try entries.Push(0x3D as OsUnit);
+                try entries.PushAll(variable.value.Units());
+                try entries.Push(0 as OsUnit);
             }
         }
         let units = self.changes.View();
@@ -256,8 +251,8 @@ extend Command {
             while nameEnd < end && units[nameEnd] != (0x3D as OsUnit) { nameEnd = nameEnd + 1; }
             let decides = self.LastChange(OsStringView::FromUnits(units[at + 1..nameEnd])) ?? 0u;
             if units[at] == (0x53 as OsUnit) && decides == at {
-                entries.PushAll(units[at + 1..end])?;
-                entries.Push(0 as OsUnit)?;
+                try entries.PushAll(units[at + 1..end]);
+                try entries.Push(0 as OsUnit);
             }
             at = end + 1;
         }
@@ -265,42 +260,44 @@ extend Command {
     }
 
     // Starts the child with the given streams.
-    func Launch(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+    func Launch(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
         when #target.os == .Windows {
-            return self.LaunchWindows(input, output, error);
+            return try self.LaunchWindows(input, output, error);
         }
         else {
-            return self.LaunchPosix(input, output, error);
+            return try self.LaunchPosix(input, output, error);
         }
     }
 
     // `posix_spawnp` with an argument vector, an environment vector and the file actions for the streams.
-    func LaunchPosix(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+    func LaunchPosix(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
         when #target.os != .Windows {
             let words = self.words.View();
             var arguments = Buffer<*char8>(self.allocator);
             var at: uint = 0;
             while at < words.length {
-                arguments.Push(@words[at])?;
+                try arguments.Push(@words[at]);
                 while words[at] != (0 as OsUnit) { at = at + 1; }
                 at = at + 1;
             }
-            arguments.Push(null)?;
+            try arguments.Push(null);
 
-            let entries = self.EnvironmentEntries()?;
+            let entries = try self.EnvironmentEntries();
             let entryUnits = entries.View();
             var environment = Buffer<*char8>(self.allocator);
             at = 0;
             while at < entryUnits.length {
-                environment.Push(@entryUnits[at])?;
+                try environment.Push(@entryUnits[at]);
                 while entryUnits[at] != (0 as OsUnit) { at = at + 1; }
                 at = at + 1;
             }
-            environment.Push(null)?;
+            try environment.Push(null);
 
             var actions = SpawnFileActions();
             // Safety: `actions` is a local `SpawnFileActions` the call initializes.
-            if unsafe { posix_spawn_file_actions_init(@actions) } != 0 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+            if unsafe { posix_spawn_file_actions_init(@actions) } != 0 {
+                throw IoError::Of(IoErrorKind::LimitExceeded);
+            }
             // The parent's ends of the pipes, and the child's, which close once the child has its copies.
             var parentEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
             var childEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
@@ -368,19 +365,19 @@ extend Command {
                 if failure != none { ClosePipe(parentEnds[stream]); }
                 stream = stream + 1u;
             }
-            if failure != none { fail failure ?? IoError::Of(IoErrorKind::Other); }
+            if failure != none { throw failure ?? IoError::Of(IoErrorKind::Other); }
             return Child {
                 id: pid as uint32, process: pid as uint64, input: parentEnds[0], output: parentEnds[1],
                 error: parentEnds[2], finished: false, status: ExitStatus { code: 0, signal: 0 }
             };
         }
         else {
-            fail IoError::Of(IoErrorKind::Other);
+            throw IoError::Of(IoErrorKind::Other);
         }
     }
 
     // `CreateProcessW` with a quoted command line, an environment block and inheritable standard handles.
-    func LaunchWindows(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+    func LaunchWindows(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
         when #target.os == .Windows {
             var line = Buffer<OsUnit>(self.allocator);
             let words = self.words.View();
@@ -388,15 +385,15 @@ extend Command {
             while at < words.length {
                 var end = at;
                 while words[end] != (0 as OsUnit) { end = end + 1; }
-                if at != 0 { line.Push(0x20 as OsUnit)?; }
-                QuoteArgument(line, words[at..end])?;
+                if at != 0 { try line.Push(0x20 as OsUnit); }
+                try QuoteArgument(line, words[at..end]);
                 at = end + 1;
             }
-            line.Push(0 as OsUnit)?;
+            try line.Push(0 as OsUnit);
 
-            var block = self.EnvironmentEntries()?;
-            if block.length == 0 { block.Push(0 as OsUnit)?; }
-            block.Push(0 as OsUnit)?;
+            var block = try self.EnvironmentEntries();
+            if block.length == 0 { try block.Push(0 as OsUnit); }
+            try block.Push(0 as OsUnit);
 
             var inheritable = SecurityAttributes {
                 length: sizeof(SecurityAttributes) as uint32, securityDescriptor: null, inheritHandle: true
@@ -483,7 +480,7 @@ extend Command {
                 if failure != none { ClosePipe(parentEnds[stream]); }
                 stream = stream + 1u;
             }
-            if failure != none { fail failure ?? IoError::Of(IoErrorKind::Other); }
+            if failure != none { throw failure ?? IoError::Of(IoErrorKind::Other); }
             // Safety: `created.thread` is the new child's main-thread handle, which this process owns and never uses.
             unsafe { CloseHandle(created.thread); }
             return Child {
@@ -493,7 +490,7 @@ extend Command {
             };
         }
         else {
-            fail IoError::Of(IoErrorKind::Other);
+            throw IoError::Of(IoErrorKind::Other);
         }
     }
 }
@@ -501,7 +498,7 @@ extend Command {
 // Appends one argument to a Windows command line so the C runtime's splitting gives it back unchanged: quoted when it
 // is empty or holds a space, tab or quote, with each quote escaped and each run of backslashes before a quote, or
 // before the closing quote, doubled.
-func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) -> ! IoError {
+func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) throws IoError {
     var plain = argument.length != 0;
     var index: uint = 0;
     while index < argument.length {
@@ -510,10 +507,10 @@ func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) -> ! IoError
         index = index + 1;
     }
     if plain {
-        line.PushAll(argument)?;
+        try line.PushAll(argument);
         return;
     }
-    line.Push(0x22 as OsUnit)?;
+    try line.Push(0x22 as OsUnit);
     var backslashes: uint = 0;
     index = 0;
     while index < argument.length {
@@ -526,20 +523,20 @@ func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) -> ! IoError
                 // The backslashes before a quote are doubled, and the quote itself escaped.
                 var extra: uint = 0;
                 while extra < backslashes + 1u {
-                    line.Push(0x5C as OsUnit)?;
+                    try line.Push(0x5C as OsUnit);
                     extra = extra + 1;
                 }
             }
             backslashes = 0;
         }
-        line.Push(unit)?;
+        try line.Push(unit);
         index = index + 1;
     }
     // Backslashes before the closing quote are doubled so that it stays a quote.
     var extra: uint = 0;
     while extra < backslashes {
-        line.Push(0x5C as OsUnit)?;
+        try line.Push(0x5C as OsUnit);
         extra = extra + 1;
     }
-    line.Push(0x22 as OsUnit)?;
+    try line.Push(0x22 as OsUnit);
 }

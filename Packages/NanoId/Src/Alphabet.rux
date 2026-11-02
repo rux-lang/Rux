@@ -22,8 +22,8 @@ pub const NanoIdAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfgh
 pub const NanoIdLength: uint = 21;
 
 /// Why an identifier could not be generated.
-/// Failure-only: a filled destination is the success channel of `! NanoIdError`. Copy, owning nothing. The alphabet
-/// cases are found before any random bytes are requested, so they never consume entropy.
+/// Failure-only: a call that succeeds fills its destination, and one that fails throws this. Copy, owning nothing.
+/// The alphabet cases are found before any random bytes are requested, so they never consume entropy.
 /// @see https://rux-lang.dev/docs/api/nanoid/nano-id-error
 pub variant NanoIdError {
     /// The alphabet has fewer than two characters, so an identifier from it carries no information.
@@ -47,15 +47,15 @@ pub variant NanoIdError {
 /// @param alphabet the characters an identifier would be drawn from
 /// @returns success when the alphabet is usable
 /// @see https://rux-lang.dev/docs/api/nanoid/alphabet#validate-alphabet
-pub func ValidateAlphabet(alphabet: char8[..]) -> ! NanoIdError {
-    if alphabet.length < 2 { fail NanoIdError::AlphabetTooSmall; }
-    if alphabet.length > 256 { fail NanoIdError::AlphabetTooLarge; }
+pub func ValidateAlphabet(alphabet: char8[..]) throws NanoIdError {
+    if alphabet.length < 2 { throw .AlphabetTooSmall; }
+    if alphabet.length > 256 { throw .AlphabetTooLarge; }
     var seen: bool[128] = [false; 128];
     var index: uint = 0;
     while index < alphabet.length {
         let code = alphabet[index] as uint8 as uint;
-        if code >= 128 { fail NanoIdError::NonAsciiCharacter(index); }
-        if seen[code] { fail NanoIdError::DuplicateCharacter(index); }
+        if code >= 128 { throw .NonAsciiCharacter(index); }
+        if seen[code] { throw .DuplicateCharacter(index); }
         seen[code] = true;
         index = index + 1;
     }

@@ -24,7 +24,7 @@ func ByteSize(count: uint, elementSize: uint) -> uint throws AllocError {
 
     // Division rather than multiply-then-test: the product that would prove the
     // overflow is the one that must never be evaluated.
-    if count > uint::Max / elementSize { throw AllocError::Unsupported; }
+    if count > uint::Max / elementSize { throw .Unsupported; }
 
     return count * elementSize;
 }
@@ -34,7 +34,7 @@ func ByteSize(count: uint, elementSize: uint) -> uint throws AllocError {
 // of a silently tiny capacity.
 func AddLength(current: uint, additional: uint) -> uint throws AllocError {
     let sum = current +% additional;
-    if sum < current { throw AllocError::Unsupported; }
+    if sum < current { throw .Unsupported; }
     return sum;
 }
 
@@ -78,7 +78,7 @@ func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint) -> uin
     var grown = minimum;
     while grown < required {
         let doubled = grown *% 2;
-        if doubled < grown { throw AllocError::Unsupported; }
+        if doubled < grown { throw .Unsupported; }
         grown = doubled;
     }
 

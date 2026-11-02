@@ -19,12 +19,12 @@ struct ScriptHandle {
 }
 
 extend ScriptHandle : Reader {
-    func Read(&var self, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at a `ScriptState` local of the checking function, which outlives the handle.
         unsafe {
             if state.offset == state.bytes.length {
-                fail IoError::Of(IoErrorKind::EndOfStream);
+                throw IoError::Of(IoErrorKind::EndOfStream);
             }
             into[0] = state.bytes[state.offset];
             state.offset = state.offset + 1;
@@ -49,17 +49,17 @@ struct PausingHandle {
 }
 
 extend PausingHandle : Reader {
-    func Read(&var self, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at a `PausingState` local of `CheckPauses`, which outlives the handle.
         unsafe {
             state.calls = state.calls + 1;
             if state.offset == state.pauseAt && !state.paused {
                 state.paused = true;
-                fail IoError::Of(state.pauseKind);
+                throw IoError::Of(state.pauseKind);
             }
             if state.offset == state.bytes.length {
-                fail IoError::Of(IoErrorKind::EndOfStream);
+                throw IoError::Of(IoErrorKind::EndOfStream);
             }
             into[0] = state.bytes[state.offset];
             state.offset = state.offset + 1;
@@ -81,7 +81,7 @@ func CheckPauses(allocator: Allocator) {
     };
     var interruptedSource = PausingHandle { state: @interrupted };
     var first = StringBuilder(allocator);
-    Assert(match ReadLineFrom(interruptedSource, first) { .Success(_) => true, .Failure(_) => false },
+    Assert((try? ReadLineFrom(interruptedSource, first)) is .Some(_),
            "an interrupted read is retried within the line");
     let ab = StringView::FromBytes("ab") ?? StringView();
     Assert(first.View().Equals(ab), "which arrives whole");
@@ -98,10 +98,12 @@ func CheckPauses(allocator: Allocator) {
     };
     var blockedSource = PausingHandle { state: @blocked };
     var second = StringBuilder(allocator);
-    let kind: IoErrorKind? = match ReadLineFrom(blockedSource, second) {
-        .Success(_) => none,
-        .Failure(error) => .Some(error.kind)
-    };
+    var kind: IoErrorKind? = none;
+    try {
+        ReadLineFrom(blockedSource, second);
+    } catch {
+        error => { kind = error.kind; }
+    }
     Assert(kind == .Some(IoErrorKind::WouldBlock), "a source that is not ready is handed back");
     Assert(second.View().Equals(ab), "with the bytes read before it in the builder");
     Assert(blocked.calls == 3, "after a single attempt, not a spin");
@@ -114,10 +116,12 @@ func CheckPauses(allocator: Allocator) {
 // failure of that kind; either way the builder holds `expected`.
 func CheckLine(allocator: Allocator, source: &var Reader, expectedKind: IoErrorKind?, expected: char8[..]) {
     var builder = StringBuilder(allocator);
-    let reported: IoErrorKind? = match ReadLineFrom(source, builder) {
-        .Success(_) => none,
-        .Failure(error) => .Some(error.kind)
-    };
+    var reported: IoErrorKind? = none;
+    try {
+        ReadLineFrom(source, builder);
+    } catch {
+        error => { reported = error.kind; }
+    }
     Assert(reported == expectedKind, "the outcome names the reason");
     let want = StringView::FromBytes(expected) ?? StringView();
     Assert(builder.View().Equals(want), "and the builder holds the line, no more and no less");
@@ -181,19 +185,19 @@ func Main() -> int {
     var count: uint = 0;
     while count < 8 {
         var builder = StringBuilder(allocator);
-        match ReadLine(builder) {
-            .Success(_) => {
-                let line = builder.IntoString();
-                Print("[");
-                Print(line);
-                PrintLine("]");
-                count = count + 1;
-            },
-            .Failure(error) => {
+        try {
+            ReadLine(builder);
+            let line = builder.IntoString();
+            Print("[");
+            Print(line);
+            PrintLine("]");
+            count = count + 1;
+        } catch {
+            error => {
                 builder.Release();
                 if !error.IsEnd() { return 1; }
                 break;
-            }
+            },
         }
     }
     return 0;

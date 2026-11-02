@@ -145,8 +145,8 @@ extend Array<T> {
     /// @param value the element to store
     /// @returns nothing when the element was written, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/array#set
-    pub func Set(&var self, index: uint, value: T) -> ! CollectionError {
-        if index >= self.length { fail CollectionError::IndexOutOfRange; }
+    pub func Set(&var self, index: uint, value: T) throws CollectionError {
+        if index >= self.length { throw .IndexOutOfRange; }
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements; the slot
         // emptied by the move is refilled at once.
@@ -165,8 +165,8 @@ extend Array<T> {
     /// @param value the element to store
     /// @returns the element that was at `index`, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/array#replace
-    pub func Replace(&var self, index: uint, value: T) -> T ! CollectionError {
-        if index >= self.length { fail CollectionError::IndexOutOfRange; }
+    pub func Replace(&var self, index: uint, value: T) -> T throws CollectionError {
+        if index >= self.length { throw .IndexOutOfRange; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements; the slot
         // emptied by the move is refilled at once.
         unsafe {

@@ -7,22 +7,13 @@ import Text::{ CString, StringView, TextError };
 // the name C uses part company. Coming in, the terminator says how far to read, a limit says how far to look for
 // it, and the bytes are validated because nothing about C promises text.
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}
-
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // Out: ordinary text picks up its terminator, invisible from the Rux side.
     let text = StringView::FromValidated("hello");
-    let kept = CString::FromView(allocator, text) catch { _ => Panic("ordinary text crosses the boundary") };
+    let kept = try CString::FromView(allocator, text) catch { _ => Panic("ordinary text crosses the boundary") };
     Assert(kept.Length() == 5, "the length counts the text alone");
     // Safety: `kept` is a live C string of five bytes, so its block holds indexes 0 through 5, the terminator last.
     let (terminator, first) = unsafe { (kept.Raw()[5], kept.Raw()[0]) };
@@ -32,7 +23,7 @@ func Main() -> int {
     Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
     // Empty text is one byte of terminator, not a null pointer.
-    Assert(CString::FromView(allocator, StringView()) is .Success(_), "empty text crosses too");
+    Assert((try? CString::FromView(allocator, StringView())) is .Some(_), "empty text crosses too");
 
     // A zero byte in the middle is refused, not truncated.
     var smuggled: char8[8];
@@ -46,12 +37,17 @@ func Main() -> int {
     smuggled[7] = c8'e';
     let hidden = StringView::FromBytes(smuggled[0..8]) ?? StringView();
     Assert(hidden.Length() == 8, "a zero byte is valid UTF-8 and makes a view");
-    Assert(Refusal(CString::FromView(allocator, hidden)) == TextError::InvalidUtf8,
-        "but it does not cross the boundary, and the refusal says why");
+    try {
+        CString::FromView(allocator, hidden);
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8,
+            "but it does not cross the boundary, and the refusal says why"),
+    }
 
     // In: reading back from a raw pointer, to the terminator and no further.
     // Safety: `kept.Raw()` addresses the live six-byte block of `kept`, terminated within the 64-byte limit.
-    let arrived = (unsafe { CString::FromRaw(allocator, kept.Raw(), 64) })
+    let arrived = try (unsafe { CString::FromRaw(allocator, kept.Raw(), 64) })
         catch { _ => Panic("C text with a terminator in reach comes in") };
     Assert(arrived.Length() == 5, "read to the terminator and no further");
 
@@ -62,8 +58,12 @@ func Main() -> int {
     unterminated[2] = c8'c';
     unterminated[3] = c8'd';
     // Safety: `unterminated` is a local array of four bytes, which is exactly the limit passed.
-    Assert(Refusal(unsafe { CString::FromRaw(allocator, @unterminated[0], 4) }) == TextError::InvalidUtf8,
-        "no terminator within the limit is refused");
+    try {
+        unsafe { CString::FromRaw(allocator, @unterminated[0], 4); }
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8, "no terminator within the limit is refused"),
+    }
 
     // Bytes from C that are not text are input, and input is validated.
     var mangled: char8[4];
@@ -72,11 +72,15 @@ func Main() -> int {
     mangled[2] = 0x80u8 as char8;
     mangled[3] = 0u8 as char8;
     // Safety: `mangled` is a local array of four bytes whose last byte is the terminator, so the walk stops there.
-    Assert(Refusal(unsafe { CString::FromRaw(allocator, @mangled[0], 8) }) == TextError::InvalidUtf8,
-        "a surrogate half from C is refused");
+    try {
+        unsafe { CString::FromRaw(allocator, @mangled[0], 8); }
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TextError::InvalidUtf8, "a surrogate half from C is refused"),
+    }
 
     // Text crosses the boundary the same way a view does, since a view is what it becomes.
-    let crossed = CString::FromText(allocator, "crossing") catch { _ => Panic("text makes a C string") };
+    let crossed = try CString::FromText(allocator, "crossing") catch { _ => Panic("text makes a C string") };
     Assert(crossed.Length() == 8, "spanning what it was given");
     // Safety: `crossed` is a live C string of eight bytes, so index 8 is the terminator inside its block.
     let crossedEnd = unsafe { crossed.Raw()[8] };
@@ -84,7 +88,7 @@ func Main() -> int {
 
     // Null is C's nothing, and nothing is not text.
     // Safety: the readability obligation covers only a non-null `raw`; a null one is refused before any read.
-    Assert((unsafe { CString::FromRaw(allocator, null, 8) }) is .Failure(_), "and a null pointer makes nothing");
+    Assert((try? unsafe { CString::FromRaw(allocator, null, 8) }) is none, "and a null pointer makes nothing");
 
     return 0;
 }

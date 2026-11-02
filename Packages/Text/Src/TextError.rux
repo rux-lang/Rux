@@ -5,8 +5,8 @@
 // an offset would cut a character in half.
 
 /// What went wrong.
-/// Every case is a failure. An operation that can fail returns its result, or nothing, through a native fallible
-/// `T ! TextError`, so success is the other channel rather than a case here.
+/// Every case is a failure. An operation that can fail returns its result, or nothing, and declares
+/// `throws TextError`, so success is the return value rather than a case here.
 /// @see https://rux-lang.dev/docs/api/text/text-error
 pub enum TextError: int32 {
     /// The bytes are not well-formed UTF-8.

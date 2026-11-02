@@ -7,11 +7,11 @@ import Core::Assert;
 import Entropy::EntropyError;
 import Random::{ Pcg64Dxsm, PcgFromEntropy, PcgFromEntropyWithStream, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
 
-func Main() -> ! EntropyError {
+func Main() throws EntropyError {
 
     // Entropy seeding succeeds on a supported system, and different calls give different streams.
-    var first = XoshiroFromEntropy()?;
-    var second = XoshiroFromEntropy()?;
+    var first = try XoshiroFromEntropy();
+    var second = try XoshiroFromEntropy();
     var agreements: uint = 0;
     var index: uint = 0;
     while index < 16 {
@@ -22,8 +22,8 @@ func Main() -> ! EntropyError {
     }
     Assert(agreements == 0, "two entropy-seeded generators do not produce the same words");
 
-    var pcgFirst = PcgFromEntropy()?;
-    var pcgSecond = PcgFromEntropy()?;
+    var pcgFirst = try PcgFromEntropy();
+    var pcgSecond = try PcgFromEntropy();
     agreements = 0;
     index = 0;
     while index < 16 {
@@ -35,8 +35,8 @@ func Main() -> ! EntropyError {
     Assert(agreements == 0, "and two of those differ as well");
 
     // The parallel shape: one entropy seed per worker with its own stream.
-    var workerZero = PcgFromEntropyWithStream(0)?;
-    var workerOne = PcgFromEntropyWithStream(1)?;
+    var workerZero = try PcgFromEntropyWithStream(0);
+    var workerOne = try PcgFromEntropyWithStream(1);
     agreements = 0;
     index = 0;
     while index < 16 {

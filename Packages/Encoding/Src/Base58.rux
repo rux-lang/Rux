@@ -61,14 +61,14 @@ pub func Base58EncodedMaxLength(length: uint) -> uint {
 /// @param into the destination
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
-pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint ! FormatError {
+pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint throws FormatError {
     var zeros: uint = 0;
     while zeros < bytes.length && bytes[zeros] == 0 {
         zeros = zeros + 1;
     }
     if into.length < zeros {
         ClearChars(into);
-        fail FormatError::InsufficientCapacity;
+        throw .InsufficientCapacity;
     }
     // The number accumulates as base-58 digit values after the leading `1`s, least significant first, so that a
     // new byte is a multiply-and-add over the digits so far.
@@ -87,7 +87,7 @@ pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint ! FormatErro
         while carry > 0 {
             if size == digits.length {
                 ClearChars(into);
-                fail FormatError::InsufficientCapacity;
+                throw .InsufficientCapacity;
             }
             digits[size] = (carry % 58) as char8;
             carry = carry / 58;
@@ -124,8 +124,8 @@ pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint ! FormatErro
 /// @param into the destination
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
-pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint ! FormatError {
-    return Base58Encode(BytesOf(text), into);
+pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint throws FormatError {
+    return try Base58Encode(BytesOf(text), into);
 }
 
 /// Reads Base58 text in the Bitcoin alphabet into the front of `into`.
@@ -138,10 +138,10 @@ pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint ! FormatErro
 /// @param into the destination
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-decode
-pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
+pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint throws DecodeError {
     var index: uint = 0;
     while index < text.length {
-        if Base58Value(text[index]) < 0 { fail DecodeError::InvalidCharacter(index); }
+        if Base58Value(text[index]) < 0 { throw .InvalidCharacter(index); }
         index = index + 1;
     }
     var zeros: uint = 0;
@@ -150,7 +150,7 @@ pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint ! DecodeError
     }
     if into.length < zeros {
         ClearBytes(into);
-        fail DecodeError::InsufficientCapacity(zeros);
+        throw .InsufficientCapacity(zeros);
     }
     let digits = into[zeros..];
     var size: uint = 0;
@@ -167,7 +167,7 @@ pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint ! DecodeError
         while carry > 0 {
             if size == digits.length {
                 ClearBytes(into);
-                fail DecodeError::InsufficientCapacity(zeros + size + 1);
+                throw .InsufficientCapacity(zeros + size + 1);
             }
             digits[size] = (carry & 255) as byte;
             carry = carry >> 8;

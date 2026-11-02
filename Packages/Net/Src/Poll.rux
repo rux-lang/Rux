@@ -129,19 +129,19 @@ extend Poller {
     /// @param allocator where Windows' registrations and the room for events come from
     /// @returns the poller, or why the system would not make one
     /// @see https://rux-lang.dev/docs/api/net/poller#new
-    pub func New(allocator: Allocator) -> Self ! IoError {
+    pub func New(allocator: Allocator) -> Self throws IoError {
         var poller = Self { handle: NoSocket, registrations: Vector<Registration>(allocator),
                               buffer: Vector<uint64>(allocator) };
         when #target.os == .Linux {
             let created = EpollCreate1(EPOLL_CLOEXEC);
-            if created < 0i64 { fail LastFailure(created); }
+            if created < 0i64 { throw LastFailure(created); }
             poller.handle = created as uint64;
         }
         else when #target.os == .Windows {
         }
         else {
             let created = Kqueue();
-            if created < 0i64 { fail LastFailure(created); }
+            if created < 0i64 { throw LastFailure(created); }
             poller.handle = created as uint64;
             // Safety: `F_SETFD` takes an integer argument, not an address.
             unsafe { FcntlInt(created as int32, F_SETFD, FD_CLOEXEC as int64); }
@@ -155,8 +155,8 @@ extend Poller {
     /// @param interest the readiness wanted
     /// @returns success, or `AlreadyExists` when the socket is registered already
     /// @see https://rux-lang.dev/docs/api/net/poller#register
-    pub func Register(&var self, source: PollSource, token: uint64, interest: Interest) -> ! IoError {
-        self.Change(source, token, interest, true)?;
+    pub func Register(&var self, source: PollSource, token: uint64, interest: Interest) throws IoError {
+        try self.Change(source, token, interest, true);
     }
 
     /// Changes what a registered socket is watched for, and the token it is reported with.
@@ -165,30 +165,30 @@ extend Poller {
     /// @param interest the readiness wanted
     /// @returns success, or `NotFound` when the socket is not registered
     /// @see https://rux-lang.dev/docs/api/net/poller#modify
-    pub func Modify(&var self, source: PollSource, token: uint64, interest: Interest) -> ! IoError {
-        self.Change(source, token, interest, false)?;
+    pub func Modify(&var self, source: PollSource, token: uint64, interest: Interest) throws IoError {
+        try self.Change(source, token, interest, false);
     }
 
     /// Stops watching a socket.
     /// @param source the socket
     /// @returns success, or `NotFound` when the socket is not registered
     /// @see https://rux-lang.dev/docs/api/net/poller#deregister
-    pub func Deregister(&var self, source: PollSource) -> ! IoError {
+    pub func Deregister(&var self, source: PollSource) throws IoError {
         when #target.os == .Linux {
             var bytes: uint8[16] = [0u8; 16];
             // Safety: `bytes` is a local of 16 bytes, at least `EpollEventBytes`.
             let result = unsafe {
                 EpollControl(self.handle as int32, EPOLL_CTL_DEL, source.handle as int32, (@bytes[0]) as *opaque)
             };
-            if result < 0i64 { fail Registered(LastFailure(result)); }
+            if result < 0i64 { throw Registered(LastFailure(result)); }
         }
         else when #target.os == .Windows {
-            let index = self.Find(source.handle) ?? fail IoError::Of(IoErrorKind::NotFound);
+            let index = self.Find(source.handle) ?? throw IoError::Of(IoErrorKind::NotFound);
             self.registrations.SwapRemoveAt(index);
         }
         else {
-            let index = self.Find(source.handle) ?? fail IoError::Of(IoErrorKind::NotFound);
-            self.Apply(source.handle, 0, Interest { readable: false, writable: false })?;
+            let index = self.Find(source.handle) ?? throw IoError::Of(IoErrorKind::NotFound);
+            try self.Apply(source.handle, 0, Interest { readable: false, writable: false });
             self.registrations.SwapRemoveAt(index);
         }
     }
@@ -198,12 +198,12 @@ extend Poller {
     /// @param timeout how long to wait, zero to only look, or `none` to wait without end
     /// @returns how many events were filled; zero after the timeout or when a signal ended the wait early
     /// @see https://rux-lang.dev/docs/api/net/poller#wait
-    pub func Wait(&var self, events: var PollEvent[..], timeout: Duration?) -> uint ! IoError {
-        if events.length == 0u { fail IoError::Of(IoErrorKind::InvalidInput); }
+    pub func Wait(&var self, events: var PollEvent[..], timeout: Duration?) -> uint throws IoError {
+        if events.length == 0u { throw IoError::Of(IoErrorKind::InvalidInput); }
         let capacity = if events.length > 1024u { 1024u } else { events.length };
         let milliseconds = TimeoutMilliseconds(timeout);
         when #target.os == .Linux {
-            self.Reserve(capacity * EpollEventBytes)?;
+            try self.Reserve(capacity * EpollEventBytes);
             // Safety: `Reserve` made the buffer at least `capacity * EpollEventBytes` bytes long, and its words are
             // viewed as the bytes they hold.
             let base = unsafe { self.buffer.AsMutableSlice().data as *var uint8 };
@@ -214,7 +214,7 @@ extend Poller {
             if result < 0i64 {
                 let failure = LastFailure(result);
                 if failure.kind == IoErrorKind::Interrupted { return 0; }
-                fail failure;
+                throw failure;
             }
             var index: uint = 0;
             while index < result as uint {
@@ -235,9 +235,9 @@ extend Poller {
         else when #target.os == .Windows {
             let count = self.registrations.Length();
             if count == 0u {
-                fail IoError::Of(IoErrorKind::InvalidInput);
+                throw IoError::Of(IoErrorKind::InvalidInput);
             }
-            self.Reserve(count * 16)?;
+            try self.Reserve(count * 16);
             // Safety: `Reserve` made the buffer of 8-byte-aligned words room for `count` 16-byte `WsaPollFd`s.
             let polled = unsafe { self.buffer.AsMutableSlice().data as *var WsaPollFd };
             var index: uint = 0;
@@ -251,7 +251,7 @@ extend Poller {
             }
             // Safety: `polled` holds `count` entries, written above.
             let result = unsafe { WSAPoll(polled, count as uint32, milliseconds) };
-            if result < 0 { fail LastFailure(0); }
+            if result < 0 { throw LastFailure(0); }
             var filled: uint = 0;
             index = 0;
             while index < count && filled < capacity {
@@ -271,7 +271,7 @@ extend Poller {
             return filled;
         }
         else {
-            self.Reserve(capacity * sizeof(Kevent) as uint)?;
+            try self.Reserve(capacity * sizeof(Kevent) as uint);
             // Safety: `Reserve` made the buffer of 8-byte-aligned words room for `capacity` `Kevent`s.
             let reported = unsafe { self.buffer.AsMutableSlice().data as *var Kevent };
             var span = Timespec { seconds: 0, nanoseconds: 0 };
@@ -287,7 +287,7 @@ extend Poller {
             if result < 0i64 {
                 let failure = LastFailure(result);
                 if failure.kind == IoErrorKind::Interrupted { return 0; }
-                fail failure;
+                throw failure;
             }
             var index: uint = 0;
             while index < result as uint {
@@ -306,7 +306,7 @@ extend Poller {
     }
 
     // Registers a socket, or changes its registration.
-    func Change(&var self, source: PollSource, token: uint64, interest: Interest, adding: bool) -> ! IoError {
+    func Change(&var self, source: PollSource, token: uint64, interest: Interest, adding: bool) throws IoError {
         when #target.os == .Linux {
             var mask: uint32 = 0;
             if interest.readable { mask = mask | EPOLLIN | EPOLLRDHUP; }
@@ -323,25 +323,25 @@ extend Poller {
                 }, source.handle as int32,
                              (@bytes[0]) as *opaque)
             };
-            if result < 0i64 { fail Registered(LastFailure(result)); }
+            if result < 0i64 { throw Registered(LastFailure(result)); }
         }
         else when #target.os == .Windows {
             let found = self.Find(source.handle);
             if adding {
-                if found != none { fail IoError::Of(IoErrorKind::AlreadyExists); }
+                if found != none { throw IoError::Of(IoErrorKind::AlreadyExists); }
                 self.registrations.Push(Registration { handle: source.handle, token, interest });
             }
             else {
-                let index = found ?? fail IoError::Of(IoErrorKind::NotFound);
+                let index = found ?? throw IoError::Of(IoErrorKind::NotFound);
                 self.registrations.AsMutableSlice()[index] =
                     Registration { handle: source.handle, token, interest };
             }
         }
         else {
             let found = self.Find(source.handle);
-            if adding && found != none { fail IoError::Of(IoErrorKind::AlreadyExists); }
-            if !adding && found == none { fail IoError::Of(IoErrorKind::NotFound); }
-            self.Apply(source.handle, token, interest)?;
+            if adding && found != none { throw IoError::Of(IoErrorKind::AlreadyExists); }
+            if !adding && found == none { throw IoError::Of(IoErrorKind::NotFound); }
+            try self.Apply(source.handle, token, interest);
             let registration = Registration { handle: source.handle, token, interest };
             match found {
                 .Some(index) => self.registrations.AsMutableSlice()[index] = registration,
@@ -352,7 +352,7 @@ extend Poller {
 
     // Sets the kqueue filters of `handle` to `interest`: each wanted direction added or updated with `token`, and each
     // unwanted one removed, which may find nothing to remove.
-    func Apply(&var self, handle: uint64, token: uint64, interest: Interest) -> ! IoError {
+    func Apply(&var self, handle: uint64, token: uint64, interest: Interest) throws IoError {
         when #target.os == .FreeBSD || #target.os == .macOS {
             var changes: Kevent[2] = [
                 Kevent::Of(handle, EVFILT_READ, (if interest.readable {
@@ -369,13 +369,13 @@ extend Poller {
             var receipts: Kevent[2] = [Kevent::Of(0, 0, 0, 0), Kevent::Of(0, 0, 0, 0)];
             // Safety: `changes` and `receipts` are local arrays of two `Kevent`s each, the counts passed.
             let result = unsafe { KeventCall(self.handle as int32, @changes[0], 2, @receipts[0], 2, null) };
-            if result < 0i64 { fail LastFailure(result); }
+            if result < 0i64 { throw LastFailure(result); }
             var index: int64 = 0;
             while index < result {
                 let receipt = receipts[index as uint];
                 // `ENOENT`: a direction that was not wanted had nothing to remove.
                 if (receipt.flags & EV_ERROR) != 0u16 && receipt.data != 0i64 && receipt.data != 2i64 {
-                    fail FailureOf(receipt.data);
+                    throw FailureOf(receipt.data);
                 }
                 index = index + 1;
             }
@@ -393,7 +393,7 @@ extend Poller {
     }
 
     // Makes the event buffer at least `bytes` long.
-    func Reserve(&var self, bytes: uint) -> ! IoError {
+    func Reserve(&var self, bytes: uint) throws IoError {
         let words = (bytes + 7) / 8;
         while self.buffer.Length() < words {
             self.buffer.Push(0);

@@ -15,19 +15,19 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    let hello = String::FromBytes(allocator, "Hello World!") catch { _ => return 1 };
+    let hello = try String::FromBytes(allocator, "Hello World!") catch { _ => return 1 };
 
     // Through a placeholder, which is the path an argument takes.
-    let alone = Rendered(allocator, Render(allocator, "{}", hello.View()));
+    let alone = Rendered(allocator, try? Render(allocator, "{}", hello.View()));
     if !Matches(alone.View(), "Hello World!") { return 10; }
 
-    let wrapped = Rendered(allocator, Render(allocator, "<{}>", hello.View()));
+    let wrapped = Rendered(allocator, try? Render(allocator, "<{}>", hello.View()));
     if !Matches(wrapped.View(), "<Hello World!>") { return 11; }
 
     // Alongside arguments of other types, and twice from one value.
-    let mixed = Rendered(allocator, Render(allocator, "{} {} {}", hello.View(), 42, true));
+    let mixed = Rendered(allocator, try? Render(allocator, "{} {} {}", hello.View(), 42, true));
     if !Matches(mixed.View(), "Hello World! 42 true") { return 12; }
-    let doubled = Rendered(allocator, Render(allocator, "{}{}", hello.View(), hello.View()));
+    let doubled = Rendered(allocator, try? Render(allocator, "{}{}", hello.View(), hello.View()));
     if !Matches(doubled.View(), "Hello World!Hello World!") { return 13; }
 
     // The receiver is untouched by having been rendered, however many times.
@@ -38,30 +38,30 @@ func Main() -> int {
     let empty = String(allocator);
     let shownPlain: Display = empty.View();
     let plainWriter: &var TextWriter = builder;
-    if shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain()) is .Failure(_) { return 20; }
+    if (try? shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain())) is none { return 20; }
     if builder.Length() != 0 { return 21; }
     let shownDebug: Debug = empty.View();
     let emptyDebugWriter: &var TextWriter = builder;
-    if shownDebug.WriteDebug(emptyDebugWriter, FormatSpec::Plain()) is .Failure(_) { return 22; }
+    if (try? shownDebug.WriteDebug(emptyDebugWriter, FormatSpec::Plain())) is none { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
     // A character slice containing a text literal renders and quotes the same way.
     builder.Clear();
     let shownText: Display = "Hello World!";
     let textWriter: &var TextWriter = builder;
-    if shownText.WriteDisplay(textWriter, FormatSpec::Plain()) is .Failure(_) { return 30; }
+    if (try? shownText.WriteDisplay(textWriter, FormatSpec::Plain())) is none { return 30; }
     if !Matches(builder.View(), "Hello World!") { return 31; }
 
     builder.Clear();
     let shownTextDebug: Debug = "";
     let textDebugWriter: &var TextWriter = builder;
-    if shownTextDebug.WriteDebug(textDebugWriter, FormatSpec::Plain()) is .Failure(_) { return 32; }
+    if (try? shownTextDebug.WriteDebug(textDebugWriter, FormatSpec::Plain())) is none { return 32; }
     if !Matches(builder.View(), "\"\"") { return 33; }
 
     builder.Clear();
     let shownHello: Debug = hello.View();
     let helloDebugWriter: &var TextWriter = builder;
-    if shownHello.WriteDebug(helloDebugWriter, FormatSpec::Plain()) is .Failure(_) { return 24; }
+    if (try? shownHello.WriteDebug(helloDebugWriter, FormatSpec::Plain())) is none { return 24; }
     if !Matches(builder.View(), "\"Hello World!\"") { return 25; }
 
     return 0;
@@ -69,6 +69,6 @@ func Main() -> int {
 
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success.
-func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
-    return (move outcome) catch { _ => String(allocator) };
+func Rendered(allocator: Allocator, outcome: String?) -> String {
+    return (move outcome) ?? String(allocator);
 }

@@ -15,9 +15,9 @@ struct CountingSource {
 }
 
 extend CountingSource : EntropySource {
-    func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError {
+    func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError {
         self.requests = self.requests + 1;
-        if self.failing { fail EntropyError::Failed; }
+        if self.failing { throw .Failed; }
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes.
         let bytes = unsafe { (buffer as *var byte)[..length] };
         var index: uint = 0;
@@ -42,10 +42,13 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 // Which alphabet failure was reported, as a small code, with its offset where it has one.
 func AlphabetFailure(alphabet: char8[..]) -> int {
-    let reported = match ValidateAlphabet(alphabet) {
-        .Failure(error) => error,
-        .Success(_) => return 0
-    };
+    var caught: NanoIdError? = none;
+    try {
+        ValidateAlphabet(alphabet);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return 0;
     return match reported {
         .AlphabetTooSmall => 1,
         .AlphabetTooLarge => 2,
@@ -67,23 +70,23 @@ func Main() -> int {
     // bytes 0 to 20 give the alphabet's first twenty-one characters.
     var source = CountingSource { next: 0, failing: false, requests: 0 };
     var id: char8[21];
-    GenerateNanoIdFrom(source, id[..]) catch { _ => return 1 };
+    try GenerateNanoIdFrom(source, id[..]) catch { _ => return 1 };
     if !Same(id[..], NanoIdAlphabet[..21]) { return 2; }
     // Bytes 64 to 84 give the same characters again, since only the low six bits are used.
     source.next = 64;
-    GenerateNanoIdFrom(source, id[..]) catch { _ => return 3 };
+    try GenerateNanoIdFrom(source, id[..]) catch { _ => return 3 };
     if !Same(id[..], NanoIdAlphabet[..21]) { return 4; }
 
     // A custom alphabet of three: the mask is three, so a masked value of three is thrown away, not folded to `a`.
     source.next = 0;
     var short: char8[7];
-    GenerateNanoIdFrom(source, short[..], "abc") catch { _ => return 5 };
+    try GenerateNanoIdFrom(source, short[..], "abc") catch { _ => return 5 };
     if !Same(short[..], "abcabca") { return 6; }
     // Bytes 0..2 and 4..6 are accepted and 3 and 7 are not; the identifier is filled across however many requests
     // that takes.
     source.next = 0;
     var long: char8[300];
-    GenerateNanoIdFrom(source, long[..], "abc") catch { _ => return 7 };
+    try GenerateNanoIdFrom(source, long[..], "abc") catch { _ => return 7 };
     var index: uint = 0;
     while index < 300 {
         let expected: char8 = if index % 3 == 0 { 'a' } else if index % 3 == 1 { 'b' } else { 'c' };
@@ -94,8 +97,11 @@ func Main() -> int {
     // A source that fails: the failure is reported and the destination holds no partial identifier.
     var failing = CountingSource { next: 0, failing: true, requests: 0 };
     var refused: char8[21] = ['x'; 21];
-    match GenerateNanoIdFrom(failing, refused[..]) {
-        .Failure(error) => {
+    try {
+        GenerateNanoIdFrom(failing, refused[..]);
+        return 11;
+    } catch {
+        error => {
             match error {
                 .Entropy(reason) => {
                     if reason != EntropyError::Failed { return 9; }
@@ -103,7 +109,6 @@ func Main() -> int {
                 _ => return 10
             }
         },
-        .Success(_) => return 11
     }
     for character in refused {
         if character != '\0' { return 12; }
@@ -115,9 +120,11 @@ func Main() -> int {
     if AlphabetFailure("abé") != 402 { return 15; }
     if AlphabetFailure("01") != 0 || AlphabetFailure(NanoIdAlphabet) != 0 { return 16; }
     var spent = CountingSource { next: 0, failing: false, requests: 0 };
-    match GenerateNanoIdFrom(spent, short[..], "aa") {
-        .Failure(_) => {},
-        .Success(_) => return 17
+    try {
+        GenerateNanoIdFrom(spent, short[..], "aa");
+        return 17;
+    } catch {
+        _ => {},
     }
     if spent.requests != 0 { return 18; }
 
@@ -127,7 +134,7 @@ func Main() -> int {
     var round: uint = 0;
     while round < 1000 {
         var fresh: char8[21];
-        GenerateNanoId(fresh[..]) catch { _ => return 19 };
+        try GenerateNanoId(fresh[..]) catch { _ => return 19 };
         for character in fresh {
             if !InAlphabet(character) { return 20; }
             counts[character as uint8 as uint] = counts[character as uint8 as uint] + 1;
@@ -138,7 +145,7 @@ func Main() -> int {
         if counts[member as uint8 as uint] == 0 { return 21; }
     }
     var digits: char8[12];
-    GenerateNanoId(digits[..], "0123456789") catch { _ => return 22 };
+    try GenerateNanoId(digits[..], "0123456789") catch { _ => return 22 };
     for character in digits {
         if character < '0' || character > '9' { return 23; }
     }

@@ -7,7 +7,7 @@
 // something that needed more bytes is a failure, and has a kind of its own.
 // The set is deliberately the meanings shared by every platform, with the raw code carried beside the meaning:
 // translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
-// can fail returns a native fallible, and `IoError` is only ever its failure.
+// can fail declares `throws IoError`, and `IoError` is only ever what it throws.
 
 import Text::{ Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
 
@@ -141,9 +141,9 @@ extend IoErrorKind : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        return WriteAligned(writer, spec, DescribeKind(self), false);
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        return try WriteAligned(writer, spec, DescribeKind(self), false);
     }
 }
 
@@ -155,8 +155,8 @@ extend IoError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/io/io-error#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
         var text: char8[64] = ['\0'; 64];
         var length: uint = 0;
         for c in DescribeKind(self.kind) {
@@ -190,6 +190,6 @@ extend IoError : Display {
             text[length] = ')';
             length = length + 1;
         }
-        return WriteAligned(writer, spec, text[..length], false);
+        return try WriteAligned(writer, spec, text[..length], false);
     }
 }

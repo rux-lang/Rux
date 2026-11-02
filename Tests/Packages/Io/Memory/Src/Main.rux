@@ -18,47 +18,51 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 func Main() -> int {
     var reader = ByteReader::New("hello, world");
     var five: char8[5] = [c8' '; 5];
-    ReadExact(reader, five[..]) catch { _ => return 1 };
+    try ReadExact(reader, five[..]) catch { _ => return 1 };
     Assert(Same(five[..], "hello") && reader.Position() == 5u && Same(reader.Remaining(), ", world"), "reads in order");
     var big: char8[32] = [c8' '; 32];
-    let count = reader.Read(big[..]) catch { _ => return 2 };
+    let count = try reader.Read(big[..]) catch { _ => return 2 };
     Assert(count == 7u && Same(big[..count], ", world"), "a read takes what is left");
-    match reader.Read(big[..]) {
-        .Success(_) => Assert(false, "nothing is left"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::EndOfStream, "the end is EndOfStream")
+    try {
+        reader.Read(big[..]);
+        Assert(false, "nothing is left");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::EndOfStream, "the end is EndOfStream"),
     }
-    Assert((reader.Seek(SeekFrom::End, -5) catch { _ => 99u64 }) == 7u64, "seeks from the end");
-    let tail = reader.Read(big[..]) catch { _ => return 3 };
+    Assert(((try reader.Seek(SeekFrom::End, -5) catch { _ => 99u64 })) == 7u64, "seeks from the end");
+    let tail = try reader.Read(big[..]) catch { _ => return 3 };
     Assert(Same(big[..tail], "world"), "reads after a seek");
-    Assert((reader.Seek(SeekFrom::Current, -12) catch { _ => 99u64 }) == 0u64, "seeks back to the start");
-    match reader.Seek(SeekFrom::Start, 13) {
-        .Success(_) => Assert(false, "past the end"),
-        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a seek past the end is refused")
+    Assert(((try reader.Seek(SeekFrom::Current, -12) catch { _ => 99u64 })) == 0u64, "seeks back to the start");
+    try {
+        reader.Seek(SeekFrom::Start, 13);
+        Assert(false, "past the end");
+    } catch {
+        error => Assert(error.kind == IoErrorKind::InvalidInput, "a seek past the end is refused"),
     }
 
     var writer = ByteWriter::New(SystemAllocator());
     Assert(writer.Length() == 0u && writer.Bytes().length == 0u, "an empty writer");
-    WriteAll(writer, "abc") catch { _ => return 4 };
+    try WriteAll(writer, "abc") catch { _ => return 4 };
     var index: uint = 0;
     while index < 100u {
-        WriteAll(writer, "0123456789") catch { _ => return 5 };
+        try WriteAll(writer, "0123456789") catch { _ => return 5 };
         index = index + 1;
     }
     Assert(writer.Length() == 1003u && Same(writer.Bytes()[..13], "abc0123456789"), "grows past its first block");
-    writer.Seek(SeekFrom::Start, 1) catch { _ => return 6 };
-    WriteAll(writer, "XY") catch { _ => return 7 };
+    try writer.Seek(SeekFrom::Start, 1) catch { _ => return 6 };
+    try WriteAll(writer, "XY") catch { _ => return 7 };
     Assert(Same(writer.Bytes()[..5], "aXY01") && writer.Length() == 1003u, "a seek back overwrites in place");
-    writer.Seek(SeekFrom::End, 0) catch { _ => return 8 };
-    WriteUint32(writer, Endian::Big, 0x01020304u32) catch { _ => return 9 };
+    try writer.Seek(SeekFrom::End, 0) catch { _ => return 8 };
+    try WriteUint32(writer, Endian::Big, 0x01020304u32) catch { _ => return 9 };
     Assert(writer.Length() == 1007u, "binary writes append");
 
     var back = ByteReader::New(writer.Bytes());
-    back.Seek(SeekFrom::End, -4) catch { _ => return 10 };
-    Assert((ReadUint32(back, Endian::Big) catch { _ => 0u32 }) == 0x01020304u32, "what was written reads back");
+    try back.Seek(SeekFrom::End, -4) catch { _ => return 10 };
+    Assert(((try ReadUint32(back, Endian::Big) catch { _ => 0u32 })) == 0x01020304u32, "what was written reads back");
 
     writer.Clear();
     Assert(writer.Length() == 0u, "clearing empties it");
-    WriteAll(writer, "again") catch { _ => return 11 };
+    try WriteAll(writer, "again") catch { _ => return 11 };
     Assert(Same(writer.Bytes(), "again"), "and it writes again");
     writer.Release();
     Assert(writer.Length() == 0u && writer.Bytes().length == 0u, "releasing gives the storage back");

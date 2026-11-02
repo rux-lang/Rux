@@ -1,8 +1,8 @@
 // The entry point of a test build: a generated `Main` that runs every `#Test` function of the package.
 // The tests are found in the parsed sources, before anything is resolved, so the runner is ordinary Rux source that
 // the rest of the pipeline compiles like any other file: a table of `Test::TestCase` values handed to
-// `Test::RunTests`. A test that returns nothing gets an adapter that returns `! TestFailure`, so every entry of the
-// table has the same function type.
+// `Test::RunTests`. A test that returns nothing gets an adapter that declares `throws TestFailure`, so every entry of
+// the table has the same function type.
 
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/CompileContext.h"
@@ -25,7 +25,7 @@ struct DiscoveredTest {
     bool returnsNothing = false;
 };
 
-/// Whether `type` is `! TestFailure` or `! Test::TestFailure`.
+/// Whether `type` is `throws TestFailure` or `throws Test::TestFailure`, or the older `! TestFailure`.
 [[nodiscard]] bool IsTestFailureResult(const TypeExpr &type) {
     const auto *fallible = AstCast<const FallibleTypeExpr>(&type);
     if (fallible == nullptr || fallible->success != nullptr || fallible->error == nullptr) {
@@ -63,7 +63,8 @@ struct TestCollector {
         }
         if (function.returnType && !IsTestFailureResult(**function.returnType)) {
             Problem(function.location,
-                    std::format("'#Test' function '{}' must return nothing or '! TestFailure'", function.name));
+                    std::format("'#Test' function '{}' must return nothing or declare 'throws TestFailure'",
+                                function.name));
             return;
         }
         DiscoveredTest test;
@@ -184,7 +185,7 @@ bool CompilerDriver::Impl::SynthesizeTestEntry() {
             continue;
         }
         const auto adapter = std::format("RuxTestAdapter{}", index);
-        source += std::format("func {}() -> ! TestFailure {{\n    {}();\n}}\n\n", adapter, test.reference);
+        source += std::format("func {}() throws TestFailure {{\n    {}();\n}}\n\n", adapter, test.reference);
         runners.push_back(adapter);
     }
     source += "func Main() -> int {\n    let tests = [\n";

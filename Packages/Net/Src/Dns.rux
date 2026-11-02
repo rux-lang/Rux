@@ -189,20 +189,20 @@ extend Resolver {
     /// @returns the addresses; `NotFound` when the name has none or does not exist, `TimedOut` when no server answered
     /// @see https://rux-lang.dev/docs/api/net/resolver#lookup
     pub func Lookup(&self, allocator: Allocator, host: char8[..], port: uint16)
-        -> Vector<SocketAddress> ! IoError {
+        -> Vector<SocketAddress> throws IoError {
         var found = Vector<SocketAddress>(allocator);
         var attempt: uint = 0;
         while attempt < self.attempts {
             for server in self.servers.AsSlice() {
                 let first = Ask(server, host, TypeA, NextQueryId(), port, self.timeout, found);
-                if first == Outcome::NoSuchName { fail IoError::Of(IoErrorKind::NotFound); }
+                if first == Outcome::NoSuchName { throw IoError::Of(IoErrorKind::NotFound); }
                 let second = Ask(server, host, TypeAaaa, NextQueryId(), port, self.timeout, found);
                 if found.Length() > 0u { return move found; }
-                if first == Outcome::Found || second == Outcome::Found { fail IoError::Of(IoErrorKind::NotFound); }
+                if first == Outcome::Found || second == Outcome::Found { throw IoError::Of(IoErrorKind::NotFound); }
             }
             attempt = attempt + 1;
         }
-        fail IoError::Of(IoErrorKind::TimedOut);
+        throw IoError::Of(IoErrorKind::TimedOut);
     }
 }
 
@@ -362,20 +362,21 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
 }
 
 // Asks `server` for `host`'s records of `kind` over TCP, as an answer too long for a datagram must be fetched.
-func AskOverTcp(server: SocketAddress, query: uint8[..], timeout: Duration, answer: var uint8[..]) -> uint ! IoError {
-    var stream = TcpStream::Connect(server)?;
-    stream.SetReadTimeout(timeout)?;
-    stream.SetWriteTimeout(timeout)?;
+func AskOverTcp(server: SocketAddress, query: uint8[..], timeout: Duration, answer: var uint8[..])
+    -> uint throws IoError {
+    var stream = try TcpStream::Connect(server);
+    try stream.SetReadTimeout(timeout);
+    try stream.SetWriteTimeout(timeout);
     var prefix: char8[2] = [(query.length >> 8) as char8, query.length as char8];
-    WriteAll(stream, prefix[..])?;
+    try WriteAll(stream, prefix[..]);
     // Safety: `query` is a slice of `query.length` bytes, and `char8` has the layout of `uint8`.
-    WriteAll(stream, unsafe { (query.data as *char8)[..query.length] })?;
+    try WriteAll(stream, unsafe { (query.data as *char8)[..query.length] });
     var size: char8[2] = [c8'\0'; 2];
-    ReadExact(stream, size[..])?;
+    try ReadExact(stream, size[..]);
     let length = (size[0] as uint << 8) | size[1] as uint;
-    if length > answer.length { fail IoError::Of(IoErrorKind::LimitExceeded); }
+    if length > answer.length { throw IoError::Of(IoErrorKind::LimitExceeded); }
     // Safety: `length` is at most `answer.length`, checked above, and `char8` has the layout of `uint8`.
-    ReadExact(stream, unsafe { (answer.data as *var char8)[..length] })?;
+    try ReadExact(stream, unsafe { (answer.data as *var char8)[..length] });
     return length;
 }
 
@@ -393,12 +394,12 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         },
         port: 0
     };
-    let socket = UdpSocket::Bind(local) catch { _ => return Outcome::Failed };
-    socket.Connect(server) catch { _ => return Outcome::Failed };
-    socket.SetReadTimeout(timeout) catch { _ => return Outcome::Failed };
+    let socket = try UdpSocket::Bind(local) catch { _ => return Outcome::Failed };
+    try socket.Connect(server) catch { _ => return Outcome::Failed };
+    try socket.SetReadTimeout(timeout) catch { _ => return Outcome::Failed };
     // Safety: `WriteQuery` wrote `length` bytes, at most the 512 of the local `query`, and `char8` has the layout of
     // `uint8`.
-    socket.Send(unsafe { ((@query[0]) as *char8)[..length] }) catch { _ => return Outcome::Failed };
+    try socket.Send(unsafe { ((@query[0]) as *char8)[..length] }) catch { _ => return Outcome::Failed };
     var answer: uint8[65535] = [0u8; 65535];
     // An answer to an earlier query, or from somewhere else, is read past until the timeout.
     let started = Instant::Now();
@@ -406,7 +407,7 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         // Safety: `answer` is a local of 65535 bytes, so its first 512 are writable, and `char8` has the layout of
         // `uint8`.
         let datagram = unsafe { ((@answer[0]) as *var char8)[..512] };
-        let received = socket.Receive(datagram) catch { _ => return Outcome::Failed };
+        let received = try socket.Receive(datagram) catch { _ => return Outcome::Failed };
         let message = answer[..received];
         if received < 12u || Word16(message, 0) != id {
             let spent = Instant::Now().Since(started) ?? Duration::Zero();
@@ -415,7 +416,9 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         }
         // Truncated: the whole answer comes over TCP.
         if (message[2] & 0x02u8) != 0u8 {
-            let whole = AskOverTcp(server, query[..length], timeout, answer[..]) catch { _ => return Outcome::Failed };
+            let whole = try AskOverTcp(server, query[..length], timeout, answer[..]) catch {
+                _ => return Outcome::Failed,
+            };
             return ReadAnswer(answer[..whole], id, kind, port, found);
         }
         return ReadAnswer(message, id, kind, port, found);
@@ -437,7 +440,7 @@ func NextQueryId() -> uint16 {
 }
 
 // The addresses of `host` from the hosts file, or else from the name servers: IPv4 addresses first, then IPv6.
-func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
+func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> throws IoError {
     var found = Vector<SocketAddress>(allocator);
     FromHostsFile(allocator, host, port, found);
     if found.Length() > 0u { return move found; }
@@ -448,5 +451,5 @@ func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vect
         return move found;
     }
     let resolver = Resolver::FromSystem(allocator);
-    return resolver.Lookup(allocator, host, port)?;
+    return try resolver.Lookup(allocator, host, port);
 }

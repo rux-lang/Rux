@@ -35,8 +35,8 @@ extend CString {
     /// @param text the text to act on
     /// @returns the terminated copy, or a failure when the text holds an interior zero byte
     /// @see https://rux-lang.dev/docs/api/text/c-string#from-text
-    pub func FromText(allocator: Allocator, text: char8[..]) -> Self ! TextError {
-        return Self::FromView(allocator, StringView::FromValidated(text));
+    pub func FromText(allocator: Allocator, text: char8[..]) -> Self throws TextError {
+        return try Self::FromView(allocator, StringView::FromValidated(text));
     }
 
     /// A terminated copy of `view`, or why the text cannot cross the boundary.
@@ -48,13 +48,13 @@ extend CString {
     /// @param view the borrowed text to act on
     /// @returns the terminated copy, or a failure when the text holds an interior zero byte
     /// @see https://rux-lang.dev/docs/api/text/c-string#from-view
-    pub func FromView(allocator: Allocator, view: StringView) -> Self ! TextError {
+    pub func FromView(allocator: Allocator, view: StringView) -> Self throws TextError {
         let bytes = view.Bytes();
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, the loop condition.
             if (unsafe { bytes.data[index] } as uint32) == 0 {
-                fail TextError::InvalidUtf8;
+                throw .InvalidUtf8;
             }
             index = index + 1;
         }
@@ -89,9 +89,9 @@ extend CString {
     /// @param limit the most bytes to read before giving up on finding a terminator
     /// @returns the copy, or a failure when no terminator was found within `limit`
     /// @see https://rux-lang.dev/docs/api/text/c-string#from-raw
-    pub unsafe func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> Self ! TextError {
+    pub unsafe func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> Self throws TextError {
         if raw == null {
-            fail TextError::InvalidUtf8;
+            throw .InvalidUtf8;
         }
         var length: uint = 0;
         var terminated = false;
@@ -105,7 +105,7 @@ extend CString {
             }
         }
         if !terminated {
-            fail TextError::InvalidUtf8;
+            throw .InvalidUtf8;
         }
 
         // Re-measure to the terminator now that one is known to exist within the limit.
@@ -114,9 +114,9 @@ extend CString {
             length = length + 1;
         }
         let bytes = (raw)[..length];
-        Validate(bytes) catch { _ => fail TextError::InvalidUtf8 };
+        try Validate(bytes) catch { _ => throw .InvalidUtf8 };
         let checked = StringView::FromValidated(bytes);
-        return Self::FromView(allocator, checked);
+        return try Self::FromView(allocator, checked);
     }
 
     /// How many bytes of text come before the terminator.
@@ -152,7 +152,7 @@ extend CString {
         if self.data != null {
             let layout = Layout::New(self.length + 1, 1);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque,
+            try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.length + 1, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;

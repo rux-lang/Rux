@@ -7,7 +7,7 @@
 // same way, to survive that.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Format::ByteCursor;
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
                TomlWriteDocument };
@@ -966,7 +966,9 @@ func Differential(index: uint) -> char8[..] {
 func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
-    let failure = TomlWriteDocument(writer, value);
+    let failure: Result<(), FormatError> = try .Success(TomlWriteDocument(writer, value)) catch {
+        error => .Failure(error),
+    };
     Assert(failure is .Success(_), "every accepted document can be written back out");
     return cursor.Written();
 }
@@ -1039,11 +1041,11 @@ func TreeScalars(value: &TomlValue) -> uint {
 // A document this test knows TOML accepts. A refusal hands back nothing, so there is nothing to fall back on and
 // the assertion is what stops the run.
 func Accepted(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    return TomlParse(allocator, text) catch { _ => Panic(note) };
+    return try TomlParse(allocator, text) catch { _ => Panic(note) };
 }
 
 // Whether a document was refused, asked without consuming the outcome so the refusal can be inspected after.
-func Refused(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
+func Refused(outcome: &Result<TomlValue, TomlParseFailure>) -> bool {
     return match outcome {
         .Success(_) => false,
         .Failure(_) => true
@@ -1052,7 +1054,7 @@ func Refused(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
 
 // Whether a refusal names a place a reader can find it: a byte offset for a program, and a line and column for a
 // person. All three name the same byte, and none of them is ever zero for a real refusal.
-func Positioned(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
+func Positioned(outcome: &Result<TomlValue, TomlParseFailure>) -> bool {
     return match outcome {
         .Success(_) => false,
         .Failure(failure) => failure.line > 0 && failure.column > 0 && failure.Offset() < 0xFFFFFFFF
@@ -1060,7 +1062,7 @@ func Positioned(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
 }
 
 // Whether the refusal is one the streaming reader is also responsible for.
-func IsStructural(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
+func IsStructural(outcome: &Result<TomlValue, TomlParseFailure>) -> bool {
     return match outcome {
         .Success(_) => false,
         .Failure(failure) => match failure.reason {
@@ -1094,7 +1096,9 @@ func Main() -> int {
     index = 0;
     while index < InvalidCount {
         let text = Invalid(index);
-        let outcome = TomlParse(allocator, text);
+        let outcome: Result<TomlValue, TomlParseFailure> = try .Success(TomlParse(allocator, text)) catch {
+            error => .Failure(error),
+        };
         Assert(Refused(outcome), Refusal(index));
         Assert(Positioned(outcome), "reported at a position a reader can find, in bytes and in line and column");
         index = index + 1;
@@ -1119,7 +1123,9 @@ func Main() -> int {
     index = 0;
     while index < InvalidCount {
         let text = Invalid(index);
-        let outcome = TomlParse(allocator, text);
+        let outcome: Result<TomlValue, TomlParseFailure> = try .Success(TomlParse(allocator, text)) catch {
+            error => .Failure(error),
+        };
         // The streaming reader is responsible for the grammar and not for the tables or the values: it cannot
         // know a table was defined twice without keeping every table it has seen, and it hands out the bytes of
         // a number rather than reading it, so `010` is the caller's to refuse when the caller decodes it.

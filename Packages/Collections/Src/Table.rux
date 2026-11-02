@@ -73,8 +73,8 @@ extend TableSeed {
     /// @returns a seed drawn from the system, so two tables in one process iterate differently
     /// @see https://rux-lang.dev/docs/api/collections/table-seed#random
     pub func Random() -> Self {
-        let low = NextUint64() catch { _ => 0x9E3779B97F4A7C15 };
-        let high = NextUint64() catch { _ => 0xBF58476D1CE4E5B9 };
+        let low = try NextUint64() catch { _ => 0x9E3779B97F4A7C15 };
+        let high = try NextUint64() catch { _ => 0xBF58476D1CE4E5B9 };
         return Self { low, high };
     }
 
@@ -329,7 +329,7 @@ extend Table<K, V> {
             return MinimumTableCapacity;
         }
         // ceil(length * 4 / 3) slots, guarded so neither the scaling nor the rounding term can wrap.
-        if length > (uint::Max - 2) / 4 { throw AllocError::Unsupported; }
+        if length > (uint::Max - 2) / 4 { throw .Unsupported; }
         let required = (length * 4 + 2) / 3;
         // An element size of one: this sizes slots, and each parallel run has its own byte size checked where it is
         // allocated.
@@ -366,14 +366,14 @@ extend Table<K, V> {
             error => {
                 ReleaseBlock<K>(self.allocator, keys, capacity);
                 throw error;
-            }
+            },
         };
         var states = try TryAllocateBlock<uint8>(self.allocator, capacity) catch {
             error => {
                 ReleaseBlock<K>(self.allocator, keys, capacity);
                 ReleaseBlock<V>(self.allocator, values, capacity);
                 throw error;
-            }
+            },
         };
         let tags = try TryAllocateBlock<uint8>(self.allocator, capacity) catch {
             error => {
@@ -381,7 +381,7 @@ extend Table<K, V> {
                 ReleaseBlock<V>(self.allocator, values, capacity);
                 ReleaseBlock<uint8>(self.allocator, states, capacity);
                 throw error;
-            }
+            },
         };
 
         var index: uint = 0;

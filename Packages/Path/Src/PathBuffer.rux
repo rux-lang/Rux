@@ -86,7 +86,7 @@ extend PathBuffer {
             // `self.data` readable for `self.length` units.
             unsafe { Copy(block, self.data as *opaque, self.length * unitSize); }
             let old = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
-            borrowed.Deallocate(self.data as *var opaque,
+            try borrowed.Deallocate(self.data as *var opaque,
                                 (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         // Safety: `block` is aligned for `OsUnit` and holds `wanted` of them.
@@ -139,7 +139,7 @@ extend PathBuffer {
             let unitSize = sizeof(OsUnit) as uint;
             let layout = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque,
+            try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;

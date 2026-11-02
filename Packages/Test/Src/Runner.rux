@@ -16,7 +16,7 @@ pub struct TestCase {
     /// The test's name, such as `Parser::ReadsNumbers`.
     pub name: char8[..];
     /// What runs it.
-    pub run: func() -> ! TestFailure;
+    pub run: func() throws TestFailure;
 }
 
 /// Which tests a run chooses and how it reports them. `Copy`.
@@ -128,14 +128,13 @@ pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
         if Chooses(options, test.name) {
             let run = test.run;
             let before = Instant::Now();
-            let outcome = run();
-            let spent = Instant::Now().Since(before) ?? Duration::Zero();
-            match outcome {
-                .Success(_) => {
-                    passed = passed + 1;
-                    if !options.quiet { PrintLine("test {} ... ok ({} ms)", test.name, Milliseconds(spent)); }
-                },
-                .Failure(failure) => {
+            try {
+                run();
+                let spent = Instant::Now().Since(before) ?? Duration::Zero();
+                passed = passed + 1;
+                if !options.quiet { PrintLine("test {} ... ok ({} ms)", test.name, Milliseconds(spent)); }
+            } catch {
+                failure => {
                     if failure.IsSkip() {
                         skipped = skipped + 1;
                         if !options.quiet { PrintLine("test {} ... skipped: {}", test.name, failure.Message()); }
@@ -144,7 +143,7 @@ pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
                         failures.Push(index);
                         PrintLine("test {} ... FAILED\n  {}", test.name, failure.Message());
                     }
-                }
+                },
             }
         }
         index = index + 1;
@@ -175,7 +174,7 @@ pub func RunTests(tests: TestCase[..]) -> int {
     let count = ArgumentCount();
     while index < count {
         let view = Argument(index) ?? break;
-        let text = view.ToText(SystemAllocator()) catch { _ => return 2 };
+        let text = try view.ToText(SystemAllocator()) catch { _ => return 2 };
         texts.Push(move text);
         index = index + 1;
     }

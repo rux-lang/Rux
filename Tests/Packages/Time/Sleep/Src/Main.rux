@@ -33,7 +33,7 @@ struct ScriptedWaiter {
 }
 
 extend ScriptedWaiter : Waiter {
-    func WaitFor(&var self, span: Duration) -> Duration ! TimeError {
+    func WaitFor(&var self, span: Duration) -> Duration throws TimeError {
         // Safety: `state` points at a `WaiterState` local of `Main`, which outlives every waiter made over it.
         unsafe {
             self.state.calls = self.state.calls + 1;
@@ -54,7 +54,7 @@ extend ScriptedWaiter : Waiter {
             }
 
             match self.state.outcome {
-                .Some(refusal) => { fail refusal; },
+                .Some(refusal) => { throw refusal; },
                 none => {}
             }
         }
@@ -119,7 +119,7 @@ func Main() -> int {
     var waiter = Scripted(@state);
     let hundredDays = (Duration::FromHours(2400) ?? Duration::Zero());
     Assert(!hundredDays.IsZero(), "a hundred days is a duration this package can hold");
-    SleepUsing<ScriptedWaiter>(waiter, hundredDays) catch { _ => Panic("a hundred-day sleep completes") };
+    try SleepUsing<ScriptedWaiter>(waiter, hundredDays) catch { _ => Panic("a hundred-day sleep completes") };
     Assert(state.calls == 3, "in three waits, because one wait cannot express more than about fifty days");
     Assert(state.longestChunk == MaximumWaitMilliseconds, "no single wait longer than the ceiling");
     Assert(state.longestHanded > MaximumWaitMilliseconds,
@@ -127,7 +127,9 @@ func Main() -> int {
 
     // A span that fits in one wait takes exactly one.
     state = Fresh();
-    SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(5)) catch { _ => Panic("a five-second sleep completes") };
+    try SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(5)) catch {
+        _ => Panic("a five-second sleep completes"),
+    };
     Assert(state.calls == 1, "in a single wait");
     Assert(state.longestChunk == 5000, "which took exactly what was wanted");
 
@@ -135,9 +137,11 @@ func Main() -> int {
 
     // The plan's own rule: a negative or zero span succeeds immediately, having asked the system for nothing.
     state = Fresh();
-    SleepUsing<ScriptedWaiter>(waiter, Duration::Zero()) catch { _ => Panic("a zero span succeeds") };
+    try SleepUsing<ScriptedWaiter>(waiter, Duration::Zero()) catch { _ => Panic("a zero span succeeds") };
     Assert(state.calls == 0, "without waiting at all");
-    SleepUsing<ScriptedWaiter>(waiter, Duration::FromMilliseconds(-1)) catch { _ => Panic("a negative span succeeds") };
+    try SleepUsing<ScriptedWaiter>(waiter, Duration::FromMilliseconds(-1)) catch {
+        _ => Panic("a negative span succeeds"),
+    };
     Assert(state.calls == 0, "also without waiting");
 
     // --- Interruption is retried, not reported ------------------------------------------------------------------
@@ -146,7 +150,9 @@ func Main() -> int {
     // time. A caller asked for a span, not for a span unless the process happened to receive a signal.
     state = Fresh();
     state.interruptions = 3;
-    SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(10)) catch { _ => Panic("three interruptions still leave a completed sleep") };
+    try SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(10)) catch {
+        _ => Panic("three interruptions still leave a completed sleep"),
+    };
     Assert(state.calls == 4, "having gone back for the remainder after each");
     Assert(state.interruptions == 0, "and used up the script");
 
@@ -160,21 +166,34 @@ func Main() -> int {
     // exactly as a completed one does, so returning success was indistinguishable from having waited.
     state = Fresh();
     state.outcome = TimeError::InvalidDuration;
-    Assert(Refusal(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1))) == TimeError::InvalidDuration,
-           "a refused wait is reported rather than swallowed");
+    try {
+        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TimeError::InvalidDuration, "a refused wait is reported rather than swallowed"),
+    }
     Assert(state.calls == 1, "and is not retried, because asking again would be refused again");
 
     state = Fresh();
     state.outcome = TimeError::Failed;
-    Assert(Refusal(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1))) == TimeError::Failed,
-           "and so is an unnamed failure");
+    try {
+        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TimeError::Failed, "and so is an unnamed failure"),
+    }
 
     // An interruption followed by a refusal reports the refusal, not the interruption.
     state = Fresh();
     state.interruptions = 2;
     state.outcome = TimeError::InvalidDuration;
-    Assert(Refusal(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1))) == TimeError::InvalidDuration,
-           "a refusal after an interruption is what gets reported");
+    try {
+        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TimeError::InvalidDuration,
+            "a refusal after an interruption is what gets reported"),
+    }
     Assert(state.calls == 3, "after the two interruptions were retried");
 
     // --- A waiter that never advances -----------------------------------------------------------------------------
@@ -183,38 +202,36 @@ func Main() -> int {
     // attempt count bounds it, and the result says the wait did not happen rather than that it did.
     state = Fresh();
     state.stalls = true;
-    Assert(Refusal(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1))) == TimeError::Failed,
-           "a waiter that never advances is given up on");
+    try {
+        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
+        Panic("the operation was expected to fail");
+    } catch {
+        refusal => Assert(refusal == TimeError::Failed, "a waiter that never advances is given up on"),
+    }
     Assert(state.calls == MaximumWaitAttempts, "after exactly the documented number of attempts");
 
     // --- The real wait ----------------------------------------------------------------------------------------
 
     // What a real clock can confirm quickly: the span is not undershot, and the degenerate cases cost nothing.
     let before = Instant::Now();
-    SleepFor(Duration::FromMilliseconds(50)) catch { _ => Panic("a real fifty-millisecond sleep completes") };
+    try SleepFor(Duration::FromMilliseconds(50)) catch { _ => Panic("a real fifty-millisecond sleep completes") };
     let slept = before.Elapsed();
     Assert(!slept.Compare(Duration::FromMilliseconds(50)).IsLess(), "and takes at least the span asked for");
 
     let mark = Instant::Now();
-    SleepFor(Duration::Zero()) catch { _ => Panic("a real zero sleep succeeds") };
-    SleepFor(Duration::FromMilliseconds(-100)) catch { _ => Panic("and so does a negative one") };
+    try SleepFor(Duration::Zero()) catch { _ => Panic("a real zero sleep succeeds") };
+    try SleepFor(Duration::FromMilliseconds(-100)) catch { _ => Panic("and so does a negative one") };
     Assert(mark.Elapsed().Compare(Duration::FromSeconds(1)).IsLess(), "neither of them having waited");
 
     // A sub-millisecond span still waits, because the chunk rounds up rather than truncating to zero.
-    SleepFor(Duration::FromMicroseconds(200)) catch { _ => Panic("a sub-millisecond sleep completes") };
+    try SleepFor(Duration::FromMicroseconds(200)) catch { _ => Panic("a sub-millisecond sleep completes") };
 
     // The system waiter reports the same way through the generic entry point as through SleepFor.
     var system = SystemWaiter();
-    SleepUsing<SystemWaiter>(system, Duration::FromMilliseconds(1)) catch { _ => Panic("the system waiter drives the same loop") };
+    try SleepUsing<SystemWaiter>(system, Duration::FromMilliseconds(1)) catch {
+        _ => Panic("the system waiter drives the same loop"),
+    };
 
     return 0;
 }
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match move outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
-}

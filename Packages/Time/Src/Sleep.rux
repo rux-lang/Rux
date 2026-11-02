@@ -88,7 +88,7 @@ pub interface Waiter {
     /// @param span how much time to wait for
     /// @returns what is left of `span`, or why the wait did not happen
     /// @see https://rux-lang.dev/docs/api/time/waiter#wait-for
-    func WaitFor(&var self, span: Duration) -> Duration ! TimeError;
+    func WaitFor(&var self, span: Duration) -> Duration throws TimeError;
 }
 
 /// The wait every supported system actually provides. `Copy`.
@@ -112,7 +112,7 @@ extend SystemWaiter {
 }
 
 extend SystemWaiter : Waiter {
-    func WaitFor(&var self, span: Duration) -> Duration ! TimeError {
+    func WaitFor(&var self, span: Duration) -> Duration throws TimeError {
         let chunk = WaitChunkMilliseconds(span);
         if chunk == 0 { return Duration::Zero(); }
 
@@ -142,7 +142,7 @@ extend SystemWaiter : Waiter {
             if Errno(status) != EINTR {
                 // The request itself was refused and nothing was waited for — which the previous version could not
                 // tell from a completed sleep, since both left the remainder at zero.
-                fail TimeError::InvalidDuration;
+                throw .InvalidDuration;
             }
             // A signal stopped it with time to go. What the kernel left in `unslept` belongs to this chunk, so the
             // rest of the span is that plus whatever the chunking held back.
@@ -172,20 +172,20 @@ pub const MaximumWaitAttempts: uint = 4096;
 /// @param span how long to wait for
 /// @returns nothing when the whole span was waited out, or why it was not
 /// @see https://rux-lang.dev/docs/api/time/sleep#sleep-using
-pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> ! TimeError {
+pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) throws TimeError {
     if span.IsNegative() || span.IsZero() { return; }
 
     var left = span;
     var attempts: uint = 0;
     while attempts < MaximumWaitAttempts {
         attempts = attempts + 1;
-        let remaining = waiter.WaitFor(left)?;
+        let remaining = try waiter.WaitFor(left);
         if remaining.IsZero() || remaining.IsNegative() { return; }
         // A waiter that hands back everything it was given, without failing, has not waited. Counting the attempt
         // rather than trusting it is what bounds the loop.
         left = remaining;
     }
-    fail TimeError::Failed;
+    throw .Failed;
 }
 
 /// Stops the calling thread for at least `span`.
@@ -197,12 +197,12 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> ! TimeError {
 /// days.
 /// Fails with `InvalidDuration` when the system refused the request, which a normalized non-negative span should not
 /// produce, and `Failed` for anything else. A caller with nothing to do about a failed wait says so with
-/// `SleepFor(span) catch { else => {} }`; the point is that it is no longer indistinguishable from success.
+/// `try SleepFor(span) catch { _ => {} }`; the point is that it is no longer indistinguishable from success.
 /// @param span how long to wait for
 /// @returns nothing when the whole span was waited out, or why it was not
 /// @see https://rux-lang.dev/docs/api/time/sleep
-pub func SleepFor(span: Duration) -> ! TimeError {
+pub func SleepFor(span: Duration) throws TimeError {
     var waiter = SystemWaiter();
     // A named value auto-borrows into the generic's `&var W`; taking its address would be a pointer.
-    return SleepUsing<SystemWaiter>(waiter, span);
+    return try SleepUsing<SystemWaiter>(waiter, span);
 }

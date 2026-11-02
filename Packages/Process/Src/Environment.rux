@@ -270,18 +270,18 @@ pub func Variable(name: char8[..]) -> OsStringView? {
 
 // `text` as native units in storage that is never freed, followed by a NUL so the system can read it too. A NUL
 // inside the text is refused, and so is malformed UTF-8 on Windows, which has no UTF-16 form.
-func PermanentText(text: char8[..]) -> OsStringView ! IoError {
+func PermanentText(text: char8[..]) -> OsStringView throws IoError {
     var count: uint = 0;
     var at: uint = 0;
     while at < text.length {
         when #target.os == .Windows {
             let scalar = NextScalar(text, @at) ?? 0xFFFFFFFFu32;
-            if scalar == 0xFFFFFFFFu32 { fail IoError::Of(IoErrorKind::InvalidText); }
-            if scalar == 0u32 { fail IoError::Of(IoErrorKind::InvalidInput); }
+            if scalar == 0xFFFFFFFFu32 { throw IoError::Of(IoErrorKind::InvalidText); }
+            if scalar == 0u32 { throw IoError::Of(IoErrorKind::InvalidInput); }
             count = count + (if scalar > 0xFFFFu32 { 2u } else { 1u });
         }
         else {
-            if text[at] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+            if text[at] as uint8 == 0u8 { throw IoError::Of(IoErrorKind::InvalidInput); }
             at = at + 1;
             count = count + 1;
         }
@@ -289,7 +289,7 @@ func PermanentText(text: char8[..]) -> OsStringView ! IoError {
     // Safety: `Alloc` returns memory aligned for any type, and this retyping only names the `count + 1` units it
     // asked for.
     let units = unsafe { Alloc((count + 1) * sizeof(OsUnit)) as *var OsUnit };
-    if units == null { fail IoError::Of(IoErrorKind::LimitExceeded); }
+    if units == null { throw IoError::Of(IoErrorKind::LimitExceeded); }
     when #target.os == .Windows {
         var written: uint = 0;
         at = 0;
@@ -330,7 +330,7 @@ func PermanentText(text: char8[..]) -> OsStringView ! IoError {
 }
 
 // Records a change for `name`, replacing an earlier one.
-func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! IoError {
+func RecordChange(name: OsStringView, value: OsStringView, removed: bool) throws IoError {
     HoldChanges();
     // Safety: this function holds the table, taken just above.
     let existing = unsafe { ChangeFor(name) };
@@ -350,7 +350,7 @@ func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! I
         let grown = unsafe { Realloc(Changes as *opaque, capacity * sizeof(Change)) as *var Change };
         if grown == null {
             ReleaseChanges();
-            fail IoError::Of(IoErrorKind::LimitExceeded);
+            throw IoError::Of(IoErrorKind::LimitExceeded);
         }
         Changes = grown;
         ChangeCapacity = capacity;
@@ -362,11 +362,11 @@ func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! I
 }
 
 // Refuses a name the environment cannot hold: an empty one, or one with `=`, which ends a name.
-func CheckName(name: char8[..]) -> ! IoError {
-    if name.length == 0 { fail IoError::Of(IoErrorKind::InvalidInput); }
+func CheckName(name: char8[..]) throws IoError {
+    if name.length == 0 { throw IoError::Of(IoErrorKind::InvalidInput); }
     var index: uint = 0;
     while index < name.length {
-        if name[index] as uint8 == 0x3Du8 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        if name[index] as uint8 == 0x3Du8 { throw IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
 }
@@ -378,11 +378,11 @@ func CheckName(name: char8[..]) -> ! IoError {
 /// @param value its new value, which may not contain NUL
 /// @returns nothing, or fails with `InvalidInput` for a name or value the environment cannot hold
 /// @see https://rux-lang.dev/docs/api/process/environment#set-variable
-pub func SetVariable(name: char8[..], value: char8[..]) -> ! IoError {
-    CheckName(name)?;
-    let nativeName = PermanentText(name)?;
-    let nativeValue = PermanentText(value)?;
-    RecordChange(nativeName, nativeValue, false)?;
+pub func SetVariable(name: char8[..], value: char8[..]) throws IoError {
+    try CheckName(name);
+    let nativeName = try PermanentText(name);
+    let nativeValue = try PermanentText(value);
+    try RecordChange(nativeName, nativeValue, false);
     when #target.os == .Windows {
         // Safety: `PermanentText` keeps both name and value followed by a NUL, in storage that is never freed.
         unsafe { SetEnvironmentVariableW(nativeName.Units().data, nativeValue.Units().data); }
@@ -394,10 +394,10 @@ pub func SetVariable(name: char8[..], value: char8[..]) -> ! IoError {
 /// @param name the variable's name, which may not be empty or contain `=` or NUL
 /// @returns nothing, or fails with `InvalidInput` for a name the environment cannot hold
 /// @see https://rux-lang.dev/docs/api/process/environment#remove-variable
-pub func RemoveVariable(name: char8[..]) -> ! IoError {
-    CheckName(name)?;
-    let nativeName = PermanentText(name)?;
-    RecordChange(nativeName, OsStringView(), true)?;
+pub func RemoveVariable(name: char8[..]) throws IoError {
+    try CheckName(name);
+    let nativeName = try PermanentText(name);
+    try RecordChange(nativeName, OsStringView(), true);
     when #target.os == .Windows {
         // Safety: `PermanentText` keeps the name followed by a NUL, in storage that is never freed, and a null value
         // asks for removal.

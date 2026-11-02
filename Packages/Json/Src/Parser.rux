@@ -78,20 +78,20 @@ extend JsonParseError : ParseFailure {
 }
 
 // The description of a lexical refusal, which a parse failure quotes rather than restates.
-func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) -> ! FormatError {
+func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) throws FormatError {
     return match reason {
-        .None => WriteBytes(writer, "no error"),
-        .UnexpectedByte => WriteBytes(writer, "byte that begins no token"),
-        .UnterminatedText => WriteBytes(writer, "string the document ended before closing"),
-        .BadEscape => WriteBytes(writer, "escape sequence JSON does not define"),
-        .BadUnicodeEscape => WriteBytes(writer, "\\u escape that is not four hexadecimal digits"),
-        .MalformedNumber => WriteBytes(writer, "number whose shape JSON does not allow"),
-        .InvalidUtf8 => WriteBytes(writer, "bytes that are not well-formed UTF-8"),
-        .UnescapedControl => WriteBytes(writer, "unescaped control character inside a string"),
-        .TooManyBytes => WriteBytes(writer, "document longer than the limit allows"),
-        .TextTooLong => WriteBytes(writer, "string longer than the limit allows"),
-        .TooDeep => WriteBytes(writer, "containers nested deeper than the limit allows"),
-        .TooManyEntries => WriteBytes(writer, "container holding more entries than the limit allows")
+        .None => try WriteBytes(writer, "no error"),
+        .UnexpectedByte => try WriteBytes(writer, "byte that begins no token"),
+        .UnterminatedText => try WriteBytes(writer, "string the document ended before closing"),
+        .BadEscape => try WriteBytes(writer, "escape sequence JSON does not define"),
+        .BadUnicodeEscape => try WriteBytes(writer, "\\u escape that is not four hexadecimal digits"),
+        .MalformedNumber => try WriteBytes(writer, "number whose shape JSON does not allow"),
+        .InvalidUtf8 => try WriteBytes(writer, "bytes that are not well-formed UTF-8"),
+        .UnescapedControl => try WriteBytes(writer, "unescaped control character inside a string"),
+        .TooManyBytes => try WriteBytes(writer, "document longer than the limit allows"),
+        .TextTooLong => try WriteBytes(writer, "string longer than the limit allows"),
+        .TooDeep => try WriteBytes(writer, "containers nested deeper than the limit allows"),
+        .TooManyEntries => try WriteBytes(writer, "container holding more entries than the limit allows")
     };
 }
 
@@ -105,49 +105,49 @@ extend JsonParseError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/json/json-parse-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+                          spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self {
-            .Lexical(reason, _) => WriteLexicalDescription(writer, reason),
-            .Unexpected(_) => WriteBytes(writer, "token that cannot appear here"),
-            .Truncated(_) => WriteBytes(writer, "document ended in the middle of a value"),
-            .TrailingContent(_) => WriteBytes(writer, "text after the end of the document"),
-            .DuplicateName(_) => WriteBytes(writer, "object with the same name twice"),
-            .TooDeep(_) => WriteBytes(writer, "containers nested deeper than the limit allows"),
-            .TooManyEntries(_) => WriteBytes(writer, "container holding more entries than the limit allows"),
-            .BadSurrogate(_) => WriteBytes(writer, "escape naming half of a surrogate pair with no partner"),
-            .Source(_) => WriteBytes(writer, "source the document was read from failed")
+            .Lexical(reason, _) => try WriteLexicalDescription(writer, reason),
+            .Unexpected(_) => try WriteBytes(writer, "token that cannot appear here"),
+            .Truncated(_) => try WriteBytes(writer, "document ended in the middle of a value"),
+            .TrailingContent(_) => try WriteBytes(writer, "text after the end of the document"),
+            .DuplicateName(_) => try WriteBytes(writer, "object with the same name twice"),
+            .TooDeep(_) => try WriteBytes(writer, "containers nested deeper than the limit allows"),
+            .TooManyEntries(_) => try WriteBytes(writer, "container holding more entries than the limit allows"),
+            .BadSurrogate(_) => try WriteBytes(writer, "escape naming half of a surrogate pair with no partner"),
+            .Source(_) => try WriteBytes(writer, "source the document was read from failed")
         };
     }
 }
 
 // The name of a lexical refusal, for the debug rendering that quotes it.
-func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) -> ! FormatError {
+func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) throws FormatError {
     return match reason {
-        .None => WriteBytes(writer, "None"),
-        .UnexpectedByte => WriteBytes(writer, "UnexpectedByte"),
-        .UnterminatedText => WriteBytes(writer, "UnterminatedText"),
-        .BadEscape => WriteBytes(writer, "BadEscape"),
-        .BadUnicodeEscape => WriteBytes(writer, "BadUnicodeEscape"),
-        .MalformedNumber => WriteBytes(writer, "MalformedNumber"),
-        .InvalidUtf8 => WriteBytes(writer, "InvalidUtf8"),
-        .UnescapedControl => WriteBytes(writer, "UnescapedControl"),
-        .TooManyBytes => WriteBytes(writer, "TooManyBytes"),
-        .TextTooLong => WriteBytes(writer, "TextTooLong"),
-        .TooDeep => WriteBytes(writer, "TooDeep"),
-        .TooManyEntries => WriteBytes(writer, "TooManyEntries")
+        .None => try WriteBytes(writer, "None"),
+        .UnexpectedByte => try WriteBytes(writer, "UnexpectedByte"),
+        .UnterminatedText => try WriteBytes(writer, "UnterminatedText"),
+        .BadEscape => try WriteBytes(writer, "BadEscape"),
+        .BadUnicodeEscape => try WriteBytes(writer, "BadUnicodeEscape"),
+        .MalformedNumber => try WriteBytes(writer, "MalformedNumber"),
+        .InvalidUtf8 => try WriteBytes(writer, "InvalidUtf8"),
+        .UnescapedControl => try WriteBytes(writer, "UnescapedControl"),
+        .TooManyBytes => try WriteBytes(writer, "TooManyBytes"),
+        .TextTooLong => try WriteBytes(writer, "TextTooLong"),
+        .TooDeep => try WriteBytes(writer, "TooDeep"),
+        .TooManyEntries => try WriteBytes(writer, "TooManyEntries")
     };
 }
 
 // The case name, and the offset in parentheses after it.
-func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) -> ! FormatError {
-    WriteBytes(writer, "JsonParseError::")?;
-    WriteBytes(writer, name)?;
-    WriteAscii(writer, c8'(')?;
+func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) throws FormatError {
+    try WriteBytes(writer, "JsonParseError::");
+    try WriteBytes(writer, name);
+    try WriteAscii(writer, c8'(');
     let offset: Display = at;
-    offset.WriteDisplay(writer, FormatSpec::Plain())?;
-    return WriteAscii(writer, c8')');
+    try offset.WriteDisplay(writer, FormatSpec::Plain());
+    return try WriteAscii(writer, c8')');
 }
 
 extend JsonParseError : Debug {
@@ -160,31 +160,31 @@ extend JsonParseError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/json/json-parse-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+                        spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self {
-            .Lexical(reason, at) => WriteLexicalCase(writer, reason, at),
-            .Unexpected(at) => WriteCase(writer, "Unexpected", at),
-            .Truncated(at) => WriteCase(writer, "Truncated", at),
-            .TrailingContent(at) => WriteCase(writer, "TrailingContent", at),
-            .DuplicateName(at) => WriteCase(writer, "DuplicateName", at),
-            .TooDeep(at) => WriteCase(writer, "TooDeep", at),
-            .TooManyEntries(at) => WriteCase(writer, "TooManyEntries", at),
-            .BadSurrogate(at) => WriteCase(writer, "BadSurrogate", at),
-            .Source(at) => WriteCase(writer, "Source", at)
+            .Lexical(reason, at) => try WriteLexicalCase(writer, reason, at),
+            .Unexpected(at) => try WriteCase(writer, "Unexpected", at),
+            .Truncated(at) => try WriteCase(writer, "Truncated", at),
+            .TrailingContent(at) => try WriteCase(writer, "TrailingContent", at),
+            .DuplicateName(at) => try WriteCase(writer, "DuplicateName", at),
+            .TooDeep(at) => try WriteCase(writer, "TooDeep", at),
+            .TooManyEntries(at) => try WriteCase(writer, "TooManyEntries", at),
+            .BadSurrogate(at) => try WriteCase(writer, "BadSurrogate", at),
+            .Source(at) => try WriteCase(writer, "Source", at)
         };
     }
 }
 
 // The lexical case, which carries two things rather than one.
-func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) -> ! FormatError {
-    WriteBytes(writer, "JsonParseError::Lexical(")?;
-    WriteLexicalName(writer, reason)?;
-    WriteBytes(writer, ", ")?;
+func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) throws FormatError {
+    try WriteBytes(writer, "JsonParseError::Lexical(");
+    try WriteLexicalName(writer, reason);
+    try WriteBytes(writer, ", ");
     let offset: Display = at;
-    offset.WriteDisplay(writer, FormatSpec::Plain())?;
-    return WriteAscii(writer, c8')');
+    try offset.WriteDisplay(writer, FormatSpec::Plain());
+    return try WriteAscii(writer, c8')');
 }
 
 // Why the parser stopped, without the position, which the parser tracks beside it. The public failure is built
@@ -293,10 +293,10 @@ extend JsonParser {
     }
 
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
-    func TakeText(&var self, token: JsonToken) -> String ! TextError {
+    func TakeText(&var self, token: JsonToken) -> String throws TextError {
         // Safety: the lexer produced `token` from `self.input`, so `token.start..token.end` lies inside it.
         let span = unsafe { (@self.input.data[token.start])[..token.end - token.start] };
-        if !token.escaped { return String::FromBytes(self.allocator, span); }
+        if !token.escaped { return try String::FromBytes(self.allocator, span); }
         var builder = StringBuilder(self.allocator);
         var index: uint = 0;
         while index < span.length {
@@ -312,7 +312,7 @@ extend JsonParser {
                     run = run + 1;
                 }
                 // Safety: `index <= run <= span.length`, so the run lies inside `span`.
-                builder.AppendBytes(unsafe { (@span.data[index])[..run - index] })?;
+                try builder.AppendBytes(unsafe { (@span.data[index])[..run - index] });
                 index = run;
                 continue;
             }
@@ -354,7 +354,7 @@ extend JsonParser {
                     self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
                     return builder.IntoString();
                 }
-                builder.AppendScalar(scalar as char32)?;
+                try builder.AppendScalar(scalar as char32);
             }
             else {
                 var replacement: uint8 = 0;
@@ -377,7 +377,7 @@ extend JsonParser {
                     // The quote, backslash and solidus all stand for themselves.
                     replacement = kind;
                 }
-                builder.AppendAscii(replacement as char8)?;
+                try builder.AppendAscii(replacement as char8);
             }
         }
         return builder.IntoString();
@@ -408,11 +408,11 @@ extend JsonParser {
 
     func ParseText(&var self, token: JsonToken) -> JsonValue {
         // The lexer has already refused text that is not UTF-8, so a failure here is a stop the unescaping recorded.
-        var held = self.TakeText(token) catch {
+        var held = try self.TakeText(token) catch {
             _ => {
                 if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
                 return self.Stop(JsonStop::Unexpected);
-            }
+            },
         };
         if self.stop != JsonStop::None {
             held.Clear();
@@ -480,11 +480,11 @@ extend JsonParser {
                     JsonStop::Unexpected
                 });
             }
-            var name = self.TakeText(token) catch {
+            var name = try self.TakeText(token) catch {
                 _ => {
                     if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
                     return self.Stop(JsonStop::Unexpected);
-                }
+                },
             };
             if self.stop != JsonStop::None {
                 name.Clear();
@@ -564,7 +564,7 @@ extend JsonParser {
     /// Fails with any case of `JsonParseError`, positioned at the byte where parsing stopped.
     /// @returns the document, or the failure that stopped it
     /// @see https://rux-lang.dev/docs/api/json/json-parser#parse
-    pub func Parse(&var self) -> JsonValue ! JsonParseError {
+    pub func Parse(&var self) -> JsonValue throws JsonParseError {
         var value = self.ParseValue(self.lexer.Next());
         if self.stop == JsonStop::None {
             let trailing = self.lexer.Next();
@@ -576,7 +576,7 @@ extend JsonParser {
         if self.stop != JsonStop::None {
             // The partial document goes here, at the end of this scope, rather than out to a caller who asked for
             // a document and is being told there is none.
-            fail BuiltFailure(self.stop, self.lexical, self.position);
+            throw BuiltFailure(self.stop, self.lexical, self.position);
         }
         return move value;
     }
@@ -639,9 +639,9 @@ func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse
-pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue ! JsonParseError {
+pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue throws JsonParseError {
     var parser = JsonParser(allocator, input, JsonLimits::Default());
-    return parser.Parse();
+    return try parser.Parse();
 }
 
 /// Parses `input` under chosen limits and a chosen duplicate-name policy.
@@ -658,8 +658,8 @@ pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue ! JsonParseE
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse#parse-with
 pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits,
-                   duplicates: DuplicateKeyPolicy) -> JsonValue ! JsonParseError {
+                   duplicates: DuplicateKeyPolicy) -> JsonValue throws JsonParseError {
     var parser = JsonParser(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);
-    return parser.Parse();
+    return try parser.Parse();
 }

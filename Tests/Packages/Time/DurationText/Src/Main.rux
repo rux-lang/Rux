@@ -23,7 +23,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -31,7 +31,7 @@ func Shown(value: Duration, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let shown: Display = value;
-    if shown.WriteDisplay(writer, spec) is .Failure(_) { return false; }
+    if (try? shown.WriteDisplay(writer, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -39,7 +39,7 @@ func Refused(value: Duration, spec: FormatSpec) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let shown: Display = value;
-    return shown.WriteDisplay(writer, spec) is .Failure(_);
+    return (try? shown.WriteDisplay(writer, spec)) is none;
 }
 
 // A span built from whole seconds and a nanosecond fraction added on, which is how a caller makes a fractional one.
@@ -49,11 +49,8 @@ func Of(seconds: int64, nanoseconds: int64) -> Duration {
 
 // Whether `text` parses back to exactly `expected`, comparing the normalized fields rather than the value.
 func ReadsAs(text: char8[..], expected: Duration) -> bool {
-    return match ParseDuration(text) {
-        .Success(parsed) => parsed.WholeSeconds() == expected.WholeSeconds() &&
-                            parsed.SubsecondNanoseconds() == expected.SubsecondNanoseconds(),
-        .Failure(_) => false
-    };
+    return if (try? ParseDuration(text)) is .Some(parsed) { parsed.WholeSeconds() == expected.WholeSeconds() &&
+                            parsed.SubsecondNanoseconds() == expected.SubsecondNanoseconds() } else { false };
 }
 
 func Main() -> int {
@@ -114,13 +111,13 @@ func Main() -> int {
     Assert(ReadsAs("+1.5s", Of(1, 500000000)), "a leading plus is the same as none");
 
     // What parsing refuses.
-    Assert(ParseDuration("1.5") is .Failure(_), "a missing unit is refused");
-    Assert(ParseDuration("s") is .Failure(_), "so is a unit with no digits");
-    Assert(ParseDuration("1.s") is .Failure(_), "and a point with no fraction");
-    Assert(ParseDuration("1.5s ") is .Failure(_), "and text after the unit");
-    Assert(ParseDuration("1.5m") is .Failure(_), "and a unit this form does not have");
-    Assert(ParseDuration("") is .Failure(_), "and nothing at all");
-    Assert(ParseDuration("1.0000000005s") is .Failure(_), "a tenth fraction digit does not fit a nanosecond");
-    Assert(ParseDuration("99999999999999999999s") is .Failure(_), "nor does a magnitude past the range");
+    Assert((try? ParseDuration("1.5")) is none, "a missing unit is refused");
+    Assert((try? ParseDuration("s")) is none, "so is a unit with no digits");
+    Assert((try? ParseDuration("1.s")) is none, "and a point with no fraction");
+    Assert((try? ParseDuration("1.5s ")) is none, "and text after the unit");
+    Assert((try? ParseDuration("1.5m")) is none, "and a unit this form does not have");
+    Assert((try? ParseDuration("")) is none, "and nothing at all");
+    Assert((try? ParseDuration("1.0000000005s")) is none, "a tenth fraction digit does not fit a nanosecond");
+    Assert((try? ParseDuration("99999999999999999999s")) is none, "nor does a magnitude past the range");
     return 0;
 }

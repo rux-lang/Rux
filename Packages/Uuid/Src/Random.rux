@@ -17,10 +17,10 @@ import Entropy::{ EntropyError, Fill };
 /// would be a valid-looking identifier that is entirely predictable.
 /// @returns a version 4 value drawn from the system's generator, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/random
-pub func Random() -> Uuid ! EntropyError {
+pub func Random() -> Uuid throws EntropyError {
     var bytes: byte[16];
     // Safety: `bytes` is a local array of sixteen bytes, exactly the sixteen `Fill` is asked to write.
-    unsafe { Fill(@bytes[0] as *var opaque, 16)?; }
+    unsafe { try Fill(@bytes[0] as *var opaque, 16); }
     var value = Uuid::FromBytes(bytes[..16]);
     // Version 4 in the high nibble of byte six, and the standard variant in the top bits of byte eight.
     value.bytes[6] = (value.bytes[6] & 0x0F) | 0x40;

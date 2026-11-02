@@ -16,13 +16,13 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
     var room: char8[128];
-    let written = PercentEncode(text, room[..], set) catch { _ => return false };
+    let written = try PercentEncode(text, room[..], set) catch { _ => return false };
     return written == PercentEncodedLength(text, set) && Same(room[..written], expected);
 }
 
 func Decoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
     var room: byte[128];
-    let written = PercentDecode(text, room[..], set) catch { _ => return false };
+    let written = try PercentDecode(text, room[..], set) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {
@@ -34,10 +34,13 @@ func Decoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
 
 func BadEscapeAt(text: char8[..], at: uint) -> bool {
     var room: byte[16] = [0x3F; 16];
-    let reported = match PercentDecode(text, room[..]) {
-        .Failure(error) => error,
-        .Success(_) => return false
-    };
+    var caught: DecodeError? = none;
+    try {
+        PercentDecode(text, room[..]);
+    } catch {
+        error => { caught = error; }
+    }
+    let reported = caught ?? return false;
     for value in room {
         if value != 0x3F { return false; }
     }
@@ -72,15 +75,18 @@ func Main() -> int {
     if !BadEscapeAt("%4", 0) || !BadEscapeAt("ab%", 2) || !BadEscapeAt("%G1", 0) || !BadEscapeAt("x%1g", 1) {
         return 16;
     }
-    match PercentDecodedLength("%41%42c") {
-        .Success(length) => {
-            if length != 3 { return 17; }
-        },
-        .Failure(_) => return 18
+    try {
+        let length = PercentDecodedLength("%41%42c");
+        if length != 3 { return 17; }
+    } catch {
+        _ => return 18,
     }
     var short: byte[2] = [0x3F; 2];
-    match PercentDecode("%41%42c", short[..]) {
-        .Failure(error) => {
+    try {
+        PercentDecode("%41%42c", short[..]);
+        return 21;
+    } catch {
+        error => {
             match error {
                 .InsufficientCapacity(needed) => {
                     if needed != 3 { return 19; }
@@ -88,7 +94,6 @@ func Main() -> int {
                 _ => return 20
             }
         },
-        .Success(_) => return 21
     }
     if short[0] != 0x3F || short[1] != 0x3F { return 22; }
     return 0;

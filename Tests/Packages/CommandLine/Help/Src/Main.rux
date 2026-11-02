@@ -22,7 +22,7 @@ func HelpIs(spec: &CommandSpec, expected: char8[..]) -> bool {
     var storage: char8[2048];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    if WriteHelp(spec, sink) is .Failure(_) { return false; }
+    if (try? WriteHelp(spec, sink)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -40,13 +40,13 @@ func Main() -> int {
     var storage: char8[256];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    if WriteVersion(tool, sink) is .Failure(_) { return 2; }
+    if (try? WriteVersion(tool, sink)) is none { return 2; }
     if !Same(writer.Written(), "tool 1.2.3\n") { return 3; }
 
     var usageStorage: char8[256];
     var usageWriter = BufferWriter(usageStorage[..]);
     let usageSink: &var TextWriter = usageWriter;
-    if WriteUsage(tool, usageSink) is .Failure(_) { return 4; }
+    if (try? WriteUsage(tool, usageSink)) is none { return 4; }
     if !Same(usageWriter.Written(), "Usage: tool [options] <input> [files...]\n") { return 5; }
 
     // A command with subcommands, and no version, so no `--version` is listed.
@@ -78,13 +78,13 @@ func Main() -> int {
         arguments[0] = OsStringView::FromUnits(units[..5]);
         arguments[1] = OsStringView::FromUnits(units[6..8]);
     }
-    let parsed = Parse(@git, arguments[..]) catch { _ => Panic("the arguments parse") };
+    let parsed = try Parse(@git, arguments[..]) catch { _ => Panic("the arguments parse") };
     let sub = parsed.Subcommand() ?? Panic("the subcommand parses");
     if !sub.HelpRequested() { return 7; }
     var subStorage: char8[512];
     var subWriter = BufferWriter(subStorage[..]);
     let subSink: &var TextWriter = subWriter;
-    if sub.WriteHelp(subSink) is .Failure(_) { return 8; }
+    if (try? sub.WriteHelp(subSink)) is none { return 8; }
     let buildHelp = "Compile\n\nUsage: git build [options] [target]\n\nArguments:\n  [target]  What to build\n\nOptions:\n  -r, --release  Optimize\n  -h, --help     Print this help\n";
     if !Same(subWriter.Written(), buildHelp) { return 9; }
     return 0;

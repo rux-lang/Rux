@@ -29,7 +29,8 @@ pub struct Parsed {
 const NoCommand: uint = 0xFFFFFFFF;
 
 // Validates `source[start..]` against `spec`, and the subcommand's arguments with it.
-func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource, start: uint) -> Parsed ! CommandLineError {
+func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource, start: uint)
+    -> Parsed throws CommandLineError {
     let end = source.Count();
     var parsed = Parsed {
         spec,
@@ -45,7 +46,7 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
     var seen: uint = 0;
     var scanner = Scan(spec, source, start, end);
     while true {
-        let item = scanner.Next()? ?? break;
+        let item = try scanner.Next() ?? break;
         match item {
             .Option(option, _, _) => {
                 if option == HelpOption { parsed.help = true; }
@@ -67,14 +68,14 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
     // documented contract keeps alive for as long as the parse.
     let declared = unsafe { *spec };
     if parsed.command != NoCommand {
-        ParseLevel(@declared.commands[parsed.command], spec, source, parsed.commandAt + 1)?;
+        try ParseLevel(@declared.commands[parsed.command], spec, source, parsed.commandAt + 1);
         return parsed;
     }
-    if declared.commands.length > 0 { fail CommandLineError::MissingCommand; }
+    if declared.commands.length > 0 { throw .MissingCommand; }
     var index: uint = 0;
     while index < declared.positionals.length {
         if declared.positionals[index].kind == PositionalKind::Required && index >= seen {
-            fail CommandLineError::MissingPositional(declared.positionals[index].name);
+            throw .MissingPositional(declared.positionals[index].name);
         }
         index = index + 1;
     }
@@ -91,8 +92,8 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
 /// @param arguments the arguments, without the program's name
 /// @returns the parse, or why the arguments do not match
 /// @see https://rux-lang.dev/docs/api/commandline/parsed#parse
-pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed ! CommandLineError {
-    return ParseLevel(spec, null, ArgumentSource::Given(arguments), 0);
+pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed throws CommandLineError {
+    return try ParseLevel(spec, null, ArgumentSource::Given(arguments), 0);
 }
 
 /// Checks the process's own arguments against `spec`.
@@ -101,8 +102,8 @@ pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed ! Comm
 /// @param spec the command the arguments are for
 /// @returns the parse, or why the arguments do not match
 /// @see https://rux-lang.dev/docs/api/commandline/parsed#parse-process
-pub func ParseProcess(spec: *CommandSpec) -> Parsed ! CommandLineError {
-    return ParseLevel(spec, null, ArgumentSource::ProcessArguments, 0);
+pub func ParseProcess(spec: *CommandSpec) -> Parsed throws CommandLineError {
+    return try ParseLevel(spec, null, ArgumentSource::ProcessArguments, 0);
 }
 
 // The index of the option with long name `name`, or none.
@@ -165,7 +166,7 @@ extend ValueIterator : Iterator {
     pub func Next(&var self) -> OsStringView? {
         while true {
             // The arguments were validated, so the walk cannot fail; a failure ends it like the end of the arguments.
-            let step = self.scanner.Next() catch { _ => return none };
+            let step = try self.scanner.Next() catch { _ => return none };
             let item = step ?? return none;
             match item {
                 .Option(option, value, _) => {
@@ -310,10 +311,8 @@ extend Parsed {
     pub func Subcommand(&self) -> Self? {
         if self.command == NoCommand { return none; }
         let declared = self.Declared();
-        let parsed = ParseLevel(@declared.commands[self.command], self.spec, self.source, self.commandAt + 1) catch {
-            _ => return none
-        };
-        return parsed;
+        return try ParseLevel(@declared.commands[self.command], self.spec, self.source, self.commandAt + 1)
+            catch { _ => return none };
     }
 
     /// The value of the option or positional named `name` read as a decimal integer, or none when it was not given.
@@ -322,8 +321,8 @@ extend Parsed {
     /// @param name an option's long name, or a positional's name
     /// @returns the number, none when the value was not given, or why it is not a number
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#integer
-    pub func Integer(&self, name: char8[..]) -> int64? ! CommandLineError {
-        let text = self.Value(name) ?? self.Positional(name) ?? return .Success(none);
+    pub func Integer(&self, name: char8[..]) -> int64? throws CommandLineError {
+        let text = self.Value(name) ?? self.Positional(name) ?? return none;
         let units = text.Units();
         var index: uint = 0;
         var negative = false;
@@ -331,21 +330,21 @@ extend Parsed {
             negative = UnitAt(units, 0) == 0x2D;
             index = 1;
         }
-        if index >= units.length { fail CommandLineError::InvalidValue(name, text); }
+        if index >= units.length { throw .InvalidValue(name, text); }
         // Accumulated as a negative number, whose range includes the most negative int64.
         var total: int64 = 0;
         while index < units.length {
             let unit = UnitAt(units, index);
-            if unit < 0x30 || unit > 0x39 { fail CommandLineError::InvalidValue(name, text); }
+            if unit < 0x30 || unit > 0x39 { throw .InvalidValue(name, text); }
             let digit = (unit - 0x30) as int64;
-            if total < (-9223372036854775807 - 1 + digit) / 10 { fail CommandLineError::InvalidValue(name, text); }
+            if total < (-9223372036854775807 - 1 + digit) / 10 { throw .InvalidValue(name, text); }
             total = total * 10 - digit;
             index = index + 1;
         }
         if !negative {
-            if total == -9223372036854775807 - 1 { fail CommandLineError::InvalidValue(name, text); }
+            if total == -9223372036854775807 - 1 { throw .InvalidValue(name, text); }
             total = -total;
         }
-        return .Success(.Some(total));
+        return .Some(total);
     }
 }

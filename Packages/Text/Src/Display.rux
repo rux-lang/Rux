@@ -29,7 +29,7 @@ pub interface Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the value's complete text was accepted
     /// @see https://rux-lang.dev/docs/api/text/display#write-display
-    func WriteDisplay(writer: &var TextWriter, spec: FormatSpec) -> ! FormatError;
+    func WriteDisplay(writer: &var TextWriter, spec: FormatSpec) throws FormatError;
 }
 
 /// The text a value has for whoever is inspecting a program.
@@ -43,7 +43,7 @@ pub interface Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the value's complete text was accepted
     /// @see https://rux-lang.dev/docs/api/text/debug#write-debug
-    func WriteDebug(writer: &var TextWriter, spec: FormatSpec) -> ! FormatError;
+    func WriteDebug(writer: &var TextWriter, spec: FormatSpec) throws FormatError;
 }
 
 /// Writes `value` under `spec` through its `Display` implementation.
@@ -54,8 +54,8 @@ pub interface Debug {
 /// @param spec what to render it under
 /// @returns whatever the value's implementation reported
 /// @see https://rux-lang.dev/docs/api/text/display#write-value
-pub func WriteValue(writer: &var TextWriter, value: Display, spec: FormatSpec) -> ! FormatError {
-    return value.WriteDisplay(writer, spec);
+pub func WriteValue(writer: &var TextWriter, value: Display, spec: FormatSpec) throws FormatError {
+    return try value.WriteDisplay(writer, spec);
 }
 
 /// Writes `value` under `spec` through its `Debug` implementation.
@@ -64,6 +64,6 @@ pub func WriteValue(writer: &var TextWriter, value: Display, spec: FormatSpec) -
 /// @param spec what to render it under
 /// @returns whatever the value's implementation reported
 /// @see https://rux-lang.dev/docs/api/text/debug#write-debug-value
-pub func WriteDebugValue(writer: &var TextWriter, value: Debug, spec: FormatSpec) -> ! FormatError {
-    return value.WriteDebug(writer, spec);
+pub func WriteDebugValue(writer: &var TextWriter, value: Debug, spec: FormatSpec) throws FormatError {
+    return try value.WriteDebug(writer, spec);
 }

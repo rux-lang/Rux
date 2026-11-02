@@ -13,7 +13,7 @@ import Text::{ Display, String, StringView };
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine() -> IoError? {
-    return FailureOf(PrintBytes("\n"));
+    return PrintFailure("\n");
 }
 
 // The terminator, written only if what came before it was. `first` is what the value's own write reported, and a

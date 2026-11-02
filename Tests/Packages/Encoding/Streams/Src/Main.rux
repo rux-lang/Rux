@@ -29,7 +29,7 @@ struct CaptureSink {
 }
 
 extend CaptureSink : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         let capture = self.capture;
         var index: uint = 0;
         while index < bytes.length {
@@ -43,7 +43,7 @@ extend CaptureSink : Writer {
         return bytes.length;
     }
 
-    func Flush(&var self) -> ! IoError {}
+    func Flush(&var self) throws IoError {}
 }
 
 // Encodes `data` written `chunk` bytes at a time.
@@ -52,10 +52,10 @@ func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Captu
     var at: uint = 0;
     while at < data.length {
         let end = if at + chunk < data.length { at + chunk } else { data.length };
-        WriteAll(writer, data[at..end]) catch { _ => return false };
+        try WriteAll(writer, data[at..end]) catch { _ => return false };
         at = end;
     }
-    writer.Finish() catch { _ => return false };
+    try writer.Finish() catch { _ => return false };
     return true;
 }
 
@@ -67,12 +67,14 @@ func Decodes(codec: StreamCodec, text: char8[..], chunk: uint, expected: char8[.
     while true {
         let room = out.length - length;
         let wanted = if chunk < room { chunk } else { room };
-        match reader.Read(out[length..length + wanted]) {
-            .Success(count) => length = length + count,
-            .Failure(error) => {
+        try {
+            let count = reader.Read(out[length..length + wanted]);
+            length = length + count;
+        } catch {
+            error => {
                 if error.kind != IoErrorKind::EndOfStream { return false; }
                 break;
-            }
+            },
         }
     }
     return Same(out[..length], expected);
@@ -100,9 +102,15 @@ func Main() -> int {
         for length in lengths[..] {
             var whole: uint = 0;
             match codec {
-                StreamCodec::Hex(letterCase) => whole = HexEncode(bytes[..length], expected[..], letterCase) catch { _ => return 1 },
-                StreamCodec::Base64(form) => whole = Base64Encode(bytes[..length], expected[..], form) catch { _ => return 2 },
-                StreamCodec::Base32(form) => whole = Base32Encode(bytes[..length], expected[..], form) catch { _ => return 3 }
+                StreamCodec::Hex(letterCase) => whole = try HexEncode(bytes[..length], expected[..], letterCase) catch {
+                    _ => return 1,
+                },
+                StreamCodec::Base64(form) => whole = try Base64Encode(bytes[..length], expected[..], form) catch {
+                    _ => return 2,
+                },
+                StreamCodec::Base32(form) => whole = try Base32Encode(bytes[..length], expected[..], form) catch {
+                    _ => return 3,
+                }
             }
             for chunk in chunks[..] {
                 var capture = Capture { bytes: [c8' '; 512], length: 0 };
@@ -118,21 +126,21 @@ func Main() -> int {
     var out: char8[8] = [c8' '; 8];
     var reads: uint = 0;
     while true {
-        match bad.Read(out[..]) {
-            .Success(count) => {
-                Assert(count == 3u && out[0] == c8'A', "the valid group before it decodes");
-                reads = reads + 1;
-            },
-            .Failure(error) => {
+        try {
+            let count = bad.Read(out[..]);
+            Assert(count == 3u && out[0] == c8'A', "the valid group before it decodes");
+            reads = reads + 1;
+        } catch {
+            error => {
                 Assert(error.kind == IoErrorKind::InvalidInput && reads == 1u, "invalid text is InvalidInput");
                 break;
-            }
+            },
         }
     }
     // Crockford Base32 skips hyphens.
     var crockford = DecodingReader::New(ByteReader::New("91JP-RV3F"), StreamCodec::Base32(Base32Variant::Crockford));
     var hello: char8[5] = [c8' '; 5];
-    ReadExact(crockford, hello[..]) catch { _ => return 4 };
+    try ReadExact(crockford, hello[..]) catch { _ => return 4 };
     Assert(Same(hello[..], "Hello"), "Crockford with a hyphen");
     return 0;
 }

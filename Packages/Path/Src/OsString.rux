@@ -93,7 +93,7 @@ extend OsStringView {
     /// @param allocator where the storage comes from
     /// @returns the units converted to text, or a failure when they are not valid in it
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#to-text
-    pub func ToText(&self, allocator: Allocator) -> String ! TextError {
+    pub func ToText(&self, allocator: Allocator) -> String throws TextError {
         when #target.os == .Windows {
             // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
             // checked builder so the promise chain stays intact.
@@ -105,7 +105,7 @@ extend OsStringView {
                 var width: uint = 0;
                 // Safety: `index` is below `units.length`, the loop condition, and the two outputs are locals.
                 if !unsafe { DecodeUnit(units, index, @scalar, @width) } {
-                    fail TextError::InvalidUtf8;
+                    throw .InvalidUtf8;
                 }
                 needed = needed + Utf8Width(scalar);
                 index = index + width;
@@ -118,16 +118,16 @@ extend OsStringView {
                 var width: uint = 0;
                 // Safety: `index` is below `units.length`, the loop condition, and the two outputs are locals.
                 if !unsafe { DecodeUnit(units, index, @scalar, @width) } {
-                    fail TextError::InvalidUtf8;
+                    throw .InvalidUtf8;
                 }
-                builder.AppendScalar(scalar as char32)?;
+                try builder.AppendScalar(scalar as char32);
                 index = index + width;
             }
             return builder.IntoString();
         }
         else {
             // Bytes: the check is the conversion.
-            return String::FromBytes(allocator, self.units);
+            return try String::FromBytes(allocator, self.units);
         }
     }
 }
@@ -207,7 +207,9 @@ extend OsString {
             let bytes = self.length * (sizeof(OsUnit) as uint);
             let layout = Layout::New(bytes, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch { _ => {} };
+            try borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch {
+                _ => {},
+            };
         }
         self.data = null;
         self.length = 0;
@@ -236,17 +238,15 @@ extend OsString {
             while index < text.length {
                 var scalar = 0u32 as char32;
                 var width: uint = 0;
-                match DecodeAt(text, index) {
-                    .Success(decoded) => {
-                        scalar = decoded.scalar;
-                        width = decoded.width;
+                try {
+                    let decoded = DecodeAt(text, index);
+                    scalar = decoded.scalar;
+                    width = decoded.width;
 
-                        needed = needed + (if (scalar as uint32) >= 0x10000 { 2u } else { 1u });
-                        index = index + width;
-                    },
-                    .Failure(_) => {
-                        index = text.length;
-                    }
+                    needed = needed + (if (scalar as uint32) >= 0x10000 { 2u } else { 1u });
+                    index = index + width;
+                } catch {
+                    _ => index = text.length,
                 }
             }
 
@@ -264,33 +264,31 @@ extend OsString {
             while index < text.length {
                 var scalar = 0u32 as char32;
                 var width: uint = 0;
-                match DecodeAt(text, index) {
-                    .Success(decoded) => {
-                        scalar = decoded.scalar;
-                        width = decoded.width;
+                try {
+                    let decoded = DecodeAt(text, index);
+                    scalar = decoded.scalar;
+                    width = decoded.width;
 
-                        let value = scalar as uint32;
-                        if value >= 0x10000 {
-                            let offset = value - 0x10000;
-                            // Safety: this pass decodes the same scalars the counting pass did, so `at + 2` is at
-                            // most `needed`, the units allocated.
-                            unsafe {
-                                units[at] = (0xD800 + (offset >> 10)) as uint16;
-                                units[at + 1] = (0xDC00 + (offset & 0x3FF)) as uint16;
-                            }
-                            at = at + 2;
+                    let value = scalar as uint32;
+                    if value >= 0x10000 {
+                        let offset = value - 0x10000;
+                        // Safety: this pass decodes the same scalars the counting pass did, so `at + 2` is at
+                        // most `needed`, the units allocated.
+                        unsafe {
+                            units[at] = (0xD800 + (offset >> 10)) as uint16;
+                            units[at + 1] = (0xDC00 + (offset & 0x3FF)) as uint16;
                         }
-                        else {
-                            // Safety: this pass decodes the same scalars the counting pass did, so `at` is below
-                            // `needed`, the units allocated.
-                            unsafe { units[at] = value as uint16; }
-                            at = at + 1;
-                        }
-                        index = index + width;
-                    },
-                    .Failure(_) => {
-                        index = text.length;
+                        at = at + 2;
                     }
+                    else {
+                        // Safety: this pass decodes the same scalars the counting pass did, so `at` is below
+                        // `needed`, the units allocated.
+                        unsafe { units[at] = value as uint16; }
+                        at = at + 1;
+                    }
+                    index = index + width;
+                } catch {
+                    _ => index = text.length,
                 }
             }
             return Self { data: units, length: needed, allocator };

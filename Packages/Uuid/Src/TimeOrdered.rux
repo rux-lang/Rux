@@ -18,10 +18,10 @@ import Time::Timestamp;
 /// would be guessable and would look fine.
 /// @returns a version 7 value carrying the current time, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered
-pub func TimeOrdered() -> Uuid ! EntropyError {
+pub func TimeOrdered() -> Uuid throws EntropyError {
     let now = Timestamp::Now();
     let milliseconds = (now.UnixSeconds() as uint64) * 1000 + ((now.SubsecondNanoseconds() / 1000000) as uint64);
-    return TimeOrderedAt(milliseconds);
+    return try TimeOrderedAt(milliseconds);
 }
 
 /// A version 7 UUID for a given millisecond, with entropy in the rest.
@@ -29,10 +29,10 @@ pub func TimeOrdered() -> Uuid ! EntropyError {
 /// @param milliseconds the timestamp to embed, in milliseconds since the Unix epoch
 /// @returns a version 7 value carrying `milliseconds`, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered#time-ordered-at
-pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
+pub func TimeOrderedAt(milliseconds: uint64) -> Uuid throws EntropyError {
     var bytes: byte[16];
     // Safety: `bytes` is a local array of sixteen bytes, exactly the sixteen `Fill` is asked to write.
-    unsafe { Fill(@bytes[0] as *var opaque, 16)?; }
+    unsafe { try Fill(@bytes[0] as *var opaque, 16); }
     var value = Uuid::FromBytes(bytes[..16]);
     // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;
@@ -88,8 +88,8 @@ extend MonotonicUuid {
     /// @returns the next value, which sorts after every value this generator has produced, or why entropy was
     ///   unavailable
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#next
-    pub func Next(&var self) -> Uuid ! EntropyError {
-        let candidate = TimeOrdered()?;
+    pub func Next(&var self) -> Uuid throws EntropyError {
+        let candidate = try TimeOrdered();
         if !self.started {
             self.previous = candidate;
             self.started = true;

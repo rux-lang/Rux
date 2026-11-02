@@ -13,18 +13,10 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-// The failure an outcome carries, which the test expects to be there.
-func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match move outcome {
-        .Success(_) => Panic("expected a failure"),
-        .Failure(error) => error
-    };
-}
-
 func Touch(allocator: Allocator, path: Path) {
-    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
+    var made = try File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
     Assert(made.IsOpen(), "a file is made");
-    made.Close() catch { _ => Panic("and closed") };
+    try made.Close() catch { _ => Panic("and closed") };
 }
 
 // Whether `buffer` ends with `tail`, which is how a path whose front is the machine's own is checked.
@@ -47,12 +39,12 @@ func EndsWith(buffer: &PathBuffer, tail: char8[..]) -> bool {
     return true;
 }
 
-func Main() -> int ! IoError {
+func Main() -> int throws IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // The working directory is absolute, and reading it does not disturb anything.
-    var here = CurrentDirectory(allocator)?;
+    var here = try CurrentDirectory(allocator);
     Assert(!here.IsEmpty(), "and is not empty");
     Assert(IsAbsolute(Path::FromView(here.View())), "and is absolute");
 
@@ -60,37 +52,44 @@ func Main() -> int ! IoError {
     let dir = PathOf(allocator, "Bin/FileSystemLoc.tmp", dirHolder);
     var fileHolder = OsString(allocator);
     let file = PathOf(allocator, "Bin/FileSystemLoc.tmp/real.txt", fileHolder);
-    DeleteFile(allocator, file) catch { _ => {} };
-    DeleteDirectory(allocator, dir) catch { _ => {} };
-    MakeDirectory(allocator, dir)?;
+    try DeleteFile(allocator, file) catch { _ => {} };
+    try DeleteDirectory(allocator, dir) catch { _ => {} };
+    try MakeDirectory(allocator, dir);
     Touch(allocator, file);
 
     // Absolute is arithmetic: it answers for a relative name, and it answers for one that does not exist.
-    var made = Absolute(allocator, file)?;
+    var made = try Absolute(allocator, file);
     Assert(IsAbsolute(made.AsPath()), "and is absolute");
     Assert(EndsWith(made, "FileSystemLoc.tmp/real.txt"), "ending in what was asked for");
 
     var absentHolder = OsString(allocator);
     let absent = PathOf(allocator, "Bin/FileSystemLoc.tmp/never-existed.txt", absentHolder);
-    var imagined = Absolute(allocator, absent) catch { _ => Panic("a path that does not exist is still made absolute") };
+    var imagined = try Absolute(allocator, absent) catch {
+        _ => Panic("a path that does not exist is still made absolute"),
+    };
     Assert(EndsWith(imagined, "never-existed.txt"), "keeping the name it was given");
 
     // The dot segments are simplified lexically, without asking anything.
     var noisyHolder = OsString(allocator);
     let noisy = PathOf(allocator, "Bin/./FileSystemLoc.tmp/../FileSystemLoc.tmp/real.txt", noisyHolder);
-    var tidied = Absolute(allocator, noisy)?;
+    var tidied = try Absolute(allocator, noisy);
     Assert(EndsWith(tidied, "FileSystemLoc.tmp/real.txt"), "the dot segments simplify away");
 
     // Canonicalize is a question: it agrees for a file that is there, and refuses for one that is not.
-    var truth = Canonicalize(allocator, file)?;
+    var truth = try Canonicalize(allocator, file);
     Assert(IsAbsolute(truth.AsPath()), "to an absolute name");
     Assert(EndsWith(truth, "FileSystemLoc.tmp/real.txt"), "ending in the file's real name");
 
-    Assert(Refusal(Canonicalize(allocator, absent)).kind == IoErrorKind::NotFound,
-           "a name with nothing behind it has no true form -- this is the difference from Absolute");
+    try {
+        Canonicalize(allocator, absent);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::NotFound,
+            "a name with nothing behind it has no true form -- this is the difference from Absolute"),
+    }
 
     // Canonicalizing what is already canonical changes nothing.
-    var again = Canonicalize(allocator, truth.AsPath())?;
+    var again = try Canonicalize(allocator, truth.AsPath());
     Assert(again.Length() == truth.Length(), "canonicalization is settled after one pass");
 
     made.Release();
@@ -98,8 +97,8 @@ func Main() -> int ! IoError {
     tidied.Release();
     truth.Release();
     again.Release();
-    DeleteFile(allocator, file)?;
-    DeleteDirectory(allocator, dir)?;
+    try DeleteFile(allocator, file);
+    try DeleteDirectory(allocator, dir);
 
     return 0;
 }

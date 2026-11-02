@@ -13,7 +13,7 @@ import Text::{ FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // Whether the specification asks for scientific notation, and with which exponent mark. Any style but `e` and
 // `E` is refused, as `RejectStyle` refuses a style on a value that has none. `mark` must be non-null and writable.
-func ScientificMark(spec: FormatSpec, mark: *var char8) -> bool ! FormatError {
+func ScientificMark(spec: FormatSpec, mark: *var char8) -> bool throws FormatError {
     if !spec.HasStyle() { return false; }
     if spec.StyleIs("e") {
         // Safety: the documented contract makes `mark` a non-null pointer to the caller's writable `char8`.
@@ -25,15 +25,15 @@ func ScientificMark(spec: FormatSpec, mark: *var char8) -> bool ! FormatError {
         unsafe { *mark = c8'E'; }
         return true;
     }
-    fail FormatError::UnsupportedRequest;
+    throw .UnsupportedRequest;
 }
 
 // Writes a NaN or an infinity under the specification's sign, width, fill and alignment. A NaN carries no sign to
 // show, and a negative infinity already shows its own.
-func WriteNonFinite(writer: &var TextWriter, spec: FormatSpec, isNan: bool, negative: bool) -> ! FormatError {
-    if isNan { return WriteAligned(writer, spec, "NaN", true); }
-    if negative { return WriteAligned(writer, spec, "-Inf", true); }
-    return WriteAligned(writer, spec, if spec.ShowsSign() { "+Inf" } else { "Inf" }, true);
+func WriteNonFinite(writer: &var TextWriter, spec: FormatSpec, isNan: bool, negative: bool) throws FormatError {
+    if isNan { return try WriteAligned(writer, spec, "NaN", true); }
+    if negative { return try WriteAligned(writer, spec, "-Inf", true); }
+    return try WriteAligned(writer, spec, if spec.ShowsSign() { "+Inf" } else { "Inf" }, true);
 }
 
 // Exactly `wanted` significant digits of `significand * 2^exponent`, rounded to nearest with ties to even, and the
@@ -174,21 +174,21 @@ func WriteScientificFloat(cursor: &var ByteCursor, parts: FloatParts, hasPrecisi
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/float-text#write-scientific-notation
 pub func WriteScientificNotation(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts,
-                                 mark: char8) -> ! FormatError {
+                                 mark: char8) throws FormatError {
     if spec.HasPrecision() && spec.Precision() > MaximumPrecision {
-        fail FormatError::UnsupportedRequest;
+        throw .UnsupportedRequest;
     }
     // Sign, one digit, the point, the largest precision, the mark, the exponent's sign and its digits fit with
     // room to spare; two bytes in front leave space for a requested sign.
     var storage: char8[1120];
     var cursor = ByteCursor(storage[2..1120]);
     if !WriteScientificFloat(cursor, parts, spec.HasPrecision(), spec.Precision(), mark) || cursor.Overran() {
-        fail FormatError::UnsupportedRequest;
+        throw .UnsupportedRequest;
     }
     var rendered = cursor.Written();
     if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
         storage[1] = c8'+';
         rendered = storage[1..rendered.length + 2];
     }
-    return WriteAligned(writer, spec, rendered, true);
+    return try WriteAligned(writer, spec, rendered, true);
 }

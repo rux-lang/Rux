@@ -9,7 +9,7 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes };
 
 /// Why text could not be decoded.
-/// Failure-only: success is the other channel of `uint ! DecodeError`, so no case means that nothing went wrong.
+/// Failure-only: a decode that succeeds returns its count, so no case means that nothing went wrong.
 /// Copy, carrying one count and owning nothing. A decoder that reports any case except `InsufficientCapacity` has
 /// left its destination exactly as it was; see each decoder for what a capacity refusal leaves.
 /// @see https://rux-lang.dev/docs/api/encoding/decode-error
@@ -70,19 +70,19 @@ extend DecodeError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
-        WriteBytes(writer, DescribeDecodeError(self))?;
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try RejectStyle(spec);
+        try WriteBytes(writer, DescribeDecodeError(self));
         var digits: char8[20];
         var count: uint = 0;
         var value: uint = 0;
         match self {
             .InsufficientCapacity(needed) => {
-                WriteBytes(writer, ", need ")?;
+                try WriteBytes(writer, ", need ");
                 value = needed;
             },
             _ => {
-                WriteBytes(writer, " at ")?;
+                try WriteBytes(writer, " at ");
                 value = self.Offset() ?? 0;
             }
         }
@@ -96,10 +96,10 @@ extend DecodeError : Display {
             digits[20 - count] = (48 + (value % 10)) as char8;
             value = value / 10;
         }
-        WriteBytes(writer, digits[20 - count..])?;
+        try WriteBytes(writer, digits[20 - count..]);
         match self {
             .InsufficientCapacity(needed) => {
-                WriteBytes(writer, if needed == 1 { " byte" } else { " bytes" })?;
+                try WriteBytes(writer, if needed == 1 { " byte" } else { " bytes" });
             },
             _ => {}
         }
@@ -114,7 +114,7 @@ extend DecodeError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        return self.WriteDisplay(writer, spec);
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        return try self.WriteDisplay(writer, spec);
     }
 }

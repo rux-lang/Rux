@@ -13,60 +13,73 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-// The failure an outcome carries, which the test expects to be there.
-func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match move outcome {
-        .Success(_) => Panic("expected a failure"),
-        .Failure(error) => error
-    };
-}
-
-func Main() -> int ! IoError {
+func Main() -> int throws IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
     var missingHolder = OsString(allocator);
     let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", missingHolder);
-    Assert(Refusal(File::Open(allocator, missing, OpenOptions::Reading())).kind == IoErrorKind::NotFound,
-           "reading a missing file is NotFound");
+    try {
+        File::Open(allocator, missing, OpenOptions::Reading());
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::NotFound, "reading a missing file is NotFound"),
+    }
 
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
     var scratchHolder = OsString(allocator);
     let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", scratchHolder);
-    var written = File::Open(allocator, scratch, OpenOptions::Writing())?;
+    var written = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(written.IsOpen(), "writing creates the missing file");
-    written.Close()?;
-    Assert(!written.IsOpen() && written.Close() is .Success(_), "a second close is a no-op");
+    try written.Close();
+    Assert(!written.IsOpen() && (try? written.Close()) is .Some(_), "a second close is a no-op");
 
     // Now that it exists: reading finds it, and a creation claim is refused.
-    var opened = File::Open(allocator, scratch, OpenOptions::Reading())?;
+    var opened = try File::Open(allocator, scratch, OpenOptions::Reading());
     var readable = move opened;
     Assert(readable.IsOpen(), "the created file reads");
-    readable.Close()?;
+    try readable.Close();
     var claimed = OpenOptions();
     claimed.write = true;
     claimed.createNew = true;
-    Assert(Refusal(File::Open(allocator, scratch, claimed)).kind == IoErrorKind::AlreadyExists,
-           "createNew against an existing file is AlreadyExists");
+    try {
+        File::Open(allocator, scratch, claimed);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::AlreadyExists,
+            "createNew against an existing file is AlreadyExists"),
+    }
 
     // Appending opens what Writing made.
-    var appended = File::Open(allocator, scratch, OpenOptions::Appending())?;
+    var appended = try File::Open(allocator, scratch, OpenOptions::Appending());
     Assert(appended.IsOpen(), "appending opens the existing file");
-    appended.Close()?;
+    try appended.Close();
 
     // The contradictions are refused before the platform is asked.
     var nothing = OpenOptions();
-    Assert(Refusal(File::Open(allocator, scratch, nothing)).kind == IoErrorKind::InvalidInput,
-           "no access at all is refused");
+    try {
+        File::Open(allocator, scratch, nothing);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::InvalidInput, "no access at all is refused"),
+    }
     var readTruncate = OpenOptions::Reading();
     readTruncate.truncate = true;
-    Assert(Refusal(File::Open(allocator, scratch, readTruncate)).kind == IoErrorKind::InvalidInput,
-           "truncating without writing is refused");
+    try {
+        File::Open(allocator, scratch, readTruncate);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::InvalidInput, "truncating without writing is refused"),
+    }
     var readCreate = OpenOptions::Reading();
     readCreate.create = true;
-    Assert(Refusal(File::Open(allocator, scratch, readCreate)).kind == IoErrorKind::InvalidInput,
-           "creating without writing is refused");
+    try {
+        File::Open(allocator, scratch, readCreate);
+        Panic("expected a failure");
+    } catch {
+        refusal => Assert(refusal.kind == IoErrorKind::InvalidInput, "creating without writing is refused"),
+    }
 
     // The translation table, sampled from both sides of the platform divide.
     Assert(TranslateNative(0).kind == IoErrorKind::Other || TranslateNative(0).raw == 0,

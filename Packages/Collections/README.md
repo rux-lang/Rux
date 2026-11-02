@@ -224,7 +224,7 @@ import Text::{ FormatError, FormatSpec, TextWriter };
 // `T: Debug`, and the implementation for `int32` lives there. Without this the bound is unsatisfied.
 import Format::*;
 
-func Show() -> ! FormatError {
+func Show() throws FormatError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var numbers = Vector<int32>(allocator);
@@ -234,7 +234,7 @@ func Show() -> ! FormatError {
     var failure: IoError? = none;
     var console = ConsoleWriter(@failure);
     let sink: &var TextWriter = console;
-    return WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());
+    try WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());
 }
 ```
 

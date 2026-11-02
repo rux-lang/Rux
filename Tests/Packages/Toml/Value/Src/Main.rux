@@ -34,7 +34,7 @@ func Main() -> int {
     Assert(flag.AsBoolean(@readFlag) && readFlag, "a boolean");
     Assert(!integer.AsBoolean(@readFlag), "which an integer is not");
 
-    var text = TomlValue::Text(allocator, "hello") catch { _ => Panic("a string value is made") };
+    var text = try TomlValue::Text(allocator, "hello") catch { _ => Panic("a string value is made") };
     Assert(text.Kind() == TomlKind::Text, "a string");
     Assert(text.AsText().Length() == 5, "of the length it was given");
     Assert(integer.AsText().Length() == 0, "while a non-string reports an empty view rather than its bytes");
@@ -64,11 +64,11 @@ func Main() -> int {
     // A table keeps its entries in the order they arrived, which is what makes a document round-trip
     // recognisably rather than alphabetically.
     var table = TomlValue::Table(allocator);
-    var zebra = String::FromBytes(allocator, "zebra") catch { _ => Panic("the key is made") };
+    var zebra = try String::FromBytes(allocator, "zebra") catch { _ => Panic("the key is made") };
     table.Insert(move zebra, TomlValue::Integer(allocator, 1));
-    var apple = String::FromBytes(allocator, "apple") catch { _ => Panic("the key is made") };
+    var apple = try String::FromBytes(allocator, "apple") catch { _ => Panic("the key is made") };
     table.Insert(move apple, TomlValue::Integer(allocator, 2));
-    var middle = String::FromBytes(allocator, "middle") catch { _ => Panic("the key is made") };
+    var middle = try String::FromBytes(allocator, "middle") catch { _ => Panic("the key is made") };
     table.Insert(move middle, TomlValue::Integer(allocator, 3));
     Assert(table.Length() == 3, "a table holds what it was given");
     let first = table.EntryAt(0) ?? Panic("the table holds three entries");
@@ -102,7 +102,7 @@ func Main() -> int {
     Assert(array.Find(View("apple")) is none, "an array has no keys");
     Assert(table.At(0) is none, "and a table has no elements");
     Assert(!table.Push(TomlValue::Integer(allocator, 1)), "pushing onto a table is refused");
-    var stray = String::FromBytes(allocator, "stray") catch { _ => Panic("the key is made") };
+    var stray = try String::FromBytes(allocator, "stray") catch { _ => Panic("the key is made") };
     Assert(!array.Insert(move stray, TomlValue::Integer(allocator, 1)), "and inserting into an array is too");
 
     // Ownership is the whole difficulty of a document tree: a table holding a table holding an array must
@@ -110,11 +110,11 @@ func Main() -> int {
     var outer = TomlValue::Table(allocator);
     var inner = TomlValue::Table(allocator);
     var nested = TomlValue::Array(allocator);
-    nested.Push(TomlValue::Text(allocator, "held") catch { _ => Panic("a nested string value is made") });
-    nested.Push(TomlValue::Text(allocator, "also held") catch { _ => Panic("a nested string value is made") });
-    var nestedKey = String::FromBytes(allocator, "list") catch { _ => Panic("the key is made") };
+    nested.Push((try TomlValue::Text(allocator, "held") catch { _ => Panic("a nested string value is made") }));
+    nested.Push((try TomlValue::Text(allocator, "also held") catch { _ => Panic("a nested string value is made") }));
+    var nestedKey = try String::FromBytes(allocator, "list") catch { _ => Panic("the key is made") };
     inner.Insert(move nestedKey, move nested);
-    var innerKey = String::FromBytes(allocator, "inner") catch { _ => Panic("the key is made") };
+    var innerKey = try String::FromBytes(allocator, "inner") catch { _ => Panic("the key is made") };
     outer.Insert(move innerKey, move inner);
     let list = (outer.Find(View("inner")) ?? Panic("the outer table holds the inner one")).Find(View("list"));
     Assert(list is .Some(held) && held.Length() == 2, "a nested tree is reachable all the way down");

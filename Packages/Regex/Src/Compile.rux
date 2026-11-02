@@ -17,9 +17,9 @@ const MaximumInstructions: uint = 100000;
 const NoPatch: uint32 = 0xFFFFFFFF;
 
 extend Regex {
-    func Emit(&var self, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 ! RegexError {
+    func Emit(&var self, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 throws RegexError {
         let index = self.instructions.Length();
-        if index >= MaximumInstructions { fail RegexError::At(RegexErrorKind::TooLarge, 0); }
+        if index >= MaximumInstructions { throw RegexError::At(RegexErrorKind::TooLarge, 0); }
         self.instructions.Push(Instruction { op, flags, a, b, c: 0 });
         return index as uint32;
     }
@@ -48,13 +48,13 @@ extend Regex {
 
     // Emits node `index` and what it holds. With `reverse`, emits what matches the same text read backwards: the
     // parts of a sequence in the other order, the assertions about the start and the end exchanged, and no groups.
-    func CompileNode(&var self, nodes: Node[..], index: uint32, reverse: bool) -> ! RegexError {
+    func CompileNode(&var self, nodes: Node[..], index: uint32, reverse: bool) throws RegexError {
         let node = nodes[index as uint];
         match node.kind {
             NodeKind::Empty => {},
             NodeKind::Literal => {
-                if (node.flags & NodeFold) != 0u8 { self.Emit(Op::CharFold, 0, FoldKey(node.value), 0)?; }
-                else { self.Emit(Op::Char, 0, node.value, 0)?; }
+                if (node.flags & NodeFold) != 0u8 { try self.Emit(Op::CharFold, 0, FoldKey(node.value), 0); }
+                else { try self.Emit(Op::Char, 0, node.value, 0); }
             },
             NodeKind::Class => {
                 var flags: uint8 = 0;
@@ -75,12 +75,12 @@ extend Regex {
                 let pair = self.ascii.Length() / 2;
                 self.ascii.Push(low);
                 self.ascii.Push(high);
-                let pc = self.Emit(Op::Class, flags, node.value, node.low)?;
+                let pc = try self.Emit(Op::Class, flags, node.value, node.low);
                 self.instructions.AsMutableSlice()[pc as uint].c = pair as uint32;
             },
             NodeKind::Any => {
-                if (node.flags & NodeDotAll) != 0u8 { self.Emit(Op::Any, 0, 0, 0)?; }
-                else { self.Emit(Op::AnyNotNewline, 0, 0, 0)?; }
+                if (node.flags & NodeDotAll) != 0u8 { try self.Emit(Op::Any, 0, 0, 0); }
+                else { try self.Emit(Op::AnyNotNewline, 0, 0, 0); }
             },
             NodeKind::Assertion => {
                 var kind = node.value;
@@ -90,16 +90,16 @@ extend Regex {
                     else if kind == StartLine { kind = EndLine; }
                     else if kind == EndLine { kind = StartLine; }
                 }
-                self.Emit(Op::Assert, 0, kind, 0)?;
+                try self.Emit(Op::Assert, 0, kind, 0);
             },
             NodeKind::Group => {
                 if node.value == NoCapture || reverse {
-                    self.CompileNode(nodes, node.child, reverse)?;
+                    try self.CompileNode(nodes, node.child, reverse);
                 }
                 else {
-                    self.Emit(Op::Save, 0, node.value * 2u32, 0)?;
-                    self.CompileNode(nodes, node.child, reverse)?;
-                    self.Emit(Op::Save, 0, node.value * 2u32 + 1u32, 0)?;
+                    try self.Emit(Op::Save, 0, node.value * 2u32, 0);
+                    try self.CompileNode(nodes, node.child, reverse);
+                    try self.Emit(Op::Save, 0, node.value * 2u32 + 1u32, 0);
                 }
             },
             NodeKind::Concat => {
@@ -113,13 +113,13 @@ extend Regex {
                     var remaining = children.Length();
                     while remaining > 0u {
                         remaining = remaining - 1;
-                        self.CompileNode(nodes, children.AsSlice()[remaining], reverse)?;
+                        try self.CompileNode(nodes, children.AsSlice()[remaining], reverse);
                     }
                     return;
                 }
                 var child = node.child;
                 while child != NoNode {
-                    self.CompileNode(nodes, child, reverse)?;
+                    try self.CompileNode(nodes, child, reverse);
                     child = nodes[child as uint].next;
                 }
             },
@@ -127,30 +127,30 @@ extend Regex {
                 var child = node.child;
                 var jumps = NoPatch;
                 while nodes[child as uint].next != NoNode {
-                    let split = self.Emit(Op::Split, 0, self.Next() + 1u32, 0)?;
-                    self.CompileNode(nodes, child, reverse)?;
-                    jumps = self.Emit(Op::Jump, 0, jumps, 0)?;
+                    let split = try self.Emit(Op::Split, 0, self.Next() + 1u32, 0);
+                    try self.CompileNode(nodes, child, reverse);
+                    jumps = try self.Emit(Op::Jump, 0, jumps, 0);
                     let after = self.Next();
                     self.instructions.AsMutableSlice()[split as uint].b = after;
                     child = nodes[child as uint].next;
                 }
-                self.CompileNode(nodes, child, reverse)?;
+                try self.CompileNode(nodes, child, reverse);
                 self.Patch(jumps, self.Next(), false);
             },
-            NodeKind::Repeat => self.CompileRepeat(nodes, node, reverse)?
+            NodeKind::Repeat => try self.CompileRepeat(nodes, node, reverse)
         }
     }
 
-    func CompileRepeat(&var self, nodes: Node[..], node: Node, reverse: bool) -> ! RegexError {
+    func CompileRepeat(&var self, nodes: Node[..], node: Node, reverse: bool) throws RegexError {
         let greedy = (node.flags & NodeGreedy) != 0u8;
         let low = node.low;
         let high = node.high;
         if high == Unbounded {
             if low == 0u32 {
                 // L: split body, end; body; jump L; end:
-                let head = self.Emit(Op::Split, 0, 0, 0)?;
-                self.CompileNode(nodes, node.child, reverse)?;
-                self.Emit(Op::Jump, 0, head, 0)?;
+                let head = try self.Emit(Op::Split, 0, 0, 0);
+                try self.CompileNode(nodes, node.child, reverse);
+                try self.Emit(Op::Jump, 0, head, 0);
                 let end = self.Next();
                 let instructions = self.instructions.AsMutableSlice();
                 instructions[head as uint].a = if greedy { head + 1u32 } else { end };
@@ -159,29 +159,29 @@ extend Regex {
             }
             var count: uint32 = 1;
             while count < low {
-                self.CompileNode(nodes, node.child, reverse)?;
+                try self.CompileNode(nodes, node.child, reverse);
                 count = count + 1u32;
             }
             // L: body; split L, end; end:
             let body = self.Next();
-            self.CompileNode(nodes, node.child, reverse)?;
+            try self.CompileNode(nodes, node.child, reverse);
             let after = self.Next() + 1u32;
-            self.Emit(Op::Split, 0, if greedy { body } else { after }, if greedy { after } else { body })?;
+            try self.Emit(Op::Split, 0, if greedy { body } else { after }, if greedy { after } else { body });
             return;
         }
         var count: uint32 = 0;
         while count < low {
-            self.CompileNode(nodes, node.child, reverse)?;
+            try self.CompileNode(nodes, node.child, reverse);
             count = count + 1u32;
         }
         // Each optional copy: split copy, end; copy. Every skip goes to the end of the last copy.
         var pending = NoPatch;
         while count < high {
             let split = self.Next();
-            if greedy { self.Emit(Op::Split, 0, split + 1u32, pending)?; }
-            else { self.Emit(Op::Split, 0, pending, split + 1u32)?; }
+            if greedy { try self.Emit(Op::Split, 0, split + 1u32, pending); }
+            else { try self.Emit(Op::Split, 0, pending, split + 1u32); }
             pending = split;
-            self.CompileNode(nodes, node.child, reverse)?;
+            try self.CompileNode(nodes, node.child, reverse);
             count = count + 1u32;
         }
         self.Patch(pending, self.Next(), greedy);
@@ -189,12 +189,12 @@ extend Regex {
 
     // Compiles the whole pattern from `root`, with the whole match as group 0, and works out how a search can skip
     // ahead to where a match can start.
-    func CompileProgram(&var self, nodes: Node[..], root: uint32) -> ! RegexError {
-        self.Emit(Op::Save, 0, 0, 0)?;
-        self.CompileNode(nodes, root, false)?;
-        self.Emit(Op::Save, 0, 1, 0)?;
-        self.Emit(Op::Match, 0, 0, 0)?;
-        self.CompileReverse(nodes, root)?;
+    func CompileProgram(&var self, nodes: Node[..], root: uint32) throws RegexError {
+        try self.Emit(Op::Save, 0, 0, 0);
+        try self.CompileNode(nodes, root, false);
+        try self.Emit(Op::Save, 0, 1, 0);
+        try self.Emit(Op::Match, 0, 0, 0);
+        try self.CompileReverse(nodes, root);
         let instructions = self.instructions.AsSlice();
         var at: uint = 0;
         while instructions[at].op == Op::Save { at = at + 1; }
@@ -215,7 +215,7 @@ extend Regex {
     // Emits the pattern read backwards after the forward program, for the search that finds where a match starts
     // once its end is known. A pattern too large to hold twice keeps only the forward program, and its searches find
     // starts with the Pike matcher instead.
-    func CompileReverse(&var self, nodes: Node[..], root: uint32) -> ! RegexError {
+    func CompileReverse(&var self, nodes: Node[..], root: uint32) throws RegexError {
         let forward = self.instructions.Length();
         self.forwardLength = forward;
         if forward * 2 > MaximumInstructions {
@@ -223,16 +223,17 @@ extend Regex {
             return;
         }
         self.reverseStart = forward as uint32;
-        match self.CompileNode(nodes, root, true) {
-            .Success(_) => {},
-            .Failure(error) => {
-                if error.kind != RegexErrorKind::TooLarge { fail error; }
+        try {
+            self.CompileNode(nodes, root, true);
+        } catch {
+            error => {
+                if error.kind != RegexErrorKind::TooLarge { throw error; }
                 self.instructions.Truncate(forward);
                 self.reverseStart = NoReverse;
                 return;
-            }
+            },
         }
-        self.Emit(Op::Match, 0, 0, 0)?;
+        try self.Emit(Op::Match, 0, 0, 0);
     }
 
     // Works out the bytes a match can start with, following every move from the start that reads no character. A

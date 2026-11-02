@@ -8,38 +8,32 @@ import Text::{ FormatError, String };
 // rendering is fifteen digits and deliberately not a round trip past them.
 
 func TripInt64(allocator: Allocator, value: int64) -> bool {
-    let text = Rendered(allocator, Render(allocator, "{}", value));
-    match ParseInt64(text.View()) {
-        .Success(parsed) => {
-            return parsed == value;
-        },
-        .Failure(_) => {
-            return false;
-        }
+    let text = Rendered(allocator, try? Render(allocator, "{}", value));
+    try {
+        let parsed = ParseInt64(text.View());
+        return parsed == value;
+    } catch {
+        _ => return false,
     }
 }
 
 func TripUint64Hex(allocator: Allocator, value: uint64) -> bool {
-    let text = Rendered(allocator, Render(allocator, "{:#x}", value));
-    match ParseUint64(text.View()) {
-        .Success(parsed) => {
-            return parsed == value;
-        },
-        .Failure(_) => {
-            return false;
-        }
+    let text = Rendered(allocator, try? Render(allocator, "{:#x}", value));
+    try {
+        let parsed = ParseUint64(text.View());
+        return parsed == value;
+    } catch {
+        _ => return false,
     }
 }
 
 func TripFloat64(allocator: Allocator, value: float64) -> bool {
-    let text = Rendered(allocator, Render(allocator, "{}", value));
-    match ParseFloat64(text.View()) {
-        .Success(parsed) => {
-            return parsed == value;
-        },
-        .Failure(_) => {
-            return false;
-        }
+    let text = Rendered(allocator, try? Render(allocator, "{}", value));
+    try {
+        let parsed = ParseFloat64(text.View());
+        return parsed == value;
+    } catch {
+        _ => return false,
     }
 }
 
@@ -62,19 +56,19 @@ func Main() -> int {
     if !TripUint64Hex(allocator, 18446744073709551615u64) { return 22; }
 
     // The wide widths: the largest value there is, formatted and read back.
-    let wide = Rendered(allocator, Render(allocator, "{}", -170141183460469231731687303715884105728i128));
-    match ParseInt128(wide.View()) {
-        .Success(parsed) => {
-            if parsed != -170141183460469231731687303715884105728i128 { return 31; }
-        },
-        .Failure(_) => { return 32; }
+    let wide = Rendered(allocator, try? Render(allocator, "{}", -170141183460469231731687303715884105728i128));
+    try {
+        let parsed = ParseInt128(wide.View());
+        if parsed != -170141183460469231731687303715884105728i128 { return 31; }
+    } catch {
+        _ => return 32,
     }
-    let widest = Rendered(allocator, Render(allocator, "{}", 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512));
-    match ParseUint512(widest.View()) {
-        .Success(parsed) => {
-            if parsed % 10u512 != 5 { return 34; }
-        },
-        .Failure(_) => { return 35; }
+    let widest = Rendered(allocator, try? Render(allocator, "{}", 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512));
+    try {
+        let parsed = ParseUint512(widest.View());
+        if parsed % 10u512 != 5 { return 34; }
+    } catch {
+        _ => return 35,
     }
 
     // Floats whose text is exact at fifteen digits, and the special values.
@@ -87,12 +81,12 @@ func Main() -> int {
     if !TripFloat64(allocator, -1.0 / 0.0) { return 46; }
 
     // A NaN never equals itself, so its trip is checked by kind rather than by value.
-    let nan = Rendered(allocator, Render(allocator, "{}", 0.0 / 0.0));
-    match ParseFloat64(nan.View()) {
-        .Success(parsed) => {
-            if !IsNan(parsed) { return 51; }
-        },
-        .Failure(_) => { return 52; }
+    let nan = Rendered(allocator, try? Render(allocator, "{}", 0.0 / 0.0));
+    try {
+        let parsed = ParseFloat64(nan.View());
+        if !IsNan(parsed) { return 51; }
+    } catch {
+        _ => return 52,
     }
 
     return 0;
@@ -101,6 +95,6 @@ func Main() -> int {
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
-func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
-    return (move outcome) catch { _ => String(allocator) };
+func Rendered(allocator: Allocator, outcome: String?) -> String {
+    return (move outcome) ?? String(allocator);
 }

@@ -2,7 +2,7 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
 import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextWriter };
 
@@ -15,7 +15,7 @@ func View(bytes: char8[..]) -> StringView {
 func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: &var bool) -> String {
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    outcome = WriteValue(sink, value, style) is .Success(_);
+    outcome = (try? WriteValue(sink, value, style)) is .Some(_);
     return builder.IntoString();
 }
 
@@ -24,12 +24,14 @@ func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome:
 func RefusedAs(allocator: Allocator, value: &JsonValue, style: JsonStyle, expected: &FormatError) -> bool {
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    let outcome = WriteValue(sink, value, style);
+    let outcome: Result<(), FormatError> = try .Success(WriteValue(sink, value, style)) catch {
+        error => .Failure(error),
+    };
     var discarded = builder.IntoString();
     return SameFailure(outcome, expected);
 }
 
-func SameFailure(outcome: &(! FormatError), expected: &FormatError) -> bool {
+func SameFailure(outcome: &Result<(), FormatError>, expected: &FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
         .Failure(reason) => CaseOf(reason) == CaseOf(expected)
@@ -51,10 +53,7 @@ func CaseOf(reason: &FormatError) -> int32 {
 
 // A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
 func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
-    var outcome = Parse(allocator, text);
-    var value = JsonValue::Null(allocator);
-    value = (move outcome) catch { _ => Panic("the document parses") };
-    return move value;
+    return try Parse(allocator, text) catch { _ => Panic("the document parses") };
 }
 
 func Main() -> int {
@@ -118,13 +117,13 @@ func Main() -> int {
     // reaches it anyway. Setting the kind by hand is the one way left to give a value number text JSON cannot spell:
     // none at all.
     let outOfRange = FormatError::ValueOutOfRange;
-    Assert(!(JsonValue::Number(allocator, "NaN") is .Success(_)), "a NaN is not a number that can be made");
-    Assert(!(JsonValue::Number(allocator, "Infinity") is .Success(_)), "and neither is an infinity");
+    Assert(!((try? JsonValue::Number(allocator, "NaN")) is .Some(_)), "a NaN is not a number that can be made");
+    Assert(!((try? JsonValue::Number(allocator, "Infinity")) is .Some(_)), "and neither is an infinity");
     var forged = JsonValue::Null(allocator);
     forged.kind = JsonKind::Number;
     Assert(RefusedAs(allocator, forged, JsonStyle::Compact(), outOfRange),
            "a number with no text is refused as a value the requested form cannot hold");
-    var ordinary = JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
+    var ordinary = try JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), wrote);
     Assert(wrote,
            "while an exponent past what a float holds is still a number JSON can spell, and is written");
@@ -137,7 +136,8 @@ func Main() -> int {
     var room: char8[8];
     var bounded = BufferWriter(room[..8]);
     let boundedSink: &var TextWriter = bounded;
-    let overflowed = WriteValue(boundedSink, wholeDocument, JsonStyle::Compact());
+    let overflowed: Result<(), FormatError> =
+        try .Success(WriteValue(boundedSink, wholeDocument, JsonStyle::Compact())) catch { error => .Failure(error) };
     let full = FormatError::InsufficientCapacity;
     Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
     Assert(bounded.Length() <= 8, "having written no more than it had");
@@ -147,7 +147,7 @@ func Main() -> int {
     var enough: char8[64];
     var roomy = BufferWriter(enough[..64]);
     let roomySink: &var TextWriter = roomy;
-    Assert(WriteValue(roomySink, wholeDocument, JsonStyle::Compact()) is .Success(_),
+    Assert((try? WriteValue(roomySink, wholeDocument, JsonStyle::Compact())) is .Some(_),
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 26, "all twenty-six bytes of it");
 

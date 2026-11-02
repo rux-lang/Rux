@@ -58,10 +58,10 @@ pub struct CompressWriter {
 }
 
 // Allocates `size` bytes or fails.
-func Take(allocator: Allocator, size: uint) -> *var opaque ! IoError {
+func Take(allocator: Allocator, size: uint) -> *var opaque throws IoError {
     var borrowed = allocator;
-    let layout = Layout::New(size, 8) ?? fail IoError::Of(IoErrorKind::LimitExceeded);
-    return borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::LimitExceeded) };
+    let layout = Layout::New(size, 8) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
+    return try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
 }
 
 // Gives back a block `Take` handed out.
@@ -69,7 +69,7 @@ func Take(allocator: Allocator, size: uint) -> *var opaque ! IoError {
 unsafe func Give(allocator: Allocator, block: *var opaque, size: uint) {
     if block == null { return; }
     var borrowed = allocator;
-    borrowed.Deallocate(block, Layout::New(size, 8) ?? Layout::ForValue<uint64>()) catch { _ => {} };
+    try borrowed.Deallocate(block, Layout::New(size, 8) ?? Layout::ForValue<uint64>()) catch { _ => {} };
 }
 
 extend CompressWriter {
@@ -81,18 +81,18 @@ extend CompressWriter {
     /// @returns the writer, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/deflate#new
     pub func New(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
-        -> Self ! IoError {
+        -> Self throws IoError {
         // Safety: `Take` returns a fresh block of the bytes asked for, eight-byte aligned, which holds exactly
         // `DataCapacity` bytes.
-        let data = unsafe { Take(allocator, DataCapacity)? as *var uint8 };
+        let data = unsafe { try Take(allocator, DataCapacity) as *var uint8 };
         // Safety: a fresh eight-byte aligned block of `HashSize` four-byte entries.
-        let head = unsafe { Take(allocator, HashSize * 4u)? as *var int32 };
+        let head = unsafe { try Take(allocator, HashSize * 4u) as *var int32 };
         // Safety: a fresh eight-byte aligned block of `WindowSize` four-byte entries.
-        let previous = unsafe { Take(allocator, WindowSize * 4u)? as *var int32 };
+        let previous = unsafe { try Take(allocator, WindowSize * 4u) as *var int32 };
         // Safety: a fresh eight-byte aligned block of `DataCapacity` four-byte entries.
-        let tokens = unsafe { Take(allocator, DataCapacity * 4u)? as *var uint32 };
+        let tokens = unsafe { try Take(allocator, DataCapacity * 4u) as *var uint32 };
         // Safety: a fresh block of `OutputCapacity` bytes.
-        let output = unsafe { Take(allocator, OutputCapacity)? as *var uint8 };
+        let output = unsafe { try Take(allocator, OutputCapacity) as *var uint8 };
         var index: uint = 0;
         while index < HashSize {
             // Safety: `index` is below `HashSize`, the number of entries `head` was allocated with.
@@ -111,29 +111,29 @@ extend CompressWriter {
     /// the sink. Writing after finishing fails; finishing twice does nothing.
     /// @returns nothing, or fails with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#finish
-    pub func Finish(&var self) -> ! IoError {
+    pub func Finish(&var self) throws IoError {
         if self.finished { return; }
-        self.Start()?;
-        self.EncodeBlock(true)?;
-        self.AlignBits()?;
+        try self.Start();
+        try self.EncodeBlock(true);
+        try self.AlignBits();
         if self.format == Format::Zlib {
             let value = self.adler.Value();
-            self.PutByte((value >> 24) as uint8)?;
-            self.PutByte((value >> 16).Truncate<uint8>())?;
-            self.PutByte((value >> 8).Truncate<uint8>())?;
-            self.PutByte(value.Truncate<uint8>())?;
+            try self.PutByte((value >> 24) as uint8);
+            try self.PutByte((value >> 16).Truncate<uint8>());
+            try self.PutByte((value >> 8).Truncate<uint8>());
+            try self.PutByte(value.Truncate<uint8>());
         }
         else if self.format == Format::Gzip {
-            self.PutWord(self.crc.Value())?;
-            self.PutWord(self.size)?;
+            try self.PutWord(self.crc.Value());
+            try self.PutWord(self.size);
         }
-        self.SendOutput()?;
-        self.sink.Flush()?;
+        try self.SendOutput();
+        try self.sink.Flush();
         self.finished = true;
     }
 
     // Writes the container's header, once.
-    func Start(&var self) -> ! IoError {
+    func Start(&var self) throws IoError {
         if self.started { return; }
         self.started = true;
         if self.format == Format::Zlib {
@@ -146,34 +146,34 @@ extend CompressWriter {
             };
             var flags = levelBits << 6;
             flags = flags + 31u - ((0x78u * 256u + flags) % 31u);
-            self.PutByte(0x78u8)?;
-            self.PutByte(flags as uint8)?;
+            try self.PutByte(0x78u8);
+            try self.PutByte(flags as uint8);
         }
         else if self.format == Format::Gzip {
             let header: uint8[10] = [0x1Fu8, 0x8Bu8, 8u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0xFFu8];
             var index: uint = 0;
             while index < 10u {
-                self.PutByte(header[index])?;
+                try self.PutByte(header[index]);
                 index = index + 1;
             }
         }
     }
 
     // Appends whole bytes to the output, after any pending bits.
-    func PutByte(&var self, value: uint8) -> ! IoError {
-        self.PutBits(value as uint64, 8)?;
+    func PutByte(&var self, value: uint8) throws IoError {
+        try self.PutBits(value as uint64, 8);
     }
 
-    func PutWord(&var self, value: uint32) -> ! IoError {
-        self.PutBits(value as uint64, 32)?;
+    func PutWord(&var self, value: uint32) throws IoError {
+        try self.PutBits(value as uint64, 32);
     }
 
     // Appends `count` bits of `value`, least significant first.
-    func PutBits(&var self, value: uint64, count: uint) -> ! IoError {
+    func PutBits(&var self, value: uint64, count: uint) throws IoError {
         self.bits = self.bits | ((value & ((1u64 << count as uint64) - 1u64)) << self.bitCount as uint64);
         self.bitCount = self.bitCount + count;
         while self.bitCount >= 8u {
-            if self.outputLength == OutputCapacity { self.SendOutput()?; }
+            if self.outputLength == OutputCapacity { try self.SendOutput(); }
             // Safety: `outputLength` is below `OutputCapacity`: a full buffer was just sent, which empties it.
             unsafe { self.output[self.outputLength] = self.bits.Truncate<uint8>(); }
             self.outputLength = self.outputLength + 1;
@@ -183,19 +183,19 @@ extend CompressWriter {
     }
 
     // Pads the output to a whole byte.
-    func AlignBits(&var self) -> ! IoError {
-        if self.bitCount > 0u { self.PutBits(0, 8u - self.bitCount)?; }
+    func AlignBits(&var self) throws IoError {
+        if self.bitCount > 0u { try self.PutBits(0, 8u - self.bitCount); }
     }
 
     // Hands the output gathered so far to the sink.
-    func SendOutput(&var self) -> ! IoError {
+    func SendOutput(&var self) throws IoError {
         var sent: uint = 0;
         while sent < self.outputLength {
             // Safety: the buffer invariant: the first `outputLength` bytes of `output` are in use, and `sent` is below
             // `outputLength`; `uint8` and `char8` are both single bytes.
             let chunk = unsafe { (self.output as *var char8)[sent..self.outputLength] };
-            let count = self.sink.Write(chunk)?;
-            if count == 0u { fail IoError::Of(IoErrorKind::WriteZero); }
+            let count = try self.sink.Write(chunk);
+            if count == 0u { throw IoError::Of(IoErrorKind::WriteZero); }
             sent = sent + count;
         }
         self.outputLength = 0;
@@ -306,12 +306,12 @@ extend CompressWriter {
     }
 
     // Encodes the data waiting since the last block as one or more blocks, the last of them final when `final`.
-    func EncodeBlock(&var self, final: bool) -> ! IoError {
+    func EncodeBlock(&var self, final: bool) throws IoError {
         let start = self.blockStart;
         let end = self.dataLength;
         if start == end && !final { return; }
         if self.level == Level::Store {
-            self.WriteStored(start, end, final)?;
+            try self.WriteStored(start, end, final);
             self.blockStart = end;
             return;
         }
@@ -421,11 +421,11 @@ extend CompressWriter {
         let storedBits = ((end - start) as uint64 + 5u64 * ((end - start) as uint64 / 65535u64 + 1u64)) * 8u64 + 10u64;
 
         if storedBits <= fixedBits && storedBits <= dynamicBits {
-            self.WriteStored(start, end, final)?;
+            try self.WriteStored(start, end, final);
         }
         else if fixedBits <= dynamicBits {
-            self.PutBits(if final { 1u64 } else { 0u64 }, 1)?;
-            self.PutBits(1, 2)?;
+            try self.PutBits(if final { 1u64 } else { 0u64 }, 1);
+            try self.PutBits(1, 2);
             var fixedLiterals: uint8[288] = [0u8; 288];
             index = 0;
             while index < 288u {
@@ -434,17 +434,17 @@ extend CompressWriter {
             }
             var fixedDistances: uint8[30] = [5u8; 30];
             // Safety: the two arrays are locals of 288 and 30 lengths.
-            unsafe { self.WriteTokens(@fixedLiterals[0], @fixedDistances[0])?; }
+            unsafe { try self.WriteTokens(@fixedLiterals[0], @fixedDistances[0]); }
         }
         else {
-            self.PutBits(if final { 1u64 } else { 0u64 }, 1)?;
-            self.PutBits(2, 2)?;
-            self.PutBits((literalCount - 257u) as uint64, 5)?;
-            self.PutBits((distanceCount - 1u) as uint64, 5)?;
-            self.PutBits((codeLengthCount - 4u) as uint64, 4)?;
+            try self.PutBits(if final { 1u64 } else { 0u64 }, 1);
+            try self.PutBits(2, 2);
+            try self.PutBits((literalCount - 257u) as uint64, 5);
+            try self.PutBits((distanceCount - 1u) as uint64, 5);
+            try self.PutBits((codeLengthCount - 4u) as uint64, 4);
             index = 0;
             while index < codeLengthCount {
-                self.PutBits(codeLengths[CodeLengthOrder[index] as uint] as uint64, 3)?;
+                try self.PutBits(codeLengths[CodeLengthOrder[index] as uint] as uint64, 3);
                 index = index + 1;
             }
             var codeCodes: uint16[19] = [0u16; 19];
@@ -454,11 +454,11 @@ extend CompressWriter {
             while index < runCount {
                 let run = runs[index];
                 let symbol = (run & 0x1Fu16) as uint;
-                self.PutBits(codeCodes[symbol] as uint64, codeLengths[symbol] as uint)?;
+                try self.PutBits(codeCodes[symbol] as uint64, codeLengths[symbol] as uint);
                 let extra = (run >> 5) as uint64;
-                if symbol == 16u { self.PutBits(extra, 2)?; }
-                else if symbol == 17u { self.PutBits(extra, 3)?; }
-                else if symbol == 18u { self.PutBits(extra, 7)?; }
+                if symbol == 16u { try self.PutBits(extra, 2); }
+                else if symbol == 17u { try self.PutBits(extra, 3); }
+                else if symbol == 18u { try self.PutBits(extra, 7); }
                 index = index + 1;
             }
             var literals: uint8[288] = [0u8; 288];
@@ -468,14 +468,14 @@ extend CompressWriter {
                 index = index + 1;
             }
             // Safety: the two arrays are locals of 288 and 30 lengths.
-            unsafe { self.WriteTokens(@literals[0], @distanceLengths[0])?; }
+            unsafe { try self.WriteTokens(@literals[0], @distanceLengths[0]); }
         }
         self.blockStart = end;
     }
 
     // Writes the block's tokens with the given code lengths, and the end-of-block code.
     // Safety: `literalLengths` must be readable for 288 lengths and `distanceLengths` for 30.
-    unsafe func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) -> ! IoError {
+    unsafe func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) throws IoError {
         var literalCodes: uint16[288] = [0u16; 288];
         var distanceCodes: uint16[30] = [0u16; 30];
         AssignCodes(literalLengths, 288, @literalCodes[0]);
@@ -485,41 +485,41 @@ extend CompressWriter {
             let value = self.tokens[token];
             if (value & MatchFlag) == 0u32 {
                 let symbol = value as uint;
-                self.PutBits(literalCodes[symbol] as uint64, literalLengths[symbol] as uint)?;
+                try self.PutBits(literalCodes[symbol] as uint64, literalLengths[symbol] as uint);
             }
             else {
                 let length = (value >> 16) as uint & 0x1FFu;
                 let distance = value as uint & 0xFFFFu;
                 let lengthCode = LengthCode(length);
                 let symbol = 257u + lengthCode;
-                self.PutBits(literalCodes[symbol] as uint64, literalLengths[symbol] as uint)?;
-                self.PutBits((length - LengthBase[lengthCode] as uint) as uint64, LengthExtra[lengthCode] as uint)?;
+                try self.PutBits(literalCodes[symbol] as uint64, literalLengths[symbol] as uint);
+                try self.PutBits((length - LengthBase[lengthCode] as uint) as uint64, LengthExtra[lengthCode] as uint);
                 let distanceCode = DistanceCode(distance);
-                self.PutBits(distanceCodes[distanceCode] as uint64, distanceLengths[distanceCode] as uint)?;
-                self.PutBits((distance - DistanceBase[distanceCode] as uint) as uint64,
-                             DistanceExtra[distanceCode] as uint)?;
+                try self.PutBits(distanceCodes[distanceCode] as uint64, distanceLengths[distanceCode] as uint);
+                try self.PutBits((distance - DistanceBase[distanceCode] as uint) as uint64,
+                             DistanceExtra[distanceCode] as uint);
             }
             token = token + 1;
         }
-        self.PutBits(literalCodes[256] as uint64, literalLengths[256] as uint)?;
+        try self.PutBits(literalCodes[256] as uint64, literalLengths[256] as uint);
     }
 
     // Writes data as stored blocks of at most 65535 bytes, the last final when `final`.
-    func WriteStored(&var self, start: uint, end: uint, final: bool) -> ! IoError {
+    func WriteStored(&var self, start: uint, end: uint, final: bool) throws IoError {
         var at = start;
         while true {
             let length = if end - at > 65535u { 65535u } else { end - at };
             let last = at + length == end;
-            self.PutBits(if final && last { 1u64 } else { 0u64 }, 1)?;
-            self.PutBits(0, 2)?;
-            self.AlignBits()?;
-            self.PutBits(length as uint64, 16)?;
-            self.PutBits((length ^ 0xFFFFu) as uint64, 16)?;
+            try self.PutBits(if final && last { 1u64 } else { 0u64 }, 1);
+            try self.PutBits(0, 2);
+            try self.AlignBits();
+            try self.PutBits(length as uint64, 16);
+            try self.PutBits((length ^ 0xFFFFu) as uint64, 16);
             var index: uint = 0;
             while index < length {
                 // Safety: `at + index` is below `at + length`, at most `end`, which every caller keeps within
                 // `dataLength`.
-                self.PutByte(unsafe { self.data[at + index] })?;
+                try self.PutByte(unsafe { self.data[at + index] });
                 index = index + 1;
             }
             at = at + length;
@@ -578,9 +578,9 @@ extend CompressWriter : Writer {
     /// @param bytes the data
     /// @returns how many bytes were taken, which is all of them, or fails after `Finish` or with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#write
-    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        if self.finished { fail IoError::Of(IoErrorKind::InvalidHandle); }
-        self.Start()?;
+    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+        if self.finished { throw IoError::Of(IoErrorKind::InvalidHandle); }
+        try self.Start();
         if self.format == Format::Zlib {
             // Safety: `bytes` is readable for its length, as the `Hasher` contract requires, and `char8` and `byte`
             // are both single bytes.
@@ -595,7 +595,7 @@ extend CompressWriter : Writer {
         var taken: uint = 0;
         while taken < bytes.length {
             if self.dataLength == DataCapacity {
-                self.EncodeBlock(false)?;
+                try self.EncodeBlock(false);
                 self.Slide();
             }
             let room = DataCapacity - self.dataLength;
@@ -616,16 +616,16 @@ extend CompressWriter : Writer {
     /// then flushes the sink. The stream continues afterwards.
     /// @returns nothing, or fails with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#flush
-    pub func Flush(&var self) -> ! IoError {
+    pub func Flush(&var self) throws IoError {
         if self.finished { return; }
-        self.Start()?;
-        self.EncodeBlock(false)?;
-        self.PutBits(0, 3)?;
-        self.AlignBits()?;
-        self.PutBits(0x0000u64, 16)?;
-        self.PutBits(0xFFFFu64, 16)?;
-        self.SendOutput()?;
-        self.sink.Flush()?;
+        try self.Start();
+        try self.EncodeBlock(false);
+        try self.PutBits(0, 3);
+        try self.AlignBits();
+        try self.PutBits(0x0000u64, 16);
+        try self.PutBits(0xFFFFu64, 16);
+        try self.SendOutput();
+        try self.sink.Flush();
     }
 }
 

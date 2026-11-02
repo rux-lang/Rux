@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, Result };
 import Format::WriteFormat;
 import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToIoError, WriteFormatLine, WriteValueLine,
              Writer };
@@ -35,12 +35,12 @@ struct RecordingStream {
 }
 
 extend RecordingStream : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         // Safety: `state` points at a `StreamState` local of `Main`, which outlives every stream made over it.
         unsafe {
             self.state.calls = self.state.calls + 1;
             if bytes.length > self.state.allowed {
-                fail IoError::Of(self.state.refusal);
+                throw IoError::Of(self.state.refusal);
             }
             var index: uint = 0;
             while index < bytes.length {
@@ -53,7 +53,7 @@ extend RecordingStream : Writer {
         return bytes.length;
     }
 
-    func Flush(&var self) -> ! IoError {
+    func Flush(&var self) throws IoError {
         return;
     }
 }
@@ -74,10 +74,10 @@ extend Owned {
 }
 
 extend Owned : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        WriteBytes(writer, "owned-")?;
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try WriteBytes(writer, "owned-");
         let tag: Display = self.tag;
-        return tag.WriteDisplay(writer, spec);
+        return try tag.WriteDisplay(writer, spec);
     }
 }
 
@@ -87,8 +87,8 @@ struct Refuses {
 }
 
 extend Refuses : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        fail FormatError::UnsupportedRequest;
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        throw .UnsupportedRequest;
     }
 }
 
@@ -102,18 +102,12 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     return true;
 }
 
-func IsWriterFailure(outcome: ! FormatError) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => reason.IsWriterFailure()
-    };
+func IsWriterFailure(reason: FormatError) -> bool {
+    return reason.IsWriterFailure();
 }
 
-func IsUnsupported(outcome: ! FormatError) -> bool {
-    return match outcome {
-        .Success(_) => false,
-        .Failure(reason) => match reason { .UnsupportedRequest => true, _ => false }
-    };
+func IsUnsupported(reason: FormatError) -> bool {
+    return match reason { .UnsupportedRequest => true, _ => false };
 }
 
 // Whether a failure slot holds a failure of `kind`.
@@ -131,11 +125,12 @@ func Pattern(text: char8[..]) -> char8[..] {
 }
 
 func Main() -> int {
-    // Going out: success is the formatter's success value, and every failure is the one case the protocol has.
-    Assert(FromIoError(.Success(())) is .Success(_), "a stream that took the bytes reports success");
-    Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::StorageFull)))), "a full disk is a writer failure");
-    Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::PermissionDenied)))), "and so is a refusal");
-    Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::EndOfStream)))),
+    // Going out: every failure a stream throws is the one case the protocol has.
+    Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::StorageFull))),
+           "a full disk is a writer failure");
+    Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::PermissionDenied))),
+           "and so is a refusal");
+    Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::EndOfStream))),
            "and so is the end of a stream, since a write that reports it cannot take the bytes");
 
     // Coming back: a request that was wrong is not a fact about the destination, and stays apart from one. Each
@@ -172,16 +167,24 @@ func Main() -> int {
     var adapter = StreamWriter(sink, @failure);
     let writer: &var TextWriter = adapter;
 
-    let refused = writer.Write("hello");
-    Assert(IsWriterFailure(refused), "the formatter is told the destination failed");
+    try {
+        writer.Write("hello");
+        Assert(false, "the formatter is told the destination failed");
+    } catch {
+        refusal => Assert(IsWriterFailure(refusal), "the formatter is told the destination failed"),
+    }
     Assert(Holds(failure, IoErrorKind::StorageFull), "and the caller is told what it was");
     Assert(state.length == 0, "with nothing written");
     Assert(state.calls == 1, "the stream having been asked once");
 
     // Once a failure is recorded the stream is not touched again, which is what stops a value that is part-way
     // through rendering from going on writing into a destination that has already said no.
-    let again = writer.Write("more");
-    Assert(IsWriterFailure(again), "a later write is refused too");
+    try {
+        writer.Write("more");
+        Assert(false, "a later write is refused too");
+    } catch {
+        refusal => Assert(IsWriterFailure(refusal), "a later write is refused too"),
+    }
     Assert(state.calls == 1, "without asking the stream a second time");
     Assert(Holds(failure, IoErrorKind::StorageFull), "and the first failure is the one kept");
 
@@ -197,14 +200,14 @@ func Main() -> int {
 
     var destroyed: int32 = 0;
     var value = Owned { counter: @destroyed, tag: 7i32 };
-    Assert(WriteValueLine(out, value) is .Success(_), "a value writes itself into a stream");
+    Assert((try? WriteValueLine(out, value)) is .Some(_), "a value writes itself into a stream");
     Assert(Same(second.written[..second.length], "owned-7\n"), "with its newline after it");
     Assert(!(healthy is IoError), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
     Assert(destroyed == 0, "writing a value destroys nothing");
-    Assert(WriteValueLine(out, value) is .Success(_), "so the same value goes out again");
+    Assert((try? WriteValueLine(out, value)) is .Some(_), "so the same value goes out again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(second.written[..second.length], "owned-7\nowned-7\n"), "identically");
 
@@ -219,18 +222,23 @@ func Main() -> int {
     let thirdOut: &var TextWriter = thirdAdapter;
 
     var bad = Refuses {};
-    Assert(IsUnsupported(WriteValueLine(thirdOut, bad)), "a value that refuses reports its own failure");
+    try {
+        WriteValueLine(thirdOut, bad);
+        Assert(false, "a value that refuses reports its own failure");
+    } catch {
+        refusal => Assert(IsUnsupported(refusal), "a value that refuses reports its own failure"),
+    }
     Assert(third.length == 0, "and no newline follows it");
     Assert(!(thirdFailure is IoError), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
-    Assert(WriteFormatLine(thirdOut, "abc{") is .Failure(_), "a pattern that does not parse is refused");
+    Assert((try? WriteFormatLine(thirdOut, "abc{")) is none, "a pattern that does not parse is refused");
     Assert(third.length == 0, "with no newline after it");
-    Assert(WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32) is .Failure(_), "and so is one short of arguments");
+    Assert((try? WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32)) is none, "and so is one short of arguments");
     Assert(third.length == 0, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.
-    Assert(WriteFormatLine(thirdOut, "n={}", 42i32) is .Success(_), "a pattern that is right writes its line");
+    Assert((try? WriteFormatLine(thirdOut, "n={}", 42i32)) is .Some(_), "a pattern that is right writes its line");
     Assert(Same(third.written[..third.length], "n=42\n"), "terminator and all");
 
     // The line rule against a destination that fails partway: the value goes out, the newline does not, and the
@@ -242,8 +250,14 @@ func Main() -> int {
     var fourthFailure: IoError? = none;
     var fourthAdapter = StreamWriter(fourthSink, @fourthFailure);
     let fourthOut: &var TextWriter = fourthAdapter;
-    Assert(IsWriterFailure(WriteValueLine(fourthOut, value)),
+    try {
+        WriteValueLine(fourthOut, value);
+        Assert(false,
            "a destination with room for the value but not the newline reports a writer failure");
+    } catch {
+        refusal => Assert(IsWriterFailure(refusal),
+            "a destination with room for the value but not the newline reports a writer failure"),
+    }
     Assert(Same(fourth.written[..fourth.length], "owned-7"), "having written the value");
     Assert(Holds(fourthFailure, IoErrorKind::StorageFull), "and recorded what the stream said");
 
@@ -252,7 +266,12 @@ func Main() -> int {
     var recorded: IoError? = IoError::Of(IoErrorKind::PermissionDenied);
     var console = ConsoleWriter(@recorded);
     let consoleOut: &var TextWriter = console;
-    Assert(IsWriterFailure(consoleOut.Write("this must not appear")), "a failed console is not written to again");
+    try {
+        consoleOut.Write("this must not appear");
+        Assert(false, "a failed console is not written to again");
+    } catch {
+        refusal => Assert(IsWriterFailure(refusal), "a failed console is not written to again"),
+    }
     Assert(Holds(recorded, IoErrorKind::PermissionDenied), "and the recorded failure is untouched");
 
     // A bounded destination reaches the same boundary from the other side: `InsufficientCapacity` is not a stream
@@ -260,8 +279,13 @@ func Main() -> int {
     var room: char8[4];
     var bounded = BufferWriter(room[..4]);
     let boundedOut: &var TextWriter = bounded;
-    let overflowed = WriteValueLine(boundedOut, value);
-    Assert(!IsWriterFailure(overflowed), "a destination that is merely full is not a destination that failed");
+    try {
+        WriteValueLine(boundedOut, value);
+        Assert(true, "a destination that is merely full is not a destination that failed");
+    } catch {
+        refusal => Assert(!IsWriterFailure(refusal),
+                          "a destination that is merely full is not a destination that failed"),
+    }
     Assert(ToIoError(tooSmall).kind == IoErrorKind::LimitExceeded,
            "and reaches a stream's caller as a bound that was met");
 
@@ -272,7 +296,7 @@ func Main() -> int {
     let notFound = IoError { kind: IoErrorKind::NotFound, raw: 2 };
     let noListener = IoError::Of(IoErrorKind::ConnectionRefused);
     let negativeCode = IoError { kind: IoErrorKind::Other, raw: -5 };
-    Assert(WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode) is .Success(_),
+    Assert((try? WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode)) is .Some(_),
            "I/O failures render");
     Assert(Same(shownWriter.Written(),
                 "not found (os error 2)|connection refused|timed out |other error (os error -5)"),

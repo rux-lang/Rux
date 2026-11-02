@@ -1,6 +1,6 @@
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Result };
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, StringView, TextWriter, WriteAscii,
-               WriteBytes, WriteFallibleDebug, WriteOptionalDebug, WriteSliceDebug };
+               WriteBytes, WriteResultDebug, WriteOptionalDebug, WriteSliceDebug };
 
 // Showing an outcome or a run of elements without taking it apart.
 // Three writers, and one property runs through all of them: they borrow. `??` and a match on a moved optional
@@ -34,10 +34,10 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        WriteBytes(writer, "T(")?;
-        WriteNumber(writer, self.tag)?;
-        return WriteAscii(writer, c8')');
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try WriteBytes(writer, "T(");
+        try WriteNumber(writer, self.tag);
+        return try WriteAscii(writer, c8')');
     }
 }
 
@@ -48,20 +48,20 @@ extend Tracked : Debug {
 struct Spy {}
 
 extend Spy : Debug {
-    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        WriteAscii(writer, c8'w')?;
-        WriteNumber(writer, spec.Width())?;
-        WriteAscii(writer, c8'p')?;
-        return WriteNumber(writer, spec.Precision());
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+        try WriteAscii(writer, c8'w');
+        try WriteNumber(writer, spec.Width());
+        try WriteAscii(writer, c8'p');
+        return try WriteNumber(writer, spec.Precision());
     }
 }
 
 // A decimal count, written here because this package converts no numbers and depends on nothing that does.
-func WriteNumber(writer: &var TextWriter, value: uint) -> ! FormatError {
+func WriteNumber(writer: &var TextWriter, value: uint) throws FormatError {
     if value >= 10 {
-        WriteNumber(writer, value / 10)?;
+        try WriteNumber(writer, value / 10);
     }
-    return WriteAscii(writer, ((value % 10) + 0x30) as char8);
+    return try WriteAscii(writer, ((value % 10) + 0x30) as char8);
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -76,7 +76,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -84,21 +84,21 @@ func Spec(text: char8[..]) -> FormatSpec {
 func ShownOptional(value: &(StringView?), spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    if WriteOptionalDebug<StringView>(writer, value, spec) is .Failure(_) { return false; }
+    if (try? WriteOptionalDebug<StringView>(writer, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
-func ShownFallible(value: &(StringView ! StringView), spec: FormatSpec, expected: char8[..]) -> bool {
+func ShownResult(value: &Result<StringView, StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    if (WriteFallibleDebug<StringView, StringView>(writer, value, spec)) is .Failure(_) { return false; }
+    if (try? WriteResultDebug<StringView, StringView>(writer, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    if WriteSliceDebug<StringView>(writer, items, spec) is .Failure(_) { return false; }
+    if (try? WriteSliceDebug<StringView>(writer, items, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -117,11 +117,11 @@ func Main() -> int {
     var empty: StringView? = .Some(StringView::FromValidated(""));
     Assert(ShownOptional(empty, plain, "Some(\"\")"), "an empty payload is still visibly a payload");
 
-    // A fallible names the channel a reader would branch on, on both sides.
-    var success: StringView ! StringView = .Success(hello);
-    var failure: StringView ! StringView = .Failure(StringView::FromValidated("nope"));
-    Assert(ShownFallible(success, plain, "Success(\"hello\")"), "a fallible names its success channel");
-    Assert(ShownFallible(failure, plain, "Failure(\"nope\")"), "and its failure channel");
+    // A result names the case a reader would branch on, on both sides.
+    var success: Result<StringView, StringView> = .Success(hello);
+    var failure: Result<StringView, StringView> = .Failure(StringView::FromValidated("nope"));
+    Assert(ShownResult(success, plain, "Success(\"hello\")"), "a result names its success case");
+    Assert(ShownResult(failure, plain, "Failure(\"nope\")"), "and its failure case");
 
     // A run of elements, including the two edges: none at all, and exactly one, which is where a separator written
     // one position out would show.
@@ -141,7 +141,7 @@ func Main() -> int {
     var spyStorage: char8[64];
     var spyWriter = BufferWriter(spyStorage[..64]);
     let spySink: &var TextWriter = spyWriter;
-    Assert(WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3")) is .Success(_), "a run of spies is shown");
+    Assert((try? WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3"))) is .Some(_), "a run of spies is shown");
     Assert(Same(spyWriter.Written(), "[w7p3, w7p3]"), "and every element was handed the caller's own specification");
 
     // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
@@ -150,9 +150,9 @@ func Main() -> int {
     var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7 });
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    Assert(WriteOptionalDebug<Tracked>(writer, held, plain) is .Success(_), "a move-only payload is shown");
+    Assert((try? WriteOptionalDebug<Tracked>(writer, held, plain)) is .Some(_), "a move-only payload is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
-    Assert(WriteOptionalDebug<Tracked>(writer, held, plain) is .Success(_), "so it can be shown again");
+    Assert((try? WriteOptionalDebug<Tracked>(writer, held, plain)) is .Some(_), "so it can be shown again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(held is Tracked, "and the optional still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
@@ -163,7 +163,7 @@ func Main() -> int {
     var runStorage: char8[128];
     var runWriter = BufferWriter(runStorage[..128]);
     let runSink: &var TextWriter = runWriter;
-    Assert(WriteSliceDebug<Tracked>(runSink, elements[..], plain) is .Success(_), "a move-only run is shown");
+    Assert((try? WriteSliceDebug<Tracked>(runSink, elements[..], plain)) is .Some(_), "a move-only run is shown");
     Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
     Assert(destroyed == 0, "and not one of them was destroyed");
 
@@ -172,7 +172,8 @@ func Main() -> int {
     var small: char8[11];
     var tight = BufferWriter(small[..11]);
     let tightSink: &var TextWriter = tight;
-    let refused = WriteSliceDebug<Tracked>(tightSink, elements[..], plain);
+    let refused: Result<(), FormatError> =
+        try .Success(WriteSliceDebug<Tracked>(tightSink, elements[..], plain)) catch { error => .Failure(error) };
     let overflowed = match refused {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }

@@ -68,15 +68,15 @@ func Guarded(value: int32, ready: bool) -> int32 {
     };
 }
 
-func Read(code: int32) -> int32 ! ReadError {
+func Read(code: int32) -> int32 throws ReadError {
     if code != 0i32 {
-        fail ReadError { code };
+        throw ReadError { code };
     }
     return 5i32;
 }
 
 func Recovered(code: int32) -> int32 {
-    return Read(code) catch {
+    return try Read(code) catch {
         ReadError { code: 1 } | ReadError { code: 2 } => -1i32,
         _ => -2i32,
     };
