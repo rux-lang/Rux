@@ -51,10 +51,7 @@ pub variant JsonParseError {
     TooManyEntries(uint),
     /// A `\u` escape naming half of a surrogate pair with no valid partner. JSON's escapes are UTF-16, and a lone
     /// surrogate is not a character; the offset is the escape that has no partner.
-    BadSurrogate(uint),
-    /// The stream a `JsonEventReader` reads from failed with something other than its end. Only a streaming reader
-    /// reports this; the source's own `IoError` is kept on the reader, through `JsonEventReader::SourceError`.
-    Source(uint)
+    BadSurrogate(uint)
 }
 
 extend JsonParseError : ParseFailure {
@@ -72,7 +69,6 @@ extend JsonParseError : ParseFailure {
             .TooDeep(at) => at,
             .TooManyEntries(at) => at,
             .BadSurrogate(at) => at,
-            .Source(at) => at
         };
     }
 }
@@ -117,7 +113,6 @@ extend JsonParseError : Display {
             .TooDeep(_) => try WriteBytes(writer, "containers nested deeper than the limit allows"),
             .TooManyEntries(_) => try WriteBytes(writer, "container holding more entries than the limit allows"),
             .BadSurrogate(_) => try WriteBytes(writer, "escape naming half of a surrogate pair with no partner"),
-            .Source(_) => try WriteBytes(writer, "source the document was read from failed")
         };
     }
 }
@@ -172,7 +167,6 @@ extend JsonParseError : Debug {
             .TooDeep(at) => try WriteCase(writer, "TooDeep", at),
             .TooManyEntries(at) => try WriteCase(writer, "TooManyEntries", at),
             .BadSurrogate(at) => try WriteCase(writer, "BadSurrogate", at),
-            .Source(at) => try WriteCase(writer, "Source", at)
         };
     }
 }
@@ -270,6 +264,12 @@ extend JsonParser {
             self.stop = reason;
             self.position = self.lexer.Position();
         }
+        return JsonValue::Null(self.allocator);
+    }
+
+    // A refusal at the start of the token that caused it, which is where a reader looks for the mistake.
+    func StopAt(&var self, reason: JsonStop, at: uint) -> JsonValue {
+        self.Fail(reason, at);
         return JsonValue::Null(self.allocator);
     }
 
@@ -394,7 +394,7 @@ extend JsonParser {
         if token.kind == JsonTokenKind::Text { return self.ParseText(token); }
         if token.kind == JsonTokenKind::ArrayStart { return self.ParseArray(); }
         if token.kind == JsonTokenKind::ObjectStart { return self.ParseObject(); }
-        return self.Stop(JsonStop::Unexpected);
+        return self.StopAt(JsonStop::Unexpected, token.start);
     }
 
     // The scalar cases live in their own functions so that what they hold while building a value stays out of the
@@ -411,7 +411,7 @@ extend JsonParser {
         var held = try self.TakeText(token) catch {
             _ => {
                 if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
-                return self.Stop(JsonStop::Unexpected);
+                return self.StopAt(JsonStop::Unexpected, token.start);
             },
         };
         if self.stop != JsonStop::None {
@@ -441,7 +441,7 @@ extend JsonParser {
             if self.stop != JsonStop::None { return move array; }
             entries = entries + 1;
             if entries > self.limits.maximumEntries { return self.Stop(JsonStop::TooManyEntries); }
-            array.Push(move element);
+            array.elements.Push(move element);
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
                 self.depth = self.depth - 1;
@@ -449,11 +449,11 @@ extend JsonParser {
             }
             if token.kind != JsonTokenKind::Comma {
                 // A trailing comma lands here, since after one the next token is the closing bracket.
-                return self.Stop(if token.kind == JsonTokenKind::End {
+                return self.StopAt(if token.kind == JsonTokenKind::End {
                     JsonStop::Truncated
                 } else {
                     JsonStop::Unexpected
-                });
+                }, token.start);
             }
             token = self.lexer.Next();
         }
@@ -474,16 +474,16 @@ extend JsonParser {
             if token.kind == JsonTokenKind::Error { return self.StopLexical(token); }
             if token.kind != JsonTokenKind::Text {
                 // A member name must be a string. An unquoted name is JavaScript, not JSON.
-                return self.Stop(if token.kind == JsonTokenKind::End {
+                return self.StopAt(if token.kind == JsonTokenKind::End {
                     JsonStop::Truncated
                 } else {
                     JsonStop::Unexpected
-                });
+                }, token.start);
             }
             var name = try self.TakeText(token) catch {
                 _ => {
                     if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
-                    return self.Stop(JsonStop::Unexpected);
+                    return self.StopAt(JsonStop::Unexpected, token.start);
                 },
             };
             if self.stop != JsonStop::None {
@@ -494,11 +494,11 @@ extend JsonParser {
             let colon = self.lexer.Next();
             if colon.kind != JsonTokenKind::Colon {
                 name.Clear();
-                return self.Stop(if colon.kind == JsonTokenKind::End {
+                return self.StopAt(if colon.kind == JsonTokenKind::End {
                     JsonStop::Truncated
                 } else {
                     JsonStop::Unexpected
-                });
+                }, colon.start);
             }
 
             var value = self.ParseValue(self.lexer.Next());
@@ -521,7 +521,7 @@ extend JsonParser {
                         self.depth = self.depth - 1;
                         return move object;
                     }
-                    if token.kind != JsonTokenKind::Comma { return self.Stop(JsonStop::Unexpected); }
+                    if token.kind != JsonTokenKind::Comma { return self.StopAt(JsonStop::Unexpected, token.start); }
                     token = self.lexer.Next();
                     continue;
                 }
@@ -536,7 +536,7 @@ extend JsonParser {
                 name.Clear();
                 return self.Stop(JsonStop::TooManyEntries);
             }
-            object.Insert(move name, move value);
+            object.members.Push(JsonMember { name: move name, value: move value });
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
@@ -544,11 +544,11 @@ extend JsonParser {
                 return move object;
             }
             if token.kind != JsonTokenKind::Comma {
-                return self.Stop(if token.kind == JsonTokenKind::End {
+                return self.StopAt(if token.kind == JsonTokenKind::End {
                     JsonStop::Truncated
                 } else {
                     JsonStop::Unexpected
-                });
+                }, token.start);
             }
             token = self.lexer.Next();
         }
@@ -617,14 +617,13 @@ func BuiltFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
         .TooDeep => JsonParseError::TooDeep(position),
         .TooManyEntries => JsonParseError::TooManyEntries(position),
         .BadSurrogate => JsonParseError::BadSurrogate(position),
-        .Source => JsonParseError::Source(position),
-        // A parser that has not stopped has no failure; callers reach this only through `Failure`, which asks
-        // first, so naming a case here is naming one that cannot arrive.
-        .None => JsonParseError::Unexpected(position)
+        // A parser that has not stopped has no failure, and a source that failed is the reader's `Source` error,
+        // so neither arrives here.
+        .Source | .None => JsonParseError::Unexpected(position)
     };
 }
 
-// The same, as an `Option`, for the reader that reports whether it stopped rather than what it produced.
+// The same, as an optional, for the parser that reports whether it stopped rather than what it produced.
 func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> JsonParseError? {
     if stop == JsonStop::None { return none; }
     return BuiltFailure(stop, lexical, position);

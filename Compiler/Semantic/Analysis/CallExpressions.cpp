@@ -493,7 +493,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             ConsumeCallArguments(*e, argTypes, &parameterTypes);
             RecordFunctionBinding(*e, *constructor, ResolvedCallableBinding::DispatchKind::Constructor, substitutions,
                                   constructedType);
-            return constructedType;
+            // A constructor declared `-> Self throws E` returns its outcome, which the call's throw site takes apart.
+            return functionType->inner.back();
         }
     }
 

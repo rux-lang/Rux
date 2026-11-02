@@ -16,12 +16,14 @@ import Core::Ordering;
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
-/// Why a JSON value could not be built.
+/// Why a JSON value could not be built or changed.
 /// Running out of memory is not one of the reasons: a value whose storage cannot be had terminates the program.
 /// @see https://rux-lang.dev/docs/api/json/json-value#json-error
 pub enum JsonError: int32 {
     /// Text that JSON's number grammar does not allow, such as `01`, `+1`, `.5`, `1e` or `NaN`.
-    MalformedNumber = 2
+    MalformedNumber = 2,
+    /// An operation for one kind of value asked of another, such as pushing onto an object.
+    WrongKind = 3
 }
 
 // Whether `text` is a whole number as RFC 8259 spells it: an optional minus, an integer part that is a lone zero or
@@ -114,8 +116,8 @@ extend JsonNumber {
     /// @param allocator where the storage comes from
     /// @param text the number's text, borrowed for the call
     /// @returns the number, holding a copy of the text; `MalformedNumber` when the text is not a JSON number
-    /// @see https://rux-lang.dev/docs/api/json/json-number#new
-    pub func New(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
+    /// @see https://rux-lang.dev/docs/api/json/json-number#constructor
+    pub func JsonNumber(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
         if !IsJsonNumberText(text) { throw .MalformedNumber; }
         return Self::Lexed(allocator, text);
     }
@@ -133,41 +135,29 @@ extend JsonNumber {
         return self.text.View();
     }
 
-    /// The value as a signed integer, or `false` if it does not fit one.
+    /// The value as a signed integer, or `none` if it does not fit one.
     /// A number with a fraction or an exponent does not fit, even when its value happens to be whole: `1.0` is
     /// not an integer in JSON's grammar and pretending otherwise loses the distinction a document was making.
-    /// @param result receives the value when this reports true
-    /// @returns whether the text is an integer that fits
+    /// @returns the value, or `none` when the text is not an integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-int64
-    pub func AsInt64(&self, result: *var int64) -> bool {
-        let value = try ParseInt64(self.text.View().Bytes()) catch { _ => return false };
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `int64`.
-        unsafe { *result = value; }
-        return true;
+    pub func AsInt64(&self) -> int64? {
+        return try? ParseInt64(self.text.View().Bytes());
     }
 
-    /// The value as an unsigned integer, or `false` if it does not fit one.
-    /// @param result receives the value when this reports true
-    /// @returns whether the text is a non-negative integer that fits
+    /// The value as an unsigned integer, or `none` if it does not fit one.
+    /// @returns the value, or `none` when the text is not a non-negative integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-uint64
-    pub func AsUint64(&self, result: *var uint64) -> bool {
-        let value = try ParseUint64(self.text.View().Bytes()) catch { _ => return false };
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `uint64`.
-        unsafe { *result = value; }
-        return true;
+    pub func AsUint64(&self) -> uint64? {
+        return try? ParseUint64(self.text.View().Bytes());
     }
 
-    /// The value as a float, or `false` if the text is not a number at all.
+    /// The value as a float, or `none` if the text is not a number at all.
     /// Succeeds for values a float cannot hold exactly, since that is what a float is for; a caller who needs
     /// exactness should ask for an integer or read the text.
-    /// @param result receives the value when this reports true
-    /// @returns whether the text converted; the value is the nearest representable one
+    /// @returns the nearest representable value, or `none` when the text did not convert
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-float64
-    pub func AsFloat64(&self, result: *var float64) -> bool {
-        let value = try ParseFloat64(self.text.View().Bytes()) catch { _ => return false };
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `float64`.
-        unsafe { *result = value; }
-        return true;
+    pub func AsFloat64(&self) -> float64? {
+        return try? ParseFloat64(self.text.View().Bytes());
     }
 
     /// Whether the text has no fraction and no exponent, so it denotes an integer.
@@ -205,12 +195,13 @@ pub struct JsonMember {
 /// Move-only, because it owns strings and nested values. The allocator it was built with is carried along, so a
 /// subtree can be released without the caller having to remember where it came from — which is what makes a
 /// document assembled from several sources safe to take apart.
-/// The tag is inspected with `Kind` and the payload read with the matching accessor; asking for the wrong one
-/// reports failure rather than reinterpreting the bytes.
+/// The tag is private: it is read with `Kind` and set only together with its payload, so the two never disagree. The
+/// payload is read with the matching accessor; asking for the wrong one returns `none` rather than reinterpreting the
+/// bytes.
 /// @see https://rux-lang.dev/docs/api/json/json-value
 pub struct JsonValue {
     /// Which of the six kinds this is.
-    pub kind: JsonKind;
+    kind: JsonKind;
     /// The payload of a `Boolean`.
     boolean: bool;
     /// The payload of a `Number`.
@@ -254,7 +245,7 @@ extend JsonValue {
         return move held;
     }
 
-    /// A number, from the text it is written with, checked against JSON's number grammar as `JsonNumber::New` does.
+    /// A number, from the text it is written with, checked against JSON's number grammar as `JsonNumber` does.
     /// Text the grammar refuses, such as `01`, `1e` or `NaN`, is `MalformedNumber`, and no value is made.
     /// @param allocator where the storage comes from
     /// @param text the number's text, borrowed for the call
@@ -263,7 +254,7 @@ extend JsonValue {
     pub func Number(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Number;
-        held.number = try JsonNumber::New(allocator, text);
+        held.number = try JsonNumber(allocator, text);
         return move held;
     }
 
@@ -322,16 +313,12 @@ extend JsonValue {
         return self.kind == JsonKind::Null;
     }
 
-    /// The boolean payload, or `false` when this is not a boolean — which `Kind` distinguishes from a genuine
-    /// `false`.
-    /// @param result receives the value when this reports true
-    /// @returns whether this is a boolean
+    /// The boolean payload, or `none` when this is not a boolean.
+    /// @returns the boolean, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/json/json-value#as-boolean
-    pub func AsBoolean(&self, result: *var bool) -> bool {
-        if self.kind != JsonKind::Boolean { return false; }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `bool`.
-        unsafe { *result = self.boolean; }
-        return true;
+    pub func AsBoolean(&self) -> bool? {
+        if self.kind != JsonKind::Boolean { return none; }
+        return self.boolean;
     }
 
     /// The number payload, borrowed, or `none` when this is not a number.
@@ -342,48 +329,46 @@ extend JsonValue {
         return self.number;
     }
 
-    /// The string payload, or an empty view when this is not a string.
-    /// @returns the string, or an empty view when this is not one
+    /// The string payload, or `none` when this is not a string.
+    /// @returns the string, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/json/json-value#as-text
-    pub func AsText(&self) -> StringView {
-        if self.kind != JsonKind::Text { return StringView(); }
+    pub func AsText(&self) -> StringView? {
+        if self.kind != JsonKind::Text { return none; }
         return self.text.View();
     }
 
-    /// How many elements an array holds, or members an object holds; zero for anything else.
-    /// @returns how many elements or members this holds; zero for anything else
+    /// How many elements an array holds, or members an object holds; `none` for any other kind.
+    /// @returns how many elements or members this holds, or `none` when it is neither an array nor an object
     /// @see https://rux-lang.dev/docs/api/json/json-value#length
-    pub func Length(&self) -> uint {
+    pub func Length(&self) -> uint? {
         if self.kind == JsonKind::Array { return self.elements.Length(); }
         if self.kind == JsonKind::Object { return self.members.Length(); }
-        return 0;
+        return none;
     }
 
     /// Appends `value` to an array, taking ownership of it.
-    /// Reports `false` when this is not an array; `value` is consumed either way, so
-    /// a caller does not have to decide who owns it on failure.
+    /// Throws `WrongKind` when this is not an array; `value` is consumed either way, so a caller does not have to
+    /// decide who owns it on failure. Terminates the program when the array cannot grow.
     /// @param value the value to act on
-    /// @returns whether the element was appended
     /// @see https://rux-lang.dev/docs/api/json/json-value#push
-    pub func Push(&var self, value: Self) -> bool {
-        if self.kind != JsonKind::Array { return false; }
+    pub func Push(&var self, value: Self) throws JsonError {
+        if self.kind != JsonKind::Array { throw .WrongKind; }
         self.elements.Push(move value);
-        return true;
     }
 
     /// Appends a member to an object, taking ownership of both name and value.
     /// The order members are added in is the order they are kept and written, which is what makes a document
     /// round-trip recognisably. Nothing here rejects a duplicate name — that policy lives in the parser, where
     /// the caller can choose it.
+    /// Throws `WrongKind` when this is not an object; `name` and `value` are consumed either way. Terminates the
+    /// program when the object cannot grow.
     /// @param name the member's name
     /// @param value the value to act on
-    /// @returns whether the member was added
     /// @see https://rux-lang.dev/docs/api/json/json-value#insert
-    pub func Insert(&var self, name: String, value: Self) -> bool {
-        if self.kind != JsonKind::Object { return false; }
+    pub func Insert(&var self, name: String, value: Self) throws JsonError {
+        if self.kind != JsonKind::Object { throw .WrongKind; }
         var member = JsonMember { name: move name, value: move value };
         self.members.Push(move member);
-        return true;
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.
@@ -429,10 +414,10 @@ extend JsonValue {
     /// owning values around inside the vector, and a move out of a container is the one thing the ownership
     /// rules will not allow silently. Duplicates are rare enough that the cost never matters.
     /// @param name the member's name
-    /// @returns whether a member with that name was removed
+    /// @returns the member removed, or `none` when this is not an object or holds no member with that name
     /// @see https://rux-lang.dev/docs/api/json/json-value#remove-first
-    pub func RemoveFirst(&var self, name: StringView) -> bool {
-        if self.kind != JsonKind::Object { return false; }
+    pub func RemoveFirst(&var self, name: StringView) -> JsonMember? {
+        if self.kind != JsonKind::Object { return none; }
         var target = self.members.Length();
         let slice = self.members.AsSlice();
         var index: uint = 0;
@@ -447,8 +432,7 @@ extend JsonValue {
                 index = index + 1;
             }
         }
-        // The member taken out dies here, taking its name and value with it.
-        return self.members.RemoveAt(target) is .Some(_);
+        return self.members.RemoveAt(target);
     }
 
     /// Releases everything this value owns.

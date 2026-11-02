@@ -376,6 +376,8 @@ private:
     void ValidateIndexOperator(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateDestructor(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
+    /// Whether a constructor returning `returned` builds `type`: exactly it, or it with a `throws` clause.
+    [[nodiscard]] static bool ConstructsType(const TypeRef &returned, const TypeRef &type);
     [[nodiscard]] bool IsConstructorCandidate(const FuncDecl &method, const TypeRef &type);
     [[nodiscard]] std::vector<const FuncDecl *> ConstructorCandidates(const TypeRef &type);
     [[nodiscard]] std::vector<const FuncDecl *> AccessibleMethodCandidates(const TypeRef &receiverType,

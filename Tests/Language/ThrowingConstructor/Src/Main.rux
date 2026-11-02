@@ -1,0 +1,33 @@
+// A constructor that can fail declares `throws` after `Self`, and its call is a throw site like any other: it is
+// marked with `try`, `try?` or `try ... catch`, and a value is only made when the constructor returns.
+
+import Core::Assert;
+
+enum RangeError: int32 {
+    Negative = 1
+}
+
+struct Positive {
+    value: int32;
+}
+
+extend Positive {
+    func Positive(value: int32) -> Self throws RangeError {
+        if value < 0 { throw .Negative; }
+        return Self { value };
+    }
+}
+
+func Doubled(value: int32) -> int32 throws RangeError {
+    let positive = try Positive(value);
+    return positive.value * 2;
+}
+
+func Main() -> int {
+    let made = try Positive(3) catch { _ => Positive { value: 0 } };
+    Assert(made.value == 3, "a constructor that returns makes its value");
+    Assert((try? Positive(-1)) is none, "a constructor that throws makes nothing");
+    Assert((try Doubled(-4) catch { .Negative => -1 }) == -1, "the error passes to the caller with 'try'");
+    Assert((try Doubled(4) catch { _ => 0 }) == 8, "and the value continues when it returns");
+    return 0;
+}

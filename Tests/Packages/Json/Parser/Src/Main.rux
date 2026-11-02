@@ -130,35 +130,34 @@ func Main() -> int {
     var nullValue = Accepts(allocator, "null", "null parses");
     Assert(nullValue.IsNull(), "as null");
     var trueValue = Accepts(allocator, "true", "true parses");
-    var flag = false;
-    Assert(trueValue.AsBoolean(@flag) && flag, "as true");
+    Assert(trueValue.AsBoolean() is .Some(true), "as true");
     var number = Accepts(allocator, "-1.5e3", "a number parses");
     Assert(number.Kind() == JsonKind::Number, "as a number");
     var text = Accepts(allocator, "\"hello\"", "a string parses");
     let hello = View("hello");
-    Assert(text.AsText().Equals(hello), "with its contents");
+    Assert(text.AsText() is .Some(t) && t.Equals(hello), "with its contents");
 
     // Containers.
     var array = Accepts(allocator, "[1,2,3]", "an array parses");
-    Assert(array.Kind() == JsonKind::Array && array.Length() == 3, "with three elements");
+    Assert(array.Kind() == JsonKind::Array && array.Length() is .Some(3), "with three elements");
     var empty = Accepts(allocator, "[]", "an empty array parses");
-    Assert(empty.Length() == 0, "with none");
+    Assert(empty.Length() is .Some(0), "with none");
     var object = Accepts(allocator, "{\"a\":1,\"b\":2}", "an object parses");
-    Assert(object.Kind() == JsonKind::Object && object.Length() == 2, "with two members");
+    Assert(object.Kind() == JsonKind::Object && object.Length() is .Some(2), "with two members");
     let a = View("a");
     Assert(object.Find(a) is .Some(_), "which are findable by name");
     var emptyObject = Accepts(allocator, "{}", "an empty object parses");
-    Assert(emptyObject.Length() == 0, "with none");
+    Assert(emptyObject.Length() is .Some(0), "with none");
     var nested = Accepts(allocator, "{\"a\":{\"b\":[1,{\"c\":null}]}}", "a nested document parses");
-    Assert(nested.Length() == 1, "and holds its structure");
+    Assert(nested.Length() is .Some(1), "and holds its structure");
 
     // Escapes are resolved, including the surrogate pairs JSON inherits from UTF-16.
     var escaped = Accepts(allocator, "\"a\\nb\"", "a string with escapes parses");
-    Assert(escaped.AsText().Length() == 3, "and its escapes become the bytes they name");
+    Assert(escaped.AsText() is .Some(t) && t.Length() == 3, "and its escapes become the bytes they name");
     var unicode = Accepts(allocator, "\"\\u0041\"", "a unicode escape parses");
-    Assert(unicode.AsText().Length() == 1, "into one byte for an ASCII scalar");
+    Assert(unicode.AsText() is .Some(t) && t.Length() == 1, "into one byte for an ASCII scalar");
     var astral = Accepts(allocator, "\"\\ud83d\\ude00\"", "a surrogate pair parses");
-    Assert(astral.AsText().Length() == 4, "into the four UTF-8 bytes of one astral character");
+    Assert(astral.AsText() is .Some(t) && t.Length() == 4, "into the four UTF-8 bytes of one astral character");
 
     // Half a pair is half a character, and JSON's escapes are the one place a JSON string is not simply scalar
     // values. This used to be handed to the string builder, which refused it as invalid text, and the parser
@@ -174,13 +173,13 @@ func Main() -> int {
     Refuses(allocator, "", "JsonParseError::Truncated(0)", "an empty document is not a value");
     Refuses(allocator, "[1,2", "JsonParseError::Truncated(4)", "an unclosed array is truncated");
     Refuses(allocator, "{\"a\":1", "JsonParseError::Truncated(6)", "and so is an unclosed object");
-    Refuses(allocator, "[1,]", "JsonParseError::Unexpected(4)", "a trailing comma in an array is refused");
-    Refuses(allocator, "{\"a\":1,}", "JsonParseError::Unexpected(8)", "and in an object");
+    Refuses(allocator, "[1,]", "JsonParseError::Unexpected(3)", "a trailing comma in an array is refused");
+    Refuses(allocator, "{\"a\":1,}", "JsonParseError::Unexpected(7)", "and in an object");
     // An unquoted name never reaches the parser: `a` begins no JSON token, so the lexer refuses it first and
     // the failure is reported as lexical. That is the more precise answer, not a weaker one.
     Refuses(allocator, "{a:1}", "JsonParseError::Lexical(UnexpectedByte, 1)", "an unquoted member name is refused by the lexer");
-    Refuses(allocator, "[1 2]", "JsonParseError::Unexpected(4)", "a missing comma is refused");
-    Refuses(allocator, "{\"a\" 1}", "JsonParseError::Unexpected(6)", "as is a missing colon");
+    Refuses(allocator, "[1 2]", "JsonParseError::Unexpected(3)", "a missing comma is refused");
+    Refuses(allocator, "{\"a\" 1}", "JsonParseError::Unexpected(5)", "as is a missing colon");
     Refuses(allocator, "1 2", "JsonParseError::TrailingContent(2)", "two values are not one document");
     Refuses(allocator, "{} []", "JsonParseError::TrailingContent(3)", "however well-formed each is");
     Refuses(allocator, "[1,2] trailing", "JsonParseError::TrailingContent(6)", "and text after a value is refused");
@@ -193,32 +192,29 @@ func Main() -> int {
     var keepFirstParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepFirstParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepFirst);
     var keptFirst = Built(allocator, keepFirstParser, "keeping the first accepts the document");
-    Assert(keptFirst.Length() == 1, "and leaves one member");
+    Assert(keptFirst.Length() is .Some(1), "and leaves one member");
     let nameA = View("a");
-    var firstValue: int64 = 0;
     // Safety: `keptFirst` holds one member named `a`, so `Find` returns a non-null pointer into it, and
     // `AsNumber` points at that member's number payload.
-    Assert(unsafe { Number(Member(keptFirst, nameA)).AsInt64(@firstValue) } && firstValue == 1,
+    Assert(Number(Member(keptFirst, nameA)).AsInt64() is .Some(1),
            "which holds the first value");
 
     var keepLastParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepLastParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepLast);
     var keptLast = Built(allocator, keepLastParser, "keeping the last accepts it too");
-    Assert(keptLast.Length() == 1, "and also leaves one member");
-    var lastValue: int64 = 0;
+    Assert(keptLast.Length() is .Some(1), "and also leaves one member");
     // Safety: `keptLast` holds one member named `a`, so `Find` returns a non-null pointer into it, and
     // `AsNumber` points at that member's number payload.
-    Assert(unsafe { Number(Member(keptLast, nameA)).AsInt64(@lastValue) } && lastValue == 2,
+    Assert(Number(Member(keptLast, nameA)).AsInt64() is .Some(2),
            "which holds the last value");
 
     var keepAllParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepAllParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepAll);
     var keptAll = Built(allocator, keepAllParser, "keeping all accepts it");
-    Assert(keptAll.Length() == 2, "and keeps both members, so the document is preserved exactly");
-    var foundValue: int64 = 0;
+    Assert(keptAll.Length() is .Some(2), "and keeps both members, so the document is preserved exactly");
     // Safety: `keptAll` holds members named `a`, so `Find` returns a non-null pointer into it, and
     // `AsNumber` points at that member's number payload.
-    Assert(unsafe { Number(Member(keptAll, nameA)).AsInt64(@foundValue) } && foundValue == 1,
+    Assert(Number(Member(keptAll, nameA)).AsInt64() is .Some(1),
            "with lookup finding the first, which is what a reader encounters");
 
     // Insertion order is kept, which is what lets a document be written back recognisably.
@@ -272,7 +268,7 @@ func Main() -> int {
     // The same choices through the one-call form, which is what most callers will reach for.
     let directAll = try ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
         catch { _ => Panic("the one-call form honours a chosen policy") };
-    Assert(directAll.Length() == 2, "the one-call form honours a chosen policy");
+    Assert(directAll.Length() is .Some(2), "the one-call form honours a chosen policy");
     try {
         ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::Reject);
         Assert(false,
@@ -324,6 +320,6 @@ func Main() -> int {
     // builder being fed one byte at a time, which refused half of a multi-byte scalar and dropped it.
     var accented = Accepts(allocator, "\"caf\u{E9}\\ttab\"",
                            "a string with an escape and an accent");
-    Assert(accented.AsText().Length() == 9, "keeps the accent as well as the escape");
+    Assert(accented.AsText() is .Some(t) && t.Length() == 9, "keeps the accent as well as the escape");
     return 0;
 }

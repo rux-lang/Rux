@@ -6,19 +6,18 @@
 // The buffer here grows only as far as the largest single token requires, not as far as the document. An array
 // of ten million small numbers streams in a few hundred bytes; only a single enormous string forces the buffer
 // up, and the string limit is what bounds that.
-// Nesting is tracked so that structural mistakes are still caught — a closing brace against an open bracket is
-// refused here exactly as it would be by the tree parser, because a streaming reader that accepted malformed
+// Nesting and separators are tracked so that structural mistakes are still caught — a closing brace against an open
+// bracket, a missing or doubled comma, a name without its colon, a second top-level value or text after the first
+// are refused here exactly as the tree parser refuses them, because a streaming reader that accepted malformed
 // structure would push the problem onto every caller.
 
 import Allocator::{ AllocationFailed, Allocator, Layout };
 
-import Io::{ IoError, IoErrorKind, Reader };
+import Io::{ IoError, Reader };
 
-/// What just happened in the document.
+/// What just happened in the document. The end of the document is `none` from `Next`, and a failure is thrown.
 /// @see https://rux-lang.dev/docs/api/json/json-event-reader#json-event
 pub enum JsonEvent: int32 {
-    /// The document is finished.
-    End = 0,
     /// An object opened.
     ObjectStart = 1,
     /// An object closed.
@@ -38,9 +37,35 @@ pub enum JsonEvent: int32 {
     /// `false`.
     False = 9,
     /// `null`.
-    Null = 10,
-    /// Something went wrong; the reason is on the reader.
-    Error = 11
+    Null = 10
+}
+
+/// Why a `JsonEventReader` stopped before the end of the document.
+/// @see https://rux-lang.dev/docs/api/json/json-event-reader#json-read-error
+pub variant JsonReadError {
+    /// The document is not JSON. The failure is positioned at the byte of the document the reader stopped on, with
+    /// the same cases and offsets the tree parser reports for the same text.
+    Malformed(JsonParseError),
+    /// The source failed with something other than its end, after this many bytes of the document were read.
+    Source(IoError, uint)
+}
+
+// Where the reader is in the grammar, which decides what the next token may be.
+enum JsonReadState: int32 {
+    // Before the top-level value.
+    Start = 0,
+    // Just inside `[` or `{`, where the container may close at once.
+    First = 1,
+    // After a comma in an array or a colon in an object, where a value must follow.
+    Value = 2,
+    // After a comma in an object, where a name must follow.
+    Name = 3,
+    // After a name, where its colon must follow.
+    Colon = 4,
+    // After a value inside a container, where a comma or the container's closer must follow.
+    Separator = 5,
+    // After the top-level value, where only whitespace may follow.
+    Done = 6
 }
 
 /// Reads a document as events, pulling bytes as it needs them.
@@ -82,8 +107,8 @@ pub struct JsonEventReader {
     lexical: JsonLexError;
     /// What the source reported, when `stop` is `Source`.
     sourceFailure: IoError?;
-    /// Whether a value is expected next rather than a name or a separator.
-    expectingValue: bool;
+    /// What the next token may be.
+    state: JsonReadState;
 }
 
 // How much the buffer starts at, and how far it grows in one step.
@@ -94,49 +119,46 @@ extend JsonEventReader {
     /// @param allocator where the storage comes from
     /// @param source the text to read
     /// @param limits the bounds the parse refuses to exceed
-    /// @returns a reader positioned before the first event; `Other` when its buffer could not be allocated
-    /// @see https://rux-lang.dev/docs/api/json/json-event-reader#new
-    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self throws IoError {
+    /// Terminates the program when its first buffer cannot be allocated, as every owning buffer does.
+    /// @returns a reader positioned before the first event
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader#constructor
+    pub func JsonEventReader(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self {
         var reader = Self {
             source, data: null, capacity: 0, filled: 0, position: 0, consumedBefore: 0, exhausted: false,
             allocator, limits, stack: [0; 16],
             depth: 0, tokenStart: 0, tokenEnd: 0, tokenEscaped: false,
-            stop: JsonStop::None, lexical: JsonLexError::None, sourceFailure: none, expectingValue: true
+            stop: JsonStop::None, lexical: JsonLexError::None, sourceFailure: none, state: JsonReadState::Start
         };
         var borrowed = allocator;
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
-        let block = try borrowed.Allocate(chunk) catch { _ => throw IoError::Of(IoErrorKind::Other) };
+        let block = try borrowed.Allocate(chunk) catch { error => AllocationFailed(error) };
         // Safety: `block` was just allocated with `JsonStreamChunk` bytes, and `char8` has size and alignment 1.
         reader.data = unsafe { block as *var char8 };
         reader.capacity = JsonStreamChunk;
         return move reader;
     }
 
-    /// Why reading stopped, positioned, or `none` while nothing has gone wrong.
-    /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
-    /// inside it rather than in a second call, so a caller holding the failure is holding all of it. The offset
-    /// counts bytes from the start of the document, however many times the buffer has been refilled. A source that
-    /// failed is reported as `Source`, and what it reported is on `SourceError`.
-    /// @returns the failure, positioned at the byte of the document the reader stopped on, or `none`
-    /// @see https://rux-lang.dev/docs/api/json/json-event-reader#failure
-    pub func Failure(&self) -> JsonParseError? {
-        return BuildFailure(self.stop, self.lexical, self.consumedBefore + self.position);
+    // The error a stopped reader throws, built once from the parts it kept. The offset counts bytes from the start
+    // of the document, however many times the buffer has been refilled.
+    func Stopped(&self) -> JsonReadError {
+        let at = self.consumedBefore + self.position;
+        if self.stop == JsonStop::Source && self.sourceFailure is .Some(error) { return .Source(error, at); }
+        return .Malformed(BuiltFailure(self.stop, self.lexical, at));
     }
 
-    /// What the source reported when reading it failed, or `none` when it has not failed.
-    /// The end of the stream is not a failure and is never reported here; any other `IoError` from the source's
-    /// `Read` stops the reader, makes `Next` report `Error` and `Failure` report `Source`, and is kept here
-    /// unchanged, so a caller can tell a document that is malformed from a stream that broke.
-    /// @returns the source's failure, or `none`
-    /// @see https://rux-lang.dev/docs/api/json/json-event-reader#source-error
-    pub func SourceError(&self) -> IoError? {
-        return self.sourceFailure;
+    // Stops the reader for `reason`, which the next call throws as well.
+    func Refuse(&var self, reason: JsonStop) -> JsonReadError {
+        if self.stop == JsonStop::None {
+            self.stop = reason;
+        }
+        return self.Stopped();
     }
 
-    /// The text of the event just reported, valid until the next one.
-    /// For a name, a string or a number. Escapes are left as written — resolving them would mean allocating,
-    /// and a caller skipping past a field should not pay for its contents.
-    /// @returns the current event's text, borrowed from the input
+    /// The text of the event just reported, valid until the next call to `Next`.
+    /// For a name, a string or a number. The view points into the reader's buffer, which the next call may refill
+    /// or grow, so a caller that keeps the text copies it first. Escapes are left as written — resolving them would
+    /// mean allocating, and a caller skipping past a field should not pay for its contents.
+    /// @returns the current event's text, borrowed from the reader until its next event
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#text
     pub func Text(&self) -> char8[..] {
         // Safety: `ScanWhile` keeps `tokenStart..tokenEnd` inside the filled part of the live buffer `self.data`, and
@@ -262,10 +284,15 @@ extend JsonEventReader {
         while true {
             if index >= self.filled {
                 // Rewind to the token's start before refilling, so its bytes are kept rather than discarded --
-                // and then shift both offsets, because refilling compacts the buffer down to zero.
+                // and then shift both offsets by however far refilling compacted the buffer, which it does even
+                // when nothing more could be read.
                 self.position = start;
-                let shift = start;
-                if !self.Refill() {
+                let before = self.consumedBefore;
+                let refilled = self.Refill();
+                let shift = self.consumedBefore - before;
+                index = index - shift;
+                start = start - shift;
+                if !refilled {
                     // A refusal the refill made itself, such as a source that failed, is the one reported.
                     if self.stop != JsonStop::None { return false; }
                     if isText {
@@ -275,8 +302,6 @@ extend JsonEventReader {
                     }
                     break;
                 }
-                index = index - shift;
-                start = 0;
                 continue;
             }
             // Safety: `index` is below `self.filled`, checked above, in the live buffer `self.data`.
@@ -357,79 +382,106 @@ extend JsonEventReader {
         return true;
     }
 
-    /// The next event.
-    /// Separators are consumed silently: a caller sees values and structure, not commas and colons, which is
-    /// the level a streaming reader is useful at.
-    /// @returns the next event, or the end-of-input event
-    /// @see https://rux-lang.dev/docs/api/json/json-event-reader#next
-    pub func Next(&var self) -> JsonEvent {
-        if self.stop != JsonStop::None { return JsonEvent::Error; }
+    // The byte at the read position, after whitespace, or `none` at the end of the input or when reading stopped.
+    func Peek(&var self) -> uint8? {
         self.SkipWhitespace();
-        // Skip a separator, whichever kind is due here.
-        while self.position < self.filled {
-            // Safety: `self.position` is below `self.filled`, checked by the loop, in the live buffer `self.data`.
-            let c = unsafe { self.data[self.position] } as uint8;
-            if c != 0x2C && c != 0x3A { break; }
-            self.position = self.position + 1;
-            self.SkipWhitespace();
-        }
-        if !self.Available() {
-            if self.stop != JsonStop::None { return JsonEvent::Error; }
-            if self.depth > 0 {
-                self.stop = JsonStop::Truncated;
-                return JsonEvent::Error;
-            }
-            return JsonEvent::End;
-        }
+        if !self.Available() { return none; }
         // Safety: `Available` returned true, so `self.position` is below `self.filled` in the live buffer.
-        let c = unsafe { self.data[self.position] } as uint8;
-        if c == 0x7B {
-            self.position = self.position + 1;
-            if !self.PushContainer(true) { return JsonEvent::Error; }
-            self.expectingValue = false;
-            return JsonEvent::ObjectStart;
+        return unsafe { self.data[self.position] } as uint8;
+    }
+
+    // The byte a value must start with after a separator; the input ending there is a truncated document.
+    func ValueByte(&var self) -> uint8 throws JsonReadError {
+        if self.Peek() is .Some(c) { return c; }
+        if self.stop != JsonStop::None { throw self.Stopped(); }
+        throw self.Refuse(JsonStop::Truncated);
+    }
+
+    // The state after a value: a separator inside a container, or the end of the document at the top level.
+    func AfterValue(&self) -> JsonReadState {
+        return if self.depth == 0 { JsonReadState::Done } else { JsonReadState::Separator };
+    }
+
+    /// The next event, or `none` at the end of the document.
+    /// Separators are checked and consumed: a caller sees values and structure, not commas and colons, which is the
+    /// level a streaming reader is useful at. A document that is not JSON throws `Malformed` with the case and offset
+    /// the tree parser would report, and a source that fails throws `Source` with the source's own error; after
+    /// either, every later call throws the same error again.
+    /// @returns the next event, or `none` once the top-level value and any whitespace after it have been read
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader#next
+    pub func Next(&var self) -> JsonEvent? throws JsonReadError {
+        if self.stop != JsonStop::None { throw self.Stopped(); }
+        if self.state == JsonReadState::Done {
+            // Only whitespace may follow the top-level value; anything else is a second value or trailing text.
+            if self.Peek() is .Some(_) { throw self.Refuse(JsonStop::TrailingContent); }
+            if self.stop != JsonStop::None { throw self.Stopped(); }
+            return none;
         }
-        if c == 0x5B {
+        var c = try self.ValueByte();
+        // The separator due here, which a caller never sees.
+        if self.state == JsonReadState::Colon {
+            if c != 0x3A { throw self.Refuse(JsonStop::Unexpected); }
             self.position = self.position + 1;
-            if !self.PushContainer(false) { return JsonEvent::Error; }
-            self.expectingValue = true;
-            return JsonEvent::ArrayStart;
+            self.state = JsonReadState::Value;
+            c = try self.ValueByte();
+        }
+        else if self.state == JsonReadState::Separator && c == 0x2C {
+            self.position = self.position + 1;
+            self.state = if self.InObject() { JsonReadState::Name } else { JsonReadState::Value };
+            c = try self.ValueByte();
         }
         if c == 0x7D || c == 0x5D {
             let wantsObject = c == 0x7D;
-            if self.depth == 0 || self.InObject() != wantsObject {
-                // A brace closing a bracket, or a closer with nothing open. A streaming reader that let this
-                // through would push the problem onto every caller.
-                self.stop = JsonStop::Unexpected;
-                return JsonEvent::Error;
+            let closes = self.state == JsonReadState::First || self.state == JsonReadState::Separator;
+            if !closes || self.depth == 0 || self.InObject() != wantsObject {
+                // A closer with nothing open, against the other kind, or after a comma.
+                throw self.Refuse(JsonStop::Unexpected);
             }
             self.position = self.position + 1;
             self.depth = self.depth - 1;
-            self.expectingValue = !self.InObject();
+            self.state = self.AfterValue();
             return if wantsObject { JsonEvent::ObjectEnd } else { JsonEvent::ArrayEnd };
         }
+        let wantsName = self.state == JsonReadState::Name || (self.state == JsonReadState::First && self.InObject());
+        // A separator where a value or a name belongs is as misplaced as a value where a separator belongs.
+        if self.state == JsonReadState::Separator || (wantsName && c != 0x22) || c == 0x2C || c == 0x3A {
+            throw self.Refuse(JsonStop::Unexpected);
+        }
         if c == 0x22 {
-            let isName = self.InObject() && !self.expectingValue;
-            if !self.ScanWhile(true) { return JsonEvent::Error; }
-            if isName {
-                self.expectingValue = true;
+            if !self.ScanWhile(true) { throw self.Stopped(); }
+            if wantsName {
+                self.state = JsonReadState::Colon;
                 return JsonEvent::Name;
             }
-            self.expectingValue = !self.InObject();
+            self.state = self.AfterValue();
             return JsonEvent::Text;
         }
-        self.expectingValue = !self.InObject();
+        if c == 0x7B || c == 0x5B {
+            let isObject = c == 0x7B;
+            self.position = self.position + 1;
+            if !self.PushContainer(isObject) { throw self.Stopped(); }
+            self.state = JsonReadState::First;
+            return if isObject { JsonEvent::ObjectStart } else { JsonEvent::ArrayStart };
+        }
         if c == 0x2D || (c >= 0x30 && c <= 0x39) {
-            if !self.ScanWhile(false) { return JsonEvent::Error; }
+            if !self.ScanWhile(false) { throw self.Stopped(); }
+            if !IsJsonNumberText(self.Text()) {
+                // A number is refused where it starts, as the lexer refuses one.
+                self.position = self.tokenStart;
+                self.lexical = JsonLexError::MalformedNumber;
+                throw self.Refuse(JsonStop::Lexical);
+            }
+            self.state = self.AfterValue();
             return JsonEvent::Number;
         }
-        if self.Matches("true") { return JsonEvent::True; }
-        if self.Matches("false") { return JsonEvent::False; }
-        if self.Matches("null") { return JsonEvent::Null; }
-        if self.stop == JsonStop::None {
-            self.stop = JsonStop::Lexical;
-            self.lexical = JsonLexError::UnexpectedByte;
+        for (word, event) in [("true", JsonEvent::True), ("false", JsonEvent::False), ("null", JsonEvent::Null)] {
+            if self.Matches(word) {
+                self.state = self.AfterValue();
+                return event;
+            }
         }
-        return JsonEvent::Error;
+        if self.stop != JsonStop::None { throw self.Stopped(); }
+        self.lexical = JsonLexError::UnexpectedByte;
+        throw self.Refuse(JsonStop::Lexical);
     }
 }

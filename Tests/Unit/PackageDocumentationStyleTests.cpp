@@ -150,7 +150,10 @@ void CollectFunction(const FuncDecl &function, bool inheritedPublic, std::vector
     subject.isPublic = true;
     subject.isDestructor = !function.name.empty() && function.name.front() == '~';
     subject.isNoReturn = function.isNoReturn;
-    subject.returnsValue = function.returnType.has_value();
+    // `throws E` with no return type is recorded as an outcome with no success value, which returns nothing.
+    const auto *outcome =
+        function.returnType ? dynamic_cast<const FallibleTypeExpr *>(function.returnType->get()) : nullptr;
+    subject.returnsValue = function.returnType.has_value() && !(outcome && !outcome->success);
     subject.signature = SignatureOf(function);
     for (const auto &parameter : function.params) {
         if (!parameter.IsReceiver() && !parameter.isVariadic && !parameter.name.empty()) {

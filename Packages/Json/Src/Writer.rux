@@ -184,29 +184,24 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
     let kind = value.Kind();
     if kind == JsonKind::Null { return try WriteJsonBytes(writer, "null"); }
     if kind == JsonKind::Boolean {
-        var flag = false;
-        value.AsBoolean(@flag);
+        let flag = value.AsBoolean() ?? false;
         return try WriteJsonBytes(writer, if flag { "true" } else { "false" });
     }
     if kind == JsonKind::Number {
         let number = value.AsNumber() ?? throw .ValueOutOfRange;
-        let text = number.Text().Bytes();
-        // Every way of making a number checks its text against the grammar, but a value whose kind was set by hand
-        // can still carry text that is not one, such as none at all. JSON has no way to spell that, so this refuses
-        // rather than emitting something other parsers will reject. The value is not wrong; the form asked for
-        // cannot hold it, which is exactly what `ValueOutOfRange` says.
-        if !IsJsonNumberText(text) {
-            throw .ValueOutOfRange;
-        }
-        return try WriteJsonBytes(writer, text);
+        // Every way of making a number checks its text against the grammar, and the kind is set only with it.
+        return try WriteJsonBytes(writer, number.Text().Bytes());
     }
-    if kind == JsonKind::Text { return try WriteEscaped(writer, value.AsText().Bytes()); }
+    if kind == JsonKind::Text {
+        let text = value.AsText() ?? throw .ValueOutOfRange;
+        return try WriteEscaped(writer, text.Bytes());
+    }
 
     let isObject = kind == JsonKind::Object;
     let opening = if isObject { "{" } else { "[" };
     let closing = if isObject { "}" } else { "]" };
     try WriteJsonBytes(writer, opening);
-    let count = value.Length();
+    let count = value.Length() ?? 0;
     if count == 0 {
         // An empty container stays on one line even when indenting, since a line holding only a bracket says
         // nothing a reader needs.

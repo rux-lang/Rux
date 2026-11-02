@@ -26,21 +26,25 @@ void AnalysisContext::ValidateConstructor(const FuncDecl &method, const TypeRef 
         EmitError(method.location, std::format("constructor '{}' cannot declare function type parameters", typeName),
                   {}, "write type arguments on the constructed type instead");
     }
-    const TypeRef returnType = ResolveMethodReturnType(extendedType, method);
-    if (!method.returnType || returnType != extendedType) {
+    if (!method.returnType || !ConstructsType(ResolveMethodReturnType(extendedType, method), extendedType)) {
         EmitError(method.location,
-                  std::format("constructor '{}' must return exactly '{}'", typeName, extendedType.ToString()));
+                  std::format("constructor '{}' must return exactly '{}'", typeName, extendedType.ToString()), {},
+                  "a constructor that can fail declares 'throws' after the type, as in '-> Self throws E'");
     }
     if (!method.body) {
         EmitError(method.location, std::format("constructor '{}' must have a body", typeName));
     }
 }
 
+bool AnalysisContext::ConstructsType(const TypeRef &returned, const TypeRef &type) {
+    return returned == type || (returned.IsFallible() && returned.FallibleSuccess() == type);
+}
+
 bool AnalysisContext::IsConstructorCandidate(const FuncDecl &method, const TypeRef &type) {
     const std::string typeName = NamedBaseTypeName(type);
     return !typeName.empty() && method.name == UnqualifiedNominalName(typeName) && !method.Receiver() &&
            method.typeParams.empty() && method.body && method.returnType &&
-           ResolveMethodReturnType(type, method) == type;
+           ConstructsType(ResolveMethodReturnType(type, method), type);
 }
 
 std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeRef &type) {
