@@ -826,7 +826,8 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
     if (value) {
         if (!currentReturnType.IsUnknown() && !currentReturnType.IsOpaque()) {
             // A function that throws returns its success, so that is the type a returned case or literal takes.
-            const bool throwsSuccess = currentReturnType.IsFallible() && !currentReturnType.FallibleSuccess().IsUnknown();
+            const bool throwsSuccess =
+                currentReturnType.IsFallible() && !currentReturnType.FallibleSuccess().IsUnknown();
             expectedExpressionTypes.insert_or_assign(value, throwsSuccess ? currentReturnType.FallibleSuccess()
                                                                           : currentReturnType);
         }

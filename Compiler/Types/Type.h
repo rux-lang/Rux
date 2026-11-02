@@ -635,6 +635,12 @@ inline std::string TypeRef::DisplayString() const {
     if (node->kind == Kind::Optional && node->inner.size() == 1 && node->inner[0].IsOpaque()) {
         return "none";
     }
+    // A fallible is what a throwing function returns, and reads as source writes that: `T throws E`, or `throws E`
+    // for a function that returns nothing.
+    if (node->kind == Kind::Fallible && node->inner.size() == 2) {
+        const std::string error = node->inner[1].DisplayString();
+        return node->inner[0].IsUnit() ? "throws " + error : node->inner[0].DisplayString() + " throws " + error;
+    }
     // A function without a return type is written without an arrow, `func(T)`, and reads that way wherever it appears
     // in the spelling; `opaque` after an arrow is only ever that placeholder, since a written one sits behind a
     // pointer.

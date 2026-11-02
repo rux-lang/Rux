@@ -45,18 +45,18 @@ bool AnalysisContext::ErrorFitsChannel(const TypeRef &error, const TypeRef &chan
 
 TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
     const TypeRef &payload = operandType->inner.front();
-    // Absence leaves as the enclosing optional's absence, or as the successful absence of `U? ! F`; nothing deeper is
-    // a target, and no error is ever invented for it.
+    // Absence leaves as the enclosing optional's absence, or as the absence a `-> U? throws F` function returns;
+    // nothing deeper is a target, and no error is ever invented for it.
     const bool optionalTarget = currentReturnType.IsOptional();
     const bool successfulAbsence = currentReturnType.IsFallible() && currentReturnType.FallibleSuccess().IsOptional();
     if (!optionalTarget && !successfulAbsence) {
         const std::string returned =
-            currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.ToString());
+            currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.DisplayString());
         EmitError(expression.location,
                   std::format("'?' propagates the absence of '{}', but the enclosing function returns {}",
                               operandType.ToString(), returned),
-                  {"absence leaves as an optional's 'none', or as the successful 'none' of 'U? ! F'; '?' never "
-                   "invents an error for it"},
+                  {"absence leaves as an optional's 'none', or as the 'none' a '-> U? throws F' function returns; '?' "
+                   "never invents an error for it"},
                   "declare an optional result, as in '-> T?', or supply a fallback with '?"
                   "?'");
         return payload;

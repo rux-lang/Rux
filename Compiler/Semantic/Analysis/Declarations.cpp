@@ -40,16 +40,14 @@ void AnalysisContext::CheckMainSignature(const FuncDecl &declaration, const Type
     }
     const std::string written =
         declaration.returnType ? std::format("'{}'", returnType.DisplayString()) : std::string("no result");
-    EmitError(
-        declaration.location,
-        std::format(
-            "'Main' must take no parameters and return nothing, an integer, '! E' or an integer '! E', but it {}{}",
-            takesNothing && declaration.typeParams.empty()
-                ? ""
-                : (declaration.typeParams.empty() ? "takes parameters and " : "is generic and "),
-            declaration.returnType ? std::format("returns {}", written) : "has no result"),
-        {"the result of 'Main' is the process's exit status, which no other form defines"},
-        "declare it as 'func Main() -> int', 'func Main() -> ! E' or 'func Main() -> int ! E'");
+    EmitError(declaration.location,
+              std::format("'Main' must take no parameters and return nothing or an integer, and may throw, but it {}{}",
+                          takesNothing && declaration.typeParams.empty()
+                              ? ""
+                              : (declaration.typeParams.empty() ? "takes parameters and " : "is generic and "),
+                          declaration.returnType ? std::format("returns {}", written) : "has no result"),
+              {"the result of 'Main' is the process's exit status, which no other form defines"},
+              "declare it as 'func Main() -> int', 'func Main() throws E' or 'func Main() -> int throws E'");
 }
 
 void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
@@ -747,7 +745,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         target && (IsNativeTypeExpr(*target) || (AstCast<const TupleTypeExpr>(target) &&
                                                  static_cast<const TupleTypeExpr *>(target)->elements.empty()))) {
         EmitError(d.location, std::format("cannot extend native type '{}'", d.typeName),
-                  {"a sum, optional, fallible, or unit type has no declaring package to own methods or interface "
+                  {"a sum, optional, or unit type has no declaring package to own methods or interface "
                    "implementations"},
                   "write a generic function that takes the native type as a parameter");
         currentTypeParams = savedTypeParams;
