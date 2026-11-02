@@ -94,7 +94,7 @@ func Main() -> int {
         index++;
     }
     Assert(filled.Get(6) == none, "one past the end has no element");
-    Assert(filled.Reference(6) == none, "and no pointer either");
+    Assert(filled.At(6) is none, "and nothing to borrow either");
 
     // Setting replaces an element and refuses an index the array does not have.
     filled.Set(2, 99) catch { else => Panic("setting an element in range succeeds") };

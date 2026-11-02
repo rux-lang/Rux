@@ -295,16 +295,13 @@ func Main() -> int {
     Assert(walked == 200, "and a walk reaches every entry");
     Assert(total == 19900, "each of them exactly once, since the keys sum to what they should");
 
-    // A pointer to a value reads it where it sits, and the mutable form changes it in place.
-    let reading = map.Reference(7) ?? Panic("a present key has a value to point at");
-    // Safety: `Reference` hands back the address of the stored value, and the map has not changed since.
-    Assert(unsafe { *reading == 21 }, "which reads what was stored");
-    var writing: *var int32 = null;
-    Assert(map.TryReferenceMutable(7, @writing), "and one that can be written through");
-    // Safety: `TryReferenceMutable` reported true, so `writing` points at the stored value.
-    unsafe { *writing = 99; }
+    // A reference to a value reads it where it sits, and the mutable form changes it in place.
+    let reading = map.Find(7) ?? Panic("a present key has a value to borrow");
+    Assert(reading == 21, "which reads what was stored");
+    let writing = map.FindMutable(7) ?? Panic("and one that can be written through");
+    writing = 99;
     Assert(map.Get(7) == .Some(99), "which changes the stored value");
-    Assert(!map.TryReferenceMutable(1000, @writing), "an absent key has nothing to point at");
+    Assert(map.FindMutable(1000) is none, "an absent key has nothing to borrow");
 
     // Capacity behaviour.
     map.Reserve(1000) catch { else => Panic("reserving succeeds") };

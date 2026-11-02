@@ -81,8 +81,9 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
         opens = opens + 1;
         var index: uint = 0;
         while index < value.Length() {
-            // Safety: `index` is below `value.Length()`, so `At` returns a non-null pointer into `value`.
-            unsafe { TreeCounts(*value.At(index), scalars, opens, names); }
+            if value.At(index) is .Some(element) {
+                TreeCounts(element, scalars, opens, names);
+            }
             index = index + 1;
         }
         return;
@@ -92,9 +93,9 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
         var index: uint = 0;
         while index < value.Length() {
             names = names + 1;
-            let member = value.MemberAt(index);
-            // Safety: `index` is below `value.Length()`, so `member` is a non-null pointer into `value`.
-            unsafe { TreeCounts((*member).value, scalars, opens, names); }
+            if value.MemberAt(index) is .Some(member) {
+                TreeCounts(member.value, scalars, opens, names);
+            }
             index = index + 1;
         }
         return;

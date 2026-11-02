@@ -189,9 +189,8 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
         return WriteJsonBytes(writer, flag ? "true" : "false");
     }
     if kind == JsonKind::Number {
-        // Safety: `AsNumber` returns the address of the number payload inside `value`, which is borrowed for the
-        // whole call.
-        let text = unsafe { (*value.AsNumber()).Text().Bytes() };
+        let number = value.AsNumber() ?? fail FormatError::ValueOutOfRange;
+        let text = number.Text().Bytes();
         // Every way of making a number checks its text against the grammar, but a value whose kind was set by hand
         // can still carry text that is not one, such as none at all. JSON has no way to spell that, so this refuses
         // rather than emitting something other parsers will reject. The value is not wrong; the form asked for
@@ -220,20 +219,17 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
         }
         WriteNewlineAndIndent(writer, style, level + 1)?;
         if isObject {
-            let member = value.MemberAt(index);
-            // Safety: `index` is below `value.Length()` of an object, so `MemberAt` returned a member stored inside
-            // `value`, which is borrowed for the whole call.
-            WriteEscaped(writer, unsafe { member.name.View().Bytes() })?;
+            let member = value.MemberAt(index) ?? break;
+            WriteEscaped(writer, member.name.View().Bytes())?;
             WriteJsonBytes(writer, ":")?;
             if style.indent > 0 || style.spaceAfterColon {
                 WriteJsonBytes(writer, " ")?;
             }
-            // Safety: `member` is the member of `value` found above, still in place since nothing has changed `value`.
-            unsafe { WriteAtLevel(writer, (*member).value, style, level + 1)?; }
+            WriteAtLevel(writer, member.value, style, level + 1)?;
         }
         else {
-            // Safety: `index` is below `value.Length()` of an array, so `At` returned an element stored inside `value`.
-            unsafe { WriteAtLevel(writer, *value.At(index), style, level + 1)?; }
+            let element = value.At(index) ?? break;
+            WriteAtLevel(writer, element, style, level + 1)?;
         }
         index = index + 1;
     }

@@ -132,12 +132,13 @@ extend RwLock<T> {
 extend ReadGuard<T> {
     func =(self: &var ReadGuard<T>, other: &ReadGuard<T>);
 
-    /// The guarded value, to read while the guard holds the lock.
-    /// @returns the value's address
+    /// The guarded value, borrowed for reading while the guard holds the lock.
+    /// The guard stays borrowed while the reference is in use, so it cannot be dropped under it.
+    /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#read-guard-get
-    pub func Get(self: &ReadGuard<T>) -> *T {
+    pub func Get(self: &ReadGuard<T>) -> &T {
         // Safety: the guard holds a count on `self.block`, so the block is live.
-        return unsafe { @self.block.value };
+        unsafe { return self.block.value; }
     }
 
     func ~ReadGuard(self: &var ReadGuard<T>) {
@@ -161,12 +162,22 @@ extend ReadGuard<T> {
 extend WriteGuard<T> {
     func =(self: &var WriteGuard<T>, other: &WriteGuard<T>);
 
-    /// The guarded value, which this thread alone may read and write while the guard holds the lock.
-    /// @returns the value's address
+    /// The guarded value, borrowed for reading while the guard holds the lock.
+    /// The guard stays borrowed while the reference is in use, so it cannot be dropped under it.
+    /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard-get
-    pub func Get(self: &WriteGuard<T>) -> *var T {
+    pub func Get(self: &WriteGuard<T>) -> &T {
         // Safety: the guard holds a count on `self.block`, so the block is live.
-        return unsafe { @self.block.value };
+        unsafe { return self.block.value; }
+    }
+
+    /// The guarded value, borrowed for writing, which this thread alone may do while the guard holds the lock.
+    /// The guard stays borrowed exclusively while the reference is in use.
+    /// @returns a writable reference to the value
+    /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard-get-mutable
+    pub func GetMutable(self: &var WriteGuard<T>) -> &var T {
+        // Safety: the guard holds a count on `self.block`, so the block is live.
+        unsafe { return self.block.value; }
     }
 
     func ~WriteGuard(self: &var WriteGuard<T>) {

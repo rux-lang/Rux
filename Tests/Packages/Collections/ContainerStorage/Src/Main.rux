@@ -167,8 +167,7 @@ func Main() -> int {
         walked++;
     }
     Assert(walked == 5, "and iteration yields each of them");
-    var taken = Nothing {};
-    Assert(empties.TryPop(@taken), "one comes back off the end");
+    Assert(empties.Pop() is .Some(_), "one comes back off the end");
     Assert(empties.Length() == 4, "leaving one fewer");
     empties.Clear();
     Assert(empties.IsEmpty(), "and clearing leaves none");

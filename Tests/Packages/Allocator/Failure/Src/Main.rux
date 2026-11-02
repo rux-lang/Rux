@@ -99,9 +99,9 @@ func Main() -> ! AllocError {
     var kept = Box::Create<int64>(starved, 9)?;
     Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
-    var taken: int64 = 0;
-    Assert(kept.TryTake(@taken), "taking the value out succeeds");
-    Assert(taken == 9, "and gives back what went in");
+    let taken = kept.Take();
+    Assert(taken is .Some(_), "taking the value out succeeds");
+    Assert(taken is .Some(value) && value == 9, "and gives back what went in");
     Assert(state.live == 0, "releasing the storage there and then");
 
     // An arena that cannot take its first block fails at the first request and takes nothing.

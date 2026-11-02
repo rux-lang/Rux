@@ -251,8 +251,7 @@ extend Regex {
         pending.Push(0) catch { else => fail RegexError::OutOfMemory() };
         var bytes: uint64[4] = [0u64, 0u64, 0u64, 0u64];
         var nonAscii = false;
-        var popped: uint32 = 0;
-        while pending.TryPop(@popped) {
+        while pending.Pop() is .Some(popped) {
             let pc = popped as uint;
             if seen.AsSlice()[pc] { continue; }
             seen.AsMutableSlice()[pc] = true;

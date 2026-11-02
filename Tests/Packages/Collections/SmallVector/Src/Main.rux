@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::SmallVector;
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 // Elements stay inline until 64 bytes are used, then move to the heap with their order; elements that own something
 // are moved, popped and destroyed exactly once; and an element too large for the inline room goes straight to the
@@ -43,8 +43,7 @@ func Main() -> int {
     }
     Assert(ordered && (small.Get(16) ?? -1) == 16 && small.Get(17) == none, "the order survives the move");
     small.AsMutableSlice()[0] = 100;
-    var last: int32 = 0;
-    Assert(small.TryPop(@last) && last == 16 && (small.Get(0) ?? -1) == 100, "writes and pops");
+    Assert(small.Pop() is .Some(last) && last == 16 && (small.Get(0) ?? -1) == 100, "writes and pops");
     small.Truncate(3);
     Assert(small.Length() == 3u, "truncates");
 
@@ -55,8 +54,8 @@ func Main() -> int {
         count = count + 1;
     }
     Assert(Destroyed == 0, "moving to the heap destroys nothing");
-    var popped = Tracked { value: -1 };
-    Assert(tracked.TryPop(@popped) && popped.value == 19, "a move-only element pops");
+    let popped = tracked.Pop() ?? Panic("a move-only element pops");
+    Assert(popped.value == 19, "the last one");
     Assert(Destroyed == 0, "popping moves the element out without destroying anything");
     tracked.Clear();
     Assert(Destroyed == 19, "clearing destroys each remaining element once");

@@ -57,9 +57,8 @@ func PushThenPop(allocator: Allocator, counter: *var int32, count: uint) {
         };
         index++;
     }
-    var taken = Tracked { counter: null, value: 0 };
-    while vector.TryPop(@taken) {
-        // `taken` holds the element that was moved out; the next round overwrites it and the last is destroyed here.
+    while vector.Pop() is .Some(taken) {
+        // `taken` holds the element that was moved out, and is destroyed at the end of each round.
     }
     Assert(vector.IsEmpty(), "popping everything empties the vector");
 }
@@ -232,10 +231,9 @@ func Main() -> ! CollectionError {
     // Popping moves elements out, so the vector destroys none of them and whoever took them does.
     destroyed = 0;
     PushThenPop(allocator, @destroyed, 5);
-    // One, not five: popping moves each element out, and overwriting `taken` on each round destroys nothing —
-    // assignment replaces a binding's value without destroying what was there — so the only destruction is the last
-    // element, still held by `taken` when the function ended.
-    Assert(destroyed == 1, "popping moves elements out rather than destroying them");
+    // Five, not ten: popping moves each element out, so the vector destroys none of them, and `taken` destroys each
+    // one at the end of the round that took it.
+    Assert(destroyed == 5, "popping moves elements out rather than destroying them");
 
     // Truncating destroys exactly the elements it drops.
     destroyed = 0;
@@ -268,9 +266,8 @@ func Main() -> ! CollectionError {
     tracked.Set(0, Tracked { counter: @replacedCount, value: 10 })?;
     Assert(destroyed == 1, "setting destroys the element it replaces");
     Assert(replacedCount == 0, "and not the one it stores");
-    var stored = tracked.Reference(0) ?? Panic("the set element is there");
-    // Safety: `Reference` hands back the address of the stored element, and the vector has not changed since.
-    Assert(unsafe { stored.value == 10 }, "which now sits at the index");
+    let stored = tracked.At(0) ?? Panic("the set element is there");
+    Assert(stored.value == 10, "which now sits at the index");
     Assert(Refusal(tracked.Set(5, Tracked { counter: @replacedCount, value: 99 })) == CollectionError::IndexOutOfRange,
         "setting past the length is refused");
     Assert(replacedCount == 1, "destroying the refused value rather than leaking it");
@@ -319,11 +316,11 @@ func Main() -> ! CollectionError {
     Assert(ordered.SwapRemoveAt(ordered.Length()) == none, "swap-removing past the end reports nothing");
 
     // The ends, and what an empty vector has instead of them.
-    Assert(ordered.First() != none, "a non-empty vector has a first element");
-    Assert(ordered.Last() != none, "and a last one");
+    Assert(ordered.First() is .Some(_), "a non-empty vector has a first element");
+    Assert(ordered.Last() is .Some(_), "and a last one");
     var nothing = Vector<int32>(allocator);
-    Assert(nothing.First() == none, "an empty vector has no first element");
-    Assert(nothing.Last() == none, "and no last one");
+    Assert(nothing.First() is none, "an empty vector has no first element");
+    Assert(nothing.Last() is none, "and no last one");
 
     // Slicing is clamped rather than refused, so a caller need not check twice.
     var span = Vector<int32>(allocator);

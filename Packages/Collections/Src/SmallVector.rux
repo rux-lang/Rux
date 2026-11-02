@@ -137,18 +137,17 @@ extend SmallVector<T> {
         self.length = self.length + 1;
     }
 
-    /// Takes the last element out.
-    /// @param value receives the element
-    /// @returns whether there was one
-    /// @see https://rux-lang.dev/docs/api/collections/small-vector#try-pop
-    pub func TryPop(self: &var SmallVector<T>, value: *var T) -> bool {
-        if self.length == 0 || value == null { return false; }
+    /// Takes the last element out, moving it rather than copying it.
+    /// @returns the element, or `none` when the vector is empty
+    /// @see https://rux-lang.dev/docs/api/collections/small-vector#pop
+    pub func Pop(self: &var SmallVector<T>) -> T? {
+        if self.length == 0 { return none; }
         self.length = self.length - 1;
         let items = self.WritableItems();
-        // Safety: the documented contract makes `value` a non-null pointer, checked above, to the caller's writable
-        // `T`; by the small-vector invariant the old last element is initialized and now outside `length`.
-        unsafe { *value <- items[self.length]; }
-        return true;
+        // Safety: the small-vector invariant: the old last element is initialized and now outside `length`, so
+        // nothing destroys it again once it is moved out.
+        let removed <- unsafe { <-items[self.length] };
+        return .Some(<-removed);
     }
 
     /// A copy of the element at `index`.

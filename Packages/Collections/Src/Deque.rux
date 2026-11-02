@@ -328,22 +328,22 @@ extend Deque<T> {
         return unsafe { <-self.data[self.SlotOf(self.length)] };
     }
 
-    /// A pointer to the front element, or `none` for an empty deque.
-    /// `self` is borrowed; the pointer borrows the element where it sits.
-    /// The pointer is valid until the deque grows, shrinks, or is made contiguous.
-    /// @returns the address of the first element, or `none` when empty
+    /// The front element, borrowed where it sits, or `none` for an empty deque.
+    /// `self` stays borrowed while the reference is in use, so the deque cannot grow, shrink, or be made contiguous
+    /// under it.
+    /// @returns a reference to the first element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/deque#front
-    pub func Front(self: &Deque<T>) -> (*T)? {
-        return self.Reference(0);
+    pub func Front(self: &Deque<T>) -> &T? {
+        return self.At(0);
     }
 
-    /// A pointer to the back element, or `none` for an empty deque.
-    /// `self` is borrowed; the pointer borrows the element where it sits.
-    /// @returns the address of the last element, or `none` when empty
+    /// The back element, borrowed where it sits, or `none` for an empty deque.
+    /// `self` stays borrowed while the reference is in use.
+    /// @returns a reference to the last element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/deque#back
-    pub func Back(self: &Deque<T>) -> (*T)? {
+    pub func Back(self: &Deque<T>) -> &T? {
         if self.length == 0 { return none; }
-        return self.Reference(self.length - 1);
+        return self.At(self.length - 1);
     }
 
     /// The element at `index`, counting from the front, or `none` when there is no such index.
@@ -358,16 +358,28 @@ extend Deque<T> {
         return unsafe { self.data[self.SlotOf(index)] };
     }
 
-    /// A pointer to the element at `index`, or `none` when there is no such index.
-    /// `self` is borrowed; the pointer borrows the element where it sits.
-    /// The pointer is valid until the deque grows, shrinks, or is made contiguous.
+    /// The element at `index`, counting from the front, borrowed where it sits, or `none` when there is no such
+    /// index.
+    /// `self` stays borrowed while the reference is in use.
     /// @param index which one, counting from zero
-    /// @returns the address of the element, or `none` when the index is out of range
-    /// @see https://rux-lang.dev/docs/api/collections/deque#reference
-    pub func Reference(self: &Deque<T>, index: uint) -> (*T)? {
+    /// @returns a reference to the element, or `none` when the index is out of range
+    /// @see https://rux-lang.dev/docs/api/collections/deque#at
+    pub func At(self: &Deque<T>, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
-        return unsafe { @self.data[self.SlotOf(index)] };
+        unsafe { return self.data[self.SlotOf(index)]; }
+    }
+
+    /// The element at `index`, counting from the front, borrowed to be written where it sits, or `none` when there
+    /// is no such index.
+    /// `self` stays borrowed exclusively while the reference is in use.
+    /// @param index which one, counting from zero
+    /// @returns a writable reference to the element, or `none` when the index is out of range
+    /// @see https://rux-lang.dev/docs/api/collections/deque#at-mutable
+    pub func AtMutable(self: &var Deque<T>, index: uint) -> &var T? {
+        if index >= self.length { return none; }
+        // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
+        unsafe { return self.data[self.SlotOf(index)]; }
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.
@@ -422,48 +434,26 @@ extend Deque<T> {
     }
 
     /// The elements as at most two runs, front run first, without moving anything.
-    /// `self` is borrowed; `front` and `back` receive the two runs and either may be null. The second run is empty
-    /// whenever the storage is already contiguous, so joining the two always gives the elements in order.
+    /// `self` is borrowed. The second run is empty whenever the storage is already contiguous, so joining the two
+    /// always gives the elements in order.
     /// This is the view that costs nothing. `AsSlice` gives one run instead, and pays a rotation for it.
     /// Both views are valid until the deque grows, shrinks, or is made contiguous.
-    /// @param front receives the first run of elements
-    /// @param back receives the second, which is empty when the storage is contiguous
+    /// @returns the first run of elements and the second, which is empty when the storage is contiguous
     /// @see https://rux-lang.dev/docs/api/collections/deque#as-slices
-    pub func AsSlices(self: &Deque<T>, front: *var T[..], back: *var T[..]) {
-        if self.length == 0 {
-            if front != null {
-                // Safety: the documented contract makes a non-null `front` a pointer to the caller's writable view.
-                unsafe { *front = []; }
-            }
-            if back != null {
-                // Safety: the documented contract makes a non-null `back` a pointer to the caller's writable view.
-                unsafe { *back = []; }
-            }
-            return;
-        }
+    pub func AsSlices(self: &Deque<T>) -> (T[..], T[..]) {
+        if self.length == 0 { return ([], []); }
 
         var frontLength = self.capacity - self.head;
         if frontLength > self.length {
             frontLength = self.length;
         }
-
-        if front != null {
-            // Safety: the documented contract makes a non-null `front` a pointer to the caller's writable view, and
-            // by the ring invariant the `frontLength` slots from `head`, which stop at the end of the block, are
-            // initialized.
-            unsafe { *front = (@self.data[self.head])[..frontLength]; }
-        }
-        if back != null {
-            if frontLength < self.length {
-                // Safety: the documented contract makes a non-null `back` a pointer to the caller's writable view,
-                // and by the ring invariant the elements that wrapped occupy the first `length - frontLength` slots.
-                unsafe { *back = (self.data)[..self.length - frontLength]; }
-            }
-            else {
-                // Safety: the documented contract makes a non-null `back` a pointer to the caller's writable view.
-                unsafe { *back = []; }
-            }
-        }
+        // Safety: the ring invariant: the `frontLength` slots from `head`, which stop at the end of the block, are
+        // initialized.
+        let front: T[..] = unsafe { (@self.data[self.head])[..frontLength] };
+        if frontLength == self.length { return (front, []); }
+        // Safety: the ring invariant: the elements that wrapped occupy the first `length - frontLength` slots.
+        let back: T[..] = unsafe { (self.data)[..self.length - frontLength] };
+        return (front, back);
     }
 
     /// Moves the elements so they occupy one unbroken run starting at physical zero.

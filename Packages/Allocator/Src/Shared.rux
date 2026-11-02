@@ -49,22 +49,24 @@ extend Rc<T> {
         return Rc<T> { block: block, allocator: allocator };
     }
 
-    /// The shared value, for reading.
-    /// @returns a pointer to it, valid while any handle exists
+    /// The shared value, borrowed for reading.
+    /// `self` stays borrowed while the reference is in use, so this handle, and with it the value, outlives it.
+    /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-get
-    pub func Get(self: &Rc<T>) -> *T {
+    pub func Get(self: &Rc<T>) -> &T {
         // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
-        return unsafe { (@self.block.value) as *T };
+        unsafe { return self.block.value; }
     }
 
-    /// The value for writing, while this is the only handle to it.
-    /// @returns a pointer to it, or `none` while other handles share it
+    /// The value borrowed for writing, while this is the only handle to it.
+    /// `self` stays borrowed exclusively while the reference is in use, so no other handle can be made from it.
+    /// @returns a writable reference to the value, or `none` while other handles share it
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-get-mutable
-    pub func GetMutable(self: &var Rc<T>) -> (*var T)? {
+    pub func GetMutable(self: &var Rc<T>) -> &var T? {
         // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
         if unsafe { self.block.count } != 1 { return none; }
         // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
-        return unsafe { @self.block.value };
+        unsafe { return self.block.value; }
     }
 
     /// How many handles share the value.
@@ -140,23 +142,25 @@ extend Arc<T> {
         return Arc<T> { block: block, allocator: allocator };
     }
 
-    /// The shared value, for reading.
-    /// @returns a pointer to it, valid while any handle exists
+    /// The shared value, borrowed for reading.
+    /// `self` stays borrowed while the reference is in use, so this handle, and with it the value, outlives it.
+    /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-get
-    pub func Get(self: &Arc<T>) -> *T {
+    pub func Get(self: &Arc<T>) -> &T {
         // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
-        return unsafe { (@self.block.value) as *T };
+        unsafe { return self.block.value; }
     }
 
-    /// The value for writing, while this is the only handle to it.
-    /// @returns a pointer to it, or `none` while other handles share it
+    /// The value borrowed for writing, while this is the only handle to it.
+    /// `self` stays borrowed exclusively while the reference is in use, so no other handle can be made from it.
+    /// @returns a writable reference to the value, or `none` while other handles share it
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-get-mutable
-    pub func GetMutable(self: &var Arc<T>) -> (*var T)? {
+    pub func GetMutable(self: &var Arc<T>) -> &var T? {
         // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does;
         // its count is aligned and only ever reached atomically.
         if unsafe { AtomicLoad<uint>(@self.block.count, MemoryOrder::Acquire) } != 1 { return none; }
         // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
-        return unsafe { @self.block.value };
+        unsafe { return self.block.value; }
     }
 
     /// How many handles share the value, at some moment while this one existed; another thread may change it.

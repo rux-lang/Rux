@@ -340,11 +340,12 @@ extend JsonValue {
         return true;
     }
 
-    /// The number payload, borrowed.
-    /// @returns the number, or null when this is not one
+    /// The number payload, borrowed, or `none` when this is not a number.
+    /// @returns the number, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/json/json-value#as-number
-    pub func AsNumber(self: &JsonValue) -> *JsonNumber {
-        return @self.number;
+    pub func AsNumber(self: &JsonValue) -> &JsonNumber? {
+        if self.kind != JsonKind::Number { return none; }
+        return self.number;
     }
 
     /// The string payload, or an empty view when this is not a string.
@@ -389,45 +390,40 @@ extend JsonValue {
         return Succeeded(self.members.Push(<-member));
     }
 
-    /// The element at `index`, borrowed, or null when there is none.
+    /// The element at `index`, borrowed, or `none` when there is none.
+    /// `self` stays borrowed while the reference is in use.
     /// @param index which one, counting from zero
-    /// @returns the element at `index`, or null when there is none
+    /// @returns the element at `index`, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/json/json-value#at
-    pub func At(self: &JsonValue, index: uint) -> *JsonValue {
-        if self.kind != JsonKind::Array || index >= self.elements.Length() { return null; }
-        let slice = self.elements.AsSlice();
-        // Safety: `index` is below `self.elements.Length()`, the length of `slice`, checked above.
-        return unsafe { @slice.data[index] };
+    pub func At(self: &JsonValue, index: uint) -> &JsonValue? {
+        if self.kind != JsonKind::Array { return none; }
+        return self.elements.At(index);
     }
 
-    /// The value of the member named `name`, borrowed, or null when there is none.
+    /// The value of the member named `name`, borrowed, or `none` when there is none.
     /// With duplicate names present — which only a permissive parser policy allows — this finds the first,
     /// since that is the one a reader encounters.
     /// @param name the member's name
-    /// @returns the first member with that name, or null when there is none
+    /// @returns the first member with that name, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/json/json-value#find
-    pub func Find(self: &JsonValue, name: StringView) -> *JsonValue {
-        if self.kind != JsonKind::Object { return null; }
-        let slice = self.members.AsSlice();
+    pub func Find(self: &JsonValue, name: StringView) -> &JsonValue? {
+        if self.kind != JsonKind::Object { return none; }
         var index: uint = 0;
-        while index < slice.length {
+        while index < self.members.Length() {
             var held = name;
-            // Safety: `index` is below `slice.length`, checked by the loop.
-            if unsafe { slice.data[index].name.View().Equals(held) } { return unsafe { @slice.data[index].value }; }
+            if self.members.At(index) is .Some(member) && member.name.View().Equals(held) { return member.value; }
             index = index + 1;
         }
-        return null;
+        return none;
     }
 
-    /// The member at `index`, borrowed, or null when there is none.
+    /// The member at `index`, borrowed, or `none` when there is none.
     /// @param index which one, counting from zero
-    /// @returns the member at `index`, or null when there is none
+    /// @returns the member at `index`, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/json/json-value#member-at
-    pub func MemberAt(self: &JsonValue, index: uint) -> *JsonMember {
-        if self.kind != JsonKind::Object || index >= self.members.Length() { return null; }
-        let slice = self.members.AsSlice();
-        // Safety: `index` is below `self.members.Length()`, the length of `slice`, checked above.
-        return unsafe { @slice.data[index] };
+    pub func MemberAt(self: &JsonValue, index: uint) -> &JsonMember? {
+        if self.kind != JsonKind::Object { return none; }
+        return self.members.At(index);
     }
 
     /// Removes the first member named `name`, if there is one.
@@ -455,22 +451,8 @@ extend JsonValue {
                 index = index + 1;
             }
         }
-        if target >= self.members.Length() { return false; }
-        var tail = Vector<JsonMember>(self.allocator);
-        while self.members.Length() > target + 1 {
-            var moved = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
-            if !self.members.TryPop(@moved) { break; }
-            tail.Push(<-moved) catch { else => {} };
-        }
-        var discarded = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
-        self.members.TryPop(@discarded);
-        // `discarded` dies here, taking its name and value with it.
-        while tail.Length() > 0 {
-            var restored = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
-            if !tail.TryPop(@restored) { break; }
-            self.members.Push(<-restored) catch { else => {} };
-        }
-        return true;
+        // The member taken out dies here, taking its name and value with it.
+        return self.members.RemoveAt(target) is .Some(_);
     }
 
     /// Releases everything this value owns.

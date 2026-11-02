@@ -57,10 +57,11 @@ extend PriorityQueue<T> {
         }
     }
 
-    /// The largest element, without taking it out.
-    /// @returns a pointer to it, valid until the queue next changes, or `none` when the queue is empty
+    /// The largest element, borrowed where it sits, without taking it out.
+    /// `self` stays borrowed while the reference is in use, so the queue cannot change under it.
+    /// @returns a reference to it, or `none` when the queue is empty
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#peek
-    pub func Peek(self: &PriorityQueue<T>) -> (*T)? {
+    pub func Peek(self: &PriorityQueue<T>) -> &T? {
         return self.items.First();
     }
 

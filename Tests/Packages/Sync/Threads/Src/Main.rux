@@ -35,10 +35,9 @@ func SetupOnce(unused: uint8) -> bool {
 }
 
 func Increment(total: &Mutex<uint64>) {
-    let guard = total.Lock();
-    let value = guard.Get();
-    // Safety: `guard` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    unsafe { *value = *value + 1u64; }
+    var guard = total.Lock();
+    let value = guard.GetMutable();
+    value = value + 1u64;
 }
 
 func AddUnderMutex(total: Mutex<uint64>) -> () {
@@ -51,8 +50,7 @@ func AddUnderMutex(total: Mutex<uint64>) -> () {
 
 func Read(total: &Mutex<uint64>) -> uint64 {
     let guard = total.Lock();
-    // Safety: `guard` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    return unsafe { *guard.Get() };
+    return guard.Get();
 }
 
 struct Handoff {
@@ -63,20 +61,18 @@ struct Handoff {
 // Waits for the flag the main thread sets, then reports what it saw.
 func AwaitFlag(handoff: Handoff) -> bool {
     var guard = handoff.ready.Lock();
-    // Safety: `guard` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    while !unsafe { *guard.Get() } {
+    while !guard.Get() {
         handoff.signal.Wait(guard);
     }
-    // Safety: `guard` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    return unsafe { *guard.Get() };
+    return guard.Get();
 }
 
 // Waits a little with nobody to notify, then sets the flag and wakes the waiter.
 func RaiseFlag(ready: &Mutex<bool>, signal: &Condition) {
     var guard = ready.Lock();
     signal.WaitFor(guard, Duration::FromMilliseconds(5));
-    // Safety: `guard` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    unsafe { *guard.Get() = true; }
+    let flag = guard.GetMutable();
+    flag = true;
     signal.NotifyAll();
 }
 
@@ -85,15 +81,13 @@ func ReadOrWrite(shared: RwLock<uint64>) -> uint64 {
     var round: uint64 = 0;
     while round < Rounds {
         if round % 4u64 == 0u64 {
-            let writer = shared.Write();
-            let value = writer.Get();
-            // Safety: `writer` holds the exclusive hold, so only this thread reaches the guarded value.
-            unsafe { *value = *value + 1u64; }
+            var writer = shared.Write();
+            let value = writer.GetMutable();
+            value = value + 1u64;
         }
         else {
             let reader = shared.Read();
-            // Safety: `reader` holds a shared hold, so no thread writes the guarded value while it is read.
-            seen = unsafe { *reader.Get() };
+            seen = reader.Get();
         }
         round = round + 1u64;
     }
@@ -102,8 +96,7 @@ func ReadOrWrite(shared: RwLock<uint64>) -> uint64 {
 
 func ReadShared(shared: &RwLock<uint64>) -> uint64 {
     let reader = shared.Read();
-    // Safety: `reader` holds a shared hold, so no thread writes the guarded value while it is read.
-    return unsafe { *reader.Get() };
+    return reader.Get();
 }
 
 struct Limited {
@@ -114,20 +107,18 @@ struct Limited {
 
 // Counts this thread in, and records the most threads that were ever in at once.
 func Enter(limited: &Limited) {
-    let inside = limited.inside.Lock();
-    // Safety: `inside` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    unsafe { *inside.Get() = *inside.Get() + 1u64; }
-    let peak = limited.peak.Lock();
-    // Safety: `inside` and `peak` each hold their lock, so only this thread reaches either guarded value.
-    unsafe {
-        if *inside.Get() > *peak.Get() { *peak.Get() = *inside.Get(); }
-    }
+    var inside = limited.inside.Lock();
+    let count = inside.GetMutable();
+    count = count + 1u64;
+    var peak = limited.peak.Lock();
+    let most = peak.GetMutable();
+    if count > most { most = count; }
 }
 
 func Leave(limited: &Limited) {
-    let inside = limited.inside.Lock();
-    // Safety: `inside` holds the lock, so the address it gives is the guarded value, which only this thread reaches.
-    unsafe { *inside.Get() = *inside.Get() - 1u64; }
+    var inside = limited.inside.Lock();
+    let count = inside.GetMutable();
+    count = count - 1u64;
 }
 
 func UsePermit(limited: Limited) -> () {

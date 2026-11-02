@@ -3,7 +3,7 @@
 // given its own handle with `Clone` and the storage lasts until the last handle is gone. Locking returns a guard,
 // which is the only way to reach the value and which releases the lock when it is dropped.
 
-import Core::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
+import Core::{ AtomicFetchAdd, AtomicLoad, MemoryOrder, Panic };
 import Sync::{
     AllocateBlock, DestroyBlock, LockWordContended, LockWord, ReleaseBlock, RetainBlock, TryLockWord, UnlockWord,
     WaitWhile, WakeAll, WakeOne
@@ -95,13 +95,28 @@ extend Mutex<T> {
 extend MutexGuard<T> {
     func =(self: &var MutexGuard<T>, other: &MutexGuard<T>);
 
-    /// The guarded value, which this thread alone may read and write while the guard holds the lock.
-    /// The address is valid for as long as the guard holds the lock; keeping it longer is a program error.
-    /// @returns the value's address
+    /// The guarded value, borrowed for reading while the guard holds the lock.
+    /// The guard stays borrowed while the reference is in use, so it cannot be unlocked or dropped under it. Calling
+    /// this on a guard that was unlocked is a program error.
+    /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/mutex#get
-    pub func Get(self: &MutexGuard<T>) -> *var T {
-        // Safety: a guard that has not been unlocked holds a count on `self.block`, so the block is live.
-        return unsafe { @self.block.value };
+    pub func Get(self: &MutexGuard<T>) -> &T {
+        if self.block == null { Panic("the value of an unlocked mutex guard was read"); }
+        // Safety: a guard that has not been unlocked, checked above, holds a count on `self.block`, so the block is
+        // live.
+        unsafe { return self.block.value; }
+    }
+
+    /// The guarded value, borrowed for writing, which this thread alone may do while the guard holds the lock.
+    /// The guard stays borrowed exclusively while the reference is in use. Calling this on a guard that was unlocked
+    /// is a program error.
+    /// @returns a writable reference to the value
+    /// @see https://rux-lang.dev/docs/api/sync/mutex#get-mutable
+    pub func GetMutable(self: &var MutexGuard<T>) -> &var T {
+        if self.block == null { Panic("the value of an unlocked mutex guard was written"); }
+        // Safety: a guard that has not been unlocked, checked above, holds a count on `self.block`, so the block is
+        // live.
+        unsafe { return self.block.value; }
     }
 
     /// Whether the guard still holds the lock.

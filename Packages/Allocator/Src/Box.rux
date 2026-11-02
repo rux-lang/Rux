@@ -52,19 +52,31 @@ extend Box<T> {
         return Box<T> { pointer: typed, allocator: allocator };
     }
 
-    /// The value this box holds.
-    /// `self` is borrowed and stays the caller's; the pointer borrows the box's storage and is valid only while the
-    /// box is. Returns null for a box whose value has been taken out.
+    /// The value this box holds, borrowed where it sits, or `none` for a box whose value has been taken out.
+    /// `self` stays borrowed while the reference is in use, so the box cannot be emptied, moved or destroyed under it.
     /// Cannot fail. Runs in constant time and allocates nothing.
-    /// The pointer dies with the box. Holding it past a move of the box is holding a pointer into released storage.
-    /// @returns the address of the held value, or null when the box is empty
+    /// @returns a reference to the held value, or `none` when the box is empty
     /// @see https://rux-lang.dev/docs/api/allocator/box#get
-    pub func Get(self: &Box<T>) -> *var T {
-        return self.pointer;
+    pub func Get(self: &Box<T>) -> &T? {
+        if self.pointer == null { return none; }
+        // Safety: the box invariant: a non-null `pointer`, checked above, addresses the value this box holds.
+        unsafe { return *self.pointer; }
+    }
+
+    /// The value this box holds, borrowed to be written where it sits, or `none` for a box whose value has been
+    /// taken out.
+    /// `self` stays borrowed exclusively while the reference is in use.
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    /// @returns a writable reference to the held value, or `none` when the box is empty
+    /// @see https://rux-lang.dev/docs/api/allocator/box#get-mutable
+    pub func GetMutable(self: &var Box<T>) -> &var T? {
+        if self.pointer == null { return none; }
+        // Safety: the box invariant: a non-null `pointer`, checked above, addresses the value this box holds.
+        unsafe { return *self.pointer; }
     }
 
     /// Whether this box still holds a value.
-    /// `self` is borrowed. False only for a box whose value `TryTake` has moved out, which is a box that owns
+    /// `self` is borrowed. False only for a box whose value `Take` has moved out, which is a box that owns
     /// nothing and releases nothing.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether the box holds nothing
@@ -74,26 +86,23 @@ extend Box<T> {
     }
 
     /// Moves the value out of the box, leaving the box empty, and releases the storage.
-    /// `self` is borrowed mutably and is left empty. `destination` receives the value and must not be null; it is
-    /// left unwritten when this reports `false`, which happens only for a box that is already empty.
+    /// `self` is borrowed mutably and is left empty. Reports `none` only for a box that is already empty.
     /// The storage goes back to the allocator here rather than at the box's destruction, so a caller taking the
     /// value out does not have to keep the box alive afterwards.
     /// Runs in whatever time the allocator takes.
-    /// @param destination receives the held value
-    /// @returns whether there was a value to take
-    /// @see https://rux-lang.dev/docs/api/allocator/box#try-take
-    pub func TryTake(self: &var Box<T>, destination: *var T) -> bool {
-        if self.pointer == null || destination == null { return false; }
+    /// @returns the held value, or `none` when the box is empty
+    /// @see https://rux-lang.dev/docs/api/allocator/box#take
+    pub func Take(self: &var Box<T>) -> T? {
+        if self.pointer == null { return none; }
         let held = self.pointer;
-        // Safety: the documented contract makes `destination` a non-null pointer to the caller's writable `T` (null is
-        // refused above), and `held` is this box's live value, which is cleared below so it is moved out only once.
-        unsafe { *destination <- *held; }
+        // Safety: `held` is this box's live value, which is cleared below so it is moved out only once.
+        let value <- unsafe { <-*held };
         let layout = Layout::ForValue<T>();
         // The storage came from this allocator with this layout, so a refusal would be the allocator's own bug; the
         // value is already out, and nothing the caller holds depends on the release.
         self.allocator.Deallocate(held as *var opaque, layout) catch { else => {} };
         self.pointer = null;
-        return true;
+        return .Some(<-value);
     }
 
     /// Destroys the value and releases its storage, if the box still holds any.

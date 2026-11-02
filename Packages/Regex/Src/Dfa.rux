@@ -262,8 +262,7 @@ extend Dfa {
         let instructions = self.program.all;
         self.stack.Clear();
         self.stack.Push(root) catch { else => fail RegexError::OutOfMemory() };
-        var popped: uint32 = 0;
-        while self.stack.TryPop(@popped) {
+        while self.stack.Pop() is .Some(popped) {
             var pc = popped as uint;
             while true {
                 let stamps = self.stamps.AsMutableSlice();

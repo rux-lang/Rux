@@ -94,7 +94,7 @@ func Main() -> int {
 
     // Reading past the end is an ordinary absence rather than a failure, and reads nothing.
     if populated.Get(populated.Length()) is int64 { return 53; }
-    if populated.Reference(populated.Length()) is *int64 { return 54; }
+    if populated.At(populated.Length()) is .Some(_) { return 54; }
 
     // Insert, RemoveAt and SwapRemoveAt return with C04; the rejections they report are covered there.
 

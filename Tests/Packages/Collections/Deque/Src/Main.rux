@@ -57,8 +57,8 @@ func Main() -> int {
     Assert(queue.Capacity() == 0, "and has no storage");
     Assert(queue.PopFront() == none, "with nothing to take from either end");
     Assert(queue.PopBack() == none, "front or back");
-    Assert(queue.Front() == none, "and nothing to look at");
-    Assert(queue.Back() == none, "at either end");
+    Assert(queue.Front() is none, "and nothing to look at");
+    Assert(queue.Back() is none, "at either end");
 
     // The first push takes the minimum capacity.
     queue.PushBack(1) catch { else => Panic("the first push succeeds") };
@@ -116,9 +116,7 @@ func Main() -> int {
     queue.PushFront(5) catch { else => Panic("one of them at the front, which wraps the head") };
     Assert(!queue.IsContiguous(), "so the elements are in two runs");
 
-    var front: int32[..] = [];
-    var back: int32[..] = [];
-    queue.AsSlices(@front, @back);
+    let (front, back) = queue.AsSlices();
     Assert(front.length + back.length == queue.Length(), "the two runs together are every element");
     Assert(front.length > 0, "with the front run non-empty");
     Assert(back.length > 0, "and the back run too, for a wrapped deque");
@@ -132,13 +130,13 @@ func Main() -> int {
     // Safety: the view covers three elements, asserted above.
     Assert(unsafe { view.data[0] == 5 && view.data[1] == 10 && view.data[2] == 20 }, "in the order the deque had them");
 
-    queue.AsSlices(@front, @back);
-    Assert(back.length == 0, "and a contiguous deque has nothing in its second run");
+    let (_, rest) = queue.AsSlices();
+    Assert(rest.length == 0, "and a contiguous deque has nothing in its second run");
 
     // An empty deque has two empty runs rather than one of something.
     queue.Clear();
-    queue.AsSlices(@front, @back);
-    Assert(front.length == 0 && back.length == 0, "an empty deque is two empty runs");
+    let (emptyFront, emptyBack) = queue.AsSlices();
+    Assert(emptyFront.length == 0 && emptyBack.length == 0, "an empty deque is two empty runs");
     Assert(queue.IsContiguous(), "and is contiguous for want of anything to wrap");
 
     // Reserving takes room without changing the length; shrinking gives back what rounding leaves spare.

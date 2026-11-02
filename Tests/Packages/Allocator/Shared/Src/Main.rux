@@ -36,8 +36,7 @@ func Churn(handle: Arc<Tracked>) -> int32 {
     var total: int32 = 0;
     while round < 20000 {
         let copy = handle.Clone();
-        // Safety: `copy` is a live handle, so `Get` addresses the shared value, which lives while any handle does.
-        total = total + unsafe { copy.Get().value };
+        total = total + copy.Get().value;
         round = round + 1;
     }
     return total;
@@ -45,20 +44,17 @@ func Churn(handle: Arc<Tracked>) -> int32 {
 
 func Counted() -> int {
     var first = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 7 }) catch { else => return 1 };
-    // Safety: `first` is a live handle, so `Get` addresses the shared value, which lives while any handle does.
-    Assert(first.Count() == 1u && unsafe { first.Get().value } == 7, "one handle");
+    Assert(first.Count() == 1u && first.Get().value == 7, "one handle");
     match first.GetMutable() {
         .Some(value) => {
-            // Safety: `value` addresses the value only `first` holds, live while `first` is and reached by no other.
-            unsafe { value.value = 8; }
+            value.value = 8;
         },
         none => Assert(false, "a lone handle can write")
     }
     var second = first.Clone();
-    // Safety: `second` is a live handle, so `Get` addresses the shared value, which lives while any handle does.
-    let secondValue = unsafe { second.Get().value };
+    let secondValue = second.Get().value;
     Assert(first.Count() == 2u && second.SameAs(first) && secondValue == 8, "a clone shares the value");
-    Assert(first.GetMutable() == none, "a shared value cannot be written");
+    Assert(first.GetMutable() is none, "a shared value cannot be written");
     Assert(Keep(second.Clone()) == 3u && first.Count() == 2u, "a clone passed by value counts while it lives");
     second = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 9 }) catch { else => return 2 };
     Assert(first.Count() == 1u && !second.SameAs(first) && Destroys() == 0, "reassigning releases one count");
@@ -77,8 +73,7 @@ func Threaded() -> int {
     Assert(sum == 80000 && shared.Count() == 1u && Destroys() == 2, "every thread's clones were counted and dropped");
     match shared.GetMutable() {
         .Some(value) => {
-            // Safety: `value` addresses the value only `shared` holds, live while `shared` is and reached by no other.
-            unsafe { value.value = 2; }
+            value.value = 2;
         },
         none => Assert(false, "the last handle can write")
     }

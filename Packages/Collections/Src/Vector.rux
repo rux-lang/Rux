@@ -1,5 +1,5 @@
 // A contiguous run of elements that grows as things are appended to it.
-// `Vector<T>` is the container to reach for by default. It is the stack — `Push` and `TryPop` work at the end that
+// `Vector<T>` is the container to reach for by default. It is the stack — `Push` and `Pop` work at the end that
 // costs nothing to reach — and it is what a sequence of unknown length is built into before anything else looks at
 // it. `Array<T>` is what it becomes when the length stops changing.
 // A vector owns its storage and its elements, so copying is prohibited and it is move-only. Handing one to a function
@@ -12,8 +12,8 @@
 // `Push` moves its argument in rather than copying it, so a vector is how a sequence of elements that own something
 // is built: each is moved in exactly once and destroyed exactly once, when the vector is.
 // Two failure shapes, as everywhere in this package: an operation that may allocate reports a `CollectionError`, and
-// one that cannot allocate reports an ordinary miss with a `bool` and an out-parameter. A reported failure means the
-// vector is exactly as it was.
+// one that cannot allocate reports an ordinary miss as `none`, whether it hands back a value or a reference to an
+// element. A reported failure means the vector is exactly as it was.
 // The vector invariant, which every `Safety:` comment below leans on: `data` is null with `capacity` zero, or a block
 // from `AllocateBlock` or `ReallocateBlock` with room for `capacity` elements, and `length <= capacity` of them,
 // counting from the front, are initialized.
@@ -270,20 +270,18 @@ extend Vector<T> {
     }
 
     /// Takes the last element out of the vector.
-    /// `self` is borrowed mutably; `value` receives the element, which is moved out rather than copied, so this is
-    /// how an element that owns something leaves a vector without being destroyed. Reports false and writes nothing
-    /// when the vector is empty.
+    /// `self` is borrowed mutably; the element is moved out rather than copied, so this is how an element that owns
+    /// something leaves a vector without being destroyed. Reports `none` and changes nothing when the vector is empty.
     /// The storage is kept, so a vector emptied this way costs nothing to refill.
-    /// @param value receives the removed element
-    /// @returns whether there was an element to remove
-    /// @see https://rux-lang.dev/docs/api/collections/vector#try-pop
-    pub func TryPop(self: &var Vector<T>, value: *var T) -> bool {
-        if self.length == 0 || value == null { return false; }
+    /// @returns the removed element, or `none` when the vector is empty
+    /// @see https://rux-lang.dev/docs/api/collections/vector#pop
+    pub func Pop(self: &var Vector<T>) -> T? {
+        if self.length == 0 { return none; }
         self.length = self.length - 1;
-        // Safety: the documented contract makes `value` a non-null pointer, checked above, to the caller's writable
-        // `T`, and by the vector invariant the element at the old last index is initialized and now outside `length`.
-        unsafe { *value <- self.data[self.length]; }
-        return true;
+        // Safety: the vector invariant: the element at the old last index is initialized, and it is now outside
+        // `length`, so nothing destroys it again once it is moved out.
+        let removed <- unsafe { <-self.data[self.length] };
+        return .Some(<-removed);
     }
 
     /// The element at `index`, or `none` when there is no such index.
@@ -297,16 +295,27 @@ extend Vector<T> {
         return .Some(unsafe { self.data[index] });
     }
 
-    /// A pointer to the element at `index`, or `none` when there is no such index.
-    /// `self` is borrowed; the pointer borrows the element where it sits.
-    /// The pointer is valid until the vector grows, shrinks, or is destroyed.
+    /// The element at `index`, borrowed where it sits, or `none` when there is no such index.
+    /// `self` stays borrowed while the reference is in use, so the vector cannot grow, shrink, or be destroyed under
+    /// it.
     /// @param index which one, counting from zero
-    /// @returns the address of the element, or `none` when the index is out of range
-    /// @see https://rux-lang.dev/docs/api/collections/vector#reference
-    pub func Reference(self: &Vector<T>, index: uint) -> (*T)? {
+    /// @returns a reference to the element, or `none` when the index is out of range
+    /// @see https://rux-lang.dev/docs/api/collections/vector#at
+    pub func At(self: &Vector<T>, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
-        return .Some(unsafe { @self.data[index] });
+        unsafe { return self.data[index]; }
+    }
+
+    /// The element at `index`, borrowed to be written where it sits, or `none` when there is no such index.
+    /// `self` stays borrowed exclusively while the reference is in use.
+    /// @param index which one, counting from zero
+    /// @returns a writable reference to the element, or `none` when the index is out of range
+    /// @see https://rux-lang.dev/docs/api/collections/vector#at-mutable
+    pub func AtMutable(self: &var Vector<T>, index: uint) -> &var T? {
+        if index >= self.length { return none; }
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
+        unsafe { return self.data[index]; }
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.
@@ -468,21 +477,21 @@ extend Vector<T> {
         return .Some(<-removed);
     }
 
-    /// A pointer to the first element, or `none` for an empty vector.
-    /// `self` is borrowed; the pointer borrows the element where it sits.
-    /// @returns the address of the first element, or `none` when empty
+    /// The first element, borrowed where it sits, or `none` for an empty vector.
+    /// `self` stays borrowed while the reference is in use.
+    /// @returns a reference to the first element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/vector#first
-    pub func First(self: &Vector<T>) -> (*T)? {
-        return self.Reference(0);
+    pub func First(self: &Vector<T>) -> &T? {
+        return self.At(0);
     }
 
-    /// A pointer to the last element, or `none` for an empty vector.
-    /// `self` is borrowed; the pointer borrows the element where it sits.
-    /// @returns the address of the last element, or `none` when empty
+    /// The last element, borrowed where it sits, or `none` for an empty vector.
+    /// `self` stays borrowed while the reference is in use.
+    /// @returns a reference to the last element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/vector#last
-    pub func Last(self: &Vector<T>) -> (*T)? {
+    pub func Last(self: &Vector<T>) -> &T? {
         if self.length == 0 { return none; }
-        return self.Reference(self.length - 1);
+        return self.At(self.length - 1);
     }
 
     /// A borrowed read-only view of `count` elements starting at `start`.

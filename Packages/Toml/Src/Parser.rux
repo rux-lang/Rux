@@ -624,7 +624,7 @@ extend TomlParser {
         }
         let last = parts.Length() - 1;
         let finalName = parts.AsSlice().data[last].View();
-        if (*target).Find(finalName) != null {
+        if (*target).Find(finalName) is .Some(_) {
             self.Stop(TomlStop::DuplicateKey);
             parts.Clear();
             return;
@@ -641,7 +641,7 @@ extend TomlParser {
     // and stays valid until `target` grows.
     unsafe func DescendDotted(self: &var TomlParser, target: *var TomlValue, name: StringView,
                        copy: StringView) -> *var TomlValue {
-        var existing = (*target).FindMutable(name);
+        var existing = (*target).FindAddress(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             fresh.dotted = true;
@@ -650,7 +650,7 @@ extend TomlParser {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
-            return (*target).FindMutable(name);
+            return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
             self.Stop(TomlStop::NotATable);
@@ -730,7 +730,7 @@ extend TomlParser {
     // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
     // and stays valid until the table that holds it grows.
     unsafe func DescendHeader(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
-        var existing = (*target).FindMutable(name);
+        var existing = (*target).FindAddress(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
@@ -738,7 +738,7 @@ extend TomlParser {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
-            return (*target).FindMutable(name);
+            return (*target).FindAddress(name);
         }
         if existing.kind == TomlKind::Array {
             if !existing.tableArray || (*existing).Length() == 0 {
@@ -747,7 +747,7 @@ extend TomlParser {
             }
             // A path through an array of tables means its most recent element, which is the one still being
             // written; the earlier ones are finished.
-            return (*existing).AtMutable((*existing).Length() - 1);
+            return (*existing).LastAddress();
         }
         if existing.kind != TomlKind::Table {
             self.Stop(TomlStop::NotATable);
@@ -768,7 +768,7 @@ extend TomlParser {
     // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
     // and stays valid until `target` grows.
     unsafe func OpenTable(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
-        var existing = (*target).FindMutable(name);
+        var existing = (*target).FindAddress(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             fresh.defined = true;
@@ -777,7 +777,7 @@ extend TomlParser {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
-            return (*target).FindMutable(name);
+            return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
             self.Stop(TomlStop::NotATable);
@@ -805,7 +805,7 @@ extend TomlParser {
     // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
     // and stays valid until the array of tables that holds it grows.
     unsafe func OpenTableArray(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
-        var existing = (*target).FindMutable(name);
+        var existing = (*target).FindAddress(name);
         if existing == null {
             var fresh = TomlValue::Array(self.allocator);
             fresh.tableArray = true;
@@ -814,7 +814,7 @@ extend TomlParser {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
             }
-            existing = (*target).FindMutable(name);
+            existing = (*target).FindAddress(name);
         }
         else if existing.kind != TomlKind::Array || !existing.tableArray {
             // A static array is a value, not a place to put tables; the two are spelled differently and mean
@@ -828,7 +828,7 @@ extend TomlParser {
             self.Stop(TomlStop::OutOfMemory);
             return null;
         }
-        return (*existing).AtMutable((*existing).Length() - 1);
+        return (*existing).LastAddress();
     }
 
     /// Reads the whole document into a table.

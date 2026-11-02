@@ -116,17 +116,27 @@ extend Array<T> {
         return unsafe { self.data[index] };
     }
 
-    /// A pointer to the element at `index`, or `none` when there is no such index.
-    /// `self` is borrowed; the pointer borrows the element where it sits. This is how an element that owns something
-    /// is read without being copied.
-    /// The pointer is valid until the array is destroyed or moved.
+    /// The element at `index`, borrowed where it sits, or `none` when there is no such index.
+    /// `self` stays borrowed while the reference is in use. This is how an element that owns something is read
+    /// without being copied.
     /// @param index which one, counting from zero
-    /// @returns the address of the element, or `none` when the index is out of range
-    /// @see https://rux-lang.dev/docs/api/collections/array#reference
-    pub func Reference(self: &Array<T>, index: uint) -> (*T)? {
+    /// @returns a reference to the element, or `none` when the index is out of range
+    /// @see https://rux-lang.dev/docs/api/collections/array#at
+    pub func At(self: &Array<T>, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
-        return unsafe { @self.data[index] };
+        unsafe { return self.data[index]; }
+    }
+
+    /// The element at `index`, borrowed to be written where it sits, or `none` when there is no such index.
+    /// `self` stays borrowed exclusively while the reference is in use.
+    /// @param index which one, counting from zero
+    /// @returns a writable reference to the element, or `none` when the index is out of range
+    /// @see https://rux-lang.dev/docs/api/collections/array#at-mutable
+    pub func AtMutable(self: &var Array<T>, index: uint) -> &var T? {
+        if index >= self.length { return none; }
+        // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
+        unsafe { return self.data[index]; }
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.

@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, Box, SystemAllocator };
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 // A Box owns an allocation, so what is checked is that the allocation is released exactly once: not twice when the
 // box is moved, and not at all when its value was taken out first. A double release would be caught by the system
@@ -25,16 +25,16 @@ extend Tracked {
 func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     // A box accepts a move-only value.
     var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91 })?;
-    // Safety: `boxed` was just filled, so `Get` addresses its live value; `destroyed` is the caller's live counter.
-    let (held, destroyedCount) = unsafe { (boxed.Get().value, *destroyed) };
+    let held = (boxed.Get() ?? Panic("the box was just filled")).value;
+    // Safety: `destroyed` is the address of the caller's live counter.
+    let destroyedCount = unsafe { *destroyed };
     Assert(held == 91, "the box owns its value");
     Assert(destroyedCount == 0, "without destroying it during construction");
 }
 
 func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27 })?;
-    var taken = Tracked { destroyed: null, value: 0 };
-    Assert(boxed.TryTake(@taken), "a move-only value can be taken from a box");
+    let taken = boxed.Take() ?? Panic("a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
     // Safety: `destroyed` is the address of the live counter the caller passed in.
     let destroyedCount = unsafe { *destroyed };
@@ -45,30 +45,26 @@ func Main() -> ! AllocError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    // An ordinary box holds its value and hands back a pointer into its own storage.
+    // An ordinary box holds its value and lends it where it sits in the box's own storage.
     var boxed = Box::Create<int64>(allocator, 42)?;
     Assert(!boxed.IsEmpty(), "the box holds a value");
-    // Safety: `boxed` holds a value, checked above, so `Get` addresses its live `int64`.
-    let (given, written) = unsafe {
-        let given = *boxed.Get();
-        *boxed.Get() = 43;
-        (given, *boxed.Get())
-    };
+    let given: int64 = boxed.Get() ?? Panic("the box holds a value");
+    let slot = boxed.GetMutable() ?? Panic("the box holds a value");
+    slot = 43;
+    let written: int64 = boxed.Get() ?? Panic("the box holds a value");
     Assert(given == 42, "which is the one it was given");
     Assert(written == 43, "and the value is writable through the box");
 
     // Taking the value out empties the box and releases the storage there and then.
-    var taken: int64 = 0;
-    Assert(boxed.TryTake(@taken), "the value is taken out");
+    let taken = boxed.Take() ?? Panic("the value is taken out");
     Assert(taken == 43, "and is what the box held");
     Assert(boxed.IsEmpty(), "which leaves the box empty");
-    Assert(boxed.Get() == null as *var int64, "with nothing to point at");
-    Assert(!boxed.TryTake(@taken), "and taking again reports that there is nothing");
+    Assert(boxed.Get() is none, "with nothing to lend");
+    Assert(boxed.Take() is none, "and taking again reports that there is nothing");
 
     // A box of a value wider than a machine word, to exercise a layout that is not the default.
     var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210)?;
-    // Safety: `wide` was just filled, so `Get` addresses its live `uint64`.
-    let wideValue = unsafe { *wide.Get() };
+    let wideValue: uint64 = wide.Get() ?? Panic("the box was just filled");
     Assert(wideValue == 0xFEDCBA9876543210u64, "a wide box keeps every bit of its value");
 
     // Many boxes in sequence, each released as its scope ends. A leak here would exhaust the address space long
@@ -76,8 +72,7 @@ func Main() -> ! AllocError {
     var index: int32 = 0;
     while index < 512 {
         var scoped = Box::Create<int64>(allocator, index as int64)?;
-        // Safety: `scoped` was just filled, so `Get` addresses its live `int64`.
-        let scopedValue = unsafe { *scoped.Get() };
+        let scopedValue: int64 = scoped.Get() ?? Panic("the box was just filled");
         Assert(scopedValue == index as int64, "a scoped box holds what it was given");
         index = index + 1;
     }
@@ -85,12 +80,9 @@ func Main() -> ! AllocError {
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
     var source = Box::Create<int64>(allocator, 7)?;
     var destination <- source;
-    // Safety: `destination` took over the filled box from `source`, so `Get` addresses its live `int64`.
-    let movedValue = unsafe { *destination.Get() };
+    let movedValue: int64 = destination.Get() ?? Panic("the destination took over the filled box");
     Assert(movedValue == 7, "the destination holds the value");
-
-    var emptied: int64 = 0;
-    Assert(destination.TryTake(@emptied) && emptied == 7, "and it is still takeable from there");
+    Assert(destination.Take() is .Some(emptied) && emptied == 7, "and it is still takeable from there");
 
     var destroyed: int32 = 0;
     BoxAndDestroy(allocator, @destroyed)?;

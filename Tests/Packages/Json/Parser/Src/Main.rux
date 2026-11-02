@@ -10,12 +10,29 @@
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
 import Core::{ Assert, Panic, Succeeded };
-import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParser, JsonValue, Parse,
-               ParseWith };
+import Json::{
+    DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonMember, JsonNumber, JsonParseError, JsonParser,
+    JsonValue, Parse, ParseWith
+};
 import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView();
+}
+
+// The number a value holds, which the test has just made it hold.
+func Number(value: &JsonValue) -> &JsonNumber {
+    return value.AsNumber() ?? Panic("the value is a number");
+}
+
+// The value of the member named `name`, which the test has just seen the object hold.
+func Member(object: &JsonValue, name: StringView) -> &JsonValue {
+    return object.Find(name) ?? Panic("the object holds the member");
+}
+
+// The member at `index`, which the test has just seen the object hold.
+func MemberOf(object: &JsonValue, index: uint) -> &JsonMember {
+    return object.MemberAt(index) ?? Panic("the object holds the member");
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -130,7 +147,7 @@ func Main() -> int {
     var object = Accepts(allocator, "{\"a\":1,\"b\":2}", "an object parses");
     Assert(object.Kind() == JsonKind::Object && object.Length() == 2, "with two members");
     let a = View("a");
-    Assert(object.Find(a) != null, "which are findable by name");
+    Assert(object.Find(a) is .Some(_), "which are findable by name");
     var emptyObject = Accepts(allocator, "{}", "an empty object parses");
     Assert(emptyObject.Length() == 0, "with none");
     var nested = Accepts(allocator, "{\"a\":{\"b\":[1,{\"c\":null}]}}", "a nested document parses");
@@ -182,7 +199,7 @@ func Main() -> int {
     var firstValue: int64 = 0;
     // Safety: `keptFirst` holds one member named `a`, so `Find` returns a non-null pointer into it, and
     // `AsNumber` points at that member's number payload.
-    Assert(unsafe { (*(*keptFirst.Find(nameA)).AsNumber()).AsInt64(@firstValue) } && firstValue == 1,
+    Assert(unsafe { Number(Member(keptFirst, nameA)).AsInt64(@firstValue) } && firstValue == 1,
            "which holds the first value");
 
     var keepLastParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
@@ -192,7 +209,7 @@ func Main() -> int {
     var lastValue: int64 = 0;
     // Safety: `keptLast` holds one member named `a`, so `Find` returns a non-null pointer into it, and
     // `AsNumber` points at that member's number payload.
-    Assert(unsafe { (*(*keptLast.Find(nameA)).AsNumber()).AsInt64(@lastValue) } && lastValue == 2,
+    Assert(unsafe { Number(Member(keptLast, nameA)).AsInt64(@lastValue) } && lastValue == 2,
            "which holds the last value");
 
     var keepAllParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
@@ -202,18 +219,15 @@ func Main() -> int {
     var foundValue: int64 = 0;
     // Safety: `keptAll` holds members named `a`, so `Find` returns a non-null pointer into it, and
     // `AsNumber` points at that member's number payload.
-    Assert(unsafe { (*(*keptAll.Find(nameA)).AsNumber()).AsInt64(@foundValue) } && foundValue == 1,
+    Assert(unsafe { Number(Member(keptAll, nameA)).AsInt64(@foundValue) } && foundValue == 1,
            "with lookup finding the first, which is what a reader encounters");
 
     // Insertion order is kept, which is what lets a document be written back recognisably.
     var ordered = Accepts(allocator, "{\"zeta\":1,\"alpha\":2}", "an object with several members parses");
     let zeta = View("zeta");
     let alpha = View("alpha");
-    // Safety: `ordered` has two members, so `MemberAt(0)` and `MemberAt(1)` return non-null pointers into it.
-    unsafe {
-        Assert(ordered.MemberAt(0).name.View().Equals(zeta), "the first member is the first written");
-        Assert(ordered.MemberAt(1).name.View().Equals(alpha), "and the second the second");
-    }
+    Assert(MemberOf(ordered, 0).name.View().Equals(zeta), "the first member is the first written");
+    Assert(MemberOf(ordered, 1).name.View().Equals(alpha), "and the second the second");
 
     // The limits, reached through the parser rather than the lexer.
     var shallow = JsonLimits::Default();
@@ -283,12 +297,9 @@ func Main() -> int {
     let three = View("three");
     let two = View("two");
     let one = View("one");
-    // Safety: `reversed` has three members, so `MemberAt` returns a non-null pointer into it for 0, 1 and 2.
-    unsafe {
-        Assert(reversed.MemberAt(0).name.View().Equals(three), "with its first member first");
-        Assert(reversed.MemberAt(1).name.View().Equals(two), "its second second");
-        Assert(reversed.MemberAt(2).name.View().Equals(one), "and its third third");
-    }
+    Assert(MemberOf(reversed, 0).name.View().Equals(three), "with its first member first");
+    Assert(MemberOf(reversed, 1).name.View().Equals(two), "its second second");
+    Assert(MemberOf(reversed, 2).name.View().Equals(one), "and its third third");
 
 
     // A string carrying an escape and a raw character outside ASCII: the two together are what caught a

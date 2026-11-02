@@ -1015,8 +1015,9 @@ func TreeScalars(value: &TomlValue) -> uint {
         var total: uint = 0;
         var index: uint = 0;
         while index < value.Length() {
-            // Safety: `index` is below `value.Length()`, so `EntryAt` returns a non-null pointer into `value`.
-            total = total + unsafe { TreeScalars((*value.EntryAt(index)).value) };
+            if value.EntryAt(index) is .Some(entry) {
+                total = total + TreeScalars(entry.value);
+            }
             index = index + 1;
         }
         return total;
@@ -1025,8 +1026,9 @@ func TreeScalars(value: &TomlValue) -> uint {
         var total: uint = 0;
         var index: uint = 0;
         while index < value.Length() {
-            // Safety: `index` is below `value.Length()`, so `At` returns a non-null pointer into `value`.
-            total = total + unsafe { TreeScalars(*value.At(index)) };
+            if value.At(index) is .Some(element) {
+                total = total + TreeScalars(element);
+            }
             index = index + 1;
         }
         return total;

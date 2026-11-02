@@ -267,9 +267,9 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
             if index > 0 {
                 Emit(writer, ", ")?;
             }
-            // Safety: `index` is below `value.Length()` of an array, so `At` returned an element stored in `value`,
-            // which is borrowed for the whole call.
-            unsafe { EmitValue(writer, *value.At(index))?; }
+            if value.At(index) is .Some(element) {
+                EmitValue(writer, element)?;
+            }
             index = index + 1;
         }
         return EmitByte(writer, 0x5D);
@@ -284,13 +284,10 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
             if index > 0 {
                 Emit(writer, ", ")?;
             }
-            let entry = value.EntryAt(index);
-            // Safety: `index` is below `value.Length()` of a table, so `EntryAt` returned an entry stored in `value`,
-            // which is borrowed for the whole call.
-            unsafe {
-                EmitKey(writer, (*entry).key.View().Bytes())?;
+            if value.EntryAt(index) is .Some(entry) {
+                EmitKey(writer, entry.key.View().Bytes())?;
                 Emit(writer, " = ")?;
-                EmitValue(writer, (*entry).value)?;
+                EmitValue(writer, entry.value)?;
             }
             index = index + 1;
         }
@@ -312,16 +309,11 @@ func IsBodyEntry(value: &TomlValue) -> bool {
 func EmitBody(writer: &var TextWriter, table: &TomlValue) -> ! FormatError {
     var index: uint = 0;
     while index < table.Length() {
-        let entry = table.EntryAt(index);
-        // Safety: `index` is below `table.Length()` of a table, so `EntryAt` returned an entry stored in `table`,
-        // which is borrowed for the whole call.
-        unsafe {
-            if IsBodyEntry((*entry).value) {
-                EmitKey(writer, (*entry).key.View().Bytes())?;
-                Emit(writer, " = ")?;
-                EmitValue(writer, (*entry).value)?;
-                EmitByte(writer, 0x0A)?;
-            }
+        if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
+            EmitKey(writer, entry.key.View().Bytes())?;
+            Emit(writer, " = ")?;
+            EmitValue(writer, entry.value)?;
+            EmitByte(writer, 0x0A)?;
         }
         index = index + 1;
     }
@@ -347,10 +339,9 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
                   root: bool) -> ! FormatError {
     var index: uint = 0;
     while index < table.Length() {
-        let entry = table.EntryAt(index);
-        // Safety: `index` is below `table.Length()` of a table, so `EntryAt` returned an entry stored in `table`,
-        // which is borrowed for the whole call.
-        unsafe { EmitSection(writer, *entry, path, written, root)?; }
+        if table.EntryAt(index) is .Some(entry) {
+            EmitSection(writer, entry, path, written, root)?;
+        }
         index = index + 1;
     }
     return;
@@ -374,15 +365,11 @@ func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath
     else {
         var element: uint = 0;
         while element < entry.value.Length() {
-            let held = entry.value.At(element);
+            let held = entry.value.At(element) ?? break;
             EmitHeader(writer, path, true, written == 0)?;
             written = written + 1;
-            // Safety: `element` is below `entry.value.Length()` of an array of tables, so `At` returned an element
-            // stored in `entry.value`, which is borrowed for the whole call.
-            unsafe {
-                EmitBody(writer, *held)?;
-                EmitSections(writer, *held, path, written, false)?;
-            }
+            EmitBody(writer, held)?;
+            EmitSections(writer, held, path, written, false)?;
             element = element + 1;
         }
     }
@@ -439,12 +426,8 @@ func CountBodyEntries(table: &TomlValue) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < table.Length() {
-        // Safety: `index` is below `table.Length()` of a table, so `EntryAt` returned an entry stored in `table`,
-        // which is borrowed for the whole call.
-        unsafe {
-            if IsBodyEntry((*table.EntryAt(index)).value) {
-                count = count + 1;
-            }
+        if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
+            count = count + 1;
         }
         index = index + 1;
     }

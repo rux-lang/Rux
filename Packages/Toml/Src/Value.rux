@@ -365,52 +365,70 @@ extend TomlValue {
         return Succeeded(self.entries.Push(<-entry));
     }
 
-    /// The element at `index`, borrowed, or null when there is none.
+    /// The element at `index`, borrowed, or `none` when there is none.
+    /// `self` stays borrowed while the reference is in use.
     /// @param index which one, counting from zero
-    /// @returns the element at `index`, or null when there is none
+    /// @returns the element at `index`, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#at
-    pub func At(self: &TomlValue, index: uint) -> *TomlValue {
-        if self.kind != TomlKind::Array || index >= self.elements.Length() { return null; }
-        let slice = self.elements.AsSlice();
-        // Safety: `index` is below `self.elements.Length()`, the length of `slice`, checked above.
-        return unsafe { @slice.data[index] };
+    pub func At(self: &TomlValue, index: uint) -> &TomlValue? {
+        if self.kind != TomlKind::Array { return none; }
+        return self.elements.At(index);
     }
 
-    /// The element at `index`, borrowed for modification, or null when there is none.
+    /// The element at `index`, borrowed for modification, or `none` when there is none.
     /// This is how an array of tables grows: the header that opens a new one appends, and the lines under it
     /// are written into the last element in place.
     /// @param index which one, counting from zero
-    /// @returns the element at `index` for writing, or null when there is none
+    /// @returns the element at `index` for writing, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#at-mutable
-    pub func AtMutable(self: &var TomlValue, index: uint) -> *var TomlValue {
-        if self.kind != TomlKind::Array || index >= self.elements.Length() { return null; }
-        var slice = self.elements.AsMutableSlice();
-        // Safety: `index` is below `self.elements.Length()`, the length of `slice`, checked above.
-        return unsafe { @slice.data[index] };
+    pub func AtMutable(self: &var TomlValue, index: uint) -> &var TomlValue? {
+        if self.kind != TomlKind::Array { return none; }
+        return self.elements.AtMutable(index);
     }
 
-    /// The value under `key`, borrowed, or null when the table has none.
+    /// The value under `key`, borrowed, or `none` when the table has none.
     /// @param key the key to look up
-    /// @returns the entry with that key, or null when there is none
+    /// @returns the value under that key, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#find
-    pub func Find(self: &TomlValue, key: StringView) -> *TomlValue {
-        if self.kind != TomlKind::Table { return null; }
-        let slice = self.entries.AsSlice();
+    pub func Find(self: &TomlValue, key: StringView) -> &TomlValue? {
+        if self.kind != TomlKind::Table { return none; }
         var index: uint = 0;
-        while index < slice.length {
+        while index < self.entries.Length() {
             var held = key;
-            // Safety: `index` is below `slice.length`, checked by the loop.
-            if unsafe { slice.data[index].key.View().Equals(held) } { return unsafe { @slice.data[index].value }; }
+            if self.entries.At(index) is .Some(entry) && entry.key.View().Equals(held) { return entry.value; }
             index = index + 1;
         }
-        return null;
+        return none;
     }
 
-    /// The value under `key`, borrowed for modification, or null when the table has none.
+    /// The value under `key`, borrowed for modification, or `none` when the table has none.
     /// @param key the key to look up
-    /// @returns the entry with that key for writing, or null when there is none
+    /// @returns the value under that key for writing, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#find-mutable
-    pub func FindMutable(self: &var TomlValue, key: StringView) -> *var TomlValue {
+    pub func FindMutable(self: &var TomlValue, key: StringView) -> &var TomlValue? {
+        if self.kind != TomlKind::Table { return none; }
+        var index: uint = 0;
+        while index < self.entries.Length() {
+            var held = key;
+            if self.entries.AtMutable(index) is .Some(entry) && entry.key.View().Equals(held) { return entry.value; }
+            index = index + 1;
+        }
+        return none;
+    }
+
+    /// The entry at `index`, borrowed, or `none` when there is none.
+    /// @param index which one, counting from zero
+    /// @returns the entry at `index`, or `none` when there is none
+    /// @see https://rux-lang.dev/docs/api/toml/toml-value#entry-at
+    pub func EntryAt(self: &TomlValue, index: uint) -> &TomlEntry? {
+        if self.kind != TomlKind::Table { return none; }
+        return self.entries.At(index);
+    }
+
+    // The address of the value under `key`, or null when the table has none. The parser walks the document with a
+    // cursor it carries from one table to the next while it inserts into them, which a reference cannot be, so it
+    // keeps an address instead; the address stays valid until the table that holds the value grows.
+    func FindAddress(self: &var TomlValue, key: StringView) -> *var TomlValue {
         if self.kind != TomlKind::Table { return null; }
         var slice = self.entries.AsMutableSlice();
         var index: uint = 0;
@@ -423,15 +441,12 @@ extend TomlValue {
         return null;
     }
 
-    /// The entry at `index`, borrowed, or null when there is none.
-    /// @param index which one, counting from zero
-    /// @returns the entry at `index`, or null when there is none
-    /// @see https://rux-lang.dev/docs/api/toml/toml-value#entry-at
-    pub func EntryAt(self: &TomlValue, index: uint) -> *TomlEntry {
-        if self.kind != TomlKind::Table || index >= self.entries.Length() { return null; }
-        let slice = self.entries.AsSlice();
-        // Safety: `index` is below `self.entries.Length()`, the length of `slice`, checked above.
-        return unsafe { @slice.data[index] };
+    // The address of the last element of an array, or null when it has none, for the parser's cursor as above.
+    func LastAddress(self: &var TomlValue) -> *var TomlValue {
+        if self.kind != TomlKind::Array || self.elements.Length() == 0 { return null; }
+        var slice = self.elements.AsMutableSlice();
+        // Safety: the array is not empty, checked above, so its last index is below `slice.length`.
+        return unsafe { @slice.data[slice.length - 1] };
     }
 
     /// Releases everything this value owns.
@@ -441,10 +456,8 @@ extend TomlValue {
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#destructor
     func ~TomlValue(self: &var TomlValue) {
         self.text.Clear();
-        while self.elements.Length() > 0 {
-            var element = TomlValue::Table(self.allocator);
-            if !self.elements.TryPop(@element) { break; }
-        }
+        // Each element taken out dies at the end of its test, taking its own children with it.
+        while self.elements.Pop() is .Some(_) {}
         self.entries.Clear();
     }
 }

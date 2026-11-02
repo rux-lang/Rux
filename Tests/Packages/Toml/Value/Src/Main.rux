@@ -71,21 +71,20 @@ func Main() -> int {
     var middle = String::FromBytes(allocator, "middle") catch { else => Panic("the key is made") };
     table.Insert(move middle, TomlValue::Integer(allocator, 3));
     Assert(table.Length() == 3, "a table holds what it was given");
-    // Safety: `table` holds three entries, so `EntryAt(0)` returns a non-null pointer into it.
-    Assert(unsafe { table.EntryAt(0).key.View().Length() } == 5, "the first entry is the first one added");
-    // Safety: `table` holds three entries, so `EntryAt(0)` returns a non-null pointer into it.
-    var firstKey = unsafe { table.EntryAt(0).key.View() };
+    let first = table.EntryAt(0) ?? Panic("the table holds three entries");
+    Assert(first.key.View().Length() == 5, "the first entry is the first one added");
+    var firstKey = first.key.View();
     Assert(firstKey.Bytes()[0] == c8'z', "which is zebra, not apple");
-    // Safety: `table` holds three entries, so `EntryAt(2)` returns a non-null pointer into it.
-    Assert(unsafe { table.EntryAt(2).key.View().Bytes()[0] } == c8'm', "and the last is the last added");
-    Assert(table.EntryAt(3) == null, "past the end there is nothing");
+    let last = table.EntryAt(2) ?? Panic("the table holds three entries");
+    Assert(last.key.View().Bytes()[0] == c8'm', "and the last is the last added");
+    Assert(table.EntryAt(3) is none, "past the end there is nothing");
 
     // Lookup finds by key, and reports absence rather than inventing an empty value.
-    var found = table.Find(View("apple"));
-    Assert(found != null, "a key that is there is found");
-    // Safety: `found` is non-null, asserted above, and points into `table`, which is live.
-    Assert(unsafe { (*found).AsInteger(@readInteger) } && readInteger == 2, "with the value it was stored with");
-    Assert(table.Find(View("pear")) == null, "and a key that is not there is not");
+    let found = table.Find(View("apple"));
+    Assert(found is .Some(_), "a key that is there is found");
+    Assert(found is .Some(apple) && apple.AsInteger(@readInteger) && readInteger == 2,
+           "with the value it was stored with");
+    Assert(table.Find(View("pear")) is none, "and a key that is not there is not");
 
     // An array keeps its order too, and a borrowed element can be modified in place — which is how an array of
     // tables grows a member after its header has already been read.
@@ -93,19 +92,15 @@ func Main() -> int {
     array.Push(TomlValue::Integer(allocator, 10));
     array.Push(TomlValue::Integer(allocator, 20));
     Assert(array.Length() == 2, "an array holds what it was given");
-    // Safety: `array` holds two elements, so `At(1)` returns a non-null pointer into it.
-    Assert(unsafe { (*array.At(1)).AsInteger(@readInteger) } && readInteger == 20, "in order");
-    var element = array.AtMutable(0);
-    // Safety: `array` holds two elements, so `AtMutable(0)` returns a non-null pointer into it, and nothing else
-    // borrows `array` while it is written.
-    unsafe { element.integer = 11; }
-    // Safety: `array` holds two elements, so `At(0)` returns a non-null pointer into it.
-    Assert(unsafe { (*array.At(0)).AsInteger(@readInteger) } && readInteger == 11,
+    Assert(array.At(1) is .Some(second) && second.AsInteger(@readInteger) && readInteger == 20, "in order");
+    let element = array.AtMutable(0) ?? Panic("the array holds two elements");
+    element.integer = 11;
+    Assert(array.At(0) is .Some(edited) && edited.AsInteger(@readInteger) && readInteger == 11,
            "and an element can be edited in place");
 
     // The kinds do not answer each other's questions.
-    Assert(array.Find(View("apple")) == null, "an array has no keys");
-    Assert(table.At(0) == null, "and a table has no elements");
+    Assert(array.Find(View("apple")) is none, "an array has no keys");
+    Assert(table.At(0) is none, "and a table has no elements");
     Assert(!table.Push(TomlValue::Integer(allocator, 1)), "pushing onto a table is refused");
     var stray = String::FromBytes(allocator, "stray") catch { else => Panic("the key is made") };
     Assert(!array.Insert(move stray, TomlValue::Integer(allocator, 1)), "and inserting into an array is too");
@@ -121,9 +116,8 @@ func Main() -> int {
     inner.Insert(move nestedKey, <-nested);
     var innerKey = String::FromBytes(allocator, "inner") catch { else => Panic("the key is made") };
     outer.Insert(move innerKey, <-inner);
-    // Safety: `outer` holds `inner`, which holds `list`, so both lookups return non-null pointers into `outer`.
-    Assert(unsafe { (*(*outer.Find(View("inner"))).Find(View("list"))).Length() } == 2,
-           "a nested tree is reachable all the way down");
+    let list = (outer.Find(View("inner")) ?? Panic("the outer table holds the inner one")).Find(View("list"));
+    Assert(list is .Some(held) && held.Length() == 2, "a nested tree is reachable all the way down");
 
     return 0;
 }

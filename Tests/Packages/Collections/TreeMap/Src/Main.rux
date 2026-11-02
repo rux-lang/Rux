@@ -121,17 +121,12 @@ func Main() -> int {
     Assert(map.Get(50) == none, "a key that was never put in is not found");
     Assert(map.Get(-1) == none, "on either side of the range");
 
-    // A borrow stays good across insertions and removals of other keys, which is what the separate nodes buy.
-    let borrowed = map.Reference(21);
-    Assert(borrowed is *int32, "a key in the map can be borrowed");
-    var writable: *var int32 = null;
-    Assert(map.TryReferenceMutable(21, @writable), "and borrowed mutably");
-    // Safety: `TryReferenceMutable` reported true, so `writable` points at the stored value.
-    unsafe { *writable = 999; }
+    // A value is borrowed where it sits in its node, to read or to write in place.
+    Assert(map.Find(21) is .Some(borrowed) && borrowed == 63, "a key in the map can be borrowed");
+    let writable = map.FindMutable(21) ?? Panic("and borrowed mutably");
+    writable = 999;
     Assert(map.Get(21) == .Some(999), "a write through the borrow is what the map holds");
-    Assert(!map.TryReferenceMutable(77, @writable), "a key that is not there cannot be borrowed");
-    // Safety: `writable` still points at the value stored under 21, which nothing has removed.
-    Assert(unsafe { *writable == 999 }, "and leaves the pointer where it was");
+    Assert(map.FindMutable(77) is none, "a key that is not there cannot be borrowed");
 
     // Replacing hands back what it displaced; inserting over a key destroys it silently.
     let displaced = map.Replace(21, 63) catch { else => Panic("replacing a key is accepted") };

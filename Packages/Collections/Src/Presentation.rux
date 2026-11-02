@@ -98,9 +98,7 @@ pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
 /// @see https://rux-lang.dev/docs/api/collections/deque#write-deque-debug
 pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
                                    spec: FormatSpec) -> ! FormatError {
-    var front: T[..];
-    var back: T[..];
-    value.AsSlices(@front, @back);
+    let (front, back) = value.AsSlices();
 
     WriteAscii(writer, c8'[')?;
     WriteRun<T>(writer, front, spec, 0)?;

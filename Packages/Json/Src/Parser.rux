@@ -503,8 +503,7 @@ extend JsonParser {
                 return <-object;
             }
 
-            let existing = object.Find(name.View());
-            if existing != null {
+            if object.Find(name.View()) is .Some(_) {
                 if self.duplicates == DuplicateKeyPolicy::Reject {
                     name.Clear();
                     return self.Stop(JsonStop::DuplicateName);

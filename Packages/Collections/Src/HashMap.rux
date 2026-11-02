@@ -122,36 +122,30 @@ extend HashMap<K, V> {
         return unsafe { self.table.values[slot] };
     }
 
-    /// A pointer to the value stored under `key`, or `none` when there is no such entry.
-    /// `self` is borrowed; the pointer borrows the value where it sits, which is how one that owns something is read
-    /// without being taken.
-    /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
+    /// The value stored under `key`, borrowed where it sits, or `none` when there is no such entry.
+    /// `self` stays borrowed while the reference is in use, which is how a value that owns something is read without
+    /// being taken, and nothing can be inserted or removed under it.
     /// @param key the key to look up
-    /// @returns the address of the value, or `none` when the key is absent
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map#reference
-    pub func Reference(self: &HashMap<K, V>, key: K) -> (*V)? {
+    /// @returns a reference to the value, or `none` when the key is absent
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#find
+    pub func Find(self: &HashMap<K, V>, key: K) -> &V? {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its value is
         // initialized.
-        return unsafe { @self.table.values[slot] };
+        unsafe { return self.table.values[slot]; }
     }
 
-    /// Points `value` at the stored value for `key`, so it can be changed in place.
-    /// `self` is borrowed mutably; `value` receives the pointer and is left alone when there is no such entry.
-    /// Reports whether there was one.
-    /// An out-parameter rather than an `(*var V)?`, which does not survive lowering inside a generic today.
-    /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed. Overwriting through
-    /// it replaces the value without destroying what was there.
+    /// The value stored under `key`, borrowed to be changed in place, or `none` when there is no such entry.
+    /// `self` stays borrowed exclusively while the reference is in use. Assigning through it replaces the value and
+    /// destroys the one that was there.
     /// @param key the key to look up
-    /// @param value receives the address of the stored value
-    /// @returns whether the key was present
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-reference-mutable
-    pub func TryReferenceMutable(self: &var HashMap<K, V>, key: K, value: *var *var V) -> bool {
-        let slot = self.table.Find(key, self.hash, self.equals) ?? return false;
-        // Safety: the documented contract makes `value` a non-null pointer to the caller's writable `*var V`, and
-        // by the table invariant `Find` names only an occupied slot below the capacity.
-        unsafe { *value = @self.table.values[slot]; }
-        return true;
+    /// @returns a writable reference to the value, or `none` when the key is absent
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#find-mutable
+    pub func FindMutable(self: &var HashMap<K, V>, key: K) -> &var V? {
+        let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
+        // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its value is
+        // initialized.
+        unsafe { return self.table.values[slot]; }
     }
 
     /// Stores `value` under `key`, replacing whatever was there.

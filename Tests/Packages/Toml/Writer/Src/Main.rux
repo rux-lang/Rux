@@ -27,6 +27,11 @@ func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView();
 }
 
+// The value under `key`, which the test has just seen the document hold.
+func Member(table: &TomlValue, key: StringView) -> &TomlValue {
+    return table.Find(key) ?? Panic("the table holds the key");
+}
+
 func Same(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length {
         return false;
@@ -90,32 +95,32 @@ func Main() -> int {
 
     var readInteger: int64 = 0;
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*reread.Find(View("i"))).AsInteger(@readInteger) } && readInteger == 42, "the integer survives");
+    Assert(unsafe { Member(reread, View("i")).AsInteger(@readInteger) } && readInteger == 42, "the integer survives");
     var readFloat = 0.0;
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*reread.Find(View("tiny"))).AsFloat(@readFloat) } && readFloat == 0.1,
+    Assert(unsafe { Member(reread, View("tiny")).AsFloat(@readFloat) } && readFloat == 0.1,
            "and a float comes back as exactly the same float, not merely a close one");
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*reread.Find(View("whole"))).Kind() } == TomlKind::Float,
+    Assert(unsafe { Member(reread, View("whole")).Kind() } == TomlKind::Float,
            "a whole float keeps its point, or it would read back as an integer");
     // The date kinds are their own document, since what matters about them is that the four stay four.
     var stamped = Parsed(allocator, dates, "a document of every date kind parses");
     let stampedText = Render(stamped, storage[..4096]);
     var restamped = Parsed(allocator, stampedText, "and its output parses");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*restamped.Find(View("m"))).Kind() } == TomlKind::OffsetDateTime,
+    Assert(unsafe { Member(restamped, View("m")).Kind() } == TomlKind::OffsetDateTime,
            "an offset date-time keeps its offset");
     var readOffset = UtcOffset::Utc();
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*restamped.Find(View("m"))).AsOffset(@readOffset) } && readOffset.TotalSeconds() == -28800i32,
+    Assert(unsafe { Member(restamped, View("m")).AsOffset(@readOffset) } && readOffset.TotalSeconds() == -28800i32,
            "and the offset is the one it was written with");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*restamped.Find(View("w"))).Kind() } == TomlKind::LocalDateTime,
+    Assert(unsafe { Member(restamped, View("w")).Kind() } == TomlKind::LocalDateTime,
            "while a local one is not given one it never had");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*restamped.Find(View("d"))).Kind() } == TomlKind::LocalDate, "a date stays a date");
+    Assert(unsafe { Member(restamped, View("d")).Kind() } == TomlKind::LocalDate, "a date stays a date");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { (*restamped.Find(View("t"))).Kind() } == TomlKind::LocalTime, "and a time stays a time");
+    Assert(unsafe { Member(restamped, View("t")).Kind() } == TomlKind::LocalTime, "and a time stays a time");
 
     // Keys are bare where TOML allows it and quoted where it does not, which is the whole of the choice.
     var keys = "bare_key = 1\n\"needs quoting\" = 2\n\"\" = 3\n1979 = 4";
