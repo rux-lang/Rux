@@ -360,6 +360,8 @@ private:
     LirReg LowerMatchExpr(const HirMatchExpr &expression);
     void StoreCoerceToInterface(const HirCoerceToInterfaceExpr &expression, LirReg slot);
     LirReg LowerCoerceToInterface(const HirCoerceToInterfaceExpr &expression);
+    /// The address of a call's interface result, which the call hands back as a value; any other result as it is.
+    [[nodiscard]] LirReg InterfaceResultAddress(LirReg result, const TypeRef &type);
     void StoreArrayToSlice(const HirArrayToSliceExpr &expression, LirReg slot);
     LirReg LowerArrayToSlice(const HirArrayToSliceExpr &expression);
     LirReg LowerEnumConstruct(const HirEnumConstructExpr &expression);

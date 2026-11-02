@@ -826,7 +826,7 @@ LirReg HirToLirContext::LowerInterfaceCall(const HirInterfaceCallExpr &e) {
         ci.srcs.push_back(LowerArgument(*arg));
     }
     Emit(std::move(ci));
-    return dst;
+    return InterfaceResultAddress(dst, e.type);
 }
 
 LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
@@ -1033,7 +1033,18 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
     if (e.isNoReturn) {
         Unreachable();
     }
-    return dst;
+    return InterfaceResultAddress(dst, e.type);
+}
+
+LirReg HirToLirContext::InterfaceResultAddress(const LirReg result, const TypeRef &type) {
+    // An interface value is handled by the address of its two words everywhere else, while a call hands it back as
+    // the value itself: it is kept in a slot of its own, whose address is what the caller goes on to use.
+    if (result == LirNoReg || type->kind != TypeRef::Kind::Named || !IsInterfaceType(type)) {
+        return result;
+    }
+    const LirReg slot = EmitAlloca(type);
+    EmitStore(result, slot, type);
+    return slot;
 }
 
 HirToLirContext::IndexedStorage HirToLirContext::LowerIndexedStorage(const HirExpr &object,

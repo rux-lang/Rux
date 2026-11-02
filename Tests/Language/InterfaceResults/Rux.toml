@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "InterfaceValueDrop"
+Name = "InterfaceResults"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: InterfaceValueDrop"
+Description = "Language test: InterfaceResults"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

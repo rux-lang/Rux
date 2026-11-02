@@ -1,0 +1,49 @@
+// An interface value or view is two words, its data and its method table, wherever it travels: returned from a call,
+// kept in a local, and copied out of a slice into a loop variable.
+import Core::Assert;
+
+interface Named {
+    func Id(&self) -> int;
+}
+
+struct Plain {
+    id: int;
+}
+
+extend Plain : Named {
+    func Id(&self) -> int {
+        return self.id;
+    }
+}
+
+struct Unit {}
+
+extend Unit : Named {
+    func Id(&self) -> int {
+        return 40;
+    }
+}
+
+func Pass(value: Named) -> Named {
+    return value;
+}
+
+func Sum(values: &Named...) -> int {
+    var total = 0;
+    for value in values {
+        total += value.Id();
+    }
+    return total;
+}
+
+func Main() -> int {
+    let unit: Named = Unit {};
+    Assert(Pass(unit).Id() == 40, "a returned interface value keeps its method table");
+    let kept = Pass(Pass(unit));
+    Assert(kept.Id() == 40, "through a local and a second call");
+    let first = Plain { id: 1 };
+    let second = Plain { id: 2 };
+    let third = Unit {};
+    Assert(Sum(first, second, third) == 43, "a loop over views copies both words of each");
+    return 0;
+}

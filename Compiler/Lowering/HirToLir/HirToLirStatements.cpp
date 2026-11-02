@@ -434,8 +434,18 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         SetBlock(bodyBlock);
         LirReg elemPtr = EmitIndexPtr(dataPtr, idx, elemType);
-        // The loop variable holds a copy of the element, which is plain data and so its bytes.
-        EmitStore(EmitLoad(elemPtr, elemType), slot, elemType);
+        // The loop variable holds a copy of the element, which is plain data and so its bytes. An interface view or
+        // handle is the two words of its data and method table, which a register is too narrow for.
+        if (IsInterfaceType(elemType)) {
+            const TypeRef word = TypeRef::MakeUInt64();
+            for (const char *half : {"0", "1"}) {
+                const LirReg offset = EmitConst(half, word);
+                EmitStore(EmitLoad(EmitIndexPtr(elemPtr, offset, word), word), EmitIndexPtr(slot, offset, word), word);
+            }
+        }
+        else {
+            EmitStore(EmitLoad(elemPtr, elemType), slot, elemType);
+        }
         if (s.bindingId != 0) {
             MarkBindingLive(s.bindingId, true);
         }
