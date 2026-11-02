@@ -45,10 +45,9 @@ std::string_view OverloadedOperatorSpelling(const TokenKind op) noexcept {
     }
 }
 
-/// Whether a declared return type is fallible, and whether it is spelled with `throws`.
-std::pair<bool, bool> DeclaredSpelling(const std::optional<TypeExprPtr> &returnType) noexcept {
-    const auto *fallible = returnType ? AstCast<const FallibleTypeExpr>(returnType->get()) : nullptr;
-    return {fallible != nullptr, fallible && fallible->throwsClause};
+/// Whether a declared return type carries a `throws` clause.
+bool DeclaresThrows(const std::optional<TypeExprPtr> &returnType) noexcept {
+    return returnType && AstCast<const FallibleTypeExpr>(returnType->get()) != nullptr;
 }
 
 /// The name a diagnostic gives the function being checked.
@@ -60,9 +59,7 @@ std::string FunctionName(const FuncDecl *function) {
 AnalysisContext::ThrowingCallee AnalysisContext::ThrowingCalleeOf(const Expr &expression) {
     ThrowingCallee callee;
     const auto spellingOf = [](const std::optional<TypeExprPtr> &returnType) {
-        const auto [fallible, throws] = DeclaredSpelling(returnType);
-        return !fallible ? ThrowingCallee::Spelling::None
-                         : (throws ? ThrowingCallee::Spelling::Throws : ThrowingCallee::Spelling::Fallible);
+        return DeclaresThrows(returnType) ? ThrowingCallee::Spelling::Throws : ThrowingCallee::Spelling::None;
     };
     if (const auto *call = AstCast<const CallExpr>(&expression)) {
         callee.location = CallSiteLocation(*call);
@@ -78,9 +75,9 @@ AnalysisContext::ThrowingCallee AnalysisContext::ThrowingCalleeOf(const Expr &ex
             callee.description = std::format("call to '{}'", function->name);
             return callee;
         }
-        // A function value carries its type and not its spelling, so a call through one keeps the older reading.
+        // A function value whose type throws is called as any throwing function is.
         if (binding->second.dispatch == ResolvedCallableBinding::DispatchKind::Indirect) {
-            callee.spelling = ThrowingCallee::Spelling::Fallible;
+            callee.spelling = ThrowingCallee::Spelling::Throws;
             const auto *name = AstCast<const IdentExpr>(call->callee.get());
             callee.description = name ? std::format("call to '{}'", name->name) : std::string("call");
         }
@@ -96,7 +93,7 @@ AnalysisContext::ThrowingCallee AnalysisContext::ThrowingCalleeOf(const Expr &ex
         callee.location = binary->location;
         callee.description = std::format("operator '{}'", spelling);
         const FuncDecl *method = LookupOperatorMethod(left->second, std::string(spelling), {right->second});
-        callee.spelling = method ? spellingOf(method->returnType) : ThrowingCallee::Spelling::Fallible;
+        callee.spelling = method ? spellingOf(method->returnType) : ThrowingCallee::Spelling::Throws;
         return callee;
     }
     if (const auto *index = AstCast<const IndexExpr>(&expression)) {
@@ -129,11 +126,6 @@ TypeRef AnalysisContext::CheckThrowSite(const Expr &expression, const TypeRef &o
     const bool covered =
         !throwMarkFrames.empty() && (throwMarkFrames.back().block || throwMarkFrames.back().expression);
     if (!covered) {
-        // A callee declared `-> T ! E` still returns its outcome as a value where nothing marks the call, so code not
-        // yet migrated keeps working; a `throws` callee's call always leaves through its error.
-        if (callee.spelling == ThrowingCallee::Spelling::Fallible) {
-            return outcome;
-        }
         EmitError(callee.location,
                   std::format("{} can throw '{}' but is not marked with 'try'", callee.description, error.ToString()),
                   {}, "write 'try' before the expression");

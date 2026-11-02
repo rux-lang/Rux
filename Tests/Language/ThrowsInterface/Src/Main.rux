@@ -1,8 +1,8 @@
 // `throws` in interface requirements and function types.
 // A requirement may declare `throws E`, and an implementation must declare the same signature, error included. A call
 // through the interface, or through a generic bound, can throw what the requirement declares and is marked with
-// `try`. A function type may also declare `throws E`; it is the same type as `-> T ! E`, so a call through a function
-// value keeps the older reading outside `try` and is a throw site inside one.
+// `try`. A function type may also declare `throws E`, and a call through a function value of that type is a throw site
+// that must be marked with `try` like any other call.
 
 import Core::Assert;
 
@@ -66,10 +66,7 @@ func Main() -> int {
 
     let halve: func(int32) -> int32 throws Closed = Halve;
     Assert((try Twice(halve, 4i32) catch { e => -e.reason }) == -5i32, "a function value throws");
-    let reason = match halve(3i32) {
-        .Success(_) => 0i32,
-        .Failure(e) => e.reason,
-    };
-    Assert(reason == 3i32, "outside 'try' a function value returns its outcome");
+    let reason = try halve(3i32) catch { e => e.reason };
+    Assert(reason == 3i32, "a call through a function value is a throw site like any other");
     return 0;
 }

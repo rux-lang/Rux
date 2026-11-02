@@ -816,12 +816,10 @@ private:
         std::size_t sites = 0;
     };
 
-    /// How a callee declares that it can fail: not at all, with the older `-> T ! E`, which a call outside `try`
-    /// still returns as a value, or with `throws E`, whose calls must be marked.
+    /// Whether a callee can throw, which makes every call to it a throw site that must be marked with `try`.
     struct ThrowingCallee {
         enum class Spelling : std::uint8_t {
             None,
-            Fallible,
             Throws,
         };
 

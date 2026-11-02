@@ -1,0 +1,1 @@
+10:16: error: call to 'halve' can throw 'Closed' but is not marked with 'try'

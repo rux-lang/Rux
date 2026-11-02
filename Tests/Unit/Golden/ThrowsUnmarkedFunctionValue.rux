@@ -1,0 +1,12 @@
+// A function value whose type throws is called as any throwing function is: the call must be marked with `try`.
+struct Closed {}
+
+func Halve(value: int32) -> int32 throws Closed {
+    return value / 2;
+}
+
+func Main() -> int {
+    let halve: func(int32) -> int32 throws Closed = Halve;
+    let half = halve(4i32);
+    return half as int;
+}
