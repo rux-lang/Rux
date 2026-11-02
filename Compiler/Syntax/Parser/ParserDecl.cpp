@@ -740,6 +740,9 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
             defaultArm.reset();
         }
         if (CheckWhenDefaultArm()) {
+            if (Check(TokenKind::ElseKeyword)) {
+                EmitError(CurrentLocation(), "'else' is not a match arm", "use '_' for the default arm");
+            }
             Advance();
             defaultArm = branch.location;
         }

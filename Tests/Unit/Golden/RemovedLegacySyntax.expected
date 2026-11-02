@@ -6,3 +6,4 @@
 33:16: error: '<-' is not a binding operator
 35:11: error: '<-' is not an assignment operator
 36:17: error: '<-' is not an operator
+41:5: error: 'else' is not a match arm

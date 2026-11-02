@@ -35,3 +35,8 @@ func Main() -> int {
     third <- second;
     return Take(<-third) as int;
 }
+
+when #target.os {
+    .Windows => const SystemName: char8[..] = "Windows";
+    else => const SystemName: char8[..] = "another system";
+}

@@ -1,0 +1,27 @@
+// A throwing call whose arguments are refused still reads as its success, so the uses that follow name the type the
+// program would have had, and the `try` that marks it is not reported as covering nothing.
+enum Oops { Bad }
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    func ~Token(&var self) {}
+}
+
+struct Meter {
+    count: int;
+}
+
+func Open(token: Token) -> Meter throws Oops { return Meter { count: token.id }; }
+
+func Close(meter: Meter) throws Oops {}
+
+func Main() -> int throws Oops {
+    let token = Token { id: 1 };
+    let meter = try Open(token);
+    try Close(true);
+    try Close(false) catch { _ => {} };
+    return token.id + meter.Missing;
+}

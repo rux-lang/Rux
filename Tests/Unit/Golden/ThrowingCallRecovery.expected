@@ -1,0 +1,4 @@
+23:26: error: cannot copy 'Token', which owns resources
+24:15: error: argument 1 to 'Close' has type 'bool8', but parameter 'meter' requires 'Meter'
+25:15: error: argument 1 to 'Close' has type 'bool8', but parameter 'meter' requires 'Meter'
+26:28: error: struct 'Meter' has no field 'Missing'

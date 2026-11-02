@@ -382,6 +382,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
 TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
     const std::size_t diagnosticStart = diags.size();
     TypeRef type = CheckExprImpl(expr);
+    bool callFailed = false;
     if (const auto *call = AstCast<const CallExpr>(&expr)) {
         const bool hasNewError =
             std::ranges::any_of(diags.begin() + static_cast<std::ptrdiff_t>(diagnosticStart), diags.end(),
@@ -390,15 +391,24 @@ TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
                                 });
         if (type.IsUnknown() || hasNewError) {
             callableBindings.erase(call);
+            callFailed = hasNewError;
         }
         else {
             CheckBorrowReturnCall(*call, type);
         }
     }
     CheckUnsafeOperation(expr, type);
-    // A call whose callee throws evaluates to its success where a `try` marks it.
+    // A call whose callee throws evaluates to its success where a `try` marks it. A call already reported has lost its
+    // callee, so it reads as its success too, and counts as a site of the `try` that marks it, which is then not
+    // reported as covering nothing on top of the error.
+    if (callFailed && !throwMarkFrames.empty()) {
+        ++throwMarkFrames.back().sites;
+        if (!throwHandlerFrames.empty()) {
+            ++throwHandlerFrames.back().sites;
+        }
+    }
     if (type.IsFallible() && !type.IsIncompleteNative()) {
-        type = CheckThrowSite(expr, type);
+        type = callFailed && !type.FallibleSuccess().IsUnknown() ? type.FallibleSuccess() : CheckThrowSite(expr, type);
     }
     RecordCheckedExpression(expr, type);
     return type;
