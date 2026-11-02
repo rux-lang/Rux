@@ -32,7 +32,8 @@ func Main() -> int {
     Assert(queue.IsEmpty() && queue.Pop() == none && queue.Peek() == none, "an empty queue");
     let values: int32[8] = [5, 1, 9, 3, 9, 7, 2, 8];
     for value in values[..] { queue.Push(value) catch { else => return 1 }; }
-    Assert(queue.Length() == 8u && *(queue.Peek() ?? return 2) == 9, "the largest is at the front");
+    // Safety: `Peek` hands back the address of the front element, and the queue has not changed since.
+    Assert(queue.Length() == 8u && unsafe { *(queue.Peek() ?? return 2) } == 9, "the largest is at the front");
     let expected: int32[8] = [9, 9, 8, 7, 5, 3, 2, 1];
     for value in expected[..] { Assert((queue.Pop() ?? -1) == value, "elements come out largest first"); }
     Assert(queue.IsEmpty(), "every element came out");

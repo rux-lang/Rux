@@ -53,7 +53,7 @@ pub func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float6
 /// logarithm of an exact zero is an infinity, and the generator will produce an exact zero eventually.
 /// The polar form of the transform avoids the trigonometric functions at the cost of rejecting about a fifth of
 /// its draws; this uses the direct form, which consumes a fixed two words and is therefore reproducible in a way
-/// a rejection loop is not.
+/// a rejection loop is not. `first` and `second` must be non-null and writable.
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param first receives the first of the two draws
@@ -62,8 +62,12 @@ pub func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float6
 pub func NormalPair<G: RandomGenerator>(generator: &var G, first: *var float64, second: *var float64) {
     let radius = Sqrt(-2.0 * Log(1.0 - NextFloat64<G>(generator)));
     let angle = Tau * NextFloat64<G>(generator);
-    *first = radius * Cos(angle);
-    *second = radius * Sin(angle);
+    // Safety: the documented contract makes `first` and `second` non-null pointers to the caller's writable `float64`
+    // values.
+    unsafe {
+        *first = radius * Cos(angle);
+        *second = radius * Sin(angle);
+    }
 }
 
 /// A single standard normal value: mean zero, standard deviation one.

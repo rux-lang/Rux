@@ -48,7 +48,9 @@ extend Mutex<T> {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/mutex#clone
     pub func Clone(self: &Mutex<T>) -> Mutex<T> {
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return Mutex<T> { block: self.block };
     }
 
@@ -57,8 +59,12 @@ extend Mutex<T> {
     /// @returns the guard
     /// @see https://rux-lang.dev/docs/api/sync/mutex#lock
     pub func Lock(self: &Mutex<T>) -> MutexGuard<T> {
-        LockWord(@self.block.word);
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its lock and count words are
+        // reached only atomically; the guard's count is taken while the lock is held.
+        unsafe {
+            LockWord(@self.block.word);
+            RetainBlock(@self.block.references);
+        }
         return MutexGuard<T> { block: self.block };
     }
 
@@ -66,14 +72,22 @@ extend Mutex<T> {
     /// @returns the guard, or none when another thread holds the lock
     /// @see https://rux-lang.dev/docs/api/sync/mutex#try-lock
     pub func TryLock(self: &Mutex<T>) -> MutexGuard<T>? {
-        if !TryLockWord(@self.block.word) { return none; }
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its lock word is reached only
+        // atomically.
+        if !unsafe { TryLockWord(@self.block.word) } { return none; }
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return MutexGuard<T> { block: self.block };
     }
 
     func ~Mutex(self: &var Mutex<T>) {
-        if ReleaseBlock(@self.block.references) {
-            DestroyBlock<MutexBlock<T>>(self.block);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle or guard is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@self.block.references) {
+                DestroyBlock<MutexBlock<T>>(self.block);
+            }
         }
     }
 }
@@ -86,7 +100,8 @@ extend MutexGuard<T> {
     /// @returns the value's address
     /// @see https://rux-lang.dev/docs/api/sync/mutex#get
     pub func Get(self: &MutexGuard<T>) -> *var T {
-        return @self.block.value;
+        // Safety: a guard that has not been unlocked holds a count on `self.block`, so the block is live.
+        return unsafe { @self.block.value };
     }
 
     /// Whether the guard still holds the lock.
@@ -102,9 +117,13 @@ extend MutexGuard<T> {
         if self.block == null { return; }
         let block = self.block;
         self.block = null;
-        UnlockWord(@block.word);
-        if ReleaseBlock(@block.references) {
-            DestroyBlock<MutexBlock<T>>(block);
+        // Safety: the guard held the lock and a count on `block`, so the block is live and this thread may release
+        // both; when the count reaches zero no handle or guard is left to reach the block.
+        unsafe {
+            UnlockWord(@block.word);
+            if ReleaseBlock(@block.references) {
+                DestroyBlock<MutexBlock<T>>(block);
+            }
         }
     }
 
@@ -141,7 +160,9 @@ extend Condition {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/mutex#clone-condition
     pub func Clone(self: &Condition) -> Condition {
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return Condition { block: self.block };
     }
 
@@ -168,15 +189,23 @@ extend Condition {
     /// Wakes one thread waiting on the condition, if any.
     /// @see https://rux-lang.dev/docs/api/sync/mutex#notify-one
     pub func NotifyOne(self: &Condition) {
-        AtomicFetchAdd(@self.block.sequence, 1u32, MemoryOrder::Release);
-        WakeOne(@self.block.sequence);
+        // Safety: this handle holds a count on `self.block`, so the block and its `sequence` word are live, and every
+        // thread reaches that word only atomically.
+        unsafe {
+            AtomicFetchAdd(@self.block.sequence, 1u32, MemoryOrder::Release);
+            WakeOne(@self.block.sequence);
+        }
     }
 
     /// Wakes every thread waiting on the condition.
     /// @see https://rux-lang.dev/docs/api/sync/mutex#notify-all
     pub func NotifyAll(self: &Condition) {
-        AtomicFetchAdd(@self.block.sequence, 1u32, MemoryOrder::Release);
-        WakeAll(@self.block.sequence);
+        // Safety: this handle holds a count on `self.block`, so the block and its `sequence` word are live, and every
+        // thread reaches that word only atomically.
+        unsafe {
+            AtomicFetchAdd(@self.block.sequence, 1u32, MemoryOrder::Release);
+            WakeAll(@self.block.sequence);
+        }
     }
 
     // The sequence is read before the lock is released, so a notification made after the release changes it and
@@ -184,16 +213,27 @@ extend Condition {
     func Sleep<T>(self: &Condition, guard: &var MutexGuard<T>, nanoseconds: int64) -> bool {
         let block = guard.block;
         if block == null { return true; }
-        let sequence = AtomicLoad(@self.block.sequence, MemoryOrder::Relaxed);
-        UnlockWord(@block.word);
-        let notified = WaitWhile(@self.block.sequence, sequence, nanoseconds);
-        LockWordContended(@block.word);
+        // Safety: this handle holds a count on `self.block`, so its `sequence` word is live, and every thread reaches
+        // it only atomically.
+        let sequence = unsafe { AtomicLoad(@self.block.sequence, MemoryOrder::Relaxed) };
+        // Safety: the guard holds the lock and a count on `block`, so the block is live and this thread may release
+        // the lock.
+        unsafe { UnlockWord(@block.word); }
+        // Safety: the word waited on is the condition's `sequence`, which outlives the wait because this handle holds a
+        // count on its block.
+        let notified = unsafe { WaitWhile(@self.block.sequence, sequence, nanoseconds) };
+        // Safety: the guard still holds a count on `block`, so its lock word is live and reached only atomically.
+        unsafe { LockWordContended(@block.word); }
         return notified;
     }
 
     func ~Condition(self: &var Condition) {
-        if ReleaseBlock(@self.block.references) {
-            DestroyBlock<ConditionBlock>(self.block);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@self.block.references) {
+                DestroyBlock<ConditionBlock>(self.block);
+            }
         }
     }
 }

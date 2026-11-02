@@ -98,11 +98,11 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
         let prefix = "urn:uuid:";
         var index: uint = 0;
         while index < 9 {
-            var mine = text.data[index] as uint8;
+            var mine = text[index] as uint8;
             if mine >= 0x41 && mine <= 0x5A {
                 mine = mine + 32;
             }
-            if mine != (prefix.data[index] as uint8) {
+            if mine != (prefix[index] as uint8) {
                 fail UuidParseError::BadPrefix(index);
             }
             index = index + 1;
@@ -123,7 +123,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     var haveHigh = false;
     while position < UuidTextLength {
         let at = start + position;
-        let c = text.data[at] as uint8;
+        let c = text[at] as uint8;
         if IsHyphenPosition(position) {
             if c != 0x2D {
                 fail UuidParseError::Misplaced(at);
@@ -174,12 +174,12 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
     var byteIndex: uint = 0;
     while position < UuidTextLength {
         if IsHyphenPosition(position) {
-            into.data[position] = 0x2Du8 as char8;
+            into[position] = 0x2Du8 as char8;
         }
         else {
             let octet = value.bytes[byteIndex / 2];
             let nibble = (byteIndex % 2) == 0 ? (octet >> 4) : (octet & 0x0F);
-            into.data[position] = digits.data[nibble as uint];
+            into[position] = digits[nibble as uint];
             byteIndex = byteIndex + 1;
         }
         position = position + 1;
@@ -214,9 +214,9 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
     WriteCanonicalInto(value, into);
     var index: uint = 0;
     while index < UuidTextLength {
-        let c = into.data[index] as uint8;
+        let c = into[index] as uint8;
         if c >= 0x61 && c <= 0x7A {
-            into.data[index] = (c - 32) as char8;
+            into[index] = (c - 32) as char8;
         }
         index = index + 1;
     }
@@ -235,10 +235,10 @@ pub func FormatUrn(value: &Uuid, into: var char8[..]) -> ! FormatError {
     let prefix = "urn:uuid:";
     var index: uint = 0;
     while index < 9 {
-        into.data[index] = prefix.data[index];
+        into[index] = prefix[index];
         index = index + 1;
     }
-    let rest = (@into.data[9])[..UuidTextLength];
+    let rest = into[9..9 + UuidTextLength];
     WriteCanonicalInto(value, rest);
     return;
 }
@@ -268,8 +268,8 @@ extend Uuid : Display {
         AcceptsUuidSpec(spec)?;
         if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")?; }
         var text: char8[36];
-        WriteCanonicalInto(self, (@text[0])[..UuidTextLength]);
-        return WriteBytes(writer, (@text[0])[..UuidTextLength]);
+        WriteCanonicalInto(self, text[..UuidTextLength]);
+        return WriteBytes(writer, text[..UuidTextLength]);
     }
 }
 

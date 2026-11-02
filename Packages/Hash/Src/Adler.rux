@@ -56,7 +56,9 @@ extend Adler32 : Hasher {
             if batch > AdlerBatch { batch = AdlerBatch; }
             let end = index + batch;
             while index < end {
-                low = low + (*(bytes + index) as uint32);
+                // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for
+                // `length` bytes.
+                low = low + (unsafe { *(bytes + index) } as uint32);
                 high = high + low;
                 index++;
             }

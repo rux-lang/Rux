@@ -44,7 +44,9 @@ func Main() -> int {
     // Reinterpret raw storage to test the builder's rejection independently of checked character casts.
     var surrogate: uint32 = 0xD000;
     surrogate = surrogate + 0x0800;
-    Assert(Refusal(builder.AppendScalar(*((@surrogate) as *char32))) == TextError::InvalidUtf8, "and a surrogate half");
+    // Safety: `surrogate` is a live local `uint32`, and `char32` has the same size and alignment.
+    let surrogateScalar = unsafe { *((@surrogate) as *char32) };
+    Assert(Refusal(builder.AppendScalar(surrogateScalar)) == TextError::InvalidUtf8, "and a surrogate half");
     var broken: char8[2];
     broken[0] = 0xE2u8 as char8;
     broken[1] = 0x82u8 as char8;

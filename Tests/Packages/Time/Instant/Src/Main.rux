@@ -15,9 +15,9 @@ import Time::{ Duration, Instant, SleepFor, TimeError };
 // The tick count `Debug` shows, when the text has exactly the shape it promises: `Instant(nanoseconds: N)` with
 // nothing but digits between the two. Answers false for any other text, so a check cannot pass on a rendering that
 // merely contains a number.
-func TicksShown(reading: Instant, ticks: *var uint64) -> bool {
+func TicksShown(reading: Instant, ticks: &var uint64) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     let shown: Debug = reading;
     if Failed(shown.WriteDebug(writer, FormatSpec::Plain())) { return false; }
     let text = writer.Written();
@@ -25,17 +25,17 @@ func TicksShown(reading: Instant, ticks: *var uint64) -> bool {
     if text.length <= opening.length + 1 { return false; }
     var index: uint = 0;
     while index < opening.length {
-        if text.data[index] != opening.data[index] { return false; }
+        if text[index] != opening[index] { return false; }
         index = index + 1;
     }
-    if text.data[text.length - 1] != c8')' { return false; }
+    if text[text.length - 1] != c8')' { return false; }
     var count: uint64 = 0;
     while index < text.length - 1 {
-        if text.data[index] < c8'0' || text.data[index] > c8'9' { return false; }
-        count = count * 10 + (((text.data[index] as uint32) - 0x30) as uint64);
+        if text[index] < c8'0' || text[index] > c8'9' { return false; }
+        count = count * 10 + (((text[index] as uint32) - 0x30) as uint64);
         index = index + 1;
     }
-    *ticks = count;
+    ticks = count;
     return true;
 }
 
@@ -45,7 +45,7 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     var spec = FormatSpec::Plain();
     spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     let shown: Debug = reading;
     return Failed(shown.WriteDebug(writer, spec));
 }
@@ -86,9 +86,9 @@ func Main() -> int {
     // Debug shows the reading, named and in its unit, so nobody reads it as a moment on a calendar.
     var firstTicks: uint64 = 0;
     var lastTicks: uint64 = 0;
-    Assert(TicksShown(first, @firstTicks), "Debug writes Instant(nanoseconds: N)");
+    Assert(TicksShown(first, firstTicks), "Debug writes Instant(nanoseconds: N)");
     let last = Instant::Now();
-    Assert(TicksShown(last, @lastTicks), "for every reading, whatever the count happens to be");
+    Assert(TicksShown(last, lastTicks), "for every reading, whatever the count happens to be");
     Assert(lastTicks >= firstTicks, "and the number moves the way the clock does");
 
     // The number shown is the reading itself: the difference between two renderings is the span between them.

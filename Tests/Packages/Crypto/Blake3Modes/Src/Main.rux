@@ -8,7 +8,7 @@ import Crypto::{ Blake3, Blake3DeriveKey, Blake3KeyedOf, Blake3Of, Digest, Equal
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func Main() -> int {
@@ -21,32 +21,32 @@ func Main() -> int {
         index = index + 1;
     }
     otherKey[31] = (otherKey[31] as uint8 ^ 1) as char8;
-    let keyBytes = (@key[0])[..32];
-    let otherKeyBytes = (@otherKey[0])[..32];
+    let keyBytes = key[..32];
+    let otherKeyBytes = otherKey[..32];
 
     var unkeyed: char8[32];
     var keyed: char8[32];
     var otherKeyed: char8[32];
-    Blake3Of(TextBytes("message"), (@unkeyed[0])[..32]);
-    Blake3KeyedOf(keyBytes, TextBytes("message"), (@keyed[0])[..32]);
-    Blake3KeyedOf(otherKeyBytes, TextBytes("message"), (@otherKeyed[0])[..32]);
+    Blake3Of(TextBytes("message"), unkeyed[..32]);
+    Blake3KeyedOf(keyBytes, TextBytes("message"), keyed[..32]);
+    Blake3KeyedOf(otherKeyBytes, TextBytes("message"), otherKeyed[..32]);
 
-    let unkeyedBytes = (@unkeyed[0])[..32];
-    let keyedBytes = (@keyed[0])[..32];
-    let otherKeyedBytes = (@otherKeyed[0])[..32];
+    let unkeyedBytes = unkeyed[..32];
+    let keyedBytes = keyed[..32];
+    let otherKeyedBytes = otherKeyed[..32];
     Assert(!Equal(unkeyedBytes, keyedBytes), "a keyed hash differs from the unkeyed hash of the same message");
     Assert(!Equal(keyedBytes, otherKeyedBytes), "and two keys one bit apart give unrelated results");
 
     // A keyed hash is deterministic and incremental like any other.
     var replay: char8[32];
-    Blake3KeyedOf(keyBytes, TextBytes("message"), (@replay[0])[..32]);
-    Assert(Equal(keyedBytes, (@replay[0])[..32]), "a keyed hash repeats exactly");
+    Blake3KeyedOf(keyBytes, TextBytes("message"), replay[..32]);
+    Assert(Equal(keyedBytes, replay[..32]), "a keyed hash repeats exactly");
     var incremental = Blake3::NewKeyed(keyBytes);
     incremental.Update(TextBytes("mes"));
     incremental.Update(TextBytes("sage"));
     var incrementalOut: char8[32];
-    incremental.Finish((@incrementalOut[0])[..32]);
-    Assert(Equal(keyedBytes, (@incrementalOut[0])[..32]),
+    incremental.Finish(incrementalOut[..32]);
+    Assert(Equal(keyedBytes, incrementalOut[..32]),
            "and splits the same way an unkeyed one does");
 
     // Keyed hashing across a chunk boundary, so the key reaches the tree rather than only the first block.
@@ -56,25 +56,25 @@ func Main() -> int {
         long[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
-    let longBytes = (@long[0])[..3000];
+    let longBytes = long[..3000];
     var longKeyed: char8[32];
-    Blake3KeyedOf(keyBytes, longBytes, (@longKeyed[0])[..32]);
+    Blake3KeyedOf(keyBytes, longBytes, longKeyed[..32]);
     var longUnkeyed: char8[32];
-    Blake3Of(longBytes, (@longUnkeyed[0])[..32]);
-    Assert(!Equal((@longKeyed[0])[..32],
-                  (@longUnkeyed[0])[..32]),
+    Blake3Of(longBytes, longUnkeyed[..32]);
+    Assert(!Equal(longKeyed[..32],
+                  longUnkeyed[..32]),
            "the key still separates a multi-chunk message");
     var longIncremental = Blake3::NewKeyed(keyBytes);
     index = 0;
     while index < 3000 {
-        let single = (@long[index])[..1];
+        let single = long[index..index + 1];
         longIncremental.Update(single);
         index = index + 1;
     }
     var longIncrementalOut: char8[32];
-    longIncremental.Finish((@longIncrementalOut[0])[..32]);
-    Assert(Equal((@longKeyed[0])[..32],
-                 (@longIncrementalOut[0])[..32]),
+    longIncremental.Finish(longIncrementalOut[..32]);
+    Assert(Equal(longKeyed[..32],
+                 longIncrementalOut[..32]),
            "and a keyed byte-at-a-time hash agrees across chunk boundaries");
 
     // Key derivation: the context separates, the material separates, and neither resembles the other modes.
@@ -82,30 +82,30 @@ func Main() -> int {
     var derivedTwo: char8[32];
     var derivedOther: char8[32];
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
-                    (@derivedOne[0])[..32]);
+                    derivedOne[..32]);
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
-                    (@derivedTwo[0])[..32]);
+                    derivedTwo[..32]);
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 encryption key"), TextBytes("material"),
-                    (@derivedOther[0])[..32]);
-    let oneBytes = (@derivedOne[0])[..32];
-    let twoBytes = (@derivedTwo[0])[..32];
-    let otherBytes = (@derivedOther[0])[..32];
+                    derivedOther[..32]);
+    let oneBytes = derivedOne[..32];
+    let twoBytes = derivedTwo[..32];
+    let otherBytes = derivedOther[..32];
     Assert(Equal(oneBytes, twoBytes), "the same context and material derive the same key");
     Assert(!Equal(oneBytes, otherBytes), "a different context derives an unrelated key from the same material");
 
     var differentMaterial: char8[32];
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("other material"),
-                    (@differentMaterial[0])[..32]);
-    Assert(!Equal(oneBytes, (@differentMaterial[0])[..32]),
+                    differentMaterial[..32]);
+    Assert(!Equal(oneBytes, differentMaterial[..32]),
            "and different material derives an unrelated key under the same context");
 
     // All three modes on the same bytes are mutually unrelated, which is the whole point of the flags.
     var asKeyed: char8[32];
-    Blake3KeyedOf(keyBytes, TextBytes("material"), (@asKeyed[0])[..32]);
+    Blake3KeyedOf(keyBytes, TextBytes("material"), asKeyed[..32]);
     var asPlain: char8[32];
-    Blake3Of(TextBytes("material"), (@asPlain[0])[..32]);
-    let keyedOfMaterial = (@asKeyed[0])[..32];
-    let plainOfMaterial = (@asPlain[0])[..32];
+    Blake3Of(TextBytes("material"), asPlain[..32]);
+    let keyedOfMaterial = asKeyed[..32];
+    let plainOfMaterial = asPlain[..32];
     Assert(!Equal(oneBytes, keyedOfMaterial), "a derived key is not the keyed hash of the same material");
     Assert(!Equal(oneBytes, plainOfMaterial), "nor its plain hash");
     Assert(!Equal(keyedOfMaterial, plainOfMaterial), "and those two differ from each other");
@@ -113,8 +113,8 @@ func Main() -> int {
     // Derivation extends like any other BLAKE3 output.
     var longDerived: char8[128];
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
-                    (@longDerived[0])[..128]);
-    Assert(Equal(oneBytes, (@longDerived[0])[..32]),
+                    longDerived[..128]);
+    Assert(Equal(oneBytes, longDerived[..32]),
            "a longer derived key starts with the shorter one");
 
     return 0;

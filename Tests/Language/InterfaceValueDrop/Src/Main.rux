@@ -18,7 +18,8 @@ extend Tracked : Named {
     }
 
     func ~Tracked(self: &var Tracked) {
-        *self.drops = *self.drops + 1;
+        // Safety: every value in this test holds `@drops`, a local of `Main` that outlives it.
+        unsafe { *self.drops = *self.drops + 1; }
     }
 }
 
@@ -61,7 +62,8 @@ extend Other : Named {
     }
 
     func ~Other(self: &var Other) {
-        *self.drops = *self.drops + 1;
+        // Safety: every value in this test holds `@drops`, a local of `Main` that outlives it.
+        unsafe { *self.drops = *self.drops + 1; }
     }
 }
 
@@ -73,7 +75,8 @@ struct Slot {
 func Replaced(drops: *var int) -> int {
     var value: Named = Tracked { drops: drops, id: 1 };
     value = Tracked { drops: drops, id: 2 };
-    Assert(*drops == 1, "the replaced value is destroyed when it is replaced");
+    // Safety: `drops` is `@drops`, a live local of `Main`.
+    Assert(unsafe { *drops } == 1, "the replaced value is destroyed when it is replaced");
     return value.Id();
 }
 
@@ -85,7 +88,8 @@ func StoredInLoop(drops: *var int) -> int {
         value = Tracked { drops: drops, id: i };
         i += 1;
     }
-    Assert(*drops == 3, "every value a pass replaced is destroyed");
+    // Safety: `drops` is `@drops`, a live local of `Main`.
+    Assert(unsafe { *drops } == 3, "every value a pass replaced is destroyed");
     return value.Id();
 }
 

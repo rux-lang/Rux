@@ -23,14 +23,14 @@ import Core::{ MaximumOf, MinimumOf, MulChecked };
 /// @see https://rux-lang.dev/docs/api/math/integer#abs-checked
 pub func AbsChecked<T>(value: T, result: *var T) -> bool {
     let zero = value - value;
+    var magnitude = value;
     if value < zero {
         // Negating the most negative value wraps back to itself, which is exactly the overflow to report.
-        let negated = zero - value;
-        *result = negated;
-        return negated < zero;
+        magnitude = zero - value;
     }
-    *result = value;
-    return false;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = magnitude; }
+    return magnitude < zero;
 }
 
 /// The magnitude of `value`, wrapping where it is not representable.
@@ -109,12 +109,9 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
     }
     // `a` is a magnitude, except in the one case where it is the most negative value standing in for a magnitude one
     // larger than the type can hold.
-    if a < zero {
-        *result = a;
-        return true;
-    }
-    *result = a;
-    return false;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = a; }
+    return a < zero;
 }
 
 /// The least common multiple of `left` and `right`, reporting whether it is representable.
@@ -130,7 +127,8 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @see https://rux-lang.dev/docs/api/math/integer#lcm-checked
 pub func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
-    *result = zero;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = zero; }
     if left == zero || right == zero { return false; }
     var divisor = zero;
     if GcdChecked<T>(left, right, @divisor) { return true; }
@@ -182,6 +180,7 @@ pub func PowChecked<T>(base: T, exponent: uint, result: *var T) -> bool {
             factor = squared;
         }
     }
-    *result = accumulated;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = accumulated; }
     return overflowed;
 }

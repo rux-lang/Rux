@@ -40,14 +40,14 @@ pub interface Hasher {
 /// must be written out — `HashBytes<Fnv1a64>(hasher, data, length)` — because a generic argument is never
 /// inferred.
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-/// `bytes` must be readable for `length` bytes.
+/// Safety: `bytes` must be readable for `length` bytes.
 /// @typeParam H the hasher's type
 /// @param hasher the hasher to use, which is reset first
 /// @param bytes the bytes to hash
 /// @param length how many bytes
 /// @returns their hash
 /// @see https://rux-lang.dev/docs/api/hash/hasher#hash-bytes
-pub func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
+pub unsafe func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
     hasher.Write(bytes, length);
     return hasher.Finish();
 }

@@ -31,7 +31,8 @@ pub enum PrefixKind: int32 {
 /// @returns how many leading units the prefix occupies, or zero when there is none
 /// @see https://rux-lang.dev/docs/api/path/syntax#prefix-length
 pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
-    *kind = PrefixKind::None;
+    // Safety: the documented contract makes `kind` a non-null pointer to the caller's writable `PrefixKind`.
+    unsafe { *kind = PrefixKind::None; }
     when #target.os == .Windows {
         let units = path.AsView().Units();
         var start: uint = 0;
@@ -39,34 +40,48 @@ pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
 
         // The verbatim opener: two backslashes, a question mark, a backslash. Exactly backslashes — inside a
         // verbatim path the forward slash is an ordinary character, which is the whole point of the prefix.
-        if units.length >= 4 && (units.data[0] as uint32) == 0x5C && (units.data[1] as uint32) == 0x5C &&
-           (units.data[2] as uint32) == 0x3F && (units.data[3] as uint32) == 0x5C {
+        // Safety: `units.length >= 4`, checked first, covers the reads at indexes 0 through 3.
+        if units.length >= 4 && unsafe {
+            (units.data[0] as uint32) == 0x5C && (units.data[1] as uint32) == 0x5C &&
+            (units.data[2] as uint32) == 0x3F && (units.data[3] as uint32) == 0x5C
+        } {
             verbatim = true;
             start = 4;
         }
 
         // A drive: a letter and a colon.
-        if start + 2 <= units.length && IsDriveLetter(units.data[start]) &&
-           (units.data[start + 1] as uint32) == 0x3A {
-            *kind = verbatim ? PrefixKind::Verbatim : PrefixKind::Drive;
+        // Safety: `start + 2 <= units.length`, checked first, covers the reads at `start` and `start + 1`.
+        if start + 2 <= units.length && unsafe {
+            IsDriveLetter(units.data[start]) && (units.data[start + 1] as uint32) == 0x3A
+        } {
+            // Safety: the documented contract makes `kind` a non-null pointer to the caller's writable `PrefixKind`.
+            unsafe { *kind = verbatim ? PrefixKind::Verbatim : PrefixKind::Drive; }
             return start + 2;
         }
 
         // A share: two separators, a server, a separator, a share name. Under the verbatim prefix it is spelled
         // `UNC\server\share`.
         if verbatim {
-            if start + 4 <= units.length && (units.data[start] as uint32) == 0x55 &&
-               (units.data[start + 1] as uint32) == 0x4E && (units.data[start + 2] as uint32) == 0x43 &&
-               (units.data[start + 3] as uint32) == 0x5C {
-                *kind = PrefixKind::Verbatim;
+            // Safety: `start + 4 <= units.length`, checked first, covers the reads at `start` through `start + 3`.
+            if start + 4 <= units.length && unsafe {
+                (units.data[start] as uint32) == 0x55 && (units.data[start + 1] as uint32) == 0x4E &&
+                (units.data[start + 2] as uint32) == 0x43 && (units.data[start + 3] as uint32) == 0x5C
+            } {
+                // Safety: the documented contract makes `kind` a non-null pointer to the caller's writable
+                // `PrefixKind`.
+                unsafe { *kind = PrefixKind::Verbatim; }
                 return ShareEnd(units, start + 4);
             }
-            *kind = PrefixKind::Verbatim;
+            // Safety: the documented contract makes `kind` a non-null pointer to the caller's writable `PrefixKind`.
+            unsafe { *kind = PrefixKind::Verbatim; }
             return start;
         }
-        if units.length >= 2 && IsSeparator(units.data[0]) && IsSeparator(units.data[1]) &&
-           units.length > 2 && !IsSeparator(units.data[2]) {
-            *kind = PrefixKind::Share;
+        // Safety: `units.length > 2`, checked first, covers the reads at indexes 0 through 2.
+        if units.length > 2 && unsafe {
+            IsSeparator(units.data[0]) && IsSeparator(units.data[1]) && !IsSeparator(units.data[2])
+        } {
+            // Safety: the documented contract makes `kind` a non-null pointer to the caller's writable `PrefixKind`.
+            unsafe { *kind = PrefixKind::Share; }
             return ShareEnd(units, 2);
         }
         return 0;
@@ -86,12 +101,14 @@ when #target.os == .Windows {
     // The end of `server\share` starting at `from`: past the server, its separator, and the share name.
     func ShareEnd(units: uint16[..], from: uint) -> uint {
         var at = from;
-        while at < units.length && !IsSeparator(units.data[at]) {
+        // Safety: `at` is below `units.length`, checked first in the same condition.
+        while at < units.length && !IsSeparator(unsafe { units.data[at] }) {
             at = at + 1;
         }
         if at < units.length {
             at = at + 1;
-            while at < units.length && !IsSeparator(units.data[at]) {
+            // Safety: `at` is below `units.length`, checked first in the same condition.
+            while at < units.length && !IsSeparator(unsafe { units.data[at] }) {
                 at = at + 1;
             }
         }
@@ -111,7 +128,8 @@ pub func HasRoot(path: Path) -> bool {
         return true;
     }
     let units = path.AsView().Units();
-    return prefix < units.length && IsSeparator(units.data[prefix]);
+    // Safety: `prefix` is below `units.length`, checked first in the same condition.
+    return prefix < units.length && IsSeparator(unsafe { units.data[prefix] });
 }
 
 /// Whether `path` names one place regardless of any current directory.
@@ -127,7 +145,8 @@ pub func IsAbsolute(path: Path) -> bool {
         if kind == PrefixKind::Share || kind == PrefixKind::Verbatim { return true; }
         if kind == PrefixKind::Drive {
             let units = path.AsView().Units();
-            return prefix < units.length && IsSeparator(units.data[prefix]);
+            // Safety: `prefix` is below `units.length`, checked first in the same condition.
+            return prefix < units.length && IsSeparator(unsafe { units.data[prefix] });
         }
         return false;
     }

@@ -135,48 +135,54 @@ pub func Encode(scalar: char32, into: var char8[..]) -> uint ! Utf8Error {
 // values past the last scalar without decoding anything first. `low` above `high` marks a leading byte UTF-8 never
 // uses.
 func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> uint {
+    var first: uint32 = 1;
+    var last: uint32 = 0;
+    var width: uint = 0;
     if leading >= 0xC2 && leading <= 0xDF {
-        *low = 0x80;
-        *high = 0xBF;
-        return 2;
+        first = 0x80;
+        last = 0xBF;
+        width = 2;
     }
-    if leading == 0xE0 {
+    else if leading == 0xE0 {
         // Below A0 the value would fit in two bytes, so three would be an overlong spelling of it.
-        *low = 0xA0;
-        *high = 0xBF;
-        return 3;
+        first = 0xA0;
+        last = 0xBF;
+        width = 3;
     }
-    if (leading >= 0xE1 && leading <= 0xEC) || leading == 0xEE || leading == 0xEF {
-        *low = 0x80;
-        *high = 0xBF;
-        return 3;
+    else if (leading >= 0xE1 && leading <= 0xEC) || leading == 0xEE || leading == 0xEF {
+        first = 0x80;
+        last = 0xBF;
+        width = 3;
     }
-    if leading == 0xED {
+    else if leading == 0xED {
         // Above 9F the value would be a surrogate half, which is not a scalar value.
-        *low = 0x80;
-        *high = 0x9F;
-        return 3;
+        first = 0x80;
+        last = 0x9F;
+        width = 3;
     }
-    if leading == 0xF0 {
+    else if leading == 0xF0 {
         // Below 90 the value would fit in three bytes.
-        *low = 0x90;
-        *high = 0xBF;
-        return 4;
+        first = 0x90;
+        last = 0xBF;
+        width = 4;
     }
-    if leading >= 0xF1 && leading <= 0xF3 {
-        *low = 0x80;
-        *high = 0xBF;
-        return 4;
+    else if leading >= 0xF1 && leading <= 0xF3 {
+        first = 0x80;
+        last = 0xBF;
+        width = 4;
     }
-    if leading == 0xF4 {
+    else if leading == 0xF4 {
         // Above 8F the value would be past U+10FFFF.
-        *low = 0x80;
-        *high = 0x8F;
-        return 4;
+        first = 0x80;
+        last = 0x8F;
+        width = 4;
     }
-    *low = 1;
-    *high = 0;
-    return 0;
+    // Safety: the one caller, `DecodeAt`, passes the addresses of its own `uint32` locals for `low` and `high`.
+    unsafe {
+        *low = first;
+        *high = last;
+    }
+    return width;
 }
 
 /// Decodes the scalar value starting at `index`, reporting it and how many bytes it occupied.
@@ -190,7 +196,8 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
     if index >= bytes.length { fail Utf8Error::Truncated; }
 
-    let leading = bytes.data[index] as uint32;
+    // Safety: `index` is below `bytes.length`, checked above.
+    let leading = unsafe { bytes.data[index] } as uint32;
     if leading < 0x80 {
         return DecodedScalar { scalar: leading as char32, width: 1 };
     }
@@ -201,18 +208,21 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
     if expected == 0 { fail Utf8Error::InvalidStart; }
     if index + expected > bytes.length { fail Utf8Error::Truncated; }
 
-    let second = bytes.data[index + 1] as uint32;
+    // Safety: `expected` is at least two and `index + expected` is at most `bytes.length`, checked above.
+    let second = unsafe { bytes.data[index + 1] } as uint32;
     if second < low || second > high { fail Utf8Error::InvalidContinuation; }
     var step: uint = 2;
     while step < expected {
-        if !IsContinuation(bytes.data[index + step]) { fail Utf8Error::InvalidContinuation; }
+        // Safety: `step` is below `expected`, and `index + expected` is at most `bytes.length`, checked above.
+        if !IsContinuation(unsafe { bytes.data[index + step] }) { fail Utf8Error::InvalidContinuation; }
         step = step + 1;
     }
 
     var value = leading & (expected == 2 ? 0x1F : (expected == 3 ? 0x0F : 0x07));
     var taken: uint = 1;
     while taken < expected {
-        value = (value << 6) | ((bytes.data[index + taken] as uint32) & 0x3F);
+        // Safety: `taken` is below `expected`, and `index + expected` is at most `bytes.length`, checked above.
+        value = (value << 6) | ((unsafe { bytes.data[index + taken] } as uint32) & 0x3F);
         taken = taken + 1;
     }
     return DecodedScalar { scalar: value as char32, width: expected };
@@ -242,7 +252,8 @@ pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
 pub func IsBoundary(bytes: char8[..], index: uint) -> bool {
     if index > bytes.length { return false; }
     if index == bytes.length { return true; }
-    return !IsContinuation(bytes.data[index]);
+    // Safety: `index` is below `bytes.length`: the two checks above handled every larger value.
+    return !IsContinuation(unsafe { bytes.data[index] });
 }
 
 /// How many scalar values `bytes` holds, assuming it is well-formed.
@@ -256,7 +267,8 @@ pub func CountScalars(bytes: char8[..]) -> uint {
     var counted: uint = 0;
     var index: uint = 0;
     while index < bytes.length {
-        if !IsContinuation(bytes.data[index]) {
+        // Safety: `index` is below `bytes.length`, the loop condition.
+        if !IsContinuation(unsafe { bytes.data[index] }) {
             counted = counted + 1;
         }
         index = index + 1;
@@ -275,7 +287,8 @@ pub func BoundaryAtOrBelow(bytes: char8[..], index: uint) -> uint {
     if index >= bytes.length { return bytes.length; }
     var walk = index;
     // At most three steps: no scalar value takes more than four bytes, so no byte is more than three past a start.
-    while walk > 0 && IsContinuation(bytes.data[walk]) {
+    // Safety: `walk` starts below `bytes.length`, checked above, and only decreases.
+    while walk > 0 && IsContinuation(unsafe { bytes.data[walk] }) {
         walk = walk - 1;
     }
     return walk;

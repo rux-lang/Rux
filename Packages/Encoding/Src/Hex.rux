@@ -114,7 +114,9 @@ pub func HexDecode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
 // length and reads the same storage.
 func BytesOf(text: char8[..]) -> byte[..] {
     if text.length == 0 { return []; }
-    return (text.data as *byte)[..text.length];
+    // Safety: `char8` and `byte` are both one byte wide and every bit pattern is a valid `byte`, so retyping the
+    // slice's data pointer is sound, and `text.data` addresses `text.length` live code units for the slice's lifetime.
+    return unsafe { (text.data as *byte)[..text.length] };
 }
 
 /// A borrowed byte sequence that renders as hexadecimal under a format placeholder.

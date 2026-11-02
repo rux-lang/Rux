@@ -101,7 +101,8 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 /// @see https://rux-lang.dev/docs/api/math/rounding#to-integer-checked
 pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
     let zero = sample - sample;
-    *result = zero;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = zero; }
     if IsNan(value) || IsInfinite(value) { return true; }
     let rounded = RoundTo(value, mode);
     let signed = (zero - 1) < zero;
@@ -117,6 +118,7 @@ pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, resu
     else if rounded < 0.0 {
         return true;
     }
-    *result = rounded as T;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = rounded as T; }
     return false;
 }

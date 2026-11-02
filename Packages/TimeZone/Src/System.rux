@@ -63,7 +63,9 @@ func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneE
     while true {
         match file.Read(chunk[..]) {
             .Success(count) => {
-                bytes.PushSlice((chunk[..count].data as *byte)[..count]) catch { else => fail TimeZoneError::OutOfMemory };
+                // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
+                let read = unsafe { (chunk[..count].data as *byte)[..count] };
+                bytes.PushSlice(read) catch { else => fail TimeZoneError::OutOfMemory };
             },
             .Failure(error) => {
                 if error.kind == IoErrorKind::EndOfStream { break; }
@@ -179,7 +181,9 @@ extend TimeZone {
                 bias: 0, standardName: [0u16; 32], standardDate: EmptyRuleDate(), standardBias: 0,
                 daylightName: [0u16; 32], daylightDate: EmptyRuleDate(), daylightBias: 0
             };
-            if GetTimeZoneInformation(@information) == 0xFFFFFFFFu32 { fail TimeZoneError::Unreadable; }
+            // Safety: `information` is a local `TimeZoneInformation`, which the call fills.
+            let status = unsafe { GetTimeZoneInformation(@information) };
+            if status == 0xFFFFFFFFu32 { fail TimeZoneError::Unreadable; }
             var zone = TimeZone::Empty(allocator, "Local")?;
             var rule = NoRule();
             rule.present = true;
@@ -187,14 +191,14 @@ extend TimeZone {
                 offset: -(information.bias + information.standardBias) * 60, daylight: false,
                 abbreviation: zone.names.Length(), abbreviationLength: 0
             };
-            rule.standard.abbreviationLength = AppendName(zone.names, @information.standardName[0]);
+            rule.standard.abbreviationLength = AppendName(zone.names, information.standardName);
             if information.daylightDate.month != 0u16 {
                 rule.hasDaylight = true;
                 rule.daylight = ZoneType {
                     offset: -(information.bias + information.daylightBias) * 60, daylight: true,
                     abbreviation: zone.names.Length(), abbreviationLength: 0
                 };
-                rule.daylight.abbreviationLength = AppendName(zone.names, @information.daylightName[0]);
+                rule.daylight.abbreviationLength = AppendName(zone.names, information.daylightName);
                 rule.start = WindowsDate(information.daylightDate);
                 rule.end = WindowsDate(information.standardDate);
             }
@@ -223,7 +227,7 @@ when #target.os == .Windows {
     }
 
     // Appends a NUL-terminated UTF-16 name to the pool, keeping its ASCII, and returns its length.
-    func AppendName(names: &var Vector<char8>, name: *uint16) -> uint {
+    func AppendName(names: &var Vector<char8>, name: &uint16[32]) -> uint {
         var length: uint = 0;
         var index: uint = 0;
         while index < 32u && name[index] != 0u16 {

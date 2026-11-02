@@ -45,7 +45,8 @@ extend BufferWriter {
     /// @returns the bytes written, which are valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#written
     pub func Written(self: &BufferWriter) -> char8[..] {
-        return (self.room.data)[..self.length];
+        // Safety: `self.length` never exceeds `self.room.length`: `Write` refuses a run that does not fit.
+        return unsafe { (self.room.data)[..self.length] };
     }
 
     /// How many bytes of text the writer holds.
@@ -96,7 +97,8 @@ extend BufferWriter : TextWriter {
         Validate(bytes) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
         var index: uint = 0;
         while index < bytes.length {
-            self.room[self.length + index] = bytes.data[index];
+            // Safety: `index` is below `bytes.length`, the loop condition.
+            self.room[self.length + index] = unsafe { bytes.data[index] };
             index = index + 1;
         }
         self.length = self.length + bytes.length;

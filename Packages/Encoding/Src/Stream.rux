@@ -123,7 +123,9 @@ extend EncodingWriter : Writer {
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-write
     pub func Write(self: &var EncodingWriter, bytes: char8[..]) -> uint ! IoError {
         if self.finished { fail IoError::Of(IoErrorKind::InvalidInput); }
-        let data = (bytes.data as *byte)[..bytes.length];
+        // Safety: `char8` and `byte` are both one byte wide and every bit pattern is a valid `byte`, and `bytes.data`
+        // addresses `bytes.length` live code units for the duration of this call.
+        let data = unsafe { (bytes.data as *byte)[..bytes.length] };
         let group = GroupBytes(self.codec);
         var at: uint = 0;
         // Complete the group held back from the last write.

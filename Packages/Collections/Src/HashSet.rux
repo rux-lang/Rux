@@ -105,7 +105,8 @@ extend HashSet<T> {
         if self.table.FindHashed(value, hashed, self.equals) != none { return false; }
 
         self.table.EnsureRoom(self.hash)?;
-        if self.table.PlaceHashed(<-value, (), hashed) == none { fail CollectionError::Unsupported; }
+        // Safety: `EnsureRoom` succeeded, so the capacity is nonzero.
+        if unsafe { self.table.PlaceHashed(<-value, (), hashed) } == none { fail CollectionError::Unsupported; }
         return true;
     }
 
@@ -117,9 +118,13 @@ extend HashSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#remove
     pub func Remove(self: &var HashSet<T>, value: T) -> T? {
         let slot = self.table.Find(value, self.hash, self.equals) ?? return none;
-        let taken <- self.table.keys[slot];
-        self.table.Vacate(slot);
-        return .Some(<-taken);
+        // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key is
+        // initialized; it is moved out before `Vacate` closes the slot.
+        unsafe {
+            let taken <- self.table.keys[slot];
+            self.table.Vacate(slot);
+            return .Some(<-taken);
+        }
     }
 
     /// Makes room for `additional` more elements on top of those already present.
@@ -151,18 +156,23 @@ extend HashSet<T> {
     /// @returns whether an element was read; false at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#try-next
     pub func TryNext(self: &HashSet<T>, cursor: *var uint, value: *var T) -> bool {
-        var index = *cursor;
+        // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
+        var index = unsafe { *cursor };
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
                 if value != null {
-                    *value = self.table.keys[index];
+                    // Safety: the documented contract makes a non-null `value` a pointer to the caller's writable
+                    // `T`, and by the table invariant the slot, occupied and below the capacity, holds a key.
+                    unsafe { *value = self.table.keys[index]; }
                 }
-                *cursor = index + 1;
+                // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
+                unsafe { *cursor = index + 1; }
                 return true;
             }
             index++;
         }
-        *cursor = index;
+        // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
+        unsafe { *cursor = index; }
         return false;
     }
 
@@ -327,9 +337,14 @@ extend HashSet<T> {
             sweeping = false;
             var index: uint = 0;
             while index < self.table.Capacity() {
-                if self.table.IsOccupied(index) && !other.Contains(self.table.keys[index]) {
-                    let taken <- self.table.keys[index];
-                    self.table.Vacate(index);
+                // Safety: the table invariant: the slot is below the capacity and occupied, checked first, so its key
+                // is initialized.
+                if self.table.IsOccupied(index) && !unsafe { other.Contains(self.table.keys[index]) } {
+                    // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
+                    unsafe {
+                        let taken <- self.table.keys[index];
+                        self.table.Vacate(index);
+                    }
                     sweeping = true;
                 }
                 else {
@@ -352,9 +367,14 @@ extend HashSet<T> {
             sweeping = false;
             var index: uint = 0;
             while index < self.table.Capacity() {
-                if self.table.IsOccupied(index) && other.Contains(self.table.keys[index]) {
-                    let taken <- self.table.keys[index];
-                    self.table.Vacate(index);
+                // Safety: the table invariant: the slot is below the capacity and occupied, checked first, so its key
+                // is initialized.
+                if self.table.IsOccupied(index) && unsafe { other.Contains(self.table.keys[index]) } {
+                    // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
+                    unsafe {
+                        let taken <- self.table.keys[index];
+                        self.table.Vacate(index);
+                    }
                     sweeping = true;
                 }
                 else {
@@ -383,8 +403,12 @@ extend HashSet<T> {
                 value? => {
                     match self.table.Find(value, self.hash, self.equals) {
                         slot? => {
-                            let taken <- self.table.keys[slot];
-                            self.table.Vacate(slot);
+                            // Safety: the table invariant: `Find` names only an occupied slot below the capacity; its
+                            // key is moved out before `Vacate` closes the slot.
+                            unsafe {
+                                let taken <- self.table.keys[slot];
+                                self.table.Vacate(slot);
+                            }
                         },
                         none => {
                             self.Insert(value)?;
@@ -448,9 +472,12 @@ extend HashSetIterator<T> : Iterator {
     pub func Next(self: &var HashSetIterator<T>) -> T? {
         var index = self.cursor;
         while index < self.capacity {
-            if self.states[index] != SlotEmpty {
+            // Safety: `index < self.capacity`, checked by the loop, and the runs are the set's, which `Iterate`
+            // requires to outlive this walk unchanged, so by the table invariant the state byte is written.
+            if unsafe { self.states[index] } != SlotEmpty {
                 self.cursor = index + 1;
-                return .Some(self.keys[index]);
+                // Safety: the same slot of the set's runs, occupied, checked above, so its key is initialized.
+                return .Some(unsafe { self.keys[index] });
             }
             index++;
         }
@@ -485,11 +512,15 @@ extend HashSetIntoIterator<T> : Iterator {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
-                let taken <- self.table.keys[index];
-                self.table.states[index] = SlotEmpty;
-                self.table.length = self.table.length - 1;
-                self.cursor = index + 1;
-                return .Some(<-taken);
+                // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its key
+                // is initialized; it is moved out and the slot is marked empty at once.
+                unsafe {
+                    let taken <- self.table.keys[index];
+                    self.table.states[index] = SlotEmpty;
+                    self.table.length = self.table.length - 1;
+                    self.cursor = index + 1;
+                    return .Some(<-taken);
+                }
             }
             index++;
         }

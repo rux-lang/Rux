@@ -222,7 +222,10 @@ extend Parsed {
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#write-help
     pub func WriteHelp(self: &Parsed, writer: &var TextWriter) -> ! FormatError {
-        let parent = self.parent == null ? "" : self.parent.name;
-        return WriteHelp(*self.spec, writer, parent);
+        // Safety: `self.parent`, tested for null here, is the `CommandSpec` whose `commands` hold this parse's command,
+        // and the documented contract of `Parse` keeps it alive for as long as the `Parsed` result.
+        let parent = self.parent == null ? "" : unsafe { self.parent.name };
+        let declared = self.Declared();
+        return WriteHelp(declared, writer, parent);
     }
 }

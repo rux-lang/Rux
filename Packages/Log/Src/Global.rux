@@ -18,21 +18,27 @@ var GlobalLock: Lock = Lock::Unlocked;
 /// @param level the least severe level written
 /// @see https://rux-lang.dev/docs/api/log/global#set-level
 pub func SetLevel(level: Level) {
-    AtomicStore(@GlobalLevel, level as uint8, MemoryOrder::Relaxed);
+    // Safety: `@GlobalLevel` is the address of a module variable, live for the whole process, aligned for its type,
+    // and reached only through atomic operations.
+    unsafe { AtomicStore(@GlobalLevel, level as uint8, MemoryOrder::Relaxed); }
 }
 
 /// Writes process-wide records in `format` from now on. The format starts as `Text`.
 /// @param format how records are written
 /// @see https://rux-lang.dev/docs/api/log/global#set-format
 pub func SetFormat(format: LogFormat) {
-    AtomicStore(@GlobalFormat, format as uint8, MemoryOrder::Relaxed);
+    // Safety: `@GlobalFormat` is the address of a module variable, live for the whole process, aligned for its type,
+    // and reached only through atomic operations.
+    unsafe { AtomicStore(@GlobalFormat, format as uint8, MemoryOrder::Relaxed); }
 }
 
 /// Whether process-wide records start with the time. They start with it.
 /// @param enabled whether to write the time
 /// @see https://rux-lang.dev/docs/api/log/global#set-timestamps
 pub func SetTimestamps(enabled: bool) {
-    AtomicStore(@GlobalTimestamps, enabled, MemoryOrder::Relaxed);
+    // Safety: `@GlobalTimestamps` is the address of a module variable, live for the whole process, aligned for its
+    // type, and reached only through atomic operations.
+    unsafe { AtomicStore(@GlobalTimestamps, enabled, MemoryOrder::Relaxed); }
 }
 
 /// Whether a process-wide record at `level` would be written.
@@ -40,8 +46,10 @@ pub func SetTimestamps(enabled: bool) {
 /// @returns whether it would be written
 /// @see https://rux-lang.dev/docs/api/log/global#enabled
 pub func Enabled(level: Level) -> bool {
-    return level as uint8 >= CompiledLevel() as uint8 &&
-           level as uint8 >= AtomicLoad(@GlobalLevel, MemoryOrder::Relaxed);
+    if level as uint8 < CompiledLevel() as uint8 { return false; }
+    // Safety: `@GlobalLevel` is the address of a module variable, live for the whole process, aligned for its type,
+    // and reached only through atomic operations.
+    return level as uint8 >= unsafe { AtomicLoad(@GlobalLevel, MemoryOrder::Relaxed) };
 }
 
 /// Writes a process-wide record at `level` with `message` and `fields` to standard error, if the level is enabled.
@@ -52,8 +60,11 @@ pub func Enabled(level: Level) -> bool {
 /// @see https://rux-lang.dev/docs/api/log/global#log
 pub func Log(level: Level, message: char8[..], fields: Field[..]) {
     if !Enabled(level) { return; }
-    let format = AtomicLoad(@GlobalFormat, MemoryOrder::Relaxed) as LogFormat;
-    let timestamps = AtomicLoad(@GlobalTimestamps, MemoryOrder::Relaxed);
+    // Safety: `@GlobalFormat` addresses a module variable, live for the whole process, aligned for its type, and
+    // reached only through atomic operations.
+    let format = unsafe { AtomicLoad(@GlobalFormat, MemoryOrder::Relaxed) } as LogFormat;
+    // Safety: likewise `@GlobalTimestamps`, a live, aligned module variable reached only through atomic operations.
+    let timestamps = unsafe { AtomicLoad(@GlobalTimestamps, MemoryOrder::Relaxed) };
     var builder = StringBuilder(SystemAllocator());
     if !WriteRecord(builder, format, timestamps, level, message, NoFields(), fields) { return; }
     GlobalLock.Acquire();

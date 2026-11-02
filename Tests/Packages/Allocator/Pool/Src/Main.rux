@@ -30,7 +30,8 @@ func Main() -> ! AllocError {
     Assert(pool.ClassSize(PoolClassCount - 1) == PoolLargestClass, "and the last is the largest");
     Assert(pool.ClassSize(PoolClassCount) == 0, "with nothing past the last");
 
-    var handle = pool.Handle();
+    // Safety: `pool` is a local that outlives `handle` and is never moved.
+    var handle = unsafe { pool.Handle() };
     let allocator: Allocator = handle;
 
     // A zero-sized layout costs the pool nothing.
@@ -63,12 +64,16 @@ func Main() -> ! AllocError {
     Assert((fourth as uint) == (third as uint) + PoolSmallestClass, "and the fourth the third");
 
     // Writing through every block must not disturb the others.
-    *(first as *var uint64) = 0x1111111111111111;
-    *(second as *var uint64) = 0x2222222222222222;
-    *(third as *var uint64) = 0x3333333333333333;
-    *(fourth as *var uint64) = 0x4444444444444444;
-    Assert(*(first as *uint64) == 0x1111111111111111, "the first block keeps its bytes");
-    Assert(*(fourth as *uint64) == 0x4444444444444444, "and so does the fourth");
+    // Safety: the four are distinct live blocks of the 16-byte class, chunk-aligned, so each holds a `uint64`.
+    let (firstValue, fourthValue) = unsafe {
+        *(first as *var uint64) = 0x1111111111111111;
+        *(second as *var uint64) = 0x2222222222222222;
+        *(third as *var uint64) = 0x3333333333333333;
+        *(fourth as *var uint64) = 0x4444444444444444;
+        (*(first as *uint64), *(fourth as *uint64))
+    };
+    Assert(firstValue == 0x1111111111111111, "the first block keeps its bytes");
+    Assert(fourthValue == 0x4444444444444444, "and so does the fourth");
 
     // The fifth request finds the class empty and takes another chunk.
     let fifth = allocator.Allocate(small)?;
@@ -109,7 +114,9 @@ func Main() -> ! AllocError {
 
     // Growing past the class moves it, and carries the bytes across.
     let moved = allocator.Reallocate(grown, sameClass, medium)?;
-    Assert(*(moved as *uint64) == 0x1111111111111111, "carrying the contents to the new block");
+    // Safety: `moved` is a live 128-byte block, aligned to 8, that the reallocation just returned.
+    let movedValue = unsafe { *(moved as *uint64) };
+    Assert(movedValue == 0x1111111111111111, "carrying the contents to the new block");
 
     // A request no class can serve goes to the backing allocator, and comes back from it.
     let huge = Layout::New(4096, 8) ?? zero;
@@ -121,8 +128,12 @@ func Main() -> ! AllocError {
     Assert(direct != null, "which reports an address");
     Assert(pool.ChunkCount() == chunksBefore, "without the pool taking a chunk");
     Assert(pool.LiveBlocks() == liveBefore, "and without the pool counting it as its own");
-    *(direct as *var uint64) = 0x5555555555555555;
-    Assert(*(direct as *uint64) == 0x5555555555555555, "the direct block is usable storage");
+    // Safety: `direct` is a live 4096-byte allocation aligned to 8, not yet released.
+    let directValue = unsafe {
+        *(direct as *var uint64) = 0x5555555555555555;
+        *(direct as *uint64)
+    };
+    Assert(directValue == 0x5555555555555555, "the direct block is usable storage");
     allocator.Deallocate(direct, huge)?;
 
     // A reset takes every pooled block back at once, keeping the chunks.
@@ -135,11 +146,14 @@ func Main() -> ! AllocError {
 
     // Exhaustion: a pool over a buffer too small for a chunk reports the failure rather than inventing storage.
     var storage: byte[64];
-    var tiny = FixedBuffer(@storage[0] as *var opaque, 64);
-    var tinyHandle = tiny.Handle();
+    // Safety: `storage` is a local array of 64 bytes that outlives `tiny` and is touched only through it.
+    var tiny = unsafe { FixedBuffer(@storage[0] as *var opaque, 64) };
+    // Safety: `tiny` is a local that outlives `tinyHandle` and is never moved.
+    var tinyHandle = unsafe { tiny.Handle() };
     let starved: Allocator = tinyHandle;
     var starvedPool = Pool(starved, 32);
-    var starvedHandle = starvedPool.Handle();
+    // Safety: `starvedPool` is a local that outlives `starvedHandle` and is never moved.
+    var starvedHandle = unsafe { starvedPool.Handle() };
     let starvedAllocator: Allocator = starvedHandle;
     var refused: *var opaque = null;
     Assert(Refusal(starvedAllocator.Allocate(small)) == AllocError::OutOfMemory,

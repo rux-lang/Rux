@@ -27,11 +27,14 @@ func Main() -> int {
     // The iterators, over a run the test owns.
     var values: int32[5] = [0; 5];
     var index: uint = 0;
-    for element in MutableReferenceIterator<int32>((@values[0])[..5]) {
-        *element = (index * 10) as int32;
+    // Safety: `values` is a local array of five elements.
+    for element in MutableReferenceIterator<int32>(unsafe { (@values[0])[..5] }) {
+        // Safety: the iterator yields addresses inside `values`, which outlives the loop.
+        unsafe { *element = (index * 10) as int32; }
         index++;
     }
-    let items = (@values[0])[..5];
+    // Safety: `values` is a local array of five elements.
+    let items = unsafe { (@values[0])[..5] };
 
     var byValue = ValueIterator<int32>(items);
     var seen: uint = 0;
@@ -74,7 +77,8 @@ func Main() -> int {
     seen = 0;
     var readBack: int32 = 0;
     for element in byReference {
-        readBack = readBack + *element;
+        // Safety: the iterator yields addresses inside `values`, which outlives the loop.
+        unsafe { readBack = readBack + *element; }
         seen = seen + 1;
     }
     Assert(seen == 5, "the reference iterator yields every element");
@@ -86,7 +90,8 @@ func Main() -> int {
     while true {
         let value = counted.Next() ?? break;
         let element = borrowed.Next() ?? Panic("the two iterators end together");
-        Assert(*element == value, "and agree element for element");
+        // Safety: the iterator yields addresses inside `values`, which outlives the loop.
+        Assert(unsafe { *element == value }, "and agree element for element");
     }
     Assert(borrowed.Next() == none, "and neither has anything left");
 

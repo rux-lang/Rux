@@ -73,7 +73,7 @@ extend float64 : Display {
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
         var storage: char8[52];
-        var cursor = ByteCursor((@storage[2])[..50]);
+        var cursor = ByteCursor(storage[2..52]);
         // Precision means digits after the decimal point, exactly, with ties to even. A request past the
         // supported bound is refused rather than clamped or answered with a different rendering: falling back
         // would answer a question nobody asked, and quietly.
@@ -83,9 +83,9 @@ extend float64 : Display {
         WriteFloat(cursor, self);
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
-        if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
+        if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' && rendered[0] != c8'N' {
             storage[1] = c8'+';
-            rendered = (@storage[1])[..rendered.length + 1];
+            rendered = storage[1..rendered.length + 2];
         }
         return WriteAligned(writer, spec, rendered, true);
     }

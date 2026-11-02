@@ -93,11 +93,16 @@ extend SystemAllocator : Allocator {
         };
 
         let address = (base as uint) + prefix;
-        let header = (address - headerSize) as *var SystemBlockHeader;
-        header.magic = SystemBlockMagic;
-        header.base = base as uint;
-        header.length = length;
-        header.size = layout.size;
+        // Safety: `base` is a fresh mapping of `length` bytes, at least `prefix` plus the size, and is page-aligned.
+        // `prefix` is either `headerSize` or a larger power-of-two alignment, so the header lands inside the mapping
+        // at a multiple of its own size past `base`, aligned for it.
+        unsafe {
+            let header = (address - headerSize) as *var SystemBlockHeader;
+            header.magic = SystemBlockMagic;
+            header.base = base as uint;
+            header.length = length;
+            header.size = layout.size;
+        }
         return address as *var opaque;
     }
 
@@ -115,10 +120,18 @@ extend SystemAllocator : Allocator {
         if block == null || IsEmptyBlock(block) { fail AllocError::InvalidBlock; }
 
         let headerSize = sizeof(SystemBlockHeader);
-        let header = ((block as uint) - headerSize) as *var SystemBlockHeader;
-        if header.magic != SystemBlockMagic || header.size != layout.size { fail AllocError::InvalidBlock; }
-        header.magic = 0;
-        PageRelease(header.base as *var opaque, header.length) catch { else => fail AllocError::InvalidBlock };
+        // Safety: the `Allocator` contract requires `block` to be an address `Allocate` returned, so the header it
+        // wrote sits immediately before it, in the same mapping; the magic check catches a foreign pointer only by
+        // chance.
+        let header = unsafe { ((block as uint) - headerSize) as *var SystemBlockHeader };
+        // Safety: as above, `header` addresses the header `Allocate` wrote for `block`.
+        if unsafe { header.magic != SystemBlockMagic || header.size != layout.size } { fail AllocError::InvalidBlock; }
+        // Safety: `header` is the checked header of `block`; its `base` and `length` are what the page layer returned
+        // and was given for this mapping, which is released only here.
+        unsafe {
+            header.magic = 0;
+            PageRelease(header.base as *var opaque, header.length) catch { else => fail AllocError::InvalidBlock };
+        }
     }
 
     /// Changes the size of a block by taking a new one and copying what fits.
@@ -142,7 +155,9 @@ extend SystemAllocator : Allocator {
 
         let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
-        CopyBlock(fresh, block, keep);
+        // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
+        // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
+        unsafe { CopyBlock(fresh, block, keep); }
 
         // When the old block cannot be released, the new block is still good. Reporting the release failure would leave
         // the caller holding an address it was never told about, so the allocation stands and the leak is the lesser
@@ -154,7 +169,8 @@ extend SystemAllocator : Allocator {
 
 // Copying is spelled out here rather than taken from `Rux/Memory` because that module's `Copy` takes a `*opaque`
 // source, and a block being reallocated is `*var opaque` — the cast is the whole of the difference.
-func CopyBlock(destination: *var opaque, source: *var opaque, length: uint) {
+// Safety: `destination` must be writable and `source` readable for `length` bytes, and the two must not overlap.
+unsafe func CopyBlock(destination: *var opaque, source: *var opaque, length: uint) {
     let target = destination as *var byte;
     let origin = source as *byte;
     var offset: uint = 0;

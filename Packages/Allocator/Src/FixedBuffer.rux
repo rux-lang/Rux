@@ -34,13 +34,13 @@ extend FixedBuffer {
     /// a null `storage`, gives an allocator that refuses every request with `OutOfMemory` — which is a usable
     /// allocator rather than an error, and is what a caller testing exhaustion wants.
     /// Cannot fail. Runs in constant time and allocates nothing.
-    /// The storage must stay valid and untouched by anything else for as long as this allocator or any handle to it
-    /// is used. Nothing here tracks that.
+    /// Safety: the storage must stay valid and untouched by anything else for as long as this allocator or any handle
+    /// to it is used. Nothing here tracks that.
     /// @param storage the caller's bytes to hand out of
     /// @param capacity how many bytes `storage` holds
     /// @returns the buffer, having handed out nothing
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#new
-    pub func FixedBuffer(storage: *var opaque, capacity: uint) -> FixedBuffer {
+    pub unsafe func FixedBuffer(storage: *var opaque, capacity: uint) -> FixedBuffer {
         let base = storage == null ? 0u : storage as uint;
         return FixedBuffer {
             start: base,
@@ -53,10 +53,10 @@ extend FixedBuffer {
     /// A copyable interface adapter pointing at this allocator.
     /// `self` is borrowed mutably and stays the caller's. Everything allocated through the handle advances this
     /// allocator's state rather than a copy of it, which is the whole reason the handle exists.
-    /// The handle borrows the allocator and must not outlive it or survive it being moved.
+    /// Safety: the handle borrows the allocator and must not outlive it or survive it being moved.
     /// @returns a copyable adapter pointing at this buffer
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#handle
-    pub func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
+    pub unsafe func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
         return FixedBufferHandle { buffer: self };
     }
 
@@ -85,6 +85,57 @@ extend FixedBuffer {
     pub func BytesRemaining(self: &FixedBuffer) -> uint {
         return self.capacity - self.used;
     }
+
+    // The handle's operations, kept on the buffer itself so that its fields are reached through a reference and
+    // the handle dereferences its pointer only once per call.
+
+    // Takes storage matching a non-zero-sized `layout`, or reports `OutOfMemory` when what remains cannot hold it.
+    func Take(self: &var FixedBuffer, layout: Layout) -> (*var opaque) ! AllocError {
+        if self.start == 0 { fail AllocError::OutOfMemory; }
+
+        let unaligned = self.start + self.used;
+        let aligned = AlignUp(unaligned, layout.alignment);
+        if aligned < unaligned { fail AllocError::OutOfMemory; }
+        let padding = aligned - unaligned;
+        if padding > self.capacity - self.used { fail AllocError::OutOfMemory; }
+        let remaining = self.capacity - self.used - padding;
+        if layout.size > remaining { fail AllocError::OutOfMemory; }
+
+        self.used = self.used + padding + layout.size;
+        self.lastAllocation = aligned;
+        return aligned as *var opaque;
+    }
+
+    // Rewinds the allocation at `address`, `size` bytes long, when it is the most recent one; leaves anything else.
+    func Rewind(self: &var FixedBuffer, address: uint, size: uint) {
+        if address == self.lastAllocation {
+            let offset = address - self.start;
+            if offset + size <= self.used {
+                self.used = offset;
+                self.lastAllocation = 0;
+            }
+        }
+    }
+
+    // Resizes the allocation at `address` from `oldSize` to `newSize` bytes without moving it, when it is the most
+    // recent one and the buffer has room, and reports whether it did.
+    func ResizeInPlace(self: &var FixedBuffer, address: uint, oldSize: uint, newSize: uint) -> bool {
+        if address != 0 && address == self.lastAllocation {
+            let offset = address - self.start;
+            if offset + oldSize == self.used {
+                if newSize <= oldSize {
+                    self.used = offset + newSize;
+                    return true;
+                }
+                let extra = newSize - oldSize;
+                if extra <= self.capacity - self.used {
+                    self.used = self.used + extra;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }
 
 /// A copyable interface adapter pointing at a `FixedBuffer`.
@@ -109,19 +160,9 @@ extend FixedBufferHandle : Allocator {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
-        if self.buffer.start == 0 { fail AllocError::OutOfMemory; }
-
-        let unaligned = self.buffer.start + self.buffer.used;
-        let aligned = AlignUp(unaligned, layout.alignment);
-        if aligned < unaligned { fail AllocError::OutOfMemory; }
-        let padding = aligned - unaligned;
-        if padding > self.buffer.capacity - self.buffer.used { fail AllocError::OutOfMemory; }
-        let remaining = self.buffer.capacity - self.buffer.used - padding;
-        if layout.size > remaining { fail AllocError::OutOfMemory; }
-
-        self.buffer.used = self.buffer.used + padding + layout.size;
-        self.buffer.lastAllocation = aligned;
-        return aligned as *var opaque;
+        // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
+        // buffer, so `self.buffer` addresses a live `FixedBuffer`.
+        return unsafe { (*self.buffer).Take(layout) };
     }
 
     /// Accepts a release and rewinds only the most recent allocation.
@@ -135,14 +176,9 @@ extend FixedBufferHandle : Allocator {
     pub func Deallocate(self: &FixedBufferHandle, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null { fail AllocError::InvalidBlock; }
-        let address = block as uint;
-        if address == self.buffer.lastAllocation {
-            let offset = address - self.buffer.start;
-            if offset + layout.size <= self.buffer.used {
-                self.buffer.used = offset;
-                self.buffer.lastAllocation = 0;
-            }
-        }
+        // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
+        // buffer, so `self.buffer` addresses a live `FixedBuffer`.
+        unsafe { (*self.buffer).Rewind(block as uint, layout.size); }
     }
 
     /// Grows or shrinks a block, extending the most recent allocation in place where the buffer has room.
@@ -170,25 +206,17 @@ extend FixedBufferHandle : Allocator {
             return EmptyBlockAddress();
         }
 
-        let address = block as uint;
-        if address != 0 && address == self.buffer.lastAllocation {
-            let offset = address - self.buffer.start;
-            if offset + oldLayout.size == self.buffer.used {
-                if newLayout.size <= oldLayout.size {
-                    self.buffer.used = offset + newLayout.size;
-                    return block;
-                }
-                let extra = newLayout.size - oldLayout.size;
-                if extra <= self.buffer.capacity - self.buffer.used {
-                    self.buffer.used = self.buffer.used + extra;
-                    return block;
-                }
-            }
+        // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
+        // buffer, so `self.buffer` addresses a live `FixedBuffer`.
+        if unsafe { (*self.buffer).ResizeInPlace(block as uint, oldLayout.size, newLayout.size) } {
+            return block;
         }
 
         let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
-        Copy(fresh, block as *opaque, keep);
+        // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
+        // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
+        unsafe { Copy(fresh, block as *opaque, keep); }
         return fresh;
     }
 }

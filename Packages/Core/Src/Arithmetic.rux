@@ -60,7 +60,8 @@ pub func MinimumOf<T>(sample: T) -> T {
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#add-checked
 pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
     let sum = left + right;
-    *result = sum;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = sum; }
     let zero = left - left;
     if (zero - 1) < zero {
         // Signed: the sum overflowed exactly when both operands agree in sign and the sum disagrees with them.
@@ -83,7 +84,8 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-checked
 pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
     let difference = left - right;
-    *result = difference;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = difference; }
     let zero = left - left;
     if (zero - 1) < zero {
         // Signed: the difference overflowed exactly when the operands disagree in sign and the result disagrees with
@@ -109,7 +111,8 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-checked
 pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
     let product = left * right;
-    *result = product;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    unsafe { *result = product; }
     let zero = left - left;
     if left == zero {
         // Nothing to divide by, and zero times anything is exact.

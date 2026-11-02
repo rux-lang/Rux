@@ -50,7 +50,9 @@ func InvalidAt(text: char8[..], at: uint) -> bool {
 
 func Main() -> int {
     let hello = "Hello World!";
-    if !Vector((hello.data as *byte)[..hello.length], "2NEpo7TZRRrLZSi2U") { return 1; }
+    // Safety: `hello` is a literal of `hello.length` bytes, and `char8` and `byte` have the same size.
+    let helloBytes = unsafe { (hello.data as *byte)[..hello.length] };
+    if !Vector(helloBytes, "2NEpo7TZRRrLZSi2U") { return 1; }
     let zeros: byte[6] = [0, 0, 0x28, 0x7F, 0xB4, 0xCD];
     if !Vector(zeros[..], "11233QC4") { return 2; }
     let one: byte[1] = [0];
@@ -75,7 +77,7 @@ func Main() -> int {
 
     // Too short a destination: refused, and left zeroed.
     var short: char8[10] = ['?'; 10];
-    match Base58Encode((hello.data as *byte)[..hello.length], short[..]) {
+    match Base58Encode(helloBytes, short[..]) {
         .Failure(_) => {},
         .Success(_) => return 9
     }

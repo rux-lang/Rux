@@ -314,7 +314,13 @@ when #target.os {
 /// @see https://rux-lang.dev/docs/api/c/time#timespec-get
 pub func TimespecGet(ts: &var timespec, base: c_int) -> c_int {
     when #target.os {
-        .Windows => { return _timespec64_get(ts, base); }
-        else => { return timespec_get(ts, base); }
+        .Windows => {
+            // Safety: `ts` is a reference, so it addresses a live, writable `timespec` for the whole call.
+            return unsafe { _timespec64_get(ts, base) };
+        }
+        else => {
+            // Safety: `ts` is a reference, so it addresses a live, writable `timespec` for the whole call.
+            return unsafe { timespec_get(ts, base) };
+        }
     }
 }

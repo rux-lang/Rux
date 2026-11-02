@@ -4,7 +4,8 @@ func Sum(bytes: *var uint8, length: uint64) -> uint64 {
     var total = 0u64;
     var index = 0u64;
     while index < length {
-        total = total + bytes[index] as uint64;
+        // Safety: every caller passes `@secret[0]` with `length` at most the size of that local array.
+        total = total + unsafe { bytes[index] } as uint64;
         index = index + 1u64;
     }
     return total;
@@ -14,19 +15,22 @@ func Sum(bytes: *var uint8, length: uint64) -> uint64 {
 func Cleared() -> uint64 {
     var secret: uint8[4] = [1u8, 2u8, 3u8, 4u8];
     let before = Sum(@secret[0], 4u64);
-    Zeroize(@secret[0], 4u64);
+    // Safety: `secret` is a live local array of 4 bytes, and the length cleared is at most that.
+    unsafe { Zeroize(@secret[0], 4u64); }
     return before + Sum(@secret[0], 4u64);
 }
 
 func Partial() -> uint64 {
     var secret: uint8[4] = [9u8; 4];
-    Zeroize(@secret[0], 2u64);
+    // Safety: `secret` is a live local array of 4 bytes, and the length cleared is at most that.
+    unsafe { Zeroize(@secret[0], 2u64); }
     return Sum(@secret[0], 4u64);
 }
 
 func Empty() -> uint64 {
     var secret: uint8[2] = [7u8, 7u8];
-    Zeroize(@secret[0], 0u64);
+    // Safety: `secret` is a live local array of 2 bytes, and the length cleared is at most that.
+    unsafe { Zeroize(@secret[0], 0u64); }
     return Sum(@secret[0], 2u64);
 }
 

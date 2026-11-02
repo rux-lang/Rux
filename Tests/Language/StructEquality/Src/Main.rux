@@ -14,7 +14,8 @@ extend Money {
 struct Wide { value: int64; tail: int64; trace: *var int32; }
 extend Wide {
     func ==(self: &Wide, other: &Wide) -> bool {
-        *self.trace = *self.trace * 10 + self.value as int32;
+        // Safety: `self.trace` points at `Main`'s `trace` local, which outlives every `Wide` it compares.
+        unsafe { *self.trace = *self.trace * 10 + self.value as int32; }
         return self.value == other.value && self.tail == other.tail;
     }
     func <(self: &Wide, other: &Wide) -> bool { return self.tail < other.tail; }
@@ -24,18 +25,28 @@ struct CustomView { view: char8[..]; code: int32; }
 extend CustomView { func ==(self: &CustomView, other: &CustomView) -> bool { return self.code == other.code; } }
 
 func Equal<T>(left: T, right: T) -> bool { return left == right; }
-func Make(calls: *var int32, tail: int64) -> Pair { *calls = *calls + 1; return Pair { head: 1, tail: tail }; }
+func Make(calls: *var int32, tail: int64) -> Pair {
+    // Safety: the only caller passes `@calls`, a live local of `Main`.
+    unsafe { *calls = *calls + 1; }
+    return Pair { head: 1, tail: tail };
+}
 func Forward(value: Payload) -> Payload { return value; }
 func Sum(value: Payload) -> int64 {
     return match value { .Pairs(left, right) => left.head + left.tail + right.head + right.tail, .Empty => 0i64 };
 }
-func FloatBits(bits: uint64) -> float64 { return *(@bits as *float64); }
+func FloatBits(bits: uint64) -> float64 {
+    // Safety: `bits` is a live parameter and `float64` is exactly as wide as `uint64`.
+    return unsafe { *(@bits as *float64) };
+}
 struct Floating { leading: int64; value: float64; }
 
 struct Tracked { value: int64; drops: *var int32; }
 extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
-    func ~Tracked(self: &var Tracked) { *self.drops = *self.drops * 10 + self.value as int32; }
+    func ~Tracked(self: &var Tracked) {
+        // Safety: `self.drops` points at `Main`'s `drops` local, which outlives every `Tracked`.
+        unsafe { *self.drops = *self.drops * 10 + self.value as int32; }
+    }
 }
 variant Owners { Both(Tracked, Tracked) }
 func DropPayloads(drops: *var int32) {
@@ -62,8 +73,11 @@ func Main() -> int {
     if (Empty {} != Empty {}) { return 3; }
     var paddedA = Padded { byte: 1, value: 42 };
     var paddedB = Padded { byte: 1, value: 42 };
-    *((@paddedA as *var uint8) + 1) = 17u8;
-    *((@paddedB as *var uint8) + 1) = 93u8;
+    // Safety: byte 1 of each live local `Padded` is padding after its leading `uint8`, so writing it changes no field.
+    unsafe {
+        *((@paddedA as *var uint8) + 1) = 17u8;
+        *((@paddedB as *var uint8) + 1) = 93u8;
+    }
     if paddedA != paddedB { return 4; }
     if (Box<Pair> { value: a } == Box<Pair> { value: b }) { return 5; }
     let nestedA = Nested { tuples: (a, a), values: [a, a] };

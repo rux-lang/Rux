@@ -10,12 +10,12 @@ import FileSystem::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirecto
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
-func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
-    return Path::FromView((*holder).View());
+func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
+    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    return Path::FromView(holder.View());
 }
 
 // The failure an outcome carries, which the test expects to be there.
@@ -44,11 +44,11 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     var storage: char8[64];
     let size = file.Size() catch { else => Panic("the size is known") };
     Assert(size == expected.length as uint64, "it is exactly as long as expected");
-    let room = (@storage[0])[..expected.length];
+    let room = storage[..expected.length];
     ReadExact(file, room) catch { else => Panic("and reads whole") };
     var index: uint = 0;
     while index < expected.length {
-        Assert(storage[index] == expected.data[index], "byte for byte");
+        Assert(storage[index] == expected[index], "byte for byte");
         index = index + 1;
     }
     file.Close() catch { else => Panic("and closes") };
@@ -59,19 +59,19 @@ func Main() -> int ! IoError {
     let allocator: Allocator = system;
 
     var dirHolder = OsString(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemXfer.tmp", @dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemXfer.tmp", dirHolder);
     var aHolder = OsString(allocator);
-    let a = PathOf(allocator, "Bin/FileSystemXfer.tmp/a.txt", @aHolder);
+    let a = PathOf(allocator, "Bin/FileSystemXfer.tmp/a.txt", aHolder);
     var bHolder = OsString(allocator);
-    let b = PathOf(allocator, "Bin/FileSystemXfer.tmp/b.txt", @bHolder);
+    let b = PathOf(allocator, "Bin/FileSystemXfer.tmp/b.txt", bHolder);
     var cHolder = OsString(allocator);
-    let c = PathOf(allocator, "Bin/FileSystemXfer.tmp/c.txt", @cHolder);
+    let c = PathOf(allocator, "Bin/FileSystemXfer.tmp/c.txt", cHolder);
     var dHolder = OsString(allocator);
-    let d = PathOf(allocator, "Bin/FileSystemXfer.tmp/d.txt", @dHolder);
+    let d = PathOf(allocator, "Bin/FileSystemXfer.tmp/d.txt", dHolder);
     var hHolder = OsString(allocator);
-    let h = PathOf(allocator, "Bin/FileSystemXfer.tmp/h.txt", @hHolder);
+    let h = PathOf(allocator, "Bin/FileSystemXfer.tmp/h.txt", hHolder);
     var sHolder = OsString(allocator);
-    let s = PathOf(allocator, "Bin/FileSystemXfer.tmp/s.txt", @sHolder);
+    let s = PathOf(allocator, "Bin/FileSystemXfer.tmp/s.txt", sHolder);
 
     // Fresh ground.
     DeleteFile(allocator, a) catch { else => {} };
@@ -109,7 +109,7 @@ func Main() -> int ! IoError {
     // A symbolic link follows on open and deletes as itself. Creation is privilege-gated on Windows, so a
     // PermissionDenied here is an environment, not a defect — the rest is skipped, not faked.
     var linkNameHolder = OsString(allocator);
-    let linkTarget = PathOf(allocator, "h.txt", @linkNameHolder);
+    let linkTarget = PathOf(allocator, "h.txt", linkNameHolder);
     match CreateSymbolicLink(allocator, linkTarget, s, false) {
         .Success(_) => {
             CheckWhole(allocator, s, "changed afterwards");

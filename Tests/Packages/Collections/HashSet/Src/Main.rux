@@ -17,7 +17,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }

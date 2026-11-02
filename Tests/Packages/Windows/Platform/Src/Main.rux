@@ -14,26 +14,33 @@ when #target.os == OperatingSystem::Windows {
         // Reserving takes address space without backing it; committing gives it storage. A reserved page may not be
         // touched, which is why the write below happens only after the commit.
         const Size: uint = 65536;
-        let reserved = VirtualAlloc(null, Size, MEM_RESERVE, PAGE_NOACCESS);
+        // Safety: a null base lets the system choose where to reserve, and nothing touches the reservation yet.
+        let reserved = unsafe { VirtualAlloc(null, Size, MEM_RESERVE, PAGE_NOACCESS) };
         if reserved == null {
             return 1;
         }
 
-        let committed = VirtualAlloc(reserved, Size, MEM_COMMIT, PAGE_READWRITE);
+        // Safety: `reserved` is the base of the `Size`-byte reservation made above, which this commits in full.
+        let committed = unsafe { VirtualAlloc(reserved, Size, MEM_COMMIT, PAGE_READWRITE) };
         if committed != reserved {
             return 2;
         }
 
-        let bytes = committed as *var uint8;
-        *bytes = 0xA5;
-        *(bytes + Size - 1) = 0x5A;
-        if *bytes != 0xA5 || *(bytes + Size - 1) != 0x5A {
+        // Safety: `committed` is the base of `Size` committed read-write bytes, so offsets 0 and `Size - 1` are in it.
+        let (low, high) = unsafe {
+            let bytes = committed as *var uint8;
+            *bytes = 0xA5;
+            *(bytes + Size - 1) = 0x5A;
+            (*bytes, *(bytes + Size - 1))
+        };
+        if low != 0xA5 || high != 0x5A {
             return 3;
         }
 
         // Changing protection writes back what it was, which is what the previous-protection argument is for.
         var previous: uint32 = 0;
-        if VirtualProtect(committed, Size, PAGE_NOACCESS, @previous) == 0 {
+        // Safety: `committed` spans `Size` committed bytes that nothing touches after this, and `previous` is a local.
+        if unsafe { VirtualProtect(committed, Size, PAGE_NOACCESS, @previous) } == 0 {
             return 4;
         }
         if previous != PAGE_READWRITE {
@@ -41,7 +48,8 @@ when #target.os == OperatingSystem::Windows {
         }
 
         // MEM_RELEASE requires a size of zero and the exact base address.
-        if VirtualFree(reserved, 0, MEM_RELEASE) == 0 {
+        // Safety: `reserved` is the exact base of the reservation above, and nothing uses it afterwards.
+        if unsafe { VirtualFree(reserved, 0, MEM_RELEASE) } == 0 {
             return 6;
         }
 
@@ -70,12 +78,14 @@ when #target.os == OperatingSystem::Windows {
 
         // The performance counter is monotonic and its frequency is fixed.
         var frequency: int64 = 0;
-        if QueryPerformanceFrequency(@frequency) == 0 || frequency <= 0 {
+        // Safety: `frequency` is a local `int64`, the one value the call writes.
+        if unsafe { QueryPerformanceFrequency(@frequency) } == 0 || frequency <= 0 {
             return 12;
         }
 
         var first: int64 = 0;
-        if QueryPerformanceCounter(@first) == 0 {
+        // Safety: `first` is a local `int64`, the one value the call writes.
+        if unsafe { QueryPerformanceCounter(@first) } == 0 {
             return 13;
         }
         var spin: int64 = 0;
@@ -83,7 +93,8 @@ when #target.os == OperatingSystem::Windows {
             spin = spin + 1;
         }
         var later: int64 = 0;
-        if QueryPerformanceCounter(@later) == 0 {
+        // Safety: `later` is a local `int64`, the one value the call writes.
+        if unsafe { QueryPerformanceCounter(@later) } == 0 {
             return 14;
         }
         if later < first {
@@ -93,7 +104,8 @@ when #target.os == OperatingSystem::Windows {
         // The wall clock counts 100-nanosecond ticks from 1601, and reassembling the two words has to give a
         // plausible present-day instant once the epochs are reconciled.
         var stamp = FileTime { lowDateTime: 0, highDateTime: 0 };
-        GetSystemTimePreciseAsFileTime(@stamp);
+        // Safety: `stamp` is a local `FileTime`, the structure the call fills.
+        unsafe { GetSystemTimePreciseAsFileTime(@stamp); }
         let copiedStamp = stamp;
         let ticks = FileTimeTicks(stamp);
         if FileTimeTicks(copiedStamp) != ticks {
@@ -118,7 +130,8 @@ when #target.os == OperatingSystem::Windows {
             'a' as char16, 't' as char16, 'h' as char16, '-' as char16, '2' as char16, 'f' as char16,
             '8' as char16, 'c' as char16, '1' as char16, 'e' as char16, '\0' as char16, '\0' as char16
         ];
-        if GetFileAttributesW(@path[0]) != 0xFFFFFFFF {
+        // Safety: `path` is a local holding a NUL-terminated UTF-16 name.
+        if unsafe { GetFileAttributesW(@path[0]) } != 0xFFFFFFFF {
             return 19;
         }
 

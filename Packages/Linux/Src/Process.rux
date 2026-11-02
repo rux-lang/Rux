@@ -15,7 +15,8 @@ import Linux::{ ProcessId, SysExitGroup, SysGetPid, Syscall0, Syscall1 };
 /// @param code the status to report to the parent
 /// @see https://rux-lang.dev/docs/api/linux/process#exit
 pub func Exit(code: int32) {
-    Syscall1(SysExitGroup, (code as int64) as uint64);
+    // Safety: exit_group takes only a status number and touches no memory of the caller's.
+    unsafe { Syscall1(SysExitGroup, (code as int64) as uint64); }
 }
 
 /// The calling process's own identifier.
@@ -25,5 +26,6 @@ pub func Exit(code: int32) {
 /// @returns the calling process's identifier
 /// @see https://rux-lang.dev/docs/api/linux/process#get-pid
 pub func GetPid() -> ProcessId {
-    return Syscall0(SysGetPid) as ProcessId;
+    // Safety: getpid takes no arguments and only reports the caller's identifier.
+    return unsafe { Syscall0(SysGetPid) } as ProcessId;
 }

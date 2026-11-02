@@ -28,7 +28,8 @@ func MakeAndDrop<T>(first: T, second: T) {
 }
 
 // Moving the whole block out of the pointer destroys what it held at the end of the scope.
-func TakeOut<T>(block: *var Counted<T>) {
+// Safety: `block` must point at a live `Counted<T>` that the caller refills or never reads again.
+unsafe func TakeOut<T>(block: *var Counted<T>) {
     let taken <- block[0];
 }
 
@@ -40,7 +41,8 @@ struct Owner<T> {
 extend Owner<T> {
     func ~Owner(self: &var Owner<T>) {
         if self.block != null {
-            TakeOut<T>(self.block);
+            // Safety: a non-null `block` is `@storage` from `Main`, which refills it after this destructor.
+            unsafe { TakeOut<T>(self.block); }
         }
     }
 }
@@ -57,16 +59,19 @@ func Main() -> int {
 
     var storage = Counted<Tracked> { count: 1, value: Tracked { value: 3 } };
     let address = @storage as *var Counted<Tracked>;
-    TakeOut<Tracked>(address);
+    // Safety: `address` is `@storage`, a live local refilled below before it is read.
+    unsafe { TakeOut<Tracked>(address); }
     if Destroyed != 3 {
         return 2;
     }
     // `storage` was moved out through the pointer; give it a value again so its own drop has one to destroy.
-    *address <- Counted<Tracked> { count: 1, value: Tracked { value: 4 } };
+    // Safety: `address` is `@storage`, a live local whose value was just moved out.
+    unsafe { *address <- Counted<Tracked> { count: 1, value: Tracked { value: 4 } }; }
     DropOwner(address);
     if Destroyed != 4 {
         return 3;
     }
-    *address <- Counted<Tracked> { count: 1, value: Tracked { value: 5 } };
+    // Safety: `address` is `@storage`, a live local whose value `DropOwner` just moved out.
+    unsafe { *address <- Counted<Tracked> { count: 1, value: Tracked { value: 5 } }; }
     return 0;
 }

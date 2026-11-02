@@ -82,8 +82,12 @@ func IsConjunctExtend(scalar: char32) -> bool {
 /// @see https://rux-lang.dev/docs/api/unicode/graphemes#is-grapheme-boundary
 pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     if index == 0 || index >= text.length { return true; }
-    let before = GraphemeBreakOf(text.data[index - 1]);
-    let after = GraphemeBreakOf(text.data[index]);
+    // Safety: `index` is above zero and below `text.length`, checked above, so `index - 1` lies inside `text`.
+    let previous = unsafe { text.data[index - 1] };
+    // Safety: `index` is below `text.length`, checked above.
+    let current = unsafe { text.data[index] };
+    let before = GraphemeBreakOf(previous);
+    let after = GraphemeBreakOf(current);
 
     // GB3: a CR joins the LF after it, and only that.
     if before == GraphemeBreak::CarriageReturn && after == GraphemeBreak::LineFeed { return false; }
@@ -118,13 +122,14 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     // GB9b: a prepend binds forward.
     if before == GraphemeBreak::Prepend { return false; }
     // GB9c: a consonant, a linker somewhere in the marks behind, and this consonant, all one conjunct.
-    if IsConjunctConsonant(text.data[index]) {
+    if IsConjunctConsonant(current) {
         var walk = index;
         var sawLinker = false;
         var joined = false;
         while walk > 0 && !joined {
             walk = walk - 1;
-            let each = text.data[walk];
+            // Safety: `walk` only falls from `index`, which is below `text.length`.
+            let each = unsafe { text.data[walk] };
             if IsConjunctLinker(each) {
                 sawLinker = true;
             }
@@ -138,13 +143,15 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
         }
     }
     // GB11: a pictograph, marks, a joiner, and another pictograph is one emoji.
-    if before == GraphemeBreak::ZeroWidthJoiner && IsPictographic(text.data[index]) {
+    if before == GraphemeBreak::ZeroWidthJoiner && IsPictographic(current) {
         var walk = index - 1;
         while walk > 0 {
             walk = walk - 1;
-            let kind = GraphemeBreakOf(text.data[walk]);
+            // Safety: `walk` only falls from `index - 1`, which is below `text.length`.
+            let each = unsafe { text.data[walk] };
+            let kind = GraphemeBreakOf(each);
             if kind != GraphemeBreak::Extend {
-                if IsPictographic(text.data[walk]) { return false; }
+                if IsPictographic(each) { return false; }
                 walk = 0;
             }
         }
@@ -153,7 +160,8 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     if before == GraphemeBreak::RegionalIndicator && after == GraphemeBreak::RegionalIndicator {
         var run: uint = 0;
         var walk = index;
-        while walk > 0 && GraphemeBreakOf(text.data[walk - 1]) == GraphemeBreak::RegionalIndicator {
+        // Safety: `walk` is above zero, tested first, and only falls from `index`, which is below `text.length`.
+        while walk > 0 && GraphemeBreakOf(unsafe { text.data[walk - 1] }) == GraphemeBreak::RegionalIndicator {
             run = run + 1;
             walk = walk - 1;
         }

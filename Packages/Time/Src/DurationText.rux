@@ -20,18 +20,27 @@ func Magnitude(value: &Duration, whole: *var uint64, fraction: *var uint32) -> b
     let seconds = value.WholeSeconds();
     let nanoseconds = value.SubsecondNanoseconds();
     if seconds >= 0 {
-        *whole = seconds as uint64;
-        *fraction = nanoseconds;
+        // Safety: the one caller passes `whole` and `fraction` as the addresses of its own writable locals.
+        unsafe {
+            *whole = seconds as uint64;
+            *fraction = nanoseconds;
+        }
         return false;
     }
     if nanoseconds == 0 {
-        *whole = ~(seconds as uint64) + 1;
-        *fraction = 0;
+        // Safety: the one caller passes `whole` and `fraction` as the addresses of its own writable locals.
+        unsafe {
+            *whole = ~(seconds as uint64) + 1;
+            *fraction = 0;
+        }
         return true;
     }
     // seconds is negative, so seconds + 1 cannot overflow.
-    *whole = ~((seconds + 1) as uint64) + 1;
-    *fraction = 1000000000 - nanoseconds;
+    // Safety: the one caller passes `whole` and `fraction` as the addresses of its own writable locals.
+    unsafe {
+        *whole = ~((seconds + 1) as uint64) + 1;
+        *fraction = 1000000000 - nanoseconds;
+    }
     return true;
 }
 
@@ -81,7 +90,8 @@ func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: Forma
         if kept == 0 { return .Success(()); }
     }
     WriteAscii(writer, c8'.')?;
-    return WriteBytes(writer, (@digits[0])[..kept]);
+    // Safety: `digits` is a local `char8[9]`, and `kept` is at most 9, checked above.
+    return WriteBytes(writer, unsafe { (@digits[0])[..kept] });
 }
 
 // The empty style is the default rendering and `seconds` names it explicitly. Nothing else is understood.
@@ -143,15 +153,19 @@ extend Duration : Debug {
 pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     var at: uint = 0;
     var negative = false;
-    if at < text.length && (text.data[at] == c8'-' || text.data[at] == c8'+') {
-        negative = text.data[at] == c8'-';
+    // Safety: the read runs only when `at` is below `text.length`, checked first.
+    let sign = at < text.length ? unsafe { text.data[at] } : c8'0';
+    if sign == c8'-' || sign == c8'+' {
+        negative = sign == c8'-';
         at = at + 1;
     }
 
     var whole: uint64 = 0;
     var taken: uint = 0;
-    while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
-        let digit = ((text.data[at] as uint32) - 0x30) as uint64;
+    // Safety: the read runs only when `at` is below `text.length`, checked first.
+    while at < text.length && unsafe { text.data[at] >= c8'0' && text.data[at] <= c8'9' } {
+        // Safety: `at` is below `text.length`, the loop condition.
+        let digit = ((unsafe { text.data[at] } as uint32) - 0x30) as uint64;
         // The magnitude of the most negative duration is 2^63, so that is the ceiling the digits are read against;
         // whether the value actually fits is decided by the sign, below.
         if whole > (9223372036854775808 - digit) / 10 {
@@ -166,16 +180,19 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     }
 
     var fraction: uint32 = 0;
-    if at < text.length && text.data[at] == c8'.' {
+    // Safety: the read runs only when `at` is below `text.length`, checked first.
+    if at < text.length && unsafe { text.data[at] } == c8'.' {
         at = at + 1;
         let firstDigit = at;
         var scale: uint32 = 100000000;
         var digits: uint = 0;
-        while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
+        // Safety: the read runs only when `at` is below `text.length`, checked first.
+        while at < text.length && unsafe { text.data[at] >= c8'0' && text.data[at] <= c8'9' } {
             if digits == 9 {
                 fail TimeParseError::ExcessiveFraction(at);
             }
-            fraction = fraction + (((text.data[at] as uint32) - 0x30) * scale);
+            // Safety: `at` is below `text.length`, the loop condition.
+            fraction = fraction + (((unsafe { text.data[at] } as uint32) - 0x30) * scale);
             scale = scale / 10;
             digits = digits + 1;
             at = at + 1;
@@ -185,7 +202,8 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
         }
     }
 
-    if at >= text.length || text.data[at] != c8's' {
+    // Safety: the read runs only when `at` is below `text.length`, checked first.
+    if at >= text.length || unsafe { text.data[at] } != c8's' {
         fail TimeParseError::InvalidSyntax(at);
     }
     at = at + 1;

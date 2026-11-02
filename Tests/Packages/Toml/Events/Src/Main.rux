@@ -41,7 +41,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -49,8 +49,8 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Stops(text: char8[..], expected: char8[..]) -> bool {
     var storage: char8[96];
-    let length = FailsWith(text, (@storage[0])[..96]);
-    return Same((@storage[0])[..length], expected);
+    let length = FailsWith(text, storage[..96]);
+    return Same(storage[..length], expected);
 }
 
 func Main() -> int {
@@ -136,7 +136,7 @@ func Main() -> int {
     // What streaming cannot do, stated rather than pretended: a table defined twice needs the set of tables
     // already seen, which is the tree this reader exists to avoid building.
     var quiet: char8[96];
-    Assert(FailsWith("[a]\n[a]", (@quiet[0])[..96]) == 0,
+    Assert(FailsWith("[a]\n[a]", quiet[..96]) == 0,
            "a redefinition streams without complaint, and the parser is what refuses it");
 
     return 0;

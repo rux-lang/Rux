@@ -14,6 +14,9 @@
 // Two failure shapes, as everywhere in this package: an operation that may allocate reports a `CollectionError`, and
 // one that cannot allocate reports an ordinary miss with a `bool` and an out-parameter. A reported failure means the
 // vector is exactly as it was.
+// The vector invariant, which every `Safety:` comment below leans on: `data` is null with `capacity` zero, or a block
+// from `AllocateBlock` or `ReallocateBlock` with room for `capacity` elements, and `length <= capacity` of them,
+// counting from the front, are initialized.
 
 import Allocator::Allocator;
 import Core::Iterator;
@@ -85,7 +88,9 @@ extend Vector<T> {
         vector.Grow(items.length)?;
         var index: uint = 0;
         while index < items.length {
-            vector.data[index] = items.data[index];
+            // Safety: `index < items.length`, checked by the loop; the slice holds that many elements and `Grow` gave
+            // `data` room for as many.
+            unsafe { vector.data[index] = items.data[index]; }
             index++;
         }
         vector.length = items.length;
@@ -203,7 +208,9 @@ extend Vector<T> {
         while index < self.length {
             // Moving each element into a local destroys it when the local's life ends — the same mechanism `Array`
             // uses, and the only one a container has for an element it does not know is droppable.
-            let taken <- self.data[index];
+            // Safety: the vector invariant: `index < self.length`, checked by the loop, so the element is
+            // initialized; each is moved out once, and the length drops below all of them right after.
+            unsafe { let taken <- self.data[index]; }
             index++;
         }
         self.length = length;
@@ -235,7 +242,9 @@ extend Vector<T> {
             var required = AddLength(self.length, 1)?;
             self.Grow(required)?;
         }
-        self.data[self.length] <- value;
+        // Safety: the vector invariant: `length < capacity` now, checked or grown above, so the slot is allocated and
+        // holds nothing yet.
+        unsafe { self.data[self.length] <- value; }
         self.length = self.length + 1;
         return;
     }
@@ -251,7 +260,9 @@ extend Vector<T> {
         self.Reserve(items.length)?;
         var index: uint = 0;
         while index < items.length {
-            self.data[self.length + index] = items.data[index];
+            // Safety: `index < items.length`, checked by the loop, so the slice holds an element there, and `Reserve`
+            // made room for `length + items.length` elements.
+            unsafe { self.data[self.length + index] = items.data[index]; }
             index++;
         }
         self.length = self.length + items.length;
@@ -269,7 +280,9 @@ extend Vector<T> {
     pub func TryPop(self: &var Vector<T>, value: *var T) -> bool {
         if self.length == 0 || value == null { return false; }
         self.length = self.length - 1;
-        *value <- self.data[self.length];
+        // Safety: the documented contract makes `value` a non-null pointer, checked above, to the caller's writable
+        // `T`, and by the vector invariant the element at the old last index is initialized and now outside `length`.
+        unsafe { *value <- self.data[self.length]; }
         return true;
     }
 
@@ -280,7 +293,8 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#get
     pub func Get(self: &Vector<T>, index: uint) -> T? {
         if index >= self.length { return none; }
-        return .Some(self.data[index]);
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
+        return .Some(unsafe { self.data[index] });
     }
 
     /// A pointer to the element at `index`, or `none` when there is no such index.
@@ -291,7 +305,8 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#reference
     pub func Reference(self: &Vector<T>, index: uint) -> (*T)? {
         if index >= self.length { return none; }
-        return .Some(@self.data[index]);
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
+        return .Some(unsafe { @self.data[index] });
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.
@@ -305,8 +320,12 @@ extend Vector<T> {
     pub func Set(self: &var Vector<T>, index: uint, value: T) -> ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
-        let previous <- self.data[index];
-        self.data[index] <- value;
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized; the
+        // slot emptied by the move is refilled at once.
+        unsafe {
+            let previous <- self.data[index];
+            self.data[index] <- value;
+        }
         return;
     }
 
@@ -320,9 +339,13 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#replace
     pub func Replace(self: &var Vector<T>, index: uint, value: T) -> T ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
-        let previous <- self.data[index];
-        self.data[index] <- value;
-        return <-previous;
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized; the
+        // slot emptied by the move is refilled at once.
+        unsafe {
+            let previous <- self.data[index];
+            self.data[index] <- value;
+            return <-previous;
+        }
     }
 
     /// The initialized elements as a borrowed read-only view.
@@ -331,7 +354,8 @@ extend Vector<T> {
     /// @returns the elements, borrowed
     /// @see https://rux-lang.dev/docs/api/collections/vector#as-slice
     pub func AsSlice(self: &Vector<T>) -> T[..] {
-        return (self.data)[..self.length];
+        // Safety: the vector invariant: the first `length` elements of `data` are initialized.
+        return unsafe { (self.data)[..self.length] };
     }
 
     /// The initialized elements as a borrowed writable view.
@@ -340,7 +364,8 @@ extend Vector<T> {
     /// @returns the elements, borrowed for writing
     /// @see https://rux-lang.dev/docs/api/collections/vector#as-mutable-slice
     pub func AsMutableSlice(self: &var Vector<T>) -> var T[..] {
-        return (self.data)[..self.length];
+        // Safety: the vector invariant: the first `length` elements of `data` are initialized.
+        return unsafe { (self.data)[..self.length] };
     }
 
     /// An iterator over the elements, by copy.
@@ -386,10 +411,13 @@ extend Vector<T> {
         // Backwards, so each element is read before the one that overwrites it.
         var position = self.length;
         while position > index {
-            self.data[position] <- self.data[position - 1];
+            // Safety: the vector invariant: `position <= self.length < capacity` after `Reserve(1)`, so both slots
+            // are allocated and `position - 1` holds an initialized element, moved one place along.
+            unsafe { self.data[position] <- self.data[position - 1]; }
             position = position - 1;
         }
-        self.data[index] <- value;
+        // Safety: `index < self.length`, checked above, and its element has just moved one place along.
+        unsafe { self.data[index] <- value; }
         self.length = self.length + 1;
         return;
     }
@@ -404,10 +432,13 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#remove-at
     pub func RemoveAt(self: &var Vector<T>, index: uint) -> T? {
         if index >= self.length { return none; }
-        let removed <- self.data[index];
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
+        let removed <- unsafe { <-self.data[index] };
         var position = index;
         while position + 1 < self.length {
-            self.data[position] <- self.data[position + 1];
+            // Safety: the vector invariant: `position + 1 < self.length`, checked by the loop, so the element there
+            // is initialized; it moves back into the slot emptied by the previous move.
+            unsafe { self.data[position] <- self.data[position + 1]; }
             position = position + 1;
         }
         self.length = self.length - 1;
@@ -425,10 +456,13 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#swap-remove-at
     pub func SwapRemoveAt(self: &var Vector<T>, index: uint) -> T? {
         if index >= self.length { return none; }
-        let removed <- self.data[index];
+        // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
+        let removed <- unsafe { <-self.data[index] };
         let last = self.length - 1;
         if index != last {
-            self.data[index] <- self.data[last];
+            // Safety: the vector invariant: `last` is the final initialized element, moved into the slot emptied
+            // above.
+            unsafe { self.data[index] <- self.data[last]; }
         }
         self.length = last;
         return .Some(<-removed);
@@ -466,7 +500,9 @@ extend Vector<T> {
         if taken > available {
             taken = available;
         }
-        return (@self.data[start])[..taken];
+        // Safety: the vector invariant: `start < self.length`, checked above, and `taken` is clamped to the
+        // initialized elements from there.
+        return unsafe { (@self.data[start])[..taken] };
     }
 
     /// A borrowed writable view of `count` elements starting at `start`.
@@ -483,7 +519,9 @@ extend Vector<T> {
         if taken > available {
             taken = available;
         }
-        return (@self.data[start])[..taken];
+        // Safety: the vector invariant: `start < self.length`, checked above, and `taken` is clamped to the
+        // initialized elements from there.
+        return unsafe { (@self.data[start])[..taken] };
     }
 
     /// Takes the vector apart into an iterator over its elements.
@@ -573,7 +611,9 @@ extend VectorIntoIterator<T> {
     func ~VectorIntoIterator(self: &var VectorIntoIterator<T>) {
         var index = self.position;
         while index < self.length {
-            let taken <- self.data[index];
+            // Safety: the vector invariant carried over from the vector: elements from `position` to `length` are
+            // initialized and not yet yielded; each is moved out once, and the block is released right after.
+            unsafe { let taken <- self.data[index]; }
             index++;
         }
         if self.data != null {
@@ -594,8 +634,12 @@ extend VectorIntoIterator<T> : Iterator {
     /// @see https://rux-lang.dev/docs/api/collections/vector#vector-into-iterator-next
     pub func Next(self: &var VectorIntoIterator<T>) -> T? {
         if self.position >= self.length { return none; }
-        let taken <- self.data[self.position];
-        self.position = self.position + 1;
-        return .Some(<-taken);
+        // Safety: the vector invariant carried over from the vector: `position < length`, checked above, so the
+        // element is initialized and not yet yielded; `position` moves past it at once.
+        unsafe {
+            let taken <- self.data[self.position];
+            self.position = self.position + 1;
+            return .Some(<-taken);
+        }
     }
 }

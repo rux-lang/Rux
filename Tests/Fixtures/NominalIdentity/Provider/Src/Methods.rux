@@ -31,7 +31,8 @@ pub func CheckProvider() -> bool {
         sizeof(Record) == 16u && sizeof(Mode) == 4u && Mode::Ready as uint32 == 37u32;
 }
 extend Tracked {
-    func ~Tracked(self: &var Tracked) { *self.counter += self.tail as int; }
+    // Safety: `DropInProvider` is the only maker of a `Tracked`, and its callers pass a live `int`.
+    func ~Tracked(self: &var Tracked) { unsafe { *self.counter += self.tail as int; } }
 }
 pub func DropInProvider(counter: *var int) { let owned = Tracked { counter: counter, tail: 1i64 }; }
 extend Record : Reader { pub func Forward(self: &Record, value: Record) -> Record { return value; } pub func Read(self: &Record) -> int64 { return self.first + self.second; } }

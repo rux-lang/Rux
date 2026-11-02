@@ -81,7 +81,9 @@ extend Fnv1a32 : Hasher {
         if length == 0 { return; }
         var index: uint = 0;
         while index < length {
-            self.state = self.state ^ (*(bytes + index) as uint32);
+            // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
+            // bytes.
+            self.state = self.state ^ (unsafe { *(bytes + index) } as uint32);
             self.state = MulWrapping<uint32>(self.state, FnvPrime32);
             index++;
         }
@@ -139,7 +141,9 @@ extend Fnv1a64 : Hasher {
         if length == 0 { return; }
         var index: uint = 0;
         while index < length {
-            self.state = self.state ^ (*(bytes + index) as uint64);
+            // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
+            // bytes.
+            self.state = self.state ^ (unsafe { *(bytes + index) } as uint64);
             self.state = MulWrapping<uint64>(self.state, FnvPrime64);
             index++;
         }
@@ -161,12 +165,12 @@ extend Fnv1a64 : Hasher {
 /// case in which `bytes` may be null.
 /// The one-shot form of making a hasher, writing once and finishing. Identical in result and cost.
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-/// `bytes` must be readable for `length` bytes.
+/// Safety: `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes
 /// @returns their 32-bit FNV-1a hash
 /// @see https://rux-lang.dev/docs/api/hash/fnv1a32#fnv1a32-of
-pub func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
+pub unsafe func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
     var hasher = Fnv1a32();
     hasher.Write(bytes, length);
     return hasher.Value();
@@ -176,12 +180,12 @@ pub func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
 /// `bytes` is borrowed and read; `length` is read by value. A zero length gives the offset basis, and is the one
 /// case in which `bytes` may be null.
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-/// `bytes` must be readable for `length` bytes.
+/// Safety: `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes
 /// @returns their 64-bit FNV-1a hash
 /// @see https://rux-lang.dev/docs/api/hash/fnv1a64#fnv1a64-of
-pub func Fnv1a64Of(bytes: *byte, length: uint) -> uint64 {
+pub unsafe func Fnv1a64Of(bytes: *byte, length: uint) -> uint64 {
     var hasher = Fnv1a64();
     hasher.Write(bytes, length);
     return hasher.Finish();

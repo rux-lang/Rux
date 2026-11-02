@@ -17,7 +17,8 @@ struct Problem {
 
 extend Problem {
     func ~Problem(self: &var Problem) {
-        self.counter.count = self.counter.count + 1i32;
+        // Safety: every `Problem` in this test holds `@counter`, a local of `Main` that outlives it.
+        unsafe { self.counter.count = self.counter.count + 1i32; }
     }
 }
 
@@ -33,7 +34,8 @@ func Check(counter: *var Counter, value: int32) -> int32 throws Problem {
 }
 
 func Touch(counter: *var Counter, fails: bool) throws Small {
-    counter.count = counter.count + 100i32;
+    // Safety: every caller passes `@counter`, a live local of `Main`.
+    unsafe { counter.count = counter.count + 100i32; }
     if fails {
         throw Small { value: 1i32 };
     }

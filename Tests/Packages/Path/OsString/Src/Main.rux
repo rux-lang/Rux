@@ -32,8 +32,8 @@ func Main() -> int {
     when #target.os == .Windows {
         Assert(emoji.Length() == 2, "a supplementary character is a surrogate pair");
         let pair = emoji.View();
-        Assert((pair.Units().data[0] as uint32) == 0xD83D, "the high half first");
-        Assert((pair.Units().data[1] as uint32) == 0xDE00, "the low half second");
+        Assert((pair.Units()[0] as uint32) == 0xD83D, "the high half first");
+        Assert((pair.Units()[1] as uint32) == 0xDE00, "the low half second");
     }
     else {
         Assert(emoji.Length() == 4, "and four bytes of UTF-8");
@@ -63,7 +63,7 @@ func Main() -> int {
     Assert(keptView.Equals(view), "which holds exactly the units that went in");
     var index: uint = 0;
     while index < 4 {
-        Assert(keptView.Units().data[index] == hostile[index], "unit for unit");
+        Assert(keptView.Units()[index] == hostile[index], "unit for unit");
         index = index + 1;
     }
 

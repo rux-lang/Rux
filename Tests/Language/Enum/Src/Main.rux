@@ -97,11 +97,14 @@ func Main() -> int {
     // untyped or byte pointer and back, which an enum value itself never does.
     var color = Color::Blue;
     let untyped = @color as *opaque;
-    let bytes = @color as *uint8;
+    // Safety: `Color` is stored as its `uint8` tag, so `bytes` reads the one byte `color` occupies.
+    let bytes = unsafe { @color as *uint8 };
     Assert(untyped as uint == @color as uint && bytes as uint == @color as uint,
            "Expected every cast of an enum's address to be one address");
-    Assert(*bytes == 20u8, "Expected a byte pointer to an enum to read its uint8 tag");
-    *(untyped as *var Color) = Color::Red;
+    // Safety: `bytes` addresses the tag byte of `color`, a live local.
+    Assert(unsafe { *bytes } == 20u8, "Expected a byte pointer to an enum to read its uint8 tag");
+    // Safety: `untyped` is `@color`, a live, writable `Color` local.
+    unsafe { *(untyped as *var Color) = Color::Red; }
     Assert(color == Color::Red, "Expected a write through a pointer cast back from an untyped one to reach the enum");
 
     return 0;

@@ -17,7 +17,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -42,7 +43,8 @@ func PushAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
         index++;
     }
     Assert(vector.Length() == count, "the vector holds what was pushed into it");
-    *afterPushing = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterPushing = *counter; }
 }
 
 // Pops everything, which is a different path from the vector destroying them.
@@ -193,7 +195,8 @@ func Main() -> ! CollectionError {
         source[index] = (index * 3) as int32;
         index++;
     }
-    let view = (@source[0])[..4];
+    // Safety: `source` is a local array of four elements.
+    let view = unsafe { (@source[0])[..4] };
     var copied = Vector::FromSlice<int32>(allocator, view) catch { else => Panic("a vector is made from a slice") };
     Assert(copied.Length() == 4, "holding every element");
     Assert(copied.Get(3) == .Some(9), "in order");
@@ -266,7 +269,8 @@ func Main() -> ! CollectionError {
     Assert(destroyed == 1, "setting destroys the element it replaces");
     Assert(replacedCount == 0, "and not the one it stores");
     var stored = tracked.Reference(0) ?? Panic("the set element is there");
-    Assert(stored.value == 10, "which now sits at the index");
+    // Safety: `Reference` hands back the address of the stored element, and the vector has not changed since.
+    Assert(unsafe { stored.value == 10 }, "which now sits at the index");
     Assert(Refusal(tracked.Set(5, Tracked { counter: @replacedCount, value: 99 })) == CollectionError::IndexOutOfRange,
         "setting past the length is refused");
     Assert(replacedCount == 1, "destroying the refused value rather than leaking it");
@@ -329,7 +333,8 @@ func Main() -> ! CollectionError {
         index++;
     }
     Assert(span.Slice(2, 3).length == 3, "a slice inside the vector is its own length");
-    Assert(span.Slice(2, 3).data[0] == 2, "starting where it was asked to");
+    // Safety: `Slice(2, 3)` covers three elements of the vector, so its first is inside it.
+    Assert(unsafe { span.Slice(2, 3).data[0] == 2 }, "starting where it was asked to");
     Assert(span.Slice(4, 10).length == 2, "a slice running past the end is clamped");
     Assert(span.Slice(6, 1).length == 0, "a slice starting at the end is empty");
     Assert(span.Slice(0, 0).length == 0, "and so is one of no elements");

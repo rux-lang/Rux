@@ -39,61 +39,93 @@ func Main() -> int {
     // AlignUp wraps where AlignUpChecked reports, which is why an allocation size must use the second.
     Assert(AlignUp(uint::Max, 8) < 8, "the unchecked form wraps rather than reporting");
 
-    let block = Alloc(64) as *var byte;
+    // Safety: retyping only; `Alloc` returns 64 bytes or null, and every bit pattern is a valid `byte`.
+    let block = unsafe { Alloc(64) as *var byte };
     Assert(block != null as *byte, "the block is allocated");
     Assert(IsPointerAligned(block as *opaque, 8), "an allocation is aligned for a machine word");
     Assert(IsPointerAligned(null, 4096), "null is a multiple of everything, which is not the same as usable");
 
     // Unaligned access: the value is written and read back one byte off alignment, where an aligned load would be
     // wrong on every machine that cares.
-    let odd = block + 1;
+    // Safety: `block` is a live 64-byte allocation from `Alloc`, so one byte in is still inside it.
+    let odd = unsafe { block + 1 };
     var written: uint32 = 0x01020304;
-    StoreUnaligned<uint32>(odd as *var opaque, @written);
     var recovered: uint32 = 0;
-    LoadUnaligned<uint32>(odd as *opaque, @recovered);
+    // Safety: `odd` has 63 bytes of the live `block` after it, and `written` and `recovered` are local `uint32`s.
+    unsafe {
+        StoreUnaligned<uint32>(odd as *var opaque, @written);
+        LoadUnaligned<uint32>(odd as *opaque, @recovered);
+    }
     Assert(recovered == 0x01020304, "a value survives a round trip at an unaligned address");
     Assert(!IsPointerAligned(odd as *opaque, 4), "and the address really was unaligned");
 
     // Byte order, written and read at that same unaligned address.
-    StoreLittleEndian<uint32>(odd as *var opaque, @written);
-    Assert(*odd == 0x04 as byte, "little-endian puts the least significant byte first");
-    Assert(*(odd + 3) == 0x01 as byte, "and the most significant last");
+    // Safety: `odd` has 63 bytes of the live `block` after it, and `written` is a local `uint32`.
+    let (littleFirst, littleLast) = unsafe {
+        StoreLittleEndian<uint32>(odd as *var opaque, @written);
+        (*odd, *(odd + 3))
+    };
+    Assert(littleFirst == 0x04 as byte, "little-endian puts the least significant byte first");
+    Assert(littleLast == 0x01 as byte, "and the most significant last");
     recovered = 0;
-    LoadLittleEndian<uint32>(odd as *opaque, @recovered);
+    // Safety: `odd` has 63 bytes of the live `block` after it, and `recovered` is a local `uint32`.
+    unsafe { LoadLittleEndian<uint32>(odd as *opaque, @recovered); }
     Assert(recovered == 0x01020304, "which reads back as the value it started as");
 
-    StoreBigEndian<uint32>(odd as *var opaque, @written);
-    Assert(*odd == 0x01 as byte, "big-endian puts the most significant byte first");
-    Assert(*(odd + 3) == 0x04 as byte, "and the least significant last");
+    // Safety: `odd` has 63 bytes of the live `block` after it, and `written` is a local `uint32`.
+    let (bigFirst, bigLast) = unsafe {
+        StoreBigEndian<uint32>(odd as *var opaque, @written);
+        (*odd, *(odd + 3))
+    };
+    Assert(bigFirst == 0x01 as byte, "big-endian puts the most significant byte first");
+    Assert(bigLast == 0x04 as byte, "and the least significant last");
     recovered = 0;
-    LoadBigEndian<uint32>(odd as *opaque, @recovered);
+    // Safety: `odd` has 63 bytes of the live `block` after it, and `recovered` is a local `uint32`.
+    unsafe { LoadBigEndian<uint32>(odd as *opaque, @recovered); }
     Assert(recovered == 0x01020304, "which also reads back as itself");
 
     // Reading one order through the other gives the reversed value, which is what proves the two differ at all.
     recovered = 0;
-    LoadLittleEndian<uint32>(odd as *opaque, @recovered);
+    // Safety: `odd` has 63 bytes of the live `block` after it, and `recovered` is a local `uint32`.
+    unsafe { LoadLittleEndian<uint32>(odd as *opaque, @recovered); }
     Assert(recovered == 0x04030201, "a big-endian pattern read as little-endian is byte-reversed");
 
     // Reversing a run of bytes in place.
     var index: uint = 0;
     while index < 8 {
-        *(block + index) = index as byte;
+        // Safety: `index` is below 8, so the byte is inside the live 64-byte `block`.
+        unsafe { *(block + index) = index as byte; }
         index++;
     }
-    ReverseBlock(block as *var opaque, 8);
-    Assert(*block == 7 as byte && *(block + 7) == 0 as byte, "the ends are exchanged");
-    Assert(*(block + 3) == 4 as byte, "and so is the middle");
-    ReverseBlock(block as *var opaque, 1);
-    Assert(*block == 7 as byte, "reversing one byte changes nothing");
-    ReverseBlock(null, 0);
+    // Safety: `block` is a live 64-byte allocation, so its first eight bytes are readable and writable.
+    let (head, tail, middle) = unsafe {
+        ReverseBlock(block as *var opaque, 8);
+        (*block, *(block + 7), *(block + 3))
+    };
+    Assert(head == 7 as byte && tail == 0 as byte, "the ends are exchanged");
+    Assert(middle == 4 as byte, "and so is the middle");
+    // Safety: `block` is a live 64-byte allocation, so its first byte is readable and writable.
+    let single = unsafe {
+        ReverseBlock(block as *var opaque, 1);
+        *block
+    };
+    Assert(single == 7 as byte, "reversing one byte changes nothing");
+    // Safety: a length of zero makes `buffer` readable and writable for every byte asked of it, null included.
+    unsafe { ReverseBlock(null, 0); }
 
     // Zeroization clears what it is given.
-    Set(block as *var opaque, 0xFF as byte, 64);
-    ZeroizeBlock(block as *var opaque, 16);
-    Assert(*block == 0 as byte && *(block + 15) == 0 as byte, "the range is cleared");
-    Assert(*(block + 16) == 0xFF as byte, "and nothing past it is touched");
-    ZeroizeBlock(null, 0);
+    // Safety: `block` is a live 64-byte allocation, so all of it is writable and offsets 0, 15 and 16 readable.
+    let (cleared, clearedEnd, untouched) = unsafe {
+        Set(block as *var opaque, 0xFF as byte, 64);
+        ZeroizeBlock(block as *var opaque, 16);
+        (*block, *(block + 15), *(block + 16))
+    };
+    Assert(cleared == 0 as byte && clearedEnd == 0 as byte, "the range is cleared");
+    Assert(untouched == 0xFF as byte, "and nothing past it is touched");
+    // Safety: a length of zero makes `buffer` writable for every byte asked of it, null included.
+    unsafe { ZeroizeBlock(null, 0); }
 
-    Free(block as *var opaque);
+    // Safety: `block` is the live base address `Alloc` returned, and nothing reads through it afterwards.
+    unsafe { Free(block as *var opaque); }
     return 0;
 }

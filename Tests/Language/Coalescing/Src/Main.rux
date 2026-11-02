@@ -18,22 +18,26 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        *self.drops += 1;
+        // Safety: every `Tracked` in this test holds a pointer to a drop counter local of `Main` that outlives it.
+        unsafe { *self.drops += 1; }
     }
 }
 
 func CountedOption(value: int32, calls: *var int32) -> int32? {
-    *calls += 1;
+    // Safety: every caller passes a pointer to an `int32` call counter that is a live local of its caller.
+    unsafe { *calls += 1; }
     return value;
 }
 
 func CountedFallback(value: int32, calls: *var int32) -> int32 {
-    *calls += 1;
+    // Safety: every caller passes a pointer to an `int32` call counter that is a live local of its caller.
+    unsafe { *calls += 1; }
     return value;
 }
 
 func CountedTracked(value: int32, calls: *var int32, drops: *var int32) -> Tracked {
-    *calls += 1;
+    // Safety: every caller passes a pointer to an `int32` call counter that is a live local of its caller.
+    unsafe { *calls += 1; }
     return Tracked { value: value, drops: drops };
 }
 
@@ -100,7 +104,8 @@ func Main() -> int {
     var pointee = 21i32;
     let pointerOption: (*var int32)? = .Some(@pointee);
     let pointer = pointerOption ?? null;
-    Assert(pointer != null && *pointer == 21i32, "raw pointers should work as optional payloads");
+    // Safety: `pointer` is `@pointee`, a live local, once it is not null.
+    Assert(pointer != null && unsafe { *pointer } == 21i32, "raw pointers should work as optional payloads");
 
     Assert(Held(PropagateThenCoalesce(true)) == 17i32, "postfix propagation should compose with coalescing");
     Assert(Held(PropagateThenCoalesce(false)) == -1i32, "propagation should still return none early");

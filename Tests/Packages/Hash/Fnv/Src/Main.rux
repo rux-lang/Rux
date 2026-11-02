@@ -3,9 +3,21 @@ import Core::Assert;
 import Hash::{ Fnv1a32, Fnv1a32Of, Fnv1a64, Fnv1a64Of, FnvOffsetBasis32, FnvOffsetBasis64, HashBytes, WriteByte,
                WriteUint32, WriteUint64 };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+// The bytes a string spans, which is how a text overload reaches the byte one.
+func TextBytes(text: char8[..]) -> byte[..] {
+    // Safety: a `char8` is one byte, so the characters of `text` are readable as `text.length` bytes.
+    return unsafe { (text.data as *byte)[..text.length] };
+}
+
+// The one-shot hashes over a byte slice, which is how the checks below reach the pointer-and-length forms.
+func Bytes32(bytes: byte[..]) -> uint32 {
+    // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
+    return unsafe { Fnv1a32Of(bytes.data, bytes.length) };
+}
+
+func Bytes64(bytes: byte[..]) -> uint64 {
+    // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
+    return unsafe { Fnv1a64Of(bytes.data, bytes.length) };
 }
 
 // FNV-1a is a published algorithm, so the test is the published answers: a hash that agrees with the specification is
@@ -14,18 +26,18 @@ func TextBytes(text: char8[..]) -> char8[..] {
 // over — so those are checked separately.
 
 func Hash32(text: char8[..]) -> uint32 {
-    return Fnv1a32Of(text.data as *byte, text.length);
+    return Bytes32(TextBytes(text));
 }
 
 func Hash64(text: char8[..]) -> uint64 {
-    return Fnv1a64Of(text.data as *byte, text.length);
+    return Bytes64(TextBytes(text));
 }
 
 func Main() -> int {
     // The empty input hashes to the offset basis. That is what the specification says rather than an accident of the
     // construction: a hasher that started at zero would agree with nobody.
-    Assert(Fnv1a32Of(null, 0) == FnvOffsetBasis32, "the empty input gives the 32-bit offset basis");
-    Assert(Fnv1a64Of(null, 0) == FnvOffsetBasis64, "and the 64-bit offset basis");
+    Assert(Bytes32([]) == FnvOffsetBasis32, "the empty input gives the 32-bit offset basis");
+    Assert(Bytes64([]) == FnvOffsetBasis64, "and the 64-bit offset basis");
 
     // The published vectors.
     Assert(Hash32("a") == 0xE40C292C, "FNV-1a 32 of 'a'");
@@ -42,19 +54,19 @@ func Main() -> int {
     Assert(Hash64("hello world") == 0x779A65E7023CD2E7, "FNV-1a 64 of 'hello world'");
 
     let foobar = TextBytes("foobar");
-    let bytes = foobar.data as *byte;
+    let bytes = foobar.data;
 
     // Splitting the writes must not change the answer. There is no block to align to, so this is a property of the
     // algorithm rather than of any buffering, and it is what lets a struct hash its fields one at a time.
     var split = Fnv1a64();
     split.Write(bytes, 3);
-    split.Write(bytes + 3, 3);
+    split.Write(@foobar[3], 3);
     Assert(split.Finish() == 0x85944171F73967E8, "writing in two halves agrees with writing at once");
 
     var byByte = Fnv1a64();
     var index: uint = 0;
     while index < 6 {
-        byByte.Write(bytes + index, 1);
+        byByte.Write(@foobar[index], 1);
         index++;
     }
     Assert(byByte.Finish() == 0x85944171F73967E8, "and so does writing one byte at a time");
@@ -71,16 +83,16 @@ func Main() -> int {
     kept.Write(bytes, 3);
     let once = kept.Finish();
     Assert(kept.Finish() == once, "finishing twice gives the same answer");
-    kept.Write(bytes + 3, 3);
+    kept.Write(@foobar[3], 3);
     Assert(kept.Finish() == 0x85944171F73967E8, "and writing afterwards continues from there");
 
     // Hash states are ordinary Copy values. A copy snapshots the stream and later writes are independent.
     var copySource = Fnv1a64();
     copySource.Write(bytes, 3);
     var snapshot = copySource;
-    snapshot.Write(bytes + 3, 3);
+    snapshot.Write(@foobar[3], 3);
     Assert(snapshot.Finish() == 0x85944171F73967E8, "a copied hasher can continue independently");
-    Assert(copySource.Finish() == Fnv1a64Of(bytes, 3), "and leaves the source at its original prefix");
+    Assert(copySource.Finish() == Bytes64(foobar[..3]), "and leaves the source at its original prefix");
 
     // A reset really starts over.
     kept.Reset();
@@ -97,7 +109,9 @@ func Main() -> int {
 
     // The generic helper borrows the caller's own hasher, so what it hashed is still in there afterwards.
     var helped = Fnv1a64();
-    Assert(HashBytes<Fnv1a64>(helped, bytes, 6) == 0x85944171F73967E8, "the generic helper hashes what it is given");
+    // Safety: `bytes` addresses the six bytes of "foobar".
+    let helpedHash = unsafe { HashBytes<Fnv1a64>(helped, bytes, 6) };
+    Assert(helpedHash == 0x85944171F73967E8, "the generic helper hashes what it is given");
     Assert(helped.Finish() == 0x85944171F73967E8, "leaving the caller's hasher holding it");
 
     // The fixed-width writers use a fixed byte order, so a value hashes the same on every target. What is checked is
@@ -109,7 +123,7 @@ func Main() -> int {
     buffer[1] = 0x02;
     buffer[2] = 0x03;
     buffer[3] = 0x04;
-    Assert(written.Finish() == Fnv1a64Of(@buffer[0] as *byte, 4),
+    Assert(written.Finish() == Bytes64(buffer[..4]),
            "a 32-bit write is its four bytes, least significant first");
 
     var written64 = Fnv1a64();
@@ -119,7 +133,7 @@ func Main() -> int {
         buffer[index] = (index + 1) as byte;
         index++;
     }
-    Assert(written64.Finish() == Fnv1a64Of(@buffer[0] as *byte, 8), "and a 64-bit write is its eight");
+    Assert(written64.Finish() == Bytes64(buffer[..8]), "and a 64-bit write is its eight");
 
     var writtenByte = Fnv1a64();
     WriteByte<Fnv1a64>(writtenByte, 0x61);

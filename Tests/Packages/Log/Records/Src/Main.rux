@@ -23,8 +23,11 @@ extend MemorySink : Writer {
         if self.broken { fail IoError::Of(IoErrorKind::BrokenPipe); }
         var index: uint = 0;
         while index < bytes.length {
-            self.memory.bytes[self.memory.length] = bytes[index];
-            self.memory.length = self.memory.length + 1;
+            // Safety: every sink is built with `memory` at the local `memory` of `Main`, which outlives each logger.
+            unsafe {
+                self.memory.bytes[self.memory.length] = bytes[index];
+                self.memory.length = self.memory.length + 1;
+            }
             index = index + 1;
         }
         return bytes.length;
@@ -44,11 +47,11 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 }
 
 // Whether anything was written since the last check.
-func Taken(memory: *var Memory) -> bool {
+func Taken(memory: &Memory) -> bool {
     return memory.length != 0u;
 }
 
-func Holds(memory: *var Memory, expected: char8[..]) -> bool {
+func Holds(memory: &var Memory, expected: char8[..]) -> bool {
     let same = Same(memory.bytes[..memory.length], expected);
     memory.length = 0;
     return same;
@@ -68,29 +71,29 @@ func Main() -> int {
         Field::Text("user", "ann"), Field::Integer("n", -3), Field::Unsigned("u", 7), Field::Boolean("ok", true),
         Field::Text("note", "two words"), Field::Text("empty", "")
     ]);
-    Assert(Holds(@memory, "INFO  started user=ann n=-3 u=7 ok=true note=\"two words\" empty=\"\"\n"),
+    Assert(Holds(memory, "INFO  started user=ann n=-3 u=7 ok=true note=\"two words\" empty=\"\"\n"),
            "a text record with every kind of field");
     text.Warn("line one\nline two", [Field::Text("said", "say \"hi\"\t=")]);
-    Assert(Holds(@memory, "WARN  line one\\nline two said=\"say \\\"hi\\\"\\t=\"\n"), "escapes keep a record on one line");
+    Assert(Holds(memory, "WARN  line one\\nline two said=\"say \\\"hi\\\"\\t=\"\n"), "escapes keep a record on one line");
     text.Error("bare");
-    Assert(Holds(@memory, "ERROR bare\n"), "a record with no fields");
+    Assert(Holds(memory, "ERROR bare\n"), "a record with no fields");
 
     // Levels.
     text.Debug("hidden");
-    Assert(!Taken(@memory) && text.MinimumLevel() == Level::Info, "debug records are below the default level");
+    Assert(!Taken(memory) && text.MinimumLevel() == Level::Info, "debug records are below the default level");
     text.SetLevel(Level::Trace);
     text.Trace("shown");
-    Assert(Holds(@memory, "TRACE shown\n") && text.Enabled(Level::Debug), "a lower level lets them through");
+    Assert(Holds(memory, "TRACE shown\n") && text.Enabled(Level::Debug), "a lower level lets them through");
     text.SetLevel(Level::Error);
     text.Warn("dropped");
-    Assert(!Taken(@memory) && !text.Enabled(Level::Warn), "a higher level drops warnings");
+    Assert(!Taken(memory) && !text.Enabled(Level::Warn), "a higher level drops warnings");
 
     // Context fields come before a record's own.
     text.SetLevel(Level::Info);
     let context = [Field::Text("request", "r1")];
     text.SetContext(context[..]);
     text.Info("handled", [Field::Integer("status", 200)]);
-    Assert(Holds(@memory, "INFO  handled request=r1 status=200\n"), "context fields");
+    Assert(Holds(memory, "INFO  handled request=r1 status=200\n"), "context fields");
 
     // JSON lines.
     var json = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::JsonLines);
@@ -100,7 +103,7 @@ func Main() -> int {
         Field::Float("ratio", 0.5), Field::Float("bad", zero / zero), Field::Boolean("retry", false),
         Field::Text("path", "C:\\temp")
     ]);
-    Assert(Holds(@memory, "{\"level\":\"warn\",\"message\":\"disk \\\"full\\\"\",\"ratio\":0.5,\"bad\":null,\"retry\":false,\"path\":\"C:\\\\temp\"}\n"),
+    Assert(Holds(memory, "{\"level\":\"warn\",\"message\":\"disk \\\"full\\\"\",\"ratio\":0.5,\"bad\":null,\"retry\":false,\"path\":\"C:\\\\temp\"}\n"),
            "a JSON record, with a number that is not finite as null");
 
     // Times.

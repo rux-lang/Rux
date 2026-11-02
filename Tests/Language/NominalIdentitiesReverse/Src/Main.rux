@@ -10,7 +10,8 @@ import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, M
                           RoundTrip };
 
 struct Tracked { counter: *var int; }
-extend Tracked { func ~Tracked(self: &var Tracked) { *self.counter += 10; } }
+// Safety: the only `Tracked` here stores `@drops`, a local that outlives it.
+extend Tracked { func ~Tracked(self: &var Tracked) { unsafe { *self.counter += 10; } } }
 module Left {
     pub struct Record { pub value: uint8; }
     pub func Make() -> Record { return Record { value: 71u8 }; }

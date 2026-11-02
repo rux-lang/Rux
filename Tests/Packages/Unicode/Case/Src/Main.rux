@@ -29,7 +29,7 @@ func Main() -> int {
 
     // Full: the mappings that change length, which the simple ones cannot say.
     var storage: char32[4];
-    let room = (@storage[0])[..4];
+    let room = storage[..4];
     var written: uint = 0;
 
     Assert(ToUpperFull(Scalar(0xDF), room, @written), "the sharp s has a full uppercase");

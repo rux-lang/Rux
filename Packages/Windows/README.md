@@ -58,6 +58,8 @@ Unlike the three POSIX packages, all of this runs where it is developed, so ever
 
 Win32 records such as `FileTime` and `SystemTime` are structural values and copy by value. Package-owned inspection helpers borrow them, so call `FileTimeTicks(stamp)` with the value itself. Imported Win32 declarations retain raw pointers for handles, optional arguments, buffers, and OS-owned addresses because null and sentinel values are part of those contracts. A raw handle or pointer never transfers ownership automatically; close or release it with the matching Win32 function.
 
+Every Win32 function here is declared `extern`, so a call needs an `unsafe` block, conventionally under a `// Safety:` comment saying why that call's requirements hold. `GetRandom` is the exception: it is an ordinary function that checks the length it is given, but its `buffer` must still be writable for `length` bytes.
+
 ## Platform
 
 Windows only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

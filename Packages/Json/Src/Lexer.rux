@@ -176,7 +176,8 @@ extend JsonLexer {
     // would accept documents other parsers reject.
     func SkipWhitespace(self: &var JsonLexer) {
         while self.position < self.input.length {
-            let c = self.input.data[self.position] as uint8;
+            // Safety: `self.position` is below `self.input.length`, checked by the loop.
+            let c = unsafe { self.input.data[self.position] } as uint8;
             if c != 0x20 && c != 0x09 && c != 0x0D && c != 0x0A { return; }
             self.position = self.position + 1;
         }
@@ -186,7 +187,9 @@ extend JsonLexer {
         if self.position + word.length > self.input.length { return false; }
         var index: uint = 0;
         while index < word.length {
-            if self.input.data[self.position + index] != word.data[index] { return false; }
+            // Safety: `self.position + word.length` fits in `self.input`, checked above, and `index` is below
+            // `word.length`.
+            if unsafe { self.input.data[self.position + index] != word.data[index] } { return false; }
             index = index + 1;
         }
         return true;
@@ -199,7 +202,8 @@ extend JsonLexer {
         let start = self.position;
         var escaped = false;
         while self.position < self.input.length {
-            let c = self.input.data[self.position] as uint8;
+            // Safety: `self.position` is below `self.input.length`, checked by the loop.
+            let c = unsafe { self.input.data[self.position] } as uint8;
             if c == 0x22 {
                 let end = self.position;
                 if end - start > self.limits.maximumTextBytes { return self.Fail(JsonLexError::TextTooLong); }
@@ -222,7 +226,8 @@ extend JsonLexer {
                     self.position = opening;
                     return self.Fail(JsonLexError::UnterminatedText);
                 }
-                let kind = self.input.data[self.position] as uint8;
+                // Safety: `self.position` is below `self.input.length`, checked just above.
+                let kind = unsafe { self.input.data[self.position] } as uint8;
                 if kind == 0x75 {
                     if self.position + 4 >= self.input.length {
                         self.position = opening;
@@ -230,7 +235,9 @@ extend JsonLexer {
                     }
                     var digit: uint = 1;
                     while digit <= 4 {
-                        let h = self.input.data[self.position + digit] as uint8;
+                        // Safety: `digit` is at most 4 and `self.position + 4` is below `self.input.length`, checked
+                        // above.
+                        let h = unsafe { self.input.data[self.position + digit] } as uint8;
                         let isDigit = (h >= 0x30 && h <= 0x39) || (h >= 0x61 && h <= 0x66) ||
                                       (h >= 0x41 && h <= 0x46);
                         if !isDigit {
@@ -260,19 +267,22 @@ extend JsonLexer {
     // plus, a leading zero, a bare `.5`, a trailing `1.` and hexadecimal are all JavaScript and none are JSON.
     func LexNumber(self: &var JsonLexer) -> JsonToken {
         let start = self.position;
-        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2D {
+        // Safety: the read happens only when `self.position` is below `self.input.length`, tested first.
+        if self.position < self.input.length && (unsafe { self.input.data[self.position] } as uint8) == 0x2D {
             self.position = self.position + 1;
         }
         if self.position >= self.input.length {
             self.position = start;
             return self.Fail(JsonLexError::MalformedNumber);
         }
-        let first = self.input.data[self.position] as uint8;
+        // Safety: `self.position` is below `self.input.length`, checked just above.
+        let first = unsafe { self.input.data[self.position] } as uint8;
         if first == 0x30 {
             self.position = self.position + 1;
             // A digit after a leading zero is forbidden, which rejects `01` and anything octal-looking.
             if self.position < self.input.length {
-                let next = self.input.data[self.position] as uint8;
+                // Safety: `self.position` is below `self.input.length`, checked just above.
+                let next = unsafe { self.input.data[self.position] } as uint8;
                 if next >= 0x30 && next <= 0x39 {
                     self.position = start;
                     return self.Fail(JsonLexError::MalformedNumber);
@@ -281,7 +291,8 @@ extend JsonLexer {
         }
         else if first >= 0x31 && first <= 0x39 {
             while self.position < self.input.length {
-                let d = self.input.data[self.position] as uint8;
+                // Safety: `self.position` is below `self.input.length`, checked by the loop.
+                let d = unsafe { self.input.data[self.position] } as uint8;
                 if d < 0x30 || d > 0x39 { break; }
                 self.position = self.position + 1;
             }
@@ -291,11 +302,13 @@ extend JsonLexer {
             return self.Fail(JsonLexError::MalformedNumber);
         }
 
-        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2E {
+        // Safety: the read happens only when `self.position` is below `self.input.length`, tested first.
+        if self.position < self.input.length && (unsafe { self.input.data[self.position] } as uint8) == 0x2E {
             self.position = self.position + 1;
             var digits: uint = 0;
             while self.position < self.input.length {
-                let d = self.input.data[self.position] as uint8;
+                // Safety: `self.position` is below `self.input.length`, checked by the loop.
+                let d = unsafe { self.input.data[self.position] } as uint8;
                 if d < 0x30 || d > 0x39 { break; }
                 digits = digits + 1;
                 self.position = self.position + 1;
@@ -307,18 +320,21 @@ extend JsonLexer {
         }
 
         if self.position < self.input.length {
-            let e = self.input.data[self.position] as uint8;
+            // Safety: `self.position` is below `self.input.length`, checked just above.
+            let e = unsafe { self.input.data[self.position] } as uint8;
             if e == 0x65 || e == 0x45 {
                 self.position = self.position + 1;
                 if self.position < self.input.length {
-                    let sign = self.input.data[self.position] as uint8;
+                    // Safety: `self.position` is below `self.input.length`, checked just above.
+                    let sign = unsafe { self.input.data[self.position] } as uint8;
                     if sign == 0x2B || sign == 0x2D {
                         self.position = self.position + 1;
                     }
                 }
                 var digits: uint = 0;
                 while self.position < self.input.length {
-                    let d = self.input.data[self.position] as uint8;
+                    // Safety: `self.position` is below `self.input.length`, checked by the loop.
+                    let d = unsafe { self.input.data[self.position] } as uint8;
                     if d < 0x30 || d > 0x39 { break; }
                     digits = digits + 1;
                     self.position = self.position + 1;
@@ -347,7 +363,8 @@ extend JsonLexer {
                 error: JsonLexError::None
             };
         }
-        let c = self.input.data[self.position] as uint8;
+        // Safety: `self.position` is below `self.input.length`, checked just above.
+        let c = unsafe { self.input.data[self.position] } as uint8;
         if c == 0x7B { return self.Simple(JsonTokenKind::ObjectStart); }
         if c == 0x7D { return self.Simple(JsonTokenKind::ObjectEnd); }
         if c == 0x5B { return self.Simple(JsonTokenKind::ArrayStart); }

@@ -8,7 +8,7 @@ import Text::{ String, StringBuilder, StringView };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func View(bytes: char8[..]) -> StringView {
@@ -29,21 +29,24 @@ struct ScriptHandle {
 extend ScriptHandle : Reader {
     func Read(self: &var ScriptHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
-        let remaining = state.bytes.length - state.offset;
-        if remaining == 0 {
-            fail IoError::Of(IoErrorKind::EndOfStream);
+        // Safety: `state` points at a `ScriptState` local of the checking function, which outlives the handle.
+        unsafe {
+            let remaining = state.bytes.length - state.offset;
+            if remaining == 0 {
+                fail IoError::Of(IoErrorKind::EndOfStream);
+            }
+            var count = remaining < state.step ? remaining : state.step;
+            if into.length < count {
+                count = into.length;
+            }
+            var index: uint = 0;
+            while index < count {
+                into[index] = state.bytes[state.offset + index];
+                index = index + 1;
+            }
+            state.offset = state.offset + count;
+            return count;
         }
-        var count = remaining < state.step ? remaining : state.step;
-        if into.length < count {
-            count = into.length;
-        }
-        var index: uint = 0;
-        while index < count {
-            into.data[index] = state.bytes.data[state.offset + index];
-            index = index + 1;
-        }
-        state.offset = state.offset + count;
-        return count;
     }
 }
 

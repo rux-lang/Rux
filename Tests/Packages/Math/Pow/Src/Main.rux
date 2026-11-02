@@ -36,7 +36,9 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    var gap = BitsOf(actual) - BitsOf(expected);
+    // Safety: `BitsOf` only copies its argument's bits from a float register to an integer one; it touches no
+    // memory.
+    var gap = unsafe { BitsOf(actual) - BitsOf(expected) };
     if gap < 0 {
         gap = -gap;
     }

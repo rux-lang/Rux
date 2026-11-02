@@ -12,12 +12,12 @@ import Time::Timestamp;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
-func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
-    return Path::FromView((*holder).View());
+func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
+    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    return Path::FromView(holder.View());
 }
 
 // The failure an outcome carries, which the test expects to be there.
@@ -34,9 +34,9 @@ func Main() -> int ! IoError {
     let able = CapabilitiesOfSystem();
 
     var dirHolder = OsString(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemMeta.tmp", @dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemMeta.tmp", dirHolder);
     var fileHolder = OsString(allocator);
-    let file = PathOf(allocator, "Bin/FileSystemMeta.tmp/f.txt", @fileHolder);
+    let file = PathOf(allocator, "Bin/FileSystemMeta.tmp/f.txt", fileHolder);
 
     DeleteFile(allocator, file) catch { else => {} };
     DeleteDirectory(allocator, dir) catch { else => {} };
@@ -60,7 +60,7 @@ func Main() -> int ! IoError {
     let dirMetadata = MetadataOf(allocator, dir, true)?;
     Assert(dirMetadata.kind == FileKind::Directory, "a directory reports as one");
     var missingHolder = OsString(allocator);
-    let missing = PathOf(allocator, "Bin/FileSystemMeta.tmp/nothing.txt", @missingHolder);
+    let missing = PathOf(allocator, "Bin/FileSystemMeta.tmp/nothing.txt", missingHolder);
     Assert(Refusal(MetadataOf(allocator, missing, true)).kind == IoErrorKind::NotFound,
            "and a missing name is NotFound");
 

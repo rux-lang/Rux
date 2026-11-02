@@ -105,6 +105,7 @@ pub func Wipe(bytes: var char8[..]) {
         index = index + 1;
     }
     if bytes.length > 0 {
-        Retain(@bytes[0] as *var opaque);
+        // Safety: `bytes` is non-empty, so its first element is a live address; `Retain` only receives it.
+        unsafe { Retain(@bytes[0] as *var opaque); }
     }
 }

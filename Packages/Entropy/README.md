@@ -32,6 +32,8 @@ Entropy failures are the ones nobody tests. Reaching them needs a kernel with no
 
 `FillWithRetries` only retries a transient failure. `Interrupted` says a signal arrived rather than that anything is wrong; a system with no source and a provider that refused are both reported at once, since repeating them would only take longer to reach the same answer. Its `attempts` is how many *extra* tries to make, so zero is one attempt.
 
+`Fill`, `FillFrom`, `FillWithRetries` and `FillFromSource` write through the raw `buffer` they are given, so each is an `unsafe func`: the caller promises that `buffer` is writable for `length` bytes, and makes the call inside an `unsafe { ... }` block whose `// Safety:` comment says why that holds. `SystemEntropy::Fill` implements the `EntropySource` interface, which cannot be `unsafe`, so it stays a safe method whose documented contract carries the same promise.
+
 ## Documentation
 
 <https://rux-lang.dev/docs/api/entropy>

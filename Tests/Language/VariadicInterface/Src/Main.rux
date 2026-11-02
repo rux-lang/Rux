@@ -99,7 +99,8 @@ func Main() -> int {
         return 7;
     }
     let bytes = @buffer[0];
-    if SumTiny(bytes[..2], tiny8) != 10 {
+    // Safety: `bytes` is `@buffer[0]` and `buffer` is a live local of four bytes.
+    if SumTiny(unsafe { bytes[..2] }, tiny8) != 10 {
         return 8;
     }
 

@@ -47,6 +47,8 @@ None of the comparisons is constant-time: each stops at the first difference, so
 
 `PageError` is a structural `Copy` value. Every address remains a raw pointer because this package exposes byte ranges, nullable allocation failure, stored addresses, pointer arithmetic, and explicit release—the operations for which references cannot prove validity or ownership. `Alloc` and `PageAllocate` transfer ownership to the caller; `Free` and `PageRelease` end it. No destructor runs automatically, so never copy an owning address with the intent of freeing both copies. Scalar output slots are also raw: pass writable addresses such as `@result` and obey the function's non-null contract.
 
+Every function that reads or writes through an address it is given — `Copy`, `Move`, `Set`, `Zero`, `Compare`, `Equal`, `MismatchOffset`, `Find`, the unaligned and endian loads and stores, `ReverseBlock`, `ZeroizeBlock`, `Free`, `Realloc`, `PageRelease` and `PageProtect` — is an `unsafe func`. Its documentation's `Safety:` sentence states what the caller must uphold, usually that the range is readable or writable for `length` bytes, and a call is made inside an `unsafe { ... }` block whose `// Safety:` comment says why that holds. `Alloc`, `PageAllocate`, `PageSize`, `PageAlign` and the alignment arithmetic touch no caller memory and stay safe.
+
 > **Changed in this release.** `Compare` now returns an `Ordering`, which is what this table always claimed it did;
 > the old first-difference offset is `MismatchOffset`, and `Equal` is what most callers of the old `Compare` wanted.
 > `Set` takes its arguments in `memset` order — destination, value, length — where it previously took the length
@@ -59,8 +61,11 @@ import Memory::{ Alloc, Free, Zero };
 
 var buffer = Alloc(1024);
 if buffer != null {
-    Zero(buffer, 1024);
-    Free(buffer);
+    // Safety: `buffer` is the live 1024-byte block `Alloc` just returned, released exactly once here.
+    unsafe {
+        Zero(buffer, 1024);
+        Free(buffer);
+    }
 }
 ```
 

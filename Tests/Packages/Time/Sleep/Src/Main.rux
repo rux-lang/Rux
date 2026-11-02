@@ -34,26 +34,29 @@ struct ScriptedWaiter {
 
 extend ScriptedWaiter : Waiter {
     func WaitFor(self: &var ScriptedWaiter, span: Duration) -> Duration ! TimeError {
-        self.state.calls = self.state.calls + 1;
-        let handed = (span.TotalMilliseconds() ?? -1);
-        if handed > self.state.longestHanded { self.state.longestHanded = handed; }
-        let willTake = WaitChunkMilliseconds(span);
-        if willTake > self.state.longestChunk { self.state.longestChunk = willTake; }
+        // Safety: `state` points at a `WaiterState` local of `Main`, which outlives every waiter made over it.
+        unsafe {
+            self.state.calls = self.state.calls + 1;
+            let handed = (span.TotalMilliseconds() ?? -1);
+            if handed > self.state.longestHanded { self.state.longestHanded = handed; }
+            let willTake = WaitChunkMilliseconds(span);
+            if willTake > self.state.longestChunk { self.state.longestChunk = willTake; }
 
-        if self.state.stalls {
-            // Waits for none of it and reports success, which is the one shape that could spin forever.
-            return span;
-        }
+            if self.state.stalls {
+                // Waits for none of it and reports success, which is the one shape that could spin forever.
+                return span;
+            }
 
-        if self.state.interruptions > 0 {
-            // Cut short with a tenth of the span still to go, which is what a signal looks like from here.
-            self.state.interruptions = self.state.interruptions - 1;
-            return Duration::FromMilliseconds(handed < 0 ? 1000 : handed / 10);
-        }
+            if self.state.interruptions > 0 {
+                // Cut short with a tenth of the span still to go, which is what a signal looks like from here.
+                self.state.interruptions = self.state.interruptions - 1;
+                return Duration::FromMilliseconds(handed < 0 ? 1000 : handed / 10);
+            }
 
-        match self.state.outcome {
-            refusal? => { fail refusal; },
-            none => {}
+            match self.state.outcome {
+                refusal? => { fail refusal; },
+                none => {}
+            }
         }
 
         // The chunk this waiter is willing to take, so a span longer than one wait comes back for the rest exactly

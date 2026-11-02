@@ -9,7 +9,7 @@ when #target.arch {
     .X86_64 => {
         // Reading the bits of a float is portable: both the Win64 and System V ABIs pass the first float argument in
         // xmm0 and return an integer in rax.
-        asm func FloatBits(x: float64) -> uint64 {
+        asm func FloatBitsInstruction(x: float64) -> uint64 {
             movq rax, xmm0
             ret
         }
@@ -17,20 +17,20 @@ when #target.arch {
         // Writing them back is not, because the integer arrives in rcx under Win64 and in rdi under System V. Pinning
         // the convention keeps one body for every target, at the cost of the one #Abi override in the package.
         #Abi(.Win64)
-        asm func FromBits(bits: uint64) -> float64 {
+        asm func FromBitsInstruction(bits: uint64) -> float64 {
             movq xmm0, rcx
             ret
         }
 
         // The same pair one width down. `movd` moves the low 32 bits rather than the low 64, and the narrow width needs
         // its own pair because a float32's neighbours are not its widened value's neighbours.
-        asm func Float32Bits(x: float32) -> uint32 {
+        asm func Float32BitsInstruction(x: float32) -> uint32 {
             movd eax, xmm0
             ret
         }
 
         #Abi(.Win64)
-        asm func Float32FromBits(bits: uint32) -> float32 {
+        asm func Float32FromBitsInstruction(bits: uint32) -> float32 {
             movd xmm0, ecx
             ret
         }
@@ -38,28 +38,50 @@ when #target.arch {
     .AArch64 => {
         // AAPCS64 is the one convention on every AArch64 target, so neither direction needs an override: the float
         // travels in d0 and the integer in x0, and FMOV between them moves the bits rather than the value.
-        asm func FloatBits(x: float64) -> uint64 {
+        asm func FloatBitsInstruction(x: float64) -> uint64 {
             fmov x0, d0
             ret
         }
 
-        asm func FromBits(bits: uint64) -> float64 {
+        asm func FromBitsInstruction(bits: uint64) -> float64 {
             fmov d0, x0
             ret
         }
 
         // The narrow pair: `s0` and `w0` are the 32-bit halves of the same registers the wide pair uses.
-        asm func Float32Bits(x: float32) -> uint32 {
+        asm func Float32BitsInstruction(x: float32) -> uint32 {
             fmov w0, s0
             ret
         }
 
-        asm func Float32FromBits(bits: uint32) -> float32 {
+        asm func Float32FromBitsInstruction(bits: uint32) -> float32 {
             fmov s0, w0
             ret
         }
     },
     else => #Error("Unsupported architecture")
+}
+
+// The safe faces of the four moves above, which the rest of the package calls. An `asm` body is outside what the
+// compiler checks, so each call needs `unsafe`; these four bodies are the only places that take it.
+func FloatBits(x: float64) -> uint64 {
+    // Safety: the body reads only its float argument register and writes only the integer return register.
+    return unsafe { FloatBitsInstruction(x) };
+}
+
+func FromBits(bits: uint64) -> float64 {
+    // Safety: the body reads only its integer argument register and writes only the float return register.
+    return unsafe { FromBitsInstruction(bits) };
+}
+
+func Float32Bits(x: float32) -> uint32 {
+    // Safety: the body reads only its float argument register and writes only the integer return register.
+    return unsafe { Float32BitsInstruction(x) };
+}
+
+func Float32FromBits(bits: uint32) -> float32 {
+    // Safety: the body reads only its integer argument register and writes only the float return register.
+    return unsafe { Float32FromBitsInstruction(bits) };
 }
 
 // The halves of the bit pattern, the way fdlibm reads them. The high word carries the sign, the exponent and the

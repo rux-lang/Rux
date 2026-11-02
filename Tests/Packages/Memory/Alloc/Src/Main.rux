@@ -6,20 +6,28 @@ func Main() -> int {
     Assert(buffer != null, "Alloc(1024)");
 
     // Every byte of the block must be writable and read back what was written.
-    Set(buffer, 0xA5 as byte, 1024);
-    let bytes = buffer as *uint8;
-    Assert(*bytes == 0xA5, "Alloc(1024) first byte");
-    Assert(*(bytes + 1023) == 0xA5, "Alloc(1024) last byte");
+    // Safety: `buffer` is a live 1024-byte allocation, checked non-null above, so offsets 0 and 1023 are inside it.
+    let (first, last) = unsafe {
+        Set(buffer, 0xA5 as byte, 1024);
+        let bytes = buffer as *uint8;
+        (*bytes, *(bytes + 1023))
+    };
+    Assert(first == 0xA5, "Alloc(1024) first byte");
+    Assert(last == 0xA5, "Alloc(1024) last byte");
 
     let other = Alloc(1024);
     Assert(other != null, "second Alloc(1024)");
     Assert(other != buffer, "distinct allocations");
 
-    Free(other);
-    Free(buffer);
+    // Safety: both are live base addresses `Alloc` returned, and neither is used afterwards.
+    unsafe {
+        Free(other);
+        Free(buffer);
+    }
 
     let small = Alloc(1);
     Assert(small != null, "Alloc(1)");
-    Free(small);
+    // Safety: `small` is the live base address `Alloc` returned, and is not used afterwards.
+    unsafe { Free(small); }
     return 0;
 }

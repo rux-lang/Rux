@@ -57,13 +57,14 @@ extend Hmac<D> {
         if keyLength > blockLength {
             var hasher = prototype;
             hasher.Update(key);
-            hasher.Finish((@shortened[0])[..digestLength]);
+            hasher.Finish(shortened[..digestLength]);
             keyLength = digestLength;
         }
         else {
             var index: uint = 0;
             while index < keyLength {
-                shortened[index] = key.data[index];
+                // Safety: `index` is below `keyLength`, which is `key.length` on this branch.
+                shortened[index] = unsafe { key.data[index] };
                 index = index + 1;
             }
         }
@@ -82,14 +83,14 @@ extend Hmac<D> {
             padded[index] = ((shortened[index] as uint8) ^ HmacInnerPad) as char8;
             index = index + 1;
         }
-        state.inner.Update((@padded[0])[..blockLength]);
+        state.inner.Update(padded[..blockLength]);
 
         index = 0;
         while index < blockLength {
             padded[index] = ((shortened[index] as uint8) ^ HmacOuterPad) as char8;
             index = index + 1;
         }
-        state.outer.Update((@padded[0])[..blockLength]);
+        state.outer.Update(padded[..blockLength]);
         return state;
     }
 
@@ -107,8 +108,8 @@ extend Hmac<D> {
     /// @see https://rux-lang.dev/docs/api/crypto/hmac#finish
     pub func Finish<D: Digest>(self: &var Hmac<D>, into: var char8[..]) {
         var innerDigest: char8[64];
-        self.inner.Finish((@innerDigest[0])[..self.digestLength]);
-        self.outer.Update((@innerDigest[0])[..self.digestLength]);
+        self.inner.Finish(innerDigest[..self.digestLength]);
+        self.outer.Update(innerDigest[..self.digestLength]);
         self.outer.Finish(into);
     }
 

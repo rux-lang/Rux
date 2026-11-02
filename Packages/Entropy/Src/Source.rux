@@ -46,13 +46,13 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 /// reports `Unsupported`. On Darwin the source cannot fail. On Windows a request above `MaxEntropyRequest` reports
 /// `TooLarge`, since the count is passed as 32 bits.
 /// Runs in time proportional to `length` and allocates nothing.
-/// `buffer` must be writable for `length` bytes. On any failure the buffer is zeroized, so a caller who ignores the
-/// result gets zeros rather than a partly random buffer that would pass a glance.
+/// Safety: `buffer` must be writable for `length` bytes. On any failure the buffer is zeroized, so a caller who ignores
+/// the result gets zeros rather than a partly random buffer that would pass a glance.
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written in this one pass, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill-from-source
-pub func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyError {
+pub unsafe func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyError {
     if length == 0 { return; }
     if length > MaxEntropyRequest { fail EntropyError::TooLarge; }
     if buffer == null { fail EntropyError::Failed; }

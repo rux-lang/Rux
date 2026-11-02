@@ -8,7 +8,7 @@ import Crypto::{ Digest, Equal, Sha224Of, Sha256, Sha256Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 // Parses a hex string into bytes, so the vectors below read as they are published.
@@ -18,7 +18,7 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2 {
-            let c = text.data[index * 2 + half] as uint8;
+            let c = text[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
@@ -29,25 +29,25 @@ func FromHex(text: char8[..], into: var char8[..]) {
             value = value * 16 + digit;
             half = half + 1;
         }
-        into.data[index] = value as char8;
+        into[index] = value as char8;
         index = index + 1;
     }
 }
 
 func CheckDigest(message: char8[..], expectedHex: char8[..], wide: bool, what: char8[..]) {
     var expected: char8[32];
-    let expectedRoom = (@expected[0])[..wide ? 32u : 28u];
+    let expectedRoom = expected[..wide ? 32u : 28u];
     FromHex(expectedHex, expectedRoom);
     var got: char8[32];
-    let gotRoom = (@got[0])[..wide ? 32u : 28u];
+    let gotRoom = got[..wide ? 32u : 28u];
     if wide {
         Sha256Of(message, gotRoom);
     }
     else {
         Sha224Of(message, gotRoom);
     }
-    let gotBytes = (@got[0])[..wide ? 32u : 28u];
-    let expectedBytes = (@expected[0])[..wide ? 32u : 28u];
+    let gotBytes = got[..wide ? 32u : 28u];
+    let expectedBytes = expected[..wide ? 32u : 28u];
     Assert(Equal(gotBytes, expectedBytes), what);
 }
 
@@ -71,12 +71,12 @@ func Main() -> int {
     // The two functions are unrelated: SHA-224 is not SHA-256 cut short, because the initial states differ.
     var wideDigest: char8[32];
     var narrowDigest: char8[32];
-    let wideRoom = (@wideDigest[0])[..32];
-    let narrowRoom = (@narrowDigest[0])[..28];
+    let wideRoom = wideDigest[..32];
+    let narrowRoom = narrowDigest[..28];
     Sha256Of(TextBytes("abc"), wideRoom);
     Sha224Of(TextBytes("abc"), narrowRoom);
-    let widePrefix = (@wideDigest[0])[..28];
-    let narrowBytes = (@narrowDigest[0])[..28];
+    let widePrefix = wideDigest[..28];
+    let narrowBytes = narrowDigest[..28];
     Assert(!Equal(widePrefix, narrowBytes), "SHA-224 is not the first bytes of SHA-256");
 
     // The incremental promise: every split of every length up to two hundred agrees with the one-shot answer.
@@ -88,23 +88,23 @@ func Main() -> int {
     }
     var length: uint = 0;
     while length <= 200 {
-        let whole = (@message[0])[..length];
+        let whole = message[..length];
         var oneShot: char8[32];
-        let oneShotRoom = (@oneShot[0])[..32];
+        let oneShotRoom = oneShot[..32];
         Sha256Of(whole, oneShotRoom);
-        let oneShotBytes = (@oneShot[0])[..32];
+        let oneShotBytes = oneShot[..32];
 
         var split: uint = 0;
         while split <= length {
             var digest = Sha256();
-            let first = (@message[0])[..split];
+            let first = message[..split];
             digest.Update(first);
             let second = message[split..length];
             digest.Update(second);
             var got: char8[32];
-            let gotRoom = (@got[0])[..32];
+            let gotRoom = got[..32];
             digest.Finish(gotRoom);
-            let gotBytes = (@got[0])[..32];
+            let gotBytes = got[..32];
             Assert(Equal(gotBytes, oneShotBytes), "every split of a message gives the same digest");
             split = split + 1;
         }
@@ -115,18 +115,18 @@ func Main() -> int {
     var byteAtATime = Sha256();
     index = 0;
     while index < 200 {
-        let single = (@message[index])[..1];
+        let single = message[index..index + 1];
         byteAtATime.Update(single);
         index = index + 1;
     }
     var incremental: char8[32];
-    let incrementalRoom = (@incremental[0])[..32];
+    let incrementalRoom = incremental[..32];
     byteAtATime.Finish(incrementalRoom);
     var reference: char8[32];
-    let referenceRoom = (@reference[0])[..32];
-    Sha256Of((@message[0])[..200], referenceRoom);
-    Assert(Equal((@incremental[0])[..32],
-                 (@reference[0])[..32]),
+    let referenceRoom = reference[..32];
+    Sha256Of(message[..200], referenceRoom);
+    Assert(Equal(incremental[..32],
+                 reference[..32]),
            "a byte-at-a-time digest matches the one-shot digest");
 
     // An empty update changes nothing.
@@ -135,12 +135,12 @@ func Main() -> int {
     withEmpties.Update(TextBytes("abc"));
     withEmpties.Update(TextBytes(""));
     var emptied: char8[32];
-    let emptiedRoom = (@emptied[0])[..32];
+    let emptiedRoom = emptied[..32];
     withEmpties.Finish(emptiedRoom);
     var plain: char8[32];
-    let plainRoom = (@plain[0])[..32];
+    let plainRoom = plain[..32];
     Sha256Of(TextBytes("abc"), plainRoom);
-    Assert(Equal((@emptied[0])[..32], (@plain[0])[..32]),
+    Assert(Equal(emptied[..32], plain[..32]),
            "empty updates change nothing");
 
     // Digest states are structural Copy values. Copies branch from one prefix without sharing later mutations.
@@ -152,17 +152,17 @@ func Main() -> int {
     abd.Update(TextBytes("d"));
     var abcDigest: char8[32];
     var abdDigest: char8[32];
-    abc.Finish((@abcDigest[0])[..32]);
-    abd.Finish((@abdDigest[0])[..32]);
+    abc.Finish(abcDigest[..32]);
+    abd.Finish(abdDigest[..32]);
     var abcExpected: char8[32];
     var abdExpected: char8[32];
-    Sha256Of(TextBytes("abc"), (@abcExpected[0])[..32]);
-    Sha256Of(TextBytes("abd"), (@abdExpected[0])[..32]);
-    Assert(Equal((@abcDigest[0])[..32],
-                 (@abcExpected[0])[..32]),
+    Sha256Of(TextBytes("abc"), abcExpected[..32]);
+    Sha256Of(TextBytes("abd"), abdExpected[..32]);
+    Assert(Equal(abcDigest[..32],
+                 abcExpected[..32]),
            "a digest copy continues independently from its prefix");
-    Assert(Equal((@abdDigest[0])[..32],
-                 (@abdExpected[0])[..32]),
+    Assert(Equal(abdDigest[..32],
+                 abdExpected[..32]),
            "and a second copy keeps its own later writes");
 
     // The reported lengths.

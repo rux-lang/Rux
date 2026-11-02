@@ -15,7 +15,7 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 // Renders `value` through Display under `spec`, into a buffer, and compares. Zero on a match.
 func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     let value: Display = view;
     if Failed(value.WriteDisplay(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
@@ -24,7 +24,7 @@ func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
 // The same through Debug.
 func Inspected(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     let value: Debug = view;
     if Failed(value.WriteDebug(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
@@ -34,7 +34,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -112,7 +112,7 @@ func Main() -> int {
 
     // A style is not something text understands, so it is refused rather than ignored.
     var storage: char8[32];
-    var writer = BufferWriter((@storage[0])[..32]);
+    var writer = BufferWriter(storage[..32]);
     let styled: &var TextWriter = writer;
     let shown: Display = hello;
     Assert(Failed(shown.WriteDisplay(styled, Spec("iso8601"))), "a style on text is refused");

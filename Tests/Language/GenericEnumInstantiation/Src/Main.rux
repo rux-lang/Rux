@@ -18,7 +18,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter += 1i32;
+            // Safety: a non-null `counter` is the address of a counter local that outlives every `Tracked`.
+            unsafe { *self.counter += 1i32; }
         }
     }
 }

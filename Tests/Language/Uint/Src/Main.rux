@@ -45,7 +45,8 @@ func Main() -> int {
     let bytes: uint = sizeof(uint64);
     Assert(bytes == 8u, "sizeof reports a uint");
     var storage: uint64[4];
-    let view = (@storage[0])[..4];
+    // Safety: `storage` is a live local of four elements.
+    let view = unsafe { (@storage[0])[..4] };
     Assert(view.length == 4u, "a slice length is a uint");
 
     // Conversion against the fixed width that currently matches it, asserted as a round trip rather than a number.

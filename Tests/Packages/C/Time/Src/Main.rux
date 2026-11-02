@@ -4,11 +4,15 @@ import C::{ CLOCKS_PER_SEC, TIME_UTC, TimespecGet, clock, difftime, free, gmtime
 
 func Main() -> int {
     // difftime is the plain numeric difference of two calendar times.
-    Assert(difftime(100, 40) == 60.0, "difftime(100, 40)");
-    Assert(difftime(40, 100) == -60.0, "difftime(40, 100)");
+    // Safety: `difftime` takes two plain `time_t` values and reads no memory.
+    unsafe {
+        Assert(difftime(100, 40) == 60.0, "difftime(100, 40)");
+        Assert(difftime(40, 100) == -60.0, "difftime(40, 100)");
+    }
 
     // The processor clock never reports a negative tick count.
-    Assert(clock() >= 0, "clock() is non-negative");
+    // Safety: `clock` takes no arguments and reads no caller memory.
+    Assert(unsafe { clock() } >= 0, "clock() is non-negative");
     Assert(CLOCKS_PER_SEC > 0, "the processor clock has a positive rate");
 
     // The safe wrapper borrows one exact timespec, while the C declaration beneath it remains a raw ABI pointer.
@@ -20,29 +24,39 @@ func Main() -> int {
 
     // The current time is well past the epoch, and passing a pointer stores the
     // same value that is returned.
-    let slot = malloc(8) as *var int64;
-    let now = time(slot);
+    // Safety: `malloc` takes only a byte count, and 8 bytes hold the one `int64` used below.
+    let slot = unsafe { malloc(8) as *var int64 };
+    // Safety: `slot` addresses 8 writable bytes, room for the `time_t` that `time` stores and this reads back.
+    let now = unsafe { time(slot) };
     Assert(now > 0, "time is after the epoch");
-    Assert(*slot == now, "time stores the returned value");
+    // Safety: `slot` is the live 8-byte block `time` just stored into.
+    Assert(unsafe { *slot } == now, "time stores the returned value");
 
     // Converting current local time back to time_t recovers the same second.
-    let local = localtime(slot);
-    Assert(mktime(local) == now, "localtime and mktime round-trip");
+    // Safety: `slot` holds the valid `time_t` stored above.
+    let local = unsafe { localtime(slot) };
+    // Safety: `local` is the static `tm` that `localtime` just returned, and no other C time call ran since.
+    Assert(unsafe { mktime(local) } == now, "localtime and mktime round-trip");
     when #target.os == OperatingSystem::Linux {
-        Assert(local.tm_zone != null as *char8, "localtime provides a timezone");
+        // Safety: `local` is the `tm` that `localtime` returned, untouched by any later C time call yet.
+        Assert(unsafe { local.tm_zone } != null as *char8, "localtime provides a timezone");
     }
 
     // Break the epoch itself down as UTC: second zero is 1970-01-01 00:00:00,
     // a Thursday (tm_wday 4).
-    *slot = 0;
-    let utc = gmtime(slot);
-    Assert(utc.tm_year == 70, "gmtime(0) year is 1970");
-    Assert(utc.tm_mon == 0, "gmtime(0) month is January");
-    Assert(utc.tm_mday == 1, "gmtime(0) day is the first");
-    Assert(utc.tm_hour == 0, "gmtime(0) hour is midnight");
-    Assert(utc.tm_min == 0, "gmtime(0) minute is zero");
-    Assert(utc.tm_sec == 0, "gmtime(0) second is zero");
-    Assert(utc.tm_wday == 4, "gmtime(0) is a Thursday");
-    free(slot as *var opaque);
+    // Safety: `slot` is the live 8-byte block from `malloc`, and `gmtime` returns its static `tm`, read before any
+    // other C time call; the block is freed once, last.
+    unsafe {
+        *slot = 0;
+        let utc = gmtime(slot);
+        Assert(utc.tm_year == 70, "gmtime(0) year is 1970");
+        Assert(utc.tm_mon == 0, "gmtime(0) month is January");
+        Assert(utc.tm_mday == 1, "gmtime(0) day is the first");
+        Assert(utc.tm_hour == 0, "gmtime(0) hour is midnight");
+        Assert(utc.tm_min == 0, "gmtime(0) minute is zero");
+        Assert(utc.tm_sec == 0, "gmtime(0) second is zero");
+        Assert(utc.tm_wday == 4, "gmtime(0) is a Thursday");
+        free(slot as *var opaque);
+    }
     return 0;
 }

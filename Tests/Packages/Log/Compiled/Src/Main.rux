@@ -16,7 +16,8 @@ struct CountingSink {
 
 extend CountingSink : Writer {
     pub func Write(self: &var CountingSink, bytes: char8[..]) -> uint ! IoError {
-        self.count.writes = self.count.writes + 1;
+        // Safety: the one sink is built with `count` at the local `count` of `Main`, which outlives the logger.
+        unsafe { self.count.writes = self.count.writes + 1; }
         return bytes.length;
     }
 

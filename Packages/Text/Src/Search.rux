@@ -23,7 +23,8 @@ extend StringView {
         if prefix.bytes.length > self.bytes.length { return false; }
         var index: uint = 0;
         while index < prefix.bytes.length {
-            if self.bytes.data[index] != prefix.bytes.data[index] { return false; }
+            // Safety: `index` is below `prefix.bytes.length`, which is at most `self.bytes.length`, checked above.
+            if unsafe { self.bytes.data[index] != prefix.bytes.data[index] } { return false; }
             index = index + 1;
         }
         return true;
@@ -38,7 +39,9 @@ extend StringView {
         let offset = self.bytes.length - suffix.bytes.length;
         var index: uint = 0;
         while index < suffix.bytes.length {
-            if self.bytes.data[offset + index] != suffix.bytes.data[index] { return false; }
+            // Safety: `index` is below `suffix.bytes.length`, and `offset + index` below `self.bytes.length` since
+            // `offset` is `self.bytes.length - suffix.bytes.length`.
+            if unsafe { self.bytes.data[offset + index] != suffix.bytes.data[index] } { return false; }
             index = index + 1;
         }
         return true;
@@ -60,7 +63,9 @@ extend StringView {
             var index: uint = 0;
             var matched = true;
             while index < needle.bytes.length {
-                if self.bytes.data[start + index] != needle.bytes.data[index] {
+                // Safety: `index` is below `needle.bytes.length`, and `start <= last` keeps `start + index` below
+                // `self.bytes.length`.
+                if unsafe { self.bytes.data[start + index] != needle.bytes.data[index] } {
                     matched = false;
                     index = needle.bytes.length;
                 }
@@ -87,7 +92,9 @@ extend StringView {
             var index: uint = 0;
             var matched = true;
             while index < needle.bytes.length {
-                if self.bytes.data[start + index] != needle.bytes.data[index] {
+                // Safety: `index` is below `needle.bytes.length`, and `start` is at most `self.bytes.length -
+                // needle.bytes.length`, so `start + index` is below `self.bytes.length`.
+                if unsafe { self.bytes.data[start + index] != needle.bytes.data[index] } {
                     matched = false;
                     index = needle.bytes.length;
                 }
@@ -114,7 +121,8 @@ extend StringView {
     /// @see https://rux-lang.dev/docs/api/text/string-view#trim-start
     pub func TrimStart(self: &StringView) -> StringView {
         var start: uint = 0;
-        while start < self.bytes.length && IsAsciiSpace(self.bytes.data[start]) {
+        // Safety: `start` is below `self.bytes.length`, checked first in the same condition.
+        while start < self.bytes.length && IsAsciiSpace(unsafe { self.bytes.data[start] }) {
             start = start + 1;
         }
         return self.Part(start, self.bytes.length) ?? StringView();
@@ -125,7 +133,8 @@ extend StringView {
     /// @see https://rux-lang.dev/docs/api/text/string-view#trim-end
     pub func TrimEnd(self: &StringView) -> StringView {
         var end = self.bytes.length;
-        while end > 0 && IsAsciiSpace(self.bytes.data[end - 1]) {
+        // Safety: `end` is positive, checked first, and at most `self.bytes.length`, so `end - 1` is inside the view.
+        while end > 0 && IsAsciiSpace(unsafe { self.bytes.data[end - 1] }) {
             end = end - 1;
         }
         return self.Part(0, end) ?? StringView();

@@ -64,8 +64,12 @@ func Main() -> int {
     let wide = @ScalarWide;
     let real = @ScalarReal;
     let byte = @ScalarByte;
-    Assert(Aligned(wide as uint, alignof(int128)) && *wide == (1i128 << 120u32) - 1i128, "an int128 constant's copy");
-    Assert(Aligned(real as uint, alignof(float128)) && *real == 0.125f128, "a float128 constant's copy");
-    Assert(*byte == 0xA5u8, "a byte constant's copy");
+    // Safety: `wide` is `@ScalarWide`, the address of a constant's live copy.
+    Assert(Aligned(wide as uint, alignof(int128)) && unsafe { *wide } == (1i128 << 120u32) - 1i128,
+           "an int128 constant's copy");
+    // Safety: `real` is `@ScalarReal`, the address of a constant's live copy.
+    Assert(Aligned(real as uint, alignof(float128)) && unsafe { *real } == 0.125f128, "a float128 constant's copy");
+    // Safety: `byte` is `@ScalarByte`, the address of a constant's live copy.
+    Assert(unsafe { *byte } == 0xA5u8, "a byte constant's copy");
     return 0;
 }

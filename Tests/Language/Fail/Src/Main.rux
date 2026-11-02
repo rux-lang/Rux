@@ -29,7 +29,8 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        self.counter.count = self.counter.count + 1;
+        // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Tracked`.
+        unsafe { self.counter.count = self.counter.count + 1; }
     }
 }
 
@@ -67,7 +68,8 @@ func Sum(first: int32, second: int32) -> int32 ! ParseError {
 
 // Each operand is evaluated once, whether it succeeds or not.
 func Counted(calls: *var int32, text: int32) -> int32 ! ParseError {
-    *calls = *calls + 1i32;
+    // Safety: `Once` forwards `@calls`, the live `calls` local of `Main`.
+    unsafe { *calls = *calls + 1i32; }
     return Parse(text);
 }
 
@@ -117,10 +119,13 @@ func WiderValue(text: int32) -> int32 {
 
 // Defers run after the outgoing failure is captured, in reverse order of registration.
 func Deferred(log: *var int32, text: int32) -> int32 ! ParseError {
-    defer *log = *log * 10i32 + 1i32;
-    defer *log = *log * 10i32 + 2i32;
+    // Safety: the callers pass `@log`, the live `log` local of `Main`.
+    defer unsafe { *log = *log * 10i32 + 1i32; }
+    // Safety: the callers pass `@log`, the live `log` local of `Main`.
+    defer unsafe { *log = *log * 10i32 + 2i32; }
     let value = Parse(text)?;
-    *log = *log * 10i32 + 9i32;
+    // Safety: the callers pass `@log`, the live `log` local of `Main`.
+    unsafe { *log = *log * 10i32 + 9i32; }
     return value;
 }
 

@@ -13,7 +13,7 @@ import Core::Assert;
 import Math::{ Abs, Cos, IsNan, Pi, ScaleByPowerOfTwo, Sin, Tan, UlpDistance };
 
 // The exact product of two doubles, as a rounded head and the remainder the rounding dropped.
-func ExactProduct(left: float64, right: float64, remainder: *var float64) -> float64 {
+func ExactProduct(left: float64, right: float64, remainder: &var float64) -> float64 {
     let split = 134217729.0; // 2^27 + 1
     let head = left * right;
     let la = left * split;
@@ -22,7 +22,7 @@ func ExactProduct(left: float64, right: float64, remainder: *var float64) -> flo
     let ra = right * split;
     let rightHigh = ra - (ra - right);
     let rightLow = right - rightHigh;
-    *remainder = ((leftHigh * rightHigh - head) + leftHigh * rightLow + leftLow * rightHigh) + leftLow * rightLow;
+    remainder = ((leftHigh * rightHigh - head) + leftHigh * rightLow + leftLow * rightHigh) + leftLow * rightLow;
     return head;
 }
 
@@ -40,9 +40,9 @@ func Main() -> int {
     while multiple <= 400 {
         let count = multiple as float64;
         var leadRemainder = 0.0;
-        let head = ExactProduct(count, Pi, @leadRemainder);
+        let head = ExactProduct(count, Pi, leadRemainder);
         var lowRemainder = 0.0;
-        let lowHead = ExactProduct(count, piLow, @lowRemainder);
+        let lowHead = ExactProduct(count, piLow, lowRemainder);
         // count * Pi exactly, as head plus a tail assembled smallest-last. The first addition is exact by
         // Sterbenz — the two terms are within a factor of two and cancel — so nothing is lost before the
         // corrections go in.

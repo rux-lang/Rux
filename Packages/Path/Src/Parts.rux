@@ -16,19 +16,24 @@ extend Path {
         let units = self.name.Units();
         var end = units.length;
         // Trailing separators say nothing about parenthood.
-        while end > 1 && IsSeparator(units.data[end - 1]) {
+        // Safety: `end` is positive, checked first, and never above `units.length`, so `end - 1` is inside.
+        while end > 1 && IsSeparator(unsafe { units.data[end - 1] }) {
             end = end - 1;
         }
         if end == 0 { return none; }
-        if end == 1 && IsSeparator(units.data[0]) { return none; }
+        // Safety: `end` is one, so the path is not empty.
+        if end == 1 && IsSeparator(unsafe { units.data[0] }) { return none; }
         // Walk back over the last segment, then over the separators before it — keeping the one that is the root.
-        while end > 0 && !IsSeparator(units.data[end - 1]) {
+        // Safety: `end` is positive, checked first, and never above `units.length`, so `end - 1` is inside.
+        while end > 0 && !IsSeparator(unsafe { units.data[end - 1] }) {
             end = end - 1;
         }
-        while end > 1 && IsSeparator(units.data[end - 1]) {
+        // Safety: `end` is positive, checked first, and never above `units.length`, so `end - 1` is inside.
+        while end > 1 && IsSeparator(unsafe { units.data[end - 1] }) {
             end = end - 1;
         }
-        let kept = (units.data)[..end];
+        // Safety: `end` only shrank from `units.length`, so the prefix lies inside the path.
+        let kept = unsafe { (units.data)[..end] };
         return Path::FromView(OsStringView::FromUnits(kept));
     }
 
@@ -40,15 +45,18 @@ extend Path {
     pub func FileName(self: &Path) -> OsStringView? {
         let units = self.name.Units();
         var end = units.length;
-        while end > 0 && IsSeparator(units.data[end - 1]) {
+        // Safety: `end` is positive, checked first, and never above `units.length`, so `end - 1` is inside.
+        while end > 0 && IsSeparator(unsafe { units.data[end - 1] }) {
             end = end - 1;
         }
         if end == 0 { return none; }
         var start = end;
-        while start > 0 && !IsSeparator(units.data[start - 1]) {
+        // Safety: `start` is positive, checked first, and never above `end`, so `start - 1` is inside.
+        while start > 0 && !IsSeparator(unsafe { units.data[start - 1] }) {
             start = start - 1;
         }
-        let name = (@units.data[start])[..end - start];
+        // Safety: `start <= end <= units.length`, so the name lies inside the path.
+        let name = unsafe { (@units.data[start])[..end - start] };
         return OsStringView::FromUnits(name);
     }
 
@@ -63,7 +71,8 @@ extend Path {
         let units = whole.Units();
         let cut = LastDot(units);
         if cut == 0 || cut >= units.length { return whole; }
-        let kept = (units.data)[..cut];
+        // Safety: `cut` is below `units.length`, checked above.
+        let kept = unsafe { (units.data)[..cut] };
         return OsStringView::FromUnits(kept);
     }
 
@@ -77,7 +86,8 @@ extend Path {
         let units = whole.Units();
         let cut = LastDot(units);
         if cut == 0 || cut >= units.length { return none; }
-        let kept = (@units.data[cut + 1])[..units.length - cut - 1];
+        // Safety: `cut` is below `units.length`, checked above, so `cut + 1` through the end lies inside the name.
+        let kept = unsafe { (@units.data[cut + 1])[..units.length - cut - 1] };
         return OsStringView::FromUnits(kept);
     }
 }
@@ -88,7 +98,8 @@ func LastDot(units: OsUnit[..]) -> uint {
     var index = units.length;
     while index > 1 {
         index = index - 1;
-        let dot = units.data[index] as uint32;
+        // Safety: `index` started at `units.length` and was just decremented, so it is inside.
+        let dot = unsafe { units.data[index] } as uint32;
         if dot == 0x2E { return index; }
     }
     return units.length;

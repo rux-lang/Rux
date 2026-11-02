@@ -29,7 +29,7 @@ import Unicode::ToUpperFull;
 
 var output: char32[3];
 var written: uint = 0;
-ToUpperFull(0xDFu32 as char32, (@output[0])[..3], @written);
+ToUpperFull(0xDFu32 as char32, output[..3], @written);
 ```
 
 ## Documentation

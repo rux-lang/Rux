@@ -16,7 +16,9 @@ when #target.os {
 
 // Sleeps while `*word` holds `expected`, for at most `nanoseconds`, or without a limit when that is negative. Returns
 // false only when the time ran out; a wake, a change or a spurious return all give true.
-func WaitWhile(word: *var uint32, expected: uint32, nanoseconds: int64) -> bool {
+// Safety: `word` must address a live, four-byte aligned word that stays allocated until the wait returns and that
+// other threads change only through atomic operations.
+unsafe func WaitWhile(word: *var uint32, expected: uint32, nanoseconds: int64) -> bool {
     when #target.os == .Windows {
         var milliseconds: uint32 = INFINITE;
         if nanoseconds >= 0 {
@@ -55,7 +57,8 @@ func WaitWhile(word: *var uint32, expected: uint32, nanoseconds: int64) -> bool 
 }
 
 // Wakes one thread sleeping on `word`, if any.
-func WakeOne(word: *var uint32) {
+// Safety: `word` must address a live, four-byte aligned word.
+unsafe func WakeOne(word: *var uint32) {
     when #target.os == .Windows {
         WakeByAddressSingle(word as *opaque);
     }
@@ -71,7 +74,8 @@ func WakeOne(word: *var uint32) {
 }
 
 // Wakes every thread sleeping on `word`.
-func WakeAll(word: *var uint32) {
+// Safety: `word` must address a live, four-byte aligned word.
+unsafe func WakeAll(word: *var uint32) {
     when #target.os == .Windows {
         WakeByAddressAll(word as *opaque);
     }

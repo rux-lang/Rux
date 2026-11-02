@@ -24,13 +24,17 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
         // Ask for about as many bytes as the rest of the identifier should need, given the rejection rate.
         let wanted = (into.length - written) * (mask + 1) * 16 / (alphabet.length * 10) + 1;
         let take = wanted > BatchSize ? BatchSize : wanted;
-        FillFrom(source, (@batch[0]) as *var opaque, take) catch {
-            error => {
-                ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
-                if into.length > 0 { ZeroizeBlock(into.data as *var opaque, into.length); }
-                fail error;
-            }
-        };
+        // Safety: `batch` is a local array of `BatchSize` bytes and `take` is at most `BatchSize`; on failure,
+        // `into.data` addresses the `into.length` writable bytes of the caller's slice, which is not empty there.
+        unsafe {
+            FillFrom(source, (@batch[0]) as *var opaque, take) catch {
+                error => {
+                    ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
+                    if into.length > 0 { ZeroizeBlock(into.data as *var opaque, into.length); }
+                    fail error;
+                }
+            };
+        }
         var index: uint = 0;
         while index < take && written < into.length {
             let position = (batch[index] as uint) & mask;
@@ -41,7 +45,8 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
             index = index + 1;
         }
     }
-    ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
+    // Safety: `batch` is a local array of `BatchSize` bytes.
+    unsafe { ZeroizeBlock((@batch[0]) as *var opaque, BatchSize); }
     return;
 }
 

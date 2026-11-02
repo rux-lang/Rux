@@ -15,15 +15,15 @@ func Main() -> int {
     var storage: char32[40];
     var row: uint = 0;
     while row < rows {
-        let offset = table.data[row * 2] as uint;
-        let length = table.data[row * 2 + 1] as uint;
+        let offset = table[row * 2] as uint;
+        let length = table[row * 2 + 1] as uint;
         var index: uint = 0;
         while index < length {
-            storage[index] = points.data[offset + index] as char32;
+            storage[index] = points[offset + index] as char32;
             index = index + 1;
         }
-        let text = (@storage[0])[..length];
-        let mask = masks.data[row];
+        let text = storage[..length];
+        let mask = masks[row];
 
         var position: uint = 0;
         while position <= length {

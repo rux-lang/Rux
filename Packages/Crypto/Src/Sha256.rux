@@ -82,7 +82,8 @@ extend Sha256 {
     }
 
     // One block of sixty-four bytes, mixed into the state.
-    func Compress(self: &var Sha256, block: *char8) {
+    // Safety: `block` must address sixty-four readable bytes.
+    unsafe func Compress(self: &var Sha256, block: *char8) {
         var schedule: uint32[64];
         var index: uint = 0;
         while index < 16 {
@@ -157,12 +158,14 @@ extend Sha256 : Digest {
                 index = index + 1;
             }
             if self.buffered == 64 {
-                self.Compress(@self.buffer[0]);
+                // Safety: `self.buffer` is the state's array of sixty-four bytes.
+                unsafe { self.Compress(@self.buffer[0]); }
                 self.buffered = 0;
             }
         }
         while index + 64 <= bytes.length {
-            self.Compress(@bytes[index]);
+            // Safety: the loop condition keeps `index + 64` within `bytes.length`.
+            unsafe { self.Compress(@bytes[index]); }
             index = index + 64;
         }
         while index < bytes.length {
@@ -188,7 +191,8 @@ extend Sha256 : Digest {
                 self.buffer[self.buffered] = 0u8 as char8;
                 self.buffered = self.buffered + 1;
             }
-            self.Compress(@self.buffer[0]);
+            // Safety: `self.buffer` is the state's array of sixty-four bytes.
+            unsafe { self.Compress(@self.buffer[0]); }
             self.buffered = 0;
         }
         while self.buffered < 56 {
@@ -200,7 +204,8 @@ extend Sha256 : Digest {
             self.buffer[56 + shift] = ((bitLength >> ((56 - shift * 8) as uint64)) & 0xFF) as uint8 as char8;
             shift = shift + 1;
         }
-        self.Compress(@self.buffer[0]);
+        // Safety: `self.buffer` is the state's array of sixty-four bytes.
+        unsafe { self.Compress(@self.buffer[0]); }
 
         var index: uint = 0;
         while index < self.outputLength {

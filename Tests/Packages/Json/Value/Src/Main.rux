@@ -32,7 +32,8 @@ func AcceptedNumber(allocator: Allocator, text: char8[..]) -> bool {
         .Failure(_) => false
     };
     let value = match JsonValue::Number(allocator, text) {
-        .Success(made) => made.Kind() == JsonKind::Number && (*made.AsNumber()).Text().Equals(want),
+        // Safety: `AsNumber` points at the number payload inside `made`, which is live in this arm.
+        .Success(made) => made.Kind() == JsonKind::Number && unsafe { (*made.AsNumber()).Text().Equals(want) },
         .Failure(_) => false
     };
     return number && value;
@@ -58,16 +59,19 @@ func Main() -> int {
         else => Panic("a large integer is stored")
     };
     var exact: uint64 = 0;
-    Assert((*large.AsNumber()).AsUint64(@exact), "and reads back as an unsigned integer");
+    // Safety: `AsNumber` points at the number payload inside `large`, which is live.
+    Assert(unsafe { (*large.AsNumber()).AsUint64(@exact) }, "and reads back as an unsigned integer");
     Assert(exact == 9007199254740993,
            "exactly -- one past two to the fifty-third, which a double would have rounded away");
     var asFloat = 0.0;
-    Assert((*large.AsNumber()).AsFloat64(@asFloat), "it also reads as a float");
+    // Safety: `AsNumber` points at the number payload inside `large`, which is live.
+    Assert(unsafe { (*large.AsNumber()).AsFloat64(@asFloat) }, "it also reads as a float");
     Assert((asFloat as uint64) != 9007199254740993,
            "and that reading loses the last digit, which is why the exact one is offered separately");
 
     var written = JsonValue::Number(allocator, "1.2000") catch { else => Panic("1.2000 is stored") };
-    let writtenText = (*written.AsNumber()).Text();
+    // Safety: `AsNumber` points at the number payload inside `written`, which is live.
+    let writtenText = unsafe { (*written.AsNumber()).Text() };
     let expectedText = View("1.2000");
     Assert(writtenText.Equals(expectedText), "a number keeps the text it was written with, trailing zeros too");
 
@@ -75,24 +79,31 @@ func Main() -> int {
     var whole = JsonValue::Number(allocator, "42") catch { else => Panic("42 is stored") };
     var pointZero = JsonValue::Number(allocator, "42.0") catch { else => Panic("42.0 is stored") };
     var exponent = JsonValue::Number(allocator, "4.2e1") catch { else => Panic("4.2e1 is stored") };
-    Assert((*whole.AsNumber()).IsIntegral(), "42 is integral");
-    Assert(!(*pointZero.AsNumber()).IsIntegral(), "42.0 is not, though its value is whole");
-    Assert(!(*exponent.AsNumber()).IsIntegral(), "and neither is 4.2e1");
+    // Safety: `AsNumber` points at the number payload inside `whole`, which is live.
+    Assert(unsafe { (*whole.AsNumber()).IsIntegral() }, "42 is integral");
+    // Safety: `AsNumber` points at the number payload inside `pointZero`, which is live.
+    Assert(!unsafe { (*pointZero.AsNumber()).IsIntegral() }, "42.0 is not, though its value is whole");
+    // Safety: `AsNumber` points at the number payload inside `exponent`, which is live.
+    Assert(!unsafe { (*exponent.AsNumber()).IsIntegral() }, "and neither is 4.2e1");
     var pointZeroAsInt: int64 = 0;
-    Assert(!(*pointZero.AsNumber()).AsInt64(@pointZeroAsInt),
+    // Safety: `AsNumber` points at the number payload inside `pointZero`, which is live.
+    Assert(!unsafe { (*pointZero.AsNumber()).AsInt64(@pointZeroAsInt) },
            "so 42.0 does not read as an integer, which keeps a distinction the document was making");
     var floatValue = 0.0;
-    Assert((*pointZero.AsNumber()).AsFloat64(@floatValue) && floatValue == 42.0,
+    // Safety: `AsNumber` points at the number payload inside `pointZero`, which is live.
+    Assert(unsafe { (*pointZero.AsNumber()).AsFloat64(@floatValue) } && floatValue == 42.0,
            "while it reads fine as a float");
 
     var negative = JsonValue::Number(allocator, "-9223372036854775808") catch {
         else => Panic("the most negative signed integer is stored")
     };
     var signedValue: int64 = 0;
-    Assert((*negative.AsNumber()).AsInt64(@signedValue) && signedValue == -9223372036854775808i64,
+    // Safety: `AsNumber` points at the number payload inside `negative`, which is live.
+    Assert(unsafe { (*negative.AsNumber()).AsInt64(@signedValue) } && signedValue == -9223372036854775808i64,
            "the most negative signed integer reads back exactly");
     var negativeAsUnsigned: uint64 = 0;
-    Assert(!(*negative.AsNumber()).AsUint64(@negativeAsUnsigned), "and does not read as unsigned");
+    // Safety: `AsNumber` points at the number payload inside `negative`, which is live.
+    Assert(!unsafe { (*negative.AsNumber()).AsUint64(@negativeAsUnsigned) }, "and does not read as unsigned");
 
     // A number made by hand is held to the grammar a parsed one is, so nothing the tree holds is a number only this
     // package would read.
@@ -150,7 +161,8 @@ func Main() -> int {
         let element = array.At(index);
         Assert(element != null, "every index is reachable");
         var value = false;
-        Assert((*element).AsBoolean(@value) && value == ((index % 2) == 0),
+        // Safety: `element` is non-null, asserted above, and points into `array`, which is live.
+        Assert(unsafe { (*element).AsBoolean(@value) } && value == ((index % 2) == 0),
                "and the elements are in the order they were added");
         index = index + 1;
     }
@@ -172,18 +184,22 @@ func Main() -> int {
 
     let firstMember = object.MemberAt(0);
     let zeta = View("zeta");
-    Assert(firstMember != null && firstMember.name.View().Equals(zeta),
+    // Safety: `firstMember` is dereferenced only when it is non-null, and it points into `object`, which is live.
+    Assert(firstMember != null && unsafe { firstMember.name.View().Equals(zeta) },
            "the first member is the first one added, not the alphabetically first");
     let secondMember = object.MemberAt(1);
     let alpha = View("alpha");
-    Assert(secondMember != null && secondMember.name.View().Equals(alpha), "and insertion order is kept");
+    // Safety: `secondMember` is dereferenced only when it is non-null, and it points into `object`, which is live.
+    Assert(secondMember != null && unsafe { secondMember.name.View().Equals(alpha) }, "and insertion order is kept");
 
     // Lookup by name.
     let mu = View("mu");
     let found = object.Find(mu);
-    Assert(found != null && (*found).Kind() == JsonKind::Text, "a member is found by name");
+    // Safety: `found` is dereferenced only when it is non-null, and it points into `object`, which is live.
+    Assert(found != null && unsafe { (*found).Kind() } == JsonKind::Text, "a member is found by name");
     let foundText = View("found");
-    Assert((*found).AsText().Equals(foundText), "with the value it was given");
+    // Safety: `found` is non-null, asserted above, and points into `object`, which is live.
+    Assert(unsafe { (*found).AsText().Equals(foundText) }, "with the value it was given");
     let missing = View("absent");
     Assert(object.Find(missing) == null, "and a name that is not there is not found");
     Assert(array.Find(mu) == null, "looking for a member in an array finds nothing rather than misreading it");

@@ -3,9 +3,10 @@ import Core::Assert;
 import Hash::{ Crc32, Crc32Initial, Crc32Of, Crc32Polynomial, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial,
                Crc32cTable, HashBytes };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+// The bytes a string spans, which is how a text overload reaches the byte one.
+func TextBytes(text: char8[..]) -> byte[..] {
+    // Safety: a `char8` is one byte, so the characters of `text` are readable as `text.length` bytes.
+    return unsafe { (text.data as *byte)[..text.length] };
 }
 
 // Both CRCs are specified, so the test is the standard answers — above all the check value every CRC catalogue
@@ -14,11 +15,22 @@ func TextBytes(text: char8[..]) -> char8[..] {
 // getting any one of them wrong changes it.
 
 func Crc(text: char8[..]) -> uint32 {
-    return Crc32Of(text.data as *byte, text.length);
+    return CrcBytes(TextBytes(text));
 }
 
 func Crcc(text: char8[..]) -> uint32 {
-    return Crc32cOf(text.data as *byte, text.length);
+    return CrccBytes(TextBytes(text));
+}
+
+// The one-shot checksums over a byte slice, which is how the checks below reach the pointer-and-length forms.
+func CrcBytes(bytes: byte[..]) -> uint32 {
+    // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
+    return unsafe { Crc32Of(bytes.data, bytes.length) };
+}
+
+func CrccBytes(bytes: byte[..]) -> uint32 {
+    // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
+    return unsafe { Crc32cOf(bytes.data, bytes.length) };
 }
 
 // The table is division by the generator, precomputed. Recomputing an entry the slow way is what proves the table
@@ -44,8 +56,8 @@ func Main() -> int {
     Assert(Crcc("123456789") == 0xE3069283, "CRC-32C of the catalogue check message");
 
     // The empty message is zero, which is what the initial ones and the final complement conspire to produce.
-    Assert(Crc32Of(null, 0) == 0, "the empty message has a CRC-32 of zero");
-    Assert(Crc32cOf(null, 0) == 0, "and a CRC-32C of zero");
+    Assert(CrcBytes([]) == 0, "the empty message has a CRC-32 of zero");
+    Assert(CrccBytes([]) == 0, "and a CRC-32C of zero");
 
     // More published answers, so a coincidence on one message cannot pass.
     Assert(Crc("a") == 0xE8B7BE43, "CRC-32 of 'a'");
@@ -72,16 +84,16 @@ func Main() -> int {
 
     // A message split across writes is the same message.
     let message = TextBytes("123456789");
-    let bytes = message.data as *byte;
+    let bytes = message.data;
     var split = Crc32();
     split.Write(bytes, 4);
-    split.Write(bytes + 4, 5);
+    split.Write(@message[4], 5);
     Assert(split.Value() == 0xCBF43926, "writing in two parts agrees with writing at once");
 
     var byByte = Crc32c();
     index = 0;
     while index < 9 {
-        byByte.Write(bytes + index, 1);
+        byByte.Write(@message[index], 1);
         index++;
     }
     Assert(byByte.Value() == 0xE3069283, "and so does writing one byte at a time");
@@ -98,7 +110,7 @@ func Main() -> int {
     kept.Write(bytes, 4);
     let partial = kept.Value();
     Assert(kept.Value() == partial, "reading the value twice gives the same answer");
-    kept.Write(bytes + 4, 5);
+    kept.Write(@message[4], 5);
     Assert(kept.Value() == 0xCBF43926, "and writing afterwards continues from there");
     Assert(kept.Finish() == 0xCBF43926, "the widened form is the same value");
 
@@ -110,7 +122,9 @@ func Main() -> int {
 
     // Both types are usable through the bound, which is what puts them in generic code.
     var bounded = Crc32c();
-    Assert(HashBytes<Crc32c>(bounded, bytes, 9) == 0xE3069283, "a CRC is usable through the hashing bound");
+    // Safety: `bytes` addresses the nine bytes of "123456789".
+    let boundedHash = unsafe { HashBytes<Crc32c>(bounded, bytes, 9) };
+    Assert(boundedHash == 0xE3069283, "a CRC is usable through the hashing bound");
 
     // A single-bit change must change the checksum. That is the property a CRC exists for, and the one a broken
     // table would most plausibly still fail.

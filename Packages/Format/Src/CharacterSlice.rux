@@ -17,7 +17,7 @@ extend char8[..] : Display {
     /// @see https://rux-lang.dev/docs/api/format/character-text#char8-slice-write-display
     pub func WriteDisplay(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        return WriteAligned(writer, spec, (self.data)[..self.length], false);
+        return WriteAligned(writer, spec, self[..], false);
     }
 }
 

@@ -34,7 +34,9 @@ extend Semaphore {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/counters#clone-semaphore
     pub func Clone(self: &Semaphore) -> Semaphore {
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return Semaphore { block: self.block };
     }
 
@@ -43,9 +45,13 @@ extend Semaphore {
     pub func Acquire(self: &Semaphore) {
         let block = self.block;
         while !self.TryAcquire() {
-            AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
-            WaitWhile(@block.permits, 0u32, -1);
-            AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+            // Safety: this handle holds a count on `block`, so the block and its words outlive the wait on `permits`,
+            // and every thread reaches those words only atomically.
+            unsafe {
+                AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+                WaitWhile(@block.permits, 0u32, -1);
+                AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+            }
         }
     }
 
@@ -54,10 +60,16 @@ extend Semaphore {
     /// @see https://rux-lang.dev/docs/api/sync/counters#try-acquire
     pub func TryAcquire(self: &Semaphore) -> bool {
         let block = self.block;
-        var permits = AtomicLoad(@block.permits, MemoryOrder::SequentiallyConsistent);
+        // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+        // atomically.
+        var permits = unsafe { AtomicLoad(@block.permits, MemoryOrder::SequentiallyConsistent) };
         while permits != 0u32 {
-            let found = AtomicCompareExchange(@block.permits, permits, permits - 1u32, MemoryOrder::Acquire,
-                                              MemoryOrder::Relaxed);
+            // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+            // atomically.
+            let found = unsafe {
+                AtomicCompareExchange(@block.permits, permits, permits - 1u32, MemoryOrder::Acquire,
+                                      MemoryOrder::Relaxed)
+            };
             if found == permits { return true; }
             permits = found;
         }
@@ -69,21 +81,34 @@ extend Semaphore {
     /// @see https://rux-lang.dev/docs/api/sync/counters#release
     pub func Release(self: &Semaphore, count: uint32 = 1) {
         let block = self.block;
-        AtomicFetchAdd(@block.permits, count, MemoryOrder::SequentiallyConsistent);
-        if AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) == 0u32 { return; }
-        if count == 1u32 { WakeOne(@block.permits); } else { WakeAll(@block.permits); }
+        // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+        // atomically.
+        unsafe { AtomicFetchAdd(@block.permits, count, MemoryOrder::SequentiallyConsistent); }
+        // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+        // atomically.
+        if unsafe { AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) } == 0u32 { return; }
+        // Safety: this handle holds a count on `block`, so the `permits` word is live.
+        unsafe {
+            if count == 1u32 { WakeOne(@block.permits); } else { WakeAll(@block.permits); }
+        }
     }
 
     /// The permits left right now, which other threads may change at any moment.
     /// @returns the number of permits
     /// @see https://rux-lang.dev/docs/api/sync/counters#available
     pub func Available(self: &Semaphore) -> uint32 {
-        return AtomicLoad(@self.block.permits, MemoryOrder::Relaxed);
+        // Safety: this handle holds a count on `self.block`, so its `permits` word is live, and every thread reaches it
+        // only atomically.
+        return unsafe { AtomicLoad(@self.block.permits, MemoryOrder::Relaxed) };
     }
 
     func ~Semaphore(self: &var Semaphore) {
-        if ReleaseBlock(@self.block.references) {
-            DestroyBlock<SemaphoreBlock>(self.block);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@self.block.references) {
+                DestroyBlock<SemaphoreBlock>(self.block);
+            }
         }
     }
 }
@@ -121,7 +146,9 @@ extend Barrier {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/counters#clone-barrier
     pub func Clone(self: &Barrier) -> Barrier {
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return Barrier { block: self.block };
     }
 
@@ -130,23 +157,42 @@ extend Barrier {
     /// @see https://rux-lang.dev/docs/api/sync/counters#wait-barrier
     pub func Wait(self: &Barrier) -> bool {
         let block = self.block;
-        let generation = AtomicLoad(@block.generation, MemoryOrder::Acquire);
-        if AtomicFetchAdd(@block.arrived, 1u32, MemoryOrder::AcquireRelease) + 1u32 == block.parties {
+        // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+        // atomically.
+        let generation = unsafe { AtomicLoad(@block.generation, MemoryOrder::Acquire) };
+        // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+        // atomically.
+        let arrived = unsafe { AtomicFetchAdd(@block.arrived, 1u32, MemoryOrder::AcquireRelease) + 1u32 };
+        // Safety: this handle holds a count on `block`, so the block is live, and `parties` never changes after it is
+        // built.
+        if arrived == unsafe { block.parties } {
             // Nobody of the next round can arrive before the generation moves, so resetting first is safe.
-            AtomicStore(@block.arrived, 0u32, MemoryOrder::Relaxed);
-            AtomicFetchAdd(@block.generation, 1u32, MemoryOrder::Release);
-            WakeAll(@block.generation);
+            // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+            // atomically.
+            unsafe {
+                AtomicStore(@block.arrived, 0u32, MemoryOrder::Relaxed);
+                AtomicFetchAdd(@block.generation, 1u32, MemoryOrder::Release);
+                WakeAll(@block.generation);
+            }
             return true;
         }
-        while AtomicLoad(@block.generation, MemoryOrder::Acquire) == generation {
-            WaitWhile(@block.generation, generation, -1);
+        // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
+        // atomically.
+        while unsafe { AtomicLoad(@block.generation, MemoryOrder::Acquire) } == generation {
+            // Safety: the word waited on is the barrier's `generation`, which outlives the wait because this handle
+            // holds a count on its block.
+            unsafe { WaitWhile(@block.generation, generation, -1); }
         }
         return false;
     }
 
     func ~Barrier(self: &var Barrier) {
-        if ReleaseBlock(@self.block.references) {
-            DestroyBlock<BarrierBlock>(self.block);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@self.block.references) {
+                DestroyBlock<BarrierBlock>(self.block);
+            }
         }
     }
 }
@@ -177,7 +223,9 @@ extend WaitGroup {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/counters#clone-wait-group
     pub func Clone(self: &WaitGroup) -> WaitGroup {
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return WaitGroup { block: self.block };
     }
 
@@ -185,31 +233,44 @@ extend WaitGroup {
     /// @param count how many to add
     /// @see https://rux-lang.dev/docs/api/sync/counters#add
     pub func Add(self: &WaitGroup, count: uint32 = 1) {
-        AtomicFetchAdd(@self.block.pending, count, MemoryOrder::Relaxed);
+        // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread reaches it
+        // only atomically.
+        unsafe { AtomicFetchAdd(@self.block.pending, count, MemoryOrder::Relaxed); }
     }
 
     /// Marks one piece of work done, waking the waiters when it was the last. Marking more done than were added is a
     /// program error.
     /// @see https://rux-lang.dev/docs/api/sync/counters#done
     pub func Done(self: &WaitGroup) {
-        let previous = AtomicFetchSub(@self.block.pending, 1u32, MemoryOrder::AcquireRelease);
+        // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread reaches it
+        // only atomically.
+        let previous = unsafe { AtomicFetchSub(@self.block.pending, 1u32, MemoryOrder::AcquireRelease) };
         if previous == 0u32 { Panic("a wait group was marked done more times than work was added"); }
-        if previous == 1u32 { WakeAll(@self.block.pending); }
+        // Safety: this handle holds a count on `self.block`, so its `pending` word is live.
+        if previous == 1u32 { unsafe { WakeAll(@self.block.pending); } }
     }
 
     /// Waits until no work is pending.
     /// @see https://rux-lang.dev/docs/api/sync/counters#wait-wait-group
     pub func Wait(self: &WaitGroup) {
         while true {
-            let pending = AtomicLoad(@self.block.pending, MemoryOrder::Acquire);
+            // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread
+            // reaches it only atomically.
+            let pending = unsafe { AtomicLoad(@self.block.pending, MemoryOrder::Acquire) };
             if pending == 0u32 { return; }
-            WaitWhile(@self.block.pending, pending, -1);
+            // Safety: the word waited on is the group's `pending`, which outlives the wait because this handle holds a
+            // count on its block.
+            unsafe { WaitWhile(@self.block.pending, pending, -1); }
         }
     }
 
     func ~WaitGroup(self: &var WaitGroup) {
-        if ReleaseBlock(@self.block.references) {
-            DestroyBlock<WaitGroupBlock>(self.block);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@self.block.references) {
+                DestroyBlock<WaitGroupBlock>(self.block);
+            }
         }
     }
 }

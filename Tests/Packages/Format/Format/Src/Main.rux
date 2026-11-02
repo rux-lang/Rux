@@ -32,20 +32,27 @@ struct CountingAllocator {
 extend CountingAllocator : Allocator {
     func Allocate(self: &CountingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         let block = self.inner.Allocate(layout)?;
-        self.counts.live += 1;
-        self.counts.allocations += 1;
+        // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
+        unsafe {
+            self.counts.live += 1;
+            self.counts.allocations += 1;
+        }
         return block;
     }
 
     func Deallocate(self: &CountingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
         self.inner.Deallocate(block, layout) catch {
             error => {
-            self.counts.invalidReleases += 1;
+                // Safety: `counts` points at the test's local `AllocationCounts`, which outlives this allocator.
+                unsafe { self.counts.invalidReleases += 1; }
                 fail error;
             }
         };
+        // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
+        unsafe {
             self.counts.live -= 1;
             self.counts.releases += 1;
+        }
     }
 
     func Reallocate(self: &CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
@@ -143,7 +150,8 @@ struct RefusingValue {
 
 extend RefusingValue : Display {
     func WriteDisplay(self: &RefusingValue, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        *self.calls += 1;
+        // Safety: `calls` points at the test's local counter, which outlives every render of this value.
+        unsafe { *self.calls += 1; }
         WriteBytes(writer, "partial")?;
         fail FormatError::InvalidSpecification(73);
     }
@@ -178,7 +186,7 @@ func PropagationCases(allocator: Allocator) {
     Assert(counts.invalidReleases == 0, "propagation does not attempt a second builder release");
 
     var room: char8[64];
-    var writer = BufferWriter((@room[0])[..64]);
+    var writer = BufferWriter(room[..64]);
     let sink: &var TextWriter = writer;
     let failed = WriteFormat(sink, "head {} tail", refusing);
     Assert(Failed(failed) && calls == 2 && writer.Length() == 12, "writer failure stops after the accepted prefix");
@@ -276,7 +284,7 @@ func Main() -> int {
     // A destination that runs out of room reports it, and stops: what a refused write did not accept is not
     // written, and nothing after the failing placeholder is either.
     var room: char8[8];
-    var writer = BufferWriter((@room[0])[..8]);
+    var writer = BufferWriter(room[..8]);
     let sink: &var TextWriter = writer;
     let overflowed = WriteFormat(sink, "12345{}<end>", Filler { count: 1 });
     let capacity = match overflowed {
@@ -289,11 +297,11 @@ func Main() -> int {
     if writer.Length() != 5 { return 91; }
 
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
-    var second = BufferWriter((@room[0])[..8]);
+    var second = BufferWriter(room[..8]);
     let other: &var TextWriter = second;
     if Succeeded(WriteFormat(other, "abc{", 1)) { return 92; }
     if second.Length() != 0 { return 93; }
-    var third = BufferWriter((@room[0])[..8]);
+    var third = BufferWriter(room[..8]);
     let last: &var TextWriter = third;
     if Succeeded(WriteFormat(last, Pattern("abc{}"), 1, 2)) { return 94; }
     if third.Length() != 0 { return 95; }

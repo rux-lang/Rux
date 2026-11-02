@@ -35,15 +35,18 @@ pub const TemporaryNameAttempts: uint = 4;
 pub func TemporaryDirectory(allocator: Allocator) -> PathBuffer ! IoError {
     when #target.os == .Windows {
         var units: OsUnit[512];
-        let written = GetTempPathW(512, @units[0] as *var char16);
-        if written == 0 { fail TranslateNative(GetLastError() as int32); }
+        // Safety: `units` is a local array of 512 UTF-16 units, its length is the 512 passed, and a `uint16` unit is
+        // a `char16`.
+        let written = unsafe { GetTempPathW(512, @units[0] as *var char16) };
+        // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+        if written == 0 { fail TranslateNative(unsafe { GetLastError() } as int32); }
         if written > 512 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         // The reported path ends in a separator; the buffer holds names, so it is dropped here.
         var length = written as uint;
         while length > 1 && IsSeparator(units[length - 1]) {
             length = length - 1;
         }
-        let view = OsStringView::FromUnits((@units[0])[..length]);
+        let view = OsStringView::FromUnits(units[0..length]);
         return PathBuffer::FromPath(allocator, Path::FromView(view)) catch {
             else => fail IoError::Of(IoErrorKind::Other)
         };
@@ -63,7 +66,8 @@ func RandomName(allocator: Allocator, prefix: char8[..]) -> OsString ! IoError {
     var text: char8[64];
     var length: uint = 0;
     while length < prefix.length && length < 40 {
-        text[length] = prefix.data[length];
+        // Safety: `length` is below `prefix.length`, the loop condition.
+        text[length] = unsafe { prefix.data[length] };
         length = length + 1;
     }
     var digit: uint = 0;

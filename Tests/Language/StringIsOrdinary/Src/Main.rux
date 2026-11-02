@@ -41,7 +41,8 @@ func Main() -> int {
     Assert(held.after == 44i64, "and the field after it");
     Assert(held.text.length == 4, "every field of it survives being stored");
     Assert(held.text.tag == 22i64 && held.text.extra == 33i64, "including the ones past the first sixteen bytes");
-    Assert(held.text.data[0] == c8'r' && held.text.data[3] == c8'!', "and it still points at its bytes");
+    // Safety: `held.text.data` is `@storage[0]`, a live local of four bytes, and both indexes are below 4.
+    Assert(unsafe { held.text.data[0] == c8'r' && held.text.data[3] == c8'!' }, "and it still points at its bytes");
 
     // Passed by value, which is where a width the compiler disagreed about would show.
     Assert(Sum(held.text) == 55i64, "and it arrives whole across a call");

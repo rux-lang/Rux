@@ -24,8 +24,10 @@ func Main() -> int {
     let text = StringView::FromValidated("hello");
     let kept = CString::FromView(allocator, text) catch { else => Panic("ordinary text crosses the boundary") };
     Assert(kept.Length() == 5, "the length counts the text alone");
-    Assert((kept.Raw()[5] as uint32) == 0, "with the terminator sitting just past it");
-    Assert((kept.Raw()[0] as uint32) == 0x68, "and the text itself unmoved");
+    // Safety: `kept` is a live C string of five bytes, so its block holds indexes 0 through 5, the terminator last.
+    let (terminator, first) = unsafe { (kept.Raw()[5], kept.Raw()[0]) };
+    Assert((terminator as uint32) == 0, "with the terminator sitting just past it");
+    Assert((first as uint32) == 0x68, "and the text itself unmoved");
     let roundTrip = kept.View();
     Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
@@ -48,7 +50,8 @@ func Main() -> int {
         "but it does not cross the boundary, and the refusal says why");
 
     // In: reading back from a raw pointer, to the terminator and no further.
-    let arrived = CString::FromRaw(allocator, kept.Raw(), 64)
+    // Safety: `kept.Raw()` addresses the live six-byte block of `kept`, terminated within the 64-byte limit.
+    let arrived = (unsafe { CString::FromRaw(allocator, kept.Raw(), 64) })
         catch { else => Panic("C text with a terminator in reach comes in") };
     Assert(arrived.Length() == 5, "read to the terminator and no further");
 
@@ -58,7 +61,8 @@ func Main() -> int {
     unterminated[1] = c8'b';
     unterminated[2] = c8'c';
     unterminated[3] = c8'd';
-    Assert(Refusal(CString::FromRaw(allocator, @unterminated[0], 4)) == TextError::InvalidUtf8,
+    // Safety: `unterminated` is a local array of four bytes, which is exactly the limit passed.
+    Assert(Refusal(unsafe { CString::FromRaw(allocator, @unterminated[0], 4) }) == TextError::InvalidUtf8,
         "no terminator within the limit is refused");
 
     // Bytes from C that are not text are input, and input is validated.
@@ -67,16 +71,20 @@ func Main() -> int {
     mangled[1] = 0xA0u8 as char8;
     mangled[2] = 0x80u8 as char8;
     mangled[3] = 0u8 as char8;
-    Assert(Refusal(CString::FromRaw(allocator, @mangled[0], 8)) == TextError::InvalidUtf8,
+    // Safety: `mangled` is a local array of four bytes whose last byte is the terminator, so the walk stops there.
+    Assert(Refusal(unsafe { CString::FromRaw(allocator, @mangled[0], 8) }) == TextError::InvalidUtf8,
         "a surrogate half from C is refused");
 
     // Text crosses the boundary the same way a view does, since a view is what it becomes.
     let crossed = CString::FromText(allocator, "crossing") catch { else => Panic("text makes a C string") };
     Assert(crossed.Length() == 8, "spanning what it was given");
-    Assert((crossed.Raw()[8] as uint32) == 0, "with the terminator sitting just past it");
+    // Safety: `crossed` is a live C string of eight bytes, so index 8 is the terminator inside its block.
+    let crossedEnd = unsafe { crossed.Raw()[8] };
+    Assert((crossedEnd as uint32) == 0, "with the terminator sitting just past it");
 
     // Null is C's nothing, and nothing is not text.
-    Assert(Failed(CString::FromRaw(allocator, null, 8)), "and a null pointer makes nothing");
+    // Safety: the readability obligation covers only a non-null `raw`; a null one is refused before any read.
+    Assert(Failed(unsafe { CString::FromRaw(allocator, null, 8) }), "and a null pointer makes nothing");
 
     return 0;
 }

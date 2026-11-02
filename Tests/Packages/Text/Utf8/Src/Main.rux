@@ -37,7 +37,7 @@ func Main() -> ! Utf8Error {
     var index: uint = 0;
     while index < 9 {
         let value = samples[index];
-        let room = (@storage[0])[..8];
+        let room = storage[..8];
         // Every scalar value encodes, and decodes again.
         let written = Encode(value as char32, room)?;
         Assert(written == EncodedLength(value as char32), "in the width the table says");

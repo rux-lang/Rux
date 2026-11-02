@@ -39,7 +39,7 @@ pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[.
         zeros[index] = 0u8 as char8;
         index = index + 1;
     }
-    let zeroSalt = (@zeros[0])[..digestLength];
+    let zeroSalt = zeros[..digestLength];
     HmacOf<D>(prototype, zeroSalt, material, into);
 }
 
@@ -67,13 +67,13 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
         var round = Hmac<D>(prototype, key);
         if previousLength > 0 {
             // Every block after the first is chained from the one before it.
-            round.Update((@previous[0])[..previousLength]);
+            round.Update(previous[..previousLength]);
         }
         round.Update(info);
         var counterByte: char8[1];
         counterByte[0] = counter as char8;
-        round.Update((@counterByte[0])[..1]);
-        round.Finish((@previous[0])[..digestLength]);
+        round.Update(counterByte[..1]);
+        round.Finish(previous[..digestLength]);
         previousLength = digestLength;
 
         var index: uint = 0;
@@ -102,7 +102,7 @@ pub func Hkdf<D: Digest>(prototype: D, salt: char8[..], material: char8[..], inf
     var probe = prototype;
     let digestLength = probe.DigestLength();
     var key: char8[64];
-    HkdfExtract<D>(prototype, salt, material, (@key[0])[..digestLength]);
-    let keyBytes = (@key[0])[..digestLength];
+    HkdfExtract<D>(prototype, salt, material, key[..digestLength]);
+    let keyBytes = key[..digestLength];
     return HkdfExpand<D>(prototype, keyBytes, info, into);
 }

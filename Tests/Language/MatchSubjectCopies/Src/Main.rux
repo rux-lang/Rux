@@ -21,13 +21,17 @@ struct Tracked {
 
 extend Tracked {
     func Clone(&self) -> Tracked {
-        self.log.copies = self.log.copies + 1;
+        // Safety: `self.log` points at the `Log` local of `Main`, which outlives every `Tracked`.
+        unsafe { self.log.copies = self.log.copies + 1; }
         return Tracked { log: self.log, id: self.id + 10 };
     }
 
     func ~Tracked(self: &var Tracked) {
-        self.log.drops = self.log.drops + 1;
-        self.log.order = self.log.order * 100 + (self.id as int64);
+        // Safety: `self.log` points at the `Log` local of `Main`, which outlives every `Tracked`.
+        unsafe {
+            self.log.drops = self.log.drops + 1;
+            self.log.order = self.log.order * 100 + (self.id as int64);
+        }
     }
 }
 
@@ -44,7 +48,8 @@ variant Parcel {
 }
 
 func Mark(log: *var Log) {
-    log.order = log.order * 100;
+    // Safety: every caller passes `@log` or forwards that pointer to the live `Log` local of `Main`.
+    unsafe { log.order = log.order * 100; }
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
@@ -76,9 +81,12 @@ func Fail(log: *var Log, id: int32) -> int32 ! Tracked {
 }
 
 func Reset(log: *var Log) {
-    log.copies = 0;
-    log.drops = 0;
-    log.order = 1;
+    // Safety: every caller passes `@log` or forwards that pointer to the live `Log` local of `Main`.
+    unsafe {
+        log.copies = 0;
+        log.drops = 0;
+        log.order = 1;
+    }
 }
 
 func TupleStatement(log: *var Log) {

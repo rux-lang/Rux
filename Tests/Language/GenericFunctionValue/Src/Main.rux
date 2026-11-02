@@ -18,7 +18,8 @@ func Double<T>(value: T) -> T {
 }
 
 func Unwrap<V>(box: *Box<V>) -> V {
-    return box.value;
+    // Safety: every call in this test passes the address of a live local `Box`.
+    return unsafe { box.value };
 }
 
 func Pick<A, B>(first: A, second: B) -> B {

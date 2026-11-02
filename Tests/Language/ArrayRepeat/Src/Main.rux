@@ -8,8 +8,10 @@ struct Cell {
 }
 
 func Next(counter: *var int) -> int {
-    *counter = *counter + 1;
-    return *counter;
+    // Safety: every caller passes `@calls`, a live local of `Main`.
+    unsafe { *counter = *counter + 1; }
+    // Safety: every caller passes `@calls`, a live local of `Main`.
+    return unsafe { *counter };
 }
 
 func Sum(values: int[..]) -> int {

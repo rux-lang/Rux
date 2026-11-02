@@ -56,6 +56,8 @@ Darwin records such as `Timespec` and `Timeval` are structural values and copy b
 
 libSystem declarations retain raw pointers for nullable parameters, byte buffers, loader handles, and OS-owned storage. These pointers do not express ownership; use the documented close or unmap operation, or prefer `Rux/Io` and `Rux/Memory` for managed interfaces.
 
+The wrappers that take a raw pointer the system reads or writes — a buffer and its length, a NUL-terminated path, a structure the call fills, an address range to map, unmap, protect or advise, a socket address or a kevent array — are `unsafe func`, and the `Safety:` sentence in each one's documentation states what the caller must uphold. A call to one needs an `unsafe` block, conventionally under a `// Safety:` comment saying why the obligation holds at that call: `unsafe { ClockGetTime(ClockMonotonic, @time) }`. `FcntlInt` is one of them too, because a command whose argument is a pointer would use the integer as an address. Wrappers that take only numbers, such as `Close`, `Lseek`, `Dup2`, `Socket`, `Kqueue`, `Exit`, `GetPid`, `CurrentErrno` and `QueryPageSize`, stay safe to call. The libSystem declarations themselves, `__ulock_wait` and `__ulock_wake` among them, are `extern` and always need `unsafe`.
+
 ## Platform
 
 macOS only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

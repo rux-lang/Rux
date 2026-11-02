@@ -135,14 +135,18 @@ extend RotatingStream : Writer {
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/log/rotating-stream#write
     pub func Write(self: &var RotatingStream, bytes: char8[..]) -> uint ! IoError {
-        return (*self.target).Write(bytes);
+        // Safety: `RotatingFile::Stream`, the only way to make a stream, requires the file to outlive it and stay in
+        // place while it exists, so `target` addresses a live `RotatingFile`.
+        return unsafe { (*self.target).Write(bytes) };
     }
 
     /// Flushes the borrowed file.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/log/rotating-stream#flush
     pub func Flush(self: &var RotatingStream) -> ! IoError {
-        return (*self.target).Flush();
+        // Safety: `RotatingFile::Stream`, the only way to make a stream, requires the file to outlive it and stay in
+        // place while it exists, so `target` addresses a live `RotatingFile`.
+        return unsafe { (*self.target).Flush() };
     }
 }
 

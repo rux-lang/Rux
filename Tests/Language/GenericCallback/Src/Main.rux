@@ -58,7 +58,8 @@ func CountIf<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
     var found: uint = 0;
     var i: uint = 0;
     while i < length {
-        if predicate(data[i]) {
+        // Safety: `i < length`, and every caller passes a local array of `length` elements.
+        if predicate(unsafe { data[i] }) {
             found++;
         }
         i++;
@@ -75,16 +76,20 @@ func SortBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
 
     var i: uint = 1;
     while i < length {
-        let key = data[i];
+        // Safety: `i < length`, and every caller passes a local array of `length` elements.
+        let key = unsafe { data[i] };
         var j = i;
         while j > 0 {
-            if !less(key, data[j - 1]) {
+            // Safety: `0 < j <= i < length` within the caller's local array of `length` elements.
+            if !less(key, unsafe { data[j - 1] }) {
                 break;
             }
-            data[j] = data[j - 1];
+            // Safety: `0 < j <= i < length` within the caller's local array of `length` elements.
+            unsafe { data[j] = data[j - 1]; }
             j--;
         }
-        data[j] = key;
+        // Safety: `j <= i < length` within the caller's local array of `length` elements.
+        unsafe { data[j] = key; }
         i++;
     }
 }
@@ -100,7 +105,8 @@ func ThreeWay<T>(a: T, b: T, compare: func(T, T) -> Ordering) -> int {
 
 // Two independent type parameters, one appearing only inside the callback.
 func TransformFirst<T, U>(data: *T, transform: func(T) -> U) -> U {
-    return transform(data[0]);
+    // Safety: every caller passes the first element of a non-empty local array.
+    return transform(unsafe { data[0] });
 }
 
 func Main() -> int {

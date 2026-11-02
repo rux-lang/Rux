@@ -34,7 +34,9 @@ when #target.os == .Windows {
         if ArgumentsRead { return; }
         ArgumentsRead = true;
         var count: int32 = 0;
-        let split = CommandLineToArgvW(GetCommandLineW(), @count);
+        // Safety: `GetCommandLineW` returns the process's own NUL-terminated command line, which lives as long as the
+        // process, and `count` is a local the split writes one `int32` to.
+        let split = unsafe { CommandLineToArgvW(GetCommandLineW(), @count) };
         if split != null && count > 0 {
             SplitArguments = split;
             SplitArgumentCount = count as uint;
@@ -43,7 +45,8 @@ when #target.os == .Windows {
 }
 
 // How many units a NUL-terminated native string has before its terminator.
-func TerminatedLength(units: *OsUnit) -> uint {
+// Safety: `units` must address a readable native string that ends in a NUL unit.
+unsafe func TerminatedLength(units: *OsUnit) -> uint {
     var length: uint = 0;
     while units[length] != (0 as OsUnit) {
         length = length + 1;
@@ -52,7 +55,9 @@ func TerminatedLength(units: *OsUnit) -> uint {
 }
 
 // A view of a NUL-terminated native string, without its terminator.
-func ViewTerminated(units: *OsUnit) -> OsStringView {
+// Safety: `units` must address a readable native string that ends in a NUL unit and stays unchanged for as long as
+// the view is used.
+unsafe func ViewTerminated(units: *OsUnit) -> OsStringView {
     let length = TerminatedLength(units);
     if length == 0 { return OsStringView(); }
     return OsStringView::FromUnits(units[..length]);
@@ -65,17 +70,21 @@ func NativeArgumentCount() -> uint {
         return SplitArgumentCount;
     }
     else when #target.os == .macOS {
-        return *_NSGetArgc() as uint;
+        // Safety: `_NSGetArgc` returns the address of the argument count dyld recorded, which lives as long as the
+        // process.
+        return unsafe { *_NSGetArgc() } as uint;
     }
     else {
         let frame = ProcessStartFrame();
         if frame == null { return 0; }
-        return *frame;
+        // Safety: a non-null start frame begins with the argument count, a word the process owns for its whole life.
+        return unsafe { *frame };
     }
 }
 
-// The argument at `index`, which the caller has checked is below the count.
-func NativeArgument(index: uint) -> OsStringView {
+// The argument at `index`.
+// Safety: `index` must be below `NativeArgumentCount()`.
+unsafe func NativeArgument(index: uint) -> OsStringView {
     when #target.os == .Windows {
         LoadArguments();
         return ViewTerminated(SplitArguments[index]);
@@ -97,37 +106,50 @@ func NativeEnvironmentEntry(index: uint) -> OsStringView? {
     when #target.os == .Windows {
         if !EnvironmentRead {
             EnvironmentRead = true;
-            EnvironmentBlock = GetEnvironmentStringsW();
+            // Safety: `GetEnvironmentStringsW` takes nothing and returns a block this process keeps and never frees.
+            EnvironmentBlock = unsafe { GetEnvironmentStringsW() };
         }
         if EnvironmentBlock == null { return none; }
         var at = EnvironmentBlock;
         var seen: uint = 0;
-        while *at != 0 {
-            let entry = ViewTerminated(at);
-            if at[0] != 0x3D {
+        // Safety: `at` stays on an entry of the environment block, kept for the process's life: the block is a run of
+        // NUL-terminated entries ended by an empty one, and each step moves past one entry and its terminator.
+        while unsafe { *at } != 0 {
+            // Safety: `at` addresses a NUL-terminated entry of the kept environment block, by the walk invariant.
+            let entry = unsafe { ViewTerminated(at) };
+            // Safety: the entry is not empty, checked by the loop, so its first unit is readable.
+            if unsafe { at[0] } != 0x3D {
                 if seen == index { return entry; }
                 seen = seen + 1;
             }
-            at = (at as uint + (entry.Length() + 1) * 2) as *uint16;
+            // Safety: the step lands on the unit after this entry's terminator, the start of the next entry or the
+            // block's final empty one.
+            at = unsafe { (at as uint + (entry.Length() + 1) * 2) as *uint16 };
         }
         return none;
     }
     else {
         var vector: **char8 = null;
         when #target.os == .macOS {
-            vector = *_NSGetEnviron();
+            // Safety: `_NSGetEnviron` returns the address of the environment pointer libSystem keeps for the process.
+            vector = unsafe { *_NSGetEnviron() };
         }
         else {
             let frame = ProcessStartFrame();
             if frame == null { return none; }
-            vector = (frame as uint + 8 * (*frame + 2)) as **char8;
+            // Safety: the start frame holds the count, that many argument pointers and a null, then the environment
+            // pointers; the process owns these words for its whole life.
+            vector = unsafe { (frame as uint + 8 * (*frame + 2)) as **char8 };
         }
         if vector == null { return none; }
         var position: uint = 0;
         while position <= index {
-            if vector[position] == null { return none; }
+            // Safety: the environment vector ends in a null, and the walk stops at it, so `position` stays inside it.
+            if unsafe { vector[position] } == null { return none; }
             position = position + 1;
         }
-        return ViewTerminated(vector[index]);
+        // Safety: every entry up to `index` was checked non-null above, so `vector[index]` is a NUL-terminated entry
+        // the process keeps for its life.
+        return unsafe { ViewTerminated(vector[index]) };
     }
 }

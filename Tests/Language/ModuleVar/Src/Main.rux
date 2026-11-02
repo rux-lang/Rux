@@ -81,7 +81,8 @@ func Main() -> int {
     let second: *var int = @Total;
     Assert(first == second, "a module variable has one address");
     Assert(first as uint % alignof(int) == 0u, "a module variable is aligned");
-    *first = 100;
+    // Safety: `first` is `@Total`, a module variable that lives for the whole program.
+    unsafe { *first = 100; }
     Assert(Total == 100, "a write through the address is a write to the variable");
 
     // Across packages: the provider's functions and this package see the same storage.
@@ -91,7 +92,8 @@ func Main() -> int {
     Counter = 40;
     Assert(Bump() == 41, "the provider reads what this package wrote");
     Assert(CounterAddress() == @Counter, "both packages name one address");
-    *CounterAddress() = 7;
+    // Safety: `CounterAddress` returns `@Counter`, a module variable that lives for the whole program.
+    unsafe { *CounterAddress() = 7; }
     Assert(Counter == 7, "a write through the provider's address is seen here");
     // A path names the same storage as the module's own unqualified name.
     Assert(Settings::Level == 3, "a module's variable reads through its path");

@@ -382,8 +382,8 @@ TEST_CASE("Math's AArch64 bodies are the one instruction each operation names") 
     }
 
     const AssembledSource bits = AssembleSourceFor(PackageSource("Math", "Bits.rux"), "linux-aarch64");
-    const auto *floatBits = FindBody(bits, "FloatBits");
-    const auto *fromBits = FindBody(bits, "FromBits");
+    const auto *floatBits = FindBody(bits, "FloatBitsInstruction");
+    const auto *fromBits = FindBody(bits, "FromBitsInstruction");
     REQUIRE(floatBits != nullptr);
     REQUIRE(fromBits != nullptr);
     CHECK(floatBits->words == std::vector<std::uint32_t>{0x9E660000, Ret}); // fmov x0, d0

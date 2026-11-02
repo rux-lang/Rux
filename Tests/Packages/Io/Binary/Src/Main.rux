@@ -26,7 +26,7 @@ extend MemoryState : Reader {
         }
         var index: uint = 0;
         while index < give {
-            into.data[index] = self.room.data[self.offset + index];
+            into[index] = self.room[self.offset + index];
             index = index + 1;
         }
         self.offset = self.offset + give;
@@ -38,7 +38,7 @@ extend MemoryState : Writer {
     func Write(self: &var MemoryState, bytes: char8[..]) -> uint ! IoError {
         var index: uint = 0;
         while index < bytes.length {
-            self.room.data[self.length + index] = bytes.data[index];
+            self.room[self.length + index] = bytes[index];
             index = index + 1;
         }
         self.length = self.length + bytes.length;
@@ -51,7 +51,7 @@ extend MemoryState : Writer {
 }
 
 func ByteAt(state: &MemoryState, index: uint) -> uint8 {
-    return state.room.data[index] as uint8;
+    return state.room[index] as uint8;
 }
 
 // The value an operation expected to succeed produced.
@@ -70,7 +70,7 @@ func Refusal<T>(outcome: T ! IoError) -> IoError {
 func Main() -> int {
     // The two orders write mirrored bytes: the value is the same, only which end comes first differs.
     var goldenStorage: char8[256];
-    var golden = MemoryState { room: (@goldenStorage[0])[..256], length: 0, offset: 0 };
+    var golden = MemoryState { room: goldenStorage[..256], length: 0, offset: 0 };
     WriteUint32(golden, Endian::Big, 0x12345678) catch { else => Panic("big writes") };
     WriteUint32(golden, Endian::Little, 0x12345678) catch { else => Panic("and little writes") };
     Assert(ByteAt(golden, 0) == 0x12 && ByteAt(golden, 1) == 0x34 &&
@@ -82,14 +82,14 @@ func Main() -> int {
 
     // The IEEE 754 pattern of 1.0, byte for byte, in network order.
     var floatsStorage: char8[256];
-    var floats = MemoryState { room: (@floatsStorage[0])[..256], length: 0, offset: 0 };
+    var floats = MemoryState { room: floatsStorage[..256], length: 0, offset: 0 };
     WriteFloat64(floats, Endian::Big, 1.0) catch { else => Panic("the float writes") };
     Assert(ByteAt(floats, 0) == 0x3F && ByteAt(floats, 1) == 0xF0 && ByteAt(floats, 2) == 0 &&
            ByteAt(floats, 7) == 0, "as the bit pattern its specification names");
 
     // A mixed record round-trips through both orders, each value read back where it was written.
     var recordStorage: char8[256];
-    var record = MemoryState { room: (@recordStorage[0])[..256], length: 0, offset: 0 };
+    var record = MemoryState { room: recordStorage[..256], length: 0, offset: 0 };
     let wideValue = (0x0123456789ABCDEFu512 << 64u512) | 0xFEDCBA9876543210u512;
     let hugeValue = (wideValue << 256) | (wideValue << 128) | wideValue;
     var order = Endian::Big;
@@ -130,11 +130,11 @@ func Main() -> int {
 
     // A stream two bytes long cannot yield a four-byte value, and says so rather than inventing the rest.
     var shortStorage: char8[256];
-    var short = MemoryState { room: (@shortStorage[0])[..256], length: 2, offset: 0 };
+    var short = MemoryState { room: shortStorage[..256], length: 2, offset: 0 };
     Assert(Refusal(ReadUint32(short, Endian::Big)).kind == IoErrorKind::UnexpectedEnd,
            "a short stream is an unexpected end, not a value");
     var emptyStorage: char8[4];
-    var empty = MemoryState { room: (@emptyStorage[0])[..4], length: 0, offset: 0 };
+    var empty = MemoryState { room: emptyStorage[..4], length: 0, offset: 0 };
     Assert(Refusal(ReadUint32(empty, Endian::Big)).IsEnd(), "and an ended one is the clean end");
 
     return 0;

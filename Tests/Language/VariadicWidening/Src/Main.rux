@@ -64,7 +64,9 @@ func CodeTotal(values: char128...) -> uint128 {
 
 /// Whether `sprintf` wrote exactly `expected` into `buffer`.
 func Wrote(buffer: *char8, expected: char8[..]) -> bool {
-    return strcmp(buffer, expected.data) == 0i32;
+    // Safety: every caller passes `buffer` right after `sprintf` terminated it, and `expected` is a literal, which is
+    // stored NUL-terminated.
+    return unsafe { strcmp(buffer, expected.data) } == 0i32;
 }
 
 func Main() -> int {
@@ -112,27 +114,33 @@ func Main() -> int {
     let unset: bool16 = false;
     let unit: char8 = 'A';
     let pair: char16 = 'B';
-    sprintf(buffer[..].data, "%d %d %d %d %d %d %d %d".data, negative, below, high, large, set, unset, unit, pair);
+    // Safety: `buffer` is a local of 128 bytes, enough for the output, and the format matches the arguments.
+    unsafe {
+        sprintf(buffer[..].data, "%d %d %d %d %d %d %d %d".data, negative, below, high, large, set, unset, unit, pair);
+    }
     Assert(Wrote(buffer[..].data, "-5 -300 200 60000 1 0 65 66"), "narrow integers reach C promoted to int");
 
     // A float is passed as a double, in register and stack positions alike, and a double as itself.
     let quarter: float32 = 0.25f32;
     let twice: float64 = 2.5;
     let negativeHalf: float32 = -0.5f32;
-    sprintf(buffer[..].data, "%.3f %.3f %.3f %.3f %.3f".data, quarter, twice, negativeHalf, 7.125, exact);
+    // Safety: `buffer` is a local of 128 bytes, enough for the output, and the format matches the arguments.
+    unsafe { sprintf(buffer[..].data, "%.3f %.3f %.3f %.3f %.3f".data, quarter, twice, negativeHalf, 7.125, exact); }
     Assert(Wrote(buffer[..].data, "0.250 2.500 -0.500 7.125 1.500"), "floats reach C promoted to double");
 
     // Promoted and unpromoted values interleave, so each keeps its own slot.
     // `%lld` is left out: the legacy Windows runtime spells a 64-bit conversion its own way.
     let total: int32 = -123456789i32;
     let scalar: char32 = 'z';
-    sprintf(buffer[..].data, "%d %.2f %d %u %d".data, negative, quarter, total, scalar, set);
+    // Safety: `buffer` is a local of 128 bytes, enough for the output, and the format matches the arguments.
+    unsafe { sprintf(buffer[..].data, "%d %.2f %d %u %d".data, negative, quarter, total, scalar, set); }
     Assert(Wrote(buffer[..].data, "-5 0.25 -123456789 122 1"), "promoted values sit beside unpromoted ones");
 
     // A function value of a C-variadic type passes its tail the same way as the extern it was taken from, promoted
     // and placed where the platform puts an anonymous argument: on the stack on Apple AArch64, in the general-purpose
     // registers on Windows AArch64, beside the declared ones everywhere else.
-    let format: func(*char8, *char8, ...) -> int32 = sprintf;
+    // Safety: `format` is called below only with `buffer`, which holds 128 bytes, and formats matching the arguments.
+    let format: func(*char8, *char8, ...) -> int32 = unsafe { sprintf };
     format(buffer[..].data, "%d %.2f %d".data, negative, quarter, set);
     Assert(Wrote(buffer[..].data, "-5 0.25 1"), "a call through a function value promotes its tail too");
     format(buffer[..].data, "%.3f %d %.3f %d %.3f %d %.3f %d %.3f %d".data, twice, negative, quarter, total, 7.125,

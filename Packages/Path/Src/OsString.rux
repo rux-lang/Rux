@@ -78,7 +78,8 @@ extend OsStringView {
         if self.units.length != other.units.length { return false; }
         var index: uint = 0;
         while index < self.units.length {
-            if self.units.data[index] != other.units.data[index] { return false; }
+            // Safety: `index` is below `self.units.length`, which equals `other.units.length`, checked above.
+            if unsafe { self.units.data[index] != other.units.data[index] } { return false; }
             index = index + 1;
         }
         return true;
@@ -102,7 +103,8 @@ extend OsStringView {
             while index < units.length {
                 var scalar: uint32 = 0;
                 var width: uint = 0;
-                if !DecodeUnit(units, index, @scalar, @width) {
+                // Safety: `index` is below `units.length`, the loop condition, and the two outputs are locals.
+                if !unsafe { DecodeUnit(units, index, @scalar, @width) } {
                     fail TextError::InvalidUtf8;
                 }
                 needed = needed + Utf8Width(scalar);
@@ -114,7 +116,8 @@ extend OsStringView {
             while index < units.length {
                 var scalar: uint32 = 0;
                 var width: uint = 0;
-                if !DecodeUnit(units, index, @scalar, @width) {
+                // Safety: `index` is below `units.length`, the loop condition, and the two outputs are locals.
+                if !unsafe { DecodeUnit(units, index, @scalar, @width) } {
                     fail TextError::InvalidUtf8;
                 }
                 builder.AppendScalar(scalar as char32)?;
@@ -131,6 +134,8 @@ extend OsStringView {
 
 /// Native text that owns its units.
 /// Move-only: it owns its native-unit block and gives it back when it dies. `Clone` makes an independent copy.
+/// Storage invariant, which every `unsafe` block here relies on: `data` is null exactly when `length` is zero, and
+/// otherwise addresses a block of `length` initialized units from `allocator`.
 /// @see https://rux-lang.dev/docs/api/path/os-string
 pub struct OsString {
     /// The units, or null for no length.
@@ -173,8 +178,13 @@ extend OsString {
                 fail FromAllocError(allocated);
             }
         };
-        Copy(block, units.data as *opaque, bytes);
-        return OsString { data: block as *var OsUnit, length: units.length, allocator: allocator };
+        // Safety: `block` is a fresh allocation of `bytes` bytes aligned for `OsUnit`, so it has room for the copy,
+        // does not overlap `units`, which is readable for its length, and may hold `OsUnit` values.
+        let data = unsafe {
+            Copy(block, units.data as *opaque, bytes);
+            block as *var OsUnit
+        };
+        return OsString { data: data, length: units.length, allocator: allocator };
     }
 
     /// How many native units the text holds.
@@ -195,7 +205,8 @@ extend OsString {
     /// @returns a borrowed view of the owned units
     /// @see https://rux-lang.dev/docs/api/path/os-string#view
     pub func View(self: &OsString) -> OsStringView {
-        return OsStringView { units: (self.data)[..self.length] };
+        // Safety: the storage invariant: `data` addresses `length` initialized units this string owns.
+        return OsStringView { units: unsafe { (self.data)[..self.length] } };
     }
 
     /// Gives the block back and leaves text of no length.
@@ -257,7 +268,8 @@ extend OsString {
                     fail FromAllocError(allocated);
                 }
             };
-            let units = block as *var uint16;
+            // Safety: `block` is a fresh allocation of `needed` two-byte units, aligned to two.
+            let units = unsafe { block as *var uint16 };
             var at: uint = 0;
             index = 0;
             while index < text.length {
@@ -271,12 +283,18 @@ extend OsString {
                         let value = scalar as uint32;
                         if value >= 0x10000 {
                             let offset = value - 0x10000;
-                            units[at] = (0xD800 + (offset >> 10)) as uint16;
-                            units[at + 1] = (0xDC00 + (offset & 0x3FF)) as uint16;
+                            // Safety: this pass decodes the same scalars the counting pass did, so `at + 2` is at
+                            // most `needed`, the units allocated.
+                            unsafe {
+                                units[at] = (0xD800 + (offset >> 10)) as uint16;
+                                units[at + 1] = (0xDC00 + (offset & 0x3FF)) as uint16;
+                            }
                             at = at + 2;
                         }
                         else {
-                            units[at] = value as uint16;
+                            // Safety: this pass decodes the same scalars the counting pass did, so `at` is below
+                            // `needed`, the units allocated.
+                            unsafe { units[at] = value as uint16; }
                             at = at + 1;
                         }
                         index = index + width;
@@ -308,15 +326,21 @@ extend OsString : Cloneable {
         let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
         var allocator = self.allocator;
         let block = allocator.Allocate(layout) catch { else => Panic("copying an OsString requires an allocation") };
-        Copy(block, self.data as *opaque, bytes);
-        return OsString { data: block as *var OsUnit, length: self.length, allocator: self.allocator };
+        // Safety: `block` is a fresh allocation of `bytes` bytes aligned for `OsUnit`, and the storage invariant
+        // makes `self.data` readable for the `self.length` units those bytes hold.
+        let data = unsafe {
+            Copy(block, self.data as *opaque, bytes);
+            block as *var OsUnit
+        };
+        return OsString { data: data, length: self.length, allocator: self.allocator };
     }
 }
 
 when #target.os == .Windows {
     // One scalar out of the UTF-16 units at `index`: a lone unit below the surrogates, or a high-low pair.
     // Anything else — a low half first, a high half with no partner — is not text.
-    func DecodeUnit(units: uint16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
+    // Safety: `index` must be below `units.length`, and `scalar` and `width` must address writable values.
+    unsafe func DecodeUnit(units: uint16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
         let unit = units.data[index] as uint32;
         if unit < 0xD800 || unit > 0xDFFF {
             *scalar = unit;

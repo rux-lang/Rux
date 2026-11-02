@@ -10,7 +10,10 @@ struct Tracked {
 
 extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
-    func ~Tracked(self: &var Tracked) { *self.destroyed = *self.destroyed + 1; }
+    func ~Tracked(self: &var Tracked) {
+        // Safety: `destroyed` points at a local of `Main` that outlives every element.
+        unsafe { *self.destroyed = *self.destroyed + 1; }
+    }
 }
 
 func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
@@ -20,56 +23,76 @@ func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
     vector.Push(Tracked { destroyed: destroyed, value: 20, tail: 200 })
         catch { else => Panic("the second move-only element is stored") };
     for element in vector.MutableReferences() {
-        element.value = element.value + 7;
+        // Safety: the cursor yields addresses of the vector's elements, and the vector is untouched during the loop.
+        unsafe { element.value = element.value + 7; }
     }
-    Assert(*destroyed == 0, "mutable iteration destroys no move-only elements");
+    // Safety: `destroyed` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *destroyed } == 0, "mutable iteration destroys no move-only elements");
     var total: int64 = 0;
     var tails: int64 = 0;
     for element in vector.References() {
-        total = total + element.value;
-        tails = tails + element.tail;
+        // Safety: the cursor yields addresses of the vector's elements, and the vector is untouched during the loop.
+        unsafe {
+            total = total + element.value;
+            tails = tails + element.tail;
+        }
     }
     Assert(total == 44 && tails == 300, "only the selected fields changed in the vector");
 
     var array = (<-vector).IntoArray() catch { else => Panic("the array receives move-only elements without copies") };
     for element in array.MutableReferences() {
-        element.value = element.value * 2;
+        // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
+        unsafe { element.value = element.value * 2; }
     }
     total = 0;
-    for element in array.References() { total = total + element.value; }
+    for element in array.References() {
+        // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
+        total = total + unsafe { element.value };
+    }
     Assert(total == 88, "array iteration also modifies move-only elements in place");
-    Assert(*destroyed == 0, "iterator and storage transfers have not destroyed an element");
+    // Safety: `destroyed` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *destroyed } == 0, "iterator and storage transfers have not destroyed an element");
 }
 
 func Main() -> int {
     var values: int32[3] = [1, 2, 3];
-    let view = (@values[0])[..3];
+    // Safety: `values` is a local array of three elements.
+    let view = unsafe { (@values[0])[..3] };
     var iterator = MutableReferenceIterator<int32>(view);
     var seen = 0;
     while true {
         let pointer = iterator.Next() ?? break;
         Assert(pointer == @values[seen], "pointers visit original storage in order");
-        *pointer = *pointer + 10;
+        // Safety: the cursor yields addresses inside `values`, which outlives the loop.
+        unsafe { *pointer = *pointer + 10; }
         seen = seen + 1;
     }
     Assert(seen == 3 && values[0] == 11 && values[1] == 12 && values[2] == 13, "all elements changed once");
     Assert(iterator.Next() == none && iterator.Next() == none, "exhaustion is stable across repeated calls");
-    var empty = MutableReferenceIterator<int32>((@values[0])[..0]);
+    // Safety: `values` is a local array, and an empty run of it covers nothing.
+    var empty = MutableReferenceIterator<int32>(unsafe { (@values[0])[..0] });
     Assert(empty.Next() == none && empty.Next() == none, "empty iteration never yields an address");
 
     // Construct and instantiate both pointer kinds together.
     var readOnly = ReferenceIterator<int32>(view);
     let readable = readOnly.Next() ?? Panic("read-only iteration yields an address");
-    Assert(*readable == 11, "read-only iteration sees the same storage");
+    // Safety: the cursor yielded the address of the first element of `values`, which is still alive.
+    Assert(unsafe { *readable } == 11, "read-only iteration sees the same storage");
     var copied = MutableReferenceIterator<int32>(view);
-    for element in copied { *element = *element * 2; }
+    for element in copied {
+        // Safety: the cursor yields addresses inside `values`, which outlives the loop.
+        unsafe { *element = *element * 2; }
+    }
     Assert(copied.Next() == none, "for advances the cursor variable itself");
     Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the cursor borrows the original elements");
 
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var array = Array::Filled<int32>(allocator, 3, 5) catch { else => Panic("the array is allocated") };
-    for element in array.MutableReferences() { *element = *element + 1; }
+    for element in array.MutableReferences() {
+        // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
+        unsafe { *element = *element + 1; }
+    }
     Assert(array.Get(0) == .Some(6) && array.Get(2) == .Some(6), "array elements are updated");
     var emptyArray = Array::Filled<int32>(allocator, 0, 0) catch { else => Panic("an empty array is allocated") };
     var arrayCursor = emptyArray.MutableReferences();
@@ -80,7 +103,11 @@ func Main() -> int {
     vector.Reserve(20) catch { else => Panic("reserve supplies spare storage") };
     vector.Push(7) catch { else => Panic("one element is initialized") };
     seen = 0;
-    for element in vector.MutableReferences() { *element = 42; seen = seen + 1; }
+    for element in vector.MutableReferences() {
+        // Safety: the cursor yields addresses of the vector's elements, and the vector is untouched during the loop.
+        unsafe { *element = 42; }
+        seen = seen + 1;
+    }
     Assert(seen == 1 && vector.Get(0) == .Some(42), "iteration excludes uninitialized spare capacity");
 
     var destroyed: int32 = 0;

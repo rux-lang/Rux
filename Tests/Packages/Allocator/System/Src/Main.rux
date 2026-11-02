@@ -70,9 +70,13 @@ func Main() -> ! AllocError {
     let block = allocator.Allocate(layout)?;
     Assert(block != null, "and reports an address");
     Assert(IsPointerAligned(block as *opaque, 16), "which satisfies the layout's alignment");
-    Set(block, 0xC3 as byte, 64);
-    let bytes = block as *var byte;
-    Assert(*bytes == 0xC3 as byte && *(bytes + 63) == 0xC3 as byte, "the whole size is writable");
+    // Safety: `block` is a live 64-byte allocation, so all 64 bytes are writable and offsets 0 and 63 readable.
+    let (front, back) = unsafe {
+        Set(block, 0xC3 as byte, 64);
+        let bytes = block as *var byte;
+        (*bytes, *(bytes + 63))
+    };
+    Assert(front == 0xC3 as byte && back == 0xC3 as byte, "the whole size is writable");
 
     // A stricter alignment than a page still works, because the allocator pads for it.
     var aligned: *var opaque = null;
@@ -93,13 +97,19 @@ func Main() -> ! AllocError {
     let larger = Layout::New(256, 16) ?? layout;
     grown = allocator.Reallocate(block, layout, larger)?;
     Assert(grown != null, "and reports where the block now is");
-    let grownBytes = grown as *var byte;
-    Assert(*grownBytes == 0xC3 as byte && *(grownBytes + 63) == 0xC3 as byte, "the old contents survived");
+    // Safety: `grown` is the live 256-byte block the reallocation returned, so offsets 0 and 63 are inside it.
+    let (grownFront, grownBack) = unsafe {
+        let grownBytes = grown as *var byte;
+        (*grownBytes, *(grownBytes + 63))
+    };
+    Assert(grownFront == 0xC3 as byte && grownBack == 0xC3 as byte, "the old contents survived");
 
     var shrunk: *var opaque = null;
     let smaller = Layout::New(16, 16) ?? layout;
     shrunk = allocator.Reallocate(grown, larger, smaller)?;
-    Assert(*(shrunk as *var byte) == 0xC3 as byte, "and keeps what still fits");
+    // Safety: `shrunk` is the live 16-byte block the reallocation returned, so its first byte is readable.
+    let shrunkFront = unsafe { *(shrunk as *var byte) };
+    Assert(shrunkFront == 0xC3 as byte, "and keeps what still fits");
 
     // The two layouts must share an alignment; anything else is refused rather than silently moved.
     let realigned = Layout::New(16, 32) ?? layout;

@@ -18,18 +18,20 @@ import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView,
 
 // Reinterpret malformed raw storage to exercise presentation independently of checked character casts.
 func AsChar32(value: uint32) -> char32 {
-    return *((@value) as *char32);
+    // Safety: `value` is a live local `uint32`, the same size as `char32`, so the read stays inside it.
+    return unsafe { *((@value) as *char32) };
 }
 
 func AsChar64(value: uint64) -> char64 {
-    return *((@value) as *char64);
+    // Safety: `value` is a live local `uint64`, the same size as `char64`, so the read stays inside it.
+    return unsafe { *((@value) as *char64) };
 }
 
 func SameBytes(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -47,7 +49,7 @@ func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
 // Whether the value's `Debug` rendering is exactly `expected`.
 func Inspected(value: Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     let sink: &var TextWriter = writer;
     if Failed(WriteDebugValue(sink, value, FormatSpec::Plain())) { return false; }
     return SameBytes(writer.Written(), expected);
@@ -131,7 +133,7 @@ func Main() -> int {
     wide[1] = c32'\u{1F600}';
     wide[2] = AsChar32(0xD800);
     wide[3] = c32'b';
-    let wideView: char32[..] = (@wide[0])[..4];
+    let wideView: char32[..] = wide[..4];
     let wideDebug: Debug = wideView;
     Assert(Same(Render(allocator, "{}", wideView), "a😀\u{FFFD}b"), "the surrogate becomes the replacement");
     Assert(Inspected(wideDebug, "\"a😀\\u{d800}b\""), "and Debug keeps it, quoted");
@@ -145,7 +147,7 @@ func Main() -> int {
     other[1] = c32'\u{1F600}';
     other[2] = AsChar32(0x110000);
     other[3] = c32'b';
-    let otherView: char32[..] = (@other[0])[..4];
+    let otherView: char32[..] = other[..4];
     let otherDebug: Debug = otherView;
     Assert(Same(Render(allocator, "{}", otherView), "a😀\u{FFFD}b"), "the two render alike for a reader");
     Assert(Inspected(otherDebug, "\"a😀\\u{00110000}b\""), "and differently for a program");
@@ -158,7 +160,7 @@ func Main() -> int {
     units[3] = 0xD800u16 as char16;
     units[4] = 0x0062u16 as char16;
     units[5] = 0x0063u16 as char16;
-    let unitView: char16[..] = (@units[0])[..6];
+    let unitView: char16[..] = units[..6];
     let unitDebug: Debug = unitView;
     Assert(Same(Render(allocator, "{}", unitView), "a😀\u{FFFD}bc"),
            "the pair is one character and the lone half is one replacement");
@@ -170,7 +172,7 @@ func Main() -> int {
     var truncated: char16[2];
     truncated[0] = 0x0061u16 as char16;
     truncated[1] = 0xD83Du16 as char16;
-    let truncatedView: char16[..] = (@truncated[0])[..2];
+    let truncatedView: char16[..] = truncated[..2];
     let truncatedDebug: Debug = truncatedView;
     Assert(Same(Render(allocator, "{}", truncatedView), "a\u{FFFD}"), "a high half at the end is a replacement");
     Assert(Inspected(truncatedDebug, "\"a\\u{d83d}\""), "preserved under Debug");
@@ -179,7 +181,7 @@ func Main() -> int {
     var reversed: char16[2];
     reversed[0] = 0xDE00u16 as char16;
     reversed[1] = 0xD83Du16 as char16;
-    let reversedView: char16[..] = (@reversed[0])[..2];
+    let reversedView: char16[..] = reversed[..2];
     let reversedDebug: Debug = reversedView;
     Assert(Same(Render(allocator, "{}", reversedView), "\u{FFFD}\u{FFFD}"), "a reversed pair is two replacements");
     Assert(Inspected(reversedDebug, "\"\\u{de00}\\u{d83d}\""), "each kept as itself");
@@ -187,7 +189,7 @@ func Main() -> int {
     // An empty slice of either width renders as nothing, and as empty quotes.
     var wideCell: char32[1];
     wideCell[0] = c32'x';
-    let emptyWide: char32[..] = (@wideCell[0])[..0];
+    let emptyWide: char32[..] = wideCell[..0];
     let emptyDebug: Debug = emptyWide;
     Assert(Same(Render(allocator, "{}", emptyWide), ""), "an empty UTF-32 slice is nothing");
     Assert(Inspected(emptyDebug, "\"\""), "and inspects as empty quotes");

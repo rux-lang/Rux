@@ -46,6 +46,8 @@ extern {
 /// @see https://rux-lang.dev/docs/api/windows/get-random
 pub func GetRandom(buffer: *var opaque, length: uint) -> bool {
     if length > 4294967295 { return false; }
-    let status = BCryptGenRandom(null, buffer, length as uint32, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    // Safety: the documented contract requires `buffer` to be writable for `length` bytes, and `length` fits the
+    // 32-bit count, checked above; a null algorithm handle with the system-preferred flag needs nothing opened.
+    let status = unsafe { BCryptGenRandom(null, buffer, length as uint32, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
     return status == STATUS_SUCCESS;
 }

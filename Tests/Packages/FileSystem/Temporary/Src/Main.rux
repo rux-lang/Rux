@@ -10,7 +10,7 @@ import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirecto
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 // Whether two paths hold the same units.
@@ -22,7 +22,7 @@ func SamePath(left: Path, right: Path) -> bool {
     }
     var index: uint = 0;
     while index < a.length {
-        if a.data[index] != b.data[index] {
+        if a[index] != b[index] {
             return false;
         }
         index = index + 1;
@@ -68,7 +68,7 @@ func Main() -> int ! IoError {
     WriteAll(first.file, TextBytes("held briefly"))?;
     Assert(first.file.Seek(SeekFrom::Start, 0)? == 0, "and rewinds");
     var storage: char8[16];
-    let room = (@storage[0])[..12];
+    let room = storage[..12];
     ReadExact(first.file, room)?;
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");
 

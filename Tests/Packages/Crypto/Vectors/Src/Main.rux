@@ -15,7 +15,7 @@ import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 // How many bits differ between two byte sequences.
@@ -23,7 +23,7 @@ func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < left.length && index < right.length {
-        var difference = (left.data[index] as uint8) ^ (right.data[index] as uint8);
+        var difference = (left[index] as uint8) ^ (right[index] as uint8);
         while difference != 0 {
             count = count + (difference & 1) as uint;
             difference = difference >> 1;
@@ -43,9 +43,9 @@ func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
         index = index + 1;
     }
     var baseline: char8[64];
-    let whole = (@message[0])[..64];
-    HashWith(which, whole, (@baseline[0])[..digestLength]);
-    let baselineBytes = (@baseline[0])[..digestLength];
+    let whole = message[..64];
+    HashWith(which, whole, baseline[..digestLength]);
+    let baselineBytes = baseline[..digestLength];
 
     let totalBits = digestLength * 8u;
     var worstLow = totalBits;
@@ -56,10 +56,10 @@ func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
         let bit = (1u8 << ((position % 8u) as uint8));
         message[bytePosition] = ((message[bytePosition] as uint8) ^ bit) as char8;
         var flipped: char8[64];
-        HashWith(which, whole, (@flipped[0])[..digestLength]);
+        HashWith(which, whole, flipped[..digestLength]);
         message[bytePosition] = ((message[bytePosition] as uint8) ^ bit) as char8;
 
-        let differing = BitsDiffering(baselineBytes, (@flipped[0])[..digestLength]);
+        let differing = BitsDiffering(baselineBytes, flipped[..digestLength]);
         if differing < worstLow {
             worstLow = differing;
         }
@@ -138,20 +138,20 @@ func Main() -> int {
         var lengthIndex: uint = 0;
         while lengthIndex < 14 {
             let length = boundaries[lengthIndex];
-            let whole = (@message[0])[..length];
+            let whole = message[..length];
             var oneShot: char8[64];
-            HashWith(which, whole, (@oneShot[0])[..32]);
+            HashWith(which, whole, oneShot[..32]);
             // Hashing the same bytes twice must agree, and hashing one byte fewer must not.
             var again: char8[64];
-            HashWith(which, whole, (@again[0])[..32]);
-            Assert(Equal((@oneShot[0])[..32],
-                         (@again[0])[..32]),
+            HashWith(which, whole, again[..32]);
+            Assert(Equal(oneShot[..32],
+                         again[..32]),
                    "a boundary length hashes deterministically");
-            let shorter = (@message[0])[..length - 1];
+            let shorter = message[..length - 1];
             var shorterHash: char8[64];
-            HashWith(which, shorter, (@shorterHash[0])[..32]);
-            Assert(!Equal((@oneShot[0])[..32],
-                          (@shorterHash[0])[..32]),
+            HashWith(which, shorter, shorterHash[..32]);
+            Assert(!Equal(oneShot[..32],
+                          shorterHash[..32]),
                    "and differs from the message one byte shorter, so the length reaches the padding");
             lengthIndex = lengthIndex + 1;
         }
@@ -163,9 +163,9 @@ func Main() -> int {
     var chunkIndex: uint = 0;
     while chunkIndex < 6 {
         let length = chunkLengths[chunkIndex];
-        let whole = (@message[0])[..length];
+        let whole = message[..length];
         var direct: char8[32];
-        Blake3Of(whole, (@direct[0])[..32]);
+        Blake3Of(whole, direct[..32]);
         var pieced = Blake3();
         var offset: uint = 0;
         while offset < length {
@@ -173,19 +173,19 @@ func Main() -> int {
             if offset + step > length {
                 step = length - offset;
             }
-            pieced.Update((@message[offset])[..step]);
+            pieced.Update(message[offset..offset + step]);
             offset = offset + step;
         }
         var piecedOut: char8[32];
-        pieced.Finish((@piecedOut[0])[..32]);
-        Assert(Equal((@direct[0])[..32],
-                     (@piecedOut[0])[..32]),
+        pieced.Finish(piecedOut[..32]);
+        Assert(Equal(direct[..32],
+                     piecedOut[..32]),
                "BLAKE3 agrees across its chunk boundary whatever the feed size");
-        let shorter = (@message[0])[..length - 1];
+        let shorter = message[..length - 1];
         var shorterHash: char8[32];
-        Blake3Of(shorter, (@shorterHash[0])[..32]);
-        Assert(!Equal((@direct[0])[..32],
-                      (@shorterHash[0])[..32]),
+        Blake3Of(shorter, shorterHash[..32]);
+        Assert(!Equal(direct[..32],
+                      shorterHash[..32]),
                "and a message one byte shorter hashes differently at a chunk boundary");
         chunkIndex = chunkIndex + 1;
     }
@@ -195,15 +195,15 @@ func Main() -> int {
     var digests: char8[320];
     which = 0;
     while which < 10 {
-        HashWith(which, "the same message", (@digests[which * 32])[..16]);
+        HashWith(which, "the same message", digests[which * 32..which * 32 + 16]);
         which = which + 1;
     }
     var first: uint = 0;
     while first < 10 {
         var second = first + 1;
         while second < 10 {
-            Assert(!Equal((@digests[first * 32])[..16],
-                          (@digests[second * 32])[..16]),
+            Assert(!Equal(digests[first * 32..first * 32 + 16],
+                          digests[second * 32..second * 32 + 16]),
                    "no two algorithms produce the same digest for one message");
             second = second + 1;
         }

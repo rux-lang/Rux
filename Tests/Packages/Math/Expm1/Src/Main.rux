@@ -36,7 +36,9 @@ func Close(actual: float64, expected: float64) -> bool {
             return false;
         }
     }
-    var gap = BitsOf(actual) - BitsOf(expected);
+    // Safety: `BitsOf` only copies its argument's bits from a float register to an integer one; it touches no
+    // memory.
+    var gap = unsafe { BitsOf(actual) - BitsOf(expected) };
     if gap < 0 {
         gap = -gap;
     }
@@ -49,7 +51,9 @@ func Main() -> int {
     let inf = one / zero;
 
     Assert(Expm1(0.0) == 0.0, "Expm1(0.0)");
-    Assert(BitsOf(Expm1(-0.0)) == BitsOf(-0.0), "Expm1(-0.0)");
+    // Safety: `BitsOf` only copies its argument's bits from a float register to an integer one; it touches no
+    // memory.
+    Assert(unsafe { BitsOf(Expm1(-0.0)) == BitsOf(-0.0) }, "Expm1(-0.0)");
     Assert(Close(Expm1(1.0), 1.7182818284590453), "Expm1(1.0)");
     Assert(Close(Expm1(-1.0), -0.6321205588285577), "Expm1(-1.0)");
     Assert(Close(Expm1(0.5), 0.6487212707001282), "Expm1(0.5)");

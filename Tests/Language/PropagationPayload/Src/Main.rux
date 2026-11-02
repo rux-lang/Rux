@@ -22,9 +22,11 @@ func KeepSame(at: uint) -> ! Reason {
 }
 
 func Chain(at: uint, log: *var int) -> int32 ! Reason {
-    defer *log = *log * 10 + 1;
+    // Safety: `log` is the address of a live counter local of `Main`, which outlives this call.
+    defer unsafe { *log = *log * 10 + 1; }
     if at > 0u {
-        defer *log = *log * 10 + 2;
+        // Safety: `log` is the address of a live counter local of `Main`, which outlives this call.
+        defer unsafe { *log = *log * 10 + 2; }
         Outer(at)?;
     }
     return 7i32;
@@ -64,7 +66,8 @@ extend Token {
     func =(self: &var Token, other: &Token);
 
     func ~Token(self: &var Token) {
-        *self.drops += 1;
+        // Safety: `self.drops` is the address of a live counter local of `Main`, which outlives every `Token`.
+        unsafe { *self.drops += 1; }
     }
 }
 
@@ -73,7 +76,8 @@ func OwnedStep(drops: *var int) -> ! Token {
 }
 
 func Owned(drops: *var int, log: *var int) -> uint ! Token {
-    defer *log += 1;
+    // Safety: `log` is the address of a live counter local of `Main`, which outlives this call.
+    defer unsafe { *log += 1; }
     let input = OwnedStep(drops);
     (<-input)?;
     return 0u;
@@ -85,11 +89,13 @@ func GenericOwned<T, E>(input: T ! E) -> ! E {
 
 func OwnError(drops: *var int, log: *var int) {
     let input = GenericOwned<uint, Token>(Owned(drops, log));
-    Assert(*drops == 0 && *log == 1, "propagation transfers the error before deferred cleanup");
+    // Safety: `drops` and `log` are each the address of a live counter local of `Main`, which outlives this call.
+    Assert(unsafe { *drops == 0 && *log == 1 }, "propagation transfers the error before deferred cleanup");
     match <-input {
         .Failure(token) => {
             Assert(token.value == 123u64 && token.tail == 456u64, "all move-only payload words survive");
-            Assert(*drops == 0, "the error stays alive until its caller leaves the arm");
+            // Safety: `drops` is the address of a live counter local of `Main`, which outlives this call.
+            Assert(unsafe { *drops } == 0, "the error stays alive until its caller leaves the arm");
         },
         .Success(_) => Assert(false, "expected owned error")
     }
@@ -104,11 +110,15 @@ struct Copied {
 
 extend Copied {
     func Clone(&self) -> Copied {
-        *self.copies += 1;
+        // Safety: `self.copies` is the address of a live counter local of `Main`, which outlives every `Copied`.
+        unsafe { *self.copies += 1; }
         return Copied { value: self.value, tail: self.tail, copies: self.copies, drops: self.drops };
     }
 
-    func ~Copied(self: &var Copied) { *self.drops += 1; }
+    func ~Copied(self: &var Copied) {
+        // Safety: `self.drops` is the address of a live counter local of `Main`, which outlives every `Copied`.
+        unsafe { *self.drops += 1; }
+    }
 }
 
 // The error is a clone of a named value, handed over with `move`; the named source is destroyed as the function
@@ -122,7 +132,8 @@ func CopyPropagation(copies: *var int, drops: *var int) -> uint ! Copied {
 
 func OwnCopy(copies: *var int, drops: *var int) {
     let result = CopyPropagation(copies, drops);
-    Assert(*copies == 1 && *drops == 1, "a cloned error propagates and its named source is cleaned");
+    // Safety: `copies` and `drops` are each the address of a live counter local of `Main`, which outlives this call.
+    Assert(unsafe { *copies == 1 && *drops == 1 }, "a cloned error propagates and its named source is cleaned");
     match <-result {
         .Failure(value) => Assert(value.value == 19u64 && value.tail == 73u64, "the copied error retains all fields"),
         .Success(_) => Assert(false, "expected copied error")
@@ -134,16 +145,20 @@ func SuccessStep(drops: *var int) -> Token ! Reason {
 }
 
 func SuccessForward(drops: *var int, log: *var int) -> Token ! Reason {
-    defer *log += 1;
+    // Safety: `log` is the address of a live counter local of `Main`, which outlives this call.
+    defer unsafe { *log += 1; }
     let value = SuccessStep(drops)?;
-    Assert(value.value == 811u64 && value.tail == 922u64 && *drops == 0, "successful extraction transfers its owner");
+    // Safety: `drops` is the address of a live counter local of `Main`, which outlives this call.
+    Assert(value.value == 811u64 && value.tail == 922u64 && unsafe { *drops } == 0,
+           "successful extraction transfers its owner");
     return <-value;
 }
 
 func OwnSuccess(drops: *var int, log: *var int) {
     let result = SuccessForward(drops, log);
     match <-result {
-        .Success(value) => Assert(value.value == 811u64 && value.tail == 922u64 && *log == 1 && *drops == 0,
+        // Safety: `log` and `drops` are each the address of a live counter local of `Main`, which outlives this call.
+        .Success(value) => Assert(value.value == 811u64 && value.tail == 922u64 && unsafe { *log == 1 && *drops == 0 },
                                  "successful propagation retains ownership until its caller leaves"),
         .Failure(_) => Assert(false, "expected owned success")
     }
@@ -163,7 +178,8 @@ struct Relocated {
 extend Relocated {
     func =(self: &var Relocated, other: &Relocated);
     func ~Relocated(&var self) {
-        *self.drops += 1;
+        // Safety: `self.drops` is the address of a live counter local of `Main`, which outlives every `Relocated`.
+        unsafe { *self.drops += 1; }
     }
 }
 
@@ -179,12 +195,16 @@ func RelocatedForward(drops: *var int) -> uint ! Relocated {
 // A move is the payload's bytes and runs no code, so neither transfer destroys or touches the error.
 func OwnRelocated(drops: *var int) {
     let result = RelocatedForward(drops);
-    Assert(*drops == 0, "propagation moves the error payload without destroying it");
+    // Safety: `drops` is the address of a live counter local of `Main`, which outlives this call.
+    Assert(unsafe { *drops } == 0, "propagation moves the error payload without destroying it");
     match move result {
-        .Failure(value) => Assert(value.value == 991u64 && *drops == 0, "explicit matching moves the payload whole"),
+        // Safety: `drops` is the address of a live counter local of `Main`, which outlives this call.
+        .Failure(value) => Assert(value.value == 991u64 && unsafe { *drops } == 0,
+                                  "explicit matching moves the payload whole"),
         .Success(_) => Assert(false, "expected relocated error")
     }
-    Assert(*drops == 1, "the moved error payload is destroyed exactly once");
+    // Safety: `drops` is the address of a live counter local of `Main`, which outlives this call.
+    Assert(unsafe { *drops } == 1, "the moved error payload is destroyed exactly once");
 }
 
 func Main() -> int {

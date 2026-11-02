@@ -38,20 +38,24 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
     when #target.os == .Windows {
         // The length is reported without the terminator, and a length larger than the buffer means the answer
         // did not fit rather than that anything failed.
-        let written = GetCurrentDirectoryW(4096, @units[0] as *var char16);
-        if written == 0 { fail TranslateNative(GetLastError() as int32); }
+        // Safety: `units` is a local array of 4096 UTF-16 units, its length is the 4096 passed, and a `uint16`
+        // unit is a `char16`.
+        let written = unsafe { GetCurrentDirectoryW(4096, @units[0] as *var char16) };
+        // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+        if written == 0 { fail TranslateNative(unsafe { GetLastError() } as int32); }
         if written > 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
-        let view = OsStringView::FromUnits((@units[0])[..written as uint]);
+        let view = OsStringView::FromUnits(units[0..written as uint]);
         return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
     }
     else {
-        let outcome = Getcwd(@units[0], 4096);
+        // Safety: `units` is a local array of 4096 units, and 4096 is the length passed.
+        let outcome = unsafe { Getcwd(@units[0], 4096) };
         if outcome < 0 { fail TranslateNative((0 - outcome) as int32); }
         var length: uint = 0;
         while length < 4096 && units[length] != (0u8 as char8) {
             length = length + 1;
         }
-        let view = OsStringView::FromUnits((@units[0])[..length]);
+        let view = OsStringView::FromUnits(units[0..length]);
         return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
     }
 }
@@ -67,12 +71,16 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        if SetCurrentDirectoryW(native as *char16) == 0 {
-            fail TranslateNative(GetLastError() as int32);
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+        // release, and a `uint16` unit is a `char16`.
+        if unsafe { SetCurrentDirectoryW(native as *char16) } == 0 {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
-        let result = Chdir(native as *char8);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        let result = unsafe { Chdir(native as *char8) };
         if result < 0 {
             fail TranslateNative((0 - result) as int32);
         }
@@ -108,7 +116,9 @@ when #target.os != .Windows {
     func ReadLinkText(allocator: Allocator, path: Path) -> OsString? ! IoError {
         let native = NativePath(allocator, path)?;
         var units: OsUnit[4096];
-        let written = ReadlinkAt(AtFdCwd, native as *char8, @units[0], 4096);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, released only after this call, and
+        // `units` is a local array of 4096 units, the length passed.
+        let written = unsafe { ReadlinkAt(AtFdCwd, native as *char8, @units[0], 4096) };
         ReleaseNativePath(allocator, native, path.name.units.length);
         if written < 0 {
             let raw = (0i64 - written) as int32;
@@ -122,7 +132,7 @@ when #target.os != .Windows {
             // readlink truncates silently, so a full buffer cannot be told from a perfect fit.
             fail IoError::Of(IoErrorKind::LimitExceeded);
         }
-        let view = OsStringView::FromUnits((@units[0])[..written as uint]);
+        let view = OsStringView::FromUnits(units[0..written as uint]);
         var target = OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
         return .Some(<-target);
     }
@@ -130,11 +140,14 @@ when #target.os != .Windows {
     // Drops the last segment of `buffer`, leaving the root in place.
     func PopSegment(buffer: &var PathBuffer) {
         var length = buffer.length;
-        while length > 0 && !IsSeparator(buffer.data[length - 1]) {
+        // Safety: the read runs only when `length` is positive, and `length` starts at `buffer.length`, the count
+        // of units the buffer holds at `data`.
+        while length > 0 && !IsSeparator(unsafe { buffer.data[length - 1] }) {
             length = length - 1;
         }
         // Keep the root separator itself; anything else loses its trailing one too.
-        while length > 1 && IsSeparator(buffer.data[length - 1]) {
+        // Safety: the read runs only when `length` is above one, and `length` is at most `buffer.length`.
+        while length > 1 && IsSeparator(unsafe { buffer.data[length - 1] }) {
             length = length - 1;
         }
         buffer.length = length;
@@ -145,7 +158,8 @@ when #target.os != .Windows {
         if units.length != length { return false; }
         var index: uint = 0;
         while index < length {
-            if units.data[index] != DotUnit() { return false; }
+            // Safety: `index` is below `length`, which equals `units.length`, checked above.
+            if unsafe { units.data[index] } != DotUnit() { return false; }
             index = index + 1;
         }
         return true;
@@ -189,8 +203,13 @@ when #target.os != .Windows {
                     resolved.Push(segment) catch { else => fail IoError::Of(IoErrorKind::Other) };
                     match ReadLinkText(allocator, resolved.AsPath())? {
                         target? => {
-                            *followed = *followed + 1;
-                            if *followed > SymbolicLinkLimit { fail IoError::Of(IoErrorKind::LimitExceeded); }
+                            // Safety: `followed` is the address of `Canonicalize`'s local count, which outlives
+                            // the whole walk.
+                            let count = unsafe {
+                                *followed = *followed + 1;
+                                *followed
+                            };
+                            if count > SymbolicLinkLimit { fail IoError::Of(IoErrorKind::LimitExceeded); }
                             // The link's own name is replaced by whatever it holds, resolved in turn.
                             PopSegment(resolved);
                             ResolveInto(allocator, Path::FromView(target.View()), resolved, followed)?;
@@ -222,14 +241,21 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         let native = NativePath(allocator, path)?;
         let handle = OpenForQuery(native, true);
         ReleaseNativePath(allocator, native, path.name.units.length);
-        if (handle as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
+        if (handle as uint64) == InvalidHandleValue {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
+        }
         var units: OsUnit[4096];
-        let written = GetFinalPathNameByHandleW(handle, @units[0] as *var char16, 4096, 0);
-        let raw = GetLastError() as int32;
-        CloseHandle(handle);
+        // Safety: `handle` is the valid query handle opened above, `units` is a local array of 4096 UTF-16 units
+        // whose length is passed, and a `uint16` unit is a `char16`.
+        let written = unsafe { GetFinalPathNameByHandleW(handle, @units[0] as *var char16, 4096, 0) };
+        // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+        let raw = unsafe { GetLastError() } as int32;
+        // Safety: `handle` is the valid query handle opened above, closed here once and not used afterwards.
+        unsafe { CloseHandle(handle); }
         if written == 0 { fail TranslateNative(raw); }
         if written >= 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
-        let view = OsStringView::FromUnits((@units[0])[..written as uint]);
+        let view = OsStringView::FromUnits(units[0..written as uint]);
         return PathBuffer::FromPath(allocator, Path::FromView(view)) catch {
             else => fail IoError::Of(IoErrorKind::Other)
         };

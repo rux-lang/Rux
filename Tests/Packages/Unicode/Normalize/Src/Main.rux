@@ -13,9 +13,9 @@ func Column(row: uint, column: uint) -> uint32[..] {
     let table: uint32[..] = NormalizationVectorIndex[..];
     let elements: uint32[..] = NormalizationVectorElements[..];
     let at = (row * 5 + column) * 2;
-    let offset = table.data[at] as uint;
-    let length = table.data[at + 1] as uint;
-    return (@elements.data[offset])[..length];
+    let offset = table[at] as uint;
+    let length = table[at + 1] as uint;
+    return elements[offset..offset + length];
 }
 
 // Whether `actual` of length `actualLength` spells exactly `expected`.
@@ -25,7 +25,7 @@ func Matches(actual: var char32[..], actualLength: uint, expected: uint32[..]) -
     }
     var index: uint = 0;
     while index < actualLength {
-        if (actual.data[index] as uint32) != expected.data[index] {
+        if (actual[index] as uint32) != expected[index] {
             return false;
         }
         index = index + 1;
@@ -37,10 +37,10 @@ func Matches(actual: var char32[..], actualLength: uint, expected: uint32[..]) -
 func Load(column: uint32[..], into: var char32[..]) -> char32[..] {
     var index: uint = 0;
     while index < column.length {
-        into.data[index] = column.data[index] as char32;
+        into[index] = column[index] as char32;
         index = index + 1;
     }
-    return (into.data as *char32)[..column.length];
+    return into[..column.length];
 }
 
 func Main() -> int {
@@ -49,8 +49,8 @@ func Main() -> int {
 
     var source: char32[64];
     var result: char32[256];
-    let sourceRoom = (@source[0])[..64];
-    let room = (@result[0])[..256];
+    let sourceRoom = source[..64];
+    let room = result[..256];
 
     var row: uint = 0;
     while row < rows {
@@ -67,14 +67,14 @@ func Main() -> int {
                 let text2 = Column(row, column);
                 var pi: uint = 0;
                 while pi < text2.length {
-                    Print(" {:x}", text2.data[pi]);
+                    Print(" {:x}", text2[pi]);
                     pi = pi + 1;
                 }
                 PrintLine("");
                 Print("got:");
                 pi = 0;
                 while pi < length {
-                    Print(" {:x}", room.data[pi] as uint32);
+                    Print(" {:x}", room[pi] as uint32);
                     pi = pi + 1;
                 }
                 PrintLine("");
@@ -82,7 +82,7 @@ func Main() -> int {
                 let want = Column(row, 1);
                 pi = 0;
                 while pi < want.length {
-                    Print(" {:x}", want.data[pi]);
+                    Print(" {:x}", want[pi]);
                     pi = pi + 1;
                 }
                 PrintLine("");

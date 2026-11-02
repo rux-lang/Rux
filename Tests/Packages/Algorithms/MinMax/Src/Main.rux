@@ -35,9 +35,9 @@ func Main() -> int {
     storage[3] = 2;
     storage[4] = 9;
     storage[5] = 4;
-    let items = (@storage[0])[..6];
+    let items = storage[..6];
     let empty: int32[..] = [];
-    let single = (@storage[0])[..1];
+    let single = storage[..1];
 
     var at: uint = 0;
     Assert(MinIndex<int32>(items) == .Some(1), "the smallest element is found");
@@ -69,7 +69,7 @@ func Main() -> int {
     ranked[2] = Ranked { key: 8, origin: 102 };
     ranked[3] = Ranked { key: 1, origin: 103 };
     ranked[4] = Ranked { key: 8, origin: 104 };
-    let records = (@ranked[0])[..5];
+    let records = ranked[..5];
 
     at = MinIndex<Ranked>(records) ?? Panic("the type's own ordering finds the smallest");
     Assert(at == 1, "the type's own ordering finds the smallest");

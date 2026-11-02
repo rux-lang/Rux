@@ -89,8 +89,8 @@ func RenderDiffers64(allocator: Allocator, left: float64, right: float64) -> boo
 // The float whose bits are `bits`, which is how an adjacent value is built: adding one to the bits of a finite
 // positive value gives the very next float, with no arithmetic that could round.
 func FromBits64(bits: uint64) -> float64 {
-    let address = (@bits) as *float64;
-    return *address;
+    // Safety: `bits` is a live local `uint64`, the same size as `float64`, so the read stays inside it.
+    return unsafe { *((@bits) as *float64) };
 }
 
 func Main() -> int {

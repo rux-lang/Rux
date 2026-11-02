@@ -57,86 +57,123 @@ when #target.os == OperatingSystem::macOS {
         // An address one page in from a mapping's base is itself page-aligned, so releasing from there is accepted
         // where releasing from one byte in is not. That is the same distinction the unaligned case below asserts,
         // made against the size the system actually reported rather than against a constant.
-        let paged = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        // Safety: a null address lets the kernel place the mapping, and an anonymous one reads no descriptor.
+        let paged = unsafe {
+            Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
+        };
         Assert(!IsError(paged), "a second mapping succeeds");
         Assert((paged as uint64) % (pageSize as uint64) == 0, "a mapping starts on a page boundary");
-        Assert(Munmap((paged + pageSize) as *opaque, MappingUnit - (pageSize as uint)) == 0,
-               "releasing from one page in is accepted");
-        Assert(Munmap(paged as *opaque, pageSize as uint) == 0, "and releasing the first page finishes it");
+        // Safety: `paged` is the mapping made above, which nothing uses, and the two releases cover exactly it.
+        unsafe {
+            Assert(Munmap((paged + pageSize) as *opaque, MappingUnit - (pageSize as uint)) == 0,
+                   "releasing from one page in is accepted");
+            Assert(Munmap(paged as *opaque, pageSize as uint) == 0, "and releasing the first page finishes it");
+        }
 
         // --- A mapping that works ---------------------------------------------------------------------------
 
-        let mapping = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        // Safety: a null address lets the kernel place the mapping, and an anonymous one reads no descriptor.
+        let mapping = unsafe {
+            Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
+        };
         Assert(!IsError(mapping), "an anonymous private mapping succeeds");
 
         // Anonymous memory arrives zeroed. A caller that assumed otherwise would be reading someone else's bytes.
-        let bytes = mapping as *var char8;
-        Assert(bytes[0] == 0 as char8 && bytes[MappingUnit - 1] == 0 as char8, "a fresh mapping reads as zeros");
+        // Safety: `mapping` is the address of the live read-write mapping checked above, and every access through
+        // `bytes` below stays below `MappingUnit` while that mapping lives.
+        let bytes = unsafe { mapping as *var char8 };
+        // Safety: `bytes` addresses the live read-write mapping of `MappingUnit` bytes, so both indices are in it.
+        unsafe {
+            Assert(bytes[0] == 0 as char8 && bytes[MappingUnit - 1] == 0 as char8, "a fresh mapping reads as zeros");
 
-        // The whole unit is writable, not merely its first page.
-        bytes[0] = c8'a';
-        bytes[MappingUnit - 1] = c8'z';
-        Assert(bytes[0] == c8'a' && bytes[MappingUnit - 1] == c8'z', "the first and last bytes hold what was written");
+            // The whole unit is writable, not merely its first page.
+            bytes[0] = c8'a';
+            bytes[MappingUnit - 1] = c8'z';
+            Assert(bytes[0] == c8'a' && bytes[MappingUnit - 1] == c8'z',
+                   "the first and last bytes hold what was written");
+        }
 
         // Advice is a hint and reports whether it was understood, not whether it did anything.
-        Assert(Madvise(mapping as *opaque, MappingUnit, AdviseWillNeed) == 0, "advising future use succeeds");
-        Assert(Madvise(mapping as *opaque, MappingUnit, AdviseDontNeed) == 0, "advising disuse succeeds");
+        // Safety: `mapping` is the live mapping of `MappingUnit` bytes, and this system's disuse advice keeps its
+        // contents.
+        unsafe {
+            Assert(Madvise(mapping as *opaque, MappingUnit, AdviseWillNeed) == 0, "advising future use succeeds");
+            Assert(Madvise(mapping as *opaque, MappingUnit, AdviseDontNeed) == 0, "advising disuse succeeds");
+        }
 
         // --- Protection --------------------------------------------------------------------------------------
 
         // A mapping can be made unreachable and reachable again without moving.
-        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionNone) == 0, "removing all access succeeds");
-        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead) == 0, "granting read access succeeds");
-        Assert(bytes[0] == c8'a', "the bytes survived the protection changes");
-        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead | ProtectionWrite) == 0,
-               "granting write access back succeeds");
-        bytes[0] = c8'b';
-        Assert(bytes[0] == c8'b', "the mapping is writable again");
+        // Safety: `mapping` is the live mapping of `MappingUnit` bytes, nothing touches it while it has no access,
+        // and `bytes` is read only once reading is allowed again and written only once writing is.
+        unsafe {
+            Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionNone) == 0, "removing all access succeeds");
+            Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead) == 0, "granting read access succeeds");
+            Assert(bytes[0] == c8'a', "the bytes survived the protection changes");
+            Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead | ProtectionWrite) == 0,
+                   "granting write access back succeeds");
+            bytes[0] = c8'b';
+            Assert(bytes[0] == c8'b', "the mapping is writable again");
+        }
 
         // A mapping created with no access at all is legal, and becomes usable through Mprotect alone.
-        let reserved = Mmap(null, MappingUnit, ProtectionNone, MapPrivate | MapAnonymous, -1, 0);
+        // Safety: a null address lets the kernel place the mapping, and an anonymous one reads no descriptor.
+        let reserved = unsafe { Mmap(null, MappingUnit, ProtectionNone, MapPrivate | MapAnonymous, -1, 0) };
         Assert(!IsError(reserved), "reserving address space with no access succeeds");
-        Assert(Mprotect(reserved as *opaque, MappingUnit, ProtectionRead | ProtectionWrite) == 0,
-               "the reservation can be given access");
-        let reservedBytes = reserved as *var char8;
-        reservedBytes[0] = c8'r';
-        Assert(reservedBytes[0] == c8'r', "the reservation is usable once it has access");
-        Assert(Munmap(reserved as *opaque, MappingUnit) == 0, "releasing the reservation succeeds");
+        // Safety: `reserved` is the live mapping of `MappingUnit` bytes checked above, its first byte is touched only
+        // after it is given read and write access, and nothing uses it after the release.
+        unsafe {
+            Assert(Mprotect(reserved as *opaque, MappingUnit, ProtectionRead | ProtectionWrite) == 0,
+                   "the reservation can be given access");
+            let reservedBytes = reserved as *var char8;
+            reservedBytes[0] = c8'r';
+            Assert(reservedBytes[0] == c8'r', "the reservation is usable once it has access");
+            Assert(Munmap(reserved as *opaque, MappingUnit) == 0, "releasing the reservation succeeds");
+        }
 
         // --- Requests the kernel refuses ----------------------------------------------------------------------
 
         // A zero-length mapping is one of the few refusals POSIX names.
-        let empty = Mmap(null, 0, ProtectionRead, MapPrivate | MapAnonymous, -1, 0);
+        // Safety: a zero-length request is refused before anything is mapped.
+        let empty = unsafe { Mmap(null, 0, ProtectionRead, MapPrivate | MapAnonymous, -1, 0) };
         Assert(IsError(empty) && Errno(empty) == EINVAL, "a zero-length mapping is EINVAL");
 
         // An address that is not page-aligned cannot name a mapping.
-        let unaligned = Munmap((mapping + 1) as *opaque, MappingUnit);
+        // Safety: an unaligned address is refused before anything is unmapped, so `mapping` stays whole.
+        let unaligned = unsafe { Munmap((mapping + 1) as *opaque, MappingUnit) };
         Assert(IsError(unaligned) && Errno(unaligned) == EINVAL, "unmapping an unaligned address is EINVAL");
 
         // A file mapping needs a descriptor, and this is not one. The number differs between systems, so only the
         // refusal is asserted.
-        let noDescriptor = Mmap(null, MappingUnit, ProtectionRead, MapPrivate, -1, 0);
+        // Safety: a null address lets the kernel choose, and the invalid descriptor makes the request fail unmapped.
+        let noDescriptor = unsafe { Mmap(null, MappingUnit, ProtectionRead, MapPrivate, -1, 0) };
         Assert(IsError(noDescriptor), "a file mapping without a descriptor is refused");
 
         // More address space than any 64-bit system has: an exbibyte, past the 2^56 bytes the widest current page
         // tables reach. A mere 2^47 is not enough — FreeBSD gives an AArch64 process 256 TiB and, by default, promises
         // any amount of anonymous memory, so it maps that much and the refusal never comes. Which number comes back
         // depends on the system, so only the refusal is asserted.
-        let enormous = Mmap(null, 0x1000000000000000, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        // Safety: a null address lets the kernel choose, and a size past the address space is refused unmapped.
+        let enormous = unsafe {
+            Mmap(null, 0x1000000000000000, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
+        };
         Assert(IsError(enormous), "a mapping larger than the address space is refused");
 
         // --- Releasing --------------------------------------------------------------------------------------
 
-        Assert(Munmap(mapping as *opaque, MappingUnit) == 0, "unmapping succeeds");
+        // Safety: `mapping` is the live mapping of `MappingUnit` bytes, and nothing uses `bytes` after this.
+        Assert(unsafe { Munmap(mapping as *opaque, MappingUnit) } == 0, "unmapping succeeds");
 
         // Unmapping a range that holds no mapping is a success, not an error: `munmap` removes whatever is there,
         // and nothing being there is a legitimate outcome. A caller that treated a second release as a failure
         // would be wrong on every system, which is why this is asserted rather than assumed.
-        Assert(Munmap(mapping as *opaque, MappingUnit) == 0, "unmapping an already-released range succeeds");
+        // Safety: the range was released above and nothing else has been mapped there, so this removes nothing.
+        Assert(unsafe { Munmap(mapping as *opaque, MappingUnit) } == 0, "unmapping an already-released range succeeds");
 
         // Changing the protection of a range that holds no mapping is not. The two calls differ here, which is the
         // asymmetry worth knowing.
-        Assert(IsError(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead)),
+        // Safety: the range holds no mapping any more, so the change is refused and affects nothing.
+        Assert(IsError(unsafe { Mprotect(mapping as *opaque, MappingUnit, ProtectionRead) }),
                "protecting a released range is refused");
 
         return 0;

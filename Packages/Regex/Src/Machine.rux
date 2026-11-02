@@ -120,12 +120,15 @@ func Follow(program: &Program, space: &Space, text: char8[..], list: uint, start
         }
         var pc = entry.index as uint;
         while true {
-            let count = space.counts[list];
+            // Safety: `space.counts` points at the caller's local `uint[2]`, which outlives the search, and `list` is
+            // `current` or `1 - current`, so 0 or 1.
+            let count = unsafe { space.counts[list] };
             let position = space.sparse[base + pc] as uint;
             if position < count && space.dense[base + position] as uint == pc { break; }
             space.dense[base + count] = pc as uint32;
             space.sparse[base + pc] = count as uint32;
-            space.counts[list] = count + 1;
+            // Safety: as above, `space.counts` is the caller's live `uint[2]` and `list` is 0 or 1.
+            unsafe { space.counts[list] = count + 1; }
             let instruction = program.instructions[pc];
             let op = instruction.op;
             if op == Op::Jump {

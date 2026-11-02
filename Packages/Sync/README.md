@@ -28,7 +28,8 @@ import Thread::{ JoinHandle, Spawn };
 
 func AddOne(total: Mutex<uint64>) -> () {
     let guard = total.Lock();
-    *guard.Get() = *guard.Get() + 1u64;
+    // Safety: `guard` holds the lock, so the value it addresses is live and no other thread touches it.
+    unsafe { *guard.Get() = *guard.Get() + 1u64; }
 }
 
 func Main() -> int {
@@ -38,7 +39,9 @@ func Main() -> int {
     first.Join();
     second.Join();
     let guard = total.Lock();
-    return *guard.Get() == 2u64 ? 0 : 2;
+    // Safety: `guard` holds the lock, so the value it addresses is live and no other thread touches it.
+    let count = unsafe { *guard.Get() };
+    return count == 2u64 ? 0 : 2;
 }
 ```
 

@@ -7,7 +7,7 @@ import Format::{ ByteCursor };
 // A failed check returns its numbered exit code for `rux test`.
 func Check(value: char8, expected: char8[..], code: int) -> int {
     var storage: char8[8];
-    var cursor = ByteCursor((@storage[0])[..8]);
+    var cursor = ByteCursor(storage[..8]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
     if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
@@ -19,7 +19,7 @@ func Check(value: char8, expected: char8[..], code: int) -> int {
     }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] {
+        if actual[index] != expected[index] {
             return code;
         }
         index = index + 1;
@@ -45,26 +45,26 @@ func Main() -> int {
     // The null character is a byte like any other, and what it renders into is one byte long rather than nothing:
     // text carries its length and does not look for a terminator.
     var storage: char8[8];
-    var cursor = ByteCursor((@storage[0])[..8]);
+    var cursor = ByteCursor(storage[..8]);
     let writer: &var TextWriter = cursor;
     let nul: Display = c8'\0';
     if Failed(nul.WriteDisplay(writer, FormatSpec::Plain())) { return 20; }
     if cursor.Written().length != 1 { return 21; }
-    if (cursor.Written().data[0] as uint8) != 0 { return 22; }
+    if (cursor.Written()[0] as uint8) != 0 { return 22; }
 
     // A byte out of the middle of a multi-byte sequence is not a character, and a writer takes whole characters --
     // so what comes out is the replacement character rather than the fragment. Writing the byte on its own would
     // produce something that is not UTF-8, and every reader of the result relies on it being UTF-8.
     var second: char8[8];
-    var piece = ByteCursor((@second[0])[..8]);
+    var piece = ByteCursor(second[..8]);
     let fragmentWriter: &var TextWriter = piece;
     let fragment: Display = 0xC3u8 as char8;
     if Failed(fragment.WriteDisplay(fragmentWriter, FormatSpec::Plain())) { return 30; }
     let rendered = piece.Written();
     if rendered.length != 3 { return 31; }
-    if (rendered.data[0] as uint8) != 0xEF { return 32; }
-    if (rendered.data[1] as uint8) != 0xBF { return 33; }
-    if (rendered.data[2] as uint8) != 0xBD { return 34; }
+    if (rendered[0] as uint8) != 0xEF { return 32; }
+    if (rendered[1] as uint8) != 0xBF { return 33; }
+    if (rendered[2] as uint8) != 0xBD { return 34; }
 
     return 0;
 }

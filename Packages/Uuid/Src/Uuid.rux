@@ -64,7 +64,7 @@ extend Uuid {
         var value = Uuid::Nil();
         var index: uint = 0;
         while index < 16 && index < bytes.length {
-            value.bytes[index] = bytes.data[index];
+            value.bytes[index] = bytes[index];
             index = index + 1;
         }
         return value;
@@ -74,7 +74,7 @@ extend Uuid {
     /// @returns the sixteen bytes, in big-endian order
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#bytes
     pub func Bytes(self: &Uuid) -> byte[..] {
-        return (@self.bytes[0])[..16];
+        return self.bytes[..16];
     }
 
     /// Whether this is the nil UUID.

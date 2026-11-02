@@ -148,44 +148,57 @@ when #target.arch {
 }
 
 func Main() -> int {
-    if (Add(40, 2) != 42) {
+    // Safety: `Add` reads its two argument registers and writes only the result register.
+    if (unsafe { Add(40, 2) } != 42) {
         return 1;
     }
-    if (MulSub(6, 7) != 41) {
+    // Safety: `MulSub` reads its two argument registers and writes only the result register.
+    if (unsafe { MulSub(6, 7) } != 41) {
         return 2;
     }
-    if (SumTo(100) != 5050) {
+    // Safety: `SumTo` touches only caller-saved scratch registers and ends its loop when the counter reaches zero.
+    if (unsafe { SumTo(100) } != 5050) {
         return 3;
     }
-    if (DoubleViaStack(21) != 42) {
+    // Safety: `DoubleViaStack` spills only to a stack slot it owns (the red zone or a slot it opens) and restores `sp`.
+    if (unsafe { DoubleViaStack(21) } != 42) {
         return 4;
     }
-    if (TripleThenAdd(10) != 40) {
+    // Safety: `TripleThenAdd` saves the argument (and the link register) on the stack around its call and pops it back.
+    if (unsafe { TripleThenAdd(10) } != 40) {
         return 5;
     }
-    if (Sqrt(16.0) != 4.0) {
+    // Safety: `Sqrt` computes in place in the first float argument register.
+    if (unsafe { Sqrt(16.0) } != 4.0) {
         return 6;
     }
-    if (MulAdd(3.0, 4.0, 5.0) != 17.0) {
+    // Safety: `MulAdd` reads three float argument registers and writes only the float result register.
+    if (unsafe { MulAdd(3.0, 4.0, 5.0) } != 17.0) {
         return 7;
     }
-    if (MinOf(2.5, 9.0) != 2.5) {
+    // Safety: `MinOf` reads two float argument registers and writes only the float result register.
+    if (unsafe { MinOf(2.5, 9.0) } != 2.5) {
         return 8;
     }
-    if (IntToFloat(42) != 42.0) {
+    // Safety: `IntToFloat` converts its integer argument register into the float result register.
+    if (unsafe { IntToFloat(42) } != 42.0) {
         return 9;
     }
-    if (FloatToInt(7.9) != 7) {
+    // Safety: `FloatToInt` converts its float argument register into the integer result register.
+    if (unsafe { FloatToInt(7.9) } != 7) {
         return 10;
     }
     if (PlatformAbiCheck() != 0) {
         return 11;
     }
-    if (ReadCounter() != 42) {
+    // Safety: `ReadCounter` only loads the module variable `Counter`, an `int64` that lives for the whole program.
+    if (unsafe { ReadCounter() } != 42) {
         return 12;
     }
-    WriteCounter(7);
-    if (Counter != 7 || ReadCounter() != 7) {
+    // Safety: `WriteCounter` stores one `int64` into the module variable `Counter`, which nothing else is using.
+    unsafe { WriteCounter(7); }
+    // Safety: `ReadCounter` only loads the module variable `Counter`, an `int64` that lives for the whole program.
+    if (Counter != 7 || unsafe { ReadCounter() } != 7) {
         return 13;
     }
     return 0;

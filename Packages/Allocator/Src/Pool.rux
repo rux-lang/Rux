@@ -104,10 +104,10 @@ extend Pool {
     /// A copyable interface adapter pointing at this pool.
     /// `self` stays the caller's. Allocations through the handle update this pool rather than copied state.
     /// Cannot fail. Runs in constant time and allocates nothing.
-    /// The handle borrows the pool and must not outlive it, nor survive the pool being moved.
+    /// Safety: the handle borrows the pool and must not outlive it, nor survive the pool being moved.
     /// @returns a copyable adapter pointing at this pool
     /// @see https://rux-lang.dev/docs/api/allocator/pool#handle
-    pub func Handle(self: *var Pool) -> PoolHandle {
+    pub unsafe func Handle(self: *var Pool) -> PoolHandle {
         return PoolHandle { pool: self };
     }
 
@@ -128,16 +128,20 @@ extend Pool {
         }
         var chunk = self.chunks;
         while chunk != null {
-            let blockSize = PoolSmallestClass << chunk.classIndex;
-            let start = (chunk as uint) + Pool::ChunkHeaderSize();
-            var remaining = chunk.blocks;
-            while remaining > 0 {
-                let address = start + (remaining - 1) * blockSize;
-                *(address as *var uint) = self.free[chunk.classIndex];
-                self.free[chunk.classIndex] = address;
-                remaining--;
+            // Safety: the chunk invariant: `chunks` and every `previous` link address a live chunk this pool took from
+            // `backing`, carved into `blocks` blocks of its class, each at least a `uint` wide and aligned for one.
+            unsafe {
+                let blockSize = PoolSmallestClass << chunk.classIndex;
+                let start = (chunk as uint) + Pool::ChunkHeaderSize();
+                var remaining = chunk.blocks;
+                while remaining > 0 {
+                    let address = start + (remaining - 1) * blockSize;
+                    *(address as *var uint) = self.free[chunk.classIndex];
+                    self.free[chunk.classIndex] = address;
+                    remaining--;
+                }
+                chunk = chunk.previous;
             }
-            chunk = chunk.previous;
         }
         self.live = 0;
     }
@@ -176,7 +180,9 @@ extend Pool {
 
     // Pushes every block of an already-taken chunk onto its class's free list. Blocks go on in reverse so the lowest
     // address comes off first, which keeps a run of allocations walking forward through storage.
-    func CarveChunk(self: *var Pool, chunk: *var PoolChunk) {
+    // Safety: `self` must address a live pool, and `chunk` a chunk it took from `backing` whose header is filled in,
+    // with room for `blocks` blocks of its class after the header.
+    unsafe func CarveChunk(self: *var Pool, chunk: *var PoolChunk) {
         let blockSize = PoolSmallestClass << chunk.classIndex;
         let start = (chunk as uint) + Pool::ChunkHeaderSize();
         var remaining = chunk.blocks;
@@ -189,7 +195,8 @@ extend Pool {
     }
 
     // Takes one chunk from the backing allocator and carves it into blocks of `classIndex`.
-    func TakeChunk(self: *var Pool, classIndex: uint) -> ! AllocError {
+    // Safety: `self` must address a live pool.
+    unsafe func TakeChunk(self: *var Pool, classIndex: uint) -> ! AllocError {
         let blockSize = PoolSmallestClass << classIndex;
         let blocks = self.blocksPerChunk;
         if blocks > uint::Max / blockSize { fail AllocError::Unsupported; }
@@ -219,8 +226,13 @@ extend Pool {
     func ~Pool(self: &var Pool) {
         var chunk = self.chunks;
         while chunk != null {
-            let earlier = chunk.previous;
-            let layout = Layout::New(chunk.total, PoolAlignment) ?? Layout { size: chunk.total, alignment: PoolAlignment };
+            // Safety: the chunk invariant: `chunks` and every `previous` link address a live chunk this pool took from
+            // `backing`, carved into `blocks` blocks of its class, each at least a `uint` wide and aligned for one;
+            // both fields are read before the chunk is released.
+            let earlier = unsafe { chunk.previous };
+            // Safety: as above, by the chunk invariant `chunk` is live until the release below.
+            let total = unsafe { chunk.total };
+            let layout = Layout::New(total, PoolAlignment) ?? Layout { size: total, alignment: PoolAlignment };
             self.backing.Deallocate(chunk as *var opaque, layout) catch { else => {} };
             chunk = earlier;
         }
@@ -260,15 +272,30 @@ extend PoolHandle : Allocator {
         }
 
         let classIndex = ClassIndexFor(layout);
-        if classIndex >= PoolClassCount { return self.pool.backing.Allocate(layout); }
-
-        if self.pool.free[classIndex] == 0 {
-            self.pool.TakeChunk(classIndex)?;
+        if classIndex >= PoolClassCount {
+            // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+            // `self.pool` addresses a live pool.
+            return unsafe { self.pool.backing.Allocate(layout) };
         }
 
-        let address = self.pool.free[classIndex];
-        self.pool.free[classIndex] = *(address as *uint);
-        self.pool.live = self.pool.live + 1;
+        // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+        // `self.pool` addresses a live pool.
+        if unsafe { self.pool.free[classIndex] } == 0 {
+            // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+            // `self.pool` addresses a live pool.
+            unsafe { self.pool.TakeChunk(classIndex)?; }
+        }
+
+        // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+        // `self.pool` addresses a live pool, and the class's free list is not empty, so its head is a free block whose
+        // first
+        // word holds the next free address.
+        let address = unsafe {
+            let head = self.pool.free[classIndex];
+            self.pool.free[classIndex] = *(head as *uint);
+            self.pool.live = self.pool.live + 1;
+            head
+        };
         return address as *var opaque;
     }
 
@@ -286,13 +313,23 @@ extend PoolHandle : Allocator {
         if block == null { fail AllocError::InvalidBlock; }
 
         let classIndex = ClassIndexFor(layout);
-        if classIndex >= PoolClassCount { return self.pool.backing.Deallocate(block, layout); }
+        if classIndex >= PoolClassCount {
+            // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+            // `self.pool` addresses a live pool.
+            return unsafe { self.pool.backing.Deallocate(block, layout) };
+        }
 
         let address = block as uint;
-        *(address as *var uint) = self.pool.free[classIndex];
-        self.pool.free[classIndex] = address;
-        if self.pool.live > 0 {
-            self.pool.live = self.pool.live - 1;
+        // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+        // `self.pool` addresses a live pool, and the `Allocator` contract makes `block` a block of this class that this
+        // pool
+        // handed out, so its first word is free to hold the list link.
+        unsafe {
+            *(address as *var uint) = self.pool.free[classIndex];
+            self.pool.free[classIndex] = address;
+            if self.pool.live > 0 {
+                self.pool.live = self.pool.live - 1;
+            }
         }
     }
 
@@ -315,7 +352,9 @@ extend PoolHandle : Allocator {
         let oldClass = ClassIndexFor(oldLayout);
         let newClass = ClassIndexFor(newLayout);
         if oldClass >= PoolClassCount && newClass >= PoolClassCount {
-            return self.pool.backing.Reallocate(block, oldLayout, newLayout);
+            // Safety: `Pool::Handle`'s caller promised the handle neither outlives nor survives a move of its pool, so
+            // `self.pool` addresses a live pool.
+            return unsafe { self.pool.backing.Reallocate(block, oldLayout, newLayout) };
         }
         if oldClass == newClass && oldLayout.size != 0 && newLayout.size != 0 {
             return block;
@@ -323,7 +362,9 @@ extend PoolHandle : Allocator {
 
         let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
-        Copy(fresh, block as *opaque, keep);
+        // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
+        // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
+        unsafe { Copy(fresh, block as *opaque, keep); }
         // The old block is this pool's or its backing allocator's with this layout, and the new one already holds
         // its contents, so a refused release could only leak it.
         self.Deallocate(block, oldLayout) catch { else => {} };

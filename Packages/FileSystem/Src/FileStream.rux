@@ -34,8 +34,12 @@ extend File : Reader {
         when #target.os == .Windows {
             let count = into.length > 0x40000000 ? 0x40000000u32 : into.length as uint32;
             var read: uint32 = 0;
-            if !ReadFile(self.handle, into.data as *var opaque, count, @read, null) {
-                let raw = GetLastError() as int32;
+            // Safety: `handle` is this file's open handle, `open` was checked above; `into` is writable for
+            // `into.length` bytes and `count` is at most that; `read` is a local `uint32`.
+            let accepted = unsafe { ReadFile(self.handle, into.data as *var opaque, count, @read, null) };
+            if !accepted {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                let raw = unsafe { GetLastError() } as int32;
                 // A pipe whose writing end closed reports through a failure; for a reader it is the end.
                 if raw == 109 { fail IoError::Of(IoErrorKind::EndOfStream); }
                 fail TranslateNative(raw);
@@ -44,7 +48,9 @@ extend File : Reader {
             return read as uint;
         }
         else {
-            let result = Read(self.handle, into.data as *var opaque, into.length);
+            // Safety: `handle` is this file's open descriptor, `open` was checked above, and `into` is writable for
+            // `into.length` bytes.
+            let result = unsafe { Read(self.handle, into.data as *var opaque, into.length) };
             if result < 0 { fail TranslateNative((0 - result) as int32); }
             if result == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
             return result as uint;
@@ -63,13 +69,19 @@ extend File : Writer {
         when #target.os == .Windows {
             let count = bytes.length > 0x40000000 ? 0x40000000u32 : bytes.length as uint32;
             var written: uint32 = 0;
-            if !WriteFile(self.handle, bytes.data as *opaque, count, @written, null) {
-                fail TranslateNative(GetLastError() as int32);
+            // Safety: `handle` is this file's open handle, `open` was checked above; `bytes` is readable for
+            // `bytes.length` bytes and `count` is at most that; `written` is a local `uint32`.
+            let accepted = unsafe { WriteFile(self.handle, bytes.data as *opaque, count, @written, null) };
+            if !accepted {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
             }
             return written as uint;
         }
         else {
-            let result = Write(self.handle, bytes.data as *opaque, bytes.length);
+            // Safety: `handle` is this file's open descriptor, `open` was checked above, and `bytes` is readable
+            // for `bytes.length` bytes.
+            let result = unsafe { Write(self.handle, bytes.data as *opaque, bytes.length) };
             if result < 0 { fail TranslateNative((0i64 - result) as int32); }
             return result as uint;
         }
@@ -96,8 +108,11 @@ extend File : Seeker {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             var landed: int64 = 0;
-            if !SetFilePointerEx(self.handle, offset, @landed, origin as int32 as uint32) {
-                fail TranslateNative(GetLastError() as int32);
+            // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local `int64`.
+            let moved = unsafe { SetFilePointerEx(self.handle, offset, @landed, origin as int32 as uint32) };
+            if !moved {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
             }
             return landed as uint64;
         }
@@ -125,7 +140,10 @@ extend File {
     pub func Sync(self: &var File) -> ! IoError {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
-            if FlushFileBuffers(self.handle) == 0 { fail TranslateNative(GetLastError() as int32); }
+            // Safety: `handle` is this file's open handle, `open` was checked above.
+            let flushed = unsafe { FlushFileBuffers(self.handle) };
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            if flushed == 0 { fail TranslateNative(unsafe { GetLastError() } as int32); }
         }
         else {
             let result = Fsync(self.handle);
@@ -143,7 +161,10 @@ extend File {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             var reported: int64 = 0;
-            if !GetFileSizeEx(self.handle, @reported) { fail TranslateNative(GetLastError() as int32); }
+            // Safety: `handle` is this file's open handle, `open` was checked above, and `reported` is a local `int64`.
+            let measured = unsafe { GetFileSizeEx(self.handle, @reported) };
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            if !measured { fail TranslateNative(unsafe { GetLastError() } as int32); }
             return reported as uint64;
         }
         else {
@@ -168,17 +189,30 @@ extend File {
         when #target.os == .Windows {
             // SetEndOfFile cuts at the current position, so the position moves there and back.
             var held: int64 = 0;
-            if !SetFilePointerEx(self.handle, 0, @held, 1) { fail TranslateNative(GetLastError() as int32); }
+            // Safety: `handle` is this file's open handle, `open` was checked above, and `held` is a local `int64`.
+            let measured = unsafe { SetFilePointerEx(self.handle, 0, @held, 1) };
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            if !measured { fail TranslateNative(unsafe { GetLastError() } as int32); }
             var landed: int64 = 0;
-            if !SetFilePointerEx(self.handle, length as int64, @landed, 0) {
-                fail TranslateNative(GetLastError() as int32);
+            // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local `int64`.
+            let moved = unsafe { SetFilePointerEx(self.handle, length as int64, @landed, 0) };
+            if !moved {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
             }
-            if SetEndOfFile(self.handle as *var opaque) == 0 {
-                let raw = GetLastError() as int32;
-                SetFilePointerEx(self.handle, held, @landed, 0);
+            // Safety: `handle` is this file's open handle, `open` was checked above.
+            if unsafe { SetEndOfFile(self.handle as *var opaque) } == 0 {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                let raw = unsafe { GetLastError() } as int32;
+                // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local
+                // `int64`.
+                unsafe { SetFilePointerEx(self.handle, held, @landed, 0); }
                 fail TranslateNative(raw);
             }
-            if !SetFilePointerEx(self.handle, held, @landed, 0) { fail TranslateNative(GetLastError() as int32); }
+            // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local `int64`.
+            let restored = unsafe { SetFilePointerEx(self.handle, held, @landed, 0) };
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            if !restored { fail TranslateNative(unsafe { GetLastError() } as int32); }
         }
         else {
             let result = Ftruncate(self.handle, length as int64);
@@ -228,7 +262,9 @@ extend FileStream : Reader {
     /// @returns how many bytes were read; `IsEnd` at the end of the file
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#read
     pub func Read(self: &var FileStream, into: var char8[..]) -> uint ! IoError {
-        return (*self.file).Read(into);
+        // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
+        // moved while it exists.
+        return unsafe { (*self.file).Read(into) };
     }
 }
 
@@ -238,14 +274,18 @@ extend FileStream : Writer {
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#write
     pub func Write(self: &var FileStream, bytes: char8[..]) -> uint ! IoError {
-        return (*self.file).Write(bytes);
+        // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
+        // moved while it exists.
+        return unsafe { (*self.file).Write(bytes) };
     }
 
     /// Flushes the borrowed file, which holds nothing back.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#flush
     pub func Flush(self: &var FileStream) -> ! IoError {
-        return (*self.file).Flush();
+        // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
+        // moved while it exists.
+        return unsafe { (*self.file).Flush() };
     }
 }
 
@@ -256,6 +296,8 @@ extend FileStream : Seeker {
     /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#seek
     pub func Seek(self: &var FileStream, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
-        return (*self.file).Seek(origin, offset);
+        // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
+        // moved while it exists.
+        return unsafe { (*self.file).Seek(origin, offset) };
     }
 }

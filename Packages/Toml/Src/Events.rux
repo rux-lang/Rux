@@ -133,7 +133,9 @@ extend TomlEventReader {
     /// @returns the raw text the current event covers, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/toml/toml-event-reader#span
     pub func Span(self: &TomlEventReader) -> char8[..] {
-        return (self.input.data + self.current.start)[..self.current.end - self.current.start];
+        // Safety: `self.current` is a token the reader's own lexer produced from `self.input`, so its span lies
+        // inside it.
+        return unsafe { (self.input.data + self.current.start)[..self.current.end - self.current.start] };
     }
 
     /// Which string form the current text event was written in, which decoding it needs.

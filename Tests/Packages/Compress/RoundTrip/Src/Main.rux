@@ -15,7 +15,9 @@ const FixedStream: byte[16] = [0x78u8, 0x01u8, 0xCBu8, 0x48u8, 0xCDu8, 0xC9u8, 0
 
 // Text as the bytes it is made of.
 func AsBytes(text: char8[..]) -> byte[..] {
-    return (text.data as *byte)[..text.length];
+    // Safety: `char8` and `byte` are both one byte wide with every bit pattern valid, and `text.data` addresses
+    // `text.length` live code units for as long as the slice it came from.
+    return unsafe { (text.data as *byte)[..text.length] };
 }
 
 // The text the reference streams were made from.
@@ -159,8 +161,10 @@ func Main() -> int {
     // Text compresses as its UTF-8 bytes, with no cast to bytes first, and a stream held as text decompresses.
     let text = "the same text, the same text, the same text, the same text";
     let packedText = Compress(SystemAllocator(), text, Format::Gzip) catch { else => return 13 };
-    let asText = (packedText.AsSlice().data as *char8)[..packedText.Length()];
+    // Safety: `byte` and `char8` are both one byte wide with every bit pattern valid, and the slice's data addresses
+    // the `packedText.Length()` live bytes of `packedText`, which outlives `asText`.
+    let asText = unsafe { (packedText.AsSlice().data as *char8)[..packedText.Length()] };
     let unpackedText = Decompress(SystemAllocator(), asText, Format::Gzip) catch { else => return 14 };
-    Assert(SameBytes(unpackedText.AsSlice(), (text.data as *byte)[..text.length]), "text round-trips");
+    Assert(SameBytes(unpackedText.AsSlice(), AsBytes(text)), "text round-trips");
     return 0;
 }

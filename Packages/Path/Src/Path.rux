@@ -118,19 +118,23 @@ extend ComponentIterator {
     pub func Next(self: &var ComponentIterator) -> OsStringView? {
         // The root: a separator at the very start yields the empty component once, then the walk continues past
         // every separator that follows it.
-        if self.cursor == 0 && self.units.length > 0 && IsSeparator(self.units.data[0]) {
+        // Safety: `self.units.length` is positive, checked just before the read.
+        if self.cursor == 0 && self.units.length > 0 && IsSeparator(unsafe { self.units.data[0] }) {
             self.cursor = 1;
             return OsStringView();
         }
-        while self.cursor < self.units.length && IsSeparator(self.units.data[self.cursor]) {
+        // Safety: `self.cursor` is below `self.units.length`, checked first in the same condition.
+        while self.cursor < self.units.length && IsSeparator(unsafe { self.units.data[self.cursor] }) {
             self.cursor = self.cursor + 1;
         }
         if self.cursor >= self.units.length { return none; }
         let start = self.cursor;
-        while self.cursor < self.units.length && !IsSeparator(self.units.data[self.cursor]) {
+        // Safety: `self.cursor` is below `self.units.length`, checked first in the same condition.
+        while self.cursor < self.units.length && !IsSeparator(unsafe { self.units.data[self.cursor] }) {
             self.cursor = self.cursor + 1;
         }
-        let segment = (@self.units.data[start])[..self.cursor - start];
+        // Safety: `start < self.cursor <= self.units.length`, so the segment lies inside the units.
+        let segment = unsafe { (@self.units.data[start])[..self.cursor - start] };
         return OsStringView::FromUnits(segment);
     }
 }

@@ -28,8 +28,11 @@ func Echo(value: char128) -> char128 { return value; }
 
 // Reads the whole storage, so a value whose upper word is not zero does not compare equal to its code point.
 func Storage(value: char128) -> uint128 {
-    let address = (@value) as *uint128;
-    return *address;
+    // Safety: `value` is a by-value parameter, and `char128` and `uint128` have the same size.
+    unsafe {
+        let address = (@value) as *uint128;
+        return *address;
+    }
 }
 
 // A runtime char32 and char64, so the widening below is not folded away while compiling.

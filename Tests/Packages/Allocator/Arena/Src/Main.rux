@@ -15,7 +15,8 @@ func Main() -> ! AllocError {
     Assert(arena.BlockCount() == 0, "an unused arena holds no blocks");
     Assert(arena.BytesUsed() == 0, "and has handed out nothing");
 
-    var handle = arena.Handle();
+    // Safety: `arena` is a local that outlives `handle` and is never moved.
+    var handle = unsafe { arena.Handle() };
     let allocator: Allocator = handle;
 
     // A zero-sized layout costs the arena nothing.
@@ -43,12 +44,16 @@ func Main() -> ! AllocError {
     Assert(IsPointerAligned(third as *opaque, 16), "and satisfies its alignment");
 
     // Writing through every address must not disturb the others.
-    let firstBytes = first as *var uint64;
-    let secondBytes = second as *var uint64;
-    *firstBytes = 0x1111111111111111;
-    *secondBytes = 0x2222222222222222;
-    Assert(*firstBytes == 0x1111111111111111, "the first allocation keeps its bytes");
-    Assert(*secondBytes == 0x2222222222222222, "and so does the second");
+    // Safety: `first` and `second` are distinct live 32-byte allocations aligned to 8, so each holds a `uint64`.
+    let (firstValue, secondValue) = unsafe {
+        let firstBytes = first as *var uint64;
+        let secondBytes = second as *var uint64;
+        *firstBytes = 0x1111111111111111;
+        *secondBytes = 0x2222222222222222;
+        (*firstBytes, *secondBytes)
+    };
+    Assert(firstValue == 0x1111111111111111, "the first allocation keeps its bytes");
+    Assert(secondValue == 0x2222222222222222, "and so does the second");
 
     // Exhausting the block takes another, larger one.
     let blocksBefore = arena.BlockCount();
@@ -71,10 +76,14 @@ func Main() -> ! AllocError {
     let blocksBeforeHuge = arena.BlockCount();
     large = allocator.Allocate(huge)?;
     Assert(arena.BlockCount() > blocksBeforeHuge, "by taking a block for itself");
-    let largeBytes = large as *var byte;
-    *largeBytes = 0x7F as byte;
-    *(largeBytes + 8191) = 0x7E as byte;
-    Assert(*largeBytes == 0x7F as byte && *(largeBytes + 8191) == 0x7E as byte, "and the whole of it is usable");
+    // Safety: `large` is a live allocation of 8192 bytes, so offsets 0 and 8191 are both inside it.
+    let (front, back) = unsafe {
+        let largeBytes = large as *var byte;
+        *largeBytes = 0x7F as byte;
+        *(largeBytes + 8191) = 0x7E as byte;
+        (*largeBytes, *(largeBytes + 8191))
+    };
+    Assert(front == 0x7F as byte && back == 0x7E as byte, "and the whole of it is usable");
 
     // Releasing the most recent allocation rewinds it; releasing anything else is accepted and does nothing.
     let recent = allocator.Allocate(small)?;

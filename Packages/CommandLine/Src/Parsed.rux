@@ -63,15 +63,18 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
     }
     // Asking for help or the version is a complete request on its own, whatever else is missing.
     if parsed.help || parsed.version { return parsed; }
+    // Safety: `spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which the
+    // documented contract keeps alive for as long as the parse.
+    let declared = unsafe { *spec };
     if parsed.command != NoCommand {
-        ParseLevel(@spec.commands[parsed.command], spec, source, parsed.commandAt + 1)?;
+        ParseLevel(@declared.commands[parsed.command], spec, source, parsed.commandAt + 1)?;
         return parsed;
     }
-    if spec.commands.length > 0 { fail CommandLineError::MissingCommand; }
+    if declared.commands.length > 0 { fail CommandLineError::MissingCommand; }
     var index: uint = 0;
-    while index < spec.positionals.length {
-        if spec.positionals[index].kind == PositionalKind::Required && index >= seen {
-            fail CommandLineError::MissingPositional(spec.positionals[index].name);
+    while index < declared.positionals.length {
+        if declared.positionals[index].kind == PositionalKind::Required && index >= seen {
+            fail CommandLineError::MissingPositional(declared.positionals[index].name);
         }
         index = index + 1;
     }
@@ -181,6 +184,13 @@ extend ValueIterator : Iterator {
 }
 
 extend Parsed {
+    // The command this parse is for, read through the stored handle.
+    func Declared(self: &Parsed) -> CommandSpec {
+        // Safety: `self.spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which
+        // the documented contract keeps alive for as long as the `Parsed` result.
+        return unsafe { *self.spec };
+    }
+
     // A fresh walk over this level's arguments.
     func Walk(self: &Parsed) -> Scanner {
         return Scan(self.spec, self.source, self.start, self.end);
@@ -209,7 +219,8 @@ extend Parsed {
     /// @returns the number of times it was given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#count
     pub func Count(self: &Parsed, name: char8[..]) -> uint {
-        let option = OptionIndex(*self.spec, name) ?? return 0;
+        let declared = self.Declared();
+        let option = OptionIndex(declared, name) ?? return 0;
         var count: uint = 0;
         var values = ValueIterator { scanner: self.Walk(), target: option, positional: false };
         while true {
@@ -234,8 +245,9 @@ extend Parsed {
     /// @returns the value as typed, or none when the option was not given or takes no value
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#value
     pub func Value(self: &Parsed, name: char8[..]) -> OsStringView? {
-        let option = OptionIndex(*self.spec, name) ?? return none;
-        if !TakesValue(*self.spec, option) { return none; }
+        let declared = self.Declared();
+        let option = OptionIndex(declared, name) ?? return none;
+        if !TakesValue(declared, option) { return none; }
         var last: OsStringView? = none;
         var values = ValueIterator { scanner: self.Walk(), target: option, positional: false };
         while true {
@@ -250,7 +262,8 @@ extend Parsed {
     /// @returns a walk over the values, empty when the option was not given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#values
     pub func Values(self: &Parsed, name: char8[..]) -> ValueIterator {
-        let option = OptionIndex(*self.spec, name) ?? NoCommand;
+        let declared = self.Declared();
+        let option = OptionIndex(declared, name) ?? NoCommand;
         var empty = self.Walk();
         if option == NoCommand {
             empty.index = empty.end;
@@ -273,7 +286,8 @@ extend Parsed {
     /// @returns a walk over the arguments, empty when none was given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#positionals
     pub func Positionals(self: &Parsed, name: char8[..]) -> ValueIterator {
-        let slot = PositionalIndex(*self.spec, name) ?? NoCommand;
+        let declared = self.Declared();
+        let slot = PositionalIndex(declared, name) ?? NoCommand;
         var walk = self.Walk();
         if slot == NoCommand {
             walk.index = walk.end;
@@ -286,7 +300,7 @@ extend Parsed {
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#command-name
     pub func CommandName(self: &Parsed) -> char8[..]? {
         if self.command == NoCommand { return none; }
-        return self.spec.commands[self.command].name;
+        return self.Declared().commands[self.command].name;
     }
 
     /// The parse of the subcommand's own arguments, everything after its name.
@@ -295,7 +309,8 @@ extend Parsed {
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#subcommand
     pub func Subcommand(self: &Parsed) -> Parsed? {
         if self.command == NoCommand { return none; }
-        let parsed = ParseLevel(@self.spec.commands[self.command], self.spec, self.source, self.commandAt + 1) catch {
+        let declared = self.Declared();
+        let parsed = ParseLevel(@declared.commands[self.command], self.spec, self.source, self.commandAt + 1) catch {
             else => return none
         };
         return parsed;

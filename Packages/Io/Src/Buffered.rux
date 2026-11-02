@@ -59,7 +59,8 @@ extend BufferedReader {
         let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
         let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
-        reader.data = block as *var char8;
+        // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
+        reader.data = unsafe { block as *var char8 };
         reader.capacity = wanted;
         return <-reader;
     }
@@ -76,7 +77,9 @@ extend BufferedReader {
     /// @returns the buffered bytes, borrowed and valid until the next fill
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#buffered
     pub func Buffered(self: &BufferedReader) -> char8[..] {
-        return (@self.data[self.start])[..self.end - self.start];
+        // Safety: the buffer invariant: `start <= end <= capacity`, and `data` holds `capacity` bytes while it is
+        // non-null; a released reader has `start == end == 0`, so the view is empty.
+        return unsafe { (@self.data[self.start])[..self.end - self.start] };
     }
 
     /// Marks `count` buffered bytes as read.
@@ -97,7 +100,8 @@ extend BufferedReader {
         self.start = 0;
         self.end = 0;
         while true {
-            let filled = self.source.Read((self.data)[..self.capacity]) catch {
+            // Safety: `data` is non-null, checked above, and holds `capacity` bytes.
+            let filled = self.source.Read(unsafe { (self.data)[..self.capacity] }) catch {
                 error if error.IsInterrupted() => continue,
                 error => fail error
             };
@@ -131,7 +135,9 @@ extend BufferedReader {
         if give > into.length {
             give = into.length;
         }
-        Copy(into.data as *var opaque, @self.data[self.start] as *opaque, give);
+        // Safety: `Fill` succeeded, so `data` holds `capacity` bytes with `Available()` unread from `start`, and
+        // `give` is at most both that and `into.length`; the caller's slice is not the reader's own buffer.
+        unsafe { Copy(into.data as *var opaque, @self.data[self.start] as *opaque, give); }
         self.Consume(give);
         return give;
     }
@@ -191,7 +197,8 @@ extend BufferedWriter {
         let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
         let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
-        writer.data = block as *var char8;
+        // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
+        writer.data = unsafe { block as *var char8 };
         writer.capacity = wanted;
         return <-writer;
     }
@@ -214,7 +221,8 @@ extend BufferedWriter {
     // Sends whatever is gathered, so that the bytes written after it keep their order.
     func SendHeld(self: &var BufferedWriter) -> ! IoError {
         if self.length == 0 { return; }
-        let held = (self.data)[..self.length];
+        // Safety: a non-zero `length` means the buffer is live, and `length` never passes its `capacity` bytes.
+        let held = unsafe { (self.data)[..self.length] };
         WriteAll(self.sink, held)?;
         self.length = 0;
     }
@@ -234,7 +242,9 @@ extend BufferedWriter {
         if self.length + bytes.length > self.capacity {
             self.SendHeld()?;
         }
-        Copy(@self.data[self.length] as *var opaque, bytes.data as *opaque, bytes.length);
+        // Safety: `data` is non-null and holds `capacity` bytes, and `length + bytes.length` fits in `capacity`
+        // (the held bytes were sent above if it would not); `bytes` is the caller's slice, not this buffer.
+        unsafe { Copy(@self.data[self.length] as *var opaque, bytes.data as *opaque, bytes.length); }
         self.length = self.length + bytes.length;
         return bytes.length;
     }

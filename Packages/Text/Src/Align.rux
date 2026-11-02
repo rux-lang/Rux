@@ -21,21 +21,28 @@
 /// @param after receives the count that follow it
 /// @see https://rux-lang.dev/docs/api/text/format-spec#padding-around
 pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: *var uint, after: *var uint) {
-    *before = 0;
-    *after = 0;
-    if spec.Width() <= occupied { return; }
-    let missing = spec.Width() - occupied;
-    var align = spec.Alignment();
-    if align == FormatAlign::Default {
-        align = numeric ? FormatAlign::Right : FormatAlign::Left;
+    var leading: uint = 0;
+    var trailing: uint = 0;
+    if spec.Width() > occupied {
+        let missing = spec.Width() - occupied;
+        var align = spec.Alignment();
+        if align == FormatAlign::Default {
+            align = numeric ? FormatAlign::Right : FormatAlign::Left;
+        }
+        if align == FormatAlign::Right {
+            leading = missing;
+        }
+        else if align == FormatAlign::Center {
+            leading = missing / 2;
+        }
+        trailing = missing - leading;
     }
-    if align == FormatAlign::Right {
-        *before = missing;
+    // Safety: the documented contract makes `before` and `after` non-null pointers to the caller's writable `uint`
+    // counts.
+    unsafe {
+        *before = leading;
+        *after = trailing;
     }
-    else if align == FormatAlign::Center {
-        *before = missing / 2;
-    }
-    *after = missing - *before;
 }
 
 /// Writes `count` copies of the spec's fill byte.
@@ -96,7 +103,7 @@ pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: For
     unpadded.width = 0;
     if spec.width == 0u { return value.WriteDisplay(writer, unpadded); }
     var room: char8[256];
-    var buffer = BufferWriter((@room[0])[..256]);
+    var buffer = BufferWriter(room[..]);
     let into: &var TextWriter = buffer;
     match value.WriteDisplay(into, unpadded) {
         .Success(_) => {},

@@ -52,6 +52,8 @@ All of it compiles for both architectures, and none of it has ever run on a host
 
 Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw pointers because the kernel consumes untyped integer addresses, buffers carry separate lengths, and optional outputs may be null. Pass addresses explicitly, for example `ClockGetTime(ClockMonotonic, @time)`, and uphold each function's safety contract. The package does not own raw addresses or descriptors; release them explicitly or use the higher-level `Rux/Memory` and `Rux/Io` packages.
 
+The wrappers that take a raw pointer the kernel reads or writes — a buffer and its length, a NUL-terminated path, a structure the call fills, an address range to map, unmap, protect or advise, a umtx word, a socket address or a kevent array — are `unsafe func`, and the `Safety:` sentence in each one's documentation states what the caller must uphold. A call to one needs an `unsafe` block, conventionally under a `// Safety:` comment saying why the obligation holds at that call: `unsafe { ClockGetTime(ClockMonotonic, @time) }`. `FcntlInt` is one of them too, because a command whose argument is a pointer would use the integer as an address. Wrappers that take only numbers, such as `Close`, `Lseek`, `Dup2`, `Socket`, `Kqueue`, `Exit`, `GetPid` and `QueryPageSize`, stay safe to call. `Syscall0` through `Syscall6` are `asm func` declarations and always need `unsafe`, and so do the libc declarations in `Dynamic`, `Thread`, `Resolve` and `Spawn`, which are `extern`.
+
 ## Platform
 
 FreeBSD only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

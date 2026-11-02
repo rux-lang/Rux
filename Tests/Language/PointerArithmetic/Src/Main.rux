@@ -27,45 +27,66 @@ func Main() -> int {
     // A primitive pointee, which always scaled correctly.
     var numbers: int32[4] = [10, 20, 30, 40];
     let numberBase = @numbers[0];
-    Assert(numberBase + 1 == @numbers[1], "int32 pointer advances one element");
-    Assert(numberBase + 3 == @numbers[3], "int32 pointer advances three elements");
-    Assert((numberBase + 2)[0] == 30, "offset int32 pointer reads its element");
+    // Safety: `numberBase` addresses `numbers[0]` and every offset stays inside the live four-element `numbers`.
+    unsafe {
+        Assert(numberBase + 1 == @numbers[1], "int32 pointer advances one element");
+        Assert(numberBase + 3 == @numbers[3], "int32 pointer advances three elements");
+        Assert((numberBase + 2)[0] == 30, "offset int32 pointer reads its element");
+    }
 
     // A single-field struct: four bytes wide, but a struct all the same.
     var pairs: Pair[4] = [Pair { a: 10, b: 11 }, Pair { a: 20, b: 21 },
                           Pair { a: 30, b: 31 }, Pair { a: 40, b: 41 }];
     let base = @pairs[0];
-    Assert(base + 1 == @pairs[1], "struct pointer advances one element");
-    Assert(base + 3 == @pairs[3], "struct pointer advances three elements");
+    // Safety: `base` addresses `pairs[0]` and both offsets stay inside the live four-element `pairs`.
+    unsafe {
+        Assert(base + 1 == @pairs[1], "struct pointer advances one element");
+        Assert(base + 3 == @pairs[3], "struct pointer advances three elements");
+    }
 
     // Addition, in both operand orders, and subtraction.
     let third = @pairs[2];
-    Assert(third - 1 == @pairs[1], "struct pointer subtracts one element");
-    Assert(third - 2 == base, "struct pointer subtracts back to the start");
+    // Safety: `third` addresses `pairs[2]`, so stepping back one or two elements stays inside `pairs`.
+    unsafe {
+        Assert(third - 1 == @pairs[1], "struct pointer subtracts one element");
+        Assert(third - 2 == base, "struct pointer subtracts back to the start");
+    }
 
     var offset: uint = 2;
-    Assert(base + offset == @pairs[2], "a runtime offset scales too");
-    Assert(offset + base == base + offset, "int + ptr matches ptr + int");
+    // Safety: `offset` is 2, so both sums address `pairs[2]` inside the live four-element `pairs`.
+    unsafe {
+        Assert(base + offset == @pairs[2], "a runtime offset scales too");
+        Assert(offset + base == base + offset, "int + ptr matches ptr + int");
+    }
 
     // Compound assignment moves by elements as well.
     var moving = base;
-    moving += 1;
-    Assert(moving == @pairs[1], "compound addition advances one element");
-    moving += 2;
-    Assert(moving == @pairs[3], "compound addition advances two more");
-    moving -= 3;
+    // Safety: `moving` starts at `pairs[0]` and visits only `pairs[1]`, `pairs[3]` and `pairs[0]`.
+    unsafe {
+        moving += 1;
+        Assert(moving == @pairs[1], "compound addition advances one element");
+        moving += 2;
+        Assert(moving == @pairs[3], "compound addition advances two more");
+        moving -= 3;
+    }
     Assert(moving == base, "compound subtraction returns to the start");
 
     // Indexing and arithmetic agree, since both scale by the element size.
-    Assert(@base[2] == base + 2, "address-of-index matches pointer arithmetic");
+    // Safety: `base` addresses `pairs[0]` and index 2 is inside the live four-element `pairs`.
+    Assert(unsafe { @base[2] == base + 2 }, "address-of-index matches pointer arithmetic");
 
     // Reading and writing through an offset pointer reaches that element and
     // leaves its neighbours alone.
-    Assert((base + 1)[0].a == 20, "offset struct pointer reads its element");
-    Assert((base + 2)[0].b == 31, "offset struct pointer reads a later field");
+    // Safety: `base` addresses `pairs[0]`, so elements 1 and 2 are live elements of `pairs`.
+    unsafe {
+        Assert((base + 1)[0].a == 20, "offset struct pointer reads its element");
+        Assert((base + 2)[0].b == 31, "offset struct pointer reads a later field");
+    }
 
-    let target = base + 3;
-    target[0].a = 99;
+    // Safety: `base` addresses `pairs[0]`, so `base + 3` is the last element of the writable local `pairs`.
+    let target = unsafe { base + 3 };
+    // Safety: `target` addresses `pairs[3]`, an element of the writable local `pairs`.
+    unsafe { target[0].a = 99; }
     Assert(pairs[3].a == 99, "writing through an offset pointer hits its element");
     Assert(pairs[2].a == 30, "writing through an offset pointer spares its neighbour");
 
@@ -75,18 +96,24 @@ func Main() -> int {
                           Wide { a: 4i64, b: 5i64, c: 6i64 },
                           Wide { a: 7i64, b: 8i64, c: 9i64 }];
     let wideBase = @wides[0];
-    Assert(wideBase + 1 == @wides[1], "wide struct pointer advances one element");
-    Assert(wideBase + 2 == @wides[2], "wide struct pointer advances two elements");
-    Assert((wideBase + 2)[0].c == 9i64, "offset wide pointer reads its element");
+    // Safety: `wideBase` addresses `wides[0]` and every offset stays inside the live three-element `wides`.
+    unsafe {
+        Assert(wideBase + 1 == @wides[1], "wide struct pointer advances one element");
+        Assert(wideBase + 2 == @wides[2], "wide struct pointer advances two elements");
+        Assert((wideBase + 2)[0].c == 9i64, "offset wide pointer reads its element");
+    }
 
     // A struct containing a struct, whose size is not a power of two.
     var nests: Nested[3] = [Nested { inner: Pair { a: 1, b: 2 }, tail: 3 },
                             Nested { inner: Pair { a: 4, b: 5 }, tail: 6 },
                             Nested { inner: Pair { a: 7, b: 8 }, tail: 9 }];
     let nestBase = @nests[0];
-    Assert(nestBase + 1 == @nests[1], "nested struct pointer advances one element");
-    Assert((nestBase + 2)[0].inner.a == 7, "offset nested pointer reads its element");
-    Assert((nestBase + 2)[0].tail == 9, "offset nested pointer reads its tail");
+    // Safety: `nestBase` addresses `nests[0]` and every offset stays inside the live three-element `nests`.
+    unsafe {
+        Assert(nestBase + 1 == @nests[1], "nested struct pointer advances one element");
+        Assert((nestBase + 2)[0].inner.a == 7, "offset nested pointer reads its element");
+        Assert((nestBase + 2)[0].tail == 9, "offset nested pointer reads its tail");
+    }
 
     return 0;
 }

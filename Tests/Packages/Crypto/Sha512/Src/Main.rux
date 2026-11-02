@@ -8,7 +8,7 @@ import Crypto::{ Digest, Equal, Sha384Of, Sha512, Sha512Of, Sha512Trunc224Of, Sh
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func FromHex(text: char8[..], into: var char8[..]) {
@@ -17,7 +17,7 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2 {
-            let c = text.data[index * 2 + half] as uint8;
+            let c = text[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
@@ -28,16 +28,16 @@ func FromHex(text: char8[..], into: var char8[..]) {
             value = value * 16 + digit;
             half = half + 1;
         }
-        into.data[index] = value as char8;
+        into[index] = value as char8;
         index = index + 1;
     }
 }
 
 func Check(got: char8[..], expectedHex: char8[..], what: char8[..]) {
     var expected: char8[64];
-    let room = (@expected[0])[..got.length];
+    let room = expected[..got.length];
     FromHex(expectedHex, room);
-    let expectedBytes = (@expected[0])[..got.length];
+    let expectedBytes = expected[..got.length];
     Assert(Equal(got, expectedBytes), what);
 }
 
@@ -45,50 +45,50 @@ func Main() -> int {
     var digest: char8[64];
 
     // SHA-512.
-    let wide = (@digest[0])[..64];
+    let wide = digest[..64];
     Sha512Of(TextBytes(""), wide);
-    Check((@digest[0])[..64],
+    Check(digest[..64],
           "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
           "SHA-512 of the empty message");
     Sha512Of(TextBytes("abc"), wide);
-    Check((@digest[0])[..64],
+    Check(digest[..64],
           "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
           "SHA-512 of abc");
 
     // SHA-384.
-    let medium = (@digest[0])[..48];
+    let medium = digest[..48];
     Sha384Of(TextBytes(""), medium);
-    Check((@digest[0])[..48],
+    Check(digest[..48],
           "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
           "SHA-384 of the empty message");
     Sha384Of(TextBytes("abc"), medium);
-    Check((@digest[0])[..48],
+    Check(digest[..48],
           "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7",
           "SHA-384 of abc");
 
     // The two truncations, whose initial states are what keep them independent of SHA-512.
-    let narrow = (@digest[0])[..28];
+    let narrow = digest[..28];
     Sha512Trunc224Of(TextBytes("abc"), narrow);
-    Check((@digest[0])[..28],
+    Check(digest[..28],
           "4634270f707b6a54daae7530460842e20e37ed265ceee9a43e8924aa",
           "SHA-512/224 of abc");
-    let short = (@digest[0])[..32];
+    let short = digest[..32];
     Sha512Trunc256Of(TextBytes("abc"), short);
-    Check((@digest[0])[..32],
+    Check(digest[..32],
           "53048e2681941ef99b2e29b76b4c7dabe4c2d0c634fc6d46e0e2f13107e7af23",
           "SHA-512/256 of abc");
 
     // No variant is a prefix of another, which is the property the distinct initial states buy.
     var full: char8[64];
     var truncated: char8[64];
-    Sha512Of(TextBytes("abc"), (@full[0])[..64]);
-    Sha512Trunc256Of(TextBytes("abc"), (@truncated[0])[..32]);
-    Assert(!Equal((@full[0])[..32],
-                  (@truncated[0])[..32]),
+    Sha512Of(TextBytes("abc"), full[..64]);
+    Sha512Trunc256Of(TextBytes("abc"), truncated[..32]);
+    Assert(!Equal(full[..32],
+                  truncated[..32]),
            "SHA-512/256 is not the first half of SHA-512");
-    Sha384Of(TextBytes("abc"), (@truncated[0])[..48]);
-    Assert(!Equal((@full[0])[..48],
-                  (@truncated[0])[..48]),
+    Sha384Of(TextBytes("abc"), truncated[..48]);
+    Assert(!Equal(full[..48],
+                  truncated[..48]),
            "and SHA-384 is not its first three quarters");
 
     // The incremental contract, across every split of every length that spans the block and padding boundaries.
@@ -101,16 +101,16 @@ func Main() -> int {
     var length: uint = 0;
     while length <= 300 {
         var oneShot: char8[64];
-        Sha512Of((@message[0])[..length], (@oneShot[0])[..64]);
-        let oneShotBytes = (@oneShot[0])[..64];
+        Sha512Of(message[..length], oneShot[..64]);
+        let oneShotBytes = oneShot[..64];
         var split: uint = 0;
         while split <= length {
             var incremental = Sha512();
-            incremental.Update((@message[0])[..split]);
+            incremental.Update(message[..split]);
             incremental.Update(message[split..length]);
             var got: char8[64];
-            incremental.Finish((@got[0])[..64]);
-            Assert(Equal((@got[0])[..64], oneShotBytes),
+            incremental.Finish(got[..64]);
+            Assert(Equal(got[..64], oneShotBytes),
                    "every split of a message gives the same digest");
             split = split + 1;
         }

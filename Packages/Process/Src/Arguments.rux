@@ -25,7 +25,8 @@ pub func ArgumentCount() -> uint {
 /// @see https://rux-lang.dev/docs/api/process/arguments#argument
 pub func Argument(index: uint) -> OsStringView? {
     if index >= NativeArgumentCount() { return none; }
-    return NativeArgument(index);
+    // Safety: `index` is below the argument count, checked above.
+    return unsafe { NativeArgument(index) };
 }
 
 /// A walk over the process's arguments in order, the program first.

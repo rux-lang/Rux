@@ -9,11 +9,13 @@ import Memory::IsPointerAligned;
 func Main() -> ! AllocError {
     // The buffer is a local array, so nothing here allocates at all.
     var storage: byte[512];
-    var buffer = FixedBuffer(@storage[0] as *var opaque, 512);
+    // Safety: `storage` is a local array of 512 bytes that outlives `buffer` and is touched only through it.
+    var buffer = unsafe { FixedBuffer(@storage[0] as *var opaque, 512) };
     Assert(buffer.BytesUsed() == 0, "an unused allocator has handed out nothing");
     Assert(buffer.BytesRemaining() == 512, "and has its whole buffer left");
 
-    var handle = buffer.Handle();
+    // Safety: `buffer` is a local that outlives `handle` and is never moved.
+    var handle = unsafe { buffer.Handle() };
     let allocator: Allocator = handle;
 
     // A zero-sized layout costs the buffer nothing.
@@ -34,12 +36,16 @@ func Main() -> ! AllocError {
     Assert((second as uint) == (first as uint) + 32, "landing immediately after the first");
 
     // Writing through both addresses must not disturb either.
-    let firstBytes = first as *var uint64;
-    let secondBytes = second as *var uint64;
-    *firstBytes = 0x0123456789ABCDEF;
-    *secondBytes = 0xFEDCBA9876543210;
-    Assert(*firstBytes == 0x0123456789ABCDEF, "the first allocation keeps its bytes");
-    Assert(*secondBytes == 0xFEDCBA9876543210u64, "and so does the second");
+    // Safety: `first` and `second` are distinct live 32-byte allocations aligned to 8, so each holds a `uint64`.
+    let (firstValue, secondValue) = unsafe {
+        let firstBytes = first as *var uint64;
+        let secondBytes = second as *var uint64;
+        *firstBytes = 0x0123456789ABCDEF;
+        *secondBytes = 0xFEDCBA9876543210;
+        (*firstBytes, *secondBytes)
+    };
+    Assert(firstValue == 0x0123456789ABCDEF, "the first allocation keeps its bytes");
+    Assert(secondValue == 0xFEDCBA9876543210u64, "and so does the second");
 
     // A stricter alignment is honoured, and the padding it needs is counted as used.
     let usedBefore = buffer.BytesUsed();
@@ -110,9 +116,11 @@ func Main() -> ! AllocError {
     Assert((afterReset as uint) == (first as uint), "starting from the front of the buffer once more");
 
     // An allocator over no storage is a usable allocator that refuses everything.
-    var unbacked = FixedBuffer(null, 4096);
+    // Safety: a null `storage` gives an allocator that refuses every request, so there is no storage to keep valid.
+    var unbacked = unsafe { FixedBuffer(null, 4096) };
     Assert(unbacked.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
-    var unbackedHandle = unbacked.Handle();
+    // Safety: `unbacked` is a local that outlives `unbackedHandle` and is never moved.
+    var unbackedHandle = unsafe { unbacked.Handle() };
     let empties: Allocator = unbackedHandle;
     var refused: *var opaque = null;
     Assert(Refusal(empties.Allocate(small)) == AllocError::OutOfMemory, "and refuses every request");

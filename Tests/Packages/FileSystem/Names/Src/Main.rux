@@ -13,9 +13,9 @@ import Core::{ #target };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import FileSystem::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
 
-func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
-    return Path::FromView((*holder).View());
+func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
+    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    return Path::FromView(holder.View());
 }
 
 // Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
@@ -71,29 +71,29 @@ func Main() -> int ! IoError {
     let allocator: Allocator = system;
 
     var dirHolder = OsString(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", @dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", dirHolder);
     DeleteDirectory(allocator, dir) catch { else => {} };
     MakeDirectory(allocator, dir)?;
 
     // Characters no ANSI code page holds, which is what a lossy conversion loses first.
     var cyrillicHolder = OsString(allocator);
-    let cyrillic = PathOf(allocator, "Привіт.txt", @cyrillicHolder);
+    let cyrillic = PathOf(allocator, "Привіт.txt", cyrillicHolder);
     RoundTrip(allocator, dir, cyrillic.name, "a Cyrillic name is created");
 
     var mixedHolder = OsString(allocator);
-    let mixed = PathOf(allocator, "café-日本語.txt", @mixedHolder);
+    let mixed = PathOf(allocator, "café-日本語.txt", mixedHolder);
     RoundTrip(allocator, dir, mixed.name, "a name mixing scripts is created");
 
     // An astral-plane character: one character, two UTF-16 code units, four UTF-8 bytes. A conversion that
     // walks units rather than characters cuts it in half here and nowhere else.
     var astralHolder = OsString(allocator);
-    let astral = PathOf(allocator, "emoji-😀.txt", @astralHolder);
+    let astral = PathOf(allocator, "emoji-😀.txt", astralHolder);
     RoundTrip(allocator, dir, astral.name, "an astral-plane name is created");
 
     // A base character followed by a combining mark: two characters that render as one, and which the
     // filesystem must not silently normalize into the single precomposed character.
     var combiningHolder = OsString(allocator);
-    let combining = PathOf(allocator, "café.txt", @combiningHolder);
+    let combining = PathOf(allocator, "café.txt", combiningHolder);
     RoundTripCombining(allocator, dir, combining.name);
 
     // A Unix name need not be text — except on Darwin, whose filesystems take only valid UTF-8 and refuse the

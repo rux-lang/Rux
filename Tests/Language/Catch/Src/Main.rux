@@ -39,7 +39,8 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        self.counter.count = self.counter.count + 1;
+        // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
+        unsafe { self.counter.count = self.counter.count + 1; }
     }
 }
 
@@ -80,7 +81,8 @@ func Origin(valid: bool) -> Point ! ParseError {
 }
 
 func Counted(calls: *var int32, text: int32) -> int32 ! ParseError {
-    *calls = *calls + 1i32;
+    // Safety: every caller passes `@calls`, a live local of `Main`.
+    unsafe { *calls = *calls + 1i32; }
     return Parse(text);
 }
 

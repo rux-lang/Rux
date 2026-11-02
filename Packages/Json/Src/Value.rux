@@ -31,11 +31,13 @@ pub enum JsonError: int32 {
 // around the number are JavaScript or worse, and none of them is JSON.
 func IsJsonNumberText(text: char8[..]) -> bool {
     var at: uint = 0;
-    if at < text.length && (text.data[at] as uint8) == 0x2D {
+    // Safety: the read happens only when `at` is below `text.length`, tested first.
+    if at < text.length && (unsafe { text.data[at] } as uint8) == 0x2D {
         at = at + 1;
     }
     if at >= text.length { return false; }
-    let first = text.data[at] as uint8;
+    // Safety: `at` is below `text.length`, checked just above.
+    let first = unsafe { text.data[at] } as uint8;
     if first == 0x30 {
         at = at + 1;
     }
@@ -45,14 +47,17 @@ func IsJsonNumberText(text: char8[..]) -> bool {
     else {
         return false;
     }
-    if at < text.length && (text.data[at] as uint8) == 0x2E {
+    // Safety: the read happens only when `at` is below `text.length`, tested first.
+    if at < text.length && (unsafe { text.data[at] } as uint8) == 0x2E {
         let fractionEnd = DigitRunEnd(text, at + 1);
         if fractionEnd == at + 1 { return false; }
         at = fractionEnd;
     }
-    if at < text.length && ((text.data[at] as uint8) == 0x65 || (text.data[at] as uint8) == 0x45) {
+    // Safety: the reads happen only when `at` is below `text.length`, tested first.
+    if at < text.length && unsafe { (text.data[at] as uint8) == 0x65 || (text.data[at] as uint8) == 0x45 } {
         at = at + 1;
-        if at < text.length && ((text.data[at] as uint8) == 0x2B || (text.data[at] as uint8) == 0x2D) {
+        // Safety: the reads happen only when `at` is below `text.length`, tested first.
+        if at < text.length && unsafe { (text.data[at] as uint8) == 0x2B || (text.data[at] as uint8) == 0x2D } {
             at = at + 1;
         }
         let exponentEnd = DigitRunEnd(text, at);
@@ -66,7 +71,8 @@ func IsJsonNumberText(text: char8[..]) -> bool {
 func DigitRunEnd(text: char8[..], at: uint) -> uint {
     var index = at;
     while index < text.length {
-        let c = text.data[index] as uint8;
+        // Safety: `index` is below `text.length`, checked by the loop.
+        let c = unsafe { text.data[index] } as uint8;
         if c < 0x30 || c > 0x39 { break; }
         index = index + 1;
     }
@@ -136,7 +142,9 @@ extend JsonNumber {
     /// @returns whether the text is an integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-int64
     pub func AsInt64(self: &JsonNumber, result: *var int64) -> bool {
-        *result = ParseInt64(self.text.View().Bytes()) catch { else => return false };
+        let value = ParseInt64(self.text.View().Bytes()) catch { else => return false };
+        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `int64`.
+        unsafe { *result = value; }
         return true;
     }
 
@@ -145,7 +153,9 @@ extend JsonNumber {
     /// @returns whether the text is a non-negative integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-uint64
     pub func AsUint64(self: &JsonNumber, result: *var uint64) -> bool {
-        *result = ParseUint64(self.text.View().Bytes()) catch { else => return false };
+        let value = ParseUint64(self.text.View().Bytes()) catch { else => return false };
+        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `uint64`.
+        unsafe { *result = value; }
         return true;
     }
 
@@ -156,7 +166,9 @@ extend JsonNumber {
     /// @returns whether the text converted; the value is the nearest representable one
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-float64
     pub func AsFloat64(self: &JsonNumber, result: *var float64) -> bool {
-        *result = ParseFloat64(self.text.View().Bytes()) catch { else => return false };
+        let value = ParseFloat64(self.text.View().Bytes()) catch { else => return false };
+        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `float64`.
+        unsafe { *result = value; }
         return true;
     }
 
@@ -167,7 +179,8 @@ extend JsonNumber {
         let bytes = self.text.View().Bytes();
         var index: uint = 0;
         while index < bytes.length {
-            let c = bytes.data[index] as uint8;
+            // Safety: `index` is below `bytes.length`, checked by the loop.
+            let c = unsafe { bytes.data[index] } as uint8;
             if c == 0x2E || c == 0x65 || c == 0x45 { return false; }
             index = index + 1;
         }
@@ -322,7 +335,8 @@ extend JsonValue {
     /// @see https://rux-lang.dev/docs/api/json/json-value#as-boolean
     pub func AsBoolean(self: &JsonValue, result: *var bool) -> bool {
         if self.kind != JsonKind::Boolean { return false; }
-        *result = self.boolean;
+        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `bool`.
+        unsafe { *result = self.boolean; }
         return true;
     }
 
@@ -382,7 +396,8 @@ extend JsonValue {
     pub func At(self: &JsonValue, index: uint) -> *JsonValue {
         if self.kind != JsonKind::Array || index >= self.elements.Length() { return null; }
         let slice = self.elements.AsSlice();
-        return @slice.data[index];
+        // Safety: `index` is below `self.elements.Length()`, the length of `slice`, checked above.
+        return unsafe { @slice.data[index] };
     }
 
     /// The value of the member named `name`, borrowed, or null when there is none.
@@ -397,7 +412,8 @@ extend JsonValue {
         var index: uint = 0;
         while index < slice.length {
             var held = name;
-            if slice.data[index].name.View().Equals(held) { return @slice.data[index].value; }
+            // Safety: `index` is below `slice.length`, checked by the loop.
+            if unsafe { slice.data[index].name.View().Equals(held) } { return unsafe { @slice.data[index].value }; }
             index = index + 1;
         }
         return null;
@@ -410,7 +426,8 @@ extend JsonValue {
     pub func MemberAt(self: &JsonValue, index: uint) -> *JsonMember {
         if self.kind != JsonKind::Object || index >= self.members.Length() { return null; }
         let slice = self.members.AsSlice();
-        return @slice.data[index];
+        // Safety: `index` is below `self.members.Length()`, the length of `slice`, checked above.
+        return unsafe { @slice.data[index] };
     }
 
     /// Removes the first member named `name`, if there is one.
@@ -429,7 +446,8 @@ extend JsonValue {
         var index: uint = 0;
         while index < slice.length {
             var held = name;
-            if slice.data[index].name.View().Equals(held) {
+            // Safety: `index` is below `slice.length`, checked by the loop.
+            if unsafe { slice.data[index].name.View().Equals(held) } {
                 target = index;
                 index = slice.length;
             }

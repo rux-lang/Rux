@@ -87,7 +87,8 @@ func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> ! UrlError {
     while index > 0 {
         index = index - 1;
         if authority[index] == '@' {
-            pieces.userinfo = authority[..index];
+            // Safety: the one caller passes `@` of its own local `Pieces`, live and writable for the whole call.
+            unsafe { pieces.userinfo = authority[..index]; }
             hostStart = index + 1;
             break;
         }
@@ -97,10 +98,12 @@ func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> ! UrlError {
         var close: uint = 1;
         while close < rest.length && rest[close] != ']' { close = close + 1; }
         if close == rest.length { fail UrlError::InvalidHost; }
-        pieces.host = rest[..close + 1];
+        // Safety: the one caller passes `@` of its own local `Pieces`, live and writable for the whole call.
+        unsafe { pieces.host = rest[..close + 1]; }
         if close + 1 < rest.length {
             if rest[close + 1] != ':' { fail UrlError::InvalidHost; }
-            pieces.port = rest[close + 2..];
+            // Safety: the one caller passes `@` of its own local `Pieces`, live and writable for the whole call.
+            unsafe { pieces.port = rest[close + 2..]; }
         }
         return;
     }
@@ -110,6 +113,9 @@ func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> ! UrlError {
         if rest[scan] == ':' { colon = scan; }
         scan = scan + 1;
     }
-    pieces.host = rest[..colon];
-    if colon < rest.length { pieces.port = rest[colon + 1..]; }
+    // Safety: the one caller passes `@` of its own local `Pieces`, live and writable for the whole call.
+    unsafe {
+        pieces.host = rest[..colon];
+        if colon < rest.length { pieces.port = rest[colon + 1..]; }
+    }
 }

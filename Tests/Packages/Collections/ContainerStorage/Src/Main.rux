@@ -40,23 +40,32 @@ struct RefusingAllocator {
 
 extend RefusingAllocator : Allocator {
     func Allocate(self: &RefusingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
-        self.state.requests = self.state.requests + 1;
-        if self.state.refusing { fail AllocError::OutOfMemory; }
-        let block = self.state.backing.Allocate(layout)?;
-        self.state.live = self.state.live + 1;
+        // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
+        unsafe { self.state.requests = self.state.requests + 1; }
+        // Safety: `state` points at the test's live `StorageState`.
+        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        // Safety: `state` points at the test's live `StorageState`.
+        let block = unsafe { self.state.backing.Allocate(layout) }?;
+        // Safety: `state` points at the test's live `StorageState`.
+        unsafe { self.state.live = self.state.live + 1; }
         return block;
     }
 
     func Deallocate(self: &RefusingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
-        self.state.backing.Deallocate(block, layout)?;
-        self.state.live = self.state.live - 1;
+        // Safety: `state` points at the test's live `StorageState`.
+        unsafe { self.state.backing.Deallocate(block, layout)?; }
+        // Safety: `state` points at the test's live `StorageState`.
+        unsafe { self.state.live = self.state.live - 1; }
     }
 
     func Reallocate(self: &RefusingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
-        self.state.requests = self.state.requests + 1;
-        if self.state.refusing { fail AllocError::OutOfMemory; }
-        return self.state.backing.Reallocate(block, oldLayout, newLayout);
+        // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
+        unsafe { self.state.requests = self.state.requests + 1; }
+        // Safety: `state` points at the test's live `StorageState`.
+        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        // Safety: `state` points at the test's live `StorageState`.
+        return unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
     }
 }
 
@@ -80,7 +89,8 @@ extend Counted {
 
     func ~Counted(self: &var Counted) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -97,7 +107,8 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterFi
         index++;
     }
     Assert(vector.Length() == count, "and the vector holds every one of them");
-    *afterFilling = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterFilling = *counter; }
 }
 
 // A scope in which a growth is refused while counted elements are held, so what a refusal does to them is separable
@@ -112,12 +123,15 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
         index++;
     }
 
-    state.refusing = true;
+    // Safety: `state` points at a local of `Main`, which outlives this call.
+    unsafe { state.refusing = true; }
     Assert(Refusal(vector.Reserve(4096)) == CollectionError::OutOfMemory,
            "a growth the allocator refuses is reported");
-    state.refusing = false;
+    // Safety: `state` points at a local of `Main`, which outlives this call.
+    unsafe { state.refusing = false; }
     Assert(vector.Length() == 4, "with every element still held");
-    *afterRefusal = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterRefusal = *counter; }
 }
 
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure

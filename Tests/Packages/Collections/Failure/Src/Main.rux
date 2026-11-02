@@ -81,7 +81,8 @@ func Main() -> int {
     // A bulk append is checked the same way, and a rejected one appends
     // nothing rather than part of its input.
     let borrowed = populated.AsSlice();
-    let hostile = (borrowed.data)[..uint::Max];
+    // Safety: a deliberately false length; `PushSlice` must refuse it from the length alone, before reading an element.
+    let hostile = unsafe { (borrowed.data)[..uint::Max] };
     if Refusal(populated.PushSlice(hostile)) != CollectionError::CapacityOverflow { return 40; }
     if populated.AsSlice().data != block || populated.Length() != length { return 41; }
     if populated.Capacity() != capacity { return 42; }

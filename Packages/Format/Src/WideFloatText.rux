@@ -35,7 +35,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
     if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
-    var cursor = ByteCursor((@storage[2])[..254]);
+    var cursor = ByteCursor(storage[2..256]);
     if value.class == WideClass::Zero {
         if value.negative {
             cursor.Push(c8'-');
@@ -45,7 +45,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
     else {
         var count: uint = 0;
         var exponent10: int = 0;
-        let room = (@digits[0])[..160];
+        let room = digits[..];
         var reason = WideDigitFailure::None;
         if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10, @reason) {
             fail FormatError::TextFailure(KindOf(reason));
@@ -53,7 +53,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         if value.negative {
             cursor.Push(c8'-');
         }
-        let produced = (@digits[0])[..count];
+        let produced = digits[..count];
         if exponent10 < -4 || exponent10 >= layout.DecimalDigits() as int {
             WriteScientific(cursor, produced, count, exponent10);
         }
@@ -62,9 +62,9 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         }
     }
     var rendered = cursor.Written();
-    if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
+    if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
         storage[1] = c8'+';
-        rendered = (@storage[1])[..rendered.length + 1];
+        rendered = storage[1..rendered.length + 2];
     }
     return WriteAligned(writer, spec, rendered, true);
 }
@@ -81,15 +81,19 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let blockLayout = Layout::New(digitRoom + textRoom, 1u) ?? (empty);
     if blockLayout.size == 0 { return .Failure(FormatError::TextFailure(TextFailureKind::LengthOverflow)); }
     let block = allocator.Allocate(blockLayout) catch { else => return .Failure(FormatError::TextFailure(TextFailureKind::OutOfMemory)) };
-    let digits = block as *var char8;
-    let text = digits + digitRoom;
+    // Safety: `block` came from `Allocate` above with `digitRoom + textRoom` bytes at alignment one, every bit
+    // pattern is a valid `char8`, and the block stays live until the `Deallocate` at the end; the first `digitRoom`
+    // bytes hold the digits.
+    let digits = unsafe { (block as *var char8)[..digitRoom] };
+    // Safety: the same live block; the `textRoom` bytes after the first `digitRoom` are the rest of it.
+    let text = unsafe { ((block as *var char8) + digitRoom)[..textRoom] };
     var count: uint = 0;
     var exponent10: int = 0;
     // A block was allocated above and must be released on every path, so failure is accumulated and returned at
     // the end rather than propagated with `?`, which would leave the block behind.
     var failure: ! FormatError = .Success(());
     if value.class != WideClass::Zero {
-        let room = (digits)[..digitRoom];
+        let room = digits;
         var reason = WideDigitFailure::None;
         if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10, @reason) {
             failure = .Failure(FormatError::TextFailure(KindOf(reason)));
@@ -100,7 +104,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
         .Failure(_) => false
     };
     if succeeded {
-        var cursor = ByteCursor((text + 1u)[..textRoom - 1u]);
+        var cursor = ByteCursor(text[1u..textRoom]);
         if value.negative && value.class != WideClass::Zero {
             cursor.Push(c8'-');
         }
@@ -130,9 +134,9 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             }
         }
         var rendered = cursor.Written();
-        if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
+        if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
             text[0] = c8'+';
-            rendered = (text)[..rendered.length + 1u];
+            rendered = text[..rendered.length + 1u];
         }
         if cursor.Overran() {
             failure = .Failure(FormatError::TextFailure(TextFailureKind::LengthOverflow));

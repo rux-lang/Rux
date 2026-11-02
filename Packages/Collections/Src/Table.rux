@@ -22,6 +22,10 @@
 // keys, so a probe that passes other keys reads one byte for each instead of calling `equals` on it, which for text
 // keys means touching memory elsewhere. Only one key in 256 that differs gets as far as `equals`.
 // Internal to this package: the kernel, not something a caller reaches for.
+// The table invariant, which every `Safety:` comment below leans on: `capacity` is zero, with all four runs null, or
+// a power of two with each run allocated for `capacity` slots; every slot below `capacity` has its state byte written,
+// and its key, value and tag are initialized exactly when that byte is not `SlotEmpty`. Since the capacity is a power
+// of two, `HomeOf` and `NextOf` always name a slot below it.
 
 import Core::uint;
 import Allocator::Allocator;
@@ -166,7 +170,8 @@ extend Table<K, V> {
     /// @returns whether that slot holds an entry
     /// @see https://rux-lang.dev/docs/api/collections/table#is-occupied
     pub func IsOccupied(self: &Table<K, V>, index: uint) -> bool {
-        return index < self.capacity && self.states[index] != SlotEmpty;
+        // Safety: the table invariant: `index < self.capacity`, checked first, so the state byte is written.
+        return index < self.capacity && unsafe { self.states[index] } != SlotEmpty;
     }
 
     // Where a hash starts probing.
@@ -199,11 +204,14 @@ extend Table<K, V> {
         var index = self.HomeOf(hashed);
         var distance: uint = 0;
         while distance < self.capacity {
-            let state = self.states[index];
+            // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
+            let state = unsafe { self.states[index] };
             if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
             if occupantDistance < distance { return none; }
-            if self.tags[index] == tag && equals(self.keys[index], key) { return .Some(index); }
+            // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
+            // and key are initialized.
+            if unsafe { self.tags[index] == tag && equals(self.keys[index], key) } { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -219,11 +227,14 @@ extend Table<K, V> {
         var index = self.HomeOf(hashed);
         var distance: uint = 0;
         while distance < self.capacity {
-            let state = self.states[index];
+            // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
+            let state = unsafe { self.states[index] };
             if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
             if occupantDistance < distance { return none; }
-            if self.tags[index] == tag && equals(self.keys[index], key) { return .Some(index); }
+            // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
+            // and key are initialized.
+            if unsafe { self.tags[index] == tag && equals(self.keys[index], key) } { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -236,7 +247,8 @@ extend Table<K, V> {
     // would not help.
 
     // Recompute the home from the current capacity; a slot cached before EnsureRoom would be invalid after growth.
-    func PlaceHashed(self: &var Table<K, V>, key: K, value: V, hashed: uint64) -> uint? {
+    // Safety: the capacity must be nonzero, as `EnsureRoom` or `Rehash` leaves it, so every probed slot is allocated.
+    unsafe func PlaceHashed(self: &var Table<K, V>, key: K, value: V, hashed: uint64) -> uint? {
         var index = self.HomeOf(hashed);
         var distance: uint = 0;
         var carriedKey <- key;
@@ -286,7 +298,8 @@ extend Table<K, V> {
     // Every following entry that is not already at home moves back one slot, which leaves the table exactly as if
     // the removed entry had never been inserted. That is what a tombstone would have stood in for, and why there are
     // none here.
-    func Vacate(self: &var Table<K, V>, index: uint) {
+    // Safety: `index` must be an occupied slot below the capacity whose key and value the caller has moved out.
+    unsafe func Vacate(self: &var Table<K, V>, index: uint) {
         var hole = index;
         var next = self.NextOf(hole);
         while true {
@@ -328,11 +341,13 @@ extend Table<K, V> {
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with. A failure leaves the table
     /// exactly as it was: the new runs are taken and filled before the old ones are released.
     /// Runs in time proportional to the capacity.
+    /// Safety: `capacity` must be a power of two no smaller than `MinimumTableCapacity`, as `CapacityFor` returns:
+    /// every slot index is masked by it, so any other value addresses past the runs.
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/table#rehash
-    pub func Rehash(self: &var Table<K, V>, capacity: uint,
+    pub unsafe func Rehash(self: &var Table<K, V>, capacity: uint,
                 hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
         var keys = AllocateBlock<K>(self.allocator, capacity)?;
         var values = AllocateBlock<V>(self.allocator, capacity) catch {
@@ -359,6 +374,7 @@ extend Table<K, V> {
 
         var index: uint = 0;
         while index < capacity {
+            // `states` comes from `AllocateBlock` with room for `capacity` bytes, and the loop stays below that.
             states[index] = SlotEmpty;
             index++;
         }
@@ -378,6 +394,9 @@ extend Table<K, V> {
 
         index = 0;
         while index < oldCapacity {
+            // By the table invariant for the old runs, a slot below `oldCapacity` has its state written, and its key
+            // and value initialized where that is not `SlotEmpty`. The new runs have the nonzero capacity the caller
+            // guarantees, which is what `PlaceHashed` needs.
             if oldStates[index] != SlotEmpty {
                 // Relocated rather than copied: each entry has exactly one home afterwards, in the new run.
                 let hashed = hash(oldKeys[index], self.seed.low, self.seed.high);
@@ -404,7 +423,8 @@ extend Table<K, V> {
         var required = AddLength(self.length, 1)?;
         var wanted = Table::CapacityFor<K, V>(required)?;
         if wanted <= self.capacity { return; }
-        return self.Rehash(wanted, hash);
+        // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
+        return unsafe { self.Rehash(wanted, hash) };
     }
 
     /// Makes room for `additional` more entries on top of those already present.
@@ -418,7 +438,8 @@ extend Table<K, V> {
         var required = AddLength(self.length, additional)?;
         var wanted = Table::CapacityFor<K, V>(required)?;
         if wanted <= self.capacity { return; }
-        return self.Rehash(wanted, hash);
+        // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
+        return unsafe { self.Rehash(wanted, hash) };
     }
 
     /// Releases the capacity the entry count does not need.
@@ -434,7 +455,8 @@ extend Table<K, V> {
         }
         var wanted = Table::CapacityFor<K, V>(self.length)?;
         if wanted >= self.capacity { return; }
-        return self.Rehash(wanted, hash);
+        // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
+        return unsafe { self.Rehash(wanted, hash) };
     }
 
     /// Destroys every entry, keeping the storage.
@@ -443,12 +465,17 @@ extend Table<K, V> {
     pub func Clear(self: &var Table<K, V>) {
         var index: uint = 0;
         while index < self.capacity {
-            if self.states[index] != SlotEmpty {
-                // Moving each into a local destroys it when the local's life ends, which is the only way a container
-                // has to destroy something it does not know is droppable.
-                let takenKey <- self.keys[index];
-                let takenValue <- self.values[index];
-                self.states[index] = SlotEmpty;
+            // Safety: the table invariant: `index < self.capacity`, checked by the loop, so the state byte is written,
+            // and the key and value are initialized where it is not `SlotEmpty`. Each is moved out once and the slot
+            // is marked empty at once.
+            unsafe {
+                if self.states[index] != SlotEmpty {
+                    // Moving each into a local destroys it when the local's life ends, which is the only way a
+                    // container has to destroy something it does not know is droppable.
+                    let takenKey <- self.keys[index];
+                    let takenValue <- self.values[index];
+                    self.states[index] = SlotEmpty;
+                }
             }
             index++;
         }

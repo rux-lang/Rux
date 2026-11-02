@@ -22,7 +22,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -53,8 +53,8 @@ func Refusal(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) -> boo
         .Success(_) => false,
         .Failure(reason) => {
             var storage: char8[96];
-            let length = Rendered(reason, (@storage[0])[..96]);
-            return Same((@storage[0])[..length], expected);
+            let length = Rendered(reason, storage[..96]);
+            return Same(storage[..length], expected);
         }
     };
 }
@@ -78,27 +78,32 @@ struct CountingAllocator {
 
 extend CountingAllocator : Allocator {
     func Allocate(self: &CountingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
-        let block = self.state.inner.Allocate(layout)?;
-        self.state.live = self.state.live + 1;
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        let block = (unsafe { self.state.inner.Allocate(layout) })?;
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        unsafe { self.state.live = self.state.live + 1; }
         return block;
     }
 
     func Deallocate(self: &CountingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
-        self.state.inner.Deallocate(block, layout)?;
-        self.state.live = self.state.live - 1;
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        unsafe { self.state.inner.Deallocate(block, layout)?; }
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        unsafe { self.state.live = self.state.live - 1; }
     }
 
     func Reallocate(self: &CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
-        return self.state.inner.Reallocate(block, oldLayout, newLayout);
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        return unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
     }
 }
 
 // A scope for a document, so its destruction happens somewhere the count can be read across. `whileHeld` reports
 // what was out while the document was still whole, which is what separates "released" from "never allocated".
-func ParseAndDrop(allocator: Allocator, text: char8[..], state: *var CountState, whileHeld: *var int32) {
+func ParseAndDrop(allocator: Allocator, text: char8[..], state: &CountState, whileHeld: &var int32) {
     var kept = Accepts(allocator, text, "a whole document parses");
-    *whileHeld = state.live;
+    whileHeld = state.live;
 }
 
 func Main() -> int {
@@ -175,7 +180,9 @@ func Main() -> int {
     Assert(keptFirst.Length() == 1, "and leaves one member");
     let nameA = View("a");
     var firstValue: int64 = 0;
-    Assert((*(*keptFirst.Find(nameA)).AsNumber()).AsInt64(@firstValue) && firstValue == 1,
+    // Safety: `keptFirst` holds one member named `a`, so `Find` returns a non-null pointer into it, and
+    // `AsNumber` points at that member's number payload.
+    Assert(unsafe { (*(*keptFirst.Find(nameA)).AsNumber()).AsInt64(@firstValue) } && firstValue == 1,
            "which holds the first value");
 
     var keepLastParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
@@ -183,7 +190,9 @@ func Main() -> int {
     var keptLast = Built(allocator, keepLastParser, "keeping the last accepts it too");
     Assert(keptLast.Length() == 1, "and also leaves one member");
     var lastValue: int64 = 0;
-    Assert((*(*keptLast.Find(nameA)).AsNumber()).AsInt64(@lastValue) && lastValue == 2,
+    // Safety: `keptLast` holds one member named `a`, so `Find` returns a non-null pointer into it, and
+    // `AsNumber` points at that member's number payload.
+    Assert(unsafe { (*(*keptLast.Find(nameA)).AsNumber()).AsInt64(@lastValue) } && lastValue == 2,
            "which holds the last value");
 
     var keepAllParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
@@ -191,15 +200,20 @@ func Main() -> int {
     var keptAll = Built(allocator, keepAllParser, "keeping all accepts it");
     Assert(keptAll.Length() == 2, "and keeps both members, so the document is preserved exactly");
     var foundValue: int64 = 0;
-    Assert((*(*keptAll.Find(nameA)).AsNumber()).AsInt64(@foundValue) && foundValue == 1,
+    // Safety: `keptAll` holds members named `a`, so `Find` returns a non-null pointer into it, and
+    // `AsNumber` points at that member's number payload.
+    Assert(unsafe { (*(*keptAll.Find(nameA)).AsNumber()).AsInt64(@foundValue) } && foundValue == 1,
            "with lookup finding the first, which is what a reader encounters");
 
     // Insertion order is kept, which is what lets a document be written back recognisably.
     var ordered = Accepts(allocator, "{\"zeta\":1,\"alpha\":2}", "an object with several members parses");
     let zeta = View("zeta");
     let alpha = View("alpha");
-    Assert(ordered.MemberAt(0).name.View().Equals(zeta), "the first member is the first written");
-    Assert(ordered.MemberAt(1).name.View().Equals(alpha), "and the second the second");
+    // Safety: `ordered` has two members, so `MemberAt(0)` and `MemberAt(1)` return non-null pointers into it.
+    unsafe {
+        Assert(ordered.MemberAt(0).name.View().Equals(zeta), "the first member is the first written");
+        Assert(ordered.MemberAt(1).name.View().Equals(alpha), "and the second the second");
+    }
 
     // The limits, reached through the parser rather than the lexer.
     var shallow = JsonLimits::Default();
@@ -260,7 +274,7 @@ func Main() -> int {
     // A document that parses and is then dropped ends at the same count, so the check above is measuring cleanup
     // rather than a parser that never allocated.
     var whileHeld: int32 = 0;
-    ParseAndDrop(counted, "[1,2,\"three\"]", @state, @whileHeld);
+    ParseAndDrop(counted, "[1,2,\"three\"]", state, whileHeld);
     Assert(whileHeld > 0, "and the same document, whole, takes storage");
     Assert(state.live == 0, "which comes back when the document's life ends");
 
@@ -269,9 +283,12 @@ func Main() -> int {
     let three = View("three");
     let two = View("two");
     let one = View("one");
-    Assert(reversed.MemberAt(0).name.View().Equals(three), "with its first member first");
-    Assert(reversed.MemberAt(1).name.View().Equals(two), "its second second");
-    Assert(reversed.MemberAt(2).name.View().Equals(one), "and its third third");
+    // Safety: `reversed` has three members, so `MemberAt` returns a non-null pointer into it for 0, 1 and 2.
+    unsafe {
+        Assert(reversed.MemberAt(0).name.View().Equals(three), "with its first member first");
+        Assert(reversed.MemberAt(1).name.View().Equals(two), "its second second");
+        Assert(reversed.MemberAt(2).name.View().Equals(one), "and its third third");
+    }
 
 
     // A string carrying an escape and a raw character outside ASCII: the two together are what caught a

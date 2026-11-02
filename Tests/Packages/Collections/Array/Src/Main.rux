@@ -16,7 +16,8 @@ struct Tracked {
 extend Tracked {
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -38,17 +39,22 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     items.Push(Tracked { counter: destroyed, value: 1 }) catch { else => Panic("a tracked element is pushed") };
     items.Push(Tracked { counter: destroyed, value: 2 }) catch { else => Panic("a tracked element is pushed") };
     var array = (<-items).IntoArray() catch { else => Panic("the vector hands its elements to an array") };
-    Assert(*destroyed == 0, "moving the elements into the array destroys none of them");
+    // Safety: `destroyed` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *destroyed == 0 }, "moving the elements into the array destroys none of them");
     array.Set(0, Tracked { counter: replacements, value: 10 }) catch { else => Panic("setting an element succeeds") };
-    Assert(*destroyed == 1, "setting destroys the element it replaces");
-    Assert(*replacements == 0, "and not the one it stores");
+    // Safety: `destroyed` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *destroyed == 1 }, "setting destroys the element it replaces");
+    // Safety: `replacements` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *replacements == 0 }, "and not the one it stores");
     Assert(Refusal(array.Set(2, Tracked { counter: replacements, value: 99 })) == CollectionError::IndexOutOfRange,
         "setting past the end is refused");
-    Assert(*replacements == 1, "destroying the refused value rather than leaking it");
+    // Safety: `replacements` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { *replacements == 1 }, "destroying the refused value rather than leaking it");
     var previous = array.Replace(1, Tracked { counter: destroyed, value: 20 }) catch {
         else => Panic("replacing an element succeeds")
     };
-    Assert(previous.value == 2 && *destroyed == 1, "replacing hands back the element without destroying it");
+    // Safety: `destroyed` points at a local of `Main`, which outlives this call.
+    Assert(unsafe { previous.value == 2 && *destroyed == 1 }, "replacing hands back the element without destroying it");
     previous.counter = null;
 }
 
@@ -58,7 +64,8 @@ func SumOf(allocator: Allocator) -> int32 {
     values[1] = 2;
     values[2] = 3;
     values[3] = 4;
-    var array = Array::FromSlice<int32>(allocator, (@values[0])[..4]) catch {
+    // Safety: `values` is a local array of four elements.
+    var array = Array::FromSlice<int32>(allocator, unsafe { (@values[0])[..4] }) catch {
         else => Panic("an array of numbers is made")
     };
 

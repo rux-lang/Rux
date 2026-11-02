@@ -24,11 +24,13 @@ struct Cell<K, V> {
 }
 
 func Store<K, V>(cell: *var Cell<K, V>, value: V) {
-    cell.value = value;
+    // Safety: every caller passes the address of a live local `Cell`.
+    unsafe { cell.value = value; }
 }
 
 func Read<K, V>(cell: *var Cell<K, V>) -> V {
-    return cell.value;
+    // Safety: every caller passes the address of a live local `Cell`.
+    return unsafe { cell.value };
 }
 
 func Main() -> int {

@@ -23,7 +23,7 @@ extend char8 : Display {
         if (self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
         var one: char8[1];
         one[0] = self;
-        return WriteAligned(writer, spec, (@one[0])[..1], false);
+        return WriteAligned(writer, spec, one[..1], false);
     }
 }
 

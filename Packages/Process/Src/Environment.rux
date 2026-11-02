@@ -41,13 +41,17 @@ var ChangeCapacity: uint = 0;
 var ChangesHeld: uint32 = 0;
 
 func HoldChanges() {
-    while AtomicExchange(@ChangesHeld, 1u32, MemoryOrder::Acquire) != 0u32 {
+    // Safety: `ChangesHeld` is a module variable, live and aligned for the whole process, that every thread reaches
+    // only through atomic operations.
+    while unsafe { AtomicExchange(@ChangesHeld, 1u32, MemoryOrder::Acquire) } != 0u32 {
         SpinHint();
     }
 }
 
 func ReleaseChanges() {
-    AtomicExchange(@ChangesHeld, 0u32, MemoryOrder::Release);
+    // Safety: `ChangesHeld` is a module variable, live and aligned for the whole process, that every thread reaches
+    // only through atomic operations.
+    unsafe { AtomicExchange(@ChangesHeld, 0u32, MemoryOrder::Release); }
 }
 
 // Splits `name=value` at its first `=`. An entry with no `=` is all name with an empty value.
@@ -80,8 +84,9 @@ func NativeNamesEqual(left: OsStringView, right: OsStringView) -> bool {
     return true;
 }
 
-// The change recorded for a native name, or null. The caller holds the table.
-func ChangeFor(name: OsStringView) -> *var Change {
+// The change recorded for a native name, or null.
+// Safety: the caller must hold the table, through `HoldChanges`, while it calls and while it uses the result.
+unsafe func ChangeFor(name: OsStringView) -> *var Change {
     var index: uint = 0;
     while index < ChangeCount {
         if NativeNamesEqual(Changes[index].name, name) { return @Changes[index]; }
@@ -128,7 +133,8 @@ extend EnvironmentIterator : Iterator {
                 .Some(entry) => {
                     self.next = self.next + 1;
                     let variable = SplitEntry(entry);
-                    if ChangeFor(variable.name) == null {
+                    // Safety: this walk holds the table, taken at the top of `Next`.
+                    if unsafe { ChangeFor(variable.name) } == null {
                         ReleaseChanges();
                         return variable;
                     }
@@ -140,7 +146,9 @@ extend EnvironmentIterator : Iterator {
             }
         }
         while self.next < ChangeCount {
-            let change = Changes[self.next];
+            // Safety: this walk holds the table, and the table invariant: `Changes` holds `ChangeCount` recorded
+            // changes, more than `self.next`.
+            let change = unsafe { Changes[self.next] };
             self.next = self.next + 1;
             if !change.removed {
                 ReleaseChanges();
@@ -154,7 +162,9 @@ extend EnvironmentIterator : Iterator {
 
 // The next Unicode scalar of UTF-8 `text` at `at`, advancing `at`, or none for a malformed sequence.
 func NextScalar(text: char8[..], at: *var uint) -> uint32? {
-    let first = text[*at] as uint8 as uint32;
+    // Safety: the documented contract makes `at` a non-null pointer to the caller's writable position.
+    let start = unsafe { *at };
+    let first = text[start] as uint8 as uint32;
     var count: uint = 1;
     var scalar = first;
     if first >= 0xF0 {
@@ -172,15 +182,16 @@ func NextScalar(text: char8[..], at: *var uint) -> uint32? {
     else if first >= 0x80 {
         return none;
     }
-    if *at + count > text.length { return none; }
+    if start + count > text.length { return none; }
     var index: uint = 1;
     while index < count {
-        let next = text[*at + index] as uint8 as uint32;
+        let next = text[start + index] as uint8 as uint32;
         if (next & 0xC0) != 0x80 { return none; }
         scalar = (scalar << 6) | (next & 0x3F);
         index = index + 1;
     }
-    *at = *at + count;
+    // Safety: the documented contract makes `at` a non-null pointer to the caller's writable position.
+    unsafe { *at = start + count; }
     return scalar;
 }
 
@@ -240,7 +251,9 @@ pub func Variable(name: char8[..]) -> OsStringView? {
     HoldChanges();
     var index: uint = 0;
     while index < ChangeCount {
-        let change = Changes[index];
+        // Safety: this function holds the table, and the table invariant: `Changes` holds `ChangeCount` recorded
+        // changes, more than `index`.
+        let change = unsafe { Changes[index] };
         if NameMatches(change.name, name) {
             ReleaseChanges();
             if change.removed { return none; }
@@ -273,7 +286,9 @@ func PermanentText(text: char8[..]) -> OsStringView ! IoError {
             count = count + 1;
         }
     }
-    let units = Alloc((count + 1) * sizeof(OsUnit)) as *var OsUnit;
+    // Safety: `Alloc` returns memory aligned for any type, and this retyping only names the `count + 1` units it
+    // asked for.
+    let units = unsafe { Alloc((count + 1) * sizeof(OsUnit)) as *var OsUnit };
     if units == null { fail IoError::Of(IoErrorKind::LimitExceeded); }
     when #target.os == .Windows {
         var written: uint = 0;
@@ -282,12 +297,18 @@ func PermanentText(text: char8[..]) -> OsStringView ! IoError {
             let scalar = NextScalar(text, @at) ?? 0u32;
             if scalar > 0xFFFFu32 {
                 let offset = scalar - 0x10000u32;
-                units[written] = (0xD800u32 + (offset >> 10)) as uint16;
-                units[written + 1] = (0xDC00u32 + (offset & 0x3FFu32)) as uint16;
+                // Safety: the first pass counted two units for this scalar in `count`, and `units` has room for
+                // `count + 1`.
+                unsafe {
+                    units[written] = (0xD800u32 + (offset >> 10)) as uint16;
+                    units[written + 1] = (0xDC00u32 + (offset & 0x3FFu32)) as uint16;
+                }
                 written = written + 2;
             }
             else {
-                units[written] = scalar as uint16;
+                // Safety: the first pass counted one unit for this scalar in `count`, and `units` has room for
+                // `count + 1`.
+                unsafe { units[written] = scalar as uint16; }
                 written = written + 1;
             }
         }
@@ -295,28 +316,38 @@ func PermanentText(text: char8[..]) -> OsStringView ! IoError {
     else {
         var index: uint = 0;
         while index < count {
-            units[index] = text[index];
+            // Safety: `index` is below `count`, and `units` has room for `count + 1`.
+            unsafe { units[index] = text[index]; }
             index = index + 1;
         }
     }
-    units[count] = 0 as OsUnit;
-    if count == 0 { return OsStringView::FromUnits(units[..0]); }
-    return OsStringView::FromUnits(units[..count]);
+    // Safety: `units` has room for `count + 1` units, so the terminator fits at `count`.
+    unsafe { units[count] = 0 as OsUnit; }
+    // Safety: an empty range of the live, never-freed `units` reads nothing.
+    if count == 0 { return OsStringView::FromUnits(unsafe { units[..0] }); }
+    // Safety: the first `count` units of `units` were written above, and the block is never freed.
+    return OsStringView::FromUnits(unsafe { units[..count] });
 }
 
 // Records a change for `name`, replacing an earlier one.
 func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! IoError {
     HoldChanges();
-    let existing = ChangeFor(name);
+    // Safety: this function holds the table, taken just above.
+    let existing = unsafe { ChangeFor(name) };
     if existing != null {
-        existing.value = value;
-        existing.removed = removed;
+        // Safety: `existing` addresses a change in the table, which this function still holds.
+        unsafe {
+            existing.value = value;
+            existing.removed = removed;
+        }
         ReleaseChanges();
         return;
     }
     if ChangeCount == ChangeCapacity {
         let capacity = ChangeCapacity == 0 ? 8u : ChangeCapacity * 2u;
-        let grown = Realloc(Changes as *opaque, capacity * sizeof(Change)) as *var Change;
+        // Safety: `Changes` is null or the table's block from `Alloc`/`Realloc`, which only this holder of the table
+        // touches, and the result is retyped to the `capacity` changes it was asked for.
+        let grown = unsafe { Realloc(Changes as *opaque, capacity * sizeof(Change)) as *var Change };
         if grown == null {
             ReleaseChanges();
             fail IoError::Of(IoErrorKind::LimitExceeded);
@@ -324,7 +355,8 @@ func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! I
         Changes = grown;
         ChangeCapacity = capacity;
     }
-    Changes[ChangeCount] = Change { name: name, value: value, removed: removed };
+    // Safety: this function holds the table, and `ChangeCount` is below `ChangeCapacity`, the room in `Changes`.
+    unsafe { Changes[ChangeCount] = Change { name: name, value: value, removed: removed }; }
     ChangeCount = ChangeCount + 1;
     ReleaseChanges();
 }
@@ -352,7 +384,8 @@ pub func SetVariable(name: char8[..], value: char8[..]) -> ! IoError {
     let nativeValue = PermanentText(value)?;
     RecordChange(nativeName, nativeValue, false)?;
     when #target.os == .Windows {
-        SetEnvironmentVariableW(nativeName.Units().data, nativeValue.Units().data);
+        // Safety: `PermanentText` keeps both name and value followed by a NUL, in storage that is never freed.
+        unsafe { SetEnvironmentVariableW(nativeName.Units().data, nativeValue.Units().data); }
     }
 }
 
@@ -366,6 +399,8 @@ pub func RemoveVariable(name: char8[..]) -> ! IoError {
     let nativeName = PermanentText(name)?;
     RecordChange(nativeName, OsStringView(), true)?;
     when #target.os == .Windows {
-        SetEnvironmentVariableW(nativeName.Units().data, null);
+        // Safety: `PermanentText` keeps the name followed by a NUL, in storage that is never freed, and a null value
+        // asks for removal.
+        unsafe { SetEnvironmentVariableW(nativeName.Units().data, null); }
     }
 }

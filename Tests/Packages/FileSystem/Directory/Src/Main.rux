@@ -7,9 +7,9 @@ import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, Path };
 import FileSystem::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };
 
-func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
-    return Path::FromView((*holder).View());
+func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
+    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    return Path::FromView(holder.View());
 }
 
 // The failure an outcome carries, which the test expects to be there.
@@ -26,9 +26,9 @@ func Touch(allocator: Allocator, path: Path) {
     made.Close() catch { else => Panic("and closed") };
 }
 
-func NameOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> OsStringView {
-    *holder = OsString::FromText(allocator, text) catch { else => Panic("the expected name converts") };
-    return (*holder).View();
+func NameOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> OsStringView {
+    holder = OsString::FromText(allocator, text) catch { else => Panic("the expected name converts") };
+    return holder.View();
 }
 
 func Main() -> int ! IoError {
@@ -36,13 +36,13 @@ func Main() -> int ! IoError {
     let allocator: Allocator = system;
 
     var dirHolder = OsString(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemDir.tmp", @dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemDir.tmp", dirHolder);
     var oneHolder = OsString(allocator);
-    let one = PathOf(allocator, "Bin/FileSystemDir.tmp/one.txt", @oneHolder);
+    let one = PathOf(allocator, "Bin/FileSystemDir.tmp/one.txt", oneHolder);
     var twoHolder = OsString(allocator);
-    let two = PathOf(allocator, "Bin/FileSystemDir.tmp/two.txt", @twoHolder);
+    let two = PathOf(allocator, "Bin/FileSystemDir.tmp/two.txt", twoHolder);
     var accentHolder = OsString(allocator);
-    let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", @accentHolder);
+    let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", accentHolder);
 
     // Fresh ground: an earlier run may have left the tree behind, and cleanup is not the thing under test yet.
     DeleteFile(allocator, one) catch { else => {} };
@@ -61,11 +61,11 @@ func Main() -> int ! IoError {
     // Read back: three names, each one expected, the accent intact in the system's own units.
     var iterator = ReadDirectory(allocator, dir)?;
     var oneWantHolder = OsString(allocator);
-    let oneWant = NameOf(allocator, "one.txt", @oneWantHolder);
+    let oneWant = NameOf(allocator, "one.txt", oneWantHolder);
     var twoWantHolder = OsString(allocator);
-    let twoWant = NameOf(allocator, "two.txt", @twoWantHolder);
+    let twoWant = NameOf(allocator, "two.txt", twoWantHolder);
     var accentWantHolder = OsString(allocator);
-    let accentWant = NameOf(allocator, "caf\u{00E9}.txt", @accentWantHolder);
+    let accentWant = NameOf(allocator, "caf\u{00E9}.txt", accentWantHolder);
     var seenOne = false;
     var seenTwo = false;
     var seenAccent = false;

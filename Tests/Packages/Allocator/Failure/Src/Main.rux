@@ -25,33 +25,42 @@ struct FailingAllocator {
 
 extend FailingAllocator : Allocator {
     func Allocate(self: &FailingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
-        self.state.attempts = self.state.attempts + 1;
-        if self.state.allowed == 0 {
-            fail AllocError::OutOfMemory;
+        // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
+        unsafe {
+            self.state.attempts = self.state.attempts + 1;
+            if self.state.allowed == 0 {
+                fail AllocError::OutOfMemory;
+            }
+            self.state.allowed = self.state.allowed - 1;
+            let block = self.state.backing.Allocate(layout)?;
+            if layout.size != 0 {
+                self.state.live = self.state.live + 1;
+            }
+            return block;
         }
-        self.state.allowed = self.state.allowed - 1;
-        let block = self.state.backing.Allocate(layout)?;
-        if layout.size != 0 {
-            self.state.live = self.state.live + 1;
-        }
-        return block;
     }
 
     func Deallocate(self: &FailingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
-        self.state.backing.Deallocate(block, layout)?;
-        if layout.size != 0 && !IsEmptyBlock(block) {
-            self.state.live = self.state.live - 1;
+        // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
+        unsafe {
+            self.state.backing.Deallocate(block, layout)?;
+            if layout.size != 0 && !IsEmptyBlock(block) {
+                self.state.live = self.state.live - 1;
+            }
         }
     }
 
     func Reallocate(self: &FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
-        self.state.attempts = self.state.attempts + 1;
-        if self.state.allowed == 0 {
-            fail AllocError::OutOfMemory;
+        // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
+        unsafe {
+            self.state.attempts = self.state.attempts + 1;
+            if self.state.allowed == 0 {
+                fail AllocError::OutOfMemory;
+            }
+            self.state.allowed = self.state.allowed - 1;
+            return self.state.backing.Reallocate(block, oldLayout, newLayout);
         }
-        self.state.allowed = self.state.allowed - 1;
-        return self.state.backing.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -99,7 +108,8 @@ func Main() -> ! AllocError {
     state.allowed = 0;
     state.attempts = 0;
     var arena = Arena(starved, 256);
-    var handle = arena.Handle();
+    // Safety: `arena` is a local that outlives `handle` and is never moved.
+    var handle = unsafe { arena.Handle() };
     let arenaAllocator: Allocator = handle;
     var fromArena: *var opaque = null;
     Assert(Refusal(arenaAllocator.Allocate(small)) == AllocError::OutOfMemory,
@@ -121,7 +131,8 @@ func Main() -> ! AllocError {
     state.allowed = 0;
     state.attempts = 0;
     var pool = Pool(starved, 4);
-    var poolHandle = pool.Handle();
+    // Safety: `pool` is a local that outlives `poolHandle` and is never moved.
+    var poolHandle = unsafe { pool.Handle() };
     let poolAllocator: Allocator = poolHandle;
     var fromPool: *var opaque = null;
     Assert(Refusal(poolAllocator.Allocate(small)) == AllocError::OutOfMemory, "a pool with no budget refuses");

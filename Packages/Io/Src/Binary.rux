@@ -30,7 +30,7 @@ pub enum Endian: int32 {
 /// @see https://rux-lang.dev/docs/api/io/binary#read-word
 pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 ! IoError {
     var bytes: char8[64];
-    ReadExact(reader, (@bytes[0])[..width])?;
+    ReadExact(reader, bytes[0..width])?;
     var word: uint512 = 0;
     var index: uint = 0;
     while index < width {
@@ -352,7 +352,8 @@ pub func WriteInt512(writer: &var Writer, endian: Endian, value: int512) -> ! Io
 pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 ! IoError {
     var bits = ReadUint32(reader, endian)?;
     var value = 0.0f32;
-    Copy(@value as *var opaque, @bits as *opaque, 4);
+    // Safety: `value` and `bits` are distinct locals of exactly 4 bytes each.
+    unsafe { Copy(@value as *var opaque, @bits as *opaque, 4); }
     return value;
 }
 
@@ -365,7 +366,8 @@ pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 ! IoError {
 pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> ! IoError {
     var bits: uint32 = 0;
     var held = value;
-    Copy(@bits as *var opaque, @held as *opaque, 4);
+    // Safety: `bits` and `held` are distinct locals of exactly 4 bytes each.
+    unsafe { Copy(@bits as *var opaque, @held as *opaque, 4); }
     return WriteUint32(writer, endian, bits);
 }
 
@@ -377,7 +379,8 @@ pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> ! 
 pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 ! IoError {
     var bits = ReadUint64(reader, endian)?;
     var value = 0.0f64;
-    Copy(@value as *var opaque, @bits as *opaque, 8);
+    // Safety: `value` and `bits` are distinct locals of exactly 8 bytes each.
+    unsafe { Copy(@value as *var opaque, @bits as *opaque, 8); }
     return value;
 }
 
@@ -390,6 +393,7 @@ pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 ! IoError {
 pub func WriteFloat64(writer: &var Writer, endian: Endian, value: float64) -> ! IoError {
     var bits: uint64 = 0;
     var held = value;
-    Copy(@bits as *var opaque, @held as *opaque, 8);
+    // Safety: `bits` and `held` are distinct locals of exactly 8 bytes each.
+    unsafe { Copy(@bits as *var opaque, @held as *opaque, 8); }
     return WriteUint64(writer, endian, bits);
 }

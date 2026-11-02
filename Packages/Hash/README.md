@@ -27,6 +27,8 @@ Take a hasher by generic bound and mutable reference. `func Digest<H: Hasher>(ha
 
 All hasher states are structural `Copy` values and own no external resources. Copying one intentionally snapshots the stream; later writes to either value are independent. Construct unseeded states with type calls such as `Fnv1a64()`, `Crc32()`, and `XxHash64()`. Raw pointers remain only on byte-range APIs because those ranges may be nullable when empty and support pointer arithmetic; callers must provide `length` readable bytes.
 
+The one-shot functions that read a caller's raw buffer are `unsafe func`, so a call sits inside an `unsafe` block whose caller promises the bytes are there: `HashBytes`, `Fnv1a32Of`, `Fnv1a64Of`, `Crc32Of`, `Crc32cOf`, `XxHash64Of` and `XxHash64SeededOf` need `bytes` readable for `length` bytes; `SipHash24::WithKeyBytes` and `SipWord` need sixteen and eight readable bytes; `ReadLittleEndian64` and `ReadLittleEndian32` need eight and four. `SipHash24Of` keeps the same obligation but is not yet marked. The `Hasher` interface's `Write` stays an ordinary method, because an interface requirement cannot be `unsafe`: its contract still requires `bytes` to be readable for `length` bytes, and every implementation relies on that.
+
 `WriteUint32` and `WriteUint64` use a fixed byte order rather than the machine's, so a value hashes the same on every target. That is what makes the hash of a struct mean the same thing everywhere, and it costs nothing on a little-endian machine.
 
 ## Speed

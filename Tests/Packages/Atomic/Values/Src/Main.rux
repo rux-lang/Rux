@@ -74,8 +74,10 @@ func Main() -> int {
     var first: int32 = 1;
     var second: int32 = 2;
     let pointer = Atomic<*int32>(@first as *int32);
-    if *pointer.Load() != 1 { return 23; }
-    if *pointer.Exchange(@second as *int32) != 1 || *pointer.Load() != 2 { return 24; }
+    // Safety: the atomic only ever holds `@first` or `@second`, both live locals of this function.
+    if unsafe { *pointer.Load() } != 1 { return 23; }
+    // Safety: the atomic only ever holds `@first` or `@second`, both live locals of this function.
+    if unsafe { *pointer.Exchange(@second as *int32) != 1 || *pointer.Load() != 2 } { return 24; }
 
     if Count.Load() != 0u64 || Depth.Load() != 0i32 || Ready.Load() { return 25; }
     Count.FetchAdd(3u64);

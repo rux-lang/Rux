@@ -31,14 +31,19 @@ extend Bytes {
             let layout = Layout::New(capacity, 1) ?? fail UrlError::OutOfMemory;
             let block = allocator.Allocate(layout) catch { else => fail UrlError::OutOfMemory };
             if self.data != null {
-                Copy(block, self.data as *opaque, self.length);
+                // Safety: `self.data` holds `self.length` bytes of a live block of `self.capacity` bytes, and `block`
+                // was just allocated with room for `capacity`, which is larger.
+                unsafe { Copy(block, self.data as *opaque, self.length); }
                 allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? layout)
                     catch { else => {} };
             }
-            self.data = block as *var char8;
+            // Safety: `block` was allocated above with room for `capacity` bytes, and `char8` has size and alignment 1.
+            self.data = unsafe { block as *var char8 };
             self.capacity = capacity;
         }
-        self.data[self.length] = value;
+        // Safety: `self.length` is below `self.capacity`, ensured above, and `self.data` is a live block of that many
+        // bytes.
+        unsafe { self.data[self.length] = value; }
         self.length = self.length + 1;
     }
 
@@ -56,7 +61,8 @@ extend Bytes {
 
     func View(self: &Bytes) -> char8[..] {
         if self.data == null { return ""; }
-        return self.data[..self.length];
+        // Safety: `self.data`, not null here, is a live block whose first `self.length` bytes were written by `Push`.
+        return unsafe { self.data[..self.length] };
     }
 
     func ~Bytes(self: &var Bytes) {
@@ -336,7 +342,8 @@ func DropLastSegment(out: &var Bytes, start: uint) {
     var end = out.length;
     while end > start {
         end = end - 1;
-        if out.data[end] == '/' { break; }
+        // Safety: `end` is below `out.length`, and `out.data` is live and holds `out.length` written bytes.
+        if unsafe { out.data[end] } == '/' { break; }
     }
     out.Truncate(end);
 }

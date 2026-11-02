@@ -41,7 +41,7 @@ import Text::{ BufferWriter, String, TextWriter };
 func Main() -> int ! FormatError {
     // Into a destination the caller owns, allocating nothing.
     var storage: char8[64];
-    var buffer = BufferWriter((@storage[0])[..64]);
+    var buffer = BufferWriter(storage[..64]);
     let writer: &var TextWriter = buffer;
     WriteFormat(writer, "count={}", 42i64)?;
 

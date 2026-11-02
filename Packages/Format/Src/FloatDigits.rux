@@ -32,8 +32,9 @@ pub struct FloatParts {
 /// @returns its sixty-four bits
 /// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float64
 pub func BitsOfFloat64(value: float64) -> uint64 {
-    let address = (@value) as *uint64;
-    return *address;
+    // Safety: `value` is this call's live parameter, `float64` and `uint64` are both eight bytes wide with the same
+    // alignment, and every bit pattern is a valid `uint64`, so reading the float's storage as one is sound.
+    return unsafe { *((@value) as *uint64) };
 }
 
 /// The bits of `value`, as they are stored.
@@ -42,8 +43,9 @@ pub func BitsOfFloat64(value: float64) -> uint64 {
 /// @returns its thirty-two bits
 /// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float32
 pub func BitsOfFloat32(value: float32) -> uint32 {
-    let address = (@value) as *uint32;
-    return *address;
+    // Safety: `value` is this call's live parameter, `float32` and `uint32` are both four bytes wide with the same
+    // alignment, and every bit pattern is a valid `uint32`, so reading the float's storage as one is sound.
+    return unsafe { *((@value) as *uint32) };
 }
 
 /// The bits of `value`, as they are stored.
@@ -52,8 +54,9 @@ pub func BitsOfFloat32(value: float32) -> uint32 {
 /// @returns its sixteen bits
 /// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float16
 pub func BitsOfFloat16(value: float16) -> uint16 {
-    let address = (@value) as *uint16;
-    return *address;
+    // Safety: `value` is this call's live parameter, `float16` and `uint16` are both two bytes wide with the same
+    // alignment, and every bit pattern is a valid `uint16`, so reading the float's storage as one is sound.
+    return unsafe { *((@value) as *uint16) };
 }
 
 /// The bits of `value`, as they are stored.
@@ -62,8 +65,9 @@ pub func BitsOfFloat16(value: float16) -> uint16 {
 /// @returns its eight bits
 /// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float8
 pub func BitsOfFloat8(value: float8) -> uint8 {
-    let address = (@value) as *uint8;
-    return *address;
+    // Safety: `value` is this call's live parameter, `float8` and `uint8` are both one byte wide with the same
+    // alignment, and every bit pattern is a valid `uint8`, so reading the float's storage as one is sound.
+    return unsafe { *((@value) as *uint8) };
 }
 
 /// Takes a `float64` apart into the significand and exponent its digits are generated from.
@@ -185,7 +189,7 @@ pub func WriteShortestFloat(cursor: &var ByteCursor, parts: FloatParts, scientif
     var digits: char8[24];
     var count: uint = 0;
     var exponent10: int = 0;
-    if !ShortestDigits(parts.significand, parts.exponent, parts.atBinadeBottom, (@digits[0])[..24], @count,
+    if !ShortestDigits(parts.significand, parts.exponent, parts.atBinadeBottom, digits[..], @count,
                        @exponent10) {
         return false;
     }
@@ -193,10 +197,10 @@ pub func WriteShortestFloat(cursor: &var ByteCursor, parts: FloatParts, scientif
     // -4 would spend more width on leading zeros than on digits, and one past the digits would spend it on
     // trailing ones.
     if exponent10 < -4 || exponent10 >= scientificFrom {
-        WriteScientific(cursor, (@digits[0])[..count], count, exponent10);
+        WriteScientific(cursor, digits[..count], count, exponent10);
     }
     else {
-        WriteFixed(cursor, (@digits[0])[..count], count, exponent10);
+        WriteFixed(cursor, digits[..count], count, exponent10);
     }
     return true;
 }

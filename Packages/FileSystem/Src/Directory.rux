@@ -29,13 +29,17 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        if CreateDirectoryW(native as *char16, null) == 0 {
-            fail TranslateNative(GetLastError() as int32);
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+        // release, and a `uint16` unit is a `char16`.
+        if unsafe { CreateDirectoryW(native as *char16, null) } == 0 {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
         // Read, write and search for everyone, cut down by the process umask.
-        let result = MkdirAt(AtFdCwd, native as *char8, 511);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        let result = unsafe { MkdirAt(AtFdCwd, native as *char8, 511) };
         if result < 0 {
             fail TranslateNative((0 - result) as int32);
         }
@@ -51,12 +55,16 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        if RemoveDirectoryW(native as *char16) == 0 {
-            fail TranslateNative(GetLastError() as int32);
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+        // release, and a `uint16` unit is a `char16`.
+        if unsafe { RemoveDirectoryW(native as *char16) } == 0 {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
-        let result = UnlinkAt(AtFdCwd, native as *char8, RemoveDirectory);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        let result = unsafe { UnlinkAt(AtFdCwd, native as *char8, RemoveDirectory) };
         if result < 0 {
             fail TranslateNative((0 - result) as int32);
         }
@@ -72,12 +80,16 @@ pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        if DeleteFileW(native as *char16) == 0 {
-            fail TranslateNative(GetLastError() as int32);
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+        // release, and a `uint16` unit is a `char16`.
+        if unsafe { DeleteFileW(native as *char16) } == 0 {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
-        let result = UnlinkAt(AtFdCwd, native as *char8, 0);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        let result = unsafe { UnlinkAt(AtFdCwd, native as *char8, 0) };
         if result < 0 {
             fail TranslateNative((0 - result) as int32);
         }
@@ -137,7 +149,8 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
     let layout = Layout { size: wanted, alignment: 8 };
     var borrowed = allocator;
     let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
-    iterator.data = block as *var char8;
+    // Safety: `block` is a fresh allocation of `wanted` bytes, so it holds `wanted` `char8`s.
+    iterator.data = unsafe { block as *var char8 };
     iterator.capacity = wanted;
 
     when #target.os == .Windows {
@@ -145,27 +158,40 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         let units = path.name.units;
         let patternLayout = Layout { size: (units.length + 3) * 2, alignment: 2 };
         let raw = borrowed.Allocate(patternLayout) catch { else => fail IoError::Of(IoErrorKind::Other) };
-        let pattern = raw as *var uint16;
+        // Safety: `raw` is a fresh allocation of `patternLayout`: `units.length + 3` units at their alignment.
+        let pattern = unsafe { raw as *var uint16 };
         var index: uint = 0;
         var length: uint = 0;
         while index < units.length {
-            if (units.data[index] as uint32) == 0 {
+            // Safety: `index` is below `units.length`, the loop condition.
+            let unit = unsafe { units.data[index] };
+            if (unit as uint32) == 0 {
                 borrowed.Deallocate(raw, patternLayout) catch { else => {} };
                 fail IoError::Of(IoErrorKind::InvalidInput);
             }
-            pattern[length] = units.data[index];
+            // Safety: `length` equals `index`, below `units.length`, and `pattern` holds `units.length + 3` units.
+            unsafe { pattern[length] = unit; }
             length = length + 1;
             index = index + 1;
         }
-        if length > 0 && pattern[length - 1] != 0x5C && pattern[length - 1] != 0x2F {
-            pattern[length] = 0x5C;
-            length = length + 1;
+        // Safety: `length` is `units.length` here and `pattern` holds `units.length + 3` units, so the separator,
+        // the star and the terminator all fit.
+        unsafe {
+            if length > 0 && pattern[length - 1] != 0x5C && pattern[length - 1] != 0x2F {
+                pattern[length] = 0x5C;
+                length = length + 1;
+            }
+            pattern[length] = 0x2A;
+            pattern[length + 1] = 0;
         }
-        pattern[length] = 0x2A;
-        pattern[length + 1] = 0;
-        let found = FindFirstFileW(pattern as *char16, iterator.data as *var opaque);
+        // Safety: `pattern` was just NUL-terminated and a `uint16` unit is a `char16`; `iterator.data` is the
+        // record buffer of `DirectoryBufferSize()` bytes, one `WIN32_FIND_DATAW`.
+        let found = unsafe { FindFirstFileW(pattern as *char16, iterator.data as *var opaque) };
         borrowed.Deallocate(raw, patternLayout) catch { else => {} };
-        if (found as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
+        if (found as uint64) == InvalidHandleValue {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
+        }
         iterator.handle = found;
         iterator.pending = true;
         iterator.open = true;
@@ -173,7 +199,8 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
     }
     else {
         let native = NativePath(allocator, path)?;
-        let opened = OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, released only after this call.
+        let opened = unsafe { OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0) };
         ReleaseNativePath(allocator, native, path.name.units.length);
         if opened < 0 { fail TranslateNative((0 - opened) as int32); }
         iterator.handle = opened as int32;
@@ -196,21 +223,28 @@ extend DirectoryIterator {
         when #target.os == .Windows {
             while true {
                 if !self.pending {
-                    if FindNextFileW(self.handle, self.data as *var opaque) == 0 {
-                        let raw = GetLastError();
+                    // Safety: `handle` is this iterator's open search handle, `open` was checked above, and
+                    // `data` is its record buffer of one `WIN32_FIND_DATAW`.
+                    if unsafe { FindNextFileW(self.handle, self.data as *var opaque) } == 0 {
+                        // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                        let raw = unsafe { GetLastError() };
                         if raw != ERROR_NO_MORE_FILES { fail TranslateNative(raw as int32); }
                         return none;
                     }
                 }
                 self.pending = false;
                 // The UTF-16 name starts at offset 44 of the record and ends at its NUL.
-                let start = (self.data as uint + 44) as *var uint16;
+                // Safety: `data` is the 592-byte record buffer, which holds the 260-unit name field at offset 44.
+                let start = unsafe { (self.data as uint + 44) as *var uint16 };
                 var length: uint = 0;
-                while length < 260 && start[length] != 0 {
+                // Safety: `length` is below 260, the size of the name field `start` addresses.
+                while length < 260 && unsafe { start[length] } != 0 {
                     length = length + 1;
                 }
-                if !IsDotEntry16(start, length) {
-                    let view = OsStringView::FromUnits((start)[..length]);
+                // Safety: `length` is at most 260, the size of the name field `start` addresses.
+                let entry = unsafe { (start)[..length] };
+                if !IsDotEntry16(entry) {
+                    let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view) catch {
                         else => fail IoError::Of(IoErrorKind::Other)
                     };
@@ -223,16 +257,25 @@ extend DirectoryIterator {
                 if self.offset >= self.length {
                     var filled: int64 = 0;
                     when #target.os == .Linux {
-                        filled = Getdents64(self.handle, self.data as *var opaque, self.capacity);
+                        // Safety: `handle` is this iterator's open directory, `open` was checked above, and `data`
+                        // is its buffer of `capacity` bytes.
+                        filled = unsafe { Getdents64(self.handle, self.data as *var opaque, self.capacity) };
                     }
                     else {
                         when #target.os == .FreeBSD {
-                            filled = Getdirentries(self.handle, self.data as *var opaque, self.capacity, null);
+                            // Safety: `handle` is this iterator's open directory, `open` was checked above, and
+                            // `data` is its buffer of `capacity` bytes; no base position is asked for.
+                            filled = unsafe {
+                                Getdirentries(self.handle, self.data as *var opaque, self.capacity, null)
+                            };
                         }
                         else {
                             var position: int64 = 0;
-                            filled = Getdirentries64(self.handle, self.data as *var opaque, self.capacity,
-                                                     @position);
+                            // Safety: `handle` is this iterator's open directory, `open` was checked above, `data`
+                            // is its buffer of `capacity` bytes, and `position` is a local `int64`.
+                            filled = unsafe {
+                                Getdirentries64(self.handle, self.data as *var opaque, self.capacity, @position)
+                            };
                         }
                     }
                     if filled < 0 { fail TranslateNative((0 - filled) as int32); }
@@ -240,8 +283,11 @@ extend DirectoryIterator {
                     self.length = filled as uint;
                     self.offset = 0;
                 }
-                let record = (self.data as uint + self.offset) as *var char8;
-                let reclen = ((record[16] as uint8 as uint) | ((record[17] as uint8 as uint) << 8));
+                // Safety: `offset` is below `length`, so `record` is the start of a whole record the kernel wrote into
+                // `data`, and every record begins with a header longer than 18 bytes.
+                let record = unsafe { (self.data as uint + self.offset) as *var char8 };
+                // Safety: as above, the record's header holds its length at bytes 16 and 17.
+                let reclen = unsafe { ((record[16] as uint8 as uint) | ((record[17] as uint8 as uint) << 8)) };
                 if reclen == 0 || self.offset + reclen > self.length {
                     // A zero-length record would loop forever; a torn one reaches past the buffer. Either way
                     // the kernel and this code disagree about the layout, which is worth failing loudly over.
@@ -253,23 +299,31 @@ extend DirectoryIterator {
                 var nameLength: uint = 0;
                 when #target.os == .Linux {
                     nameStart = 19;
-                    while nameStart + nameLength < reclen && record[nameStart + nameLength] != (0u8 as char8) {
+                    // Safety: the read runs only below `reclen`, and the record's `reclen` bytes lie inside the
+                    // buffer, checked above.
+                    while nameStart + nameLength < reclen && unsafe { record[nameStart + nameLength] } != c8'\0' {
                         nameLength = nameLength + 1;
                     }
                 }
                 else {
                     when #target.os == .FreeBSD {
                         nameStart = 24;
-                        nameLength = (record[20] as uint8 as uint) | ((record[21] as uint8 as uint) << 8);
+                        // Safety: the record's `reclen` bytes lie inside the buffer, checked above, and its header
+                        // holds the name length at bytes 20 and 21.
+                        nameLength = unsafe { (record[20] as uint8 as uint) | ((record[21] as uint8 as uint) << 8) };
                     }
                     else {
                         nameStart = 21;
-                        nameLength = (record[18] as uint8 as uint) | ((record[19] as uint8 as uint) << 8);
+                        // Safety: the record's `reclen` bytes lie inside the buffer, checked above, and its header
+                        // holds the name length at bytes 18 and 19.
+                        nameLength = unsafe { (record[18] as uint8 as uint) | ((record[19] as uint8 as uint) << 8) };
                     }
                 }
-                let start = (record as uint + nameStart) as *var char8;
-                if !IsDotEntry8(start, nameLength) {
-                    let view = OsStringView::FromUnits((start)[..nameLength]);
+                // Safety: the kernel's record holds its `nameLength`-byte name at `nameStart`, and the record lies
+                // inside the buffer, checked above.
+                let entry = unsafe { ((record as uint + nameStart) as *var char8)[..nameLength] };
+                if !IsDotEntry8(entry) {
+                    let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view) catch {
                         else => fail IoError::Of(IoErrorKind::Other)
                     };
@@ -286,7 +340,9 @@ extend DirectoryIterator {
         if self.open {
             self.open = false;
             when #target.os == .Windows {
-                FindClose(self.handle);
+                // Safety: `handle` is this iterator's open search handle, `open` was checked above and is now
+                // cleared, so it is closed once.
+                unsafe { FindClose(self.handle); }
             }
             else {
                 Close(self.handle);
@@ -307,12 +363,12 @@ extend DirectoryIterator {
     }
 }
 
-func IsDotEntry8(name: *char8, length: uint) -> bool {
-    if length == 1 { return name[0] == c8'.'; }
-    return length == 2 && name[0] == c8'.' && name[1] == c8'.';
+func IsDotEntry8(name: char8[..]) -> bool {
+    if name.length == 1 { return name[0] == c8'.'; }
+    return name.length == 2 && name[0] == c8'.' && name[1] == c8'.';
 }
 
-func IsDotEntry16(name: *uint16, length: uint) -> bool {
-    if length == 1 { return name[0] == 0x2E; }
-    return length == 2 && name[0] == 0x2E && name[1] == 0x2E;
+func IsDotEntry16(name: uint16[..]) -> bool {
+    if name.length == 1 { return name[0] == 0x2E; }
+    return name.length == 2 && name[0] == 0x2E && name[1] == 0x2E;
 }

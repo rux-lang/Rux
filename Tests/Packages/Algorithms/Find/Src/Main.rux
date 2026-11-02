@@ -40,10 +40,6 @@ func IsNegative(value: int32) -> bool {
     return value < 0;
 }
 
-func Ints(data: *int32, length: uint) -> int32[..] {
-    return (data)[..length];
-}
-
 func Main() -> int {
     let original = Record { key: 7, origin: 11 };
     let copied = original;
@@ -57,8 +53,9 @@ func Main() -> int {
     storage[4] = 9;
     storage[5] = 4;
     storage[6] = 1;
-    let items = Ints(@storage[0], 7);
-    let empty = Ints(null, 0);
+    let items: int32[..] = storage[..7];
+    let empty: int32[..] = [];
+    let otherEmpty: int32[..] = [];
 
     // Presence and counting.
     Assert(Contains<int32>(items, 4), "a value that is present is found");
@@ -105,28 +102,28 @@ func Main() -> int {
         other[index] = storage[index];
         index++;
     }
-    Assert(Mismatch<int32>(items, Ints(@other[0], 7)) == none, "identical slices never differ");
-    Assert(SequenceEqual<int32>(items, Ints(@other[0], 7)), "and are equal");
+    Assert(Mismatch<int32>(items, other[..7]) == none, "identical slices never differ");
+    Assert(SequenceEqual<int32>(items, other[..7]), "and are equal");
     other[3] = 100;
-    Assert(Mismatch<int32>(items, Ints(@other[0], 7)) == .Some(3), "the first difference is reported");
-    Assert(!SequenceEqual<int32>(items, Ints(@other[0], 7)), "and makes them unequal");
+    Assert(Mismatch<int32>(items, other[..7]) == .Some(3), "the first difference is reported");
+    Assert(!SequenceEqual<int32>(items, other[..7]), "and makes them unequal");
     other[3] = storage[3];
-    Assert(Mismatch<int32>(items, Ints(@other[0], 4)) == .Some(4),
+    Assert(Mismatch<int32>(items, other[..4]) == .Some(4),
            "a prefix differs where the shorter one ends");
-    Assert(!SequenceEqual<int32>(items, Ints(@other[0], 4)), "and a prefix is not equal to the whole");
-    Assert(SequenceEqual<int32>(empty, Ints(null, 0)), "two empty slices are equal");
-    Assert(Mismatch<int32>(empty, Ints(null, 0)) == none, "and never differ");
+    Assert(!SequenceEqual<int32>(items, other[..4]), "and a prefix is not equal to the whole");
+    Assert(SequenceEqual<int32>(empty, otherEmpty), "two empty slices are equal");
+    Assert(Mismatch<int32>(empty, otherEmpty) == none, "and never differ");
 
     // Lexicographic ordering: the first difference decides, and length breaks a tie.
-    Assert(Compare<int32>(items, Ints(@other[0], 7)).IsEqual(), "identical slices compare equal");
-    Assert(Compare<int32>(Ints(@other[0], 4), items).IsLess(), "a proper prefix is the smaller");
-    Assert(Compare<int32>(items, Ints(@other[0], 4)).IsGreater(), "and the whole is the larger");
+    Assert(Compare<int32>(items, other[..7]).IsEqual(), "identical slices compare equal");
+    Assert(Compare<int32>(other[..4], items).IsLess(), "a proper prefix is the smaller");
+    Assert(Compare<int32>(items, other[..4]).IsGreater(), "and the whole is the larger");
     Assert(Compare<int32>(empty, items).IsLess(), "an empty slice is smaller than any non-empty one");
-    Assert(Compare<int32>(empty, Ints(null, 0)).IsEqual(), "and equal to another empty one");
+    Assert(Compare<int32>(empty, otherEmpty).IsEqual(), "and equal to another empty one");
     other[1] = 6;
-    Assert(Compare<int32>(Ints(@other[0], 7), items).IsLess(), "the first differing element decides");
+    Assert(Compare<int32>(other[..7], items).IsLess(), "the first differing element decides");
     other[1] = 8;
-    Assert(Compare<int32>(Ints(@other[0], 7), items).IsGreater(), "in whichever direction it differs");
+    Assert(Compare<int32>(other[..7], items).IsGreater(), "in whichever direction it differs");
 
     // A comparator orders elements that have no ordering of their own.
     var left: Record[2];
@@ -135,16 +132,16 @@ func Main() -> int {
     left[1] = Record { key: 5, origin: 0 };
     right[0] = Record { key: 1, origin: 9 };
     right[1] = Record { key: 7, origin: 9 };
-    let leftSlice = (@left[0])[..2];
-    let rightSlice = (@right[0])[..2];
+    let leftSlice = left[..2];
+    let rightSlice = right[..2];
     Assert(CompareBy<Record>(leftSlice, rightSlice, ByKey).IsLess(), "a comparator decides the order");
     Assert(CompareBy<Record>(rightSlice, leftSlice, ByKey).IsGreater(), "in both directions");
     Assert(CompareBy<Record>(leftSlice, leftSlice, ByKey).IsEqual(), "and a slice equals itself");
 
     // Equality covers every field, so records equal on one field alone are not equal.
     Assert(!SequenceEqual<Record>(leftSlice, rightSlice), "records equal on one field are not equal records");
-    Assert(CompareBy<Record>((@left[0])[..1],
-                             (@right[0])[..1], ByKey).IsEqual(),
+    Assert(CompareBy<Record>(left[..1],
+                             right[..1], ByKey).IsEqual(),
            "though a comparator that reads one field says they are equivalent");
 
     return 0;

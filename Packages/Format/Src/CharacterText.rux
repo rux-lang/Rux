@@ -43,7 +43,8 @@ func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! Fo
     var shift = count * 4;
     while shift > 0 {
         shift = shift - 4;
-        WriteAscii(writer, digits.data[((value >> (shift as uint64)) & 0xF) as uint])?;
+        // Safety: the index is masked to four bits, so it is below the sixteen bytes of `digits`.
+        WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint64)) & 0xF) as uint] })?;
     }
     return;
 }
@@ -104,7 +105,8 @@ pub func WriteWideInvalidEscape(writer: &var TextWriter, value: uint512) -> ! Fo
     var shift = count * 4;
     while shift > 0 {
         shift = shift - 4;
-        WriteAscii(writer, digits.data[((value >> (shift as uint512)) & 0xFu512) as uint])?;
+        // Safety: the index is masked to four bits, so it is below the sixteen bytes of `digits`.
+        WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint512)) & 0xFu512) as uint] })?;
     }
     return WriteBytes(writer, "}");
 }
@@ -184,8 +186,11 @@ pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> ! Format
 /// @param after receives the fill to write last
 /// @see https://rux-lang.dev/docs/api/format/character-text#measure-padding
 pub func MeasurePadding(spec: FormatSpec, occupied: uint, before: *var uint, after: *var uint) {
-    *before = 0;
-    *after = 0;
+    // Safety: the documented contract makes `before` and `after` non-null pointers to the caller's writable `uint`s.
+    unsafe {
+        *before = 0;
+        *after = 0;
+    }
     if spec.Width() <= occupied { return; }
     PaddingAround(spec, occupied, false, before, after);
 }

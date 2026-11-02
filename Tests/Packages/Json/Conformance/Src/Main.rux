@@ -13,7 +13,7 @@ import Text::{ BufferWriter, FormatSpec, String, StringBuilder, StringView, Text
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 struct SliceState {
@@ -28,7 +28,9 @@ struct SliceHandle {
 extend SliceHandle : Reader {
     func Read(self: &var SliceHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
-        let remaining = state.bytes.length - state.offset;
+        // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
+        let current = unsafe { *state };
+        let remaining = current.bytes.length - current.offset;
         if remaining == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
         var give = remaining < 7 ? remaining : 7;
         if into.length < give {
@@ -36,33 +38,34 @@ extend SliceHandle : Reader {
         }
         var index: uint = 0;
         while index < give {
-            into.data[index] = state.bytes.data[state.offset + index];
+            into[index] = current.bytes[current.offset + index];
             index = index + 1;
         }
-        state.offset = state.offset + give;
+        // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
+        unsafe { state.offset = current.offset + give; }
         return give;
     }
 }
 
 // Counts the values a streaming read reports, which is a shape the tree can also be asked for.
-func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, opens: *var uint,
-                  names: *var uint) -> bool {
+func StreamCounts(allocator: Allocator, text: char8[..], scalars: &var uint, opens: &var uint,
+                  names: &var uint) -> bool {
     var state = SliceState { bytes: text, offset: 0 };
     let handle: Reader = SliceHandle { state: @state };
     var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default()) catch { else => return false };
-    *scalars = 0;
-    *opens = 0;
-    *names = 0;
+    scalars = 0;
+    opens = 0;
+    names = 0;
     var event = reader.Next();
     while event != JsonEvent::End && event != JsonEvent::Error {
         if event == JsonEvent::ObjectStart || event == JsonEvent::ArrayStart {
-            *opens = *opens + 1;
+            opens = opens + 1;
         }
         else if event == JsonEvent::Name {
-            *names = *names + 1;
+            names = names + 1;
         }
         else if event != JsonEvent::ObjectEnd && event != JsonEvent::ArrayEnd {
-            *scalars = *scalars + 1;
+            scalars = scalars + 1;
         }
         event = reader.Next();
     }
@@ -72,29 +75,31 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, ope
 }
 
 // The same counts taken from a tree.
-func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: *var uint) {
+func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: &var uint) {
     let kind = value.Kind();
     if kind == JsonKind::Array {
-        *opens = *opens + 1;
+        opens = opens + 1;
         var index: uint = 0;
         while index < value.Length() {
-            TreeCounts(*value.At(index), scalars, opens, names);
+            // Safety: `index` is below `value.Length()`, so `At` returns a non-null pointer into `value`.
+            unsafe { TreeCounts(*value.At(index), scalars, opens, names); }
             index = index + 1;
         }
         return;
     }
     if kind == JsonKind::Object {
-        *opens = *opens + 1;
+        opens = opens + 1;
         var index: uint = 0;
         while index < value.Length() {
-            *names = *names + 1;
+            names = names + 1;
             let member = value.MemberAt(index);
-            TreeCounts((*member).value, scalars, opens, names);
+            // Safety: `index` is below `value.Length()`, so `member` is a non-null pointer into `value`.
+            unsafe { TreeCounts((*member).value, scalars, opens, names); }
             index = index + 1;
         }
         return;
     }
-    *scalars = *scalars + 1;
+    scalars = scalars + 1;
 }
 
 func Main() -> int {
@@ -105,26 +110,26 @@ func Main() -> int {
     // Well-formed documents: each parses, writes, parses again, and the two writings agree. That round
     // trip proves the writer and the parser agree about the document rather than each merely being
     // self-consistent. Each is also read by the streaming reader, which must see the same shape.
-    CheckRoundTrip(allocator, "{}", @wrote);
-    CheckRoundTrip(allocator, "[]", @wrote);
-    CheckRoundTrip(allocator, "null", @wrote);
-    CheckRoundTrip(allocator, "true", @wrote);
-    CheckRoundTrip(allocator, "false", @wrote);
-    CheckRoundTrip(allocator, "0", @wrote);
-    CheckRoundTrip(allocator, "-0", @wrote);
-    CheckRoundTrip(allocator, "123", @wrote);
-    CheckRoundTrip(allocator, "-1.5e-3", @wrote);
-    CheckRoundTrip(allocator, "1e999", @wrote);
-    CheckRoundTrip(allocator, "[1,2,3]", @wrote);
-    CheckRoundTrip(allocator, "[[[[1]]]]", @wrote);
-    CheckRoundTrip(allocator, "{\"a\":1}", @wrote);
-    CheckRoundTrip(allocator, "{\"a\":{\"b\":{\"c\":[1,2,{\"d\":null}]}}}", @wrote);
-    CheckRoundTrip(allocator, "[\"\",  \"x\", \"\\n\", \"\\u0041\", \"\\ud83d\\ude00\"]", @wrote);
-    CheckRoundTrip(allocator, "{\"\":1}", @wrote);
-    CheckRoundTrip(allocator, "[null,true,false]", @wrote);
-    CheckRoundTrip(allocator, "{\"a\":[],\"b\":{}}", @wrote);
-    CheckRoundTrip(allocator, "[{\"x\":1},{\"x\":2},{\"x\":3}]", @wrote);
-    CheckRoundTrip(allocator, "{\"n\":-0.0,\"m\":1e-400}", @wrote);
+    CheckRoundTrip(allocator, "{}", wrote);
+    CheckRoundTrip(allocator, "[]", wrote);
+    CheckRoundTrip(allocator, "null", wrote);
+    CheckRoundTrip(allocator, "true", wrote);
+    CheckRoundTrip(allocator, "false", wrote);
+    CheckRoundTrip(allocator, "0", wrote);
+    CheckRoundTrip(allocator, "-0", wrote);
+    CheckRoundTrip(allocator, "123", wrote);
+    CheckRoundTrip(allocator, "-1.5e-3", wrote);
+    CheckRoundTrip(allocator, "1e999", wrote);
+    CheckRoundTrip(allocator, "[1,2,3]", wrote);
+    CheckRoundTrip(allocator, "[[[[1]]]]", wrote);
+    CheckRoundTrip(allocator, "{\"a\":1}", wrote);
+    CheckRoundTrip(allocator, "{\"a\":{\"b\":{\"c\":[1,2,{\"d\":null}]}}}", wrote);
+    CheckRoundTrip(allocator, "[\"\",  \"x\", \"\\n\", \"\\u0041\", \"\\ud83d\\ude00\"]", wrote);
+    CheckRoundTrip(allocator, "{\"\":1}", wrote);
+    CheckRoundTrip(allocator, "[null,true,false]", wrote);
+    CheckRoundTrip(allocator, "{\"a\":[],\"b\":{}}", wrote);
+    CheckRoundTrip(allocator, "[{\"x\":1},{\"x\":2},{\"x\":3}]", wrote);
+    CheckRoundTrip(allocator, "{\"n\":-0.0,\"m\":1e-400}", wrote);
 
     // Malformed documents: every one refused, with no crash and no partial value handed back.
     CheckRefused(allocator, "");
@@ -192,7 +197,7 @@ func Main() -> int {
         nest[index] = 0x5Du8 as char8;
         index = index + 1;
     }
-    let nested = Parse(allocator, (@nest[0])[..600]);
+    let nested = Parse(allocator, nest[..600]);
     Assert(RefusedWith(nested, "JsonParseError::TooDeep(129)"),
            "three hundred levels exceeds the default depth and is refused rather than descended into");
 
@@ -201,19 +206,19 @@ func Main() -> int {
 
 // Parses, writes, parses again, and requires the two writings to agree — then requires the streaming reader to
 // see the same shape as the tree.
-func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
+func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
     let value = Parse(allocator, text) catch { else => Panic("a well-formed document parses") };
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    *wrote = Succeeded(WriteValue(sink, value, JsonStyle::Compact()));
-    Assert(*wrote, "and writes");
+    wrote = Succeeded(WriteValue(sink, value, JsonStyle::Compact()));
+    Assert(wrote, "and writes");
     var once = builder.IntoString();
 
     let again = Parse(allocator, once.View().Bytes()) catch { else => Panic("and the written form parses") };
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
-    *wrote = Succeeded(WriteValue(secondSink, again, JsonStyle::Compact()));
+    wrote = Succeeded(WriteValue(secondSink, again, JsonStyle::Compact()));
     var twice = secondBuilder.IntoString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
@@ -222,12 +227,12 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
     var streamScalars: uint = 0;
     var streamOpens: uint = 0;
     var streamNames: uint = 0;
-    Assert(StreamCounts(allocator, text, @streamScalars, @streamOpens, @streamNames),
+    Assert(StreamCounts(allocator, text, streamScalars, streamOpens, streamNames),
            "the streaming reader reaches the end of the same document");
     var treeScalars: uint = 0;
     var treeOpens: uint = 0;
     var treeNames: uint = 0;
-    TreeCounts(value, @treeScalars, @treeOpens, @treeNames);
+    TreeCounts(value, treeScalars, treeOpens, treeNames);
     Assert(streamScalars == treeScalars, "and counts the same scalars as the tree");
     Assert(streamOpens == treeOpens, "the same containers");
     Assert(streamNames == treeNames, "and the same member names");
@@ -249,14 +254,14 @@ func RefusedWith(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) ->
         .Success(_) => false,
         .Failure(reason) => {
             var storage: char8[96];
-            var writer = BufferWriter((@storage[0])[..96]);
+            var writer = BufferWriter(storage[..96]);
             let sink: &var TextWriter = writer;
             if Failed(reason.WriteDebug(sink, FormatSpec::Plain())) { return false; }
             let shown = writer.Written();
             if shown.length != expected.length { return false; }
             var index: uint = 0;
             while index < expected.length {
-                if shown.data[index] != expected.data[index] { return false; }
+                if shown[index] != expected[index] { return false; }
                 index = index + 1;
             }
             return true;

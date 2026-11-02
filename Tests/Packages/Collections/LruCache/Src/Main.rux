@@ -27,7 +27,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -37,9 +38,11 @@ func ReplaceAndEvict(destroyed: *var int32, kept: *var int32) -> bool {
     var cache = LruCache<int32, Tracked>(SystemAllocator(), 1, HashInt32, EqualsInt32);
     cache.Put(1, Tracked { counter: destroyed }) catch { else => return false };
     cache.Put(1, Tracked { counter: destroyed }) catch { else => return false };
-    if *destroyed != 1 { return false; }
+    // Safety: `destroyed` points at a local of the caller, which outlives this call.
+    if unsafe { *destroyed } != 1 { return false; }
     cache.Put(2, Tracked { counter: kept }) catch { else => return false };
-    if *destroyed != 2 || *kept != 0 { return false; }
+    // Safety: both point at locals of the caller, which outlive this call.
+    if unsafe { *destroyed != 2 || *kept != 0 } { return false; }
     return true;
 }
 

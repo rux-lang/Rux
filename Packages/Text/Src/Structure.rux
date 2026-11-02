@@ -97,7 +97,8 @@ pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
         if index != 0 {
             WriteBytes(writer, ", ")?;
         }
-        items.data[index].WriteDebug(writer, spec)?;
+        // Safety: `index` is below `items.length`, the loop condition.
+        unsafe { items.data[index].WriteDebug(writer, spec)?; }
         index = index + 1;
     }
     return WriteAscii(writer, c8']');

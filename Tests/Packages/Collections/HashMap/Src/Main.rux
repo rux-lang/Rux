@@ -17,7 +17,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -32,7 +33,8 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterF
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
-    *afterFilling = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterFilling = *counter; }
 }
 
 // Drains a map of tracked values completely, giving each yielded entry its own scope so it is owned by exactly one
@@ -100,7 +102,8 @@ struct CountedKey {
 }
 
 func CountedHash(key: CountedKey, low: uint64, high: uint64) -> uint64 {
-    *key.hashes += 1;
+    // Safety: `hashes` points at a local of the test that outlives every key hashed.
+    unsafe { *key.hashes += 1; }
     // Deliberate collisions exercise displacement as well as growth with a cached hash.
     return ((key.value % 4) as uint64) ^ low ^ high;
 }
@@ -122,11 +125,13 @@ func VerifyEntryHashes(allocator: Allocator) {
             catch { else => Panic("counted insertion succeeds") };
         let expectedHashes = capacity == map.Capacity() ? 1 : (previousLength as int32) + 1;
         Assert(hashes == expectedHashes, "hash the requested key once, plus existing entries when growing");
-        Assert(inserted && *stored == value * 3, "the returned slot survives displacement and growth");
+        // Safety: `GetOrInsert` pointed `stored` at the value it holds for the key.
+        Assert(unsafe { inserted && *stored == value * 3 }, "the returned slot survives displacement and growth");
         hashes = 0;
         map.GetOrInsert(CountedKey { value: value, hashes: @hashes }, 999, @stored, @inserted)
             catch { else => Panic("counted lookup succeeds") };
-        Assert(hashes == 1 && !inserted && *stored == value * 3, "an existing key is hashed once");
+        // Safety: `GetOrInsert` pointed `stored` at the value it holds for the key.
+        Assert(unsafe { hashes == 1 && !inserted && *stored == value * 3 }, "an existing key is hashed once");
     }
     for value in 0i32..40i32 {
         Assert(map.Get(CountedKey { value: value, hashes: @hashes }) == .Some(value * 3),
@@ -292,10 +297,12 @@ func Main() -> int {
 
     // A pointer to a value reads it where it sits, and the mutable form changes it in place.
     let reading = map.Reference(7) ?? Panic("a present key has a value to point at");
-    Assert(*reading == 21, "which reads what was stored");
+    // Safety: `Reference` hands back the address of the stored value, and the map has not changed since.
+    Assert(unsafe { *reading == 21 }, "which reads what was stored");
     var writing: *var int32 = null;
     Assert(map.TryReferenceMutable(7, @writing), "and one that can be written through");
-    *writing = 99;
+    // Safety: `TryReferenceMutable` reported true, so `writing` points at the stored value.
+    unsafe { *writing = 99; }
     Assert(map.Get(7) == .Some(99), "which changes the stored value");
     Assert(!map.TryReferenceMutable(1000, @writing), "an absent key has nothing to point at");
 
@@ -390,13 +397,16 @@ func Main() -> int {
     var inserted = false;
     lookup.GetOrInsert(5, 50, @existing, @inserted) catch { else => Panic("get-or-insert succeeds") };
     Assert(inserted, "reporting that the map grew");
-    Assert(*existing == 50, "and pointing at the value it put there");
-    *existing = 55;
+    // Safety: `GetOrInsert` pointed `existing` at the value it stored.
+    Assert(unsafe { *existing == 50 }, "and pointing at the value it put there");
+    // Safety: `existing` still points at the stored value; the map has not changed since.
+    unsafe { *existing = 55; }
     Assert(lookup.Get(5) == .Some(55), "which is the stored value, not a copy of it");
 
     lookup.GetOrInsert(5, 999, @existing, @inserted) catch { else => Panic("asking again succeeds") };
     Assert(!inserted, "reporting that the map did not grow");
-    Assert(*existing == 55, "and pointing at what was already there rather than what was offered");
+    // Safety: `GetOrInsert` pointed `existing` at the value already stored.
+    Assert(unsafe { *existing == 55 }, "and pointing at what was already there rather than what was offered");
     Assert(lookup.Length() == 1, "with the map still holding one entry");
 
     // Replacement hands the old value back, where Insert throws it away.

@@ -2,41 +2,65 @@ import Core::Assert;
 import C::{ free, malloc, putchar, puts, sprintf, sscanf };
 
 func Main() -> int {
-    let buf = malloc(64) as *char8;
+    // Safety: `malloc` takes only a byte count; the 64 bytes outlast every format written below.
+    let buf = unsafe { malloc(64) as *char8 };
 
     // sprintf formats into the buffer and returns the number of characters
     // written, not counting the terminating null.
-    let n = sprintf(buf, "%d".data, 42);
+    // Safety: `buf` holds 64 bytes, room for "42" and its terminator, and the format is a null-terminated literal.
+    let n = unsafe { sprintf(buf, "%d".data, 42) };
     Assert(n == 2, "sprintf returns written length");
-    Assert(*buf == '4', "sprintf digit one");
-    Assert(*(buf + 1) == '2', "sprintf digit two");
-    Assert(*(buf + 2) == '\0', "sprintf null-terminates");
+    // Safety: `sprintf` just wrote the first three bytes of the 64-byte `buf`.
+    unsafe {
+        Assert(*buf == '4', "sprintf digit one");
+        Assert(*(buf + 1) == '2', "sprintf digit two");
+        Assert(*(buf + 2) == '\0', "sprintf null-terminates");
+    }
 
     // A format that mixes a string and an integer.
-    let m = sprintf(buf, "%s=%d".data, "x".data, 7);
+    // Safety: `buf` holds 64 bytes, room for "x=7" and its terminator; both strings are null-terminated literals.
+    let m = unsafe { sprintf(buf, "%s=%d".data, "x".data, 7) };
     Assert(m == 3, "sprintf mixed length");
-    Assert(*buf == 'x', "sprintf string part");
-    Assert(*(buf + 1) == '=', "sprintf literal part");
-    Assert(*(buf + 2) == '7', "sprintf number part");
+    // Safety: `sprintf` just wrote the first four bytes of the 64-byte `buf`.
+    unsafe {
+        Assert(*buf == 'x', "sprintf string part");
+        Assert(*(buf + 1) == '=', "sprintf literal part");
+        Assert(*(buf + 2) == '7', "sprintf number part");
+    }
 
     // Hexadecimal formatting.
-    sprintf(buf, "%x".data, 255);
-    Assert(*buf == 'f' && *(buf + 1) == 'f', "sprintf hex");
+    // Safety: `buf` holds 64 bytes, room for "ff" and its terminator, which the read then covers.
+    unsafe {
+        sprintf(buf, "%x".data, 255);
+        Assert(*buf == 'f' && *(buf + 1) == 'f', "sprintf hex");
+    }
 
     // sscanf reads formatted input back out of a string.
-    let a = malloc(4) as *int32;
-    let b = malloc(4) as *int32;
-    let count = sscanf("100 200".data, "%d %d".data, a, b);
+    // Safety: each `malloc(4)` block has room and alignment for the one `int32` that `sscanf` stores in it.
+    let a = unsafe { malloc(4) as *int32 };
+    // Safety: as for `a`, a fresh 4-byte block for one `int32`.
+    let b = unsafe { malloc(4) as *int32 };
+    // Safety: the input and format are null-terminated literals, and `a` and `b` are the 4-byte blocks above.
+    let count = unsafe { sscanf("100 200".data, "%d %d".data, a, b) };
     Assert(count == 2, "sscanf assigns two fields");
-    Assert(*a == 100, "sscanf first value");
-    Assert(*b == 200, "sscanf second value");
+    // Safety: `sscanf` reported both fields assigned, so both blocks hold an `int32`.
+    unsafe {
+        Assert(*a == 100, "sscanf first value");
+        Assert(*b == 200, "sscanf second value");
+    }
 
     // puts and putchar report success by returning a non-negative value.
-    Assert(puts("StdIo test output".data) >= 0, "puts succeeds");
-    Assert(putchar('\n' as int32) == '\n' as int32, "putchar echoes the character");
+    // Safety: `puts` reads a null-terminated literal, and `putchar` takes a plain character code.
+    unsafe {
+        Assert(puts("StdIo test output".data) >= 0, "puts succeeds");
+        Assert(putchar('\n' as int32) == '\n' as int32, "putchar echoes the character");
+    }
 
-    free(a as *var opaque);
-    free(b as *var opaque);
-    free(buf as *var opaque);
+    // Safety: each pointer came from `malloc` above and is freed exactly once, after its last use.
+    unsafe {
+        free(a as *var opaque);
+        free(b as *var opaque);
+        free(buf as *var opaque);
+    }
     return 0;
 }

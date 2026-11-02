@@ -73,7 +73,9 @@ var Consumed: *opaque = null;
 /// @param value the result to keep
 /// @see https://rux-lang.dev/docs/api/test/benchmark#consume
 pub func Consume<T>(value: *T) {
-    AtomicStore<*opaque>(@Consumed, value as *opaque, MemoryOrder::Relaxed);
+    // Safety: `@Consumed` addresses a module variable, live for the whole process and aligned for a pointer; only the
+    // address of `value` is stored, never read through.
+    unsafe { AtomicStore<*opaque>(@Consumed, value as *opaque, MemoryOrder::Relaxed); }
 }
 
 /// Runs `run` with a growing iteration count until one run lasts at least `options.minimumTime` or reaches

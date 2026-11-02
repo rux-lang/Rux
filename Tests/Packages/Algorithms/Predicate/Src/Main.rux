@@ -19,31 +19,12 @@ extend Record {
 // `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
 // they did.
 
-// The mutations take views since they moved to slices. A struct literal cannot appear inside an `if` condition --
-// its brace opens the body — so the views are built here.
-func Ints(data: *var int32, length: uint) -> var int32[..] {
-    return (data)[..length];
+func Sorted<T>(data: T[..]) -> bool {
+    return IsSorted<T>(data);
 }
 
-func ReadInts(data: *int32, length: uint) -> int32[..] {
-    return (data)[..length];
-}
-
-func Records(data: *var Record, length: uint) -> var Record[..] {
-    return (data)[..length];
-}
-
-func ReadRecords(data: *Record, length: uint) -> Record[..] {
-    return (data)[..length];
-}
-
-func Sorted<T>(data: *T, length: uint) -> bool {
-    return IsSorted<T>((data)[..length]);
-}
-
-func SameInts(left: *int32, right: *int32, length: uint) -> bool {
-    return SequenceEqual<int32>((left)[..length],
-                                (right)[..length]);
+func SameInts(left: int32[..], right: int32[..]) -> bool {
+    return SequenceEqual<int32>(left, right);
 }
 
 func IsEven(value: int32) -> bool {
@@ -104,89 +85,93 @@ func Main() -> int {
 
     // RemoveIf compacts survivors and preserves their order.
     var mixed: int32[8] = [1, 2, 3, 4, 5, 6, 7, 8];
-    if RemoveWhere<int32>(Ints(@mixed[0], 8), IsEven) != 4 { return 50; }
+    if RemoveWhere<int32>(mixed[..8], IsEven) != 4 { return 50; }
     if mixed[0] != 1 || mixed[1] != 3 || mixed[2] != 5 || mixed[3] != 7 { return 51; }
 
     var odds: int32[3] = [1, 3, 5];
-    if RemoveWhere<int32>(Ints(@odds[0], 3), IsEven) != 3 { return 52; }
+    if RemoveWhere<int32>(odds[..3], IsEven) != 3 { return 52; }
     if odds[0] != 1 || odds[2] != 5 { return 53; }
 
     var every: int32[3] = [2, 4, 6];
-    if RemoveWhere<int32>(Ints(@every[0], 3), IsEven) != 0 { return 54; }
-    if RemoveWhere<int32>(Ints(@every[0], 0), IsEven) != 0 { return 55; }
+    if RemoveWhere<int32>(every[..3], IsEven) != 0 { return 54; }
+    if RemoveWhere<int32>(every[..0], IsEven) != 0 { return 55; }
 
     // Partition splits the sequence and reports the boundary, which equals the
     // number of accepted elements.
     var split: int32[8] = [1, 2, 3, 4, 5, 6, 7, 8];
     let total: uint = 8;
-    let boundary = Partition<int32>(Ints(@split[0], 8), IsEven);
+    let boundary = Partition<int32>(split[..8], IsEven);
     if boundary != 4 { return 60; }
     // A slice literal cannot appear anywhere inside an `if` condition — its brace is taken as the body — so both
     // halves are named first.
-    let accepted = (@split[0])[..boundary];
-    let rejected = (@split[4])[..total - boundary];
+    let accepted = split[..boundary];
+    let rejected = split[boundary..total];
     if !AllOf<int32>(accepted, IsEven) { return 61; }
     if !NoneOf<int32>(rejected, IsEven) { return 62; }
 
     // Partitioning by a predicate nothing or everything satisfies.
     var all: int32[4] = [2, 4, 6, 8];
-    if Partition<int32>(Ints(@all[0], 4), IsEven) != 4 { return 64; }
-    if Partition<int32>(Ints(@all[0], 4), Never) != 0 { return 65; }
-    if Partition<int32>(Ints(@all[0], 0), Always) != 0 { return 66; }
+    if Partition<int32>(all[..4], IsEven) != 4 { return 64; }
+    if Partition<int32>(all[..4], Never) != 0 { return 65; }
+    if Partition<int32>(all[..0], Always) != 0 { return 66; }
 
     // PartitionPoint finds the boundary of an already-partitioned sequence in
     // logarithmic time, and agrees with Partition's own answer.
     var ordered: int32[8] = [1, 2, 3, 4, 5, 6, 7, 8];
-    if PartitionPoint<int32>(ReadInts(@ordered[0], 8), Below4) != 3 { return 70; }
-    if PartitionPoint<int32>(ReadInts(@ordered[0], 8), Always) != 8 { return 71; }
-    if PartitionPoint<int32>(ReadInts(@ordered[0], 8), Never) != 0 { return 72; }
-    if PartitionPoint<int32>(ReadInts(@ordered[0], 0), Always) != 0 { return 73; }
+    if PartitionPoint<int32>(ordered[..8], Below4) != 3 { return 70; }
+    if PartitionPoint<int32>(ordered[..8], Always) != 8 { return 71; }
+    if PartitionPoint<int32>(ordered[..8], Never) != 0 { return 72; }
+    if PartitionPoint<int32>(ordered[..0], Always) != 0 { return 73; }
 
     var reordered: int32[8] = [1, 2, 3, 4, 5, 6, 7, 8];
-    let point = Partition<int32>(Ints(@reordered[0], 8), IsOdd);
-    if PartitionPoint<int32>(ReadInts(@reordered[0], 8), IsOdd) != point { return 74; }
+    let point = Partition<int32>(reordered[..8], IsOdd);
+    if PartitionPoint<int32>(reordered[..8], IsOdd) != point { return 74; }
 
     // Transform writes into a separate destination.
     var source: int32[4] = [1, 2, 3, 4];
     var doubled: int32[4] = [0; 4];
-    if !Transform<int32, int32>(Ints(@doubled[0], 4), ReadInts(@source[0], 4), Double) { return 80; }
+    if !Transform<int32, int32>(doubled[..4], source[..4], Double) { return 80; }
     if doubled[0] != 2 || doubled[3] != 8 { return 81; }
     if source[0] != 1 || source[3] != 4 { return 82; }
 
     // Transforming in place is allowed when the types match.
-    if !Transform<int32, int32>(Ints(@source[0], 4), ReadInts(@source[0], 4), Double) { return 83; }
+    if !Transform<int32, int32>(source[..4], source[..4], Double) { return 83; }
     if source[0] != 2 || source[3] != 8 { return 84; }
 
     // Zero elements always succeeds; a null with a real length does not.
-    if !Transform<int32, int32>(Ints(null, 0), ReadInts(null, 0), Double) { return 85; }
-    if Transform<int32, int32>(Ints(null, 2), ReadInts(@source[0], 4), Double) { return 86; }
-    if Transform<int32, int32>(Ints(@doubled[0], 4), ReadInts(null, 2), Double) { return 87; }
+    if !Transform<int32, int32>([], [], Double) { return 85; }
+    let nothing: *var int32 = null;
+    // Safety: the view is never read or written: `Transform` refuses a null view with a non-zero length before it
+    // touches an element, which is what these two checks assert.
+    let nullView = unsafe { nothing[..2] };
+    if Transform<int32, int32>(nullView, source[..4], Double) { return 86; }
+    if Transform<int32, int32>(doubled[..4], nullView, Double) { return 87; }
 
     // The element and result types may differ.
     var records: Record[3] = [Record { key: 5, origin: 0 },
                               Record { key: 6, origin: 1 },
                               Record { key: 7, origin: 2 }];
     var keys: int32[3] = [0; 3];
-    if !Transform<Record, int32>(Ints(@keys[0], 3), ReadRecords(@records[0], 3), KeyOf) { return 88; }
+    if !Transform<Record, int32>(keys[..3], records[..3], KeyOf) { return 88; }
     if keys[0] != 5 || keys[2] != 7 { return 89; }
 
     // Fold accumulates left to right, and an empty sequence yields the seed.
     var digits: int32[5] = [1, 2, 3, 4, 5];
-    if Fold<int32, int32>(ReadInts(@digits[0], 5), 0, AddInt32) != 15 { return 90; }
-    if Fold<int32, int32>(ReadInts(@digits[0], 5), 100, AddInt32) != 115 { return 91; }
-    if Fold<int32, int32>(ReadInts(@digits[0], 0), 7, AddInt32) != 7 { return 92; }
+    if Fold<int32, int32>(digits[..5], 0, AddInt32) != 15 { return 90; }
+    if Fold<int32, int32>(digits[..5], 100, AddInt32) != 115 { return 91; }
+    if Fold<int32, int32>(digits[..0], 7, AddInt32) != 7 { return 92; }
 
     // The accumulator need not be the element type's own sum.
-    if Fold<int32, int32>(ReadInts(@digits[0], 5), 0, CountEven) != 2 { return 93; }
-    if Fold<Record, int32>(ReadRecords(@records[0], 3), 0, AddKey) != 18 { return 94; }
+    if Fold<int32, int32>(digits[..5], 0, CountEven) != 2 { return 93; }
+    if Fold<Record, int32>(records[..3], 0, AddKey) != 18 { return 94; }
 
     // Predicates over a struct element type.
-    if PartitionPoint<Record>(ReadRecords(@records[0], 0), HasEvenKey) != 0 { return 101; }
+    if PartitionPoint<Record>(records[..0], HasEvenKey) != 0 { return 101; }
 
     var pruned: Record[3] = [Record { key: 5, origin: 0 },
                              Record { key: 6, origin: 1 },
                              Record { key: 7, origin: 2 }];
-    if RemoveWhere<Record>(Records(@pruned[0], 3), HasEvenKey) != 2 { return 103; }
+    if RemoveWhere<Record>(pruned[..3], HasEvenKey) != 2 { return 103; }
     if pruned[0].key != 5 || pruned[1].key != 7 { return 104; }
     if pruned[1].origin != 2 { return 105; }
 
@@ -195,8 +180,8 @@ func Main() -> int {
     // there is not the order it started in.
     var check: int32[4] = [2, 4, 6, 8];
     var expected: int32[4] = [2, 4, 6, 8];
-    if !Sorted<int32>(@check[0], 4) { return 110; }
-    if !SameInts(@check[0], @expected[0], 4) { return 111; }
+    if !Sorted<int32>(check[..4]) { return 110; }
+    if !SameInts(check[..4], expected[..4]) { return 111; }
 
     return 0;
 }

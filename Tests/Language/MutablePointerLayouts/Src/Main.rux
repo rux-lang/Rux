@@ -10,7 +10,8 @@ struct Cursor<T> {
 extend Cursor<T> {
     func Next(self: &var Cursor<T>) -> (*var T)? {
         if self.position >= self.length { return none; }
-        let pointer = @self.data[self.position];
+        // Safety: `position < length`, checked above, and `data` addresses a local array of `length` elements.
+        let pointer = unsafe { @self.data[self.position] };
         self.position = self.position + 1;
         return .Some(pointer);
     }
@@ -28,7 +29,8 @@ func Change<T>(pointer: *var T, value: T) {
     match wrapped {
         .Present(option) => {
             match option {
-                .Some(element) => { *element = value; },
+                // Safety: `element` is `pointer`, which every caller points at `wide` or an element of `values`.
+                .Some(element) => { unsafe { *element = value; } },
                 .None => {}
             }
         },
@@ -41,27 +43,31 @@ func Inspect<T>(pointer: *T) -> T {
     match wrapped {
         .Present(option) => {
             match option {
-                .Some(element) => { return *element; },
+                // Safety: `element` is `pointer`, which every caller points at `wide` or an element of `values`.
+                .Some(element) => { return unsafe { *element }; },
                 .None => {}
             }
         },
         .Empty => {}
     }
-    return *pointer;
+    // Safety: every caller passes a pointer at `wide` or an element of `values`, live locals of `Main`.
+    return unsafe { *pointer };
 }
 
 func Main() -> int {
     var values: int32[3] = [1, 2, 3];
     var cursor = Cursor<int32> { data: @values[0], length: 3, position: 0 };
     let first = cursor.Read();
-    match first { .Some(pointer) => { if *pointer != 1 { return 1; } }, .None => { return 2; } }
+    // Safety: `pointer` is `cursor.data`, which addresses `values[0]`, a live local.
+    match first { .Some(pointer) => { if unsafe { *pointer } != 1 { return 1; } }, .None => { return 2; } }
     for pointer in cursor { Change<int32>(pointer, Inspect<int32>(pointer) + 10); }
     if values[0] != 11 || values[1] != 12 || values[2] != 13 { return 3; }
     // The for loop advances the cursor itself, so it is exhausted; a fresh one walks the changed values again.
     var again = Cursor<int32> { data: @values[0], length: 3, position: 0 };
     var sum = 0;
     loop {
-        match again.Next() { pointer? => { sum = sum + *pointer; }, none => { break; } }
+        // Safety: `Next` yields only addresses of `values` elements, a live local array.
+        match again.Next() { pointer? => { sum = sum + unsafe { *pointer }; }, none => { break; } }
     }
     if sum != 36 { return 11; }
     match cursor.Next() { _? => { return 4; }, none => {} }

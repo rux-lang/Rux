@@ -33,11 +33,13 @@ when #target.os == OperatingSystem::Windows {
             LastLParam = lParam;
             return 0x5EED;
         }
-        return DefWindowProcW(window, message, wParam, lParam);
+        // Safety: the arguments are exactly the ones the system passed for `window`, which is live during the call.
+        return unsafe { DefWindowProcW(window, message, wParam, lParam) };
     }
 
     func Main() -> int {
-        let instance = GetModuleHandleW(null);
+        // Safety: a null name asks for this executable's own module handle and reads no memory.
+        let instance = unsafe { GetModuleHandleW(null) };
         if instance == null {
             return 1;
         }
@@ -50,7 +52,8 @@ when #target.os == OperatingSystem::Windows {
             windowExtra: 0,
             instance: instance,
             icon: null,
-            cursor: LoadCursorW(null, IDC_ARROW as *char16),
+            // Safety: a null instance with a predefined cursor identifier in place of a name is the documented form.
+            cursor: unsafe { LoadCursorW(null, IDC_ARROW as *char16) },
             background: null,
             menuName: null,
             className: ClassName.data,
@@ -59,13 +62,17 @@ when #target.os == OperatingSystem::Windows {
         if windowClass.cursor == null {
             return 2;
         }
-        if RegisterClassExW(@windowClass) == 0 {
+        // Safety: `windowClass` is a local, fully initialized, sized structure whose name is a NUL-terminated constant.
+        if unsafe { RegisterClassExW(@windowClass) } == 0 {
             return 3;
         }
 
         // WM_CREATE arrives before CreateWindowExW returns.
-        let window = CreateWindowExW(0, ClassName.data, null, 0, 0, 0, 0, 0, HWND_MESSAGE as *var opaque, null,
-                                     instance, null);
+        // Safety: the class is registered above under the NUL-terminated `ClassName`, and every optional pointer is
+        // null.
+        let window = unsafe {
+            CreateWindowExW(0, ClassName.data, null, 0, 0, 0, 0, 0, HWND_MESSAGE as *var opaque, null, instance, null)
+        };
         if window == null {
             return 4;
         }
@@ -75,7 +82,8 @@ when #target.os == OperatingSystem::Windows {
 
         // A sent message on the owning thread is a direct call, so its answer and both parameters come straight back;
         // the parameters are chosen so a swapped or truncated argument cannot pass.
-        let answer = SendMessageW(window, WM_USER + 1, 0xFFFFFFFF00000001, -2);
+        // Safety: `window` is the live window created above, and this private message carries no pointers.
+        let answer = unsafe { SendMessageW(window, WM_USER + 1, 0xFFFFFFFF00000001, -2) };
         if answer != 0x5EED {
             return 6;
         }
@@ -84,31 +92,39 @@ when #target.os == OperatingSystem::Windows {
         }
 
         // Without DPI awareness a window reports 96, and in no case zero.
-        if GetDpiForWindow(window) == 0 {
+        // Safety: `window` is the live window created above.
+        if unsafe { GetDpiForWindow(window) } == 0 {
             return 8;
         }
 
-        let font = CreateFontW(-12, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                               CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, FaceName.data);
+        // Safety: the face name is a NUL-terminated UTF-16 constant, and every other argument is a plain number.
+        let font = unsafe {
+            CreateFontW(-12, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                        CLEARTYPE_QUALITY, DEFAULT_PITCH, FaceName.data)
+        };
         if font == null {
             return 9;
         }
-        if DeleteObject(font) == 0 {
+        // Safety: `font` is the live font created above, selected into no device context, and not used again.
+        if unsafe { DeleteObject(font) } == 0 {
             return 10;
         }
 
         // Destroying sends WM_DESTROY, and only then may the class go.
-        if DestroyWindow(window) == 0 {
+        // Safety: `window` is the live window created above on this thread, and not used again.
+        if unsafe { DestroyWindow(window) } == 0 {
             return 11;
         }
         if Destroyed != 1 {
             return 12;
         }
-        if UnregisterClassW(ClassName.data, instance) == 0 {
+        // Safety: `ClassName` is NUL-terminated, and its only window was destroyed above.
+        if unsafe { UnregisterClassW(ClassName.data, instance) } == 0 {
             return 13;
         }
         // A second registration of the same name succeeds again once it is gone.
-        if RegisterClassExW(@windowClass) == 0 || UnregisterClassW(ClassName.data, instance) == 0 {
+        // Safety: `windowClass` is still the local, sized structure registered before, and the class has no windows.
+        if unsafe { RegisterClassExW(@windowClass) == 0 || UnregisterClassW(ClassName.data, instance) == 0 } {
             return 14;
         }
         return 0;

@@ -18,13 +18,13 @@ func SplitHigh(value: float64) -> float64 {
 }
 
 // The exact product of two doubles, as a rounded head and the remainder the rounding dropped.
-func ExactProduct(left: float64, right: float64, remainder: *var float64) -> float64 {
+func ExactProduct(left: float64, right: float64, remainder: &var float64) -> float64 {
     let head = left * right;
     let leftHigh = SplitHigh(left);
     let leftLow = left - leftHigh;
     let rightHigh = SplitHigh(right);
     let rightLow = right - rightHigh;
-    *remainder = ((leftHigh * rightHigh - head) + leftHigh * rightLow + leftLow * rightHigh) + leftLow * rightLow;
+    remainder = ((leftHigh * rightHigh - head) + leftHigh * rightLow + leftLow * rightHigh) + leftLow * rightLow;
     return head;
 }
 
@@ -33,15 +33,15 @@ func ExactProduct(left: float64, right: float64, remainder: *var float64) -> flo
 // square is closest, measured exactly.
 func IsCorrectlyRoundedRoot(value: float64, root: float64) -> bool {
     var remainder = 0.0;
-    let squared = ExactProduct(root, root, @remainder);
+    let squared = ExactProduct(root, root, remainder);
     // The exact error of root^2 against value, as a head and a tail, which together are exact.
     let error = (squared - value) + remainder;
     var neighbourRemainder = 0.0;
     let below = NextDown(root);
     let above = NextUp(root);
-    let belowSquared = ExactProduct(below, below, @neighbourRemainder);
+    let belowSquared = ExactProduct(below, below, neighbourRemainder);
     let belowError = (belowSquared - value) + neighbourRemainder;
-    let aboveSquared = ExactProduct(above, above, @neighbourRemainder);
+    let aboveSquared = ExactProduct(above, above, neighbourRemainder);
     let aboveError = (aboveSquared - value) + neighbourRemainder;
     return Abs(error) <= Abs(belowError) && Abs(error) <= Abs(aboveError);
 }

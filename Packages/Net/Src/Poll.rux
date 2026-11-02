@@ -145,7 +145,8 @@ extend Poller {
             let created = Kqueue();
             if created < 0i64 { fail LastFailure(created); }
             poller.handle = created as uint64;
-            FcntlInt(created as int32, F_SETFD, FD_CLOEXEC as int64);
+            // Safety: `F_SETFD` takes an integer argument, not an address.
+            unsafe { FcntlInt(created as int32, F_SETFD, FD_CLOEXEC as int64); }
         }
         return <-poller;
     }
@@ -177,8 +178,10 @@ extend Poller {
     pub func Deregister(self: &var Poller, source: PollSource) -> ! IoError {
         when #target.os == .Linux {
             var bytes: uint8[16] = [0u8; 16];
-            let result = EpollControl(self.handle as int32, EPOLL_CTL_DEL, source.handle as int32,
-                                      (@bytes[0]) as *opaque);
+            // Safety: `bytes` is a local of 16 bytes, at least `EpollEventBytes`.
+            let result = unsafe {
+                EpollControl(self.handle as int32, EPOLL_CTL_DEL, source.handle as int32, (@bytes[0]) as *opaque)
+            };
             if result < 0i64 { fail Registered(LastFailure(result)); }
         }
         else when #target.os == .Windows {
@@ -203,8 +206,13 @@ extend Poller {
         let milliseconds = TimeoutMilliseconds(timeout);
         when #target.os == .Linux {
             self.Reserve(capacity * EpollEventBytes)?;
-            let base = self.buffer.AsMutableSlice().data as *var uint8;
-            let result = EpollWait(self.handle as int32, base as *var opaque, capacity as int32, milliseconds);
+            // Safety: `Reserve` made the buffer at least `capacity * EpollEventBytes` bytes long, and its words are
+            // viewed as the bytes they hold.
+            let base = unsafe { self.buffer.AsMutableSlice().data as *var uint8 };
+            // Safety: `base` is writable for `capacity` events of `EpollEventBytes` bytes, reserved above.
+            let result = unsafe {
+                EpollWait(self.handle as int32, base as *var opaque, capacity as int32, milliseconds)
+            };
             if result < 0i64 {
                 let failure = LastFailure(result);
                 if failure.kind == IoErrorKind::Interrupted { return 0; }
@@ -212,7 +220,9 @@ extend Poller {
             }
             var index: uint = 0;
             while index < result as uint {
-                let entry = base[index * EpollEventBytes..(index + 1) * EpollEventBytes];
+                // Safety: `index` is below the event count `EpollWait` reported, at most `capacity`, so the entry
+                // lies inside the buffer reserved above.
+                let entry = unsafe { base[index * EpollEventBytes..(index + 1) * EpollEventBytes] };
                 let mask = ReadWord32(entry, 0);
                 events[index] = PollEvent {
                     token: ReadWord64(entry, EpollEventWordOffset),
@@ -230,21 +240,25 @@ extend Poller {
                 fail IoError::Of(IoErrorKind::InvalidInput);
             }
             self.Reserve(count * 16)?;
-            let polled = self.buffer.AsMutableSlice().data as *var WsaPollFd;
+            // Safety: `Reserve` made the buffer of 8-byte-aligned words room for `count` 16-byte `WsaPollFd`s.
+            let polled = unsafe { self.buffer.AsMutableSlice().data as *var WsaPollFd };
             var index: uint = 0;
             for registration in self.registrations.AsSlice() {
                 var wanted: int16 = 0;
                 if registration.interest.readable { wanted = wanted | POLLRDNORM; }
                 if registration.interest.writable { wanted = wanted | POLLWRNORM; }
-                polled[index] = WsaPollFd { socket: registration.handle, events: wanted, returned: 0 };
+                // Safety: `index` counts the registrations, below `count`, and `polled` has room for `count`.
+                unsafe { polled[index] = WsaPollFd { socket: registration.handle, events: wanted, returned: 0 }; }
                 index = index + 1;
             }
-            let result = WSAPoll(polled, count as uint32, milliseconds);
+            // Safety: `polled` holds `count` entries, written above.
+            let result = unsafe { WSAPoll(polled, count as uint32, milliseconds) };
             if result < 0 { fail LastFailure(0); }
             var filled: uint = 0;
             index = 0;
             while index < count && filled < capacity {
-                let returned = polled[index].returned;
+                // Safety: `index` is below `count`, the entries `polled` holds.
+                let returned = unsafe { polled[index].returned };
                 if returned != 0i16 {
                     events[filled] = PollEvent {
                         token: self.registrations.AsSlice()[index].token,
@@ -260,7 +274,8 @@ extend Poller {
         }
         else {
             self.Reserve(capacity * sizeof(Kevent) as uint)?;
-            let reported = self.buffer.AsMutableSlice().data as *var Kevent;
+            // Safety: `Reserve` made the buffer of 8-byte-aligned words room for `capacity` `Kevent`s.
+            let reported = unsafe { self.buffer.AsMutableSlice().data as *var Kevent };
             var span = Timespec { seconds: 0, nanoseconds: 0 };
             var limit: *Timespec = null;
             if milliseconds >= 0 {
@@ -268,7 +283,9 @@ extend Poller {
                                   nanoseconds: (milliseconds as int64 % 1000i64) * 1000000i64 };
                 limit = @span;
             }
-            let result = KeventCall(self.handle as int32, null, 0, reported, capacity as int32, limit);
+            // Safety: `reported` is writable for `capacity` events, reserved above, and a non-null `limit` is the local
+            // `span`.
+            let result = unsafe { KeventCall(self.handle as int32, null, 0, reported, capacity as int32, limit) };
             if result < 0i64 {
                 let failure = LastFailure(result);
                 if failure.kind == IoErrorKind::Interrupted { return 0; }
@@ -276,7 +293,8 @@ extend Poller {
             }
             var index: uint = 0;
             while index < result as uint {
-                let event = reported[index];
+                // Safety: `index` is below the event count `KeventCall` reported, at most `capacity`.
+                let event = unsafe { reported[index] };
                 events[index] = PollEvent {
                     token: event.userData,
                     readable: event.filter == EVFILT_READ,
@@ -298,8 +316,11 @@ extend Poller {
             var bytes: uint8[16] = [0u8; 16];
             WriteWord32(bytes[..], 0, mask);
             WriteWord64(bytes[..], EpollEventWordOffset, token);
-            let result = EpollControl(self.handle as int32, adding ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
-                                      source.handle as int32, (@bytes[0]) as *opaque);
+            // Safety: `bytes` is a local of 16 bytes, at least `EpollEventBytes`, holding the event written above.
+            let result = unsafe {
+                EpollControl(self.handle as int32, adding ? EPOLL_CTL_ADD : EPOLL_CTL_MOD, source.handle as int32,
+                             (@bytes[0]) as *opaque)
+            };
             if result < 0i64 { fail Registered(LastFailure(result)); }
         }
         else when #target.os == .Windows {
@@ -338,7 +359,8 @@ extend Poller {
                 Kevent::Of(handle, EVFILT_WRITE, (interest.writable ? EV_ADD : EV_DELETE) | EV_RECEIPT, token)
             ];
             var receipts: Kevent[2] = [Kevent::Of(0, 0, 0, 0), Kevent::Of(0, 0, 0, 0)];
-            let result = KeventCall(self.handle as int32, @changes[0], 2, @receipts[0], 2, null);
+            // Safety: `changes` and `receipts` are local arrays of two `Kevent`s each, the counts passed.
+            let result = unsafe { KeventCall(self.handle as int32, @changes[0], 2, @receipts[0], 2, null) };
             if result < 0i64 { fail LastFailure(result); }
             var index: int64 = 0;
             while index < result {

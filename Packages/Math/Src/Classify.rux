@@ -375,10 +375,12 @@ pub const IndeterminateExponent: int64 = int64::Max;
 /// @returns the signed fraction, normally with magnitude in `[0.5, 1)`
 /// @see https://rux-lang.dev/docs/api/math/float-representation#decompose
 pub func Decompose(value: float64, exponent: *var int64) -> float64 {
-    *exponent = 0;
+    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+    unsafe { *exponent = 0; }
     if IsZero(value) || !IsFinite(value) { return value; }
     let power = ExponentOf(value) + 1;
-    *exponent = power;
+    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+    unsafe { *exponent = power; }
     return ScaleByPowerOfTwo(value, 0 - power);
 }
 
@@ -388,10 +390,12 @@ pub func Decompose(value: float64, exponent: *var int64) -> float64 {
 /// @returns the signed fraction, normally with magnitude in `[0.5, 1)`
 /// @see https://rux-lang.dev/docs/api/math/float-representation#decompose
 pub func Decompose(value: float32, exponent: *var int64) -> float32 {
-    *exponent = 0;
+    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+    unsafe { *exponent = 0; }
     if IsZero(value) || !IsFinite(value) { return value; }
     let power = ExponentOf(value) + 1;
-    *exponent = power;
+    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+    unsafe { *exponent = power; }
     return ScaleByPowerOfTwo(value, 0 - power);
 }
 
@@ -404,16 +408,14 @@ pub func Decompose(value: float32, exponent: *var int64) -> float32 {
 /// @returns the signed fractional part
 /// @see https://rux-lang.dev/docs/api/math/float-representation#split-integral
 pub func SplitIntegral(value: float64, integral: *var float64) -> float64 {
-    if IsNan(value) {
-        *integral = value;
-        return value;
-    }
-    if IsInfinite(value) {
-        *integral = value;
-        return CopySign(0.0, value);
+    if IsNan(value) || IsInfinite(value) {
+        // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
+        unsafe { *integral = value; }
+        return IsNan(value) ? value : CopySign(0.0, value);
     }
     let whole = Trunc(value);
-    *integral = whole;
+    // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
+    unsafe { *integral = whole; }
     // Subtracting is exact here, and the sign of a zero remainder follows the value rather than the subtraction.
     return IsZero(value - whole) ? CopySign(0.0, value) : value - whole;
 }
@@ -426,7 +428,8 @@ pub func SplitIntegral(value: float64, integral: *var float64) -> float64 {
 pub func SplitIntegral(value: float32, integral: *var float32) -> float32 {
     var whole = 0.0;
     let fraction = SplitIntegral(value as float64, @whole);
-    *integral = whole as float32;
+    // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float32`.
+    unsafe { *integral = whole as float32; }
     return fraction as float32;
 }
 

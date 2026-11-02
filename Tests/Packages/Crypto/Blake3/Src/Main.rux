@@ -9,7 +9,7 @@ import Crypto::{ Blake3, Blake3Of, Digest, Equal };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func FromHex(text: char8[..], into: var char8[..]) {
@@ -18,7 +18,7 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2 {
-            let c = text.data[index * 2 + half] as uint8;
+            let c = text[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
@@ -29,7 +29,7 @@ func FromHex(text: char8[..], into: var char8[..]) {
             value = value * 16 + digit;
             half = half + 1;
         }
-        into.data[index] = value as char8;
+        into[index] = value as char8;
         index = index + 1;
     }
 }
@@ -37,12 +37,12 @@ func FromHex(text: char8[..], into: var char8[..]) {
 func Main() -> int {
     // The published hash of the empty message.
     var digest: char8[64];
-    Blake3Of(TextBytes(""), (@digest[0])[..32]);
+    Blake3Of(TextBytes(""), digest[..32]);
     var expected: char8[32];
     FromHex("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
-            (@expected[0])[..32]);
-    Assert(Equal((@digest[0])[..32],
-                 (@expected[0])[..32]),
+            expected[..32]);
+    Assert(Equal(digest[..32],
+                 expected[..32]),
            "BLAKE3 of the empty message");
 
     // A message spanning several chunks exercises the tree: the boundary at one kibibyte, the merges the
@@ -64,9 +64,9 @@ func Main() -> int {
             if base + offset <= 5000 && base + offset >= 2 {
                 let length = base + offset - 2;
                 var oneShot: char8[32];
-                let whole = (@message[0])[..length];
-                Blake3Of(whole, (@oneShot[0])[..32]);
-                let oneShotBytes = (@oneShot[0])[..32];
+                let whole = message[..length];
+                Blake3Of(whole, oneShot[..32]);
+                let oneShotBytes = oneShot[..32];
 
                 // A handful of splits rather than all of them, since the lengths here are large.
                 let splits: uint[6] = [0, 1, 63, 64, 1023, 1024];
@@ -74,13 +74,13 @@ func Main() -> int {
                 while s < 6 {
                     let split = splits[s] <= length ? splits[s] : length;
                     var incremental = Blake3();
-                    let first = (@message[0])[..split];
+                    let first = message[..split];
                     incremental.Update(first);
-                    let second = (@message[split])[..length - split];
+                    let second = message[split..length];
                     incremental.Update(second);
                     var got: char8[32];
-                    incremental.Finish((@got[0])[..32]);
-                    let gotBytes = (@got[0])[..32];
+                    incremental.Finish(got[..32]);
+                    let gotBytes = got[..32];
                     Assert(Equal(gotBytes, oneShotBytes),
                            "every split of a multi-chunk message gives the same hash");
                     s = s + 1;
@@ -95,17 +95,17 @@ func Main() -> int {
     var byteAtATime = Blake3();
     index = 0;
     while index < 2500 {
-        let single = (@message[index])[..1];
+        let single = message[index..index + 1];
         byteAtATime.Update(single);
         index = index + 1;
     }
     var incrementalOut: char8[32];
-    byteAtATime.Finish((@incrementalOut[0])[..32]);
+    byteAtATime.Finish(incrementalOut[..32]);
     var reference: char8[32];
-    let whole2500 = (@message[0])[..2500];
-    Blake3Of(whole2500, (@reference[0])[..32]);
-    Assert(Equal((@incrementalOut[0])[..32],
-                 (@reference[0])[..32]),
+    let whole2500 = message[..2500];
+    Blake3Of(whole2500, reference[..32]);
+    Assert(Equal(incrementalOut[..32],
+                 reference[..32]),
            "a byte-at-a-time hash matches the one-shot hash across chunk boundaries");
 
     // Distinct messages give distinct hashes, including ones differing only at a chunk boundary — which is
@@ -118,23 +118,23 @@ func Main() -> int {
     }
     altered[1023] = (altered[1023] as uint8 ^ 1) as char8;
     var alteredHash: char8[32];
-    let alteredWhole = (@altered[0])[..2048];
-    Blake3Of(alteredWhole, (@alteredHash[0])[..32]);
+    let alteredWhole = altered[..2048];
+    Blake3Of(alteredWhole, alteredHash[..32]);
     var originalHash: char8[32];
-    let originalWhole = (@message[0])[..2048];
-    Blake3Of(originalWhole, (@originalHash[0])[..32]);
-    Assert(!Equal((@alteredHash[0])[..32],
-                  (@originalHash[0])[..32]),
+    let originalWhole = message[..2048];
+    Blake3Of(originalWhole, originalHash[..32]);
+    Assert(!Equal(alteredHash[..32],
+                  originalHash[..32]),
            "a single flipped bit at a chunk boundary changes the hash");
 
     // The output extends like SHAKE's: a longer read starts with a shorter one.
     var longOut: char8[128];
-    let abc = (@message[0])[..3];
-    Blake3Of(abc, (@longOut[0])[..128]);
+    let abc = message[..3];
+    Blake3Of(abc, longOut[..128]);
     var shortOut: char8[32];
-    Blake3Of(abc, (@shortOut[0])[..32]);
-    Assert(Equal((@shortOut[0])[..32],
-                 (@longOut[0])[..32]),
+    Blake3Of(abc, shortOut[..32]);
+    Assert(Equal(shortOut[..32],
+                 longOut[..32]),
            "a short output is the start of a long one");
 
     var sizes = Blake3();

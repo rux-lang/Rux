@@ -51,7 +51,8 @@ extend PriorityQueue<T> {
         while index > 0 {
             let parent = (index - 1) / 2;
             if !(items[parent] < items[index]) { break; }
-            SwapElements<T>(items, parent, index);
+            // Safety: `parent < index < items.length`: `index` starts at the last element and only moves to parents.
+            unsafe { SwapElements<T>(items, parent, index); }
             index = parent;
         }
     }
@@ -70,7 +71,8 @@ extend PriorityQueue<T> {
         let count = self.items.Length();
         if count == 0 { return none; }
         let items = self.items.AsMutableSlice();
-        SwapElements<T>(items, 0, count - 1);
+        // Safety: the queue holds `count` elements, nonzero, checked above, so both `0` and `count - 1` are below it.
+        unsafe { SwapElements<T>(items, 0, count - 1); }
         let last = count - 1;
         var index: uint = 0;
         while true {
@@ -80,7 +82,8 @@ extend PriorityQueue<T> {
             let right = left + 1;
             if right < last && items[left] < items[right] { largest = right; }
             if !(items[index] < items[largest]) { break; }
-            SwapElements<T>(items, index, largest);
+            // Safety: `index < largest < last < items.length`, by the checks against `last` above.
+            unsafe { SwapElements<T>(items, index, largest); }
             index = largest;
         }
         return self.items.RemoveAt(last);
@@ -102,7 +105,8 @@ extend PriorityQueue<T> {
 
 // Exchanges two elements by moving them, so that elements without copies can be exchanged. The moves go through the
 // raw pointer, whose places are written without destroying what they held, since each was just moved out.
-func SwapElements<T>(items: var T[..], left: uint, right: uint) {
+// Safety: `left` and `right` must both be below `items.length`.
+unsafe func SwapElements<T>(items: var T[..], left: uint, right: uint) {
     if left == right { return; }
     let data = items.data;
     let held <- data[left];

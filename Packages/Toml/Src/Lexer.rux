@@ -145,19 +145,23 @@ extend TomlLexer {
 
     func At(self: &TomlLexer, offset: uint) -> uint8 {
         if self.position + offset >= self.input.length { return 0; }
-        return self.input.data[self.position + offset] as uint8;
+        // Safety: `self.position + offset` is below `self.input.length`, checked above.
+        return unsafe { self.input.data[self.position + offset] } as uint8;
     }
 
     // Comments run to the end of the line and are not tokens: nothing above the lexer ever sees one, which is
     // also why a document read and written back loses them.
     func SkipSpaceAndComments(self: &var TomlLexer) {
         while self.position < self.input.length {
-            let c = self.input.data[self.position] as uint8;
+            // Safety: `self.position` is below `self.input.length`, checked by the loop.
+            let c = unsafe { self.input.data[self.position] } as uint8;
             if c == 0x20 || c == 0x09 {
                 self.position = self.position + 1;
             }
             else if c == 0x23 {
-                while self.position < self.input.length && (self.input.data[self.position] as uint8) != 0x0A {
+                while self.position < self.input.length {
+                    // Safety: `self.position` is below `self.input.length`, checked by the loop.
+                    if (unsafe { self.input.data[self.position] } as uint8) == 0x0A { break; }
                     self.position = self.position + 1;
                 }
             }
@@ -187,14 +191,14 @@ extend TomlLexer {
         // A multi-line string ignores a newline immediately after its opening delimiter, which is what lets the
         // content start on the next line without gaining a leading blank.
         if multiline && self.position < self.input.length {
-            if (self.input.data[self.position] as uint8) == 0x0D &&
-                self.position + 1 < self.input.length &&
-                (self.input.data[self.position + 1] as uint8) == 0x0A {
+            // Safety: `self.position` is below `self.input.length`, checked above.
+            let first = unsafe { self.input.data[self.position] } as uint8;
+            if first == 0x0D && self.position + 1 < self.input.length && self.At(1) == 0x0A {
                 self.position = self.position + 2;
                 self.line = self.line + 1;
                 self.lineStart = self.position;
             }
-            else if (self.input.data[self.position] as uint8) == 0x0A {
+            else if first == 0x0A {
                 self.position = self.position + 1;
                 self.line = self.line + 1;
                 self.lineStart = self.position;
@@ -203,7 +207,8 @@ extend TomlLexer {
         let start = self.position;
         let escapes = quote == 0x22;
         while self.position < self.input.length {
-            let c = self.input.data[self.position] as uint8;
+            // Safety: `self.position` is below `self.input.length`, checked by the loop.
+            let c = unsafe { self.input.data[self.position] } as uint8;
             if c == quote {
                 if !multiline {
                     let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::Basic
@@ -286,7 +291,8 @@ extend TomlLexer {
         var allDigits = true;
         var index = self.position;
         while index < self.input.length {
-            let c = self.input.data[index] as uint8;
+            // Safety: `index` is below `self.input.length`, checked by the loop.
+            let c = unsafe { self.input.data[index] } as uint8;
             let isWord = (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
                          (c >= 0x30 && c <= 0x39) || c == 0x5F;
             if isWord {
@@ -336,7 +342,8 @@ extend TomlLexer {
             // A space continues the token only between a date and a time, which is the one place TOML lets a
             // value contain one.
             if c == 0x20 && sawDash && !sawColon && index + 1 < self.input.length {
-                let after = self.input.data[index + 1] as uint8;
+                // Safety: `index + 1` is below `self.input.length`, checked just above.
+                let after = unsafe { self.input.data[index + 1] } as uint8;
                 if after >= 0x30 && after <= 0x39 && self.LooksLikeTime(index + 1) {
                     sawColon = true;
                     index = index + 2;
@@ -347,23 +354,27 @@ extend TomlLexer {
         }
         let end = index;
         if end == start { return self.Fail(TomlLexError::UnexpectedByte); }
-        let first = self.input.data[start] as uint8;
-        let digitLike = (first >= 0x30 && first <= 0x39) || first == 0x2B || first == 0x2D;
         var kind = TomlTokenKind::BareKey;
-        if self.Matches(start, end, "true") || self.Matches(start, end, "false") {
-            kind = TomlTokenKind::Boolean;
-        }
-        else if self.Matches(start, end, "inf") || self.Matches(start, end, "nan") ||
-                self.Matches(start, end, "+inf") || self.Matches(start, end, "-inf") ||
-                self.Matches(start, end, "+nan") || self.Matches(start, end, "-nan") {
-            kind = TomlTokenKind::Float;
-        }
-        else if digitLike && (sawColon || self.LooksLikeDate(start, end)) {
-            kind = TomlTokenKind::DateTime;
-        }
-        else if digitLike {
-            kind = sawDot || sawExponent || self.HasExponent(start, end) ? TomlTokenKind::Float
-                                                                        : TomlTokenKind::Integer;
+        // Safety: `start < end <= self.input.length`: the scan above only moved `index` past bytes it read, so the
+        // run `start..end` lies inside the input, as `Matches`, `LooksLikeDate` and `HasExponent` require.
+        unsafe {
+            let first = self.input.data[start] as uint8;
+            let digitLike = (first >= 0x30 && first <= 0x39) || first == 0x2B || first == 0x2D;
+            if self.Matches(start, end, "true") || self.Matches(start, end, "false") {
+                kind = TomlTokenKind::Boolean;
+            }
+            else if self.Matches(start, end, "inf") || self.Matches(start, end, "nan") ||
+                    self.Matches(start, end, "+inf") || self.Matches(start, end, "-inf") ||
+                    self.Matches(start, end, "+nan") || self.Matches(start, end, "-nan") {
+                kind = TomlTokenKind::Float;
+            }
+            else if digitLike && (sawColon || self.LooksLikeDate(start, end)) {
+                kind = TomlTokenKind::DateTime;
+            }
+            else if digitLike {
+                kind = sawDot || sawExponent || self.HasExponent(start, end) ? TomlTokenKind::Float
+                                                                            : TomlTokenKind::Integer;
+            }
         }
         let token = self.Make(kind, kind == TomlTokenKind::BareKey ? TomlTextForm::Bare : TomlTextForm::NotText,
                               start, end);
@@ -373,7 +384,8 @@ extend TomlLexer {
 
     // A date opens with four digits and a hyphen. Requiring the shape rather than merely the presence of a
     // hyphen is what keeps `6.626e-34` a float: its hyphen belongs to the exponent, not to a month.
-    func LooksLikeDate(self: &TomlLexer, start: uint, end: uint) -> bool {
+    // Safety: `start..end` must lie inside `self.input`; the bytes are read without a bounds check.
+    unsafe func LooksLikeDate(self: &TomlLexer, start: uint, end: uint) -> bool {
         if end - start < 5 { return false; }
         var index: uint = 0;
         while index < 4 {
@@ -387,12 +399,14 @@ extend TomlLexer {
     func LooksLikeTime(self: &TomlLexer, at: uint) -> bool {
         // `HH:MM`, the shortest thing that can follow a date across a space.
         if at + 4 >= self.input.length { return false; }
-        return (self.input.data[at + 2] as uint8) == 0x3A;
+        // Safety: `at + 2` is below `self.input.length`, since `at + 4` is, checked above.
+        return (unsafe { self.input.data[at + 2] } as uint8) == 0x3A;
     }
 
     // A hexadecimal float is not TOML, so an `e` that could be a hex digit only counts as an exponent when the
     // number is decimal — which is why this looks at the prefix first.
-    func HasExponent(self: &TomlLexer, start: uint, end: uint) -> bool {
+    // Safety: `start..end` must lie inside `self.input`; the bytes are read without a bounds check.
+    unsafe func HasExponent(self: &TomlLexer, start: uint, end: uint) -> bool {
         if end - start > 2 && (self.input.data[start] as uint8) == 0x30 {
             let radix = self.input.data[start + 1] as uint8;
             if radix == 0x78 || radix == 0x6F || radix == 0x62 { return false; }
@@ -406,7 +420,9 @@ extend TomlLexer {
         return false;
     }
 
-    func Matches(self: &TomlLexer, start: uint, end: uint, word: char8[..]) -> bool {
+    // Whether the run `start..end` of the input spells `word`.
+    // Safety: `start..end` must lie inside `self.input`; the bytes are read without a bounds check.
+    unsafe func Matches(self: &TomlLexer, start: uint, end: uint, word: char8[..]) -> bool {
         if end - start != word.length { return false; }
         var index: uint = 0;
         while index < word.length {
@@ -424,13 +440,15 @@ extend TomlLexer {
         if self.position >= self.input.length {
             return self.Make(TomlTokenKind::End, TomlTextForm::NotText, self.position, self.position);
         }
-        let c = self.input.data[self.position] as uint8;
+        // Safety: `self.position` is below `self.input.length`, checked just above.
+        let c = unsafe { self.input.data[self.position] } as uint8;
         if c == 0x0D || c == 0x0A {
             let start = self.position;
             let token = self.Make(TomlTokenKind::Newline, TomlTextForm::NotText, start, start + 1);
             if c == 0x0D {
                 self.position = self.position + 1;
-                if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x0A {
+                // Safety: the read happens only when `self.position` is below `self.input.length`, tested first.
+                if self.position < self.input.length && (unsafe { self.input.data[self.position] } as uint8) == 0x0A {
                     self.position = self.position + 1;
                 }
             }
@@ -492,7 +510,7 @@ extend TomlLexer {
     /// @returns the token's text, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#text-of
     pub func TextOf(self: &TomlLexer, token: &TomlToken) -> char8[..] {
-        return (self.input.data + token.start)[..token.end - token.start];
+        return self.input[token.start..token.end];
     }
 }
 
@@ -508,7 +526,8 @@ extend TomlLexer {
 /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#toml-decode-text
 pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm,
                     bad: *var bool) -> String ! TextError {
-    *bad = false;
+    // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
+    unsafe { *bad = false; }
     if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {
         return String::FromBytes(allocator, span);
     }
@@ -516,26 +535,31 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
     var builder = StringBuilder(allocator);
     var index: uint = 0;
     while index < span.length {
-        let c = span.data[index] as uint8;
+        // Safety: `index` is below `span.length`, checked by the loop.
+        let c = unsafe { span.data[index] } as uint8;
         if c != 0x5C {
             // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte scalar
             // across two appends, and a builder that validates what it is given refuses half of one — so an
             // accented letter beside an escape would quietly disappear.
             var run = index;
-            while run < span.length && (span.data[run] as uint8) != 0x5C {
+            // Safety: the read happens only when `run` is below `span.length`, tested first.
+            while run < span.length && (unsafe { span.data[run] } as uint8) != 0x5C {
                 run = run + 1;
             }
-            let piece = (@span.data[index])[..run - index];
+            // Safety: `index <= run <= span.length`, so the run lies inside `span`.
+            let piece = unsafe { (@span.data[index])[..run - index] };
             builder.AppendBytes(piece)?;
             index = run;
             continue;
         }
         index = index + 1;
         if index >= span.length {
-            *bad = true;
+            // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
+            unsafe { *bad = true; }
             break;
         }
-        let kind = span.data[index] as uint8;
+        // Safety: `index` is below `span.length`, checked just above.
+        let kind = unsafe { span.data[index] } as uint8;
         index = index + 1;
         if kind == 0x75 || kind == 0x55 || kind == 0x78 {
             var digits: uint = 8;
@@ -546,15 +570,18 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
                 digits = 2;
             }
             if index + digits > span.length {
-                *bad = true;
+                // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
+                unsafe { *bad = true; }
                 break;
             }
-            let scalar = TomlHexRun(span, index, digits);
+            // Safety: `index + digits` is at most `span.length`, checked just above.
+            let scalar = unsafe { TomlHexRun(span, index, digits) };
             index = index + digits;
             // TOML escapes name scalar values, not UTF-16 code units, so a surrogate is simply not one of them
             // and there is no pairing rule to get wrong.
             if scalar > 0x10FFFF || (scalar >= 0xD800 && scalar <= 0xDFFF) {
-                *bad = true;
+                // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
+                unsafe { *bad = true; }
                 break;
             }
             builder.AppendScalar(scalar as char32)?;
@@ -583,13 +610,15 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
         else if multiline && (kind == 0x0A || kind == 0x0D || kind == 0x20 || kind == 0x09) {
             index = index - 1;
             while index < span.length {
-                let w = span.data[index] as uint8;
+                // Safety: `index` is below `span.length`, checked by the loop.
+                let w = unsafe { span.data[index] } as uint8;
                 if w != 0x20 && w != 0x09 && w != 0x0A && w != 0x0D { break; }
                 index = index + 1;
             }
         }
         else {
-            *bad = true;
+            // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
+            unsafe { *bad = true; }
             break;
         }
     }
@@ -597,7 +626,8 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
 }
 
 // A run of hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
-func TomlHexRun(span: char8[..], at: uint, count: uint) -> uint32 {
+// Safety: `at + count` must not exceed `span.length`; the bytes are read without a bounds check.
+unsafe func TomlHexRun(span: char8[..], at: uint, count: uint) -> uint32 {
     var value: uint32 = 0;
     var index: uint = 0;
     while index < count {

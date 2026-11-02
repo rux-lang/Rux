@@ -46,7 +46,8 @@ extend Timestamp {
             // The system counts hundred-nanosecond ticks from 1601; the epoch shift and the tick width are the
             // whole conversion.
             var time = FileTime { lowDateTime: 0, highDateTime: 0 };
-            GetSystemTimePreciseAsFileTime(@time);
+            // Safety: `time` is a local `FileTime`, which the call fills.
+            unsafe { GetSystemTimePreciseAsFileTime(@time); }
             let ticks = FileTimeTicks(time);
             let seconds = ticks / FileTimeTicksPerSecond;
             let rest = ticks % FileTimeTicksPerSecond;
@@ -57,7 +58,8 @@ extend Timestamp {
         }
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
-            ClockGetTime(ClockRealtime, @time);
+            // Safety: `time` is a local `Timespec`, which the call fills.
+            unsafe { ClockGetTime(ClockRealtime, @time); }
             return Timestamp { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
         }
     }

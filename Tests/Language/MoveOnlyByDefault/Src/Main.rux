@@ -30,13 +30,15 @@ struct Resource {
 
 extend Resource {
     func ~Resource(&var self) {
-        self.counter.drops = self.counter.drops + 1;
+        // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Resource`.
+        unsafe { self.counter.drops = self.counter.drops + 1; }
     }
 }
 
 extend Resource : Cloneable {
     func Clone(&self) -> Resource {
-        self.counter.clones = self.counter.clones + 1;
+        // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Resource`.
+        unsafe { self.counter.clones = self.counter.clones + 1; }
         return Resource { counter: self.counter, id: self.id + 100 };
     }
 }
@@ -79,23 +81,28 @@ func PlainCopies() {
 func Moves(counter: *var Counter) {
     let resource = Resource { counter: counter, id: 1 };
     let moved = move resource;
-    Assert(counter.drops == 0, "a move runs no destructor for its source");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.drops } == 0, "a move runs no destructor for its source");
     Assert(Consume(move moved) == 1, "a moved value keeps its state");
-    Assert(counter.drops == 1, "the last owner destroys it exactly once");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.drops } == 1, "the last owner destroys it exactly once");
 
     let holder = Holder { resource: Resource { counter: counter, id: 2 }, tag: 3 };
     let other = move holder;
     Assert(other.tag == 3 && other.resource.id == 2, "a value holding an owning field moves whole");
-    Assert(counter.drops == 1, "and moving it destroys nothing");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.drops } == 1, "and moving it destroys nothing");
 }
 
 func Clones(counter: *var Counter) {
     let original = Resource { counter: counter, id: 4 };
     let clone = original.Clone();
-    Assert(counter.clones == 1, "Clone runs the type's own method exactly once");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.clones } == 1, "Clone runs the type's own method exactly once");
     Assert(clone.id == 104 && original.id == 4, "and leaves the source as it was");
     let generic = Duplicate<Resource>(original);
-    Assert(counter.clones == 2 && generic.id == 104, "generic code clones under 'Cloneable'");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.clones } == 2 && generic.id == 104, "generic code clones under 'Cloneable'");
 }
 
 func Main() -> int {

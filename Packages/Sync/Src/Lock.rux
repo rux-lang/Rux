@@ -31,20 +31,26 @@ extend Lock {
     /// Takes the lock, waiting while another thread holds it.
     /// @see https://rux-lang.dev/docs/api/sync/lock#acquire
     pub func Acquire(self: &Lock) {
-        LockWord((@self.word) as *opaque as *var uint32);
+        // Safety: `self.word` is a live, aligned field of this lock, retyped to `*var` because every thread changes it
+        // only through the atomic lock-word functions.
+        unsafe { LockWord((@self.word) as *opaque as *var uint32); }
     }
 
     /// Takes the lock if nobody holds it, without waiting.
     /// @returns whether the lock was taken
     /// @see https://rux-lang.dev/docs/api/sync/lock#try-acquire
     pub func TryAcquire(self: &Lock) -> bool {
-        return TryLockWord((@self.word) as *opaque as *var uint32);
+        // Safety: `self.word` is a live, aligned field of this lock, retyped to `*var` because every thread changes it
+        // only through the atomic lock-word functions.
+        return unsafe { TryLockWord((@self.word) as *opaque as *var uint32) };
     }
 
     /// Releases the lock this thread holds, letting one waiting thread take it.
     /// @see https://rux-lang.dev/docs/api/sync/lock#release
     pub func Release(self: &Lock) {
-        UnlockWord((@self.word) as *opaque as *var uint32);
+        // Safety: `self.word` is a live, aligned field of this lock, retyped to `*var` because every thread changes it
+        // only through the atomic lock-word functions.
+        unsafe { UnlockWord((@self.word) as *opaque as *var uint32); }
     }
 }
 
@@ -79,17 +85,30 @@ extend Once {
     /// @param initialize the function to run once
     /// @see https://rux-lang.dev/docs/api/sync/lock#call
     pub func Call(self: &Once, initialize: func()) {
-        let state = (@self.state) as *opaque as *var uint32;
-        if AtomicLoad(state, MemoryOrder::Acquire) == OnceComplete { return; }
-        if AtomicCompareExchange(state, OnceIncomplete, OnceRunning, MemoryOrder::Acquire, MemoryOrder::Acquire) ==
-           OnceIncomplete {
+        // Safety: `self.state` is this once's own aligned field, retyped to `*var` because every thread changes it only
+        // through atomic operations.
+        let state = unsafe { (@self.state) as *opaque as *var uint32 };
+        // Safety: `state` addresses this once's live field, which every thread reaches only atomically.
+        if unsafe { AtomicLoad(state, MemoryOrder::Acquire) } == OnceComplete { return; }
+        // Safety: `state` addresses this once's live field, which every thread reaches only atomically.
+        let previous = unsafe {
+            AtomicCompareExchange(state, OnceIncomplete, OnceRunning, MemoryOrder::Acquire, MemoryOrder::Acquire)
+        };
+        if previous == OnceIncomplete {
             initialize();
-            AtomicStore(state, OnceComplete, MemoryOrder::Release);
-            WakeAll(state);
+            // Safety: `state` addresses this once's live field, which every thread reaches only atomically, and the
+            // once outlives every thread sleeping on it inside `Call`.
+            unsafe {
+                AtomicStore(state, OnceComplete, MemoryOrder::Release);
+                WakeAll(state);
+            }
             return;
         }
-        while AtomicLoad(state, MemoryOrder::Acquire) != OnceComplete {
-            WaitWhile(state, OnceRunning, -1);
+        // Safety: `state` addresses this once's live field, which every thread reaches only atomically.
+        while unsafe { AtomicLoad(state, MemoryOrder::Acquire) } != OnceComplete {
+            // Safety: the word waited on is this once's `state` field, which lives as long as the once this `Call`
+            // borrows.
+            unsafe { WaitWhile(state, OnceRunning, -1); }
         }
     }
 
@@ -97,6 +116,7 @@ extend Once {
     /// @returns true once a `Call` has run its function to the end
     /// @see https://rux-lang.dev/docs/api/sync/lock#is-completed
     pub func IsCompleted(self: &Once) -> bool {
-        return AtomicLoad((@self.state) as *uint32, MemoryOrder::Acquire) == OnceComplete;
+        // Safety: `self.state` is a live, aligned field of this once that every thread reaches only atomically.
+        return unsafe { AtomicLoad((@self.state) as *uint32, MemoryOrder::Acquire) } == OnceComplete;
     }
 }

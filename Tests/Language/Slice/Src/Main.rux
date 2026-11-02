@@ -48,7 +48,8 @@ func Main() -> int {
     view[0] = 7;
     Assert(writable[0] == 7, "generic writable views preserve element access");
     let greeting = "Hello, world!";
-    var str: char8[..] = (greeting.data)[..greeting.length];
+    // Safety: `greeting.data` addresses the literal's `greeting.length` bytes.
+    var str: char8[..] = unsafe { (greeting.data)[..greeting.length] };
     str = RoundTrip<char8[..]>(str);
     Assert(str[0] == 'H', "Expected first character to be 'H'");
     Assert(str[7] == 'w', "Expected eighth character to be 'w'");

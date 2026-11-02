@@ -48,7 +48,9 @@ extend ByteReader : Reader {
         let left = self.bytes.length - self.position;
         if left == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
         let count = left < into.length ? left : into.length;
-        Copy(into.data as *var opaque, @self.bytes[self.position] as *opaque, count);
+        // Safety: `count` is at most both `into.length` and the `left` bytes from `position`, and the caller's
+        // slice is not the bytes being read.
+        unsafe { Copy(into.data as *var opaque, @self.bytes[self.position] as *opaque, count); }
         self.position = self.position + count;
         return count;
     }
@@ -109,7 +111,8 @@ extend ByteWriter {
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-writer-bytes
     pub func Bytes(self: &ByteWriter) -> char8[..] {
         if self.data == null { return ""; }
-        return self.data[..self.length];
+        // Safety: `data` is non-null, checked above, and holds `capacity` bytes, of which `length` are written.
+        return unsafe { self.data[..self.length] };
     }
 
     /// How many bytes have been written.
@@ -154,12 +157,14 @@ extend ByteWriter {
             else => fail IoError::Of(IoErrorKind::LimitExceeded)
         };
         if self.data != null {
-            Copy(block, self.data as *opaque, self.length);
+            // Safety: `block` is a fresh allocation of `wanted` bytes, more than the `length` bytes `data` holds.
+            unsafe { Copy(block, self.data as *opaque, self.length); }
             borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
                 else => {}
             };
         }
-        self.data = block as *var char8;
+        // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
+        self.data = unsafe { block as *var char8 };
         self.capacity = wanted;
     }
 
@@ -177,7 +182,9 @@ extend ByteWriter : Writer {
         if bytes.length == 0 { return 0; }
         let end = self.position + bytes.length;
         self.Grow(end)?;
-        Copy(@self.data[self.position] as *var opaque, bytes.data as *opaque, bytes.length);
+        // Safety: `Grow` made `capacity` at least `end`, so `data` has room from `position` for all of `bytes`,
+        // which is the caller's slice rather than this storage.
+        unsafe { Copy(@self.data[self.position] as *var opaque, bytes.data as *opaque, bytes.length); }
         self.position = end;
         if end > self.length { self.length = end; }
         return bytes.length;

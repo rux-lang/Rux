@@ -59,7 +59,7 @@ func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec ! Fo
     if found.bodyEnd == found.bodyStart {
         return FormatSpec::Plain();
     }
-    let body = (@format.data[found.bodyStart])[..found.bodyEnd - found.bodyStart];
+    let body = format[found.bodyStart..found.bodyEnd];
     return match ParseFormatSpec(body) {
         .Success(value) => value,
         .Failure(reason) => fail match reason {
@@ -161,7 +161,7 @@ pub func WriteFormat(writer: &var TextWriter, #Format() format: char8[..], args:
             var width: uint = 0;
             let decoded = DecodeAt(format, index) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
             width = decoded.width;
-            WriteBytes(writer, (@format.data[index])[..width])?;
+            WriteBytes(writer, format[index..index + width])?;
             index += width;
         }
     }

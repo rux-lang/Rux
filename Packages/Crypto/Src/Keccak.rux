@@ -41,9 +41,10 @@ func RotateLeftLane(value: uint64, amount: uint64) -> uint64 {
 /// Twenty-four rounds of five steps: theta mixes each column into its neighbours, rho rotates each lane by its
 /// own offset, pi moves the lanes around, chi is the only non-linear step, and iota breaks the symmetry that
 /// would otherwise make every round identical.
+/// Safety: `lanes` must address twenty-five readable and writable lanes.
 /// @param lanes the state's twenty-five lanes, permuted in place
 /// @see https://rux-lang.dev/docs/api/crypto/sha3#keccak-permute
-pub func KeccakPermute(lanes: *var uint64) {
+pub unsafe func KeccakPermute(lanes: *var uint64) {
     var round: uint = 0;
     while round < 24 {
         // Theta: exclusive-or each column together, then mix each with the rotated neighbouring column.
@@ -179,7 +180,8 @@ extend Sha3 : Digest {
             self.AbsorbByte(self.absorbed, bytes[index] as uint8);
             self.absorbed = self.absorbed + 1;
             if self.absorbed == self.rate {
-                KeccakPermute(@self.lanes[0]);
+                // Safety: `self.lanes` is the state's array of twenty-five lanes.
+                unsafe { KeccakPermute(@self.lanes[0]); }
                 self.absorbed = 0;
             }
             index = index + 1;
@@ -195,14 +197,16 @@ extend Sha3 : Digest {
     pub func Finish(self: &var Sha3, into: var char8[..]) {
         self.AbsorbByte(self.absorbed, self.domain);
         self.AbsorbByte(self.rate - 1, 0x80);
-        KeccakPermute(@self.lanes[0]);
+        // Safety: `self.lanes` is the state's array of twenty-five lanes.
+        unsafe { KeccakPermute(@self.lanes[0]); }
 
         var written: uint = 0;
         while written < self.outputLength {
             if written > 0 && written % self.rate == 0 {
                 // A digest longer than the rate would need more squeezing. None of the four SHA-3 sizes does,
                 // but the loop is written so it would be right if one did.
-                KeccakPermute(@self.lanes[0]);
+                // Safety: `self.lanes` is the state's array of twenty-five lanes.
+                unsafe { KeccakPermute(@self.lanes[0]); }
             }
             let position = written % self.rate;
             let lane = self.lanes[position / 8];

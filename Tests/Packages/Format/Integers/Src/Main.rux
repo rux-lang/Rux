@@ -40,10 +40,10 @@ func RunOf(outcome: String ! FormatError, signed: bool, digit: char8, count: uin
             let lead = signed ? 1u : 0u;
             if bytes.length == count + lead {
                 ok = true;
-                if signed && bytes.data[0] != c8'-' { ok = false; }
+                if signed && bytes[0] != c8'-' { ok = false; }
                 var index = lead;
                 while index < bytes.length {
-                    if bytes.data[index] != digit { ok = false; }
+                    if bytes[index] != digit { ok = false; }
                     index = index + 1;
                 }
             }
@@ -63,11 +63,11 @@ func TopBitHex(outcome: String ! FormatError, zeros: uint) -> bool {
     match <-outcome {
         .Success(text) => {
             let bytes = text.View().Bytes();
-            if bytes.length == zeros + 2 && bytes.data[0] == c8'-' && bytes.data[1] == c8'8' {
+            if bytes.length == zeros + 2 && bytes[0] == c8'-' && bytes[1] == c8'8' {
                 ok = true;
                 var index: uint = 2;
                 while index < bytes.length {
-                    if bytes.data[index] != c8'0' { ok = false; }
+                    if bytes[index] != c8'0' { ok = false; }
                     index = index + 1;
                 }
             }

@@ -105,10 +105,13 @@ extend ConsoleWriter : TextWriter {
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/console-writer#write
     pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> ! FormatError {
-        if (*self.failure) is IoError { fail FormatError::WriterFailure; }
+        // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over to outlive it.
+        if unsafe { *self.failure } is IoError { fail FormatError::WriterFailure; }
         PrintBytes(bytes) catch {
             error => {
-                *self.failure = error;
+                // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over
+                // to outlive it.
+                unsafe { *self.failure = error; }
                 fail FormatError::WriterFailure;
             }
         };
@@ -153,10 +156,13 @@ extend StreamWriter : TextWriter {
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/stream-writer#write
     pub func Write(self: &var StreamWriter, bytes: char8[..]) -> ! FormatError {
-        if (*self.failure) is IoError { fail FormatError::WriterFailure; }
+        // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over to outlive it.
+        if unsafe { *self.failure } is IoError { fail FormatError::WriterFailure; }
         WriteAll(self.sink, bytes) catch {
             error => {
-                *self.failure = error;
+                // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over
+                // to outlive it.
+                unsafe { *self.failure = error; }
                 fail FormatError::WriterFailure;
             }
         };

@@ -14,7 +14,8 @@ func Main() -> int {
     let wide: char16[..] = c16"hello";
     let widest: char32[..] = c32"hello";
     if text.length != 5 || wide.length != 5 || widest.length != 5 { return 1; }
-    let units = (text.data)[..text.length];
+    // Safety: `text.data` addresses the literal's `text.length` bytes.
+    let units = unsafe { (text.data)[..text.length] };
     if First(units) != c8'h' { return 2; }
     let bounds = 1..4;
     if bounds.start != 1 || bounds.end != 4 { return 3; }

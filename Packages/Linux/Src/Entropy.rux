@@ -23,13 +23,13 @@ pub const RandomBlockingPool: uint32 = 2;
 /// caller needing the whole buffer must call again for the rest. Without `RandomNonBlocking` the first call in the
 /// life of a system may wait for the pool to be seeded; after that it does not wait at all.
 /// Runs in time proportional to `length` and allocates nothing.
-/// `buffer` must be writable for `length` bytes. Treat a short count as bytes obtained, not as failure, or the
+/// Safety: `buffer` must be writable for `length` bytes. Treat a short count as bytes obtained, not as failure, or the
 /// unwritten tail stays whatever it held — which for a key is the worst possible outcome.
 /// @param buffer receives the bytes
 /// @param length how many bytes to ask for
 /// @param flags zero, or one of the `Random*` values
 /// @returns the bytes written, which may be fewer than asked for, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/get-random
-pub func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
+pub unsafe func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
     return Syscall3(SysGetRandom, buffer as uint64, length as uint64, flags as uint64);
 }

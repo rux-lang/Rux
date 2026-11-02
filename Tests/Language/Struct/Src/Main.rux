@@ -13,9 +13,12 @@ func Main() -> int {
     var ptr: *var Point = @p;
     Assert(ptr != null, "Expected ptr to not be null");
 
-    ptr.x = 30;
-    Assert(ptr.x == 30, "Expected x to be 30");
-    Assert(ptr.y == 20, "Expected y to be 20");
+    // Safety: `ptr` is `@p`, a live local.
+    unsafe { ptr.x = 30; }
+    // Safety: `ptr` is `@p`, a live local.
+    Assert(unsafe { ptr.x } == 30, "Expected x to be 30");
+    // Safety: `ptr` is `@p`, a live local.
+    Assert(unsafe { ptr.y } == 20, "Expected y to be 20");
 
     Assert(sizeof(Point) > 0, "Expected size of Point to be greater than 0");
     Assert(sizeof(Point) == sizeof(int) * 2, "Expected size of Point to be equal to size of two integers");

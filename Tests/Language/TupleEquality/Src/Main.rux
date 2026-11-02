@@ -4,19 +4,22 @@ variant CountedChoice { Items((Counted, Counted)) }
 struct Counted { value: int64; visits: *var int32; }
 extend Counted {
     func ==(self: &Counted, other: Counted) -> bool {
-        *self.visits = *self.visits + 1;
+        // Safety: every `Counted` in this test holds `@visits`, a live local of `Main`.
+        unsafe { *self.visits = *self.visits + 1; }
         return self.value % 10 == other.value % 10;
     }
 }
 
 func Make(visits: *var int32, tail: int64) -> (int64, int64) {
-    *visits = *visits + 1;
+    // Safety: every caller passes `@evaluations`, a live local of `Main`.
+    unsafe { *visits = *visits + 1; }
     return (7i64, tail);
 }
 
 func Same<T>(left: (int64, T), right: (int64, T)) -> bool { return left == right; }
 func EqualValues<T>(left: T, right: T) -> bool { return left == right; }
-func FloatBits(bits: uint64) -> float64 { return *(@bits as *float64); }
+// Safety: `bits` is a live parameter of eight bytes, and every `uint64` bit pattern is a `float64`.
+func FloatBits(bits: uint64) -> float64 { return unsafe { *(@bits as *float64) }; }
 
 func Main() -> int {
     let left = (7i64, 11i64);

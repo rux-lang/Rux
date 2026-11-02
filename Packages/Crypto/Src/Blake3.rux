@@ -41,7 +41,8 @@ func Blake3Rotate(value: uint32, amount: uint32) -> uint32 {
 }
 
 // The mixing function, applied to four words of the state with two message words.
-func Blake3Mix(state: *var uint32, a: uint, b: uint, c: uint, d: uint, first: uint32, second: uint32) {
+// Safety: `state` must address sixteen writable words, and `a`, `b`, `c` and `d` must each be below sixteen.
+unsafe func Blake3Mix(state: *var uint32, a: uint, b: uint, c: uint, d: uint, first: uint32, second: uint32) {
     state[a] = state[a] + state[b] + first;
     state[d] = Blake3Rotate(state[d] ^ state[a], 16);
     state[c] = state[c] + state[d];
@@ -53,7 +54,8 @@ func Blake3Mix(state: *var uint32, a: uint, b: uint, c: uint, d: uint, first: ui
 }
 
 // One round: four column mixes then four diagonal mixes.
-func Blake3Round(state: *var uint32, message: *uint32) {
+// Safety: `state` must address sixteen writable words and `message` sixteen readable words.
+unsafe func Blake3Round(state: *var uint32, message: *uint32) {
     Blake3Mix(state, 0, 4, 8, 12, message[0], message[1]);
     Blake3Mix(state, 1, 5, 9, 13, message[2], message[3]);
     Blake3Mix(state, 2, 6, 10, 14, message[4], message[5]);
@@ -66,6 +68,8 @@ func Blake3Round(state: *var uint32, message: *uint32) {
 
 /// The compression function: sixteen words of state over seven rounds, producing sixteen words of output.
 /// The first eight output words are the chaining value; all sixteen are used when the output is being extended.
+/// Safety: `chaining` must address eight readable words, `message` sixteen readable words, and `into` sixteen
+/// writable words.
 /// @param chaining the chaining value going in
 /// @param message the message to authenticate
 /// @param counter the chunk counter
@@ -73,8 +77,8 @@ func Blake3Round(state: *var uint32, message: *uint32) {
 /// @param flags the domain flags for this compression
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-compress
-pub func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, blockLength: uint32, flags: uint32,
-                    into: *var uint32) {
+pub unsafe func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, blockLength: uint32,
+                               flags: uint32, into: *var uint32) {
     var state: uint32[16];
     var index: uint = 0;
     while index < 8 {
@@ -171,7 +175,8 @@ extend Blake3Chunk {
     }
 
     // Reads the current block as sixteen little-endian words, zero-padded.
-    func BlockWords(self: &Blake3Chunk, words: *var uint32) {
+    // Safety: `words` must address sixteen writable words.
+    unsafe func BlockWords(self: &Blake3Chunk, words: *var uint32) {
         var index: uint = 0;
         while index < 16 {
             var word: uint32 = 0;
@@ -199,10 +204,13 @@ extend Blake3Chunk {
         while index < bytes.length && self.Length() < Blake3ChunkLength {
             if self.blockLength == Blake3BlockLength {
                 var words: uint32[16];
-                self.BlockWords(@words[0]);
                 var output: uint32[16];
-                Blake3Compress(@self.chaining[0], @words[0], self.counter, Blake3BlockLength as uint32,
-                               self.flags | self.StartFlag(), @output[0]);
+                // Safety: `words` and `output` are local sixteen-word arrays and `self.chaining` holds eight words.
+                unsafe {
+                    self.BlockWords(@words[0]);
+                    Blake3Compress(@self.chaining[0], @words[0], self.counter, Blake3BlockLength as uint32,
+                                   self.flags | self.StartFlag(), @output[0]);
+                }
                 var copy: uint = 0;
                 while copy < 8 {
                     self.chaining[copy] = output[copy];
@@ -220,10 +228,11 @@ extend Blake3Chunk {
 
     /// The chunk's chaining value, with the end flag applied to its final block.
     /// `extraFlags` carries the root flag when this chunk is the whole message.
+    /// Safety: `into` must address sixteen writable words.
     /// @param extraFlags the domain flags to add for this output
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-chunk-output
-    pub func Output(self: &Blake3Chunk, extraFlags: uint32, into: *var uint32) {
+    pub unsafe func Output(self: &Blake3Chunk, extraFlags: uint32, into: *var uint32) {
         var words: uint32[16];
         var index: uint = 0;
         while index < 16 {
@@ -284,7 +293,8 @@ extend Blake3 {
     }
 
     // Joins two child chaining values into their parent.
-    func JoinParent(self: &Blake3, left: *uint32, right: *uint32, extraFlags: uint32, into: *var uint32) {
+    // Safety: `left` and `right` must each address eight readable words and `into` sixteen writable words.
+    unsafe func JoinParent(self: &Blake3, left: *uint32, right: *uint32, extraFlags: uint32, into: *var uint32) {
         var words: uint32[16];
         var index: uint = 0;
         while index < 8 {
@@ -299,7 +309,8 @@ extend Blake3 {
 
     // Merges the finished chunk into the stack. The number of merges is the number of trailing one bits in the
     // chunk's index, which is the arithmetic that replaces tracking which subtrees are complete.
-    func PushChunk(self: &var Blake3, chaining: *uint32, chunkIndex: uint64) {
+    // Safety: `chaining` must address eight readable words.
+    unsafe func PushChunk(self: &var Blake3, chaining: *uint32, chunkIndex: uint64) {
         var carried: uint32[8];
         var index: uint = 0;
         while index < 8 {
@@ -337,12 +348,16 @@ extend Blake3 : Digest {
             if self.chunk.Length() == Blake3ChunkLength {
                 // The chunk is full, so it becomes a leaf and the next one starts.
                 var chaining: uint32[16];
-                self.chunk.Output(0, @chaining[0]);
                 let finished = self.chunk.counter;
-                self.PushChunk(@chaining[0], finished);
+                // Safety: `chaining` is a local sixteen-word array, room for the output and the eight words read back.
+                unsafe {
+                    self.chunk.Output(0, @chaining[0]);
+                    self.PushChunk(@chaining[0], finished);
+                }
                 self.chunk = Blake3Chunk(self.key, finished + 1, self.flags);
             }
-            let rest = (@bytes[offset])[..bytes.length - offset];
+            // Safety: `offset` is below `bytes.length`, so the range covers exactly the unread tail of `bytes`.
+            let rest = unsafe { (@bytes[offset])[..bytes.length - offset] };
             offset = offset + self.chunk.Update(rest);
         }
     }
@@ -388,12 +403,15 @@ extend Blake3 : Digest {
             // Fold the stack downward, the current chunk entering as the rightmost child, until one join is
             // left — that last one is the root, and it is the only compression carrying the root flag.
             var carried: uint32[16];
-            self.chunk.Output(0, @carried[0]);
+            // Safety: `carried` is a local array of sixteen words.
+            unsafe { self.chunk.Output(0, @carried[0]); }
             var depth = self.stackDepth;
             while depth > 1 {
                 depth = depth - 1;
                 var joined: uint32[16];
-                self.JoinParent(@self.stack[depth * 8], @carried[0], 0, @joined[0]);
+                // Safety: `depth` is below `self.stackDepth`, so the eight words at `depth * 8` lie inside
+                // `self.stack`; `carried` and `joined` are local sixteen-word arrays.
+                unsafe { self.JoinParent(@self.stack[depth * 8], @carried[0], 0, @joined[0]); }
                 index = 0;
                 while index < 16 {
                     carried[index] = joined[index];
@@ -416,8 +434,12 @@ extend Blake3 : Digest {
         var written: uint = 0;
         var block: uint64 = 0;
         while written < into.length {
-            Blake3Compress(@rootChaining[0], @rootMessage[0], rootCounter + block, rootLength,
-                           rootFlags | Blake3Root, @rootWords[0]);
+            // Safety: `rootChaining`, `rootMessage` and `rootWords` are local arrays of eight, sixteen and sixteen
+            // words.
+            unsafe {
+                Blake3Compress(@rootChaining[0], @rootMessage[0], rootCounter + block, rootLength,
+                               rootFlags | Blake3Root, @rootWords[0]);
+            }
             index = 0;
             while index < 16 && written < into.length {
                 var part: uint = 0;

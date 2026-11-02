@@ -41,7 +41,8 @@ func AddFloat64(left: float64, right: float64) -> float64 {
 
 /// The 80 value bits of a float80: the 64-bit significand in the low bytes and the sign and exponent above it.
 func Bits(value: float80) -> uint128 {
-    return *(@value as *uint128) & 0xFFFFFFFFFFFFFFFFFFFFu128;
+    // Safety: `value` is a by-value parameter of 16 bytes, so its whole `uint128` view is readable.
+    return unsafe { *(@value as *uint128) } & 0xFFFFFFFFFFFFFFFFFFFFu128;
 }
 
 const One: float80 = 1.0f80;

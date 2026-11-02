@@ -5,7 +5,7 @@ import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Write
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 // What buffering promises is fewer conversations, and the way to test a count of conversations is to count them:
@@ -26,21 +26,24 @@ struct SourceHandle {
 extend SourceHandle : Reader {
     func Read(self: &var SourceHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
-        state.calls = state.calls + 1;
-        if state.served >= state.limit {
-            fail IoError::Of(IoErrorKind::EndOfStream);
+        // Safety: `state` points at the `CountingSource` local of `Main`, which outlives every handle made from it.
+        unsafe {
+            state.calls = state.calls + 1;
+            if state.served >= state.limit {
+                fail IoError::Of(IoErrorKind::EndOfStream);
+            }
+            var give = state.limit - state.served;
+            if give > into.length {
+                give = into.length;
+            }
+            var index: uint = 0;
+            while index < give {
+                into[index] = ((state.served + index) % 26 + 0x61) as char8;
+                index = index + 1;
+            }
+            state.served = state.served + give;
+            return give;
         }
-        var give = state.limit - state.served;
-        if give > into.length {
-            give = into.length;
-        }
-        var index: uint = 0;
-        while index < give {
-            into.data[index] = ((state.served + index) % 26 + 0x61) as char8;
-            index = index + 1;
-        }
-        state.served = state.served + give;
-        return give;
     }
 }
 
@@ -59,22 +62,26 @@ struct SinkHandle {
 extend SinkHandle : Writer {
     func Write(self: &var SinkHandle, bytes: char8[..]) -> uint ! IoError {
         let state = self.state;
-        state.calls = state.calls + 1;
-        var take = bytes.length;
-        if take > state.room.length - state.written {
-            take = state.room.length - state.written;
+        // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
+        unsafe {
+            state.calls = state.calls + 1;
+            var take = bytes.length;
+            if take > state.room.length - state.written {
+                take = state.room.length - state.written;
+            }
+            var index: uint = 0;
+            while index < take {
+                state.room[state.written + index] = bytes[index];
+                index = index + 1;
+            }
+            state.written = state.written + take;
+            return take;
         }
-        var index: uint = 0;
-        while index < take {
-            state.room.data[state.written + index] = bytes.data[index];
-            index = index + 1;
-        }
-        state.written = state.written + take;
-        return take;
     }
 
     func Flush(self: &var SinkHandle) -> ! IoError {
-        self.state.flushes = self.state.flushes + 1;
+        // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
+        unsafe { self.state.flushes = self.state.flushes + 1; }
     }
 }
 
@@ -85,7 +92,8 @@ struct BlockedHandle {
 
 extend BlockedHandle : Reader {
     func Read(self: &var BlockedHandle, into: var char8[..]) -> uint ! IoError {
-        *self.calls = *self.calls + 1;
+        // Safety: `calls` points at a counter local of `Main`, which outlives the handle.
+        unsafe { *self.calls = *self.calls + 1; }
         fail IoError::Of(IoErrorKind::WouldBlock);
     }
 }
@@ -101,7 +109,7 @@ func Main() -> int {
         else => Panic("the reader takes its buffer")
     };
     var one: char8[1];
-    let oneRoom = (@one[0])[..1];
+    let oneRoom = one[..1];
     var count: uint = 0;
     var lastByte = 0u8 as char8;
     while true {
@@ -124,7 +132,7 @@ func Main() -> int {
         else => Panic("the reader takes its buffer")
     };
     var bigStorage: char8[32];
-    let bigRoom = (@bigStorage[0])[..32];
+    let bigRoom = bigStorage[..32];
     let filled = bypassReader.Read(bigRoom) catch { else => Panic("the large read succeeds") };
     Assert(filled == 32, "whole");
     Assert(bigSource.calls == 1, "in one conversation, straight past the buffer");
@@ -138,14 +146,14 @@ func Main() -> int {
     peekReader.Fill() catch { else => Panic("the buffer fills on request") };
     Assert(peekReader.Available() == 10, "with everything the source had");
     let peeked = peekReader.Buffered();
-    Assert(peeked.data[0] == c8'a' && peeked.data[9] == c8'j', "visible without being consumed");
+    Assert(peeked[0] == c8'a' && peeked[9] == c8'j', "visible without being consumed");
     peekReader.Consume(4);
     Assert(peekReader.Available() == 6, "and consumed on request");
 
     // The writer: many small writes, one conversation.
     var sinkStorage: char8[64];
     var sink = CountingSink {
-        room: (@sinkStorage[0])[..64],
+        room: sinkStorage[..64],
         written: 0,
         calls: 0,
         flushes: 0

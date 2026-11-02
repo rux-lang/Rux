@@ -126,8 +126,12 @@ extend LruCache<K, V> {
             .Some(at) => {
                 // Moved into a local, the old value is destroyed when the local's life ends rather than leaked.
                 let entry: *var CacheEntry<K, V> = @self.entries.AsMutableSlice()[at];
-                let replaced <- entry.value;
-                entry.value <- value;
+                // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and
+                // the vector does not change while it is used; the value moved out is refilled at once.
+                unsafe {
+                    let replaced <- entry.value;
+                    entry.value <- value;
+                }
                 if at != self.newest {
                     self.Unlink(at);
                     self.LinkNewest(at);
@@ -156,8 +160,12 @@ extend LruCache<K, V> {
         let entries = self.entries.AsMutableSlice();
         entries[at].key = key;
         let entry: *var CacheEntry<K, V> = @entries[at];
-        let displaced <- entry.value;
-        entry.value <- value;
+        // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and the
+        // vector does not change while it is used; the value moved out is refilled at once.
+        unsafe {
+            let displaced <- entry.value;
+            entry.value <- value;
+        }
         self.LinkNewest(at);
         return evicted;
     }

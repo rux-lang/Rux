@@ -22,8 +22,11 @@ struct Tracked {
 
 extend Tracked {
     func ~Tracked(self: &var Tracked) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -35,13 +38,17 @@ struct Copied {
 
 extend Copied {
     func Clone(&self) -> Copied {
-        self.log.order = self.log.order * 10 + 9;
+        // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
+        unsafe { self.log.order = self.log.order * 10 + 9; }
         return Copied { log: self.log, id: self.id };
     }
 
     func ~Copied(self: &var Copied) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -67,12 +74,16 @@ struct Box<T> {
 }
 
 func Mark(log: *var Log) {
-    log.order = log.order * 10;
+    // Safety: every caller passes `log`, the `Log` local of `Main`, which outlives every value that records into it.
+    unsafe { log.order = log.order * 10; }
 }
 
 func Reset(log: *var Log) {
-    log.count = 0i32;
-    log.order = 0i64;
+    // Safety: every caller passes `log`, the `Log` local of `Main`, which outlives every value that records into it.
+    unsafe {
+        log.count = 0i32;
+        log.order = 0i64;
+    }
 }
 
 func Make(log: *var Log, id: int32) -> Tracked {
@@ -170,17 +181,30 @@ func RepeatedCopies(log: *var Log) {
 
 // A raw pointer may address storage nothing has initialized yet, so writing through it destroys nothing.
 func RawInitialization(log: *var Log) {
-    let block = Alloc(sizeof(Tracked) * 2) as *var Tracked;
-    *block <- Make(log, 1i32);
-    block[1] <- Make(log, 2i32);
-    *(block + 1) <- Make(log, 3i32);
-    let holders = Alloc(sizeof(Holder)) as *var Holder;
-    holders.tracked <- Make(log, 4i32);
+    // Safety: `Alloc` returns fresh storage aligned for any value, sized here for two `Tracked` values.
+    let block = unsafe { Alloc(sizeof(Tracked) * 2) as *var Tracked };
+    // Safety: `block` has room for two `Tracked` values, so elements 0 and 1 are inside it.
+    unsafe {
+        *block <- Make(log, 1i32);
+        block[1] <- Make(log, 2i32);
+        *(block + 1) <- Make(log, 3i32);
+    }
+    // Safety: `Alloc` returns fresh storage aligned for any value, sized here for one `Holder`.
+    let holders = unsafe { Alloc(sizeof(Holder)) as *var Holder };
+    // Safety: `holders` has room for one `Holder`, whose `tracked` field is written without reading it.
+    unsafe { holders.tracked <- Make(log, 4i32); }
     Mark(log);
-    Assert(log.count == 0i32, "a raw-pointer write destroys nothing");
-    Assert(block[1].id == 3i32 && holders.tracked.id == 4i32, "a raw-pointer write stores the value");
-    Free(holders as *var opaque);
-    Free(block as *var opaque);
+    // Safety: `log` is the `Log` local of `Main`, which outlives every value that records into it, and `block` and
+    // `holders` hold the values written above.
+    unsafe {
+        Assert(log.count == 0i32, "a raw-pointer write destroys nothing");
+        Assert(block[1].id == 3i32 && holders.tracked.id == 4i32, "a raw-pointer write stores the value");
+    }
+    // Safety: both blocks came from `Alloc` above and nothing uses them after this.
+    unsafe {
+        Free(holders as *var opaque);
+        Free(block as *var opaque);
+    }
 }
 
 // A local declared without a value owns one once it is assigned whole, and from then on writing a part replaces it.

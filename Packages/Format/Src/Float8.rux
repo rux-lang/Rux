@@ -81,12 +81,12 @@ extend float8 : Display {
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
         var storage: char8[52];
-        var cursor = ByteCursor((@storage[2])[..50]);
+        var cursor = ByteCursor(storage[2..52]);
         WriteFloat(cursor, self);
         var rendered = cursor.Written();
-        if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
+        if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
             storage[1] = c8'+';
-            rendered = (@storage[1])[..rendered.length + 1];
+            rendered = storage[1..rendered.length + 2];
         }
         return WriteAligned(writer, spec, rendered, true);
     }

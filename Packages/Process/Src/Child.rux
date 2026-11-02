@@ -25,13 +25,16 @@ const NoPipe: uint64 = 0xFFFFFFFFFFFFFFFF;
 // The calling thread's last error code.
 func LastError() -> int64 {
     when #target.os == .Windows {
-        return GetLastError() as int64;
+        // Safety: `GetLastError` takes nothing and only reads the calling thread's last error.
+        return unsafe { GetLastError() } as int64;
     }
     else when #target.os == .Linux {
-        return *__errno_location() as int64;
+        // Safety: `__errno_location` returns the address of the calling thread's `errno`, live as long as the thread.
+        return unsafe { *__errno_location() } as int64;
     }
     else when #target.os == .FreeBSD {
-        return *__error() as int64;
+        // Safety: `__error` returns the address of the calling thread's `errno`, live as long as the thread.
+        return unsafe { *__error() } as int64;
     }
     else {
         return CurrentErrno();
@@ -42,7 +45,8 @@ func LastError() -> int64 {
 func ClosePipe(pipe: uint64) {
     if pipe == NoPipe { return; }
     when #target.os == .Windows {
-        CloseHandle(pipe as *opaque);
+        // Safety: closing reads no memory, and `pipe` is a pipe end its caller owns and gives up here.
+        unsafe { CloseHandle(pipe as *opaque); }
     }
     else {
         Close(pipe as int32);
@@ -128,13 +132,16 @@ extend PipeWriter : Writer {
         when #target.os == .Windows {
             let count = bytes.length > 0x40000000u ? 0x40000000u32 : bytes.length as uint32;
             var written: uint32 = 0;
-            if WriteFile(self.pipe as *opaque, bytes.data as *opaque, count, @written, null) == 0 {
-                fail FailureOf(GetLastError() as int64);
+            // Safety: `bytes` is readable for `count` bytes, at most its length, `written` is a local the call writes,
+            // and no overlapped structure is passed.
+            if unsafe { WriteFile(self.pipe as *opaque, bytes.data as *opaque, count, @written, null) } == 0 {
+                fail FailureOf(LastError());
             }
             return written as uint;
         }
         else {
-            let result = Write(self.pipe as int32, bytes.data as *opaque, bytes.length);
+            // Safety: `bytes` is a slice, readable for `bytes.length` bytes.
+            let result = unsafe { Write(self.pipe as int32, bytes.data as *opaque, bytes.length) };
             if IsError(result) { fail FailureOf(-result); }
             return result as uint;
         }
@@ -174,8 +181,11 @@ extend PipeReader : Reader {
         when #target.os == .Windows {
             let count = into.length > 0x40000000u ? 0x40000000u32 : into.length as uint32;
             var read: uint32 = 0;
-            if ReadFile(self.pipe as *opaque, into.data as *opaque, count, @read, null) == 0 {
-                let error = GetLastError();
+            // Safety: `into` is writable for `count` bytes, at most its length, `read` is a local the call writes, and
+            // no overlapped structure is passed.
+            if unsafe { ReadFile(self.pipe as *opaque, into.data as *opaque, count, @read, null) } == 0 {
+                // Safety: `GetLastError` takes nothing and only reads the calling thread's last error.
+                let error = unsafe { GetLastError() };
                 if error == ERROR_BROKEN_PIPE { fail IoError::Of(IoErrorKind::EndOfStream); }
                 fail FailureOf(error as int64);
             }
@@ -183,7 +193,8 @@ extend PipeReader : Reader {
             return read as uint;
         }
         else {
-            let result = Read(self.pipe as int32, into.data as *var opaque, into.length);
+            // Safety: `into` is a writable slice of `into.length` bytes.
+            let result = unsafe { Read(self.pipe as int32, into.data as *var opaque, into.length) };
             if IsError(result) { fail FailureOf(-result); }
             if result == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
             return result as uint;
@@ -258,12 +269,14 @@ extend Child {
         ClosePipe(self.input);
         self.input = NoPipe;
         when #target.os == .Windows {
-            WaitForSingleObject(self.process as *opaque, INFINITE);
+            // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
+            unsafe { WaitForSingleObject(self.process as *opaque, INFINITE); }
             self.Collect()?;
         }
         else {
             var status: int32 = 0;
-            while waitpid(self.process as int32, @status, 0) < 0 {
+            // Safety: `status` is a local the call writes one `int32` to.
+            while unsafe { waitpid(self.process as int32, @status, 0) } < 0 {
                 let error = LastError();
                 if FailureOf(error).kind != IoErrorKind::Interrupted { fail FailureOf(error); }
             }
@@ -279,12 +292,14 @@ extend Child {
     pub func TryWait(self: &var Child) -> ExitStatus? ! IoError {
         if self.finished { return self.status; }
         when #target.os == .Windows {
-            if WaitForSingleObject(self.process as *opaque, 0) == WAIT_TIMEOUT { return none; }
+            // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
+            if unsafe { WaitForSingleObject(self.process as *opaque, 0) } == WAIT_TIMEOUT { return none; }
             self.Collect()?;
         }
         else {
             var status: int32 = 0;
-            let result = waitpid(self.process as int32, @status, WNOHANG);
+            // Safety: `status` is a local the call writes one `int32` to.
+            let result = unsafe { waitpid(self.process as int32, @status, WNOHANG) };
             if result < 0 { fail FailureOf(LastError()); }
             if result == 0 { return none; }
             self.status = DecodeStatus(status);
@@ -300,14 +315,16 @@ extend Child {
     pub func Kill(self: &var Child) -> ! IoError {
         if self.finished { return; }
         when #target.os == .Windows {
-            if TerminateProcess(self.process as *opaque, 1) == 0 {
-                let error = GetLastError();
+            // Safety: terminating reads no memory, and `self.process` is the process handle this child owns.
+            if unsafe { TerminateProcess(self.process as *opaque, 1) } == 0 {
+                let error = LastError();
                 // A process that has already ended refuses with access denied.
-                if error != 5 { fail FailureOf(error as int64); }
+                if error != 5 { fail FailureOf(error); }
             }
         }
         else {
-            if kill(self.process as int32, SIGKILL) < 0 {
+            // Safety: `kill` takes two numbers and reads no memory of the caller's.
+            if unsafe { kill(self.process as int32, SIGKILL) } < 0 {
                 let error = LastError();
                 if FailureOf(error).kind != IoErrorKind::NotFound { fail FailureOf(error); }
             }
@@ -318,7 +335,8 @@ extend Child {
     func Collect(self: &var Child) -> ! IoError {
         when #target.os == .Windows {
             var code: uint32 = 0;
-            if GetExitCodeProcess(self.process as *opaque, @code) == 0 { fail FailureOf(GetLastError() as int64); }
+            // Safety: `self.process` is the process handle this child owns, and `code` is a local the call writes.
+            if unsafe { GetExitCodeProcess(self.process as *opaque, @code) } == 0 { fail FailureOf(LastError()); }
             self.status = ExitStatus { code: code as int32, signal: 0 };
             self.finished = true;
         }
@@ -329,7 +347,8 @@ extend Child {
         ClosePipe(self.output);
         ClosePipe(self.error);
         when #target.os == .Windows {
-            CloseHandle(self.process as *opaque);
+            // Safety: closing reads no memory, and the child owns `self.process`, which nothing uses after the drop.
+            unsafe { CloseHandle(self.process as *opaque); }
         }
     }
 }

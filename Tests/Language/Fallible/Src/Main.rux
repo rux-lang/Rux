@@ -22,7 +22,8 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        self.counter.count = self.counter.count + 1;
+        // Safety: every `Tracked` in this test stores the address of a `Counter` local that outlives it.
+        unsafe { self.counter.count = self.counter.count + 1; }
     }
 }
 

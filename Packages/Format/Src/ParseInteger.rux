@@ -9,18 +9,21 @@
 import Text::StringView;
 
 // What the sign and prefix left behind: where the digits start, which base they are in, and whether the value is
-// negated. An empty run of digits after a prefix is the error the prefix's index reports.
+// negated. An empty run of digits after a prefix is the error the prefix's index reports. `magnitude` and `negative`
+// must be non-null and writable; neither is meaningful after a failure.
 func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
                            negative: *var bool) -> bool ! ParseError {
     if str.length == 0 { fail ParseError::Empty; }
 
     var index: uint = 0;
-    *negative = false;
+    var negated = false;
     if str[index] == c8'+' || str[index] == c8'-' {
-        *negative = str[index] == c8'-';
+        negated = str[index] == c8'-';
         index++;
         if index == str.length { fail ParseError::InvalidCharacter(index - 1); }
     }
+    // Safety: the documented contract makes `negative` a non-null pointer to the caller's writable `bool`.
+    unsafe { *negative = negated; }
 
     var radix: uint512 = 10;
     if index + 1 < str.length && str[index] == c8'0' {
@@ -43,7 +46,7 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
     }
 
     let limit: uint512 = 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095;
-    *magnitude = 0;
+    var total: uint512 = 0;
     while index < str.length {
         let ch = str[index];
         var digit: uint512 = 0;
@@ -60,14 +63,16 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
             fail ParseError::InvalidCharacter(index);
         }
         if digit >= radix { fail ParseError::InvalidCharacter(index); }
-        if *magnitude > (limit - digit) / radix {
+        if total > (limit - digit) / radix {
             // Past what the widest integer holds, so the digit that did it is the offset. A value
             // that merely overruns the target width is caught later, where the width is known.
             fail ParseError::Overflow(index);
         }
-        *magnitude = *magnitude * radix + digit;
+        total = total * radix + digit;
         index++;
     }
+    // Safety: the documented contract makes `magnitude` a non-null pointer to the caller's writable `uint512`.
+    unsafe { *magnitude = total; }
     return true;
 }
 

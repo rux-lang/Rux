@@ -280,89 +280,111 @@ when #target.arch {
 
         func Main() -> int {
             // Arithmetic
-            if AddSub(20i64, 3i64) != 44i64 {
+            // Safety: `AddSub` reads only its argument registers and writes only the result register.
+            if unsafe { AddSub(20i64, 3i64) } != 44i64 {
                 return 1;
             }
-            if MulAddSub(6i64, 7i64, 5i64) != 84i64 {
+            // Safety: `MulAddSub` reads its argument registers and writes only the scratch registers x3, x4 and x0.
+            if unsafe { MulAddSub(6i64, 7i64, 5i64) } != 84i64 {
                 return 2;
             }
-            if DivRem(47i64, 5i64) != 11i64 {
+            // Safety: `DivRem` divides by the nonzero 5 and writes only the scratch registers x2, x3 and x0.
+            if unsafe { DivRem(47i64, 5i64) } != 11i64 {
                 return 3;
             }
-            if Shifts(-16i64) != -121i64 {
+            // Safety: `Shifts` reads x0 and writes only the scratch registers x1 to x3 and x0.
+            if unsafe { Shifts(-16i64) } != -121i64 {
                 return 4;
             }
-            if Bitwise(0xF0i64, 0x3Ci64) != -193i64 {
+            // Safety: `Bitwise` reads x0 and x1 and writes only the scratch registers x2 to x6 and x0.
+            if unsafe { Bitwise(0xF0i64, 0x3Ci64) } != -193i64 {
                 return 5;
             }
-            if Narrow(65536i32, 65536i32) != 1i32 {
+            // Safety: `Narrow` reads only its argument registers and writes only the result register.
+            if unsafe { Narrow(65536i32, 65536i32) } != 1i32 {
                 return 6;
             }
-            if Extend(0x1FFi64) != 510i64 {
+            // Safety: `Extend` reads x0 and writes only the scratch registers x1, x2 and x0.
+            if unsafe { Extend(0x1FFi64) } != 510i64 {
                 return 7;
             }
-            if WideConstant() != 0x123456789ABCDEF0i64 {
+            // Safety: `WideConstant` writes only the result register.
+            if unsafe { WideConstant() } != 0x123456789ABCDEF0i64 {
                 return 8;
             }
 
             // Memory
             var words: int64[4] = [11i64, 31i64, 0i64, 0i64];
             let cells = @words[0];
-            if SumPair(cells) != 42i64 {
+            // Safety: `cells` addresses the live local `words: int64[4]`; `SumPair` reads only elements 0 and 1.
+            if unsafe { SumPair(cells) } != 42i64 {
                 return 9;
             }
-            WritePair(cells, 5i64, 9i64);
+            // Safety: `cells` addresses the live local `words: int64[4]`; `WritePair` writes only elements 2 and 3.
+            unsafe { WritePair(cells, 5i64, 9i64); }
             if words[2] != 5i64 || words[3] != 9i64 {
                 return 10;
             }
 
             var bytes: uint8[6] = [1u8, 255u8, 2u8, 0u8, 0u8, 128u8];
-            if NarrowLoads(@bytes[0]) != -32766i64 {
+            // Safety: `bytes` is a live local `uint8[6]` and `NarrowLoads` reads only its first six bytes.
+            if unsafe { NarrowLoads(@bytes[0]) } != -32766i64 {
                 return 11;
             }
 
             var halves: int32[2] = [-7i32, 0i32];
-            if WidenAndTag(@halves[0]) != -7i64 {
+            // Safety: `halves` is a live local `int32[2]`; `WidenAndTag` reads element 0, writes a byte of element 1.
+            if unsafe { WidenAndTag(@halves[0]) } != -7i64 {
                 return 12;
             }
             if halves[1] != 255i32 {
                 return 13;
             }
 
-            if RoundTrip(30i64, 12i64) != 18i64 {
+            // Safety: `RoundTrip` opens a 32-byte frame below `sp`, reads it back and restores `sp` before returning.
+            if unsafe { RoundTrip(30i64, 12i64) } != 18i64 {
                 return 14;
             }
 
             // Branches
-            if Max(4i64, 9i64) != 9i64 || Max(9i64, 4i64) != 9i64 {
+            // Safety: `Max` reads only its argument registers and writes only the result register and the flags.
+            if unsafe { Max(4i64, 9i64) != 9i64 || Max(9i64, 4i64) != 9i64 } {
                 return 15;
             }
-            if SumTo(100i64) != 5050i64 {
+            // Safety: `SumTo` writes only the scratch registers x0 and x1 and its loop ends when the counter reaches 0.
+            if unsafe { SumTo(100i64) } != 5050i64 {
                 return 16;
             }
-            if LowBit(5i64) != 1i64 || LowBit(2i64) != 2i64 || LowBit(4i64) != 0i64 {
+            // Safety: `LowBit` reads only its argument registers and writes only the result register.
+            if unsafe { LowBit(5i64) != 1i64 || LowBit(2i64) != 2i64 || LowBit(4i64) != 0i64 } {
                 return 17;
             }
-            if Ladder(1i64, 2i64) != -1i64 || ClampPositive(-3i64) != 0i64 || ClampPositive(4i64) != 4i64 {
+            // Safety: `Ladder` and `ClampPositive` read only argument registers, write only the result and flags.
+            if unsafe { Ladder(1i64, 2i64) != -1i64 || ClampPositive(-3i64) != 0i64 || ClampPositive(4i64) != 4i64 } {
                 return 18;
             }
-            if Ladder(2i64, 1i64) != 1i64 {
+            // Safety: `Ladder` reads only its argument registers and writes only the result register and the flags.
+            if unsafe { Ladder(2i64, 1i64) } != 1i64 {
                 return 19;
             }
-            if Ladder(3i64, 3i64) != 0i64 {
+            // Safety: `Ladder` reads only its argument registers and writes only the result register and the flags.
+            if unsafe { Ladder(3i64, 3i64) } != 0i64 {
                 return 20;
             }
-            if TwiceThenSquare(5i64) != 100i64 {
+            // Safety: `TwiceThenSquare` saves x29 and x30 in a frame it opens and pops them back before returning.
+            if unsafe { TwiceThenSquare(5i64) } != 100i64 {
                 return 21;
             }
 
             // System calls, on the targets that have one
             when #target.os {
                 .FreeBSD, .Linux, .macOS => {
-                    if RawGetPid() <= 0i64 {
+                    // Safety: `RawGetPid` makes the argument-free getpid system call, which only returns the id.
+                    if unsafe { RawGetPid() } <= 0i64 {
                         return 22;
                     }
-                    if WriteToClosedFd(@bytes[0]) != -9i64 {
+                    // Safety: `bytes` is a live local `uint8[6]`; the write names descriptor -1, so no byte is read.
+                    if unsafe { WriteToClosedFd(@bytes[0]) } != -9i64 {
                         return 23;
                     }
                 },

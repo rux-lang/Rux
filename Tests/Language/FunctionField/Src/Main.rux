@@ -119,7 +119,8 @@ extend Store {
             return false;
         }
 
-        *value = @self.values[index];
+        // Safety: the documented contract makes a non-null `value` point at the caller's writable `*var int32`.
+        unsafe { *value = @self.values[index]; }
         return true;
     }
 }
@@ -156,9 +157,11 @@ func Main() -> int {
     var store = Store { values: [10, 20, 30, 40], length: 3 };
     var found: *var int32 = null;
     Assert(store.TryPointerTo(1, @found), "an in-range index reports success");
-    Assert(found != null && *found == 20, "the out-parameter received a pointer to the element");
+    // Safety: a non-null `found` points into `store.values`, and `store` is a live local.
+    Assert(found != null && unsafe { *found } == 20, "the out-parameter received a pointer to the element");
 
-    *found = 25;
+    // Safety: `found` points at `store.values[1]`, checked above, and `store` is a live local.
+    unsafe { *found = 25; }
     Assert(store.values[1] == 25, "a write through the returned pointer reaches the storage");
 
     var missing: *var int32 = null;

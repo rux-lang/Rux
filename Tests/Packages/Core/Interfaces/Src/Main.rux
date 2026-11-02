@@ -11,7 +11,8 @@ extend Guard {
     func =(self: &var Guard, other: &Guard);
 
     func ~Guard(self: &var Guard) {
-        *self.drops += 1;
+        // Safety: every `Guard` is built in `Main` with `drops` addressing its local counter, which outlives the guard.
+        unsafe { *self.drops += 1; }
     }
 }
 

@@ -34,17 +34,21 @@ extend Buffer<T> {
             else => fail IoError::Of(IoErrorKind::LimitExceeded)
         };
         if self.data != null {
-            Copy(block, self.data as *opaque, self.length * sizeof(T));
+            // Safety: `block` has room for `capacity` values, more than `length`, and `self.data` holds `length`
+            // values in a separate allocation.
+            unsafe { Copy(block, self.data as *opaque, self.length * sizeof(T)); }
             allocator.Deallocate(self.data as *var opaque, Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>())
                 catch { else => {} };
         }
-        self.data = block as *var T;
+        // Safety: `block` comes from the allocator with the layout of `capacity` values of `T`.
+        self.data = unsafe { block as *var T };
         self.capacity = capacity;
     }
 
     func Push(self: &var Buffer<T>, value: T) -> ! IoError {
         self.Reserve(1)?;
-        self.data[self.length] = value;
+        // Safety: `Reserve` made room for one value past `length` in `self.data`.
+        unsafe { self.data[self.length] = value; }
         self.length = self.length + 1;
     }
 
@@ -52,15 +56,18 @@ extend Buffer<T> {
         self.Reserve(values.length)?;
         var index: uint = 0;
         while index < values.length {
-            self.data[self.length + index] = values[index];
+            // Safety: `Reserve` made room for `values.length` values past `length`, and `index` is below that.
+            unsafe { self.data[self.length + index] = values[index]; }
             index = index + 1;
         }
         self.length = self.length + values.length;
     }
 
     func View(self: &Buffer<T>) -> T[..] {
-        if self.length == 0 { return self.data[..0]; }
-        return self.data[..self.length];
+        // Safety: an empty range reads nothing, even from a null `data`.
+        if self.length == 0 { return unsafe { self.data[..0] }; }
+        // Safety: `self.data` holds `length` values written by `Push` and `PushAll`.
+        return unsafe { self.data[..self.length] };
     }
 
     func Clear(self: &var Buffer<T>) {

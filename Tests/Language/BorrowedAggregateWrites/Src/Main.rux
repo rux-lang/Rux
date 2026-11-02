@@ -29,8 +29,11 @@ struct Tracked {
 
 extend Tracked {
     func ~Tracked(self: &var Tracked) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -42,13 +45,17 @@ struct Copied {
 
 extend Copied {
     func Clone(&self) -> Copied {
-        self.log.order = self.log.order * 10 + 9;
+        // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
+        unsafe { self.log.order = self.log.order * 10 + 9; }
         return Copied { log: self.log, id: self.id };
     }
 
     func ~Copied(self: &var Copied) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -62,8 +69,11 @@ extend Token {
     func =(self: &var Token, other: &Token);
 
     func ~Token(self: &var Token) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -73,7 +83,8 @@ struct Holder {
 }
 
 func Mark(log: *var Log) {
-    log.order = log.order * 10;
+    // Safety: every caller forwards `@log`, the pointer `Main` takes to its live `Log` local.
+    unsafe { log.order = log.order * 10; }
 }
 
 func ReplacePair(pair: &var Pair) { pair = Pair { a: 3i32, b: 4i32 }; }

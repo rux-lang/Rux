@@ -420,13 +420,20 @@ extend Url {
 
     // Copies this URL's authority into `pieces`.
     func CopyAuthority(self: &Url, pieces: *var Pieces) {
-        pieces.hasAuthority = self.hasAuthority;
+        // Safety: both callers pass `@` of their own local `Pieces`, live and writable for the whole call.
+        unsafe { pieces.hasAuthority = self.hasAuthority; }
         if !self.hasAuthority { return; }
         let text = self.text.Bytes();
-        pieces.userinfo = self.hasUserinfo ? text[self.userinfoStart..self.userinfoEnd] : none;
-        pieces.host = self.hostKind == HostKind::Ipv6 ? text[self.hostStart - 1..self.hostEnd + 1]
-                                                      : text[self.hostStart..self.hostEnd];
-        pieces.port = self.hasPort ? text[self.portStart..self.portEnd] : none;
+        let userinfo: char8[..]? = self.hasUserinfo ? text[self.userinfoStart..self.userinfoEnd] : none;
+        let host = self.hostKind == HostKind::Ipv6 ? text[self.hostStart - 1..self.hostEnd + 1]
+                                                   : text[self.hostStart..self.hostEnd];
+        let port: char8[..]? = self.hasPort ? text[self.portStart..self.portEnd] : none;
+        // Safety: both callers pass `@` of their own local `Pieces`, live and writable for the whole call.
+        unsafe {
+            pieces.userinfo = userinfo;
+            pieces.host = host;
+            pieces.port = port;
+        }
     }
 }
 

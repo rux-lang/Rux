@@ -8,17 +8,22 @@ extern {
 }
 
 func Main() -> int {
-    let library = dlopen("./libFreeBSDAArch64Fixture.so".data, 2);
+    // Safety: the path is a NUL-terminated string literal, and 2 is `RTLD_NOW`.
+    let library = unsafe { dlopen("./libFreeBSDAArch64Fixture.so".data, 2) };
     if library == null { return 1; }
 
-    let address = dlsym(library, "Answer".data);
+    // Safety: `library` is the handle opened above, and the symbol name is a NUL-terminated string literal.
+    let address = unsafe { dlsym(library, "Answer".data) };
     if address == null {
-        dlclose(library);
+        // Safety: `library` is the handle opened above, and nothing from it is used afterwards.
+        unsafe { dlclose(library); }
         return 2;
     }
 
-    let answer = address as func() -> int;
+    // Safety: the fixture library exports `Answer` as a Rux function taking nothing and returning `int`.
+    let answer = unsafe { address as func() -> int };
     let result = answer();
-    if dlclose(library) != 0 { return 3; }
+    // Safety: `library` is the handle opened above, and `answer` is not called after this.
+    if unsafe { dlclose(library) } != 0 { return 3; }
     return result == 42 ? 0 : 4;
 }

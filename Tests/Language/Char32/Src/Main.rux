@@ -57,7 +57,8 @@ func Main() -> int {
 
     // Raw storage may contain a surrogate even though a checked character cast refuses one.
     var reserved: uint32 = 0xD800;
-    let surrogate = *((@reserved) as *char32);
+    // Safety: `reserved` is a live local `uint32`, the same size as `char32`.
+    let surrogate = unsafe { *((@reserved) as *char32) };
     Assert(surrogate as uint32 == 0xD800u32, "raw character storage preserves every bit");
 
     // Assignment and mutation.

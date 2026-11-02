@@ -24,7 +24,8 @@ pub func MinIndex<T>(items: T[..]) -> uint? {
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
-        if items.data[index] < items.data[best] {
+        // Safety: `index` is below `items.length`, the loop condition, and `best` is an earlier index.
+        if unsafe { items.data[index] < items.data[best] } {
             best = index;
         }
         index++;
@@ -46,7 +47,8 @@ pub func MaxIndex<T>(items: T[..]) -> uint? {
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
-        if items.data[best] < items.data[index] {
+        // Safety: `index` is below `items.length`, the loop condition, and `best` is an earlier index.
+        if unsafe { items.data[best] < items.data[index] } {
             best = index;
         }
         index++;
@@ -68,7 +70,8 @@ pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
-        if compare(items.data[index], items.data[best]).IsLess() {
+        // Safety: `index` is below `items.length`, the loop condition, and `best` is an earlier index.
+        if unsafe { compare(items.data[index], items.data[best]).IsLess() } {
             best = index;
         }
         index++;
@@ -90,7 +93,8 @@ pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
-        if compare(items.data[best], items.data[index]).IsLess() {
+        // Safety: `index` is below `items.length`, the loop condition, and `best` is an earlier index.
+        if unsafe { compare(items.data[best], items.data[index]).IsLess() } {
             best = index;
         }
         index++;
@@ -119,16 +123,22 @@ pub func MinMaxIndex<T>(items: T[..], smallest: *var uint, largest: *var uint) -
     var high: uint = 0;
     var index: uint = 1;
     while index < items.length {
-        if items.data[index] < items.data[low] {
+        // Safety: `index` is below `items.length`, the loop condition, and `low` and `high` are earlier indices.
+        if unsafe { items.data[index] < items.data[low] } {
             low = index;
         }
-        if items.data[high] < items.data[index] {
+        // Safety: `index` is below `items.length`, the loop condition, and `low` and `high` are earlier indices.
+        if unsafe { items.data[high] < items.data[index] } {
             high = index;
         }
         index++;
     }
-    *smallest = low;
-    *largest = high;
+    // Safety: the documented contract makes `smallest` and `largest` non-null pointers to the caller's writable
+    // `uint` values.
+    unsafe {
+        *smallest = low;
+        *largest = high;
+    }
     return true;
 }
 
@@ -151,16 +161,22 @@ pub func MinMaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering, smalles
     var high: uint = 0;
     var index: uint = 1;
     while index < items.length {
-        if compare(items.data[index], items.data[low]).IsLess() {
+        // Safety: `index` is below `items.length`, the loop condition, and `low` and `high` are earlier indices.
+        if unsafe { compare(items.data[index], items.data[low]).IsLess() } {
             low = index;
         }
-        if compare(items.data[high], items.data[index]).IsLess() {
+        // Safety: `index` is below `items.length`, the loop condition, and `low` and `high` are earlier indices.
+        if unsafe { compare(items.data[high], items.data[index]).IsLess() } {
             high = index;
         }
         index++;
     }
-    *smallest = low;
-    *largest = high;
+    // Safety: the documented contract makes `smallest` and `largest` non-null pointers to the caller's writable
+    // `uint` values.
+    unsafe {
+        *smallest = low;
+        *largest = high;
+    }
     return true;
 }
 

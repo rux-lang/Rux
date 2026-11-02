@@ -58,7 +58,9 @@ extend SystemEntropy : EntropySource {
     /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill
     pub func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> ! EntropyError {
-        return FillFromSource(buffer, length);
+        // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes, which is exactly
+        // what `FillFromSource` asks of its caller.
+        return unsafe { FillFromSource(buffer, length) };
     }
 }
 
@@ -69,14 +71,14 @@ extend SystemEntropy : EntropySource {
 /// part-way through a split request is a failure of the whole request: there is no state in which some of a buffer
 /// is unpredictable and the rest is not, because nothing downstream could act on the difference.
 /// Runs in time proportional to `length` and allocates nothing.
-/// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized, including the parts an
-/// earlier call filled successfully.
+/// Safety: `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized, including the
+/// parts an earlier call filled successfully.
 /// @param source where the bytes come from
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-from
-pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> ! EntropyError {
+pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> ! EntropyError {
     if length == 0 { return; }
     if buffer == null { fail EntropyError::Failed; }
 
@@ -102,7 +104,7 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 /// wrong. A system with no source and a provider that refused are both reported at once, because repeating them
 /// would only take longer to reach the same answer.
 /// Runs in time proportional to `length` times the attempts made, and allocates nothing.
-/// `buffer` must be writable for `length` bytes. Every failed attempt zeroizes the buffer, so a failure that
+/// Safety: `buffer` must be writable for `length` bytes. Every failed attempt zeroizes the buffer, so a failure that
 /// exhausts the attempts leaves zeros.
 /// @param source where the bytes come from
 /// @param buffer receives the bytes
@@ -110,7 +112,7 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 /// @param attempts how many times to go back to an interrupted source before giving up
 /// @returns nothing when every byte was written, or why not — `Interrupted` after `attempts` tries
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-with-retries
-pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
+pub unsafe func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
     -> ! EntropyError {
     var remaining = attempts;
     while true {
@@ -132,12 +134,12 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
 /// `buffer` is borrowed and written; `length` is read by value. This is the call to make when there is no reason to
 /// name a source: it is `FillFrom` over `SystemEntropy`, with the same contract.
 /// Runs in time proportional to `length` and allocates nothing.
-/// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized.
+/// Safety: `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized.
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill
-pub func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
+pub unsafe func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
     var system = SystemEntropy();
     let source: &var EntropySource = system;
     return FillFrom(source, buffer, length);
@@ -150,9 +152,11 @@ pub func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
 /// @see https://rux-lang.dev/docs/api/entropy/next-uint64
 pub func NextUint64() -> uint64 ! EntropyError {
     var value: uint64 = 0;
-    Fill(@value as *var opaque, 8) catch {
+    // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
+    (unsafe { Fill(@value as *var opaque, 8) }) catch {
         error => {
-            ZeroizeBlock(@value as *var opaque, 8);
+            // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
+            unsafe { ZeroizeBlock(@value as *var opaque, 8); }
             fail error;
         }
     };

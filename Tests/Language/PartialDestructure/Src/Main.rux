@@ -20,8 +20,11 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: every `Tracked` in this test holds a pointer to a `Log` local of `Main` that outlives it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -32,7 +35,8 @@ struct Parcel {
 }
 
 func Mark(log: *var Log) {
-    log.order = log.order * 10;
+    // Safety: every caller passes a pointer to a `Log` local of `Main`.
+    unsafe { log.order = log.order * 10; }
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {

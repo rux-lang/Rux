@@ -8,7 +8,7 @@ func Check(bits: uint512, expected: char8[..]) {
     let allocator: Allocator = system;
     let layout = FloatLayout::Binary512();
     var storage: char8[256];
-    var cursor = ByteCursor((@storage[0])[..256]);
+    var cursor = ByteCursor(storage[..256]);
     let writer: &var TextWriter = cursor;
     Assert(Succeeded(WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout)), "extreme value renders");
     let text = cursor.Written();

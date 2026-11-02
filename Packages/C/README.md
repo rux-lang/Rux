@@ -39,7 +39,7 @@ Each module selects the right declarations for the target at compile time, so th
 
 ## Values and pointers
 
-C ABI records such as `timespec` are ordinary structural values and copy by value. Safe package helpers borrow them: `TimespecGet(value, TIME_UTC)` takes a mutable reference, so callers pass the value itself. C declarations keep raw pointers where the ABI permits null, returns an address, accepts an untyped buffer, or relies on pointer arithmetic. Those calls inherit C's validity, lifetime, alignment, and overlap requirements; use `Rux/Memory`, `Rux/Text`, or `Rux/Io` when a checked interface exists.
+C ABI records such as `timespec` are ordinary structural values and copy by value. Safe package helpers borrow them: `TimespecGet(value, TIME_UTC)` takes a mutable reference, so callers pass the value itself. C declarations keep raw pointers where the ABI permits null, returns an address, accepts an untyped buffer, or relies on pointer arithmetic. Those calls inherit C's validity, lifetime, alignment, and overlap requirements; use `Rux/Memory`, `Rux/Text`, or `Rux/Io` when a checked interface exists. Every C function here is declared `extern`, so a call needs an `unsafe` block, conventionally with a `// Safety:` comment saying why that call's requirements hold.
 
 Two things are absent from `Math` on purpose. `fabsf`, `frexpf`, `ldexpf` and `hypotf` are header inlines in the Universal CRT rather than exported symbols, so declaring them would link on Unix and fail on Windows. The `nexttoward` pair takes a `long double`, which is a different type on every target — 64 bits under the Universal CRT, an 80-bit x87 value on x86-64 Unix, a 128-bit quad on AArch64 — so no one declaration is right everywhere. `Rux/Math` computes at every width without a C runtime and is the portable answer.
 
@@ -54,21 +54,29 @@ import C::{ CRuntimeArea, ErrnoFor, ErrnoLocationFor, free, malloc, puts };
 
 func Main() -> int {
     // A Rux literal is a `char8[..]` and a C declaration takes a `*char8`, so the address is passed explicitly.
-    var buffer = malloc(1024);
+    // Safety: `malloc` takes only a size and reports a refusal as null.
+    var buffer = unsafe { malloc(1024) };
     if buffer == null {
-        puts("allocation refused".data);
+        // Safety: a string literal is NUL-terminated and lives for the whole program.
+        unsafe { puts("allocation refused".data); }
         return 1;
     }
 
-    puts("allocated".data);
-    free(buffer);
+    // Safety: the literal is NUL-terminated, and `buffer` came from `malloc` above and is released only here.
+    unsafe {
+        puts("allocated".data);
+        free(buffer);
+    }
 
     // Clearing before the call is how C's `errno = 0` is spelled; nothing clears it on success. `malloc` comes from
     // `StdLib`, so its failure is readable in the `General` area.
-    *ErrnoLocationFor(CRuntimeArea::General) = 0i32;
-    let refused = malloc(18446744073709551615u64);
+    // Safety: `ErrnoLocationFor` returns the calling thread's own `errno`, live for as long as the thread runs.
+    unsafe { *ErrnoLocationFor(CRuntimeArea::General) = 0i32; }
+    // Safety: `malloc` takes only a size and reports a refusal as null.
+    let refused = unsafe { malloc(18446744073709551615u64) };
     if refused == null && ErrnoFor(CRuntimeArea::General) != 0i32 {
-        puts("and the refusal reported a reason".data);
+        // Safety: a string literal is NUL-terminated and lives for the whole program.
+        unsafe { puts("and the refusal reported a reason".data); }
     }
     return 0;
 }

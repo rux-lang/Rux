@@ -23,7 +23,8 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        self.counter.count = self.counter.count + 1;
+        // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
+        unsafe { self.counter.count = self.counter.count + 1; }
     }
 }
 
@@ -42,13 +43,15 @@ struct Holder<T> {
 
 extend Holder<T> {
     func Put(self: &var Holder<T>, value: T) {
-        *self.slot <- value;
+        // Safety: every `Holder` in this test holds the address of a live local `T` of `Main`.
+        unsafe { *self.slot <- value; }
         self.filled = true;
     }
 }
 
 func PutThroughGeneric<T>(slot: *var T, value: T) {
-    *slot <- value;
+    // Safety: every caller passes the address of a live local `T` of `Main`.
+    unsafe { *slot <- value; }
 }
 
 // A payload with something ahead of the part that has to be destroyed, so the destruction of an option's payload has

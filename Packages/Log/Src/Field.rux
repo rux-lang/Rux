@@ -74,5 +74,6 @@ extend Field {
 // No fields at all.
 func NoFields() -> Field[..] {
     let nothing: *Field = null;
-    return nothing[..0];
+    // Safety: the range is empty, so it reads nothing through the null pointer.
+    return unsafe { nothing[..0] };
 }

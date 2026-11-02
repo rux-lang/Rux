@@ -70,7 +70,8 @@ extend Shake {
             self.lanes[lane] = self.lanes[lane] ^ ((bytes[index] as uint8 as uint64) << shift);
             self.position = self.position + 1;
             if self.position == self.rate {
-                KeccakPermute(@self.lanes[0]);
+                // Safety: `self.lanes` is the state's array of twenty-five lanes.
+                unsafe { KeccakPermute(@self.lanes[0]); }
                 self.position = 0;
             }
             index = index + 1;
@@ -87,7 +88,8 @@ extend Shake {
         let lastLane = (self.rate - 1u) / 8u;
         let lastShift = (((self.rate - 1u) % 8u) * 8u) as uint64;
         self.lanes[lastLane] = self.lanes[lastLane] ^ (0x80u64 << lastShift);
-        KeccakPermute(@self.lanes[0]);
+        // Safety: `self.lanes` is the state's array of twenty-five lanes.
+        unsafe { KeccakPermute(@self.lanes[0]); }
         self.position = 0;
         self.reading = true;
     }
@@ -105,7 +107,8 @@ extend Shake {
         while index < into.length {
             if self.position == self.rate {
                 // The rate is exhausted; permuting again extends the stream.
-                KeccakPermute(@self.lanes[0]);
+                // Safety: `self.lanes` is the state's array of twenty-five lanes.
+                unsafe { KeccakPermute(@self.lanes[0]); }
                 self.position = 0;
             }
             let lane = self.lanes[self.position / 8];

@@ -15,7 +15,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -35,7 +35,7 @@ func At(seconds: int64, nanoseconds: uint32) -> Timestamp {
 // Whether Display writes exactly `expected`.
 func Shown(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     let shown: Display = value;
     if Failed(shown.WriteDisplay(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
@@ -44,7 +44,7 @@ func Shown(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
 // Whether Debug writes exactly `expected`, which for this type is whatever Display wrote.
 func Inspected(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     let shown: Debug = value;
     if Failed(shown.WriteDebug(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
@@ -52,15 +52,15 @@ func Inspected(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool 
 
 // Whether the rendering was refused with `expected`, and how much of the destination it had already used. The
 // length matters for the out-of-range cases and is checked separately by `RefusedBeforeOutput`.
-func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, written: *var uint) -> bool {
+func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, written: &var uint) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     let shown: Display = value;
     let reported = match shown.WriteDisplay(writer, spec) {
         .Failure(error) => error,
         .Success(_) => return false
     };
-    *written = writer.Length();
+    written = writer.Length();
     return match reported {
         .UnsupportedRequest => match expected { .UnsupportedRequest => true, else => false },
         .ValueOutOfRange => match expected { .ValueOutOfRange => true, else => false },
@@ -73,14 +73,14 @@ func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, writ
 // value cannot be spelled is holding text nobody can use.
 func RefusedBeforeOutput(value: Timestamp, spec: FormatSpec, expected: FormatError) -> bool {
     var written: uint = 0;
-    if !RefusedWith(value, spec, expected, @written) { return false; }
+    if !RefusedWith(value, spec, expected, written) { return false; }
     return written == 0;
 }
 
 // Whether the RFC 3339 text of `value` reads back as the same moment.
 func RoundTrips(value: Timestamp) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     let shown: Display = value;
     if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) { return false; }
     return match ParseRfc3339(writer.Written()) {
@@ -139,9 +139,9 @@ func Main() -> int {
     // A precision past nine is refused too, though only once the fraction is reached — the same partial-output
     // behaviour the calendar values have, since the digits before it were all valid.
     var partial: uint = 0;
-    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10"), FormatError::UnsupportedRequest, @partial),
+    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10"), FormatError::UnsupportedRequest, partial),
            "a precision past nine is refused");
-    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10unix"), FormatError::UnsupportedRequest, @partial),
+    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10unix"), FormatError::UnsupportedRequest, partial),
            "in either form");
 
     // The edges of the calendar range, which is years 0000 through 9999 because that is what four year digits

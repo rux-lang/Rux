@@ -152,7 +152,8 @@ pub const MaximumErrno: int64 = 4095;
 /// @returns the calling thread's current `errno`
 /// @see https://rux-lang.dev/docs/api/macos/errors#current-errno
 pub func CurrentErrno() -> int64 {
-    return *__error() as int64;
+    // Safety: `__error` returns the address of the calling thread's own `errno`, which lives as long as the thread.
+    return unsafe { *__error() } as int64;
 }
 
 /// Folds a libSystem result and the thread's `errno` into one value.

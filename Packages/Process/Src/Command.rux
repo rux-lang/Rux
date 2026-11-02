@@ -35,7 +35,7 @@ when #target.os {
     .Windows => import Windows::{
         CREATE_UNICODE_ENVIRONMENT, CloseHandle, CreateFileW, CreatePipe, CreateProcessW, DUPLICATE_SAME_ACCESS,
         DuplicateHandle, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, GetCurrentProcess,
-        GetLastError, GetStdHandle, HANDLE_FLAG_INHERIT, InvalidHandleValue, ProcessInformation, STARTF_USESTDHANDLES,
+        GetStdHandle, HANDLE_FLAG_INHERIT, InvalidHandleValue, ProcessInformation, STARTF_USESTDHANDLES,
         SecurityAttributes, SetHandleInformation, StartupInfo, StdErrorHandle, StdInputHandle, StdOutputHandle
     },
     else => #Error("Unsupported operating system")
@@ -301,7 +301,8 @@ extend Command {
             environment.Push(null)?;
 
             var actions = SpawnFileActions();
-            if posix_spawn_file_actions_init(@actions) != 0 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+            // Safety: `actions` is a local `SpawnFileActions` the call initializes.
+            if unsafe { posix_spawn_file_actions_init(@actions) } != 0 { fail IoError::Of(IoErrorKind::LimitExceeded); }
             // The parent's ends of the pipes, and the child's, which close once the child has its copies.
             var parentEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
             var childEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
@@ -313,17 +314,24 @@ extend Command {
                 if streams[stream] == Stdio::Null {
                     let flags = stream == 0u ? OpenReadOnly : OpenWriteOnly;
                     let devnull: char8[..] = "/dev/null\0";
-                    posix_spawn_file_actions_addopen(@actions, target, devnull.data, flags, 0);
+                    // Safety: `actions` is the local this function initialized above and destroys below, and
+                    // `devnull` is a NUL-terminated literal.
+                    unsafe { posix_spawn_file_actions_addopen(@actions, target, devnull.data, flags, 0); }
                 }
                 else if streams[stream] == Stdio::Pipe {
                     var ends: int32[2] = [0, 0];
                     when #target.os == .macOS {
-                        if Pipe(@ends[0]) < 0 { failure = FailureOf(LastError()); break; }
-                        fcntl(ends[0], F_SETFD, FD_CLOEXEC);
-                        fcntl(ends[1], F_SETFD, FD_CLOEXEC);
+                        // Safety: `ends` is a local array with room for the two descriptors the call writes.
+                        if unsafe { Pipe(@ends[0]) } < 0 { failure = FailureOf(LastError()); break; }
+                        // Safety: `F_SETFD` takes a flag word, not an address, and the descriptors are the pipe's own.
+                        unsafe {
+                            fcntl(ends[0], F_SETFD, FD_CLOEXEC);
+                            fcntl(ends[1], F_SETFD, FD_CLOEXEC);
+                        }
                     }
                     else {
-                        let result = Pipe2(@ends[0], OpenCloseOnExec);
+                        // Safety: `ends` is a local array with room for the two descriptors the call writes.
+                        let result = unsafe { Pipe2(@ends[0], OpenCloseOnExec) };
                         if result < 0 { failure = FailureOf(-result); break; }
                     }
                     // The read end goes to a reader: the child for input, the parent for output and error.
@@ -331,23 +339,31 @@ extend Command {
                     let parentEnd = stream == 0u ? ends[1] : ends[0];
                     childEnds[stream] = childEnd as uint64;
                     parentEnds[stream] = parentEnd as uint64;
-                    posix_spawn_file_actions_adddup2(@actions, childEnd, target);
+                    // Safety: `actions` is the local this function initialized above and destroys below.
+                    unsafe { posix_spawn_file_actions_adddup2(@actions, childEnd, target); }
                 }
                 stream = stream + 1u;
             }
             let directory = self.directory.View();
             if failure == none && directory.length != 0 {
-                if posix_spawn_file_actions_addchdir_np(@actions, directory.data) != 0 {
+                // Safety: `actions` is the local this function initialized above and destroys below, and a
+                // directory that was given is kept followed by a NUL.
+                if unsafe { posix_spawn_file_actions_addchdir_np(@actions, directory.data) } != 0 {
                     failure = IoError::Of(IoErrorKind::Other);
                 }
             }
             var pid: int32 = 0;
             if failure == none {
-                let result = posix_spawnp(@pid, words.data, @actions, null, arguments.View().data,
-                                          environment.View().data);
+                // Safety: `pid` is a local the call writes; `words` starts with the program's NUL-terminated name;
+                // `arguments` and `environment` are null-ended arrays of pointers into `words` and `entries`, whose
+                // units are NUL-terminated and live until this function returns.
+                let result = unsafe {
+                    posix_spawnp(@pid, words.data, @actions, null, arguments.View().data, environment.View().data)
+                };
                 if result != 0 { failure = FailureOf(result as int64); }
             }
-            posix_spawn_file_actions_destroy(@actions);
+            // Safety: `actions` was initialized above and is destroyed once, here.
+            unsafe { posix_spawn_file_actions_destroy(@actions); }
             stream = 0;
             while stream < 3u {
                 ClosePipe(childEnds[stream]);
@@ -387,7 +403,8 @@ extend Command {
             var inheritable = SecurityAttributes {
                 length: sizeof(SecurityAttributes) as uint32, securityDescriptor: null, inheritHandle: true
             };
-            let currentProcess = GetCurrentProcess();
+            // Safety: `GetCurrentProcess` takes nothing and returns a pseudo-handle that needs no closing.
+            let currentProcess = unsafe { GetCurrentProcess() };
             var parentEnds: uint64[3] = [NoPipe, NoPipe, NoPipe];
             var childHandles: (*opaque)[3] = [null, null, null];
             let streams: Stdio[3] = [input, output, error];
@@ -396,32 +413,45 @@ extend Command {
             var stream: uint = 0;
             while stream < 3u && failure == none {
                 if streams[stream] == Stdio::Inherit {
-                    let own = GetStdHandle(standard[stream]);
+                    // Safety: `GetStdHandle` takes a stream number and reads no memory of the caller's.
+                    let own = unsafe { GetStdHandle(standard[stream]) };
                     if own != null && own as uint64 != InvalidHandleValue {
                         var copy: *opaque = null;
-                        if DuplicateHandle(currentProcess, own, currentProcess, @copy, 0, true, DUPLICATE_SAME_ACCESS) != 0 {
+                        // Safety: `own` is this process's live standard handle, checked above, and `copy` is a local
+                        // the call writes one handle to.
+                        let duplicated = unsafe {
+                            DuplicateHandle(currentProcess, own, currentProcess, @copy, 0, true, DUPLICATE_SAME_ACCESS)
+                        };
+                        if duplicated != 0 {
                             childHandles[stream] = copy;
                         }
                     }
                 }
                 else if streams[stream] == Stdio::Null {
                     let nul: uint16[4] = [0x4E, 0x55, 0x4C, 0];
-                    let handle = CreateFileW((@nul[0]) as *char16, GENERIC_READ | GENERIC_WRITE,
-                                             FILE_SHARE_READ | FILE_SHARE_WRITE, (@inheritable) as *var opaque, 3, 0,
-                                             null);
-                    if handle as uint64 == InvalidHandleValue { failure = FailureOf(GetLastError() as int64); break; }
+                    // Safety: `nul` is a local, NUL-terminated `NUL` whose UTF-16 units read the same as `char16`, and
+                    // `inheritable` is a local `SecurityAttributes` with its length set.
+                    let handle = unsafe {
+                        CreateFileW((@nul[0]) as *char16, GENERIC_READ | GENERIC_WRITE,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE, (@inheritable) as *var opaque, 3, 0, null)
+                    };
+                    if handle as uint64 == InvalidHandleValue { failure = FailureOf(LastError()); break; }
                     childHandles[stream] = handle;
                 }
                 else {
                     var readEnd: *opaque = null;
                     var writeEnd: *opaque = null;
-                    if CreatePipe(@readEnd, @writeEnd, @inheritable, 0) == 0 {
-                        failure = FailureOf(GetLastError() as int64);
+                    // Safety: `readEnd` and `writeEnd` are locals the call writes one handle each to, and
+                    // `inheritable` is a local `SecurityAttributes` with its length set.
+                    if unsafe { CreatePipe(@readEnd, @writeEnd, @inheritable, 0) } == 0 {
+                        failure = FailureOf(LastError());
                         break;
                     }
                     let childEnd = stream == 0u ? readEnd : writeEnd;
                     let parentEnd = stream == 0u ? writeEnd : readEnd;
-                    SetHandleInformation(parentEnd, HANDLE_FLAG_INHERIT, 0);
+                    // Safety: `parentEnd` is the pipe end `CreatePipe` just gave this process, and the call reads no
+                    // memory.
+                    unsafe { SetHandleInformation(parentEnd, HANDLE_FLAG_INHERIT, 0); }
                     childHandles[stream] = childEnd;
                     parentEnds[stream] = parentEnd as uint64;
                 }
@@ -437,19 +467,27 @@ extend Command {
             if failure == none {
                 let directory = self.directory.View();
                 let directoryUnits: *uint16 = directory.length == 0 ? null : directory.data;
-                if CreateProcessW(null, line.data, null, null, true, CREATE_UNICODE_ENVIRONMENT,
-                                  block.View().data as *opaque, directoryUnits, @startup, @created) == 0 {
-                    failure = FailureOf(GetLastError() as int64);
+                // Safety: `line` is the NUL-terminated, writable command line built above; `block` ends in two NULs as
+                // the environment block must; a given directory is kept followed by a NUL; `startup` and `created`
+                // are locals, the first filled in and sized, the second for the call to write.
+                let launched = unsafe {
+                    CreateProcessW(null, line.data, null, null, true, CREATE_UNICODE_ENVIRONMENT,
+                                   block.View().data as *opaque, directoryUnits, @startup, @created)
+                };
+                if launched == 0 {
+                    failure = FailureOf(LastError());
                 }
             }
             stream = 0;
             while stream < 3u {
-                if childHandles[stream] != null { CloseHandle(childHandles[stream]); }
+                // Safety: a non-null child handle was opened above for the child alone, and closing it reads no memory.
+                if childHandles[stream] != null { unsafe { CloseHandle(childHandles[stream]); } }
                 if failure != none { ClosePipe(parentEnds[stream]); }
                 stream = stream + 1u;
             }
             if failure != none { fail failure ?? IoError::Of(IoErrorKind::Other); }
-            CloseHandle(created.thread);
+            // Safety: `created.thread` is the new child's main-thread handle, which this process owns and never uses.
+            unsafe { CloseHandle(created.thread); }
             return Child {
                 id: created.processId, process: created.process as uint64, input: parentEnds[0],
                 output: parentEnds[1], error: parentEnds[2], finished: false,

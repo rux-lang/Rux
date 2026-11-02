@@ -70,7 +70,8 @@ func Sum(pair: Pair<int>) -> int {
     return pair.first + pair.second;
 }
 
-func Read(node: *Node) -> int {
+// Safety: `node` and its `next` link must point at live `Node` values.
+unsafe func Read(node: *Node) -> int {
     return (*node).value + (*(*node).next).value;
 }
 
@@ -96,7 +97,8 @@ func Main() -> int {
 
     var node = MakeNode(5);
     node.next = @node;
-    Assert(Read(@node) == 10, "a '#NoMove' value that points into itself stays where it was built");
+    // Safety: `node` is a live local and its `next` link is `@node` itself.
+    Assert(unsafe { Read(@node) } == 10, "a '#NoMove' value that points into itself stays where it was built");
 
     let bits = Bits { word: 0x01020304u32 };
     Assert(bits.word == 0x01020304u32, "a '#NoMove' union is built in place");

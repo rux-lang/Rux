@@ -1,14 +1,18 @@
 import Core::Assert;
 
 func Aliasing(first: *var int, second: *var int, input: int) -> int {
-    *first = input;
-    *second = 42;
-    return *first;
+    // Safety: both pointers address live `int` locals of `Main`; that they may be the same one is what this checks.
+    unsafe {
+        *first = input;
+        *second = 42;
+        return *first;
+    }
 }
 
 func Choose(test: bool, pointer: *var int, a: int, b: int) -> int {
     let first = a + b;
-    *pointer = first;
+    // Safety: `pointer` addresses the live local `first` of `Main`.
+    unsafe { *pointer = first; }
     if test { return (a + b) * first; }
     return (a + b) - first;
 }
@@ -46,10 +50,12 @@ func Main() -> int {
 func GuardedWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> uint {
     for i in 0u..limit {
         let index = row + i;
-        if index < bound { *result += index; }
+        // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
+        if index < bound { unsafe { *result += index; } }
         else { return 123u; }
     }
-    return *result;
+    // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
+    return unsafe { *result };
 }
 
 func ReferenceWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> uint {
@@ -57,11 +63,13 @@ func ReferenceWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> ui
     var index = row;
     while remaining != 0u {
         if index >= bound { return 123u; }
-        *result += index;
+        // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
+        unsafe { *result += index; }
         index += 1u;
         remaining -= 1u;
     }
-    return *result;
+    // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
+    return unsafe { *result };
 }
 
 func CheckGuardedLoops() {
@@ -97,9 +105,12 @@ func UpdatePair(value: &var BorrowedPair, amount: int) {
 }
 
 func AliasPair(first: *var BorrowedPair, second: *var BorrowedPair) {
-    first.first = 7;
-    second.first = 42;
-    first.second = first.first;
+    // Safety: both pointers address the live local `pair` of `Main`; they alias on purpose.
+    unsafe {
+        first.first = 7;
+        second.first = 42;
+        first.second = first.first;
+    }
 }
 
 func Masked(value: uint8) -> uint64 { return (value & 63u8) as uint64; }

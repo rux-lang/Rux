@@ -63,44 +63,44 @@ const FoldedModulo: float16 = FoldedOver % 0.0625f16;
 const Table: float16[5] = [1.0f16, -0.0f16, 65504.0f16, 5.9604644775390625e-08f16, -2.5f16];
 
 func Bits(value: float16) -> uint16 {
-    let address = (@value) as *uint16;
-    return *address;
+    // Safety: `value` is a live parameter and `uint16` is exactly as wide as `float16`.
+    return unsafe { *((@value) as *uint16) };
 }
 
 func Bits8(value: float8) -> uint8 {
-    let address = (@value) as *uint8;
-    return *address;
+    // Safety: `value` is a live parameter and `uint8` is exactly as wide as `float8`.
+    return unsafe { *((@value) as *uint8) };
 }
 
 func Bits32(value: float32) -> uint32 {
-    let address = (@value) as *uint32;
-    return *address;
+    // Safety: `value` is a live parameter and `uint32` is exactly as wide as `float32`.
+    return unsafe { *((@value) as *uint32) };
 }
 
 func Bits64(value: float64) -> uint64 {
-    let address = (@value) as *uint64;
-    return *address;
+    // Safety: `value` is a live parameter and `uint64` is exactly as wide as `float64`.
+    return unsafe { *((@value) as *uint64) };
 }
 
 // A float80 is ten bytes held in sixteen; only the ten carry the value.
 func Bits80(value: float80) -> uint128 {
-    let address = (@value) as *uint128;
-    return *address & ((1u128 << 80) - 1u128);
+    // Safety: `value` is a live parameter whose `float80` occupies sixteen bytes, the width of the `uint128` read.
+    return unsafe { *((@value) as *uint128) } & ((1u128 << 80) - 1u128);
 }
 
 func Bits128(value: float128) -> uint128 {
-    let address = (@value) as *uint128;
-    return *address;
+    // Safety: `value` is a live parameter and `uint128` is exactly as wide as `float128`.
+    return unsafe { *((@value) as *uint128) };
 }
 
 func Bits256(value: float256) -> uint256 {
-    let address = (@value) as *uint256;
-    return *address;
+    // Safety: `value` is a live parameter and `uint256` is exactly as wide as `float256`.
+    return unsafe { *((@value) as *uint256) };
 }
 
 func Bits512(value: float512) -> uint512 {
-    let address = (@value) as *uint512;
-    return *address;
+    // Safety: `value` is a live parameter and `uint512` is exactly as wide as `float512`.
+    return unsafe { *((@value) as *uint512) };
 }
 
 func Same(actual: float16, expected: float16) -> bool {

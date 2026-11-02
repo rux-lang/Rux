@@ -20,12 +20,12 @@ func Main() -> int {
         raw[index] = (index * 17) as byte;
         index = index + 1;
     }
-    let rawBytes = (@raw[0])[..16];
+    let rawBytes = raw[..16];
     var value = Uuid::FromBytes(rawBytes);
     let readBack = value.Bytes();
     index = 0;
     while index < 16 {
-        Assert(readBack.data[index] == raw[index], "the bytes come back in the order they went in");
+        Assert(readBack[index] == raw[index], "the bytes come back in the order they went in");
         index = index + 1;
     }
     Assert(!value.IsNil() && !value.IsMax(), "and an ordinary value is neither sentinel");
@@ -36,11 +36,11 @@ func Main() -> int {
            "copying a UUID produces an independent value");
 
     // A short slice leaves the rest zero rather than reading past it.
-    let shortBytes = (@raw[0])[..4];
+    let shortBytes = raw[..4];
     var partial = Uuid::FromBytes(shortBytes);
     let partialBytes = partial.Bytes();
-    Assert(partialBytes.data[3] == raw[3], "the bytes given are kept");
-    Assert(partialBytes.data[4] == 0, "and the rest are zero");
+    Assert(partialBytes[3] == raw[3], "the bytes given are kept");
+    Assert(partialBytes[4] == 0, "and the rest are zero");
 
     // Ordering follows the bytes, most significant first — which is what makes a time-ordered UUID sort by
     // time. A comparison that started anywhere else would pass an equality test and fail this.

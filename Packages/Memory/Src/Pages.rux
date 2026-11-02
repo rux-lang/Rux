@@ -105,7 +105,8 @@ pub func PageSize() -> uint ! PageError {
             // GetSystemInfo has no failure to report; a system that could not answer could not have started the
             // process. The zero check is a guard against a future stub rather than an observed case.
             var info: SystemInfo;
-            GetSystemInfo(@info);
+            // Safety: `info` is a local `SystemInfo`, which `GetSystemInfo` fills.
+            unsafe { GetSystemInfo(@info); }
             if info.pageSize == 0 { fail PageError::Unsupported; }
             return info.pageSize as uint;
         }
@@ -135,12 +136,15 @@ pub func PageAllocate(length: uint, protection: uint32) -> (*var opaque) ! PageE
     if length == 0 { fail PageError::InvalidLength; }
     when #target.os {
         .Windows => {
-            let mapped = VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection));
-            if mapped == null { fail WindowsError(GetLastError()); }
+            // Safety: a null address lets the system choose where the new pages go, so nothing existing is touched.
+            let mapped = unsafe { VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection)) };
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            if mapped == null { fail WindowsError(unsafe { GetLastError() }); }
             return mapped;
         }
         else => {
-            let mapped = Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0);
+            // Safety: a fresh private anonymous mapping at no fixed address replaces nothing the program uses.
+            let mapped = unsafe { Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0) };
             if IsError(mapped) { fail UnixError(Errno(mapped)); }
             return mapped as *var opaque;
         }
@@ -148,8 +152,8 @@ pub func PageAllocate(length: uint, protection: uint32) -> (*var opaque) ! PageE
 }
 
 /// Gives back `length` bytes of address space at `address`.
-/// `address` must be a base address `PageAllocate` returned, and `length` the length it was given. Succeeds when the
-/// system accepted the release.
+/// Safety: `address` must be a base address `PageAllocate` returned, and `length` the length it was given. Succeeds
+/// when the system accepted the release.
 /// A `length` of zero is refused with `InvalidLength`, and a null `address` with `InvalidAddress`, rather than either
 /// being quietly ignored: both are arithmetic errors at the caller far more often than intentions.
 /// Every pointer into the range becomes invalid, and the address space may be handed to the next allocation at once.
@@ -159,7 +163,7 @@ pub func PageAllocate(length: uint, protection: uint32) -> (*var opaque) ! PageE
 /// @param length the length it was given
 /// @returns nothing on success, or the reason the system refused the release
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-release
-pub func PageRelease(address: *var opaque, length: uint) -> ! PageError {
+pub unsafe func PageRelease(address: *var opaque, length: uint) -> ! PageError {
     if address == null { fail PageError::InvalidAddress; }
     if length == 0 { fail PageError::InvalidLength; }
     when #target.os {
@@ -175,8 +179,8 @@ pub func PageRelease(address: *var opaque, length: uint) -> ! PageError {
 }
 
 /// Changes what may be done with `length` bytes at `address`.
-/// `address` must be page-aligned and `length` is rounded up to whole pages. Succeeds when the system accepted the
-/// change.
+/// Safety: `address` must be page-aligned and `length` is rounded up to whole pages. Succeeds when the system accepted
+/// the change.
 /// The change takes effect at once, so a thread touching the range concurrently faults rather than finishing what it
 /// started.
 /// Nothing here checks that the range was ever allocated. Asking for write and execute together is refused on Apple
@@ -186,7 +190,7 @@ pub func PageRelease(address: *var opaque, length: uint) -> ! PageError {
 /// @param protection what may be done with the pages afterwards
 /// @returns nothing on success, or the reason the system refused the change
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-protect
-pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> ! PageError {
+pub unsafe func PageProtect(address: *var opaque, length: uint, protection: uint32) -> ! PageError {
     if address == null { fail PageError::InvalidAddress; }
     if length == 0 { fail PageError::InvalidLength; }
     when #target.os {

@@ -22,7 +22,8 @@ extend DecodeTable {
 
     // Builds the table from `count` code lengths. Fails for lengths that describe more codes than fit; a code with
     // fewer is allowed, as a block that uses a single distance has one.
-    func Build(self: &var DecodeTable, lengths: *uint8, count: uint) -> bool {
+    // Safety: `lengths` must be readable for `count` entries.
+    unsafe func Build(self: &var DecodeTable, lengths: *uint8, count: uint) -> bool {
         var length: uint = 0;
         while length <= MaximumBits {
             self.counts[length] = 0;
@@ -62,7 +63,8 @@ extend DecodeTable {
 
 // Chooses code lengths of at most `limit` bits for `count` symbols with the given frequencies; a symbol of frequency
 // zero gets length zero. A single used symbol gets length one, which a decoder accepts as an incomplete code.
-func ChooseLengths(frequencies: *uint32, count: uint, limit: uint, lengths: *var uint8) {
+// Safety: `frequencies` must be readable for `count` entries and `lengths` writable for `count` entries.
+unsafe func ChooseLengths(frequencies: *uint32, count: uint, limit: uint, lengths: *var uint8) {
     // Tree nodes: leaves first, then the inner nodes made by joining the two lightest.
     var weights: uint32[600] = [0u32; 600];
     var parents: uint16[600] = [0u16; 600];
@@ -175,7 +177,8 @@ func ChooseLengths(frequencies: *uint32, count: uint, limit: uint, lengths: *var
 }
 
 // The canonical code word of each symbol, bit-reversed so it can be written least significant bit first.
-func AssignCodes(lengths: *uint8, count: uint, codes: *var uint16) {
+// Safety: `lengths` must be readable for `count` entries and `codes` writable for `count` entries.
+unsafe func AssignCodes(lengths: *uint8, count: uint, codes: *var uint16) {
     var counts: uint16[16] = [0u16; 16];
     var symbol: uint = 0;
     while symbol < count {

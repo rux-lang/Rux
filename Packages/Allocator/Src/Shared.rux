@@ -17,7 +17,8 @@ struct SharedBlock<T> {
 }
 
 // Destroys the block's value by moving it out, before its storage is released. The count needs no destruction.
-func DestroySharedValue<T>(value: *var T) {
+// Safety: `value` must address a live `T` that nothing reads or destroys afterwards.
+unsafe func DestroySharedValue<T>(value: *var T) {
     let taken <- value[0];
 }
 
@@ -39,8 +40,12 @@ extend Rc<T> {
     /// @returns the handle, or why there was no storage; the value is destroyed then
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-create
     pub func Create(allocator: Allocator, value: T) -> Rc<T> ! AllocError {
-        let block = allocator.Allocate(Layout::ForValue<SharedBlock<T>>())? as *var SharedBlock<T>;
-        *block <- SharedBlock<T> { count: 1, value: <-value };
+        let storage = allocator.Allocate(Layout::ForValue<SharedBlock<T>>())?;
+        // Safety: `storage` was just allocated with the layout of a `SharedBlock<T>`, so it is aligned and large enough
+        // for one, and nothing else holds it or has written to it.
+        let block = unsafe { storage as *var SharedBlock<T> };
+        // Safety: as above, `block` addresses fresh storage for one block with nothing in it to overwrite.
+        unsafe { *block <- SharedBlock<T> { count: 1, value: <-value }; }
         return Rc<T> { block: block, allocator: allocator };
     }
 
@@ -48,22 +53,26 @@ extend Rc<T> {
     /// @returns a pointer to it, valid while any handle exists
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-get
     pub func Get(self: &Rc<T>) -> *T {
-        return (@self.block.value) as *T;
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
+        return unsafe { (@self.block.value) as *T };
     }
 
     /// The value for writing, while this is the only handle to it.
     /// @returns a pointer to it, or `none` while other handles share it
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-get-mutable
     pub func GetMutable(self: &var Rc<T>) -> (*var T)? {
-        if self.block.count != 1 { return none; }
-        return @self.block.value;
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
+        if unsafe { self.block.count } != 1 { return none; }
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
+        return unsafe { @self.block.value };
     }
 
     /// How many handles share the value.
     /// @returns the count
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-count
     pub func Count(self: &Rc<T>) -> uint {
-        return self.block.count;
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
+        return unsafe { self.block.count };
     }
 
     /// Whether `other` shares the same value, rather than an equal one.
@@ -78,9 +87,15 @@ extend Rc<T> {
         let block = self.block;
         if block == null { return; }
         self.block = null;
-        block.count = block.count - 1;
-        if block.count != 0 { return; }
-        DestroySharedValue<T>(@block.value);
+        // Safety: `block` is the shared block this handle counted in, not null as checked above, and an `Rc` stays on
+        // one thread, so the plain decrement races with nothing.
+        let remaining = unsafe {
+            block.count = block.count - 1;
+            block.count
+        };
+        if remaining != 0 { return; }
+        // Safety: this was the last handle, so nothing else reaches `block.value`, which is destroyed only here.
+        unsafe { DestroySharedValue<T>(@block.value); }
         self.allocator.Deallocate(block as *var opaque, Layout::ForValue<SharedBlock<T>>()) catch { else => {} };
     }
 }
@@ -91,7 +106,9 @@ extend Rc<T> : Cloneable {
     /// @returns a new handle sharing the value
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-clone
     pub func Clone(self: &Rc<T>) -> Rc<T> {
-        if self.block != null { self.block.count = self.block.count + 1; }
+        // Safety: a non-null `block` is the live shared block, and an `Rc` stays on one thread, so the plain increment
+        // races with nothing.
+        if self.block != null { unsafe { self.block.count = self.block.count + 1; } }
         return Rc<T> { block: self.block, allocator: self.allocator };
     }
 }
@@ -114,8 +131,12 @@ extend Arc<T> {
     /// @returns the handle, or why there was no storage; the value is destroyed then
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-create
     pub func Create(allocator: Allocator, value: T) -> Arc<T> ! AllocError {
-        let block = allocator.Allocate(Layout::ForValue<SharedBlock<T>>())? as *var SharedBlock<T>;
-        *block <- SharedBlock<T> { count: 1, value: <-value };
+        let storage = allocator.Allocate(Layout::ForValue<SharedBlock<T>>())?;
+        // Safety: `storage` was just allocated with the layout of a `SharedBlock<T>`, so it is aligned and large enough
+        // for one, and nothing else holds it or has written to it.
+        let block = unsafe { storage as *var SharedBlock<T> };
+        // Safety: as above, `block` addresses fresh storage for one block with nothing in it to overwrite.
+        unsafe { *block <- SharedBlock<T> { count: 1, value: <-value }; }
         return Arc<T> { block: block, allocator: allocator };
     }
 
@@ -123,22 +144,28 @@ extend Arc<T> {
     /// @returns a pointer to it, valid while any handle exists
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-get
     pub func Get(self: &Arc<T>) -> *T {
-        return (@self.block.value) as *T;
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
+        return unsafe { (@self.block.value) as *T };
     }
 
     /// The value for writing, while this is the only handle to it.
     /// @returns a pointer to it, or `none` while other handles share it
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-get-mutable
     pub func GetMutable(self: &var Arc<T>) -> (*var T)? {
-        if AtomicLoad<uint>(@self.block.count, MemoryOrder::Acquire) != 1 { return none; }
-        return @self.block.value;
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does;
+        // its count is aligned and only ever reached atomically.
+        if unsafe { AtomicLoad<uint>(@self.block.count, MemoryOrder::Acquire) } != 1 { return none; }
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does.
+        return unsafe { @self.block.value };
     }
 
     /// How many handles share the value, at some moment while this one existed; another thread may change it.
     /// @returns the count
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-count
     pub func Count(self: &Arc<T>) -> uint {
-        return AtomicLoad<uint>(@self.block.count, MemoryOrder::Relaxed);
+        // Safety: the handle invariant: a live handle's `block` is the shared block, which lives while any handle does;
+        // its count is aligned and only ever reached atomically.
+        return unsafe { AtomicLoad<uint>(@self.block.count, MemoryOrder::Relaxed) };
     }
 
     /// Whether `other` shares the same value, rather than an equal one.
@@ -154,9 +181,12 @@ extend Arc<T> {
         if block == null { return; }
         self.block = null;
         // Releasing: every write this thread made to the value happens before the last handle destroys it.
-        if AtomicFetchSub<uint>(@block.count, 1, MemoryOrder::Release) != 1 { return; }
+        // Safety: `block` is the shared block this handle counted in, not null as checked above; its count is aligned
+        // and only ever reached atomically.
+        if unsafe { AtomicFetchSub<uint>(@block.count, 1, MemoryOrder::Release) } != 1 { return; }
         Fence(MemoryOrder::Acquire);
-        DestroySharedValue<T>(@block.value);
+        // Safety: this was the last handle, so nothing else reaches `block.value`, which is destroyed only here.
+        unsafe { DestroySharedValue<T>(@block.value); }
         self.allocator.Deallocate(block as *var opaque, Layout::ForValue<SharedBlock<T>>()) catch { else => {} };
     }
 }
@@ -168,7 +198,9 @@ extend Arc<T> : Cloneable {
     /// @returns a new handle sharing the value
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-clone
     pub func Clone(self: &Arc<T>) -> Arc<T> {
-        if self.block != null { AtomicFetchAdd<uint>(@self.block.count, 1, MemoryOrder::Relaxed); }
+        // Safety: a non-null `block` is the live shared block, whose count is aligned and only ever reached
+        // atomically.
+        if self.block != null { unsafe { AtomicFetchAdd<uint>(@self.block.count, 1, MemoryOrder::Relaxed); } }
         return Arc<T> { block: self.block, allocator: self.allocator };
     }
 }

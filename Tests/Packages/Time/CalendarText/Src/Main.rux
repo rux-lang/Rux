@@ -12,7 +12,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -27,14 +27,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Renders through Display and compares.
 func Shown(value: Display, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     if Failed(value.WriteDisplay(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Refused(value: Display, spec: FormatSpec) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter((@storage[0])[..64]);
+    var writer = BufferWriter(storage[..64]);
     return Failed(value.WriteDisplay(writer, spec));
 }
 

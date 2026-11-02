@@ -36,7 +36,8 @@ pub func Count<T>(items: T[..], value: T) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
-        if items.data[index] == value {
+        // Safety: `index` is below `items.length`, the loop condition.
+        if unsafe { items.data[index] } == value {
             found = found + 1;
         }
         index++;
@@ -56,7 +57,8 @@ pub func Count<T>(items: T[..], value: T) -> uint {
 pub func IndexOf<T>(items: T[..], value: T) -> uint? {
     var index: uint = 0;
     while index < items.length {
-        if items.data[index] == value { return index; }
+        // Safety: `index` is below `items.length`, the loop condition.
+        if unsafe { items.data[index] } == value { return index; }
         index++;
     }
     return none;
@@ -75,7 +77,8 @@ pub func LastIndexOf<T>(items: T[..], value: T) -> uint? {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
-        if items.data[remaining] == value { return remaining; }
+        // Safety: `remaining` is below `items.length`: it was positive and has just been decremented.
+        if unsafe { items.data[remaining] } == value { return remaining; }
     }
     return none;
 }
@@ -92,7 +95,8 @@ pub func LastIndexOf<T>(items: T[..], value: T) -> uint? {
 pub func IndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint? {
     var index: uint = 0;
     while index < items.length {
-        if predicate(items.data[index]) { return index; }
+        // Safety: `index` is below `items.length`, the loop condition.
+        if predicate(unsafe { items.data[index] }) { return index; }
         index++;
     }
     return none;
@@ -111,7 +115,8 @@ pub func LastIndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint? {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
-        if predicate(items.data[remaining]) { return remaining; }
+        // Safety: `remaining` is below `items.length`: it was positive and has just been decremented.
+        if predicate(unsafe { items.data[remaining] }) { return remaining; }
     }
     return none;
 }
@@ -128,7 +133,8 @@ pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
-        if predicate(items.data[index]) {
+        // Safety: `index` is below `items.length`, the loop condition.
+        if predicate(unsafe { items.data[index] }) {
             found = found + 1;
         }
         index++;
@@ -149,7 +155,8 @@ pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
 pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     var index: uint = 0;
     while index < items.length {
-        if !predicate(items.data[index]) { return false; }
+        // Safety: `index` is below `items.length`, the loop condition.
+        if !predicate(unsafe { items.data[index] }) { return false; }
         index++;
     }
     return true;
@@ -195,7 +202,8 @@ pub func Mismatch<T>(left: T[..], right: T[..]) -> uint? {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
-        if !(left.data[index] == right.data[index]) { return index; }
+        // Safety: `index` is below `shorter`, the smaller of the two lengths.
+        if !unsafe { left.data[index] == right.data[index] } { return index; }
         index++;
     }
     if left.length != right.length { return shorter; }
@@ -232,8 +240,10 @@ pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
-        if left.data[index] < right.data[index] { return Ordering::Less; }
-        if right.data[index] < left.data[index] { return Ordering::Greater; }
+        // Safety: `index` is below `shorter`, the smaller of the two lengths.
+        if unsafe { left.data[index] < right.data[index] } { return Ordering::Less; }
+        // Safety: `index` is below `shorter`, the smaller of the two lengths.
+        if unsafe { right.data[index] < left.data[index] } { return Ordering::Greater; }
         index++;
     }
     if left.length < right.length { return Ordering::Less; }
@@ -256,7 +266,8 @@ pub func CompareBy<T>(left: T[..], right: T[..], compare: func(T, T) -> Ordering
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
-        let order = compare(left.data[index], right.data[index]);
+        // Safety: `index` is below `shorter`, the smaller of the two lengths.
+        let order = unsafe { compare(left.data[index], right.data[index]) };
         if !order.IsEqual() { return order; }
         index++;
     }

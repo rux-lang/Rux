@@ -178,7 +178,8 @@ extend TimeZone {
             while close < data.length && data[close] != 0x0Au8 { close = close + 1; }
             if close == data.length { fail TimeZoneError::InvalidData; }
             if close > end + 1u {
-                let text = (data.data as *char8)[end + 1u..close];
+                // Safety: `close` is below `data.length`, checked above, and a `char8` is one `byte`.
+                let text = unsafe { (data.data as *char8)[end + 1u..close] };
                 zone.rule = ParseRule(text, zone.names) catch { else => fail TimeZoneError::InvalidData };
             }
         }

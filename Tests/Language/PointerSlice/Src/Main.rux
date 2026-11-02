@@ -26,42 +26,52 @@ func NextBound(calls: &var Counter, bound: uint) -> uint {
 
 func Main() -> int {
     let values: int[8] = [1, 2, 3, 4, 5, 6, 7, 8];
-    let all = (@values[0])[..8];
+    // Safety: the local `values` holds eight `int`s from `@values[0]`.
+    let all = unsafe { (@values[0])[..8] };
     Assert(all.length == 8 && all[0] == 1 && all[7] == 8, "the pointer view covers the length it was given");
 
-    let window = (@values[2])[..3];
+    // Safety: elements 2 through 4 lie inside the eight-element local `values`.
+    let window = unsafe { (@values[2])[..3] };
     Assert(window.length == 3 && window[0] == 3 && window[2] == 5, "a view starts at the pointer it was built from");
     Assert(Sum(window) == 12, "a pointer view is passed where a slice is taken");
 
-    let bounded = (@values[0])[2..5];
+    // Safety: elements 2 through 4 lie inside the eight-element local `values`.
+    let bounded = unsafe { (@values[0])[2..5] };
     Assert(bounded.length == 3 && bounded[0] == 3 && bounded[2] == 5, "a two-sided range skips the start");
 
-    let inclusive = (@values[0])[..=3];
+    // Safety: elements 0 through 3 lie inside the eight-element local `values`.
+    let inclusive = unsafe { (@values[0])[..=3] };
     Assert(inclusive.length == 4 && inclusive[3] == 4, "an inclusive range covers its end");
 
     var buffer: uint8[4] = [1u8, 2u8, 3u8, 4u8];
-    let writable = (@buffer[0])[..4];
+    // Safety: the local `buffer` holds four writable bytes from `@buffer[0]`.
+    let writable = unsafe { (@buffer[0])[..4] };
     writable[0] = 9u8;
     Assert(buffer[0] == 9u8, "a view of a writable pointer writes the storage it addresses");
 
     let text = "abc";
-    let units = text.data[..2];
+    // Safety: the literal "abc" holds three code units, so the first two are in bounds.
+    let units = unsafe { text.data[..2] };
     Assert(units.length == 2 && units[1] == c8'b', "a literal's data pointer is sliced like any other");
 
     var calls = Counter { value: 0 };
     var numbers: int[4] = [10, 20, 30, 40];
-    let evaluated = NextPointer(calls, @numbers[0])[NextBound(calls, 1)..NextBound(calls, 3)];
+    // Safety: `NextPointer` returns `@numbers[0]` and elements 1 and 2 lie inside the four-element local `numbers`.
+    let evaluated = unsafe { NextPointer(calls, @numbers[0])[NextBound(calls, 1)..NextBound(calls, 3)] };
     Assert(calls.value == 3, "the pointer and both bounds are evaluated once");
     Assert(evaluated.length == 2 && evaluated[0] == 20, "evaluated bounds retain their values");
     evaluated[1] = 99;
     Assert(numbers[2] == 99, "a returned writable pointer keeps its writability");
 
-    let closed = (@numbers[0])[1..=2];
+    // Safety: elements 1 and 2 lie inside the four-element local `numbers`.
+    let closed = unsafe { (@numbers[0])[1..=2] };
     Assert(closed.length == 2 && closed[1] == 99, "a closed two-sided pointer range includes the end");
-    let empty = (@numbers[0])[2..2];
+    // Safety: the empty range at 2 lies inside the four-element local `numbers`.
+    let empty = unsafe { (@numbers[0])[2..2] };
     Assert(empty.length == 0, "equal pointer bounds yield an empty view");
     let absent: *int = null;
-    let noStorage = absent[..0];
+    // Safety: a zero-length view of a null pointer addresses no storage.
+    let noStorage = unsafe { absent[..0] };
     Assert(noStorage.length == 0 && noStorage.data == null, "a null pointer with zero length is empty");
 
     return 0;

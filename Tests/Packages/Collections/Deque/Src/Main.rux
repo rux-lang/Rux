@@ -17,7 +17,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -33,7 +34,8 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
         index++;
     }
     Assert(deque.Length() == count, "the deque holds what was pushed into it");
-    *afterPushing = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterPushing = *counter; }
 }
 
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
@@ -120,13 +122,15 @@ func Main() -> int {
     Assert(front.length + back.length == queue.Length(), "the two runs together are every element");
     Assert(front.length > 0, "with the front run non-empty");
     Assert(back.length > 0, "and the back run too, for a wrapped deque");
-    Assert(front.data[0] == 5, "the front run starting at the front element");
+    // Safety: the front run is non-empty, asserted above.
+    Assert(unsafe { front.data[0] == 5 }, "the front run starting at the front element");
 
     // Making it contiguous moves the elements without changing the order.
     let view = queue.AsSlice();
     Assert(queue.IsContiguous(), "asking for one view makes the storage contiguous");
     Assert(view.length == 3, "over every element");
-    Assert(view.data[0] == 5 && view.data[1] == 10 && view.data[2] == 20, "in the order the deque had them");
+    // Safety: the view covers three elements, asserted above.
+    Assert(unsafe { view.data[0] == 5 && view.data[1] == 10 && view.data[2] == 20 }, "in the order the deque had them");
 
     queue.AsSlices(@front, @back);
     Assert(back.length == 0, "and a contiguous deque has nothing in its second run");
@@ -165,7 +169,8 @@ func Main() -> int {
     source[0] = 1;
     source[1] = 2;
     source[2] = 3;
-    let items = (@source[0])[..3];
+    // Safety: `source` is a local array of three elements.
+    let items = unsafe { (@source[0])[..3] };
     var built = Deque::FromSlice<int32>(allocator, items) catch { else => Panic("a deque is made from a slice") };
     Assert(built.Length() == 3, "holding every element");
     Assert(built.Get(2) == .Some(3), "in order");

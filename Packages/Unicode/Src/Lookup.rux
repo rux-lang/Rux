@@ -11,10 +11,15 @@ func InRangePairs(table: uint32[..], cp: uint32) -> bool {
     var high = table.length / 2;
     while low < high {
         let middle = (low + high) / 2;
-        if cp < table.data[middle * 2] {
+        // Safety: `middle` is below `high`, which never exceeds `table.length / 2`, so the pair's two values at
+        // `middle * 2` and `middle * 2 + 1` lie inside `table`.
+        let first = unsafe { table.data[middle * 2] };
+        // Safety: the same bound, `middle < table.length / 2`, keeps `middle * 2 + 1` inside `table`.
+        let last = unsafe { table.data[middle * 2 + 1] };
+        if cp < first {
             high = middle;
         }
-        else if cp > table.data[middle * 2 + 1] {
+        else if cp > last {
             low = middle + 1;
         }
         else {
@@ -30,35 +35,48 @@ func RangeValue(table: uint32[..], cp: uint32, fallback: uint32) -> uint32 {
     var high = table.length / 3;
     while low < high {
         let middle = (low + high) / 2;
-        if cp < table.data[middle * 3] {
+        // Safety: `middle` is below `high`, which never exceeds `table.length / 3`, so the triple's values at
+        // `middle * 3` through `middle * 3 + 2` lie inside `table`.
+        let first = unsafe { table.data[middle * 3] };
+        // Safety: the same bound, `middle < table.length / 3`, keeps `middle * 3 + 1` inside `table`.
+        let last = unsafe { table.data[middle * 3 + 1] };
+        if cp < first {
             high = middle;
         }
-        else if cp > table.data[middle * 3 + 1] {
+        else if cp > last {
             low = middle + 1;
         }
         else {
-            return table.data[middle * 3 + 2];
+            // Safety: the same bound, `middle < table.length / 3`, keeps `middle * 3 + 2` inside `table`.
+            return unsafe { table.data[middle * 3 + 2] };
         }
     }
     return fallback;
 }
 
 // Finds `key` in a (key, offset, length) index and reports its pool window, or reports `false` and leaves the
-// window untouched.
+// window untouched. `offset` and `length` must be non-null and writable.
 func IndexWindow(table: uint32[..], key: uint32, offset: *var uint, length: *var uint) -> bool {
     var low: uint = 0;
     var high = table.length / 3;
     while low < high {
         let middle = (low + high) / 2;
-        if key < table.data[middle * 3] {
+        // Safety: `middle` is below `high`, which never exceeds `table.length / 3`, so `middle * 3` lies inside
+        // `table`.
+        let found = unsafe { table.data[middle * 3] };
+        if key < found {
             high = middle;
         }
-        else if key > table.data[middle * 3] {
+        else if key > found {
             low = middle + 1;
         }
         else {
-            *offset = table.data[middle * 3 + 1] as uint;
-            *length = table.data[middle * 3 + 2] as uint;
+            // Safety: `middle < table.length / 3` keeps `middle * 3 + 1` and `middle * 3 + 2` inside `table`, and the
+            // documented contract makes `offset` and `length` non-null pointers to the caller's writable `uint`s.
+            unsafe {
+                *offset = table.data[middle * 3 + 1] as uint;
+                *length = table.data[middle * 3 + 2] as uint;
+            }
             return true;
         }
     }
@@ -72,14 +90,18 @@ func PairValue(table: uint32[..], key: uint32) -> uint32 {
     var high = table.length / 2;
     while low < high {
         let middle = (low + high) / 2;
-        if key < table.data[middle * 2] {
+        // Safety: `middle` is below `high`, which never exceeds `table.length / 2`, so `middle * 2` lies inside
+        // `table`.
+        let found = unsafe { table.data[middle * 2] };
+        if key < found {
             high = middle;
         }
-        else if key > table.data[middle * 2] {
+        else if key > found {
             low = middle + 1;
         }
         else {
-            return table.data[middle * 2 + 1];
+            // Safety: the same bound, `middle < table.length / 2`, keeps `middle * 2 + 1` inside `table`.
+            return unsafe { table.data[middle * 2 + 1] };
         }
     }
     return key;

@@ -7,7 +7,7 @@ import Crypto::{ Equal, LegacyMd5, LegacyMd5Of, LegacySha1, LegacySha1Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func FromHex(text: char8[..], into: var char8[..]) {
@@ -16,7 +16,7 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2 {
-            let c = text.data[index * 2 + half] as uint8;
+            let c = text[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
@@ -27,16 +27,16 @@ func FromHex(text: char8[..], into: var char8[..]) {
             value = value * 16 + digit;
             half = half + 1;
         }
-        into.data[index] = value as char8;
+        into[index] = value as char8;
         index = index + 1;
     }
 }
 
 func Check(got: char8[..], expectedHex: char8[..], what: char8[..]) {
     var expected: char8[32];
-    let room = (@expected[0])[..got.length];
+    let room = expected[..got.length];
     FromHex(expectedHex, room);
-    let expectedBytes = (@expected[0])[..got.length];
+    let expectedBytes = expected[..got.length];
     Assert(Equal(got, expectedBytes), what);
 }
 
@@ -44,34 +44,34 @@ func Main() -> int {
     var digest: char8[32];
 
     // The MD5 vectors from RFC 1321.
-    LegacyMd5Of(TextBytes(""), (@digest[0])[..16]);
-    Check((@digest[0])[..16], "d41d8cd98f00b204e9800998ecf8427e",
+    LegacyMd5Of(TextBytes(""), digest[..16]);
+    Check(digest[..16], "d41d8cd98f00b204e9800998ecf8427e",
           "MD5 of the empty message");
-    LegacyMd5Of(TextBytes("a"), (@digest[0])[..16]);
-    Check((@digest[0])[..16], "0cc175b9c0f1b6a831c399e269772661", "MD5 of a");
-    LegacyMd5Of(TextBytes("abc"), (@digest[0])[..16]);
-    Check((@digest[0])[..16], "900150983cd24fb0d6963f7d28e17f72", "MD5 of abc");
-    LegacyMd5Of(TextBytes("message digest"), (@digest[0])[..16]);
-    Check((@digest[0])[..16], "f96b697d7cb7938d525a2f31aaf161d0",
+    LegacyMd5Of(TextBytes("a"), digest[..16]);
+    Check(digest[..16], "0cc175b9c0f1b6a831c399e269772661", "MD5 of a");
+    LegacyMd5Of(TextBytes("abc"), digest[..16]);
+    Check(digest[..16], "900150983cd24fb0d6963f7d28e17f72", "MD5 of abc");
+    LegacyMd5Of(TextBytes("message digest"), digest[..16]);
+    Check(digest[..16], "f96b697d7cb7938d525a2f31aaf161d0",
           "MD5 of message digest");
-    LegacyMd5Of(TextBytes("abcdefghijklmnopqrstuvwxyz"), (@digest[0])[..16]);
-    Check((@digest[0])[..16], "c3fcd3d76192e4007dfb496cca67e13b",
+    LegacyMd5Of(TextBytes("abcdefghijklmnopqrstuvwxyz"), digest[..16]);
+    Check(digest[..16], "c3fcd3d76192e4007dfb496cca67e13b",
           "MD5 of the lowercase alphabet");
     LegacyMd5Of(TextBytes("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
-                (@digest[0])[..16]);
-    Check((@digest[0])[..16], "57edf4a22be3c955ac49da2e2107b67a",
+                digest[..16]);
+    Check(digest[..16], "57edf4a22be3c955ac49da2e2107b67a",
           "MD5 of the eighty-digit message, which spans two blocks");
 
     // The SHA-1 vectors from FIPS 180-1.
-    LegacySha1Of(TextBytes(""), (@digest[0])[..20]);
-    Check((@digest[0])[..20], "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+    LegacySha1Of(TextBytes(""), digest[..20]);
+    Check(digest[..20], "da39a3ee5e6b4b0d3255bfef95601890afd80709",
           "SHA-1 of the empty message");
-    LegacySha1Of(TextBytes("abc"), (@digest[0])[..20]);
-    Check((@digest[0])[..20], "a9993e364706816aba3e25717850c26c9cd0d89d",
+    LegacySha1Of(TextBytes("abc"), digest[..20]);
+    Check(digest[..20], "a9993e364706816aba3e25717850c26c9cd0d89d",
           "SHA-1 of abc");
     LegacySha1Of(TextBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
-                 (@digest[0])[..20]);
-    Check((@digest[0])[..20], "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
+                 digest[..20]);
+    Check(digest[..20], "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
           "SHA-1 of the two-block example");
 
     // Both are incremental, and both agree with their one-shot forms at every split.
@@ -83,30 +83,30 @@ func Main() -> int {
     }
     var length: uint = 0;
     while length <= 200 {
-        let whole = (@message[0])[..length];
+        let whole = message[..length];
         var md5OneShot: char8[16];
-        LegacyMd5Of(whole, (@md5OneShot[0])[..16]);
+        LegacyMd5Of(whole, md5OneShot[..16]);
         var sha1OneShot: char8[20];
-        LegacySha1Of(whole, (@sha1OneShot[0])[..20]);
+        LegacySha1Of(whole, sha1OneShot[..20]);
 
         var split: uint = 0;
         while split <= length {
             var md5 = LegacyMd5();
-            md5.Update((@message[0])[..split]);
-            md5.Update((@message[split])[..length - split]);
+            md5.Update(message[..split]);
+            md5.Update(message[split..length]);
             var md5Got: char8[16];
-            md5.Finish((@md5Got[0])[..16]);
-            Assert(Equal((@md5Got[0])[..16],
-                         (@md5OneShot[0])[..16]),
+            md5.Finish(md5Got[..16]);
+            Assert(Equal(md5Got[..16],
+                         md5OneShot[..16]),
                    "every split gives the same MD5");
 
             var sha1 = LegacySha1();
-            sha1.Update((@message[0])[..split]);
-            sha1.Update((@message[split])[..length - split]);
+            sha1.Update(message[..split]);
+            sha1.Update(message[split..length]);
             var sha1Got: char8[20];
-            sha1.Finish((@sha1Got[0])[..20]);
-            Assert(Equal((@sha1Got[0])[..20],
-                         (@sha1OneShot[0])[..20]),
+            sha1.Finish(sha1Got[..20]);
+            Assert(Equal(sha1Got[..20],
+                         sha1OneShot[..20]),
                    "and every split the same SHA-1");
             split = split + 17;
         }

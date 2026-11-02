@@ -122,24 +122,29 @@ func NativePath(allocator: Allocator, path: Path) -> *var OsUnit ! IoError {
     while index < units.length {
         // An embedded NUL would silently truncate the name at the platform boundary: the file acted on would
         // not be the file named. Refused here on every platform.
-        if (units.data[index] as uint32) == 0 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        // Safety: `index` is below `units.length`, the loop condition.
+        if (unsafe { units.data[index] } as uint32) == 0 { fail IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
     let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
                  ?? fail IoError::Of(IoErrorKind::InvalidInput);
     var borrowed = allocator;
     let raw = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
-    let copied = raw as *var OsUnit;
+    // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
+    let copied = unsafe { raw as *var OsUnit };
     index = 0;
     while index < units.length {
-        copied[index] = units.data[index];
+        // Safety: `index` is below `units.length`, so it is inside `units` and inside the block `copied` addresses.
+        unsafe { copied[index] = units.data[index]; }
         index = index + 1;
     }
     when #target.os == .Windows {
-        copied[units.length] = 0;
+        // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
+        unsafe { copied[units.length] = 0; }
     }
     else {
-        copied[units.length] = 0u8 as char8;
+        // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
+        unsafe { copied[units.length] = 0u8 as char8; }
     }
     return copied;
 }
@@ -195,9 +200,15 @@ extend File {
             // Sharing is granted broadly on purpose: denying it is Windows' default and no other system's, and a
             // portable program should see one behavior.
             let share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-            let handle = CreateFileW(native as *char16, access, share, null, disposition as uint32,
-                                     FILE_ATTRIBUTE_NORMAL, null);
-            if (handle as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
+            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+            // release, and a `uint16` unit is a `char16`.
+            let handle = unsafe {
+                CreateFileW(native as *char16, access, share, null, disposition as uint32, FILE_ATTRIBUTE_NORMAL, null)
+            };
+            if (handle as uint64) == InvalidHandleValue {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
+            }
             return File { handle: handle as *var opaque, open: true };
         }
         else {
@@ -222,7 +233,8 @@ extend File {
             }
             // Read and write for everyone, cut down by the process umask — the ordinary permissions an
             // ordinary file is born with.
-            let opened = OpenAt(AtFdCwd, native as *char8, flags, 438);
+            // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+            let opened = unsafe { OpenAt(AtFdCwd, native as *char8, flags, 438) };
             if opened < 0 { fail TranslateNative((0 - opened) as int32); }
             return File { handle: opened as int32, open: true };
         }
@@ -244,7 +256,10 @@ extend File {
         if !self.open { return; }
         self.open = false;
         when #target.os == .Windows {
-            if !CloseHandle(self.handle) { fail TranslateNative(GetLastError() as int32); }
+            // Safety: `handle` is this file's open handle, `open` was checked above, and it is closed only once.
+            let closed = unsafe { CloseHandle(self.handle) };
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            if !closed { fail TranslateNative(unsafe { GetLastError() } as int32); }
         }
         else {
             let result = Close(self.handle);

@@ -49,7 +49,8 @@ extend ByteCursor {
     pub func PushBytes(self: &var ByteCursor, bytes: char8[..]) {
         var index: uint = 0;
         while index < bytes.length {
-            self.Push(bytes.data[index]);
+            // Safety: `index` is below `bytes.length`, the loop condition.
+            self.Push(unsafe { bytes.data[index] });
             index = index + 1;
         }
     }
@@ -58,7 +59,7 @@ extend ByteCursor {
     /// @returns the bytes written so far, borrowed
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor#written
     pub func Written(self: &ByteCursor) -> char8[..] {
-        return (self.room.data)[..self.length];
+        return self.room[..self.length];
     }
 
     /// Whether a write was refused for want of room.

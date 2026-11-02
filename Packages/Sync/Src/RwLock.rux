@@ -57,7 +57,9 @@ extend RwLock<T> {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#clone
     pub func Clone(self: &RwLock<T>) -> RwLock<T> {
-        RetainBlock(@self.block.references);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@self.block.references); }
         return RwLock<T> { block: self.block };
     }
 
@@ -67,17 +69,26 @@ extend RwLock<T> {
     pub func Read(self: &RwLock<T>) -> ReadGuard<T> {
         let block = self.block;
         while true {
-            let state = AtomicLoad(@block.state, MemoryOrder::SequentiallyConsistent);
+            // Safety: this handle holds a count on `block`, so its state word is live, and every thread reaches it only
+            // atomically.
+            let state = unsafe { AtomicLoad(@block.state, MemoryOrder::SequentiallyConsistent) };
             if state < Writing - 1u32 {
-                if AtomicCompareExchange(@block.state, state, state + 1u32, MemoryOrder::Acquire,
-                                         MemoryOrder::Relaxed) == state {
+                // Safety: this handle holds a count on `block`, so its state word is live, and every thread reaches it
+                // only atomically.
+                let found = unsafe {
+                    AtomicCompareExchange(@block.state, state, state + 1u32, MemoryOrder::Acquire, MemoryOrder::Relaxed)
+                };
+                if found == state {
                     break;
                 }
                 continue;
             }
-            Sleep<T>(block, state);
+            // Safety: this handle holds a count on `block`, so the block outlives the sleep.
+            unsafe { Sleep<T>(block, state); }
         }
-        RetainBlock(@block.references);
+        // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@block.references); }
         return ReadGuard<T> { block: block };
     }
 
@@ -86,19 +97,34 @@ extend RwLock<T> {
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write
     pub func Write(self: &RwLock<T>) -> WriteGuard<T> {
         let block = self.block;
-        while AtomicCompareExchange(@block.state, 0u32, Writing, MemoryOrder::Acquire, MemoryOrder::Relaxed) != 0u32 {
-            let state = AtomicLoad(@block.state, MemoryOrder::SequentiallyConsistent);
+        while true {
+            // Safety: this handle holds a count on `block`, so its state word is live, and every thread reaches it only
+            // atomically.
+            let found = unsafe {
+                AtomicCompareExchange(@block.state, 0u32, Writing, MemoryOrder::Acquire, MemoryOrder::Relaxed)
+            };
+            if found == 0u32 { break; }
+            // Safety: this handle holds a count on `block`, so its state word is live, and every thread reaches it only
+            // atomically.
+            let state = unsafe { AtomicLoad(@block.state, MemoryOrder::SequentiallyConsistent) };
             if state != 0u32 {
-                Sleep<T>(block, state);
+                // Safety: this handle holds a count on `block`, so the block outlives the sleep.
+                unsafe { Sleep<T>(block, state); }
             }
         }
-        RetainBlock(@block.references);
+        // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
+        // atomically.
+        unsafe { RetainBlock(@block.references); }
         return WriteGuard<T> { block: block };
     }
 
     func ~RwLock(self: &var RwLock<T>) {
-        if ReleaseBlock(@self.block.references) {
-            DestroyBlock<RwLockBlock<T>>(self.block);
+        // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle or guard is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@self.block.references) {
+                DestroyBlock<RwLockBlock<T>>(self.block);
+            }
         }
     }
 }
@@ -110,16 +136,24 @@ extend ReadGuard<T> {
     /// @returns the value's address
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#read-guard-get
     pub func Get(self: &ReadGuard<T>) -> *T {
-        return @self.block.value;
+        // Safety: the guard holds a count on `self.block`, so the block is live.
+        return unsafe { @self.block.value };
     }
 
     func ~ReadGuard(self: &var ReadGuard<T>) {
         let block = self.block;
-        if AtomicFetchSub(@block.state, 1u32, MemoryOrder::SequentiallyConsistent) == 1u32 {
-            WakeSleepers<T>(block);
+        // Safety: the guard holds a shared hold and a count on `block`, so the block is live, and its state word is
+        // reached only atomically.
+        if unsafe { AtomicFetchSub(@block.state, 1u32, MemoryOrder::SequentiallyConsistent) } == 1u32 {
+            // Safety: the guard still holds a count on `block`, so the block is live.
+            unsafe { WakeSleepers<T>(block); }
         }
-        if ReleaseBlock(@block.references) {
-            DestroyBlock<RwLockBlock<T>>(block);
+        // Safety: the guard holds a count on `block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle or guard is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@block.references) {
+                DestroyBlock<RwLockBlock<T>>(block);
+            }
         }
     }
 }
@@ -131,28 +165,39 @@ extend WriteGuard<T> {
     /// @returns the value's address
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard-get
     pub func Get(self: &WriteGuard<T>) -> *var T {
-        return @self.block.value;
+        // Safety: the guard holds a count on `self.block`, so the block is live.
+        return unsafe { @self.block.value };
     }
 
     func ~WriteGuard(self: &var WriteGuard<T>) {
         let block = self.block;
-        AtomicStore(@block.state, 0u32, MemoryOrder::SequentiallyConsistent);
-        WakeSleepers<T>(block);
-        if ReleaseBlock(@block.references) {
-            DestroyBlock<RwLockBlock<T>>(block);
+        // Safety: the guard holds the exclusive hold and a count on `block`, so the block is live, and its state word
+        // is reached only atomically.
+        unsafe {
+            AtomicStore(@block.state, 0u32, MemoryOrder::SequentiallyConsistent);
+            WakeSleepers<T>(block);
+        }
+        // Safety: the guard holds a count on `block`, so the block is live, and its count word is reached only
+        // atomically; when the count reaches zero no handle or guard is left to reach the block.
+        unsafe {
+            if ReleaseBlock(@block.references) {
+                DestroyBlock<RwLockBlock<T>>(block);
+            }
         }
     }
 }
 
 // Sleeps while the state is still `state`, registered as a waiter for the time.
-func Sleep<T>(block: *var RwLockBlock<T>, state: uint32) {
+// Safety: `block` must be a live lock block the caller holds a count on, so it outlives the sleep.
+unsafe func Sleep<T>(block: *var RwLockBlock<T>, state: uint32) {
     AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
     WaitWhile(@block.state, state, -1);
     AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
 }
 
 // Wakes every waiter after the state changed, if any registered.
-func WakeSleepers<T>(block: *var RwLockBlock<T>) {
+// Safety: `block` must be a live lock block the caller holds a count on.
+unsafe func WakeSleepers<T>(block: *var RwLockBlock<T>) {
     if AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) != 0u32 {
         WakeAll(@block.state);
     }

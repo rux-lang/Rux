@@ -43,7 +43,8 @@ module SystemExit {
 /// @see https://rux-lang.dev/docs/api/process/exit#exit
 pub func Exit(code: int32) {
     when #target.os == .Windows {
-        ExitProcess(code as uint32);
+        // Safety: `ExitProcess` takes only the status and reads no memory of the caller's.
+        unsafe { ExitProcess(code as uint32); }
     }
     else {
         SystemExit::Leave(code);
@@ -57,7 +58,8 @@ pub func Exit(code: int32) {
 /// @see https://rux-lang.dev/docs/api/process/exit#current-id
 pub func CurrentId() -> uint32 {
     when #target.os == .Windows {
-        return GetCurrentProcessId();
+        // Safety: `GetCurrentProcessId` takes nothing and only reads the process's identifier.
+        return unsafe { GetCurrentProcessId() };
     }
     else {
         return GetPid() as uint32;

@@ -144,7 +144,7 @@ when #target.os != .Windows {
     // 4 as two bytes, nlink at 6 as two, the timespecs from 32, birth time at 80, size at 96. FreeBSD (224
     // bytes) has nlink at 16, mode at 24 as two bytes, the timespecs from 48, birth time at 96, size at 112.
 
-    func ReadWordAt(buffer: *char8, offset: uint) -> uint64 {
+    func ReadWordAt(buffer: char8[..], offset: uint) -> uint64 {
         var value: uint64 = 0;
         var index: uint = 0;
         while index < 8 {
@@ -154,7 +154,7 @@ when #target.os != .Windows {
         return value;
     }
 
-    func ReadHalfAt(buffer: *char8, offset: uint) -> uint32 {
+    func ReadHalfAt(buffer: char8[..], offset: uint) -> uint32 {
         var value: uint32 = 0;
         var index: uint = 0;
         while index < 4 {
@@ -164,11 +164,11 @@ when #target.os != .Windows {
         return value;
     }
 
-    func ReadShortAt(buffer: *char8, offset: uint) -> uint32 {
+    func ReadShortAt(buffer: char8[..], offset: uint) -> uint32 {
         return (buffer[offset] as uint8 as uint32) | ((buffer[offset + 1] as uint8 as uint32) << 8);
     }
 
-    func StatMode(buffer: *char8) -> uint32 {
+    func StatMode(buffer: char8[..]) -> uint32 {
         when #target.os == .Linux {
             when #target.arch == .X86_64 {
                 return ReadHalfAt(buffer, 24);
@@ -187,7 +187,7 @@ when #target.os != .Windows {
         }
     }
 
-    func StatLinkCount(buffer: *char8) -> uint64 {
+    func StatLinkCount(buffer: char8[..]) -> uint64 {
         when #target.os == .Linux {
             when #target.arch == .X86_64 {
                 return ReadWordAt(buffer, 16);
@@ -206,7 +206,7 @@ when #target.os != .Windows {
         }
     }
 
-    func StatSize(buffer: *char8) -> uint64 {
+    func StatSize(buffer: char8[..]) -> uint64 {
         when #target.os == .Linux {
             return ReadWordAt(buffer, 48);
         }
@@ -235,7 +235,7 @@ when #target.os != .Windows {
         }
     }
 
-    func StatTimeAt(buffer: *char8, offset: uint) -> Timestamp {
+    func StatTimeAt(buffer: char8[..], offset: uint) -> Timestamp {
         let seconds = ReadWordAt(buffer, offset) as int64;
         var fraction = ReadWordAt(buffer, offset + 8);
         if fraction >= 1000000000 {
@@ -254,7 +254,7 @@ when #target.os != .Windows {
         return FileKind::Other;
     }
 
-    func MetadataFromStat(buffer: *char8) -> Metadata {
+    func MetadataFromStat(buffer: char8[..]) -> Metadata {
         let mode = StatMode(buffer);
         let accessOffset = StatAccessTimeOffset();
         var created = Timestamp::Epoch();
@@ -287,7 +287,7 @@ when #target.os == .Windows {
     // creation, access and write FILETIMEs at 4, 12 and 20, the size's high half at 32 and low at 36, and the
     // link count at 40. FILETIME counts hundred-nanosecond ticks from 1601, so the epoch shift and the tick
     // width are the whole conversion — the same one `Time` performs for the clock.
-    func ReadDwordAt(buffer: *char8, offset: uint) -> uint32 {
+    func ReadDwordAt(buffer: char8[..], offset: uint) -> uint32 {
         var value: uint32 = 0;
         var index: uint = 0;
         while index < 4 {
@@ -297,7 +297,7 @@ when #target.os == .Windows {
         return value;
     }
 
-    func TimestampFromFileTimeAt(buffer: *char8, offset: uint) -> Timestamp {
+    func TimestampFromFileTimeAt(buffer: char8[..], offset: uint) -> Timestamp {
         let low = ReadDwordAt(buffer, offset) as uint64;
         let high = ReadDwordAt(buffer, offset + 4) as uint64;
         let ticks = (high << 32) | low;
@@ -322,7 +322,7 @@ when #target.os == .Windows {
         return FileKind::File;
     }
 
-    func MetadataFromHandleInformation(buffer: *char8) -> Metadata {
+    func MetadataFromHandleInformation(buffer: char8[..]) -> Metadata {
         let attributes = ReadDwordAt(buffer, 0);
         let high = ReadDwordAt(buffer, 32) as uint64;
         let low = ReadDwordAt(buffer, 36) as uint64;
@@ -346,8 +346,12 @@ when #target.os == .Windows {
         if !followLinks {
             flags = flags | FILE_FLAG_OPEN_REPARSE_POINT;
         }
-        return CreateFileW(native as *char16, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
-                           CreationDisposition::OpenExisting as uint32, flags, null) as *var opaque;
+        // Safety: every caller passes the NUL-terminated UTF-16 copy `NativePath` made, still live, and a `uint16`
+        // unit is a `char16`.
+        return unsafe {
+            CreateFileW(native as *char16, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
+                        CreationDisposition::OpenExisting as uint32, flags, null)
+        } as *var opaque;
     }
 }
 
@@ -365,20 +369,30 @@ pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Meta
     var buffer: char8[256];
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
-        if (handle as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
-        if GetFileInformationByHandle(handle, @buffer[0] as *var opaque) == 0 {
-            let raw = GetLastError() as int32;
-            CloseHandle(handle);
+        if (handle as uint64) == InvalidHandleValue {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
+        }
+        // Safety: `handle` is the valid query handle opened above, and `buffer` is a local `char8[256]`, larger
+        // than the 52-byte `BY_HANDLE_FILE_INFORMATION` the call fills.
+        if unsafe { GetFileInformationByHandle(handle, @buffer[0] as *var opaque) } == 0 {
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            let raw = unsafe { GetLastError() } as int32;
+            // Safety: `handle` is the valid query handle opened above, closed once here before failing.
+            unsafe { CloseHandle(handle); }
             fail TranslateNative(raw);
         }
-        CloseHandle(handle);
-        return MetadataFromHandleInformation(@buffer[0]);
+        // Safety: `handle` is the valid query handle opened above, closed once here and not used again.
+        unsafe { CloseHandle(handle); }
+        return MetadataFromHandleInformation(buffer[0..256]);
     }
     else {
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
-        let outcome = FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        // `buffer` is a local `char8[256]`, larger than any supported system's `struct stat`.
+        let outcome = unsafe { FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags) };
         if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
-        return MetadataFromStat(@buffer[0]);
+        return MetadataFromStat(buffer[0..256]);
     }
 }
 
@@ -392,15 +406,20 @@ extend File {
         if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
         var buffer: char8[256];
         when #target.os == .Windows {
-            if GetFileInformationByHandle(self.handle, @buffer[0] as *var opaque) == 0 {
-                fail TranslateNative(GetLastError() as int32);
+            // Safety: `handle` is this file's open handle, `open` was checked above, and `buffer` is a local
+            // `char8[256]`, larger than the 52-byte `BY_HANDLE_FILE_INFORMATION` the call fills.
+            if unsafe { GetFileInformationByHandle(self.handle, @buffer[0] as *var opaque) } == 0 {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
             }
-            return MetadataFromHandleInformation(@buffer[0]);
+            return MetadataFromHandleInformation(buffer[0..256]);
         }
         else {
-            let outcome = Fstat(self.handle, @buffer[0] as *var opaque);
+            // Safety: `handle` is this file's open descriptor, `open` was checked above, and `buffer` is a local
+            // `char8[256]`, larger than any supported system's `struct stat`.
+            let outcome = unsafe { Fstat(self.handle, @buffer[0] as *var opaque) };
             if outcome < 0 { fail TranslateNative((0 - outcome) as int32); }
-            return MetadataFromStat(@buffer[0]);
+            return MetadataFromStat(buffer[0..256]);
         }
     }
 }
@@ -418,9 +437,12 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        let attributes = GetFileAttributesW(native as *char16);
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+        // release, and a `uint16` unit is a `char16`.
+        let attributes = unsafe { GetFileAttributesW(native as *char16) };
         if attributes == INVALID_FILE_ATTRIBUTES {
-            fail TranslateNative(GetLastError() as int32);
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
         }
         else {
             var wanted = attributes & ~FILE_ATTRIBUTE_READONLY;
@@ -430,13 +452,17 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
             if wanted == 0 {
                 wanted = FILE_ATTRIBUTE_NORMAL;
             }
-            if SetFileAttributesW(native as *char16, wanted) == 0 {
-                fail TranslateNative(GetLastError() as int32);
+            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+            // release, and a `uint16` unit is a `char16`.
+            if unsafe { SetFileAttributesW(native as *char16, wanted) } == 0 {
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
             }
         }
     }
     else {
-        let result = FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFF) as uint16, 0);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        let result = unsafe { FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFF) as uint16, 0) };
         if result < 0 {
             fail TranslateNative((0 - result) as int32);
         }
@@ -460,41 +486,55 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
         if (handle as uint64) == InvalidHandleValue {
-            fail TranslateNative(GetLastError() as int32);
+            // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+            fail TranslateNative(unsafe { GetLastError() } as int32);
         }
         else {
             // A query handle carries no access rights, and writing times needs one; the handle is reopened with
             // the right to write attributes.
-            CloseHandle(handle);
+            // Safety: `handle` is the valid query handle opened above, closed once here and not used again.
+            unsafe { CloseHandle(handle); }
             var flags = FILE_FLAG_BACKUP_SEMANTICS;
             if !followLinks {
                 flags = flags | FILE_FLAG_OPEN_REPARSE_POINT;
             }
-            let writable = CreateFileW(native as *char16, 0x0100, // FILE_WRITE_ATTRIBUTES
-                                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
-                                       CreationDisposition::OpenExisting as uint32, flags, null);
+            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
+            // release, and a `uint16` unit is a `char16`.
+            let writable = unsafe {
+                CreateFileW(native as *char16, 0x0100, // FILE_WRITE_ATTRIBUTES
+                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
+                            CreationDisposition::OpenExisting as uint32, flags, null)
+            };
             if (writable as uint64) == InvalidHandleValue {
-                fail TranslateNative(GetLastError() as int32);
+                // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                fail TranslateNative(unsafe { GetLastError() } as int32);
             }
             else {
                 var accessTime = FileTimeFromTimestamp(accessed);
                 var writeTime = FileTimeFromTimestamp(modified);
-                if SetFileTime(writable as *var opaque, null, @accessTime, @writeTime) == 0 {
-                    let raw = GetLastError() as int32;
-                    CloseHandle(writable as *var opaque);
+                // Safety: `writable` is the valid handle opened above, and `accessTime` and `writeTime` are local
+                // `FileTime`s; the creation time is left alone.
+                if unsafe { SetFileTime(writable as *var opaque, null, @accessTime, @writeTime) } == 0 {
+                    // Safety: `GetLastError` takes nothing and reads this thread's last error code.
+                    let raw = unsafe { GetLastError() } as int32;
+                    // Safety: `writable` is the valid handle opened above, closed once here before failing.
+                    unsafe { CloseHandle(writable as *var opaque); }
                     fail TranslateNative(raw);
                 }
-                CloseHandle(writable as *var opaque);
+                // Safety: `writable` is the valid handle opened above, closed once here and not used again.
+                unsafe { CloseHandle(writable as *var opaque); }
             }
         }
     }
     else {
         // Two timespec values, access then modification, in the layout utimensat reads.
         var times: char8[32];
-        WriteTimespec(@times[0], 0, accessed);
-        WriteTimespec(@times[0], 16, modified);
+        WriteTimespec(times[0..32], 0, accessed);
+        WriteTimespec(times[0..32], 16, modified);
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
-        let result = UtimensAt(AtFdCwd, native as *char8, @times[0] as *opaque, flags);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        // `times` is the local pair of timespecs just written.
+        let result = unsafe { UtimensAt(AtFdCwd, native as *char8, @times[0] as *opaque, flags) };
         if result < 0 {
             fail TranslateNative((0i64 - result) as int32);
         }
@@ -502,7 +542,7 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
 }
 
 when #target.os != .Windows {
-    func WriteTimespec(buffer: *var char8, offset: uint, moment: Timestamp) {
+    func WriteTimespec(buffer: var char8[..], offset: uint, moment: Timestamp) {
         let seconds = moment.seconds as uint64;
         let fraction = moment.nanoseconds as uint64;
         var index: uint = 0;

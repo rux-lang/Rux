@@ -73,7 +73,7 @@ pub func PrintValueLine(value: Display) -> IoError? {
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: &String) -> IoError? {
-    return FailureOf(PrintBytes((value.data)[..value.length]));
+    return FailureOf(PrintBytes(value.Bytes()));
 }
 
 /// Writes the text a `StringView` borrows to standard output.

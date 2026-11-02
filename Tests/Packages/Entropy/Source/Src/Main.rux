@@ -13,13 +13,17 @@ func Main() -> ! EntropyError {
     Assert(!EntropyError::Failed.IsTransient(), "and a refusal repeated is still a refusal");
 
     // A zero-length request succeeds without touching anything.
-    FillFromSource(null, 0)?;
+    // Safety: a zero length asks for no bytes, so nothing is written through the null buffer.
+    unsafe { FillFromSource(null, 0)?; }
 
     // A null buffer with a real length is refused rather than written through.
-    Assert(Refusal(FillFromSource(null, 32)) == EntropyError::Failed, "a null buffer with a length is refused");
+    // Safety: the null buffer is refused before anything is written, which is the behaviour under test.
+    let refusal = Refusal(unsafe { FillFromSource(null, 32) });
+    Assert(refusal == EntropyError::Failed, "a null buffer with a length is refused");
 
     // A request larger than the source accepts in one call is refused rather than truncated.
-    Assert(Refusal(FillFromSource(null, MaxEntropyRequest + 1)) == EntropyError::TooLarge,
+    // Safety: an oversized request is refused before the buffer is looked at, which is the behaviour under test.
+    Assert(Refusal(unsafe { FillFromSource(null, MaxEntropyRequest + 1) }) == EntropyError::TooLarge,
            "a request past the single-call limit is refused");
 
     // A real fill writes every byte of the buffer and nothing outside it. The guard bytes on either side are a
@@ -32,7 +36,8 @@ func Main() -> ! EntropyError {
     }
 
     let start = @storage[8] as *var opaque;
-    FillFromSource(start, 64)?;
+    // Safety: `start` is `storage[8]`, and `storage` holds 80 bytes, so the 64 bytes from there end at index 72.
+    unsafe { FillFromSource(start, 64)?; }
 
     index = 0;
     while index < 8 {
@@ -57,8 +62,11 @@ func Main() -> ! EntropyError {
     // one, and the probability of a false failure here is two to the minus five hundred and twelve.
     var firstDraw: byte[64];
     var secondDraw: byte[64];
-    FillFromSource(@firstDraw[0] as *var opaque, 64)?;
-    FillFromSource(@secondDraw[0] as *var opaque, 64)?;
+    // Safety: `firstDraw` and `secondDraw` are local arrays of exactly 64 bytes.
+    unsafe {
+        FillFromSource(@firstDraw[0] as *var opaque, 64)?;
+        FillFromSource(@secondDraw[0] as *var opaque, 64)?;
+    }
 
     var identical = true;
     index = 0;
@@ -85,7 +93,8 @@ func Main() -> ! EntropyError {
     // A single byte is as valid a request as a large one, and the smallest case a loop can get wrong.
     var one: byte[1];
     one[0] = 0x5A;
-    FillFromSource(@one[0] as *var opaque, 1)?;
+    // Safety: `one` is a local array of exactly one byte.
+    unsafe { FillFromSource(@one[0] as *var opaque, 1)?; }
 
     // A request larger than any single kernel call is filled completely, which is what the loop is for.
     var large: byte[4096];
@@ -94,7 +103,8 @@ func Main() -> ! EntropyError {
         large[index] = 0xC3;
         index++;
     }
-    FillFromSource(@large[0] as *var opaque, 4096)?;
+    // Safety: `large` is a local array of exactly 4096 bytes.
+    unsafe { FillFromSource(@large[0] as *var opaque, 4096)?; }
 
     var stillPattern: uint = 0;
     index = 0;

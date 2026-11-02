@@ -36,17 +36,20 @@ struct RecordingStream {
 
 extend RecordingStream : Writer {
     func Write(self: &var RecordingStream, bytes: char8[..]) -> uint ! IoError {
-        self.state.calls = self.state.calls + 1;
-        if bytes.length > self.state.allowed {
-            fail IoError::Of(self.state.refusal);
+        // Safety: `state` points at a `StreamState` local of `Main`, which outlives every stream made over it.
+        unsafe {
+            self.state.calls = self.state.calls + 1;
+            if bytes.length > self.state.allowed {
+                fail IoError::Of(self.state.refusal);
+            }
+            var index: uint = 0;
+            while index < bytes.length {
+                self.state.written[self.state.length + index] = bytes[index];
+                index = index + 1;
+            }
+            self.state.length = self.state.length + bytes.length;
+            self.state.allowed = self.state.allowed - bytes.length;
         }
-        var index: uint = 0;
-        while index < bytes.length {
-            self.state.written[self.state.length + index] = bytes.data[index];
-            index = index + 1;
-        }
-        self.state.length = self.state.length + bytes.length;
-        self.state.allowed = self.state.allowed - bytes.length;
         return bytes.length;
     }
 
@@ -66,7 +69,8 @@ extend Owned {
 
     func ~Owned(self: &var Owned) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null `counter` points at a local of `Main` that outlives every `Owned` value.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -94,7 +98,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -196,7 +200,7 @@ func Main() -> int {
     var destroyed: int32 = 0;
     var value = Owned { counter: @destroyed, tag: 7i32 };
     Assert(Succeeded(WriteValueLine(out, value)), "a value writes itself into a stream");
-    Assert(Same((@second.written[0])[..second.length], "owned-7\n"), "with its newline after it");
+    Assert(Same(second.written[..second.length], "owned-7\n"), "with its newline after it");
     Assert(!(healthy is IoError), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
@@ -204,46 +208,46 @@ func Main() -> int {
     Assert(destroyed == 0, "writing a value destroys nothing");
     Assert(Succeeded(WriteValueLine(out, value)), "so the same value goes out again");
     Assert(destroyed == 0, "still destroying nothing");
-    Assert(Same((@second.written[0])[..second.length], "owned-7\nowned-7\n"), "identically");
+    Assert(Same(second.written[..second.length], "owned-7\nowned-7\n"), "identically");
 
     // The line rule, on a healthy destination and a value that refuses: no newline follows a value that did not go
     // out. The return value was always right here; the bytes were not.
     var third = StreamState { written: [c8'\0'; 64], length: 0, allowed: 64, refusal: IoErrorKind::StorageFull,
                               calls: 0 };
-    var third_stream = RecordingStream { state: @third };
-    let third_sink: Writer = third_stream;
-    var third_failure: IoError? = none;
-    var third_adapter = StreamWriter(third_sink, @third_failure);
-    let third_out: &var TextWriter = third_adapter;
+    var thirdStream = RecordingStream { state: @third };
+    let thirdSink: Writer = thirdStream;
+    var thirdFailure: IoError? = none;
+    var thirdAdapter = StreamWriter(thirdSink, @thirdFailure);
+    let thirdOut: &var TextWriter = thirdAdapter;
 
     var bad = Refuses {};
-    Assert(IsUnsupported(WriteValueLine(third_out, bad)), "a value that refuses reports its own failure");
+    Assert(IsUnsupported(WriteValueLine(thirdOut, bad)), "a value that refuses reports its own failure");
     Assert(third.length == 0, "and no newline follows it");
-    Assert(!(third_failure is IoError), "the destination being blameless");
+    Assert(!(thirdFailure is IoError), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
-    Assert(Failed(WriteFormatLine(third_out, "abc{")), "a pattern that does not parse is refused");
+    Assert(Failed(WriteFormatLine(thirdOut, "abc{")), "a pattern that does not parse is refused");
     Assert(third.length == 0, "with no newline after it");
-    Assert(Failed(WriteFormatLine(third_out, Pattern("a {} b {}"), 1i32)), "and so is one short of arguments");
+    Assert(Failed(WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32)), "and so is one short of arguments");
     Assert(third.length == 0, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.
-    Assert(Succeeded(WriteFormatLine(third_out, "n={}", 42i32)), "a pattern that is right writes its line");
-    Assert(Same((@third.written[0])[..third.length], "n=42\n"), "terminator and all");
+    Assert(Succeeded(WriteFormatLine(thirdOut, "n={}", 42i32)), "a pattern that is right writes its line");
+    Assert(Same(third.written[..third.length], "n=42\n"), "terminator and all");
 
     // The line rule against a destination that fails partway: the value goes out, the newline does not, and the
     // caller reads the stream's own failure rather than a formatting one.
     var fourth = StreamState { written: [c8'\0'; 64], length: 0, allowed: 7, refusal: IoErrorKind::StorageFull,
                                calls: 0 };
-    var fourth_stream = RecordingStream { state: @fourth };
-    let fourth_sink: Writer = fourth_stream;
-    var fourth_failure: IoError? = none;
-    var fourth_adapter = StreamWriter(fourth_sink, @fourth_failure);
-    let fourth_out: &var TextWriter = fourth_adapter;
-    Assert(IsWriterFailure(WriteValueLine(fourth_out, value)),
+    var fourthStream = RecordingStream { state: @fourth };
+    let fourthSink: Writer = fourthStream;
+    var fourthFailure: IoError? = none;
+    var fourthAdapter = StreamWriter(fourthSink, @fourthFailure);
+    let fourthOut: &var TextWriter = fourthAdapter;
+    Assert(IsWriterFailure(WriteValueLine(fourthOut, value)),
            "a destination with room for the value but not the newline reports a writer failure");
-    Assert(Same((@fourth.written[0])[..fourth.length], "owned-7"), "having written the value");
-    Assert(Holds(fourth_failure, IoErrorKind::StorageFull), "and recorded what the stream said");
+    Assert(Same(fourth.written[..fourth.length], "owned-7"), "having written the value");
+    Assert(Holds(fourthFailure, IoErrorKind::StorageFull), "and recorded what the stream said");
 
     // A console writer built over a slot that already holds a failure writes nothing at all, which is the same rule
     // over standard output. Nothing is printed by this case, which is the point of it.
@@ -256,7 +260,7 @@ func Main() -> int {
     // A bounded destination reaches the same boundary from the other side: `InsufficientCapacity` is not a stream
     // failure and must not be reported as one.
     var room: char8[4];
-    var bounded = BufferWriter((@room[0])[..4]);
+    var bounded = BufferWriter(room[..4]);
     let boundedOut: &var TextWriter = bounded;
     let overflowed = WriteValueLine(boundedOut, value);
     Assert(!IsWriterFailure(overflowed), "a destination that is merely full is not a destination that failed");
@@ -265,7 +269,7 @@ func Main() -> int {
 
     // An I/O failure reads as words, with the platform's code when it has one, and takes the placeholder's width.
     var shown: char8[96];
-    var shownWriter = BufferWriter((@shown[0])[..96]);
+    var shownWriter = BufferWriter(shown[..96]);
     let shownOut: &var TextWriter = shownWriter;
     let notFound = IoError { kind: IoErrorKind::NotFound, raw: 2 };
     let noListener = IoError::Of(IoErrorKind::ConnectionRefused);

@@ -274,21 +274,31 @@ func CheckPointerCasts() {
     var wide = WideMaybe::Some(payload);
     let address = @wide as uint;
     let untyped = @wide as *opaque;
-    let bytes = @wide as *uint8;
+    // Safety: `bytes` only renames the address of the live local `wide`; the test compares it and never reads it.
+    let bytes = unsafe { @wide as *uint8 };
     Assert(untyped as uint == address && bytes as uint == address, "every cast of a variant's address is one address");
     Assert(address % alignof(WideMaybe) == 0u, "the address is the variant's own, aligned for its wide payload");
 
-    let back = address as *WideMaybe;
-    Assert(ReadWide(*back) == payload, "a variant read through a pointer cast back from an integer keeps its payload");
-    let writable = untyped as *var WideMaybe;
-    *writable = WideMaybe::None;
+    // Safety: `address` is the address of the live local `wide`, so the pointer cast back addresses that variant.
+    let back = unsafe { address as *WideMaybe };
+    // Safety: `back` addresses the live local `wide`.
+    Assert(ReadWide(unsafe { *back }) == payload,
+           "a variant read through a pointer cast back from an integer keeps its payload");
+    // Safety: `untyped` is the address of the live, writable local `wide`, so it may be retyped and written as one.
+    unsafe {
+        let writable = untyped as *var WideMaybe;
+        *writable = WideMaybe::None;
+    }
     Assert(ReadWide(wide) == -1i128, "a write through a pointer cast back from an untyped one reaches the variant");
-    *(@wide as *var uint8 as *var WideMaybe) = WideMaybe::Some(42i128);
+    // Safety: the byte pointer is the address of the live, writable local `wide`, so it converts back to a `WideMaybe`.
+    unsafe { *(@wide as *var uint8 as *var WideMaybe) = WideMaybe::Some(42i128); }
     Assert(ReadWide(wide) == 42i128, "a byte pointer to a variant converts back to the variant's pointer");
 
     let parcel = Parcel::Pair(20i32, 22i32);
     let parcelAddress = @parcel as uint;
-    Assert(UnwrapCount(*(parcelAddress as *Parcel)) == 42i64, "a narrow variant round-trips through its address");
+    // Safety: `parcelAddress` is the address of the live local `parcel`.
+    Assert(UnwrapCount(unsafe { *(parcelAddress as *Parcel) }) == 42i64,
+           "a narrow variant round-trips through its address");
 }
 
 // The arms of one case together cover it when they take every payload, so a match need not end in 'else'.

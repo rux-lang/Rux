@@ -8,9 +8,9 @@ import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, Path };
 import FileSystem::{ File, NativeKind, OpenOptions, TranslateNative };
 
-func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
-    return Path::FromView((*holder).View());
+func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
+    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    return Path::FromView(holder.View());
 }
 
 // The failure an outcome carries, which the test expects to be there.
@@ -27,13 +27,13 @@ func Main() -> int ! IoError {
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
     var missingHolder = OsString(allocator);
-    let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", @missingHolder);
+    let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", missingHolder);
     Assert(Refusal(File::Open(allocator, missing, OpenOptions::Reading())).kind == IoErrorKind::NotFound,
            "reading a missing file is NotFound");
 
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
     var scratchHolder = OsString(allocator);
-    let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", @scratchHolder);
+    let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", scratchHolder);
     var written = File::Open(allocator, scratch, OpenOptions::Writing())?;
     Assert(written.IsOpen(), "writing creates the missing file");
     written.Close()?;

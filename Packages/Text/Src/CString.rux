@@ -55,7 +55,8 @@ extend CString {
         let bytes = view.Bytes();
         var index: uint = 0;
         while index < bytes.length {
-            if (bytes.data[index] as uint32) == 0 {
+            // Safety: `index` is below `bytes.length`, the loop condition.
+            if (unsafe { bytes.data[index] } as uint32) == 0 {
                 fail TextError::InvalidUtf8;
             }
             index = index + 1;
@@ -68,11 +69,15 @@ extend CString {
         var borrowed = allocator;
         let block = borrowed.Allocate(layout) catch { allocated => fail FromAllocError(allocated) };
 
-        let data = block as *var char8;
+        // Safety: `block` is a fresh allocation of bytes, so viewing it as `char8` reinterprets nothing.
+        let data = unsafe { block as *var char8 };
         if bytes.length > 0 {
-            Copy(block, bytes.data as *opaque, bytes.length);
+            // Safety: `block` has room for `bytes.length + 1` bytes and, being fresh, does not overlap `bytes`, which
+            // is readable for its length.
+            unsafe { Copy(block, bytes.data as *opaque, bytes.length); }
         }
-        data[bytes.length] = 0u8 as char8;
+        // Safety: `bytes.length` is the last of the `bytes.length + 1` bytes allocated above.
+        unsafe { data[bytes.length] = 0u8 as char8; }
         return CString { data: data, length: bytes.length, allocator: allocator };
     }
 
@@ -81,12 +86,13 @@ extend CString {
     /// `limit` bounds the search for the terminator: C promises one exists, and this is what the promise costs when
     /// it is broken — reports `InvalidUtf8` after `limit` bytes rather than reading memory forever. Bytes that are
     /// not UTF-8 are refused the same way, since nothing about C promises text.
+    /// Safety: a non-null `raw` must be readable up to its terminator or for `limit` bytes, whichever ends first.
     /// @param allocator where the storage comes from
     /// @param raw the null-terminated bytes to copy
     /// @param limit the most bytes to read before giving up on finding a terminator
     /// @returns the copy, or a failure when no terminator was found within `limit`
     /// @see https://rux-lang.dev/docs/api/text/c-string#from-raw
-    pub func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> CString ! TextError {
+    pub unsafe func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> CString ! TextError {
         if raw == null {
             fail TextError::InvalidUtf8;
         }
@@ -137,7 +143,9 @@ extend CString {
     /// @returns the bytes as text, without the terminator
     /// @see https://rux-lang.dev/docs/api/text/c-string#view
     pub func View(self: &CString) -> StringView {
-        return StringView::FromValidated((self.data)[..self.length]);
+        // Safety: the `CString` invariant: `data` addresses `length + 1` bytes this value owns, the first `length` of
+        // them the text, which `FromView` checked.
+        return StringView::FromValidated(unsafe { (self.data)[..self.length] });
     }
 
     /// Gives the block back and leaves a `CString` that owns nothing.

@@ -26,13 +26,19 @@ func CompoundRemainder64(left: float64, right: float64) -> float64 {
 }
 
 func Bits32(value: float32) -> uint32 {
-    let address = (@value) as *uint32;
-    return *address;
+    // Safety: `value` is a live four-byte parameter, and every bit pattern is a `uint32`.
+    return unsafe {
+        let address = (@value) as *uint32;
+        *address
+    };
 }
 
 func Bits64(value: float64) -> uint64 {
-    let address = (@value) as *uint64;
-    return *address;
+    // Safety: `value` is a live eight-byte parameter, and every bit pattern is a `uint64`.
+    return unsafe {
+        let address = (@value) as *uint64;
+        *address
+    };
 }
 
 /// The reported repro: 30000000000 / 7 does not fit the int32 the quotient went through, and the remainder came out at

@@ -34,7 +34,9 @@ extend Atomic<T> {
     // The address every operation goes through. The shared reference is the point: the value is changed through
     // atomic instructions only, which is safe however many threads hold it. A cast cannot add write access to a `*T`,
     // so the address is retyped through `*opaque`, which says that this one is deliberate.
-    func Address(self: &Atomic<T>) -> *var T {
+    // Safety: the caller must reach the value through the returned address only with `Core`'s atomic intrinsics,
+    // because other threads may hold the same shared reference.
+    unsafe func Address(self: &Atomic<T>) -> *var T {
         return (@self.value) as *opaque as *var T;
     }
 
@@ -42,7 +44,9 @@ extend Atomic<T> {
     /// @returns the value
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#load
     pub func Load(self: &Atomic<T>) -> T {
-        return AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent) };
     }
 
     /// The current value, read with `order`, which must be `Relaxed`, `Acquire` or `SequentiallyConsistent`.
@@ -52,11 +56,15 @@ extend Atomic<T> {
     /// @returns the value
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#load-with
     pub func LoadWith(self: &Atomic<T>, order: MemoryOrder) -> T {
-        return match order {
-            .Relaxed => AtomicLoad(self.Address(), MemoryOrder::Relaxed),
-            .Acquire => AtomicLoad(self.Address(), MemoryOrder::Acquire),
-            .Release => AtomicLoad(self.Address(), MemoryOrder::Acquire),
-            else => AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent)
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe {
+            (match order {
+                .Relaxed => AtomicLoad(self.Address(), MemoryOrder::Relaxed),
+                .Acquire => AtomicLoad(self.Address(), MemoryOrder::Acquire),
+                .Release => AtomicLoad(self.Address(), MemoryOrder::Acquire),
+                else => AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent)
+            })
         };
     }
 
@@ -64,7 +72,9 @@ extend Atomic<T> {
     /// @param value the new value
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#store
     pub func Store(self: &Atomic<T>, value: T) {
-        AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        unsafe { AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent); }
     }
 
     /// Replaces the value with `order`, which must be `Relaxed`, `Release` or `SequentiallyConsistent`.
@@ -74,11 +84,15 @@ extend Atomic<T> {
     /// @param order which other operations may move across this one
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#store-with
     pub func StoreWith(self: &Atomic<T>, value: T, order: MemoryOrder) {
-        match order {
-            .Relaxed => AtomicStore(self.Address(), value, MemoryOrder::Relaxed),
-            .Release => AtomicStore(self.Address(), value, MemoryOrder::Release),
-            .Acquire => AtomicStore(self.Address(), value, MemoryOrder::Release),
-            else => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        unsafe {
+            match order {
+                .Relaxed => AtomicStore(self.Address(), value, MemoryOrder::Relaxed),
+                .Release => AtomicStore(self.Address(), value, MemoryOrder::Release),
+                .Acquire => AtomicStore(self.Address(), value, MemoryOrder::Release),
+                else => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+            }
         }
     }
 
@@ -87,7 +101,9 @@ extend Atomic<T> {
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#exchange
     pub func Exchange(self: &Atomic<T>, value: T) -> T {
-        return AtomicExchange(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicExchange(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
     }
 
     /// Replaces the value with `desired` if it is `expected`, as one step, with sequential consistency.
@@ -98,8 +114,12 @@ extend Atomic<T> {
     /// @returns the value before, as success when it was replaced and as failure when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange
     pub func CompareExchange(self: &Atomic<T>, expected: T, desired: T) -> T ! T {
-        let previous = AtomicCompareExchange(self.Address(), expected, desired, MemoryOrder::SequentiallyConsistent,
-                                             MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        let previous = unsafe {
+            AtomicCompareExchange(self.Address(), expected, desired, MemoryOrder::SequentiallyConsistent,
+                                  MemoryOrder::SequentiallyConsistent)
+        };
         if previous == expected { return previous; }
         fail previous;
     }
@@ -117,23 +137,31 @@ extend Atomic<T> {
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange-with
     pub func CompareExchangeWith(self: &Atomic<T>, expected: T, desired: T, success: MemoryOrder,
                                  failure: MemoryOrder) -> T ! T {
-        let address = self.Address();
         let acquireOnFailure = failure == MemoryOrder::Acquire || failure == MemoryOrder::AcquireRelease ||
                                failure == MemoryOrder::SequentiallyConsistent;
-        let previous = match success {
-            .Relaxed => AtomicCompareExchange(address, expected, desired, MemoryOrder::Relaxed, MemoryOrder::Relaxed),
-            .Release => AtomicCompareExchange(address, expected, desired, MemoryOrder::Release, MemoryOrder::Relaxed),
-            .Acquire => acquireOnFailure
-                ? AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Acquire)
-                : AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Relaxed),
-            .AcquireRelease => acquireOnFailure
-                ? AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease, MemoryOrder::Acquire)
-                : AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease, MemoryOrder::Relaxed),
-            else => failure == MemoryOrder::SequentiallyConsistent
-                ? AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
-                                        MemoryOrder::SequentiallyConsistent)
-                : AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
-                                        MemoryOrder::Relaxed)
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        let previous = unsafe {
+            let address = self.Address();
+            (match success {
+                .Relaxed => AtomicCompareExchange(address, expected, desired, MemoryOrder::Relaxed,
+                                                  MemoryOrder::Relaxed),
+                .Release => AtomicCompareExchange(address, expected, desired, MemoryOrder::Release,
+                                                  MemoryOrder::Relaxed),
+                .Acquire => acquireOnFailure
+                    ? AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Acquire)
+                    : AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Relaxed),
+                .AcquireRelease => acquireOnFailure
+                    ? AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease,
+                                            MemoryOrder::Acquire)
+                    : AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease,
+                                            MemoryOrder::Relaxed),
+                else => failure == MemoryOrder::SequentiallyConsistent
+                    ? AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
+                                            MemoryOrder::SequentiallyConsistent)
+                    : AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
+                                            MemoryOrder::Relaxed)
+            })
         };
         if previous == expected { return previous; }
         fail previous;
@@ -145,7 +173,9 @@ extend Atomic<T> {
     /// @returns the value before the addition
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-add
     pub func FetchAdd(self: &Atomic<T>, value: T) -> T {
-        return AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
     }
 
     /// Subtracts `value`, wrapping on overflow, and returns the value before, as one step, with sequential
@@ -155,7 +185,9 @@ extend Atomic<T> {
     /// @returns the value before the subtraction
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-sub
     pub func FetchSub(self: &Atomic<T>, value: T) -> T {
-        return AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
     }
 
     /// Adds `value` with `order`, wrapping on overflow, and returns the value before.
@@ -165,12 +197,16 @@ extend Atomic<T> {
     /// @returns the value before the addition
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-add-with
     pub func FetchAddWith(self: &Atomic<T>, value: T, order: MemoryOrder) -> T {
-        return match order {
-            .Relaxed => AtomicFetchAdd(self.Address(), value, MemoryOrder::Relaxed),
-            .Acquire => AtomicFetchAdd(self.Address(), value, MemoryOrder::Acquire),
-            .Release => AtomicFetchAdd(self.Address(), value, MemoryOrder::Release),
-            .AcquireRelease => AtomicFetchAdd(self.Address(), value, MemoryOrder::AcquireRelease),
-            else => AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe {
+            (match order {
+                .Relaxed => AtomicFetchAdd(self.Address(), value, MemoryOrder::Relaxed),
+                .Acquire => AtomicFetchAdd(self.Address(), value, MemoryOrder::Acquire),
+                .Release => AtomicFetchAdd(self.Address(), value, MemoryOrder::Release),
+                .AcquireRelease => AtomicFetchAdd(self.Address(), value, MemoryOrder::AcquireRelease),
+                else => AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+            })
         };
     }
 
@@ -182,12 +218,16 @@ extend Atomic<T> {
     /// @returns the value before the subtraction
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-sub-with
     pub func FetchSubWith(self: &Atomic<T>, value: T, order: MemoryOrder) -> T {
-        return match order {
-            .Relaxed => AtomicFetchSub(self.Address(), value, MemoryOrder::Relaxed),
-            .Acquire => AtomicFetchSub(self.Address(), value, MemoryOrder::Acquire),
-            .Release => AtomicFetchSub(self.Address(), value, MemoryOrder::Release),
-            .AcquireRelease => AtomicFetchSub(self.Address(), value, MemoryOrder::AcquireRelease),
-            else => AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe {
+            (match order {
+                .Relaxed => AtomicFetchSub(self.Address(), value, MemoryOrder::Relaxed),
+                .Acquire => AtomicFetchSub(self.Address(), value, MemoryOrder::Acquire),
+                .Release => AtomicFetchSub(self.Address(), value, MemoryOrder::Release),
+                .AcquireRelease => AtomicFetchSub(self.Address(), value, MemoryOrder::AcquireRelease),
+                else => AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+            })
         };
     }
 
@@ -197,7 +237,9 @@ extend Atomic<T> {
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-and
     pub func FetchAnd(self: &Atomic<T>, value: T) -> T {
-        return AtomicFetchAnd(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicFetchAnd(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
     }
 
     /// Combines the value with `value` by bitwise or, and returns the value before, with sequential consistency.
@@ -206,7 +248,9 @@ extend Atomic<T> {
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-or
     pub func FetchOr(self: &Atomic<T>, value: T) -> T {
-        return AtomicFetchOr(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicFetchOr(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
     }
 
     /// Combines the value with `value` by bitwise exclusive or, and returns the value before, with sequential
@@ -216,7 +260,9 @@ extend Atomic<T> {
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-xor
     pub func FetchXor(self: &Atomic<T>, value: T) -> T {
-        return AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent);
+        // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
+        // atomic operations.
+        return unsafe { AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
     }
 }
 

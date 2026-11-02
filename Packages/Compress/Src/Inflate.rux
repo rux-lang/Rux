@@ -31,6 +31,9 @@ pub struct DecompressReader {
     source: Reader;
     format: Format;
     allocator: Allocator;
+    // The buffer invariant every `unsafe` block below relies on: `input` holds `InputCapacity` bytes with
+    // `inputAt <= inputLength <= InputCapacity`, and `window` holds `WindowSize` bytes with `windowAt` below
+    // `WindowSize`. Both come from the allocator in `New` and go back in the destructor.
     input: *var char8;
     inputLength: uint;
     inputAt: uint;
@@ -67,9 +70,13 @@ extend DecompressReader {
             catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
         let window = borrowed.Allocate(Layout::New(WindowSize, 1) ?? fail IoError::Of(IoErrorKind::LimitExceeded))
             catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        // Safety: `input` was just allocated as `InputCapacity` bytes, so viewing it as `char8` reinterprets nothing.
+        let inputBytes = unsafe { input as *var char8 };
+        // Safety: `window` was just allocated as `WindowSize` bytes, so viewing it as `uint8` reinterprets nothing.
+        let windowBytes = unsafe { window as *var uint8 };
         return DecompressReader {
-            source: <-source, format: format, allocator: allocator, input: input as *var char8, inputLength: 0,
-            inputAt: 0, bits: 0, bitCount: 0, window: window as *var uint8, windowAt: 0, written: 0,
+            source: <-source, format: format, allocator: allocator, input: inputBytes, inputLength: 0,
+            inputAt: 0, bits: 0, bitCount: 0, window: windowBytes, windowAt: 0, written: 0,
             state: format == Format::Raw ? AtBlockHeader : AtHeader, final: false, failed: false, storedLeft: 0,
             copyLength: 0, copyDistance: 0, literals: DecodeTable(), distances: DecodeTable(), crc: Crc32(),
             adler: Adler32(), memberSize: 0
@@ -81,14 +88,17 @@ extend DecompressReader {
         if self.inputAt == self.inputLength {
             if !self.Refill()? { fail Corrupt(); }
         }
-        let value = self.input[self.inputAt] as uint8 as uint64;
+        // Safety: the buffer invariant, and `inputAt` is below `inputLength`: a refill that brought nothing failed.
+        let value = unsafe { self.input[self.inputAt] } as uint8 as uint64;
         self.inputAt = self.inputAt + 1;
         return value;
     }
 
     // Reads more of the source, and says whether there was more.
     func Refill(self: &var DecompressReader) -> bool ! IoError {
-        match self.source.Read(self.input[..InputCapacity]) {
+        // Safety: the buffer invariant: `input` holds `InputCapacity` bytes. The `Reader` contract has the source
+        // fill at most that many, which keeps `inputLength` within it.
+        match self.source.Read(unsafe { self.input[..InputCapacity] }) {
             .Success(count) => {
                 self.inputLength = count;
                 self.inputAt = 0;
@@ -151,7 +161,8 @@ extend DecompressReader {
 
     // Puts one byte of data in the history and the caller's buffer.
     func Emit(self: &var DecompressReader, value: uint8, into: var char8[..], at: uint) {
-        self.window[self.windowAt] = value;
+        // Safety: the buffer invariant: `windowAt` is below `WindowSize`, the size of `window`.
+        unsafe { self.window[self.windowAt] = value; }
         self.windowAt = (self.windowAt + 1u) & (WindowSize - 1u);
         self.written = self.written + 1u64;
         into[at] = value as char8;
@@ -240,8 +251,11 @@ extend DecompressReader {
                 symbol = symbol + 1;
             }
             var distances: uint8[30] = [5u8; 30];
-            self.literals.Build(@lengths[0], 288);
-            self.distances.Build(@distances[0], 30);
+            // Safety: `lengths` and `distances` are locals of 320 and 30 entries.
+            unsafe {
+                self.literals.Build(@lengths[0], 288);
+                self.distances.Build(@distances[0], 30);
+            }
             self.state = InCodedBlock;
             return;
         }
@@ -256,7 +270,8 @@ extend DecompressReader {
             codeLengths[CodeLengthOrder[index] as uint] = self.Bits(3)? as uint8;
             index = index + 1;
         }
-        if !self.distances.Build(@codeLengths[0], 19) { fail Corrupt(); }
+        // Safety: `codeLengths` is a local of 19 entries.
+        if !unsafe { self.distances.Build(@codeLengths[0], 19) } { fail Corrupt(); }
         index = 0;
         let total = literalCount + distanceCount;
         while index < total {
@@ -287,8 +302,10 @@ extend DecompressReader {
             }
         }
         if lengths[256] == 0u8 { fail Corrupt(); }
-        if !self.literals.Build(@lengths[0], literalCount) { fail Corrupt(); }
-        if !self.distances.Build(@lengths[literalCount], distanceCount) { fail Corrupt(); }
+        // Safety: `literalCount` is at most 286, checked above, and `lengths` is a local of 320 entries.
+        if !unsafe { self.literals.Build(@lengths[0], literalCount) } { fail Corrupt(); }
+        // Safety: `literalCount + distanceCount` is at most 316, checked above, inside the 320 entries of `lengths`.
+        if !unsafe { self.distances.Build(@lengths[literalCount], distanceCount) } { fail Corrupt(); }
         self.state = InCodedBlock;
     }
 
@@ -298,7 +315,8 @@ extend DecompressReader {
         var summed: uint = 0;
         while produced < into.length {
             if self.copyLength > 0u {
-                let value = self.window[(self.windowAt + WindowSize - self.copyDistance) & (WindowSize - 1u)];
+                // Safety: the index is masked below `WindowSize`, the size of `window`.
+                let value = unsafe { self.window[(self.windowAt + WindowSize - self.copyDistance) & (WindowSize - 1u)] };
                 self.Emit(value, into, produced);
                 produced = produced + 1;
                 self.copyLength = self.copyLength - 1;
@@ -374,10 +392,14 @@ extend DecompressReader {
     func Sum(self: &var DecompressReader, data: char8[..]) {
         if data.length == 0u { return; }
         if self.format == Format::Zlib {
-            self.adler.Write(data.data as *byte, data.length);
+            // Safety: `data` is readable for its length, as the `Hasher` contract requires, and `char8` and `byte`
+            // are both single bytes.
+            unsafe { self.adler.Write(data.data as *byte, data.length); }
         }
         else if self.format == Format::Gzip {
-            self.crc.Write(data.data as *byte, data.length);
+            // Safety: `data` is readable for its length, as the `Hasher` contract requires, and `char8` and `byte`
+            // are both single bytes.
+            unsafe { self.crc.Write(data.data as *byte, data.length); }
             self.memberSize = self.memberSize + data.length as uint32;
         }
     }

@@ -307,9 +307,19 @@ pub const SeparateStreamRuntime: bool = #target.os == OperatingSystem::Windows;
 /// @see https://rux-lang.dev/docs/api/c/errno#errno-location-for
 pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
     when #target.os {
-        .Linux => { return __errno_location(); }
-        .FreeBSD, .macOS => { return __error(); }
-        .Windows => { return area == CRuntimeArea::Streams ? _stream_errno() : _errno(); }
+        .Linux => {
+            // Safety: `__errno_location` takes no arguments and returns the calling thread's own `errno` address.
+            return unsafe { __errno_location() };
+        }
+        .FreeBSD, .macOS => {
+            // Safety: `__error` takes no arguments and returns the calling thread's own `errno` address.
+            return unsafe { __error() };
+        }
+        .Windows => {
+            // Safety: `_stream_errno` and `_errno` take no arguments and return the calling thread's own `errno`
+            // address in their runtime.
+            return unsafe { area == CRuntimeArea::Streams ? _stream_errno() : _errno() };
+        }
         else => #Error("Unsupported operating system")
     }
 }
@@ -323,7 +333,8 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
 /// @returns that runtime's `errno` for this thread
 /// @see https://rux-lang.dev/docs/api/c/errno#errno-for
 pub func ErrnoFor(area: CRuntimeArea) -> c_int {
-    return *ErrnoLocationFor(area);
+    // Safety: `ErrnoLocationFor` returns the calling thread's own `errno` address, live for as long as the thread.
+    return unsafe { *ErrnoLocationFor(area) };
 }
 
 /// The address of the calling thread's `errno`, in the runtime `C::StdLib` and `C::Math` are bound to.
@@ -353,7 +364,8 @@ pub func ErrnoLocation() -> *var c_int {
 /// @returns the general runtime's `errno` for this thread
 /// @see https://rux-lang.dev/docs/api/c/errno#errno
 pub func Errno() -> c_int {
-    return *ErrnoLocation();
+    // Safety: `ErrnoLocation` returns the calling thread's own `errno` address, live for as long as the thread.
+    return unsafe { *ErrnoLocation() };
 }
 
 /// `EDOM`: an argument outside the domain over which a math function is defined.

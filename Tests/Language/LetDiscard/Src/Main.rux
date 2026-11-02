@@ -22,8 +22,11 @@ extend Tracked {
     }
 
     func ~Tracked(self: &var Tracked) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
@@ -35,13 +38,17 @@ struct Handle {
 
 extend Handle {
     func ~Handle(self: &var Handle) {
-        self.log.count = self.log.count + 1;
-        self.log.order = self.log.order * 10 + (self.id as int64);
+        // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
+        unsafe {
+            self.log.count = self.log.count + 1;
+            self.log.order = self.log.order * 10 + (self.id as int64);
+        }
     }
 }
 
 func Mark(log: *var Log) {
-    log.order = log.order * 10;
+    // Safety: every caller passes `@log` or forwards that pointer to the live `Log` local of `Main`.
+    unsafe { log.order = log.order * 10; }
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {

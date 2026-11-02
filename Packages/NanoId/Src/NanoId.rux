@@ -87,7 +87,7 @@ extend NanoId {
     /// @returns the text, always `NanoIdLength` bytes of the default alphabet
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#text
     pub func Text(self: &NanoId) -> char8[..] {
-        return (@self.text[0])[..NanoIdLength];
+        return self.text[..NanoIdLength];
     }
 
     /// Whether two identifiers are the same.

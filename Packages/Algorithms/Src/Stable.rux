@@ -52,7 +52,8 @@ pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
         if end > items.length {
             end = items.length;
         }
-        StableInsertionRun<T>(items.data, start, end);
+        // Safety: `start < end <= items.length`, so the run lies inside `items`, which `items.data` addresses.
+        unsafe { StableInsertionRun<T>(items.data, start, end); }
         start = end;
     }
 
@@ -70,7 +71,9 @@ pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
             if high > items.length {
                 high = items.length;
             }
-            StableMerge<T>(source, target, low, middle, high);
+            // Safety: `source` and `target` are `items.data` and `scratch.data` in some order, both at least
+            // `items.length` long (checked above), and `low <= middle <= high <= items.length`.
+            unsafe { StableMerge<T>(source, target, low, middle, high); }
             low = high;
         }
         let held = source;
@@ -83,7 +86,9 @@ pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
     if moved {
         var index: uint = 0;
         while index < items.length {
-            items.data[index] = source[index];
+            // Safety: `index` is below `items.length`, the loop condition; `source` is `scratch.data` after an odd
+            // number of passes, and `scratch` is at least `items.length` long, checked above.
+            unsafe { items.data[index] = source[index]; }
             index++;
         }
     }
@@ -112,7 +117,8 @@ pub func StableSortBy<T>(items: var T[..], scratch: var T[..], compare: func(T, 
         if end > items.length {
             end = items.length;
         }
-        StableInsertionRunBy<T>(items.data, start, end, compare);
+        // Safety: `start < end <= items.length`, so the run lies inside `items`, which `items.data` addresses.
+        unsafe { StableInsertionRunBy<T>(items.data, start, end, compare); }
         start = end;
     }
 
@@ -130,7 +136,9 @@ pub func StableSortBy<T>(items: var T[..], scratch: var T[..], compare: func(T, 
             if high > items.length {
                 high = items.length;
             }
-            StableMergeBy<T>(source, target, low, middle, high, compare);
+            // Safety: `source` and `target` are `items.data` and `scratch.data` in some order, both at least
+            // `items.length` long (checked above), and `low <= middle <= high <= items.length`.
+            unsafe { StableMergeBy<T>(source, target, low, middle, high, compare); }
             low = high;
         }
         let held = source;
@@ -143,7 +151,9 @@ pub func StableSortBy<T>(items: var T[..], scratch: var T[..], compare: func(T, 
     if moved {
         var index: uint = 0;
         while index < items.length {
-            items.data[index] = source[index];
+            // Safety: `index` is below `items.length`, the loop condition; `source` is `scratch.data` after an odd
+            // number of passes, and `scratch` is at least `items.length` long, checked above.
+            unsafe { items.data[index] = source[index]; }
             index++;
         }
     }
@@ -155,7 +165,8 @@ pub func StableSortBy<T>(items: var T[..], scratch: var T[..], compare: func(T, 
 const StableRunLength: uint = 16;
 
 // Insertion sort over [low, high), which is stable: an element only moves past one that is strictly greater.
-func StableInsertionRun<T>(data: *var T, low: uint, high: uint) {
+// Safety: `data` must address at least `high` live, writable elements.
+unsafe func StableInsertionRun<T>(data: *var T, low: uint, high: uint) {
     var index = low + 1;
     while index < high {
         let key = data[index];
@@ -171,7 +182,8 @@ func StableInsertionRun<T>(data: *var T, low: uint, high: uint) {
 }
 
 // The same, with the comparison supplied.
-func StableInsertionRunBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address at least `high` live, writable elements.
+unsafe func StableInsertionRunBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
     var index = low + 1;
     while index < high {
         let key = data[index];
@@ -188,7 +200,9 @@ func StableInsertionRunBy<T>(data: *var T, low: uint, high: uint, compare: func(
 
 // Merges the sorted runs [low, middle) and [middle, high) of `source` into `target` at the same positions. Ties take
 // from the left run, which is what makes the whole sort stable: the left run holds whatever arrived earlier.
-func StableMerge<T>(source: *T, target: *var T, low: uint, middle: uint, high: uint) {
+// Safety: `source` must address at least `high` live elements and `target` at least `high` writable ones, and
+// `low <= middle <= high`.
+unsafe func StableMerge<T>(source: *T, target: *var T, low: uint, middle: uint, high: uint) {
     var left = low;
     var right = middle;
     var out = low;
@@ -216,7 +230,9 @@ func StableMerge<T>(source: *T, target: *var T, low: uint, middle: uint, high: u
 }
 
 // The same, with the comparison supplied.
-func StableMergeBy<T>(source: *T, target: *var T, low: uint, middle: uint, high: uint,
+// Safety: `source` must address at least `high` live elements and `target` at least `high` writable ones, and
+// `low <= middle <= high`.
+unsafe func StableMergeBy<T>(source: *T, target: *var T, low: uint, middle: uint, high: uint,
                       compare: func(T, T) -> Ordering) {
     var left = low;
     var right = middle;

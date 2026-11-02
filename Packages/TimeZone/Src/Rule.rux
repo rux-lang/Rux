@@ -51,13 +51,13 @@ func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule ! TimeZoneErr
     var rule = NoRule();
     var at: uint = 0;
     rule.standard = ZoneType { offset: 0, daylight: false, abbreviation: 0, abbreviationLength: 0 };
-    ParseName(text, @at, names, @rule.standard)?;
+    ParseName(text, @at, names, rule.standard)?;
     rule.standard.offset = -ParseOffset(text, @at, 24)?;
     rule.present = true;
     if at == text.length { return rule; }
     rule.hasDaylight = true;
     rule.daylight = ZoneType { offset: 0, daylight: true, abbreviation: 0, abbreviationLength: 0 };
-    ParseName(text, @at, names, @rule.daylight)?;
+    ParseName(text, @at, names, rule.daylight)?;
     if at < text.length && text[at] != ',' {
         rule.daylight.offset = -ParseOffset(text, @at, 24)?;
     }
@@ -91,20 +91,24 @@ func IsDecimal(c: char8) -> bool {
 }
 
 // Reads an abbreviation, three or more letters or anything between `<` and `>`, into `names`.
-func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: *var ZoneType) -> ! TimeZoneError {
-    var start = *at;
+func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: &var ZoneType) -> ! TimeZoneError {
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    var start = unsafe { *at };
     var end = start;
+    var next = start;
     if start < text.length && text[start] == '<' {
         start = start + 1;
         end = start;
         while end < text.length && text[end] != '>' { end = end + 1; }
         if end == text.length { fail TimeZoneError::InvalidRule; }
-        *at = end + 1;
+        next = end + 1;
     }
     else {
         while end < text.length && IsLetter(text[end]) { end = end + 1; }
-        *at = end;
+        next = end;
     }
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    unsafe { *at = next; }
     if end - start < 3u { fail TimeZoneError::InvalidRule; }
     into.abbreviation = names.Length();
     into.abbreviationLength = end - start;
@@ -114,77 +118,89 @@ func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: 
 
 // Reads `[+-]h[h][:mm[:ss]]` as seconds, its hours at most `maximumHours`.
 func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 ! TimeZoneError {
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    var cursor = unsafe { *at };
     var sign: int32 = 1;
-    if *at < text.length && (text[*at] == '+' || text[*at] == '-') {
-        if text[*at] == '-' { sign = -1; }
-        *at = *at + 1;
+    if cursor < text.length && (text[cursor] == '+' || text[cursor] == '-') {
+        if text[cursor] == '-' { sign = -1; }
+        cursor = cursor + 1;
     }
-    let hours = ParseNumber(text, at, 3)?;
+    let hours = ParseNumber(text, @cursor, 3)?;
     if hours > maximumHours { fail TimeZoneError::InvalidRule; }
     var seconds = hours * 3600;
-    if *at < text.length && text[*at] == ':' {
-        *at = *at + 1;
-        let minutes = ParseNumber(text, at, 2)?;
+    if cursor < text.length && text[cursor] == ':' {
+        cursor = cursor + 1;
+        let minutes = ParseNumber(text, @cursor, 2)?;
         if minutes > 59 { fail TimeZoneError::InvalidRule; }
         seconds = seconds + minutes * 60;
-        if *at < text.length && text[*at] == ':' {
-            *at = *at + 1;
-            let rest = ParseNumber(text, at, 2)?;
+        if cursor < text.length && text[cursor] == ':' {
+            cursor = cursor + 1;
+            let rest = ParseNumber(text, @cursor, 2)?;
             if rest > 59 { fail TimeZoneError::InvalidRule; }
             seconds = seconds + rest;
         }
     }
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    unsafe { *at = cursor; }
     return sign * seconds;
 }
 
 // Reads one to `digits` decimal digits.
 func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 ! TimeZoneError {
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    var cursor = unsafe { *at };
     var value: int32 = 0;
     var count: uint = 0;
-    while *at < text.length && IsDecimal(text[*at]) && count < digits {
-        value = value * 10 + (text[*at] as uint8 - 0x30u8) as int32;
-        *at = *at + 1;
+    while cursor < text.length && IsDecimal(text[cursor]) && count < digits {
+        value = value * 10 + (text[cursor] as uint8 - 0x30u8) as int32;
+        cursor = cursor + 1;
         count = count + 1;
     }
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    unsafe { *at = cursor; }
     if count == 0u { fail TimeZoneError::InvalidRule; }
     return value;
 }
 
 // Reads a date, `Jn`, `n` or `Mm.w.d`, and its optional `/time`.
 func ParseDate(text: char8[..], at: *var uint) -> RuleDate ! TimeZoneError {
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    var cursor = unsafe { *at };
     var date = RuleDate { kind: 1, day: 0, month: 0, week: 0, weekday: 0, time: 7200 };
-    if *at < text.length && text[*at] == 'J' {
-        *at = *at + 1;
+    if cursor < text.length && text[cursor] == 'J' {
+        cursor = cursor + 1;
         date.kind = 0;
-        let day = ParseNumber(text, at, 3)?;
+        let day = ParseNumber(text, @cursor, 3)?;
         if day < 1 || day > 365 { fail TimeZoneError::InvalidRule; }
         date.day = day as uint16;
     }
-    else if *at < text.length && text[*at] == 'M' {
-        *at = *at + 1;
+    else if cursor < text.length && text[cursor] == 'M' {
+        cursor = cursor + 1;
         date.kind = 2;
-        let month = ParseNumber(text, at, 2)?;
-        if *at >= text.length || text[*at] != '.' { fail TimeZoneError::InvalidRule; }
-        *at = *at + 1;
-        let week = ParseNumber(text, at, 1)?;
-        if *at >= text.length || text[*at] != '.' { fail TimeZoneError::InvalidRule; }
-        *at = *at + 1;
-        let weekday = ParseNumber(text, at, 1)?;
+        let month = ParseNumber(text, @cursor, 2)?;
+        if cursor >= text.length || text[cursor] != '.' { fail TimeZoneError::InvalidRule; }
+        cursor = cursor + 1;
+        let week = ParseNumber(text, @cursor, 1)?;
+        if cursor >= text.length || text[cursor] != '.' { fail TimeZoneError::InvalidRule; }
+        cursor = cursor + 1;
+        let weekday = ParseNumber(text, @cursor, 1)?;
         if month < 1 || month > 12 || week < 1 || week > 5 || weekday > 6 { fail TimeZoneError::InvalidRule; }
         date.month = month as uint8;
         date.week = week as uint8;
         date.weekday = weekday as uint8;
     }
     else {
-        let day = ParseNumber(text, at, 3)?;
+        let day = ParseNumber(text, @cursor, 3)?;
         if day > 365 { fail TimeZoneError::InvalidRule; }
         date.day = day as uint16;
     }
-    if *at < text.length && text[*at] == '/' {
-        *at = *at + 1;
+    if cursor < text.length && text[cursor] == '/' {
+        cursor = cursor + 1;
         // Version 3 of the TZif format lets the time run from -167 to 167 hours.
-        date.time = ParseOffset(text, at, 167)?;
+        date.time = ParseOffset(text, @cursor, 167)?;
     }
+    // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
+    unsafe { *at = cursor; }
     return date;
 }
 

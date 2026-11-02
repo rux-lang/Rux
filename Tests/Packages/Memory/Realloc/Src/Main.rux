@@ -3,36 +3,50 @@ import Memory::{ Alloc, Equal, Free, Realloc, Set };
 
 func Main() -> int {
     // A null pointer makes Realloc behave like Alloc.
-    let fresh = Realloc(null, 32);
+    // Safety: the contract binds only a non-null `ptr`.
+    let fresh = unsafe { Realloc(null, 32) };
     Assert(fresh != null, "Realloc(null, 32)");
-    Free(fresh);
+    // Safety: `fresh` is the live base address `Realloc` returned, and is not used afterwards.
+    unsafe { Free(fresh); }
 
     // A zero size releases the block and yields null.
-    Assert(Realloc(Alloc(32), 0) == null, "Realloc(ptr, 0)");
+    // Safety: the argument is the fresh base address `Alloc` returned, or null, and nothing else holds it.
+    Assert(unsafe { Realloc(Alloc(32), 0) } == null, "Realloc(ptr, 0)");
 
     // Growing preserves every byte of the old block.
     var buffer = Alloc(8);
     Assert(buffer != null, "Alloc(8)");
-    Set(buffer, 0xAB as byte, 8);
-
-    buffer = Realloc(buffer, 64);
+    // Safety: `buffer` is a live 8-byte allocation, checked non-null above, and the base address `Alloc` returned.
+    buffer = unsafe {
+        Set(buffer, 0xAB as byte, 8);
+        Realloc(buffer, 64)
+    };
     Assert(buffer != null, "Realloc(ptr, 64)");
 
     var expected = Alloc(8);
-    Set(expected, 0xAB as byte, 8);
-    Assert(Equal(buffer, expected, 8), "grown block keeps its bytes");
-    Free(expected);
+    // Safety: `buffer` is a live 64-byte allocation, checked above, and `expected` a fresh 8-byte one.
+    unsafe {
+        Set(expected, 0xAB as byte, 8);
+        Assert(Equal(buffer, expected, 8), "grown block keeps its bytes");
+        Free(expected);
+    }
 
     // Shrinking preserves the surviving prefix.
-    Set(buffer, 0xCD as byte, 64);
-    buffer = Realloc(buffer, 16);
+    // Safety: `buffer` is the live 64-byte base address `Realloc` returned, checked non-null above.
+    buffer = unsafe {
+        Set(buffer, 0xCD as byte, 64);
+        Realloc(buffer, 16)
+    };
     Assert(buffer != null, "Realloc(ptr, 16)");
 
     var prefix = Alloc(16);
-    Set(prefix, 0xCD as byte, 16);
-    Assert(Equal(buffer, prefix, 16), "shrunk block keeps its prefix");
-    Free(prefix);
-
-    Free(buffer);
+    // Safety: `buffer` is a live 16-byte allocation, checked above, and `prefix` a fresh 16-byte one; both are
+    // base addresses released here and not used afterwards.
+    unsafe {
+        Set(prefix, 0xCD as byte, 16);
+        Assert(Equal(buffer, prefix, 16), "shrunk block keeps its prefix");
+        Free(prefix);
+        Free(buffer);
+    }
     return 0;
 }

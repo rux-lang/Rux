@@ -16,8 +16,8 @@ func Spells(path: Path, expected: char8[..]) -> bool {
     }
     var index: uint = 0;
     while index < units.length {
-        let mine = units.data[index] as uint32;
-        let wanted = expected.data[index] as uint32;
+        let mine = units[index] as uint32;
+        let wanted = expected[index] as uint32;
         if mine != wanted {
             let bothSeparators = (mine == 0x2F || mine == 0x5C) && wanted == 0x2F;
             if !bothSeparators {

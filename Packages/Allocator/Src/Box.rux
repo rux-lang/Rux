@@ -44,8 +44,11 @@ extend Box<T> {
     pub func Create(allocator: Allocator, value: T) -> Box<T> ! AllocError {
         let layout = Layout::ForValue<T>();
         let block = allocator.Allocate(layout)?;
-        let typed = block as *var T;
-        *typed <- value;
+        // Safety: `block` was just allocated with `Layout::ForValue<T>()`, so it is aligned and large enough for a
+        // `T`, and nothing else holds it or has written to it.
+        let typed = unsafe { block as *var T };
+        // Safety: as above, `typed` addresses fresh storage for one `T` with nothing in it to overwrite.
+        unsafe { *typed <- value; }
         return Box<T> { pointer: typed, allocator: allocator };
     }
 
@@ -82,7 +85,9 @@ extend Box<T> {
     pub func TryTake(self: &var Box<T>, destination: *var T) -> bool {
         if self.pointer == null || destination == null { return false; }
         let held = self.pointer;
-        *destination <- *held;
+        // Safety: the documented contract makes `destination` a non-null pointer to the caller's writable `T` (null is
+        // refused above), and `held` is this box's live value, which is cleared below so it is moved out only once.
+        unsafe { *destination <- *held; }
         let layout = Layout::ForValue<T>();
         // The storage came from this allocator with this layout, so a refusal would be the allocator's own bug; the
         // value is already out, and nothing the caller holds depends on the release.
@@ -99,7 +104,8 @@ extend Box<T> {
         if self.pointer != null {
             let held = self.pointer;
             self.pointer = null;
-            DestroyBoxValue<T>(held);
+            // Safety: `held` is this box's live value, and the box was cleared above so nothing reaches it again.
+            unsafe { DestroyBoxValue<T>(held); }
             self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { else => {} };
         }
     }
@@ -107,6 +113,7 @@ extend Box<T> {
 
 // Moving the stored value into this helper destroys it before the allocation containing it is released. The raw
 // load is the allocator boundary: the compiler's explicit raw-storage move syntax lands in the ownership cutover.
-func DestroyBoxValue<T>(pointer: *var T) {
+// Safety: `pointer` must address a live `T` that nothing reads or destroys afterwards.
+unsafe func DestroyBoxValue<T>(pointer: *var T) {
     let taken <- pointer[0];
 }

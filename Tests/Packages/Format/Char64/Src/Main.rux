@@ -12,7 +12,8 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 
 // Reinterpret malformed raw storage to test presentation independently of checked character casts.
 func AsChar64(value: uint64) -> char64 {
-    return *((@value) as *char64);
+    // Safety: `value` is a live local `uint64`, the same size as `char64`, so the read stays inside it.
+    return unsafe { *((@value) as *char64) };
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -34,7 +35,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Renders `value` under `spec` through a constrained receiver and through the interface, and checks both.
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
-    var writer = BufferWriter((@storage[0])[..192]);
+    var writer = BufferWriter(storage[..192]);
     Assert(Succeeded(value.WriteDisplay(writer, spec)), "a constrained receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
@@ -46,7 +47,7 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 // The `Debug` counterpart of `Shown`.
 func Inspected<T: Debug>(value: &T, expected: char8[..]) {
     var storage: char8[192];
-    var writer = BufferWriter((@storage[0])[..192]);
+    var writer = BufferWriter(storage[..192]);
     Assert(Succeeded(value.WriteDebug(writer, FormatSpec::Plain())), "a constrained debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
@@ -58,7 +59,7 @@ func Inspected<T: Debug>(value: &T, expected: char8[..]) {
 // Whether `Display` refuses `spec` rather than rendering under it.
 func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
     var storage: char8[16];
-    var writer = BufferWriter((@storage[0])[..16]);
+    var writer = BufferWriter(storage[..16]);
     return Failed(value.WriteDisplay(writer, spec));
 }
 

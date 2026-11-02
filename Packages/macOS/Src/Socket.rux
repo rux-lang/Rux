@@ -92,28 +92,31 @@ extern {
 /// @see https://rux-lang.dev/docs/api/macos/socket#socket
 /// @see https://keith.github.io/xcode-man-pages/socket.2.html
 pub func Socket(domain: int32, kind: int32, protocol: int32) -> int64 {
-    return Normalize(socket(domain, kind, protocol) as int64);
+    // Safety: socket takes only integer arguments and returns a new descriptor.
+    return Normalize(unsafe { socket(domain, kind, protocol) } as int64);
 }
 
 /// Connects a socket to `address`, waiting for a stream connection to be made.
+/// Safety: `address` must be readable for `length` bytes.
 /// @param fd the socket
 /// @param address the address, a `sockaddr`
 /// @param length the address's size in bytes
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#connect
 /// @see https://keith.github.io/xcode-man-pages/connect.2.html
-pub func Connect(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
+pub unsafe func Connect(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
     return Normalize(connect(fd, address, length) as int64);
 }
 
 /// Gives a socket its local address.
+/// Safety: `address` must be readable for `length` bytes.
 /// @param fd the socket
 /// @param address the address, a `sockaddr`
 /// @param length the address's size in bytes
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#bind
 /// @see https://keith.github.io/xcode-man-pages/bind.2.html
-pub func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
+pub unsafe func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
     return Normalize(bind(fd, address, length) as int64);
 }
 
@@ -124,10 +127,13 @@ pub func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
 /// @see https://rux-lang.dev/docs/api/macos/socket#listen
 /// @see https://keith.github.io/xcode-man-pages/listen.2.html
 pub func Listen(fd: FileDescriptor, backlog: int32) -> int64 {
-    return Normalize(listen(fd, backlog) as int64);
+    // Safety: listen takes a descriptor number and a backlog, and the system validates both.
+    return Normalize(unsafe { listen(fd, backlog) } as int64);
 }
 
 /// Accepts a waiting connection as a new socket.
+/// Safety: `address` and `length` must be null together, or `length` must be writable and `address` writable for the
+/// `*length` bytes it states.
 /// @param fd the listening socket
 /// @param address receives the peer's address, or null
 /// @param length the address buffer's size, then the address's, or null
@@ -135,11 +141,12 @@ pub func Listen(fd: FileDescriptor, backlog: int32) -> int64 {
 /// @returns the new descriptor, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#accept4
 /// @see https://keith.github.io/xcode-man-pages/accept.2.html
-pub func Accept4(fd: FileDescriptor, address: *var opaque, length: *var uint32, flags: int32) -> int64 {
+pub unsafe func Accept4(fd: FileDescriptor, address: *var opaque, length: *var uint32, flags: int32) -> int64 {
     return Normalize(accept(fd, address, length) as int64);
 }
 
 /// Sends bytes on a socket, to `address` when it is not connected.
+/// Safety: `buffer` must be readable for `count` bytes, and a non-null `address` readable for `length` bytes.
 /// @param fd the socket
 /// @param buffer the bytes
 /// @param count how many
@@ -149,11 +156,14 @@ pub func Accept4(fd: FileDescriptor, address: *var opaque, length: *var uint32, 
 /// @returns the bytes sent, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#sendto
 /// @see https://keith.github.io/xcode-man-pages/sendto.2.html
-pub func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: int32, address: *opaque, length: uint32) -> int64 {
+pub unsafe func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: int32, address: *opaque,
+                       length: uint32) -> int64 {
     return Normalize(sendto(fd, buffer, count, flags, address, length) as int64);
 }
 
 /// Receives bytes from a socket, and where they came from.
+/// Safety: `buffer` must be writable for `count` bytes. `address` and `length` must be null together, or `length` must
+/// be writable and `address` writable for the `*length` bytes it states.
 /// @param fd the socket
 /// @param buffer receives the bytes
 /// @param count how many fit
@@ -163,7 +173,8 @@ pub func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: int32, 
 /// @returns the bytes received, zero once a stream's peer closed it, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#receivefrom
 /// @see https://keith.github.io/xcode-man-pages/recvfrom.2.html
-pub func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint, flags: int32, address: *var opaque, length: *var uint32) -> int64 {
+pub unsafe func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint, flags: int32, address: *var opaque,
+                            length: *var uint32) -> int64 {
     return Normalize(recvfrom(fd, buffer, count, flags, address, length) as int64);
 }
 
@@ -174,10 +185,12 @@ pub func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint, flags
 /// @see https://rux-lang.dev/docs/api/macos/socket#shutdown
 /// @see https://keith.github.io/xcode-man-pages/shutdown.2.html
 pub func Shutdown(fd: FileDescriptor, how: int32) -> int64 {
-    return Normalize(shutdown(fd, how) as int64);
+    // Safety: shutdown takes a descriptor number and a direction, and the system validates both.
+    return Normalize(unsafe { shutdown(fd, how) } as int64);
 }
 
 /// Sets a socket option.
+/// Safety: `value` must be readable for `length` bytes.
 /// @param fd the socket
 /// @param level the option's level, such as `SOL_SOCKET`
 /// @param name the option
@@ -186,29 +199,32 @@ pub func Shutdown(fd: FileDescriptor, how: int32) -> int64 {
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#setsocketoption
 /// @see https://keith.github.io/xcode-man-pages/setsockopt.2.html
-pub func SetSocketOption(fd: FileDescriptor, level: int32, name: int32, value: *opaque, length: uint32) -> int64 {
+pub unsafe func SetSocketOption(fd: FileDescriptor, level: int32, name: int32, value: *opaque,
+                                length: uint32) -> int64 {
     return Normalize(setsockopt(fd, level, name, value, length) as int64);
 }
 
 /// Reads a socket's local address.
+/// Safety: `length` must be writable, and `address` writable for the `*length` bytes it states.
 /// @param fd the socket
 /// @param address receives the address
 /// @param length the buffer's size, then the address's
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#getsocketname
 /// @see https://keith.github.io/xcode-man-pages/getsockname.2.html
-pub func GetSocketName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
+pub unsafe func GetSocketName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
     return Normalize(getsockname(fd, address, length) as int64);
 }
 
 /// Reads the address of a connected socket's peer.
+/// Safety: `length` must be writable, and `address` writable for the `*length` bytes it states.
 /// @param fd the socket
 /// @param address receives the address
 /// @param length the buffer's size, then the address's
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/socket#getpeername
 /// @see https://keith.github.io/xcode-man-pages/getpeername.2.html
-pub func GetPeerName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
+pub unsafe func GetPeerName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
     return Normalize(getpeername(fd, address, length) as int64);
 }
 

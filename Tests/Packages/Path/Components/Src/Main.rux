@@ -79,7 +79,7 @@ func Main() -> int {
     Assert(buffer.Length() == 5, "with separators supplied between them");
     Assert(Walk(buffer.AsPath(), a, b, c, 3), "and the buffer walks as what was pushed");
 
-    let separatorAt = buffer.AsPath().AsView().Units().data[1];
+    let separatorAt = buffer.AsPath().AsView().Units()[1];
     Assert(IsSeparator(separatorAt), "the supplied separator is the platform's");
 
     let absolute = absoluteOwned.View();

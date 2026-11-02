@@ -74,7 +74,8 @@ func Main() -> int {
     let second: *var int = @Count;
     Assert(first == second, "every address of a thread-local variable is the same within a thread");
     Assert(first as uint % alignof(int) == 0u, "a thread-local variable is aligned");
-    *first = 100;
+    // Safety: `first` is `@Count`, this thread's thread-local variable, and this thread is running.
+    unsafe { *first = 100; }
     Assert(Count == 100, "a write through the address writes the variable");
 
     // Nested modules.

@@ -94,7 +94,7 @@ Type arguments are always explicit — Rux does not infer them for free function
 import Algorithms::{ Reverse, Unique };
 
 var numbers: int32[3] = [3, 1, 1];
-let view = (@numbers[0])[..3];
+let view = numbers[..3];
 Reverse<int32>(view);
 
 // Unique compacts the survivors toward the front and returns how many are
@@ -108,7 +108,7 @@ A fixed array supplies a writable view directly through range indexing:
 import Algorithms::Rotate;
 
 var values: int32[5] = [1, 2, 3, 4, 5];
-let view = (@values[0])[..5];
+let view = values[..5];
 Rotate<int32>(view, 2);
 ```
 
@@ -160,7 +160,7 @@ func IsEven(value: int32) -> bool { return value % 2 == 0; }
 func Add(total: int32, value: int32) -> int32 { return total + value; }
 
 var values: int32[5] = [1, 2, 3, 4, 5];
-let view = (@values[0])[..5];
+let view = values[..5];
 let evens = CountWhere<int32>(view, IsEven);
 let sum = Fold<int32, int32>(view, 0, Add);
 let boundary = Partition<int32>(view, IsEven);
@@ -195,7 +195,7 @@ func ById(a: Task, b: Task) -> Ordering {
 var tasks: Task[3] = [Task { priority: 3, id: 40 },
                       Task { priority: 1, id: 50 },
                       Task { priority: 2, id: 30 }];
-let view = (@tasks[0])[..3];
+let view = tasks[..3];
 
 SortBy<Task>(view, ByPriority);
 SortBy<Task>(view, ById);

@@ -92,8 +92,10 @@ pub func CompareSlice(left: char8[..], right: char8[..]) -> Ordering {
     let shared = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shared {
-        if left.data[index] < right.data[index] { return Ordering::Less; }
-        if left.data[index] > right.data[index] { return Ordering::Greater; }
+        // Safety: `index < shared`, the shorter of the two lengths, so both slices hold an element there.
+        if unsafe { left.data[index] < right.data[index] } { return Ordering::Less; }
+        // Safety: `index < shared` still, so both slices hold an element there.
+        if unsafe { left.data[index] > right.data[index] } { return Ordering::Greater; }
         index++;
     }
     if left.length < right.length { return Ordering::Less; }

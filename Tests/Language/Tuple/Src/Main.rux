@@ -75,7 +75,8 @@ func Main() -> int {
     Assert(holder.pair.0 == 9i32 && holder.pair.1, "Expected a tuple literal to be stored into a field");
     Assert(holder.values[0] == 5i32 && holder.values[1] == 6i32, "Expected an array literal to be stored into a field");
     let place: *var (int32, bool) = @holder.pair;
-    *place = (7i32, false);
+    // Safety: `place` is `@holder.pair`, a field of a live local.
+    unsafe { *place = (7i32, false); }
     Assert(holder.pair.0 == 7i32 && !holder.pair.1, "Expected a tuple literal to be stored through a pointer");
     holder.pair = (holder.pair.0 + 1i32, !holder.pair.1);
     Assert(holder.pair.0 == 8i32 && holder.pair.1, "Expected a tuple built from its own target to read the old value");

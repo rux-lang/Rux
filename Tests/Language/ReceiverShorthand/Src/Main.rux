@@ -19,11 +19,13 @@ extend Counter {
     }
 
     func Peek(*self) -> int32 {
-        return self.count;
+        // Safety: the only caller passes `@counter`, a live local of `Main`.
+        return unsafe { self.count };
     }
 
     func Reset(*var self) {
-        self.count = 0;
+        // Safety: the only caller passes `@counter`, a live local of `Main`.
+        unsafe { self.count = 0; }
     }
 
     func Into(self) -> int32 {
@@ -47,7 +49,8 @@ extend Guard {
     func =(&var self, other: &Guard);
 
     func ~Guard(&var self) {
-        self.log.drops += 1;
+        // Safety: the only `Guard` stores `@log`, a local of `Main` that outlives it.
+        unsafe { self.log.drops += 1; }
     }
 }
 

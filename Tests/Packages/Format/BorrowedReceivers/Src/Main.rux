@@ -20,7 +20,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
-    var writer = BufferWriter((@storage[0])[..192]);
+    var writer = BufferWriter(storage[..192]);
     Assert(Succeeded(value.WriteDisplay(writer, spec)), "a constrained borrowed receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
@@ -31,7 +31,7 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 
 func Inspected<T: Debug>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
-    var writer = BufferWriter((@storage[0])[..192]);
+    var writer = BufferWriter(storage[..192]);
     Assert(Succeeded(value.WriteDebug(writer, spec)), "a constrained borrowed debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
@@ -121,7 +121,8 @@ func Main() -> int {
     Shown<char64>(wide, plain, "😀");
     Inspected<char64>(wide, plain, "'😀'");
     var invalidBits: uint64 = 0x100000041;
-    let invalidWide = *((@invalidBits) as *char64);
+    // Safety: `invalidBits` is a live local `uint64`, the same size as `char64`, so the read stays inside it.
+    let invalidWide = unsafe { *((@invalidBits) as *char64) };
     Shown<char64>(invalidWide, plain, "�");
     Inspected<char64>(invalidWide, plain, "'\\u{0000000100000041}'");
     let hex: uint32 = 255;
@@ -134,7 +135,7 @@ func Main() -> int {
 
 func Direct() {
     var storage: char8[192];
-    var writer = BufferWriter((@storage[0])[..192]);
+    var writer = BufferWriter(storage[..192]);
     let plain = FormatSpec::Plain();
     var number: int32 = -71;
     let borrowed: &var int32 = number;

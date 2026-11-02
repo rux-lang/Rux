@@ -98,7 +98,8 @@ pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
 /// @returns the bytes' hash under that seed
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-slice
 pub func HashSlice(text: char8[..], low: uint64, high: uint64) -> uint64 {
-    return SipHash24Of(text.data as *byte, text.length, low, high);
+    // Safety: `char8` and `byte` are both one-byte integers, so the slice's characters read as its bytes.
+    return SipHash24Of(unsafe { text.data as *byte }, text.length, low, high);
 }
 
 /// Whether two `uint` keys are the same.
@@ -167,29 +168,39 @@ pub func EqualsChar8(left: char8, right: char8) -> bool {
 pub func EqualsSlice(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
     let length = left.length;
-    let first = left.data as *byte;
-    let second = right.data as *byte;
+    // Safety: `char8` and `byte` are both one-byte integers, so the slice's characters read as its bytes.
+    let first = unsafe { left.data as *byte };
+    // Safety: as above, a run of `char8` reads as the same run of bytes.
+    let second = unsafe { right.data as *byte };
     if length >= 8 {
         var offset: uint = 0;
         while length - offset > 8 {
-            if SipWord(first + offset) != SipWord(second + offset) { return false; }
+            // Safety: `offset + 8 < length`, checked by the loop, so the eight bytes at `offset` lie inside both
+            // slices, whose lengths are equal.
+            if unsafe { SipWord(first + offset) != SipWord(second + offset) } { return false; }
             offset += 8;
         }
-        return SipWord(first + (length - 8)) == SipWord(second + (length - 8));
+        // Safety: `length >= 8`, checked above, so the last eight bytes lie inside both slices.
+        return unsafe { SipWord(first + (length - 8)) == SipWord(second + (length - 8)) };
     }
     if length >= 4 {
-        return Quarter(first) == Quarter(second) && Quarter(first + (length - 4)) == Quarter(second + (length - 4));
+        // Safety: `length >= 4`, checked above, so the first and the last four bytes lie inside both slices.
+        return unsafe {
+            Quarter(first) == Quarter(second) && Quarter(first + (length - 4)) == Quarter(second + (length - 4))
+        };
     }
     var index: uint = 0;
     while index < length {
-        if *(first + index) != *(second + index) { return false; }
+        // Safety: `index < length`, checked by the loop, and both slices hold `length` bytes.
+        if unsafe { *(first + index) != *(second + index) } { return false; }
         index++;
     }
     return true;
 }
 
 // The four bytes at `bytes` as a word, least significant byte first; assembled byte by byte, so any address will do.
-func Quarter(bytes: *byte) -> uint32 {
+// Safety: `bytes` must be readable for four bytes.
+unsafe func Quarter(bytes: *byte) -> uint32 {
     var value: uint32 = 0;
     var index: uint = 0;
     while index < 4 {

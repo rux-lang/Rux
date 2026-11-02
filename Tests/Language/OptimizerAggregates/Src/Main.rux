@@ -29,14 +29,16 @@ func Rotate(limit: int) -> int64 {
     return sum;
 }
 
-func Inspect(value: *Pair) -> int8 {
+// Safety: `value` must point at a live `Pair`, whose first byte is its `int8` field `small`.
+unsafe func Inspect(value: *Pair) -> int8 {
     return *(value as *int8);
 }
 
 func Escaped(input: int64) -> int64 {
     let first = Pair { small: 3i8, large: input };
     let second = first;
-    return second.large + (Inspect(@second) as int64);
+    // Safety: `second` is a live local `Pair`.
+    return second.large + (unsafe { Inspect(@second) } as int64);
 }
 
 func Main() -> int {

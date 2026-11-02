@@ -77,7 +77,8 @@ func AtLeast<T>(a: T, b: T) -> bool {
 // Counts how often it is called, so a derived operator can be shown to
 // evaluate each operand exactly once.
 func Count(counter: *var int32, value: int32) -> Keyed {
-    *counter += 1;
+    // Safety: every caller passes `@evaluations`, a live local.
+    unsafe { *counter += 1; }
     return Keyed { key: value, origin: 0 };
 }
 

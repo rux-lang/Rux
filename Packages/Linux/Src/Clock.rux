@@ -18,12 +18,12 @@ pub const ClockMonotonic: int32 = 1;
 /// Reads `clockId` into `time`.
 /// `clockId` is read by value; `time` is borrowed and written. Returns zero, or a negative error number — `EINVAL`
 /// for a clock this kernel does not have.
-/// `time` must be non-null and writable.
+/// Safety: `time` must be non-null and writable.
 /// @param clockId which clock to read
 /// @param time receives the reading
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-time
-pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
+pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
     return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
 }
 
@@ -33,12 +33,13 @@ pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 /// A signal interrupts the wait and reports `EINTR` with the unslept time in `remaining`, which is what makes the
 /// second argument worth passing: resuming means calling again with what came back, not with the original request.
 /// The wait is against `ClockRealtime` but is not affected by the clock being set.
-/// `request` must be non-null, and its nanoseconds must be under one second or the call reports `EINVAL`.
+/// Safety: `request` must be non-null and readable, and a non-null `remaining` must be writable. The nanoseconds of
+/// `request` must be under one second or the call reports `EINVAL`.
 /// @param request how long to wait
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#nanosleep
-pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
+pub unsafe func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 
@@ -63,12 +64,12 @@ pub const TimerAbsolute: int32 = 1;
 /// Reads the resolution of `clockId` into `resolution`.
 /// Returns zero, or a negative error number. The resolution is the granularity the clock advances by, which is not
 /// the cost of reading it and not a promise about accuracy.
-/// `resolution` must be non-null and writable.
+/// Safety: `resolution` must be non-null and writable.
 /// @param clockId which clock to describe
 /// @param resolution receives the granularity
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-resolution
-pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
+pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
     return Syscall2(SysClockGetRes, (clockId as int64) as uint64, resolution as uint64);
 }
 
@@ -78,14 +79,14 @@ pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 
 /// its error positively rather than negatively, which is the kernel's inconsistency and not this binding's.
 /// An absolute wait is what a loop should use: a relative wait restarted after a signal drifts, because the time
 /// spent handling the signal is not counted.
-/// `request` must be non-null.
+/// Safety: `request` must be non-null and readable, and a non-null `remaining` must be writable.
 /// @param clockId which clock to wait against
 /// @param flags zero for a relative wait, or `TimerAbsolute` for a deadline
 /// @param request how long to wait, or when to wake
 /// @param remaining receives the unslept time for a relative wait, and may be null
 /// @returns zero, or a positive error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-nanosleep
-pub func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
+pub unsafe func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall4(SysClockNanosleep, (clockId as int64) as uint64, (flags as int64) as uint64,
                     request as uint64, remaining as uint64);
 }

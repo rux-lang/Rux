@@ -25,12 +25,14 @@ struct Counted {
 
 extend Counted {
     func Clone(&self) -> Counted {
-        self.counter.clones = self.counter.clones + 1;
+        // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Counted`.
+        unsafe { self.counter.clones = self.counter.clones + 1; }
         return Counted { counter: self.counter, id: self.id };
     }
 
     func ~Counted(&var self) {
-        self.counter.drops = self.counter.drops + 1;
+        // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Counted`.
+        unsafe { self.counter.drops = self.counter.drops + 1; }
     }
 }
 
@@ -71,28 +73,35 @@ func LoopOverOwning(counter: *var Counter) {
                              Counted { counter: counter, id: 3 }];
     var sum: int32 = 0;
     for item in ReferenceIterator<Counted>(items[..]) {
-        sum = sum + item.id;
+        // Safety: the reference iterator yields pointers into `items`, which is live for the whole loop.
+        sum = sum + unsafe { item.id };
     }
     Assert(sum == 6, "a reference iterator visits every element");
-    Assert(counter.clones == 0 && counter.drops == 0, "visiting in place copies and destroys nothing");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.clones == 0 && counter.drops == 0 }, "visiting in place copies and destroys nothing");
 
     for item in ReferenceIterator<Counted>(items[..]) {
-        let copy = (*item).Clone();
+        // Safety: the reference iterator yields pointers into `items`, which is live for the whole loop.
+        let copy = unsafe { (*item).Clone() };
         if copy.id == 2 {
             break;
         }
     }
-    Assert(counter.clones == 2 && counter.drops == 2, "each pass clones once and leaving destroys that pass's clone");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    let afterBreak = unsafe { counter.clones == 2 && counter.drops == 2 };
+    Assert(afterBreak, "each pass clones once and leaving destroys that pass's clone");
 
     for item in ReferenceIterator<Counted>(items[1..]) {
-        let copy = (*item).Clone();
+        // Safety: the reference iterator yields pointers into `items`, which is live for the whole loop.
+        let copy = unsafe { (*item).Clone() };
         if copy.id == 2 {
             continue;
         }
         sum = sum + copy.id;
     }
     Assert(sum == 9, "continue skips to the next element");
-    Assert(counter.clones == 4 && counter.drops == 4, "continuing destroys that pass's clone");
+    // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
+    Assert(unsafe { counter.clones == 4 && counter.drops == 4 }, "continuing destroys that pass's clone");
 }
 
 func Main() -> int {
@@ -109,13 +118,15 @@ func Main() -> int {
     texts.Push(move b) catch { else => return 4 };
     var bytes: uint = 0;
     for text in texts.References() {
-        bytes = bytes + (*text).Bytes().length;
+        // Safety: the vector's reference iterator yields pointers to its live elements while `texts` is unchanged.
+        bytes = bytes + unsafe { (*text).Bytes().length };
     }
     Assert(bytes == 10u, "every string is visited");
     let words: String[2] = [String::FromBytes(SystemAllocator(), "one") catch { else => return 5 },
                             String::FromBytes(SystemAllocator(), "two") catch { else => return 6 }];
     for word in ReferenceIterator<String>(words[..]) {
-        bytes = bytes + (*word).Bytes().length;
+        // Safety: the reference iterator yields pointers into `words`, which is live for the whole loop.
+        bytes = bytes + unsafe { (*word).Bytes().length };
     }
     Assert(bytes == 16u, "an array of strings is visited");
     return 0;

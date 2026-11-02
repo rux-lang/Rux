@@ -195,7 +195,8 @@ func Main() -> int {
 
     // The view renders whole groups across its internal blocks, and pads to a width.
     let foobar = "foobar";
-    let bytes = (foobar.data as *byte)[..6];
+    // Safety: `foobar` is a literal of six bytes, and `char8` and `byte` have the same size.
+    let bytes = unsafe { (foobar.data as *byte)[..6] };
     if !Shown(bytes[..1], Base64Variant::Standard, "", "Zg==") { return 31; }
     if !Shown(bytes[..1], Base64Variant::UrlUnpadded, ">4", "  Zg") { return 32; }
     var many: byte[150] = [0; 150];

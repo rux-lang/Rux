@@ -47,11 +47,13 @@ func UnwrapCell<T>(cell: Cell<T>) -> T {
 }
 
 func Store<T>(values: View<T>, index: uint, value: T) {
-    values.data[index] = value;
+    // Safety: the only caller passes a view of `storage`, a two-element local, with `index` 1.
+    unsafe { values.data[index] = value; }
 }
 
 func Reload<T>(values: View<T>, index: uint) -> T {
-    let current = values.data[index];
+    // Safety: the only caller passes a view of `storage`, a two-element local, with `index` 1.
+    let current = unsafe { values.data[index] };
     return current;
 }
 

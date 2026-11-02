@@ -18,7 +18,8 @@ extend CountingSource : EntropySource {
     func Fill(self: &var CountingSource, buffer: *var opaque, length: uint) -> ! EntropyError {
         self.requests = self.requests + 1;
         if self.failing { fail EntropyError::Failed; }
-        let bytes = buffer as *var byte;
+        // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes.
+        let bytes = unsafe { (buffer as *var byte)[..length] };
         var index: uint = 0;
         while index < length {
             bytes[index] = (self.next % 256) as byte;

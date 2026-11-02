@@ -42,38 +42,51 @@ func Main() -> int {
 
     // The calendar structure the runtime fills, read back through the same declaration.
     var now: time_t = 0;
-    now = time(@now);
+    // Safety: `now` is a local `time_t` that `time` writes and `gmtime` reads.
+    now = unsafe { time(@now) };
     Assert(now > 1700000000, "time reports a plausible epoch value");
-    let calendar = gmtime(@now);
+    // Safety: `now` is a local holding the valid `time_t` stored above.
+    let calendar = unsafe { gmtime(@now) };
     Assert(calendar != null, "gmtime accepts it");
-    Assert(calendar.tm_year >= 125, "the year is at least 2025 counted from 1900");
-    Assert(calendar.tm_mon >= 0 && calendar.tm_mon <= 11, "the month is in range");
-    Assert(calendar.tm_mday >= 1 && calendar.tm_mday <= 31, "the day of the month is in range");
-    Assert(calendar.tm_hour >= 0 && calendar.tm_hour <= 23, "the hour is in range");
-    Assert(calendar.tm_min >= 0 && calendar.tm_min <= 59, "the minute is in range");
-    Assert(calendar.tm_sec >= 0 && calendar.tm_sec <= 60, "the second is in range, leap second included");
-    Assert(calendar.tm_wday >= 0 && calendar.tm_wday <= 6, "the day of the week is in range");
-    Assert(calendar.tm_yday >= 0 && calendar.tm_yday <= 365, "the day of the year is in range");
+    // Safety: `calendar` is the non-null static `tm` that `gmtime` returned, and no other C time call ran since.
+    unsafe {
+        Assert(calendar.tm_year >= 125, "the year is at least 2025 counted from 1900");
+        Assert(calendar.tm_mon >= 0 && calendar.tm_mon <= 11, "the month is in range");
+        Assert(calendar.tm_mday >= 1 && calendar.tm_mday <= 31, "the day of the month is in range");
+        Assert(calendar.tm_hour >= 0 && calendar.tm_hour <= 23, "the hour is in range");
+        Assert(calendar.tm_min >= 0 && calendar.tm_min <= 59, "the minute is in range");
+        Assert(calendar.tm_sec >= 0 && calendar.tm_sec <= 60, "the second is in range, leap second included");
+        Assert(calendar.tm_wday >= 0 && calendar.tm_wday <= 6, "the day of the week is in range");
+        Assert(calendar.tm_yday >= 0 && calendar.tm_yday <= 365, "the day of the year is in range");
+    }
 
     // Round-tripping through mktime proves the whole structure was read, not just its first field.
-    var copy = *calendar;
-    let restored = mktime(@copy);
+    // Safety: `calendar` is still the non-null static `tm` from `gmtime`, unchanged by any C time call since.
+    var copy = unsafe { *calendar };
+    // Safety: `copy` is a local `tm` that `mktime` reads and normalizes in place.
+    let restored = unsafe { mktime(@copy) };
     Assert(restored != -1, "the calendar structure converts back to a time");
-    Assert(difftime(restored, restored) == 0.0, "difftime of a time with itself is zero");
+    // Safety: `difftime` takes two plain `time_t` values and reads no memory.
+    Assert(unsafe { difftime(restored, restored) } == 0.0, "difftime of a time with itself is zero");
 
     // clock counts from somewhere and does not go backwards; the width is what the assertion above pinned.
-    let first = clock();
+    // Safety: `clock` takes no arguments and reads no caller memory.
+    let first = unsafe { clock() };
     var spin: int64 = 0;
     while spin < 2000000 {
         spin = spin + 1;
     }
-    let second = clock();
+    // Safety: `clock` takes no arguments and reads no caller memory.
+    let second = unsafe { clock() };
     Assert(second >= first, "the processor clock does not run backwards");
 
     // The math additions, and the two constants that are values rather than tests.
-    Assert(scalbln(1.0, 3) == 8.0, "scalbln scales by a power of two");
-    Assert(scalbln(1.5, -1) == 0.75, "including a negative exponent");
-    Assert(scalblnf(1.0f32, 3) == 8.0f32, "and the float form does the same");
+    // Safety: the `scalbln` forms take and return plain numbers and touch no memory.
+    unsafe {
+        Assert(scalbln(1.0, 3) == 8.0, "scalbln scales by a power of two");
+        Assert(scalbln(1.5, -1) == 0.75, "including a negative exponent");
+        Assert(scalblnf(1.0f32, 3) == 8.0f32, "and the float form does the same");
+    }
     Assert(IsInfinite<float64>(HUGE_VAL), "HUGE_VAL is an infinity");
     Assert(IsInfinite<float32>(HUGE_VALF), "and so is its float form");
     Assert(IsInfinite<float32>(INFINITY), "INFINITY is one too");

@@ -17,7 +17,8 @@ const Blake3DeriveKeyContext: uint32 = 32;
 const Blake3DeriveKeyMaterial: uint32 = 64;
 
 // The thirty-two byte key, read as eight little-endian words.
-func Blake3KeyWords(key: char8[..], words: *var uint32) {
+// Safety: `words` must address eight writable words.
+unsafe func Blake3KeyWords(key: char8[..], words: *var uint32) {
     var index: uint = 0;
     while index < 8 {
         var word: uint32 = 0;
@@ -45,7 +46,8 @@ extend Blake3 {
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#new-keyed
     pub func NewKeyed(key: char8[..]) -> Blake3 {
         var words: uint32[8];
-        Blake3KeyWords(key, @words[0]);
+        // Safety: `words` is a local array of eight words.
+        unsafe { Blake3KeyWords(key, @words[0]); }
         return Blake3::Start(words, Blake3KeyedHash);
     }
 
@@ -62,9 +64,10 @@ extend Blake3 {
         var contextHasher = Blake3::Start(Blake3InitialValue, Blake3DeriveKeyContext);
         contextHasher.Update(context);
         var contextKey: char8[32];
-        contextHasher.Finish((@contextKey[0])[..32]);
+        contextHasher.Finish(contextKey[..]);
         var words: uint32[8];
-        Blake3KeyWords((@contextKey[0])[..32], @words[0]);
+        // Safety: `words` is a local array of eight words.
+        unsafe { Blake3KeyWords(contextKey[..], @words[0]); }
         return Blake3::Start(words, Blake3DeriveKeyMaterial);
     }
 }

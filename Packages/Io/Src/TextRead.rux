@@ -74,7 +74,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             let borrowed = held.length < 4 ? held.length : 4;
             var extra: uint = 0;
             while extra < borrowed {
-                joined[carryLength + extra] = held.data[extra];
+                // Safety: `extra` is below `borrowed`, which is at most `held.length`.
+                joined[carryLength + extra] = unsafe { held.data[extra] };
                 extra = extra + 1;
             }
             var width: uint = 0;
@@ -93,7 +94,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 // Still short — the source is trickling bytes. Take them into the carry and ask again.
                 var taken: uint = 0;
                 while taken < borrowed {
-                    carry[carryLength] = held.data[taken];
+                    // Safety: `taken` is below `borrowed`, which is at most `held.length`.
+                    carry[carryLength] = unsafe { held.data[taken] };
                     carryLength = carryLength + 1;
                     taken = taken + 1;
                 }
@@ -121,7 +123,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             // The previous chunk ended with a carriage return; whether it was an ending depends on what
             // arrives next. A line feed finishes the line; anything else makes the return content.
             pendingCr = false;
-            if held.data[0] == c8'\n' {
+            // Safety: `Fill` succeeded, so `held` has at least one byte.
+            if unsafe { held.data[0] } == c8'\n' {
                 reader.Consume(1);
                 if failure != none {
                     builder.Clear();
@@ -147,7 +150,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             var sawFeed = false;
             var index: uint = 0;
             while index < held.length && !sawFeed {
-                if held.data[index] == c8'\n' {
+                // Safety: `index` is below `held.length`, the loop condition.
+                if unsafe { held.data[index] } == c8'\n' {
                     lineEnd = index;
                     sawFeed = true;
                 }
@@ -155,7 +159,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             }
             var content = lineEnd;
             var heldBackCr = false;
-            if content > 0 && held.data[content - 1] == c8'\r' {
+            // Safety: the read runs only when `content` is positive, and `content` is at most `held.length`.
+            if content > 0 && unsafe { held.data[content - 1] } == c8'\r' {
                 if sawFeed {
                     content = content - 1;
                 }
@@ -167,7 +172,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             }
 
             if failure == none {
-                let piece = (held.data)[..content];
+                // Safety: `content` is at most `held.length`.
+                let piece = unsafe { (held.data)[..content] };
                 var probe = content;
                 var valid = true;
                 var reason = Utf8Error::InvalidStart;
@@ -185,7 +191,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                     settled = probe;
                     var stash = probe;
                     while stash < content {
-                        carry[carryLength] = held.data[stash];
+                        // Safety: `stash` is below `content`, which is at most `held.length`.
+                        carry[carryLength] = unsafe { held.data[stash] };
                         carryLength = carryLength + 1;
                         stash = stash + 1;
                     }
@@ -195,7 +202,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 }
 
                 if failure == none {
-                    let settledPiece = (held.data)[..settled];
+                    // Safety: `settled` is at most `content`, which is at most `held.length`.
+                    let settledPiece = unsafe { (held.data)[..settled] };
                     if appended + settled > limit {
                         failure = IoErrorKind::LimitExceeded;
                     }

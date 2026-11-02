@@ -14,7 +14,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] {
+        if actual[index] != expected[index] {
             return false;
         }
         index = index + 1;
@@ -24,14 +24,14 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 // The float8 a bit pattern encodes, read through a pointer as Format reads the other way.
 func FromBits(bits: uint8) -> float8 {
-    let address = (@bits) as *float8;
-    return *address;
+    // Safety: `bits` is a live local `uint8`, the same size as `float8`, so the read stays inside it.
+    return unsafe { *((@bits) as *float8) };
 }
 
 // Whether the value's `Display` text is `expected`, with `prefix` in front of it.
 func Shows(value: float8, prefix: char8[..], expected: char8[..]) -> bool {
     var storage: char8[64];
-    var cursor = ByteCursor((@storage[0])[..64]);
+    var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
     if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
@@ -45,7 +45,7 @@ func Shows(value: float8, prefix: char8[..], expected: char8[..]) -> bool {
 // Whether `format` applied to the value writes `expected`.
 func Formats(format: char8[..], value: float8, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var cursor = ByteCursor((@storage[0])[..64]);
+    var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     if Failed(WriteFormat(writer, format, value)) {
         return false;
@@ -64,7 +64,7 @@ func CheckTable() -> int {
         var start: uint = 0;
         while start < texts.length {
             var end = start;
-            while end < texts.length && texts.data[end] != c8' ' {
+            while end < texts.length && texts[end] != c8' ' {
                 end = end + 1;
             }
             let expected = texts[start..end];
@@ -125,7 +125,7 @@ func Main() -> int {
 
     // Debug is the same text.
     var storage: char8[64];
-    var cursor = ByteCursor((@storage[0])[..64]);
+    var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let debugged: Debug = 0.34375f8;
     if Failed(debugged.WriteDebug(writer, FormatSpec::Plain())) { return 50; }

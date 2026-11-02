@@ -157,7 +157,9 @@ extend Crc32 : Hasher {
         if length == 0 { return; }
         var index: uint = 0;
         while index < length {
-            let slot = ((self.register ^ (*(bytes + index) as uint32)) & 0xFF) as uint;
+            // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
+            // bytes.
+            let slot = ((self.register ^ (unsafe { *(bytes + index) } as uint32)) & 0xFF) as uint;
             self.register = Crc32Table[slot] ^ (self.register >> 8);
             index++;
         }
@@ -224,7 +226,9 @@ extend Crc32c : Hasher {
         if length == 0 { return; }
         var index: uint = 0;
         while index < length {
-            let slot = ((self.register ^ (*(bytes + index) as uint32)) & 0xFF) as uint;
+            // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
+            // bytes.
+            let slot = ((self.register ^ (unsafe { *(bytes + index) } as uint32)) & 0xFF) as uint;
             self.register = Crc32cTable[slot] ^ (self.register >> 8);
             index++;
         }
@@ -244,12 +248,12 @@ extend Crc32c : Hasher {
 /// `bytes` is borrowed and read; `length` is read by value. A zero length gives zero, the CRC of the empty message,
 /// and is the one case in which `bytes` may be null.
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-/// `bytes` must be readable for `length` bytes.
+/// Safety: `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes
 /// @returns their CRC-32 checksum
 /// @see https://rux-lang.dev/docs/api/hash/crc32#crc32-of
-pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
+pub unsafe func Crc32Of(bytes: *byte, length: uint) -> uint32 {
     var checksum = Crc32();
     checksum.Write(bytes, length);
     return checksum.Value();
@@ -259,12 +263,12 @@ pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
 /// `bytes` is borrowed and read; `length` is read by value. A zero length gives zero, and is the one case in which
 /// `bytes` may be null.
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-/// `bytes` must be readable for `length` bytes.
+/// Safety: `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes
 /// @returns their CRC-32C checksum
 /// @see https://rux-lang.dev/docs/api/hash/crc32c#crc32c-of
-pub func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
+pub unsafe func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
     var checksum = Crc32c();
     checksum.Write(bytes, length);
     return checksum.Value();

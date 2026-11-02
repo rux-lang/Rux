@@ -16,18 +16,26 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter,
 
 // One scalar out of the UTF-16 units at `index`: a unit outside the surrogate range, or a high-low pair.
 // Answers false for a low half first and for a high half with no partner after it, leaving `scalar` holding the
-// unit itself so a caller that preserves rather than replaces has it.
+// unit itself so a caller that preserves rather than replaces has it. `index` must be below `units.length`, and
+// `scalar` and `width` must be non-null and writable.
 func DecodeUtf16(units: char16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
-    let unit = units.data[index] as uint32;
-    *scalar = unit;
-    *width = 1;
+    let unit = units[index] as uint32;
+    // Safety: the documented contract makes `scalar` and `width` non-null pointers to the caller's writable values.
+    unsafe {
+        *scalar = unit;
+        *width = 1;
+    }
     if unit < 0xD800 || unit > 0xDFFF { return true; }
     if unit >= 0xDC00 { return false; }
     if index + 1 >= units.length { return false; }
-    let low = units.data[index + 1] as uint32;
+    // Safety: `index + 1` is below `units.length`, checked above.
+    let low = unsafe { units.data[index + 1] } as uint32;
     if low < 0xDC00 || low > 0xDFFF { return false; }
-    *scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
-    *width = 2;
+    // Safety: the documented contract makes `scalar` and `width` non-null pointers to the caller's writable values.
+    unsafe {
+        *scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+        *width = 2;
+    }
     return true;
 }
 
@@ -58,7 +66,7 @@ extend char16[..] : Display {
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-display
     pub func WriteDisplay(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        let units = (self.data)[..self.length];
+        let units = self[..];
         var before: uint = 0;
         var after: uint = 0;
         MeasurePadding(spec, CountUtf16(units), @before, @after);
@@ -91,7 +99,7 @@ extend char16[..] : Debug {
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-debug
     pub func WriteDebug(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        let units = (self.data)[..self.length];
+        let units = self[..];
         WriteAscii(writer, c8'"')?;
         var index: uint = 0;
         while index < units.length {
@@ -120,14 +128,15 @@ extend char32[..] : Display {
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-display
     pub func WriteDisplay(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        let units = (self.data)[..self.length];
+        let units = self[..];
         var before: uint = 0;
         var after: uint = 0;
         MeasurePadding(spec, units.length, @before, @after);
         WriteFill(writer, spec, before)?;
         var index: uint = 0;
         while index < units.length {
-            let value = units.data[index] as uint32;
+            // Safety: `index` is below `units.length`, the loop condition.
+            let value = unsafe { units.data[index] } as uint32;
             if IsWideScalarValue(value as uint64) {
                 WriteScalar(writer, value as char32)?;
             }
@@ -149,11 +158,12 @@ extend char32[..] : Debug {
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-debug
     pub func WriteDebug(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        let units = (self.data)[..self.length];
+        let units = self[..];
         WriteAscii(writer, c8'"')?;
         var index: uint = 0;
         while index < units.length {
-            let value = units.data[index] as uint32;
+            // Safety: `index` is below `units.length`, the loop condition.
+            let value = unsafe { units.data[index] } as uint32;
             if IsWideScalarValue(value as uint64) {
                 WriteEscapedScalar(writer, value)?;
             }

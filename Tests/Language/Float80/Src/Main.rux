@@ -43,8 +43,11 @@ const Table: float80[4] = [Tenth, NegativeZero, Largest, Infinity];
 
 // The ten value bytes; the six above them are storage padding and not part of the value.
 func Bits(value: float80) -> uint128 {
-    let address = (@value) as *uint128;
-    return *address & ((1u128 << 80) - 1u128);
+    // Safety: `value` is a by-value parameter of 16 bytes (10 value bytes plus padding), all of them readable.
+    unsafe {
+        let address = (@value) as *uint128;
+        return *address & ((1u128 << 80) - 1u128);
+    }
 }
 
 func Same(left: float80, right: float80) -> bool {

@@ -42,13 +42,15 @@ pub func IsSignedType<T>(sample: T) -> bool {
 /// @returns true when the value does not fit the destination; `result` then holds the lossy conversion
 /// @see https://rux-lang.dev/docs/api/core/conversion#convert-checked
 pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
-    *result = value as To;
+    let converted = value as To;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `To`.
+    unsafe { *result = converted; }
     // Converting back lands on the value it started from exactly when nothing was lost on the way out — with one
     // exception, below, that the round trip cannot see.
-    if (*result as From) != value { return true; }
+    if (converted as From) != value { return true; }
     // A value and its conversion that disagree in sign came back equal only because both conversions wrapped the same
     // way: `-1` and `uint64::Max` are one bit pattern, and so are `2^63` and `int64::Min`.
-    return (value < (0 as From)) != (*result < (0 as To));
+    return (value < (0 as From)) != (converted < (0 as To));
 }
 
 /// Converts a primitive value to another primitive type, keeping whatever fits.
@@ -63,7 +65,8 @@ pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
 /// @param result receives the wrapped, truncated or rounded conversion; never null
 /// @see https://rux-lang.dev/docs/api/core/conversion#convert-wrapping
 pub func ConvertWrapping<From, To>(value: From, result: *var To) {
-    *result = value as To;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `To`.
+    unsafe { *result = value as To; }
 }
 
 /// Converts a primitive value to an integer type, clamping to that type's range instead of wrapping.
@@ -82,9 +85,13 @@ pub func ConvertWrapping<From, To>(value: From, result: *var To) {
 pub func ConvertSaturating<From, To>(value: From, result: *var To) {
     if !ConvertChecked<From, To>(value, result) { return; }
     // A NaN is not above or below the range; it is outside the ordering entirely, so neither limit is nearer.
-    if value != value {
-        *result = 0 as To;
-        return;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `To`, which
+    // `ConvertChecked` has just written.
+    unsafe {
+        if value != value {
+            *result = 0 as To;
+            return;
+        }
+        *result = value < (0 as From) ? MinimumOf<To>(*result) : MaximumOf<To>(*result);
     }
-    *result = value < (0 as From) ? MinimumOf<To>(*result) : MaximumOf<To>(*result);
 }

@@ -58,7 +58,8 @@ func Main() -> int {
     Print(c512'😀'); Separator();
     // A value no character has prints as the replacement character, at the widths past the machine word too.
     var wideBits: uint512 = (1u512 << 300) | 0x41u512;
-    Print(*((@wideBits) as *char512)); Separator();
+    // Safety: `wideBits` is a local `uint512`, as wide as a `char512`, so the retyped read stays inside it.
+    Print(unsafe { *((@wideBits) as *char512) }); Separator();
 
     var system = SystemAllocator();
     let allocator: Allocator = system;

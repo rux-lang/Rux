@@ -12,12 +12,12 @@
 /// Exchanges the values at two locations.
 /// Both are borrowed mutably and both are written. Passing the same location twice is legal and leaves it alone.
 /// Cannot fail. Runs in constant time and allocates nothing.
-/// Both pointers must be non-null and writable.
+/// Safety: both pointers must be non-null and writable.
 /// @typeParam T the element type
 /// @param left one of the two elements
 /// @param right the other
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#swap
-pub func Swap<T>(left: *var T, right: *var T) {
+pub unsafe func Swap<T>(left: *var T, right: *var T) {
     let held = *left;
     *left = *right;
     *right = held;
@@ -35,7 +35,8 @@ pub func Reverse<T>(items: var T[..]) {
     var low: uint = 0;
     var high = items.length - 1;
     while low < high {
-        Swap<T>(@items[low], @items[high]);
+        // Safety: `low < high < items.length`, so both pointers address distinct live elements of `items`.
+        unsafe { Swap<T>(@items[low], @items[high]); }
         low = low + 1;
         high = high - 1;
     }
@@ -56,8 +57,8 @@ pub func Reverse<T>(items: var T[..]) {
 pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
     if middle > items.length { return false; }
     if middle == 0 || middle == items.length { return true; }
-    Reverse<T>((items.data)[..middle]);
-    Reverse<T>((@items[middle])[..items.length - middle]);
+    Reverse<T>(items[..middle]);
+    Reverse<T>(items[middle..]);
     Reverse<T>(items);
     return true;
 }
@@ -214,7 +215,8 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
         }
         else {
             high = high - 1;
-            Swap<T>(@items[low], @items[high]);
+            // Safety: `low <= high < items.length`, so both pointers address live elements of `items`.
+            unsafe { Swap<T>(@items[low], @items[high]); }
         }
     }
     return low;

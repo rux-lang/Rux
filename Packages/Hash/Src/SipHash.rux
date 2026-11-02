@@ -166,11 +166,11 @@ extend SipHash24 {
     /// it is what to reach for when checking against one; `WithKey` is what to reach for when the key came from
     /// `Rux/Entropy` as two words.
     /// Cannot fail. Runs in constant time and allocates nothing.
-    /// `key` must be readable for sixteen bytes.
+    /// Safety: `key` must be readable for sixteen bytes.
     /// @param key sixteen key bytes, read as two little-endian words
     /// @returns a hasher keyed with them
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#with-key-bytes
-    pub func WithKeyBytes(key: *byte) -> SipHash24 {
+    pub unsafe func WithKeyBytes(key: *byte) -> SipHash24 {
         var low: uint64 = 0;
         var high: uint64 = 0;
         var index: uint = 0;
@@ -213,7 +213,9 @@ extend SipHash24 : Hasher {
             if length < wanted {
                 var index: uint = 0;
                 while index < length {
-                    self.pending[self.buffered + index] = *(bytes + index);
+                    // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for
+                    // `length` bytes.
+                    self.pending[self.buffered + index] = unsafe { *(bytes + index) };
                     index++;
                 }
                 self.buffered = self.buffered + length;
@@ -221,22 +223,29 @@ extend SipHash24 : Hasher {
             }
             var index: uint = 0;
             while index < wanted {
-                self.pending[self.buffered + index] = *(bytes + index);
+                // Safety: `index` is below `wanted`, which is at most `length`, and the `Hasher` contract requires
+                // `bytes` to be readable for `length` bytes.
+                self.pending[self.buffered + index] = unsafe { *(bytes + index) };
                 index++;
             }
-            self.state.Absorb(SipWord(@self.pending[0] as *byte));
+            // Safety: `pending` is this hasher's eight-byte array, just filled.
+            self.state.Absorb(unsafe { SipWord(@self.pending[0] as *byte) });
             self.buffered = 0;
             offset = wanted;
         }
 
         while length - offset >= 8 {
-            self.state.Absorb(SipWord(bytes + offset));
+            // Safety: `offset + 8` is at most `length`, checked by the loop, and the `Hasher` contract requires `bytes`
+            // to be readable for `length` bytes.
+            self.state.Absorb(unsafe { SipWord(bytes + offset) });
             offset = offset + 8;
         }
 
         var index: uint = 0;
         while offset + index < length {
-            self.pending[index] = *(bytes + offset + index);
+            // Safety: `offset + index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for
+            // `length` bytes.
+            self.pending[index] = unsafe { *(bytes + offset + index) };
             index++;
         }
         self.buffered = index;
@@ -270,11 +279,11 @@ extend SipHash24 : Hasher {
 /// `bytes` is borrowed and read. Assembled a byte at a time, so the answer is the same at any address on any
 /// machine: SipHash is defined on a little-endian byte stream rather than on the machine's own order.
 /// Cannot fail. Runs in constant time and allocates nothing.
-/// `bytes` must be readable for eight bytes.
+/// Safety: `bytes` must be readable for eight bytes.
 /// @param bytes eight bytes to read
 /// @returns them as a little-endian word
 /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#sip-word
-pub func SipWord(bytes: *byte) -> uint64 {
+pub unsafe func SipWord(bytes: *byte) -> uint64 {
     var value: uint64 = 0;
     var index: uint = 0;
     while index < 8 {
@@ -301,13 +310,17 @@ pub func SipHash24Of(bytes: *byte, length: uint, low: uint64, high: uint64) -> u
     var state = SipState::FromKey(low, high);
     var offset: uint = 0;
     while length - offset >= 8 {
-        state.Absorb(SipWord(bytes + offset));
+        // Safety: `offset + 8` is at most `length`, checked by the loop, and the documented contract requires `bytes`
+        // to be readable for `length` bytes.
+        state.Absorb(unsafe { SipWord(bytes + offset) });
         offset += 8;
     }
     var last: uint64 = ((length as uint64) & 0xFFu64) << 56;
     var index: uint = 0;
     while offset < length {
-        last |= (*(bytes + offset) as uint64) << ((index * 8) as uint64);
+        // Safety: `offset` is below `length`, and the documented contract requires `bytes` to be readable for `length`
+        // bytes.
+        last |= (unsafe { *(bytes + offset) } as uint64) << ((index * 8) as uint64);
         offset++;
         index++;
     }

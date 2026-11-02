@@ -35,7 +35,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -53,7 +54,8 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        // Safety: `index` is below `actual.length`, checked by the loop, which equals `expected.length`.
+        if unsafe { actual.data[index] != expected.data[index] } { return false; }
         index = index + 1;
     }
     return true;
@@ -69,7 +71,8 @@ func Occurrences(text: char8[..], needle: char8[..]) -> uint {
         var index: uint = 0;
         var matches = true;
         while index < needle.length {
-            if text.data[start + index] != needle.data[index] {
+            // Safety: `start + index < start + needle.length <= text.length`, checked by both loops.
+            if unsafe { text.data[start + index] != needle.data[index] } {
                 matches = false;
                 break;
             }
@@ -105,7 +108,8 @@ func RenderHashSet(set: &HashSet<int32>, into: var char8[..]) -> uint {
 
 func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[256];
-    var writer = BufferWriter((@storage[0])[..256]);
+    // Safety: `storage` is a local array of 256 elements.
+    var writer = BufferWriter(unsafe { (@storage[0])[..256] });
     let sink: &var TextWriter = writer;
     if Failed(WriteTreeMapDebug<int32, int32>(sink, map, spec)) { return false; }
     return Same(writer.Written(), expected);
@@ -113,7 +117,8 @@ func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8
 
 func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[256];
-    var writer = BufferWriter((@storage[0])[..256]);
+    // Safety: `storage` is a local array of 256 elements.
+    var writer = BufferWriter(unsafe { (@storage[0])[..256] });
     let sink: &var TextWriter = writer;
     if Failed(WriteTreeSetDebug<int32>(sink, set, spec)) { return false; }
     return Same(writer.Written(), expected);
@@ -121,7 +126,8 @@ func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -
 
 func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    // Safety: `storage` is a local array of 128 elements.
+    var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
     let shown: Display = error;
     if Failed(shown.WriteDisplay(sink, spec)) { return false; }
@@ -130,7 +136,8 @@ func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -
 
 func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    // Safety: `storage` is a local array of 128 elements.
+    var writer = BufferWriter(unsafe { (@storage[0])[..128] });
     let sink: &var TextWriter = writer;
     let shown: Debug = error;
     if Failed(shown.WriteDebug(sink, spec)) { return false; }
@@ -178,17 +185,22 @@ func Main() -> int {
     // separator fewer than there are entries, and each entry exactly once.
     var hashed = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
     var empty: char8[64];
-    Assert(RenderHashMap(hashed, (@empty[0])[..64]) == 2, "an empty hash map is two braces");
-    Assert(Same((@empty[0])[..2], "{}"), "and they are the right two");
+    // Safety: `empty` is a local array of 64 elements.
+    Assert(RenderHashMap(hashed, unsafe { (@empty[0])[..64] }) == 2, "an empty hash map is two braces");
+    // Safety: `empty` is a local array of 64 elements. and the rendering wrote two of them.
+    Assert(Same(unsafe { (@empty[0])[..2] }, "{}"), "and they are the right two");
 
     hashed.Insert(1i32, 10i32) catch { else => Panic("filled") };
     hashed.Insert(2i32, 20i32) catch { else => Panic("filled") };
     hashed.Insert(3i32, 30i32) catch { else => Panic("filled") };
 
     var storage: char8[128];
-    let length = RenderHashMap(hashed, (@storage[0])[..128]);
-    let shown = (@storage[0])[..length];
-    Assert(shown.data[0] == c8'{' && shown.data[length - 1] == c8'}', "a hash map is written in braces");
+    // Safety: `storage` is a local array of 128 elements.
+    let length = RenderHashMap(hashed, unsafe { (@storage[0])[..128] });
+    // Safety: `storage` is a local array of 128 elements. and the rendering wrote `length` of them.
+    let shown = unsafe { (@storage[0])[..length] };
+    // Safety: the rendering is at least the two braces, so both ends are inside it.
+    Assert(unsafe { shown.data[0] == c8'{' && shown.data[length - 1] == c8'}' }, "a hash map is written in braces");
     Assert(Occurrences(shown, ", ") == 2, "with one separator fewer than it has entries");
     Assert(Occurrences(shown, "1: 10") == 1, "and each entry exactly once");
     Assert(Occurrences(shown, "2: 20") == 1, "each");
@@ -201,8 +213,10 @@ func Main() -> int {
     // from its seed and from the displacement every insertion caused, so two maps filled in different orders can
     // differ even with the same seed. That is why the checks above count entries rather than compare strings.
     var repeat: char8[128];
-    let repeated = RenderHashMap(hashed, (@repeat[0])[..128]);
-    Assert(Same((@repeat[0])[..repeated], shown), "the same map shows the same way twice");
+    // Safety: `repeat` is a local array of 128 elements.
+    let repeated = RenderHashMap(hashed, unsafe { (@repeat[0])[..128] });
+    // Safety: `repeat` is a local array of 128 elements. and the rendering wrote `repeated` of them.
+    Assert(Same(unsafe { (@repeat[0])[..repeated] }, shown), "the same map shows the same way twice");
 
     // A larger map through the same checks, so the growth a table does partway through filling is covered rather
     // than assumed away by a map that never rehashed.
@@ -215,8 +229,10 @@ func Main() -> int {
         key = key + 1i32;
     }
     var seededStorage: char8[128];
-    let seededLength = RenderHashMap(seeded, (@seededStorage[0])[..128]);
-    let seededShown = (@seededStorage[0])[..seededLength];
+    // Safety: `seededStorage` is a local array of 128 elements.
+    let seededLength = RenderHashMap(seeded, unsafe { (@seededStorage[0])[..128] });
+    // Safety: `seededStorage` is a local array of 128 elements. and the rendering wrote `seededLength` of them.
+    let seededShown = unsafe { (@seededStorage[0])[..seededLength] };
     Assert(Occurrences(seededShown, ", ") == 8, "nine entries carry eight separators");
     key = 1i32;
     var entry: char8[8];
@@ -225,7 +241,8 @@ func Main() -> int {
         entry[1] = c8':';
         entry[2] = c8' ';
         entry[3] = (key as uint + 0x30u) as char8;
-        Assert(Occurrences(seededShown, (@entry[0])[..4]) == 1, "and each of the nine appears exactly once");
+        // Safety: `entry` is a local array of eight elements.
+        Assert(Occurrences(seededShown, unsafe { (@entry[0])[..4] }) == 1, "and each of the nine appears exactly once");
         key = key + 1i32;
     }
     Assert(seededLength == 2u + 9u * 4u + 8u * 2u, "with nothing else in the rendering at all");
@@ -233,12 +250,17 @@ func Main() -> int {
     // A hash set answers the same way.
     var members = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     var setStorage: char8[64];
-    Assert(RenderHashSet(members, (@setStorage[0])[..64]) == 2, "an empty hash set is two braces");
+    // Safety: `setStorage` is a local array of 64 elements.
+    Assert(RenderHashSet(members, unsafe { (@setStorage[0])[..64] }) == 2, "an empty hash set is two braces");
     Assert(members.Insert(11i32) catch { else => Panic("filled") }, "filled");
     Assert(members.Insert(22i32) catch { else => Panic("filled") }, "filled");
-    let setLength = RenderHashSet(members, (@setStorage[0])[..64]);
-    let setShown = (@setStorage[0])[..setLength];
-    Assert(setShown.data[0] == c8'{' && setShown.data[setLength - 1] == c8'}', "a hash set is written in braces");
+    // Safety: `setStorage` is a local array of 64 elements.
+    let setLength = RenderHashSet(members, unsafe { (@setStorage[0])[..64] });
+    // Safety: `setStorage` is a local array of 64 elements. and the rendering wrote `setLength` of them.
+    let setShown = unsafe { (@setStorage[0])[..setLength] };
+    // Safety: the rendering is at least the two braces, so both ends are inside it.
+    Assert(unsafe { setShown.data[0] == c8'{' && setShown.data[setLength - 1] == c8'}' },
+           "a hash set is written in braces");
     Assert(Occurrences(setShown, ", ") == 1, "with one separator between its two elements");
     Assert(Occurrences(setShown, "11") == 1, "and each element exactly once");
     Assert(Occurrences(setShown, "22") == 1, "each of them");
@@ -252,7 +274,8 @@ func Main() -> int {
     owning.Insert(1i32, Tracked { counter: @destroyed, tag: 1i32 }) catch { else => Panic("filled") };
 
     var ownedStorage: char8[128];
-    var ownedWriter = BufferWriter((@ownedStorage[0])[..128]);
+    // Safety: `ownedStorage` is a local array of 128 elements.
+    var ownedWriter = BufferWriter(unsafe { (@ownedStorage[0])[..128] });
     let ownedSink: &var TextWriter = ownedWriter;
     Assert(Succeeded(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain)), "a move-only map is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
@@ -263,7 +286,8 @@ func Main() -> int {
 
     // A destination that runs out of room reports it and stops.
     var small: char8[6];
-    var tight = BufferWriter((@small[0])[..6]);
+    // Safety: `small` is a local array of six elements.
+    var tight = BufferWriter(unsafe { (@small[0])[..6] });
     let tightSink: &var TextWriter = tight;
     let refused = WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain);
     let overflowed = match refused {
@@ -272,7 +296,8 @@ func Main() -> int {
     };
     Assert(overflowed, "an ordered map reports a destination without room");
 
-    var tighter = BufferWriter((@small[0])[..6]);
+    // Safety: `small` is a local array of six elements.
+    var tighter = BufferWriter(unsafe { (@small[0])[..6] });
     let tighterSink: &var TextWriter = tighter;
     let alsoRefused = WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain);
     let alsoOverflowed = match alsoRefused {
@@ -301,7 +326,8 @@ func Main() -> int {
     // A description has one form, so a style or a precision is a request it cannot answer rather than one it
     // silently ignores. Truncating a description produces a sentence that says something else.
     var refusalStorage: char8[128];
-    var refusalWriter = BufferWriter((@refusalStorage[0])[..128]);
+    // Safety: `refusalStorage` is a local array of 128 elements.
+    var refusalWriter = BufferWriter(unsafe { (@refusalStorage[0])[..128] });
     let refusalSink: &var TextWriter = refusalWriter;
     let described: Display = CollectionError::OutOfMemory;
     let truncated = described.WriteDisplay(refusalSink, Spec(".3"));

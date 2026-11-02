@@ -29,7 +29,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: every `Tracked` is built with `counter` at the test's local `destroyed`, which outlives it.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -69,7 +70,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -84,21 +85,21 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Each shape rendered into a buffer of its own and compared, so one case cannot read another's output.
 func ShownOptional(value: &StringView?, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     if Failed(WriteOptionalDebug<StringView>(writer, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownFallible(value: &(StringView ! StringView), spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     if Failed(WriteFallibleDebug<StringView, StringView>(writer, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     if Failed(WriteSliceDebug<StringView>(writer, items, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
@@ -140,7 +141,7 @@ func Main() -> int {
     // so a wrapper that substituted a plain specification would be caught here and nowhere else.
     var watchers: Spy[2] = [Spy {}, Spy {}];
     var spyStorage: char8[64];
-    var spyWriter = BufferWriter((@spyStorage[0])[..64]);
+    var spyWriter = BufferWriter(spyStorage[..64]);
     let spySink: &var TextWriter = spyWriter;
     Assert(Succeeded(WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3"))), "a run of spies is shown");
     Assert(Same(spyWriter.Written(), "[w7p3, w7p3]"), "and every element was handed the caller's own specification");
@@ -150,7 +151,7 @@ func Main() -> int {
     var destroyed: int32 = 0;
     var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7 });
     var storage: char8[128];
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter(storage[..128]);
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "a move-only payload is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "so it can be shown again");
@@ -162,7 +163,7 @@ func Main() -> int {
     var elements: Tracked[3] = [Tracked { counter: @destroyed, tag: 0 }, Tracked { counter: @destroyed, tag: 12 },
                                 Tracked { counter: @destroyed, tag: 345 }];
     var runStorage: char8[128];
-    var runWriter = BufferWriter((@runStorage[0])[..128]);
+    var runWriter = BufferWriter(runStorage[..128]);
     let runSink: &var TextWriter = runWriter;
     Assert(Succeeded(WriteSliceDebug<Tracked>(runSink, elements[..], plain)), "a move-only run is shown");
     Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
@@ -171,7 +172,7 @@ func Main() -> int {
     // A refused write stops the rendering where it was refused. Eleven bytes holds `[T(0), T(12)` up to the point
     // the third element needs room, so what appears is the prefix that fit and nothing after it.
     var small: char8[11];
-    var tight = BufferWriter((@small[0])[..11]);
+    var tight = BufferWriter(small[..11]);
     let tightSink: &var TextWriter = tight;
     let refused = WriteSliceDebug<Tracked>(tightSink, elements[..], plain);
     let overflowed = match refused {

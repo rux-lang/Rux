@@ -9,7 +9,8 @@ var Bytes: uint8[64] = [0u8; 64];
 var Halves: int16[64] = [0i16; 64];
 var Words: uint32[64] = [0u32; 64];
 
-func FillBytes(at: *var uint8, length: uint, value: uint8) {
+// Safety: `at` must be writable for `length` consecutive `uint8` elements.
+unsafe func FillBytes(at: *var uint8, length: uint, value: uint8) {
     var index: uint = 0;
     while index < length {
         at[index] = value;
@@ -17,13 +18,15 @@ func FillBytes(at: *var uint8, length: uint, value: uint8) {
     }
 }
 
-func FillHalves(at: *var int16, length: uint, value: int16) {
+// Safety: `at` must be writable for `length` consecutive `int16` elements.
+unsafe func FillHalves(at: *var int16, length: uint, value: int16) {
     for index in 0u..length {
         at[index] = value;
     }
 }
 
-func FillWords(at: *var uint32, length: uint, value: uint32) {
+// Safety: `at` must be writable for `length` consecutive `uint32` elements.
+unsafe func FillWords(at: *var uint32, length: uint, value: uint32) {
     for index in 0u..length {
         at[index] = value;
     }
@@ -32,19 +35,22 @@ func FillWords(at: *var uint32, length: uint, value: uint32) {
 func Main() -> int {
     for length in 0u..40u {
         for i in 0u..64u { Bytes[i] = 0xEEu8; }
-        FillBytes(@Bytes[1], length, 0xA5u8);
+        // Safety: `Bytes` has 64 elements and `1 + length` is at most 40.
+        unsafe { FillBytes(@Bytes[1], length, 0xA5u8); }
         Assert(Bytes[0] == 0xEEu8, "a byte fill leaves the byte before it alone");
         for i in 0u..length { Assert(Bytes[1 + i] == 0xA5u8, "a byte fill writes every byte"); }
         Assert(Bytes[1 + length] == 0xEEu8, "a byte fill stops at its length");
 
         for i in 0u..64u { Halves[i] = 0x7777i16; }
-        FillHalves(@Halves[1], length, -2i16);
+        // Safety: `Halves` has 64 elements and `1 + length` is at most 40.
+        unsafe { FillHalves(@Halves[1], length, -2i16); }
         Assert(Halves[0] == 0x7777i16, "a halfword fill leaves the element before it alone");
         for i in 0u..length { Assert(Halves[1 + i] == -2i16, "a halfword fill keeps the value's sign and bytes"); }
         Assert(Halves[1 + length] == 0x7777i16, "a halfword fill stops at its length");
 
         for i in 0u..64u { Words[i] = 0x01020304u32; }
-        FillWords(@Words[1], length, 0xDEADBEEFu32);
+        // Safety: `Words` has 64 elements and `1 + length` is at most 40.
+        unsafe { FillWords(@Words[1], length, 0xDEADBEEFu32); }
         Assert(Words[0] == 0x01020304u32, "a word fill leaves the element before it alone");
         for i in 0u..length { Assert(Words[1 + i] == 0xDEADBEEFu32, "a word fill writes every element"); }
         Assert(Words[1 + length] == 0x01020304u32, "a word fill stops at its length");

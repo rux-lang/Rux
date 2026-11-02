@@ -35,7 +35,7 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
+    return WriteIntegerDigits(writer, spec, digits[..count], count, negative);
 }
 
 extend uint128 : Display {
@@ -116,7 +116,7 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
+    return WriteIntegerDigits(writer, spec, digits[..count], count, negative);
 }
 
 extend uint256 : Display {
@@ -197,7 +197,7 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
+    return WriteIntegerDigits(writer, spec, digits[..count], count, negative);
 }
 
 extend uint512 : Display {

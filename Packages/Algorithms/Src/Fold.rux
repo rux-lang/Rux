@@ -30,7 +30,8 @@ pub func Fold<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
-        total = combine(total, items.data[index]);
+        // Safety: `index` is below `items.length`, the loop condition.
+        total = combine(total, unsafe { items.data[index] });
         index++;
     }
     return total;
@@ -53,7 +54,8 @@ pub func FoldRight<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> 
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
-        total = combine(total, items.data[remaining]);
+        // Safety: `remaining` is below `items.length`: it was positive and has just been decremented.
+        total = combine(total, unsafe { items.data[remaining] });
     }
     return total;
 }
@@ -73,7 +75,8 @@ pub func Sum<T>(items: T[..], initial: T) -> T {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
-        total = total + items.data[index];
+        // Safety: `index` is below `items.length`, the loop condition.
+        total = total + unsafe { items.data[index] };
         index++;
     }
     return total;
@@ -93,7 +96,8 @@ pub func Product<T>(items: T[..], initial: T) -> T {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
-        total = total * items.data[index];
+        // Safety: `index` is below `items.length`, the loop condition.
+        total = total * unsafe { items.data[index] };
         index++;
     }
     return total;
@@ -116,7 +120,8 @@ pub func Transform<T, U>(destination: var U[..], source: T[..], transform: func(
     if destination.length != source.length { return false; }
     var index: uint = 0;
     while index < source.length {
-        destination.data[index] = transform(source.data[index]);
+        // Safety: `index` is below `source.length`, which equals `destination.length`, checked above.
+        unsafe { destination.data[index] = transform(source.data[index]); }
         index++;
     }
     return true;

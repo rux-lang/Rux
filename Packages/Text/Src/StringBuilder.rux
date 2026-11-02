@@ -19,6 +19,9 @@ pub const MinimumBuilderCapacity: uint = 16;
 
 /// A growable buffer of text.
 /// Move-only: it explicitly prohibits copying and owns its block. Holds well-formed UTF-8 at every moment.
+/// Storage invariant, which every operation keeps and every `unsafe` block here relies on: `length <= capacity`;
+/// `data` is null exactly when `capacity` is zero, and otherwise addresses a block of `capacity` bytes from
+/// `allocator` whose first `length` bytes are initialized, well-formed UTF-8.
 /// @see https://rux-lang.dev/docs/api/text/string-builder
 pub struct StringBuilder {
     /// The block, or null when the builder has never needed one.
@@ -83,7 +86,9 @@ extend StringBuilder {
     /// @returns the appended bytes, borrowed
     /// @see https://rux-lang.dev/docs/api/text/string-builder#bytes
     pub func Bytes(self: &StringBuilder) -> char8[..] {
-        return (self.data)[..self.length];
+        // Safety: the storage invariant: the first `length` bytes at `data` are initialized and owned by this
+        // builder.
+        return unsafe { (self.data)[..self.length] };
     }
 
     /// A view over what has been appended so far.
@@ -102,7 +107,8 @@ extend StringBuilder {
     /// @returns nothing when the room is available, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#reserve
     pub func Reserve(self: &var StringBuilder, additional: uint) -> ! TextError {
-        return ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional);
+        // Safety: the three addresses are this builder's own fields, which hold the storage invariant.
+        return unsafe { ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional) };
     }
 
     /// Appends bytes the caller vouches are UTF-8.
@@ -112,7 +118,9 @@ extend StringBuilder {
     /// @returns nothing when the bytes were appended, taken as valid without checking, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append-validated
     pub func AppendValidated(self: &var StringBuilder, bytes: char8[..]) -> ! TextError {
-        return AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes);
+        // Safety: the three addresses are this builder's own fields, which hold the storage invariant; `bytes` is
+        // readable for its length and cannot borrow this builder's block while `self` is borrowed exclusively.
+        return unsafe { AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes) };
     }
 
     /// Appends what `view` spans.
@@ -130,7 +138,7 @@ extend StringBuilder {
     /// @returns nothing when the text was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append
     pub func Append(self: &var StringBuilder, text: char8[..]) -> ! TextError {
-        return self.AppendValidated((text.data)[..text.length]);
+        return self.AppendValidated(text);
     }
 
     /// Appends `bytes` when they are UTF-8, and reports `InvalidUtf8` when they are not.
@@ -152,9 +160,9 @@ extend StringBuilder {
     pub func AppendScalar(self: &var StringBuilder, scalar: char32) -> ! TextError {
         var encoded: char8[4];
         var written: uint = 0;
-        let sink = (@encoded[0])[..4];
+        let sink = encoded[..];
         written = Encode(scalar, sink) catch { else => fail TextError::InvalidUtf8 };
-        return self.AppendValidated((@encoded[0])[..written]);
+        return self.AppendValidated(encoded[..written]);
     }
 
     /// Appends one ASCII byte.
@@ -167,7 +175,7 @@ extend StringBuilder {
         if (byte as uint32) > 0x7F { fail TextError::InvalidUtf8; }
         var one: char8[1];
         one[0] = byte;
-        return self.AppendValidated((@one[0])[..1]);
+        return self.AppendValidated(one[..]);
     }
 
     /// Forgets everything appended, keeping the room.
@@ -231,7 +239,9 @@ extend StringBuilder {
 
 // Shared by the safe receiver and the deliberately raw stored-writer adapter. Only field addresses cross this
 // boundary; the owning builder itself remains non-copyable and all public owner operations use references.
-func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
+// Safety: `data` and `capacity` must address the fields of one live builder whose storage invariant holds with
+// `length` as its length.
+unsafe func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
                            additional: uint) -> ! TextError {
         if additional == 0 { return; }
         if additional > 0xFFFFFFFFFFFFFFFF - length { fail TextError::LengthOverflow; }
@@ -261,7 +271,9 @@ func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var u
         return;
 }
 
-func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
+// Safety: `data`, `length` and `capacity` must address the fields of one live builder whose storage invariant
+// holds, and `bytes` must not lie inside that builder's block, which may move when it grows.
+unsafe func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
                           bytes: char8[..]) -> ! TextError {
     if bytes.length == 0 { return; }
     ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length)?;

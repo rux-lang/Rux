@@ -79,7 +79,7 @@ pub const ZeroProgressLimit: uint = 3;
 pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
     var at: uint = 0;
     while at < into.length {
-        let rest = (@into.data[at])[..into.length - at];
+        let rest = into[at..into.length];
         let filled = reader.Read(rest) catch {
             error if error.IsInterrupted() => continue,
             error if error.IsEnd() => 0,
@@ -108,7 +108,7 @@ pub func WriteAll(writer: &var Writer, bytes: char8[..]) -> ! IoError {
     var at: uint = 0;
     var stalled: uint = 0;
     while at < bytes.length {
-        let rest = (@bytes.data[at])[..bytes.length - at];
+        let rest = bytes[at..bytes.length];
         let taken = writer.Write(rest) catch {
             error if error.IsInterrupted() => continue,
             error => fail error

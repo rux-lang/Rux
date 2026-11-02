@@ -16,7 +16,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.destroyed != null {
-            *self.destroyed += 1;
+            // Safety: a non-null `destroyed` is the address of the local counter in `Main`, which outlives the value.
+            unsafe { *self.destroyed += 1; }
         }
     }
 }
@@ -24,8 +25,10 @@ extend Tracked {
 func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     // A box accepts a move-only value.
     var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91 })?;
-    Assert(boxed.Get().value == 91, "the box owns its value");
-    Assert(*destroyed == 0, "without destroying it during construction");
+    // Safety: `boxed` was just filled, so `Get` addresses its live value; `destroyed` is the caller's live counter.
+    let (held, destroyedCount) = unsafe { (boxed.Get().value, *destroyed) };
+    Assert(held == 91, "the box owns its value");
+    Assert(destroyedCount == 0, "without destroying it during construction");
 }
 
 func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
@@ -33,7 +36,9 @@ func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     var taken = Tracked { destroyed: null, value: 0 };
     Assert(boxed.TryTake(@taken), "a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
-    Assert(taken.value == 27 && *destroyed == 0, "and transfers rather than destroys the value");
+    // Safety: `destroyed` is the address of the live counter the caller passed in.
+    let destroyedCount = unsafe { *destroyed };
+    Assert(taken.value == 27 && destroyedCount == 0, "and transfers rather than destroys the value");
 }
 
 func Main() -> ! AllocError {
@@ -43,9 +48,14 @@ func Main() -> ! AllocError {
     // An ordinary box holds its value and hands back a pointer into its own storage.
     var boxed = Box::Create<int64>(allocator, 42)?;
     Assert(!boxed.IsEmpty(), "the box holds a value");
-    Assert(*boxed.Get() == 42, "which is the one it was given");
-    *boxed.Get() = 43;
-    Assert(*boxed.Get() == 43, "and the value is writable through the box");
+    // Safety: `boxed` holds a value, checked above, so `Get` addresses its live `int64`.
+    let (given, written) = unsafe {
+        let given = *boxed.Get();
+        *boxed.Get() = 43;
+        (given, *boxed.Get())
+    };
+    Assert(given == 42, "which is the one it was given");
+    Assert(written == 43, "and the value is writable through the box");
 
     // Taking the value out empties the box and releases the storage there and then.
     var taken: int64 = 0;
@@ -57,21 +67,27 @@ func Main() -> ! AllocError {
 
     // A box of a value wider than a machine word, to exercise a layout that is not the default.
     var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210)?;
-    Assert(*wide.Get() == 0xFEDCBA9876543210u64, "a wide box keeps every bit of its value");
+    // Safety: `wide` was just filled, so `Get` addresses its live `uint64`.
+    let wideValue = unsafe { *wide.Get() };
+    Assert(wideValue == 0xFEDCBA9876543210u64, "a wide box keeps every bit of its value");
 
     // Many boxes in sequence, each released as its scope ends. A leak here would exhaust the address space long
     // before the loop finished, since the system allocator is page-granular.
     var index: int32 = 0;
     while index < 512 {
         var scoped = Box::Create<int64>(allocator, index as int64)?;
-        Assert(*scoped.Get() == index as int64, "a scoped box holds what it was given");
+        // Safety: `scoped` was just filled, so `Get` addresses its live `int64`.
+        let scopedValue = unsafe { *scoped.Get() };
+        Assert(scopedValue == index as int64, "a scoped box holds what it was given");
         index = index + 1;
     }
 
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
     var source = Box::Create<int64>(allocator, 7)?;
     var destination <- source;
-    Assert(*destination.Get() == 7, "the destination holds the value");
+    // Safety: `destination` took over the filled box from `source`, so `Get` addresses its live `int64`.
+    let movedValue = unsafe { *destination.Get() };
+    Assert(movedValue == 7, "the destination holds the value");
 
     var emptied: int64 = 0;
     Assert(destination.TryTake(@emptied) && emptied == 7, "and it is still takeable from there");

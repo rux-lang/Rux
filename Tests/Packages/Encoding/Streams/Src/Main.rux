@@ -33,8 +33,11 @@ extend CaptureSink : Writer {
         let capture = self.capture;
         var index: uint = 0;
         while index < bytes.length {
-            capture.bytes[capture.length] = bytes[index];
-            capture.length = capture.length + 1;
+            // Safety: `capture` points at the test's local `Capture`, which outlives every write through this sink.
+            unsafe {
+                capture.bytes[capture.length] = bytes[index];
+                capture.length = capture.length + 1;
+            }
             index = index + 1;
         }
         return bytes.length;
@@ -77,12 +80,13 @@ func Decodes(codec: StreamCodec, text: char8[..], chunk: uint, expected: char8[.
 
 func Main() -> int {
     var data: char8[200] = [c8' '; 200];
+    var bytes: byte[200] = [0; 200];
     var index: uint = 0;
     while index < 200u {
         data[index] = ((index * 37 + 11) % 256) as char8;
+        bytes[index] = data[index] as byte;
         index = index + 1;
     }
-    let bytes = (data[..].data as *byte)[..200];
     var expected: char8[400] = [c8' '; 400];
 
     let codecs = [

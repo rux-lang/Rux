@@ -10,7 +10,8 @@ import Core::Assert;
 // checks below prove that a right-hand side was skipped rather than merely that
 // the answer came out right.
 func Sees(counter: *var int, value: bool) -> bool {
-    *counter += 1;
+    // Safety: every caller passes the address of a live local counter.
+    unsafe { *counter += 1; }
     return value;
 }
 

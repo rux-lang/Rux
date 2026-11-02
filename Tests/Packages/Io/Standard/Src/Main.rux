@@ -8,7 +8,7 @@ import Io::{ BufferedWriter, StandardError, StandardIn, StandardOut, WriteAll, W
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func Main() -> int {

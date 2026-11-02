@@ -134,6 +134,13 @@ func FindCommand(spec: &CommandSpec, word: OsStringView) -> uint? {
 }
 
 extend Scanner {
+    // The command being walked, read through the stored handle.
+    func Declared(self: &Scanner) -> CommandSpec {
+        // Safety: `self.spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which
+        // the documented contract keeps alive for as long as the parse and every walk made from it.
+        return unsafe { *self.spec };
+    }
+
     // A walk from the same position, independent of this one.
     func Copy(self: &Scanner) -> Scanner {
         return Scanner {
@@ -170,21 +177,22 @@ extend Scanner {
     }
 
     func Long(self: &var Scanner, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+        let spec = self.Declared();
         let units = argument.Units();
         var equals: uint = 2;
         while equals < units.length && UnitAt(units, equals) != 0x3D {
             equals = equals + 1;
         }
-        let option = FindLong(*self.spec, Part(units, 2, equals)) ?? 0xFFFFFFFF;
+        let option = FindLong(spec, Part(units, 2, equals)) ?? 0xFFFFFFFF;
         if option == 0xFFFFFFFF { fail CommandLineError::UnknownOption(argument); }
-        if !TakesValue(*self.spec, option) {
-            if equals < units.length { fail CommandLineError::UnexpectedValue(LongName(*self.spec, option)); }
+        if !TakesValue(spec, option) {
+            if equals < units.length { fail CommandLineError::UnexpectedValue(LongName(spec, option)); }
             return .Success(.Some(Item::Option(option, none, at)));
         }
         if equals < units.length {
             return .Success(.Some(Item::Option(option, .Some(Part(units, equals + 1, units.length)), at)));
         }
-        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(*self.spec, option)); }
+        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(spec, option)); }
         let value = self.source.At(self.index);
         self.index = self.index + 1;
         return .Success(.Some(Item::Option(option, .Some(value), at)));
@@ -196,12 +204,13 @@ extend Scanner {
         let argument = self.source.At(at);
         let units = argument.Units();
         let position = self.cluster;
-        let option = FindShort(*self.spec, UnitAt(units, position)) ?? 0xFFFFFFFF;
+        let spec = self.Declared();
+        let option = FindShort(spec, UnitAt(units, position)) ?? 0xFFFFFFFF;
         if option == 0xFFFFFFFF {
             self.cluster = 0;
             fail CommandLineError::UnknownOption(argument);
         }
-        if !TakesValue(*self.spec, option) {
+        if !TakesValue(spec, option) {
             self.cluster = position + 1 < units.length ? position + 1 : 0;
             return .Success(.Some(Item::Option(option, none, at)));
         }
@@ -209,25 +218,26 @@ extend Scanner {
         if position + 1 < units.length {
             return .Success(.Some(Item::Option(option, .Some(Part(units, position + 1, units.length)), at)));
         }
-        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(*self.spec, option)); }
+        if self.index >= self.end { fail CommandLineError::MissingValue(LongName(spec, option)); }
         let value = self.source.At(self.index);
         self.index = self.index + 1;
         return .Success(.Some(Item::Option(option, .Some(value), at)));
     }
 
     func Positional(self: &var Scanner, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
-        if self.spec.commands.length > 0 {
-            let command = FindCommand(*self.spec, argument) ?? 0xFFFFFFFF;
+        let spec = self.Declared();
+        if spec.commands.length > 0 {
+            let command = FindCommand(spec, argument) ?? 0xFFFFFFFF;
             if command == 0xFFFFFFFF { fail CommandLineError::UnknownCommand(argument); }
             // Everything after the subcommand's name is the subcommand's to read.
             self.index = self.end;
             return .Success(.Some(Item::Command(command, at)));
         }
-        let declared = self.spec.positionals.length;
+        let declared = spec.positionals.length;
         if declared == 0 { fail CommandLineError::UnexpectedArgument(argument); }
         var slot = self.positionals;
         if slot >= declared {
-            if self.spec.positionals[declared - 1].kind != PositionalKind::Remaining {
+            if spec.positionals[declared - 1].kind != PositionalKind::Remaining {
                 fail CommandLineError::UnexpectedArgument(argument);
             }
             slot = declared - 1;

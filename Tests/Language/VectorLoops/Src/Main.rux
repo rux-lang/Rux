@@ -11,19 +11,22 @@ var Expected: int64[48] = [0i64; 48];
 
 func Axpy(c: *var float64, b: *float64, a: float64, n: uint) {
     for j in 0u..n {
-        c[j] = c[j] + a * b[j];
+        // Safety: `j < n`; every caller passes views into `Buffer` starting at most 26 elements in, with `n <= 20`.
+        unsafe { c[j] = c[j] + a * b[j]; }
     }
 }
 
 func Fill(c: *var float64, value: float64, n: uint) {
     for j in 0u..n {
-        c[j] = value;
+        // Safety: `j < n`; every caller passes views into `Buffer` starting at most 26 elements in, with `n <= 20`.
+        unsafe { c[j] = value; }
     }
 }
 
 func Halve(c: *var float64, b: *float64, n: uint) {
     for j in 0u..n {
-        c[j] = b[j] / 2.0;
+        // Safety: `j < n`; every caller passes views into `Buffer` starting at most 26 elements in, with `n <= 20`.
+        unsafe { c[j] = b[j] / 2.0; }
     }
 }
 

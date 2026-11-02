@@ -40,8 +40,11 @@ const Largest: float256 = float256::Max;
 const Table: float256[4] = [Tenth, NegativeZero, Largest, Infinity];
 
 func Bits(value: float256) -> uint256 {
-    let address = (@value) as *uint256;
-    return *address;
+    // Safety: `value` is a by-value parameter, and `float256` and `uint256` have the same size.
+    unsafe {
+        let address = (@value) as *uint256;
+        return *address;
+    }
 }
 
 func Same(left: float256, right: float256) -> bool {

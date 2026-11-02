@@ -35,7 +35,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] { return false; }
+        if actual[index] != expected[index] { return false; }
         index = index + 1;
     }
     return true;
@@ -43,7 +43,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Main() -> int {
     var storage: char8[16];
-    var writer = BufferWriter((@storage[0])[..16]);
+    var writer = BufferWriter(storage[..16]);
 
     // A full write reports success and nothing more.
     Assert(FailureCode(writer.Write("abc")) == 0, "a write that fits succeeds");
@@ -82,16 +82,16 @@ func Main() -> int {
     var invalid: char8[2];
     invalid[0] = 0xC3u8 as char8;
     invalid[1] = 0x28u8 as char8;
-    Assert(FailureCode(writer.Write((@invalid[0])[..2])) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)");
+    Assert(FailureCode(writer.Write(invalid[..2])) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)");
     Assert(writer.Length() == 0, "and nothing landed");
 
     // A lone continuation byte, and a truncated sequence, are refused the same way.
     var lone: char8[1];
     lone[0] = 0x80u8 as char8;
-    Assert(FailureCode(writer.Write((@lone[0])[..1])) == 2, "a lone continuation byte is not text");
+    Assert(FailureCode(writer.Write(lone[..1])) == 2, "a lone continuation byte is not text");
     var truncated: char8[1];
     truncated[0] = 0xE2u8 as char8;
-    Assert(FailureCode(writer.Write((@truncated[0])[..1])) == 2, "nor is a sequence that runs out");
+    Assert(FailureCode(writer.Write(truncated[..1])) == 2, "nor is a sequence that runs out");
     Assert(writer.Length() == 0, "and neither left anything behind");
 
     // Multi-byte text is text, and its bytes are not split.
@@ -107,7 +107,7 @@ func Main() -> int {
         long[fill] = 0x80u8 as char8;
         fill = fill + 1;
     }
-    Assert(FailureCode(writer.Write((@long[0])[..20])) == 1, "too long and invalid reports the capacity failure");
+    Assert(FailureCode(writer.Write(long[..20])) == 1, "too long and invalid reports the capacity failure");
 
     // The shared helpers reach a writer through the same contract.
     writer.Clear();
@@ -121,11 +121,13 @@ func Main() -> int {
 
     // WriteScalar rejects a surrogate read from raw storage independently of checked character casts.
     var half: uint32 = 0xD800;
-    Assert(FailureCode(WriteScalar(writer, *((@half) as *char32))) == 2, "a surrogate half is not a scalar value");
+    // Safety: `half` is a live local `uint32`, and `char32` has the same size and alignment.
+    let halfScalar = unsafe { *((@half) as *char32) };
+    Assert(FailureCode(WriteScalar(writer, halfScalar)) == 2, "a surrogate half is not a scalar value");
 
     // A helper's failure propagates the writer's own failure unchanged rather than replacing it.
     var tiny: char8[2];
-    var small = BufferWriter((@tiny[0])[..2]);
+    var small = BufferWriter(tiny[..2]);
     Assert(FailureCode(WriteScalar(small, 0x20ACu32 as char32)) == 1,
            "a three-byte character into two bytes is a capacity failure, not an encoding one");
     Assert(small.Length() == 0, "and the buffer is untouched");
@@ -140,7 +142,7 @@ func Main() -> int {
     Assert(builder.Length() == 15, "concatenating both");
 
     // It validates too: a builder that accepted these would stop holding text.
-    Assert(FailureCode(builder.Write((@invalid[0])[..2])) == 2, "a builder refuses bytes that are not text");
+    Assert(FailureCode(builder.Write(invalid[..2])) == 2, "a builder refuses bytes that are not text");
     Assert(builder.Length() == 15, "and is unchanged by the refusal");
 
     return 0;

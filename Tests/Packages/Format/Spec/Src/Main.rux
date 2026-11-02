@@ -6,7 +6,7 @@ import Text::{ FormatError, ParseFormatSpec, String, StringView };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 // The spec grammar, exercised through whole format calls so what is checked is what a caller sees. Each family gets

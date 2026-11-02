@@ -40,7 +40,7 @@ func Same(value: &String, expected: char8[..]) -> bool {
     }
     var index: uint = 0;
     while index < bytes.length {
-        if bytes.data[index] != expected.data[index] {
+        if bytes[index] != expected[index] {
             return false;
         }
         index = index + 1;

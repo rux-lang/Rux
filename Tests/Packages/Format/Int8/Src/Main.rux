@@ -9,7 +9,7 @@ import Format::{ ByteCursor };
 // buys: this test needs no allocator at all.
 func Check(value: int8, expected: char8[..], code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor((@storage[0])[..64]);
+    var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
     if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
@@ -21,7 +21,7 @@ func Check(value: int8, expected: char8[..], code: int) -> int {
     }
     var index: uint = 0;
     while index < actual.length {
-        if actual.data[index] != expected.data[index] {
+        if actual[index] != expected[index] {
             return code;
         }
         index = index + 1;

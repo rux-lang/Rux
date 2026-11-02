@@ -11,6 +11,9 @@
 // Every operation that can fail leaves the deque exactly as it was. Growth allocates a fresh block, relocates the
 // elements into it, and only then releases the old one, so a refused allocation costs nothing at all — not even the
 // wrapped layout the elements were in.
+// The ring invariant, which every `Safety:` comment below leans on: `data` is null with `capacity` zero, or a block
+// from `AllocateBlock` with room for `capacity` elements, a power of two; `head < capacity`, `length <= capacity`, and
+// the `length` slots from `head` onward, wrapping, are initialized, so `SlotOf(i)` names one of them for `i < length`.
 
 import Algorithms::Rotate;
 import Allocator::Allocator;
@@ -84,7 +87,9 @@ extend Deque<T> {
         deque.Grow(items.length)?;
         var index: uint = 0;
         while index < items.length {
-            deque.data[index] = items.data[index];
+            // Safety: `index < items.length`, checked by the loop; the slice holds that many elements and `Grow` gave
+            // the ring room for as many, starting at a head of zero.
+            unsafe { deque.data[index] = items.data[index]; }
             index++;
         }
         deque.length = items.length;
@@ -103,7 +108,9 @@ extend Deque<T> {
             return <-copy;
         }
         copy.Grow(self.length)?;
-        self.CopyInto(copy.data);
+        // Safety: `Grow` gave `copy.data` room for `self.length` elements, and it is a fresh block apart from this
+        // ring.
+        unsafe { self.CopyInto(copy.data); }
         copy.length = self.length;
         return <-copy;
     }
@@ -140,7 +147,8 @@ extend Deque<T> {
     // Relocates every element into `block`, front first, unwrapping the ring in the process. A relocation rather
     // than a copy: the bytes move and the originals are not destroyed, because there is exactly one of each
     // afterwards.
-    func CopyInto(self: &Deque<T>, block: *var T) {
+    // Safety: `block` must have room for `self.length` elements and must not overlap the ring.
+    unsafe func CopyInto(self: &Deque<T>, block: *var T) {
         if self.length == 0 { return; }
 
         var front = self.capacity - self.head;
@@ -168,7 +176,9 @@ extend Deque<T> {
         // allocation leaves the deque exactly as it was.
         var block = AllocateBlock<T>(self.allocator, capacity)?;
 
-        self.CopyInto(block);
+        // Safety: `block` is fresh from `AllocateBlock` with room for `capacity` elements, above the old capacity
+        // and so above the length.
+        unsafe { self.CopyInto(block); }
         if self.data != null {
             ReleaseBlock<T>(self.allocator, self.data, self.capacity);
         }
@@ -211,7 +221,9 @@ extend Deque<T> {
 
         var block = AllocateBlock<T>(self.allocator, capacity)?;
 
-        self.CopyInto(block);
+        // Safety: `block` is fresh from `AllocateBlock` with room for `capacity` elements, which `PowerOfTwoCapacity`
+        // made at least the length.
+        unsafe { self.CopyInto(block); }
         ReleaseBlock<T>(self.allocator, self.data, self.capacity);
         self.data = block;
         self.head = 0;
@@ -228,7 +240,9 @@ extend Deque<T> {
         while index < self.length {
             // Moving each element into a local destroys it when the local's life ends, which is the only way a
             // container has to destroy an element it does not know is droppable.
-            let taken <- self.data[self.SlotOf(index)];
+            // Safety: the ring invariant: `index < self.length`, checked by the loop, so the slot is initialized;
+            // each is moved out once, and the length drops to zero right after.
+            unsafe { let taken <- self.data[self.SlotOf(index)]; }
             index++;
         }
         self.head = 0;
@@ -261,7 +275,9 @@ extend Deque<T> {
 
         // One step back around the ring, which for a head of zero is the last slot.
         self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
-        self.data[self.head] <- value;
+        // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot one step before the old head is
+        // allocated and holds nothing.
+        unsafe { self.data[self.head] <- value; }
         self.length = self.length + 1;
         return;
     }
@@ -276,7 +292,9 @@ extend Deque<T> {
         var required = AddLength(self.length, 1)?;
         self.Grow(required)?;
 
-        self.data[self.SlotOf(self.length)] <- value;
+        // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot just past the last element is
+        // allocated and holds nothing.
+        unsafe { self.data[self.SlotOf(self.length)] <- value; }
         self.length = self.length + 1;
         return;
     }
@@ -289,7 +307,9 @@ extend Deque<T> {
     /// @see https://rux-lang.dev/docs/api/collections/deque#pop-front
     pub func PopFront(self: &var Deque<T>) -> T? {
         if self.length == 0 { return none; }
-        let taken <- self.data[self.head];
+        // Safety: the ring invariant: the deque is not empty, checked above, so the slot at `head` is initialized; the
+        // head moves past it at once.
+        let taken <- unsafe { <-self.data[self.head] };
         self.head = (self.head + 1) & (self.capacity - 1);
         self.length = self.length - 1;
         return <-taken;
@@ -303,7 +323,9 @@ extend Deque<T> {
     pub func PopBack(self: &var Deque<T>) -> T? {
         if self.length == 0 { return none; }
         self.length = self.length - 1;
-        return <-self.data[self.SlotOf(self.length)];
+        // Safety: the ring invariant: the slot of the old last element is initialized, and the length has just
+        // dropped below it.
+        return unsafe { <-self.data[self.SlotOf(self.length)] };
     }
 
     /// A pointer to the front element, or `none` for an empty deque.
@@ -332,7 +354,8 @@ extend Deque<T> {
     /// @see https://rux-lang.dev/docs/api/collections/deque#get
     pub func Get(self: &Deque<T>, index: uint) -> T? {
         if index >= self.length { return none; }
-        return self.data[self.SlotOf(index)];
+        // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
+        return unsafe { self.data[self.SlotOf(index)] };
     }
 
     /// A pointer to the element at `index`, or `none` when there is no such index.
@@ -343,7 +366,8 @@ extend Deque<T> {
     /// @see https://rux-lang.dev/docs/api/collections/deque#reference
     pub func Reference(self: &Deque<T>, index: uint) -> (*T)? {
         if index >= self.length { return none; }
-        return @self.data[self.SlotOf(index)];
+        // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
+        return unsafe { @self.data[self.SlotOf(index)] };
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.
@@ -358,8 +382,12 @@ extend Deque<T> {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         let slot = self.SlotOf(index);
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
-        let previous <- self.data[slot];
-        self.data[slot] <- value;
+        // Safety: the ring invariant: `index < self.length`, checked above, so the slot is initialized; the slot
+        // emptied by the move is refilled at once.
+        unsafe {
+            let previous <- self.data[slot];
+            self.data[slot] <- value;
+        }
         return;
     }
 
@@ -374,9 +402,13 @@ extend Deque<T> {
     pub func Replace(self: &var Deque<T>, index: uint, value: T) -> T ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         let slot = self.SlotOf(index);
-        let previous <- self.data[slot];
-        self.data[slot] <- value;
-        return <-previous;
+        // Safety: the ring invariant: `index < self.length`, checked above, so the slot is initialized; the slot
+        // emptied by the move is refilled at once.
+        unsafe {
+            let previous <- self.data[slot];
+            self.data[slot] <- value;
+            return <-previous;
+        }
     }
 
     /// Whether the elements occupy one unbroken run.
@@ -400,10 +432,12 @@ extend Deque<T> {
     pub func AsSlices(self: &Deque<T>, front: *var T[..], back: *var T[..]) {
         if self.length == 0 {
             if front != null {
-                *front = [];
+                // Safety: the documented contract makes a non-null `front` a pointer to the caller's writable view.
+                unsafe { *front = []; }
             }
             if back != null {
-                *back = [];
+                // Safety: the documented contract makes a non-null `back` a pointer to the caller's writable view.
+                unsafe { *back = []; }
             }
             return;
         }
@@ -414,14 +448,20 @@ extend Deque<T> {
         }
 
         if front != null {
-            *front = (@self.data[self.head])[..frontLength];
+            // Safety: the documented contract makes a non-null `front` a pointer to the caller's writable view, and
+            // by the ring invariant the `frontLength` slots from `head`, which stop at the end of the block, are
+            // initialized.
+            unsafe { *front = (@self.data[self.head])[..frontLength]; }
         }
         if back != null {
             if frontLength < self.length {
-                *back = (self.data)[..self.length - frontLength];
+                // Safety: the documented contract makes a non-null `back` a pointer to the caller's writable view,
+                // and by the ring invariant the elements that wrapped occupy the first `length - frontLength` slots.
+                unsafe { *back = (self.data)[..self.length - frontLength]; }
             }
             else {
-                *back = [];
+                // Safety: the documented contract makes a non-null `back` a pointer to the caller's writable view.
+                unsafe { *back = []; }
             }
         }
     }
@@ -434,7 +474,9 @@ extend Deque<T> {
     /// @see https://rux-lang.dev/docs/api/collections/deque#make-contiguous
     pub func MakeContiguous(self: &var Deque<T>) {
         if self.capacity == 0 || self.head == 0 { return; }
-        Rotate<T>(self.data[..self.capacity], self.head);
+        // Safety: the ring invariant: `data` has room for `capacity` elements, nonzero, checked above. `Rotate` only
+        // exchanges slots, so the spare ones are carried along without being read as elements.
+        Rotate<T>(unsafe { self.data[..self.capacity] }, self.head);
         self.head = 0;
     }
 
@@ -446,7 +488,9 @@ extend Deque<T> {
     /// @see https://rux-lang.dev/docs/api/collections/deque#as-slice
     pub func AsSlice(self: &var Deque<T>) -> T[..] {
         self.MakeContiguous();
-        return (self.data)[..self.length];
+        // Safety: the ring invariant: `MakeContiguous` put the head at zero, so the first `length` slots are the
+        // initialized elements.
+        return unsafe { (self.data)[..self.length] };
     }
 
     /// Every element as one borrowed writable view, moving them together first.
@@ -456,7 +500,9 @@ extend Deque<T> {
     /// @see https://rux-lang.dev/docs/api/collections/deque#as-mutable-slice
     pub func AsMutableSlice(self: &var Deque<T>) -> var T[..] {
         self.MakeContiguous();
-        return (self.data)[..self.length];
+        // Safety: the ring invariant: `MakeContiguous` put the head at zero, so the first `length` slots are the
+        // initialized elements.
+        return unsafe { (self.data)[..self.length] };
     }
 
     /// An iterator over the elements, front to back, by copy.

@@ -209,7 +209,8 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
     builder.Reserve(view.bytes.length)?;
     var index: uint = 0;
     while index < view.bytes.length {
-        let byte = view.bytes.data[index];
+        // Safety: `index` is below `view.bytes.length`, the loop condition.
+        let byte = unsafe { view.bytes.data[index] };
         let value = byte as uint32;
         let shifted = value >= low && value <= high ? (low == 0x61 ? value - delta : value + delta) : value;
         builder.AppendAscii(shifted as char8) catch {
@@ -218,7 +219,7 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
                 // belongs to. `AppendAscii` refuses it, so it goes in as a byte of a sequence instead.
                 var one: char8[1];
                 one[0] = byte;
-                builder.AppendValidated((@one[0])[..1])?;
+                builder.AppendValidated(one[..])?;
             }
         };
         index = index + 1;

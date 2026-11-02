@@ -88,18 +88,21 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
-        let byte = text.data[index];
+        // Safety: `index` is below `text.length`, the loop condition.
+        let byte = unsafe { text.data[index] };
         let code = byte as uint32;
         // A C1 control is the second byte of a two-byte sequence whose first is 0xC2, so it is found by looking at
         // the pair rather than at one byte; every other escape is a single ASCII byte.
-        let isC1 = code == 0xC2 && index + 1 < text.length &&
-                   (text.data[index + 1] as uint32) >= 0x80 && (text.data[index + 1] as uint32) <= 0x9F;
+        // Safety: the next byte is read only when `index + 1` is below `text.length`, checked first.
+        let next = index + 1 < text.length ? (unsafe { text.data[index + 1] } as uint32) : 0;
+        let isC1 = code == 0xC2 && next >= 0x80 && next <= 0x9F;
         let escapes = byte == c8'"' || byte == c8'\\' || code < 0x20 || code == 0x7F || isC1;
         if escapes {
             if index > runStart {
-                WriteBytes(writer, (@text.data[runStart])[..index - runStart])?;
+                // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
+                WriteBytes(writer, unsafe { (@text.data[runStart])[..index - runStart] })?;
             }
-            let scalar = isC1 ? (text.data[index + 1] as uint32) : code;
+            let scalar = isC1 ? next : code;
             WriteEscapeFor(writer, byte, scalar)?;
             index = index + (isC1 ? 2u : 1u);
             runStart = index;
@@ -108,7 +111,8 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
         index = index + 1;
     }
     if index > runStart {
-        return WriteBytes(writer, (@text.data[runStart])[..index - runStart]);
+        // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
+        return WriteBytes(writer, unsafe { (@text.data[runStart])[..index - runStart] });
     }
     return;
 }
@@ -159,10 +163,13 @@ func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
     var index: uint = 0;
     while index < bytes.length && kept < spec.Precision() {
         var width: uint = 0;
-        let decoded = DecodeAt(bytes, index) catch { else => return (bytes.data)[..index] };
+        // Safety: `index` is below `bytes.length`, the loop condition, so the prefix lies inside `bytes`.
+        let decoded = DecodeAt(bytes, index) catch { else => return unsafe { (bytes.data)[..index] } };
         width = decoded.width;
         index = index + width;
         kept = kept + 1;
     }
-    return (bytes.data)[..index];
+    // Safety: `index` is at most `bytes.length`: each step adds the width of a character `DecodeAt` found whole
+    // inside `bytes`.
+    return unsafe { (bytes.data)[..index] };
 }

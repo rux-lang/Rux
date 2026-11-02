@@ -8,7 +8,7 @@ import Crypto::{ Equal, Hmac, HmacOf, Sha256, Sha512 };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func FromHex(text: char8[..], into: var char8[..]) {
@@ -17,7 +17,7 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2 {
-            let c = text.data[index * 2 + half] as uint8;
+            let c = text[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
@@ -28,16 +28,16 @@ func FromHex(text: char8[..], into: var char8[..]) {
             value = value * 16 + digit;
             half = half + 1;
         }
-        into.data[index] = value as char8;
+        into[index] = value as char8;
         index = index + 1;
     }
 }
 
 func Check(got: char8[..], expectedHex: char8[..], what: char8[..]) {
     var expected: char8[64];
-    let room = (@expected[0])[..got.length];
+    let room = expected[..got.length];
     FromHex(expectedHex, room);
-    let expectedBytes = (@expected[0])[..got.length];
+    let expectedBytes = expected[..got.length];
     Assert(Equal(got, expectedBytes), what);
 }
 
@@ -51,20 +51,20 @@ func Main() -> int {
         key[index] = 0x0Bu8 as char8;
         index = index + 1;
     }
-    let shortKey = (@key[0])[..20];
-    HmacOf<Sha256>(Sha256(), shortKey, TextBytes("Hi There"), (@tag[0])[..32]);
-    Check((@tag[0])[..32],
+    let shortKey = key[..20];
+    HmacOf<Sha256>(Sha256(), shortKey, TextBytes("Hi There"), tag[..32]);
+    Check(tag[..32],
           "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
           "HMAC-SHA-256, RFC 4231 case 1");
-    HmacOf<Sha512>(Sha512(), shortKey, TextBytes("Hi There"), (@tag[0])[..64]);
-    Check((@tag[0])[..64],
+    HmacOf<Sha512>(Sha512(), shortKey, TextBytes("Hi There"), tag[..64]);
+    Check(tag[..64],
           "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854",
           "HMAC-SHA-512, RFC 4231 case 1");
 
     // RFC 4231 case 2: key "Jefe", message "what do ya want for nothing?".
     HmacOf<Sha256>(Sha256(), TextBytes("Jefe"), TextBytes("what do ya want for nothing?"),
-                   (@tag[0])[..32]);
-    Check((@tag[0])[..32],
+                   tag[..32]);
+    Check(tag[..32],
           "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
           "HMAC-SHA-256, RFC 4231 case 2");
 
@@ -76,17 +76,17 @@ func Main() -> int {
         key[index] = 0xAAu8 as char8;
         index = index + 1;
     }
-    let longKey = (@key[0])[..131];
+    let longKey = key[..131];
     HmacOf<Sha256>(Sha256(), longKey,
                    TextBytes("Test Using Larger Than Block-Size Key - Hash Key First"),
-                   (@tag[0])[..32]);
-    Check((@tag[0])[..32],
+                   tag[..32]);
+    Check(tag[..32],
           "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
           "HMAC-SHA-256, RFC 4231 case 6");
     HmacOf<Sha512>(Sha512(), longKey,
                    TextBytes("Test Using Larger Than Block-Size Key - Hash Key First"),
-                   (@tag[0])[..64]);
-    Check((@tag[0])[..64],
+                   tag[..64]);
+    Check(tag[..64],
           "80b24263c7c1a3ebb71493c1dd7be8b49b46d1f41b4aeec1121b013783f8f3526b56d037e05f2598bd0fd2215d6a1e5295e64f73f63f0aec8b915a985d786598",
           "HMAC-SHA-512, RFC 4231 case 6");
 
@@ -100,22 +100,22 @@ func Main() -> int {
     }
     var firstTag: char8[32];
     var secondTag: char8[32];
-    let keyA = (@stretched[0])[..200];
-    HmacOf<Sha256>(Sha256(), keyA, TextBytes("message"), (@firstTag[0])[..32]);
+    let keyA = stretched[..200];
+    HmacOf<Sha256>(Sha256(), keyA, TextBytes("message"), firstTag[..32]);
     stretched[250] = (stretched[250] as uint8 ^ 0xFF) as char8;
-    let keyB = (@stretched[0])[..200];
-    HmacOf<Sha256>(Sha256(), keyB, TextBytes("message"), (@secondTag[0])[..32]);
-    Assert(Equal((@firstTag[0])[..32],
-                 (@secondTag[0])[..32]),
+    let keyB = stretched[..200];
+    HmacOf<Sha256>(Sha256(), keyB, TextBytes("message"), secondTag[..32]);
+    Assert(Equal(firstTag[..32],
+                 secondTag[..32]),
            "a change past the key's used length changes nothing, since the key was already hashed");
 
     // A change inside the key does change the tag.
     stretched[10] = (stretched[10] as uint8 ^ 0xFF) as char8;
-    let keyC = (@stretched[0])[..200];
+    let keyC = stretched[..200];
     var thirdTag: char8[32];
-    HmacOf<Sha256>(Sha256(), keyC, TextBytes("message"), (@thirdTag[0])[..32]);
-    Assert(!Equal((@firstTag[0])[..32],
-                  (@thirdTag[0])[..32]),
+    HmacOf<Sha256>(Sha256(), keyC, TextBytes("message"), thirdTag[..32]);
+    Assert(!Equal(firstTag[..32],
+                  thirdTag[..32]),
            "while a change within it does");
 
     // The incremental contract, over a message spanning several blocks.
@@ -125,30 +125,30 @@ func Main() -> int {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
-    let whole = (@message[0])[..500];
+    let whole = message[..500];
     var oneShot: char8[32];
-    HmacOf<Sha256>(Sha256(), shortKey, whole, (@oneShot[0])[..32]);
-    let oneShotBytes = (@oneShot[0])[..32];
+    HmacOf<Sha256>(Sha256(), shortKey, whole, oneShot[..32]);
+    let oneShotBytes = oneShot[..32];
     var split: uint = 0;
     while split <= 500 {
         var state = Hmac<Sha256>(Sha256(), shortKey);
-        let first = (@message[0])[..split];
+        let first = message[..split];
         state.Update(first);
         let second = message[split..];
         state.Update(second);
         var got: char8[32];
-        state.Finish((@got[0])[..32]);
-        Assert(Equal((@got[0])[..32], oneShotBytes),
+        state.Finish(got[..32]);
+        Assert(Equal(got[..32], oneShotBytes),
                "every split of a message gives the same tag");
         split = split + 25;
     }
 
     // An empty key and an empty message are both legal.
-    let emptyKey = (@key[0])[..0];
-    HmacOf<Sha256>(Sha256(), emptyKey, TextBytes(""), (@tag[0])[..32]);
+    let emptyKey = key[..0];
+    HmacOf<Sha256>(Sha256(), emptyKey, TextBytes(""), tag[..32]);
     var repeat: char8[32];
-    HmacOf<Sha256>(Sha256(), emptyKey, TextBytes(""), (@repeat[0])[..32]);
-    Assert(Equal((@tag[0])[..32], (@repeat[0])[..32]),
+    HmacOf<Sha256>(Sha256(), emptyKey, TextBytes(""), repeat[..32]);
+    Assert(Equal(tag[..32], repeat[..32]),
            "an empty key and message authenticate deterministically");
 
     // The tag length follows the digest.

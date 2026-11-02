@@ -26,7 +26,8 @@ pub func MakeHeap<T>(items: var T[..]) {
     var root = items.length / 2;
     while root > 0 {
         root = root - 1;
-        HeapSiftDown<T>(items.data, items.length, root);
+        // Safety: `items.data` addresses the `items.length` live elements of `items`, which the sift stays within.
+        unsafe { HeapSiftDown<T>(items.data, items.length, root); }
     }
 }
 
@@ -41,7 +42,8 @@ pub func MakeHeap<T>(items: var T[..]) {
 /// @see https://rux-lang.dev/docs/api/algorithms/heaps#push-heap
 pub func PushHeap<T>(items: var T[..]) {
     if items.length < 2 { return; }
-    HeapSiftUp<T>(items.data, items.length - 1);
+    // Safety: `items.data` addresses the `items.length` live elements of `items`, and the sift starts at the last one.
+    unsafe { HeapSiftUp<T>(items.data, items.length - 1); }
 }
 
 /// Moves the largest element of `items` to its end and restores the heap property over the rest.
@@ -56,10 +58,14 @@ pub func PushHeap<T>(items: var T[..]) {
 pub func PopHeap<T>(items: var T[..]) {
     if items.length < 2 { return; }
     let last = items.length - 1;
-    let largest = items.data[0];
-    items.data[0] = items.data[last];
-    items.data[last] = largest;
-    HeapSiftDown<T>(items.data, last, 0);
+    // Safety: `items` holds at least two elements, checked above, so `0` and `last` index into it, and the sift
+    // stays within its first `last` elements.
+    unsafe {
+        let largest = items.data[0];
+        items.data[0] = items.data[last];
+        items.data[last] = largest;
+        HeapSiftDown<T>(items.data, last, 0);
+    }
 }
 
 /// Turns the heap `items` into a sorted sequence, smallest first.
@@ -74,7 +80,7 @@ pub func PopHeap<T>(items: var T[..]) {
 pub func SortHeap<T>(items: var T[..]) {
     var remaining = items.length;
     while remaining > 1 {
-        PopHeap<T>((items.data)[..remaining]);
+        PopHeap<T>(items[..remaining]);
         remaining = remaining - 1;
     }
 }
@@ -104,14 +110,16 @@ pub func IsHeap<T>(items: T[..]) -> bool {
 pub func IsHeapUntil<T>(items: T[..]) -> uint {
     var child: uint = 1;
     while child < items.length {
-        if items.data[(child - 1) / 2] < items.data[child] { return child; }
+        // Safety: `child` is below `items.length`, the loop condition, and its parent `(child - 1) / 2` is smaller.
+        if unsafe { items.data[(child - 1) / 2] < items.data[child] } { return child; }
         child++;
     }
     return items.length;
 }
 
 // Moves the element at `position` up until its parent is at least as large. Used after an append.
-func HeapSiftUp<T>(data: *var T, position: uint) {
+// Safety: `data` must address at least `position + 1` live, writable elements.
+unsafe func HeapSiftUp<T>(data: *var T, position: uint) {
     var index = position;
     while index > 0 {
         let parent = (index - 1) / 2;
@@ -124,7 +132,8 @@ func HeapSiftUp<T>(data: *var T, position: uint) {
 }
 
 // Moves the element at `root` down until both its children are no larger, within the first `count` elements.
-func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
+// Safety: `data` must address at least `count` live, writable elements.
+unsafe func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
     var index = root;
     while true {
         let left = index * 2 + 1;
@@ -155,7 +164,8 @@ pub func MakeHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     var root = items.length / 2;
     while root > 0 {
         root = root - 1;
-        HeapSiftDownBy<T>(items.data, items.length, root, compare);
+        // Safety: `items.data` addresses the `items.length` live elements of `items`, which the sift stays within.
+        unsafe { HeapSiftDownBy<T>(items.data, items.length, root, compare); }
     }
 }
 
@@ -169,7 +179,8 @@ pub func MakeHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// @see https://rux-lang.dev/docs/api/algorithms/heaps#push-heap-by
 pub func PushHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     if items.length < 2 { return; }
-    HeapSiftUpBy<T>(items.data, items.length - 1, compare);
+    // Safety: `items.data` addresses the `items.length` live elements of `items`, and the sift starts at the last one.
+    unsafe { HeapSiftUpBy<T>(items.data, items.length - 1, compare); }
 }
 
 /// Moves the largest element of `items` under `compare` to its end and restores the heap over the rest.
@@ -183,10 +194,14 @@ pub func PushHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 pub func PopHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     if items.length < 2 { return; }
     let last = items.length - 1;
-    let largest = items.data[0];
-    items.data[0] = items.data[last];
-    items.data[last] = largest;
-    HeapSiftDownBy<T>(items.data, last, 0, compare);
+    // Safety: `items` holds at least two elements, checked above, so `0` and `last` index into it, and the sift
+    // stays within its first `last` elements.
+    unsafe {
+        let largest = items.data[0];
+        items.data[0] = items.data[last];
+        items.data[last] = largest;
+        HeapSiftDownBy<T>(items.data, last, 0, compare);
+    }
 }
 
 /// Turns the heap `items` into a sequence sorted by `compare`, smallest first.
@@ -200,7 +215,7 @@ pub func PopHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 pub func SortHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     var remaining = items.length;
     while remaining > 1 {
-        PopHeapBy<T>((items.data)[..remaining], compare);
+        PopHeapBy<T>(items[..remaining], compare);
         remaining = remaining - 1;
     }
 }
@@ -229,14 +244,16 @@ pub func IsHeapBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
 pub func IsHeapUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
     var child: uint = 1;
     while child < items.length {
-        if compare(items.data[(child - 1) / 2], items.data[child]).IsLess() { return child; }
+        // Safety: `child` is below `items.length`, the loop condition, and its parent `(child - 1) / 2` is smaller.
+        if unsafe { compare(items.data[(child - 1) / 2], items.data[child]).IsLess() } { return child; }
         child++;
     }
     return items.length;
 }
 
 // The two sifts again, with the comparison supplied.
-func HeapSiftUpBy<T>(data: *var T, position: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address at least `position + 1` live, writable elements.
+unsafe func HeapSiftUpBy<T>(data: *var T, position: uint, compare: func(T, T) -> Ordering) {
     var index = position;
     while index > 0 {
         let parent = (index - 1) / 2;
@@ -248,7 +265,8 @@ func HeapSiftUpBy<T>(data: *var T, position: uint, compare: func(T, T) -> Orderi
     }
 }
 
-func HeapSiftDownBy<T>(data: *var T, count: uint, root: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address at least `count` live, writable elements.
+unsafe func HeapSiftDownBy<T>(data: *var T, count: uint, root: uint, compare: func(T, T) -> Ordering) {
     var index = root;
     while true {
         let left = index * 2 + 1;

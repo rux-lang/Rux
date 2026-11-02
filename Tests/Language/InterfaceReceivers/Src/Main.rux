@@ -32,15 +32,18 @@ struct Counter {
 
 extend Counter : Dial {
     func Level(self: &Counter) -> int32 {
-        return *self.total;
+        // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
+        return unsafe { *self.total };
     }
 
     func Peek(self: &Counter) -> int32 {
-        return *self.total;
+        // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
+        return unsafe { *self.total };
     }
 
     func Turn(self: &Counter, amount: int32) {
-        *self.total += amount;
+        // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
+        unsafe { *self.total += amount; }
     }
 }
 

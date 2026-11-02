@@ -88,7 +88,8 @@ func Main() -> int {
     // multiplication and dereference tokens as the spaced spelling.
     let pointed = 3;
     let pointer = @pointed;
-    if 2 ** pointer != 6 || 2 * *pointer != 6 {
+    // Safety: `pointer` is `@pointed`, a live local.
+    if unsafe { 2 ** pointer != 6 || 2 * *pointer != 6 } {
         return 11;
     }
 

@@ -57,7 +57,9 @@ func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) -> ! Format
         digits[index] = ((rest % 10) + 0x30) as char8;
         rest = rest / 10;
     }
-    return WriteBytes(writer, (@digits[0])[..width]);
+    // Safety: `digits` is a local `char8[10]`, and every caller passes a `width` of 2 or 4, which the loop above
+    // just filled.
+    return WriteBytes(writer, unsafe { (@digits[0])[..width] });
 }
 
 // Writes a year: four digits at least, more when the year needs them, and a leading sign outside that range.
@@ -128,7 +130,8 @@ func WriteFraction(writer: &var TextWriter, nanosecond: uint32, spec: FormatSpec
         if kept == 0 { return .Success(()); }
     }
     WriteAscii(writer, c8'.')?;
-    return WriteBytes(writer, (@digits[0])[..kept]);
+    // Safety: `digits` is a local `char8[9]`, and `kept` is at most 9, checked above.
+    return WriteBytes(writer, unsafe { (@digits[0])[..kept] });
 }
 
 // Whether the style is one a calendar value answers to. The empty style is the default rendering, and `iso8601` and

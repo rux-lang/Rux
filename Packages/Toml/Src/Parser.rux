@@ -517,7 +517,8 @@ extend TomlParser {
                 self.Stop(TomlStop::Truncated);
                 break;
             }
-            self.ParseKeyValue(@table);
+            // Safety: `@table` is this function's own local table, live until it is returned below.
+            unsafe { self.ParseKeyValue(@table); }
             if self.Failed() { break; }
             self.SkipNewlines();
             if self.ahead.kind == TomlTokenKind::Comma {
@@ -591,7 +592,9 @@ extend TomlParser {
 
     // A key and its value, written into `into`. A dotted key creates the tables it passes through, and those
     // tables are closed when the line ends — which is why they are marked as dotted rather than merely made.
-    func ParseKeyValue(self: &var TomlParser, into: *var TomlValue) {
+    // Safety: `into` must point at a live table, a document's or an inline one, that nothing else changes during the
+    // call. This adds only to that table and the tables below it, so `into` stays valid throughout.
+    unsafe func ParseKeyValue(self: &var TomlParser, into: *var TomlValue) {
         var parts = Vector<String>(self.allocator);
         if !self.ParseKeyPath(parts) {
             parts.Clear();
@@ -634,7 +637,9 @@ extend TomlParser {
     }
 
     // The table a dotted key passes through, made if it is not there and checked if it is.
-    func DescendDotted(self: &var TomlParser, target: *var TomlValue, name: StringView,
+    // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
+    // and stays valid until `target` grows.
+    unsafe func DescendDotted(self: &var TomlParser, target: *var TomlValue, name: StringView,
                        copy: StringView) -> *var TomlValue {
         var existing = (*target).FindMutable(name);
         if existing == null {
@@ -665,7 +670,9 @@ extend TomlParser {
     }
 
     // A `[name]` or `[[name]]` header, returning the table that the lines after it belong to.
-    func ParseHeader(self: &var TomlParser, root: *var TomlValue) -> *var TomlValue {
+    // Safety: `root` must point at the live root table of the document being built. The table returned lives inside
+    // it and stays valid until the table that holds it grows.
+    unsafe func ParseHeader(self: &var TomlParser, root: *var TomlValue) -> *var TomlValue {
         self.Advance();
         var array = false;
         if self.ahead.kind == TomlTokenKind::LeftBracket {
@@ -720,7 +727,9 @@ extend TomlParser {
 
     // A table a header path passes through: made implicitly if absent, followed into its last element if it is
     // an array of tables, and refused if it was closed by an inline brace or a dotted key.
-    func DescendHeader(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
+    // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
+    // and stays valid until the table that holds it grows.
+    unsafe func DescendHeader(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
         var existing = (*target).FindMutable(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
@@ -756,7 +765,9 @@ extend TomlParser {
     }
 
     // The table a `[name]` header opens.
-    func OpenTable(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
+    // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
+    // and stays valid until `target` grows.
+    unsafe func OpenTable(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
         var existing = (*target).FindMutable(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
@@ -791,7 +802,9 @@ extend TomlParser {
     }
 
     // The table a `[[name]]` header appends.
-    func OpenTableArray(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
+    // Safety: `target` must point at a live table of the document being built. The table returned lives inside it
+    // and stays valid until the array of tables that holds it grows.
+    unsafe func OpenTableArray(self: &var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
         var existing = (*target).FindMutable(name);
         if existing == null {
             var fresh = TomlValue::Array(self.allocator);
@@ -839,11 +852,15 @@ extend TomlParser {
                 break;
             }
             if self.ahead.kind == TomlTokenKind::LeftBracket {
-                current = self.ParseHeader(@root);
+                // Safety: `@root` is the document being built, which lives until this function returns.
+                current = unsafe { self.ParseHeader(@root) };
                 if current == null { break; }
                 continue;
             }
-            self.ParseKeyValue(current);
+            // Safety: `current` is `@root` or the table the last header opened inside it. A table moves only when the
+            // table or array holding it grows, and since that header only `current` and the tables below it have
+            // grown.
+            unsafe { self.ParseKeyValue(current); }
             if self.Failed() { break; }
             if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
                 // Two key-value pairs on one line is the shape of a missing newline, and TOML has no separator

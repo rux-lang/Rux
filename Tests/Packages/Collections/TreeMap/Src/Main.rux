@@ -24,7 +24,8 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1;
+            // Safety: a non-null counter points at a local of the test that outlives every element.
+            unsafe { *self.counter = *self.counter + 1; }
         }
     }
 }
@@ -39,7 +40,8 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
-    *afterInserting = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterInserting = *counter; }
 }
 
 // A consuming walk stopped part-way: what was handed out is destroyed by whoever received it, and what was not is
@@ -66,7 +68,8 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
         }
         taken = taken + 1;
     }
-    *afterTaking = *counter;
+    // Safety: both point at locals of the caller, which outlive this call.
+    unsafe { *afterTaking = *counter; }
 }
 
 // Counts what a range hands back, checking on the way that it is sorted and that both bounds are respected.
@@ -123,10 +126,12 @@ func Main() -> int {
     Assert(borrowed is *int32, "a key in the map can be borrowed");
     var writable: *var int32 = null;
     Assert(map.TryReferenceMutable(21, @writable), "and borrowed mutably");
-    *writable = 999;
+    // Safety: `TryReferenceMutable` reported true, so `writable` points at the stored value.
+    unsafe { *writable = 999; }
     Assert(map.Get(21) == .Some(999), "a write through the borrow is what the map holds");
     Assert(!map.TryReferenceMutable(77, @writable), "a key that is not there cannot be borrowed");
-    Assert(*writable == 999, "and leaves the pointer where it was");
+    // Safety: `writable` still points at the value stored under 21, which nothing has removed.
+    Assert(unsafe { *writable == 999 }, "and leaves the pointer where it was");
 
     // Replacing hands back what it displaced; inserting over a key destroys it silently.
     let displaced = map.Replace(21, 63) catch { else => Panic("replacing a key is accepted") };

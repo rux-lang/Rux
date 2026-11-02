@@ -17,8 +17,11 @@ func Echo(value: char512) -> char512 { return value; }
 
 // Reads the whole storage, so a value with any word above the low one set does not compare equal to its code point.
 func Storage(value: char512) -> uint512 {
-    let address = (@value) as *uint512;
-    return *address;
+    // Safety: `value` is a by-value parameter, and `char512` and `uint512` have the same size.
+    unsafe {
+        let address = (@value) as *uint512;
+        return *address;
+    }
 }
 
 // A runtime value at each narrower scalar width, so the widening below is not folded away while compiling.

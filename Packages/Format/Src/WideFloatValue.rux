@@ -41,8 +41,11 @@ extend Float80 {
     /// @returns the value with that primitive's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float80#from-value
     pub func FromValue(value: float80) -> Float80 {
-        let address = (@value) as *uint128;
-        return Float80 { bits: *address & ValueMask80() };
+        // Safety: `value` is this call's live parameter, and a `float80` is held in sixteen bytes aligned to sixteen,
+        // the size and alignment of a `uint128`, whose every bit pattern is valid; the six padding bytes are masked
+        // off below.
+        let stored = unsafe { *((@value) as *uint128) };
+        return Float80 { bits: stored & ValueMask80() };
     }
 
     /// The `float80` these bits encode, for arithmetic on a value that was read or built here.
@@ -52,8 +55,10 @@ extend Float80 {
     /// @see https://rux-lang.dev/docs/api/format/float80#value
     pub func Value(self: &Float80) -> float80 {
         var value: float80 = 0.0f80;
-        let address = (@value) as *var uint128;
-        *address = self.bits & ValueMask80();
+        // Safety: `value` is a live local held in sixteen bytes aligned to sixteen, the size and alignment of a
+        // `uint128`, and every eighty-bit pattern is a `float80` (a non-canonical one behaves as a NaN), with the
+        // padding above it written as zero.
+        unsafe { *((@value) as *var uint128) = self.bits & ValueMask80(); }
         return value;
     }
 
@@ -148,8 +153,9 @@ extend Float128 {
     /// @returns the value with that primitive's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float128#from-value
     pub func FromValue(value: float128) -> Float128 {
-        let address = (@value) as *uint128;
-        return Float128 { bits: *address };
+        // Safety: `value` is this call's live parameter, `float128` and `uint128` are both sixteen bytes wide with the
+        // same alignment, and every bit pattern is a valid `uint128`.
+        return Float128 { bits: unsafe { *((@value) as *uint128) } };
     }
 
     /// The `float128` these bits encode, for arithmetic on a value that was read or built here.
@@ -158,8 +164,9 @@ extend Float128 {
     /// @see https://rux-lang.dev/docs/api/format/float128#value
     pub func Value(self: &Float128) -> float128 {
         var value: float128 = 0.0f128;
-        let address = (@value) as *var uint128;
-        *address = self.bits;
+        // Safety: `value` is a live local, `float128` and `uint128` are both sixteen bytes wide with the same
+        // alignment, and every bit pattern is a `float128` (the ones that are not numbers are NaNs).
+        unsafe { *((@value) as *var uint128) = self.bits; }
         return value;
     }
 
@@ -254,8 +261,9 @@ extend Float256 {
     /// @returns the value with that primitive's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float256#from-value
     pub func FromValue(value: float256) -> Float256 {
-        let address = (@value) as *uint256;
-        return Float256 { bits: *address };
+        // Safety: `value` is this call's live parameter, `float256` and `uint256` are both thirty-two bytes wide
+        // with the same alignment, and every bit pattern is a valid `uint256`.
+        return Float256 { bits: unsafe { *((@value) as *uint256) } };
     }
 
     /// The `float256` these bits encode, for arithmetic on a value that was read or built here.
@@ -264,8 +272,9 @@ extend Float256 {
     /// @see https://rux-lang.dev/docs/api/format/float256#value
     pub func Value(self: &Float256) -> float256 {
         var value: float256 = 0.0f256;
-        let address = (@value) as *var uint256;
-        *address = self.bits;
+        // Safety: `value` is a live local, `float256` and `uint256` are both thirty-two bytes wide with the same
+        // alignment, and every bit pattern is a `float256` (the ones that are not numbers are NaNs).
+        unsafe { *((@value) as *var uint256) = self.bits; }
         return value;
     }
 
@@ -360,8 +369,9 @@ extend Float512 {
     /// @returns the value with that primitive's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float512#from-value
     pub func FromValue(value: float512) -> Float512 {
-        let address = (@value) as *uint512;
-        return Float512 { bits: *address };
+        // Safety: `value` is this call's live parameter, `float512` and `uint512` are both sixty-four bytes wide
+        // with the same alignment, and every bit pattern is a valid `uint512`.
+        return Float512 { bits: unsafe { *((@value) as *uint512) } };
     }
 
     /// The `float512` these bits encode, for arithmetic on a value that was read or built here.
@@ -370,8 +380,9 @@ extend Float512 {
     /// @see https://rux-lang.dev/docs/api/format/float512#value
     pub func Value(self: &Float512) -> float512 {
         var value: float512 = 0.0f512;
-        let address = (@value) as *var uint512;
-        *address = self.bits;
+        // Safety: `value` is a live local, `float512` and `uint512` are both sixty-four bytes wide with the same
+        // alignment, and every bit pattern is a `float512` (the ones that are not numbers are NaNs).
+        unsafe { *((@value) as *var uint512) = self.bits; }
         return value;
     }
 

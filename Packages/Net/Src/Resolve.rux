@@ -65,12 +65,17 @@ when #target.os != .Linux {
             next: null
         };
         var first: *var AddressInfo = null;
-        let code = getaddrinfo(name.AsSlice().data, null, @hints, @first);
+        // Safety: `name` ends in the NUL pushed above, `hints` is a local `AddressInfo`, and `first` is a local the
+        // call writes the head of its list to.
+        let code = unsafe { getaddrinfo(name.AsSlice().data, null, @hints, @first) };
         if code != 0 { fail IoError { kind: IoErrorKind::NotFound, raw: code }; }
         var node = first;
         while node != null {
-            if node.address != null {
-                match Decode(node.address as *uint8) {
+            // Safety: `node` is a live node of the list `getaddrinfo` returned, which is freed only below.
+            let found = unsafe { node.address };
+            if found != null {
+                // Safety: a node's non-null address is a `sockaddr` the resolver filled, as long as its family says.
+                match unsafe { Decode(found as *uint8) } {
                     .Some(found) => {
                         let address = SocketAddress { ip: found.ip, port: port };
                         var seen = false;
@@ -80,7 +85,9 @@ when #target.os != .Linux {
                         if !seen {
                             results.Push(address) catch {
                                 else => {
-                                    freeaddrinfo(first);
+                                    // Safety: `first` is the head `getaddrinfo` returned, freed once, here, before
+                                    // the function leaves.
+                                    unsafe { freeaddrinfo(first); }
                                     fail IoError::Of(IoErrorKind::LimitExceeded);
                                 }
                             };
@@ -89,9 +96,11 @@ when #target.os != .Linux {
                     none => {}
                 }
             }
-            node = node.next;
+            // Safety: `node` is a live node of the list `getaddrinfo` returned, which is freed only below.
+            node = unsafe { node.next };
         }
-        freeaddrinfo(first);
+        // Safety: `first` is the head `getaddrinfo` returned, freed once, here.
+        unsafe { freeaddrinfo(first); }
         if results.Length() == 0u { fail IoError::Of(IoErrorKind::NotFound); }
         return <-results;
     }

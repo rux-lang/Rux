@@ -9,7 +9,7 @@ func SliceEquals(a: char8[..], b: char8[..]) -> bool {
     }
     var i: uint = 0;
     while i < a.length {
-        if a.data[i] != b.data[i] {
+        if a[i] != b[i] {
             return false;
         }
         i++;

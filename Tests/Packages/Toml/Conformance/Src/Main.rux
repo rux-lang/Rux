@@ -15,7 +15,7 @@ import Text::TextWriter;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 // Documents TOML 1.1 accepts. Each is one feature of the grammar, and a reader that refuses any of them is
@@ -977,7 +977,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
     }
     var index: uint = 0;
     while index < left.length {
-        if left.data[index] != right.data[index] {
+        if left[index] != right[index] {
             return false;
         }
         index = index + 1;
@@ -986,17 +986,17 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 }
 
 // How many scalar values the streaming reader finds, and whether it finished cleanly.
-func StreamedScalars(text: char8[..], clean: *var bool) -> uint {
+func StreamedScalars(text: char8[..], clean: &var bool) -> uint {
     var reader = TomlEventReader(text);
     var count: uint = 0;
     while true {
         let event = reader.Next();
         if event == TomlEvent::Error {
-            *clean = false;
+            clean = false;
             return count;
         }
         if event == TomlEvent::End {
-            *clean = !(reader.Failure() is TomlParseFailure);
+            clean = !(reader.Failure() is TomlParseFailure);
             return count;
         }
         if event == TomlEvent::Text || event == TomlEvent::Integer || event == TomlEvent::Float ||
@@ -1004,7 +1004,7 @@ func StreamedScalars(text: char8[..], clean: *var bool) -> uint {
             count = count + 1;
         }
     }
-    *clean = false;
+    clean = false;
     return count;
 }
 
@@ -1015,7 +1015,8 @@ func TreeScalars(value: &TomlValue) -> uint {
         var total: uint = 0;
         var index: uint = 0;
         while index < value.Length() {
-            total = total + TreeScalars((*value.EntryAt(index)).value);
+            // Safety: `index` is below `value.Length()`, so `EntryAt` returns a non-null pointer into `value`.
+            total = total + unsafe { TreeScalars((*value.EntryAt(index)).value) };
             index = index + 1;
         }
         return total;
@@ -1024,7 +1025,8 @@ func TreeScalars(value: &TomlValue) -> uint {
         var total: uint = 0;
         var index: uint = 0;
         while index < value.Length() {
-            total = total + TreeScalars(*value.At(index));
+            // Safety: `index` is below `value.Length()`, so `At` returns a non-null pointer into `value`.
+            total = total + unsafe { TreeScalars(*value.At(index)) };
             index = index + 1;
         }
         return total;
@@ -1079,9 +1081,9 @@ func Main() -> int {
     while index < ValidCount {
         let text = Valid(index);
         var parsed = Accepted(allocator, text, Label(index));
-        let once = Render(parsed, (@storage[0])[..8192]);
+        let once = Render(parsed, storage[..8192]);
         var again = Accepted(allocator, once, Reparsed(index));
-        let twice = Render(again, (@second[0])[..8192]);
+        let twice = Render(again, second[..8192]);
         Assert(Same(once, twice), Fixed(index));
         index = index + 1;
     }
@@ -1104,7 +1106,7 @@ func Main() -> int {
         let text = Valid(index);
         var parsed = Accepted(allocator, text, "the tree parser accepts it");
         var clean = false;
-        let streamed = StreamedScalars(text, @clean);
+        let streamed = StreamedScalars(text, clean);
         Assert(clean, Differential(index));
         Assert(streamed == TreeScalars(parsed), Differential(index));
         index = index + 1;
@@ -1122,7 +1124,7 @@ func Main() -> int {
         let structural = IsStructural(outcome);
         if structural {
             var clean = false;
-            StreamedScalars(text, @clean);
+            StreamedScalars(text, clean);
             Assert(!clean, Refusal(index));
         }
         index = index + 1;

@@ -30,7 +30,7 @@ func Main() -> ! EntropyError {
         raw[index] = 0xFF;
         index = index + 1;
     }
-    var forced = RandomFromBytes((@raw[0])[..16]);
+    var forced = RandomFromBytes(raw[..16]);
     Assert(forced.Version() == 4 && forced.Variant() == UuidVariant::Standard,
            "the version and variant are set whatever the supplied bytes said");
     index = 0;
@@ -38,7 +38,7 @@ func Main() -> ! EntropyError {
         raw[index] = 0;
         index = index + 1;
     }
-    var forcedZero = RandomFromBytes((@raw[0])[..16]);
+    var forcedZero = RandomFromBytes(raw[..16]);
     Assert(forcedZero.Version() == 4 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
 
     // Version 7: well-formed, carrying the millisecond it was given.
@@ -107,13 +107,13 @@ func Main() -> ! EntropyError {
     }
     var swapped = SwapGuidOrder(value);
     let swappedBytes = swapped.Bytes();
-    Assert(swappedBytes.data[0] == 4, "the first field is reversed");
-    Assert(swappedBytes.data[3] == 1, "end for end");
-    Assert(swappedBytes.data[4] == 6, "the second field too");
-    Assert(swappedBytes.data[6] == 8, "and the third");
+    Assert(swappedBytes[0] == 4, "the first field is reversed");
+    Assert(swappedBytes[3] == 1, "end for end");
+    Assert(swappedBytes[4] == 6, "the second field too");
+    Assert(swappedBytes[6] == 8, "and the third");
     index = 8;
     while index < 16 {
-        Assert(swappedBytes.data[index] == (index + 1) as byte,
+        Assert(swappedBytes[index] == (index + 1) as byte,
                "while the last eight bytes are a byte array in both layouts and are untouched");
         index = index + 1;
     }

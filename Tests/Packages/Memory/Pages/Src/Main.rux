@@ -46,37 +46,58 @@ func Main() -> ! PageError {
     Assert(address != null, "the allocation reports where it landed");
 
     // The whole rounded length is usable, not just the length asked for.
-    let bytes = address as *var byte;
-    Set(address, 0xC3 as byte, size * 2);
-    Assert(*bytes == 0xC3 as byte, "the first byte is writable");
-    Assert(*(bytes + size * 2 - 1) == 0xC3 as byte, "and so is the last of the rounded length");
+    // Safety: `address` is a live read-write mapping of `size + 1` bytes rounded up to whole pages of `size`, which is
+    // two pages, so all `size * 2` bytes are inside it.
+    let (first, last) = unsafe {
+        let bytes = address as *var byte;
+        Set(address, 0xC3 as byte, size * 2);
+        (*bytes, *(bytes + size * 2 - 1))
+    };
+    Assert(first == 0xC3 as byte, "the first byte is writable");
+    Assert(last == 0xC3 as byte, "and so is the last of the rounded length");
 
     // Pages come zeroed, which the next allocation is what shows.
     let second = PageAllocate(size, PageRead | PageWrite)?;
-    let secondBytes = second as *var byte;
-    Assert(*secondBytes == 0 as byte && *(secondBytes + size - 1) == 0 as byte, "fresh pages are zero-filled");
+    // Safety: retyping only; `second` is a live read-write mapping of one page of `size` bytes.
+    let secondBytes = unsafe { second as *var byte };
+    // Safety: offsets 0 and `size - 1` are inside the live readable page at `second`.
+    let (secondFirst, secondLast) = unsafe { (*secondBytes, *(secondBytes + size - 1)) };
+    Assert(secondFirst == 0 as byte && secondLast == 0 as byte, "fresh pages are zero-filled");
 
     // Protection changes are accepted for a range that exists.
-    PageProtect(second, size, PageRead)?;
-    Assert(*secondBytes == 0 as byte, "narrowed to read-only, the pages are still readable");
-    PageProtect(second, size, PageRead | PageWrite)?;
-    *secondBytes = 0x5A as byte;
-    Assert(*secondBytes == 0x5A as byte, "widened again, they are writable once more");
+    // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
+    unsafe { PageProtect(second, size, PageRead)?; }
+    // Safety: the page at `second` is live and was just made readable.
+    Assert(unsafe { *secondBytes } == 0 as byte, "narrowed to read-only, the pages are still readable");
+    // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
+    unsafe { PageProtect(second, size, PageRead | PageWrite)?; }
+    // Safety: the page at `second` is live and was just made readable and writable again.
+    let rewritten = unsafe {
+        *secondBytes = 0x5A as byte;
+        *secondBytes
+    };
+    Assert(rewritten == 0x5A as byte, "widened again, they are writable once more");
 
     // The degenerate arguments are reported rather than passed through.
-    Assert(Reason(PageProtect(null, size, PageRead)) == PageError::InvalidAddress, "a null address is refused");
-    Assert(Reason(PageProtect(second, 0, PageRead)) == PageError::InvalidLength, "a zero length is refused");
-    Assert(Reason(PageRelease(null, size)) == PageError::InvalidAddress, "and so is releasing null");
-    Assert(Reason(PageRelease(second, 0)) == PageError::InvalidLength, "or releasing nothing");
+    // Safety: each call is refused by the argument checks that run before any system call, so no page changes.
+    unsafe {
+        Assert(Reason(PageProtect(null, size, PageRead)) == PageError::InvalidAddress, "a null address is refused");
+        Assert(Reason(PageProtect(second, 0, PageRead)) == PageError::InvalidLength, "a zero length is refused");
+        Assert(Reason(PageRelease(null, size)) == PageError::InvalidAddress, "and so is releasing null");
+        Assert(Reason(PageRelease(second, 0)) == PageError::InvalidLength, "or releasing nothing");
+    }
 
     // A protection of none is legal: it takes the space and refuses every access to it, which is a guard page.
     let guarded = PageAllocate(size, PageNone)?;
     Assert(guarded != null, "an inaccessible allocation still reports an address");
-    PageRelease(guarded, size)?;
+    // Safety: `guarded` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
+    unsafe { PageRelease(guarded, size)?; }
 
-    PageRelease(second, size)?;
+    // Safety: `second` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
+    unsafe { PageRelease(second, size)?; }
     // The first allocation is released by the length it asked for.
-    PageRelease(address, size + 1)?;
+    // Safety: `address` is the base `PageAllocate` returned for `size + 1` bytes, and nothing uses it afterwards.
+    unsafe { PageRelease(address, size + 1)?; }
 }
 
 /// The reason a completion failed. A completion that unexpectedly succeeds panics, so a refusal the test expects

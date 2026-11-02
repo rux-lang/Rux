@@ -70,7 +70,8 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
-        let c = text.data[index] as uint8;
+        // Safety: `index` is below `text.length`, checked by the loop.
+        let c = unsafe { text.data[index] } as uint8;
         var escape: char8[6];
         var escapeLength: uint = 0;
         if c == 0x22 || c == 0x5C {
@@ -105,13 +106,17 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
             escape[1] = 0x75u8 as char8;
             escape[2] = 0x30u8 as char8;
             escape[3] = 0x30u8 as char8;
-            escape[4] = JsonHexDigits.data[((c >> 4) & 0x0F) as uint];
-            escape[5] = JsonHexDigits.data[(c & 0x0F) as uint];
+            // Safety: both indices are masked to four bits, below the 16 bytes of `JsonHexDigits`.
+            unsafe {
+                escape[4] = JsonHexDigits.data[((c >> 4) & 0x0F) as uint];
+                escape[5] = JsonHexDigits.data[(c & 0x0F) as uint];
+            }
             escapeLength = 6;
         }
         if escapeLength > 0 {
             if index > runStart {
-                let run = (@text.data[runStart])[..index - runStart];
+                // Safety: `runStart < index < text.length`, so the run lies inside `text`.
+                let run = unsafe { (@text.data[runStart])[..index - runStart] };
                 sink.Write(run)?;
             }
             sink.Write(escape[0..escapeLength])?;
@@ -120,7 +125,8 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
         index = index + 1;
     }
     if index > runStart {
-        let run = (@text.data[runStart])[..index - runStart];
+        // Safety: `runStart < index`, and the loop ended with `index` equal to `text.length`.
+        let run = unsafe { (@text.data[runStart])[..index - runStart] };
         sink.Write(run)?;
     }
     return sink.Write(quote[0..1]);
@@ -183,7 +189,9 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
         return WriteJsonBytes(writer, flag ? "true" : "false");
     }
     if kind == JsonKind::Number {
-        let text = (*value.AsNumber()).Text().Bytes();
+        // Safety: `AsNumber` returns the address of the number payload inside `value`, which is borrowed for the
+        // whole call.
+        let text = unsafe { (*value.AsNumber()).Text().Bytes() };
         // Every way of making a number checks its text against the grammar, but a value whose kind was set by hand
         // can still carry text that is not one, such as none at all. JSON has no way to spell that, so this refuses
         // rather than emitting something other parsers will reject. The value is not wrong; the form asked for
@@ -213,15 +221,19 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
         WriteNewlineAndIndent(writer, style, level + 1)?;
         if isObject {
             let member = value.MemberAt(index);
-            WriteEscaped(writer, member.name.View().Bytes())?;
+            // Safety: `index` is below `value.Length()` of an object, so `MemberAt` returned a member stored inside
+            // `value`, which is borrowed for the whole call.
+            WriteEscaped(writer, unsafe { member.name.View().Bytes() })?;
             WriteJsonBytes(writer, ":")?;
             if style.indent > 0 || style.spaceAfterColon {
                 WriteJsonBytes(writer, " ")?;
             }
-            WriteAtLevel(writer, (*member).value, style, level + 1)?;
+            // Safety: `member` is the member of `value` found above, still in place since nothing has changed `value`.
+            unsafe { WriteAtLevel(writer, (*member).value, style, level + 1)?; }
         }
         else {
-            WriteAtLevel(writer, *value.At(index), style, level + 1)?;
+            // Safety: `index` is below `value.Length()` of an array, so `At` returned an element stored inside `value`.
+            unsafe { WriteAtLevel(writer, *value.At(index), style, level + 1)?; }
         }
         index = index + 1;
     }

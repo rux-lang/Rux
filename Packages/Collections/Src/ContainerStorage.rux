@@ -35,7 +35,9 @@ func ElementLayout<T>(count: uint) -> Layout ! CollectionError {
 func AllocateBlock<T>(allocator: Allocator, count: uint) -> (*var T) ! CollectionError {
     let layout = ElementLayout<T>(count)?;
     let block = allocator.Allocate(layout) catch { error => fail FromAllocError(error) };
-    return block as *var T;
+    // Safety: the allocator answered `ElementLayout<T>(count)`, so the block is aligned for `T` and has room for
+    // `count` of them.
+    return unsafe { block as *var T };
 }
 
 // Storage for `newCount` elements holding what the first `min(oldCount, newCount)` of the old block held. On failure
@@ -48,7 +50,9 @@ func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, new
     let moved = allocator.Reallocate(block as *var opaque, oldLayout, newLayout) catch {
         error => fail FromAllocError(error)
     };
-    return moved as *var T;
+    // Safety: the allocator answered `ElementLayout<T>(newCount)`, so the block is aligned for `T` and has room for
+    // `newCount` of them.
+    return unsafe { moved as *var T };
 }
 
 // Gives back storage this package took for `count` elements. The elements themselves are the container's business:

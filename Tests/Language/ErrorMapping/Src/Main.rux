@@ -32,7 +32,8 @@ extend Tracked {
     func =(self: &var Tracked, other: &Tracked);
 
     func ~Tracked(self: &var Tracked) {
-        self.counter.count = self.counter.count + 1;
+        // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
+        unsafe { self.counter.count = self.counter.count + 1; }
     }
 }
 
@@ -72,7 +73,8 @@ func Counted(calls: *var int32, text: int32) -> int32 ! ConfigError {
 }
 
 func Mapped(calls: *var int32) -> ConfigError {
-    *calls = *calls + 1i32;
+    // Safety: `calls` is `@calls`, a live local of `Main`, passed through `Counted`.
+    unsafe { *calls = *calls + 1i32; }
     return ConfigError { kind: 9i32, detail: 0i32 };
 }
 
@@ -113,8 +115,10 @@ func Fallback(text: int32) -> int32 ! ConfigError {
 
 // Defers run after the mapped failure is captured.
 func Deferred(log: *var int32, text: int32) -> int32 ! ConfigError {
-    defer *log = *log * 10i32 + 1i32;
-    let value = Read(text)? else (e => ToConfig(e, *log));
+    // Safety: `log` is `@log`, a live local of `Main`.
+    defer unsafe { *log = *log * 10i32 + 1i32; }
+    // Safety: `log` is `@log`, a live local of `Main`.
+    let value = Read(text)? else (e => ToConfig(e, unsafe { *log }));
     return value;
 }
 

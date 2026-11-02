@@ -43,7 +43,9 @@ extend TomlPath {
         if self.length + bytes.length > self.room.length { return false; }
         var index: uint = 0;
         while index < bytes.length {
-            self.room.data[self.length + index] = bytes.data[index];
+            // Safety: `self.length + bytes.length` fits in `self.room`, checked above, and `index` is below
+            // `bytes.length`.
+            unsafe { self.room.data[self.length + index] = bytes.data[index]; }
             index = index + 1;
         }
         self.length = self.length + bytes.length;
@@ -51,7 +53,9 @@ extend TomlPath {
     }
 
     func Bytes(self: &TomlPath) -> char8[..] {
-        return (self.room.data)[..self.length];
+        // Safety: `self.length` only ever holds a length `Append` accepted or an earlier such length, so it is at
+        // most `self.room.length`.
+        return unsafe { (self.room.data)[..self.length] };
     }
 }
 
@@ -60,7 +64,8 @@ func IsBareKey(name: char8[..]) -> bool {
     if name.length == 0 { return false; }
     var index: uint = 0;
     while index < name.length {
-        let c = name.data[index] as uint8;
+        // Safety: `index` is below `name.length`, checked by the loop.
+        let c = unsafe { name.data[index] } as uint8;
         let allowed = (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
                       (c >= 0x30 && c <= 0x39) || c == 0x5F || c == 0x2D;
         if !allowed { return false; }
@@ -86,7 +91,8 @@ func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> ! FormatError 
     EmitByte(writer, 0x22)?;
     var index: uint = 0;
     while index < text.length {
-        let c = text.data[index] as uint8;
+        // Safety: `index` is below `text.length`, checked by the loop.
+        let c = unsafe { text.data[index] } as uint8;
         if c == 0x22 || c == 0x5C {
             EmitByte(writer, 0x5C)?;
             EmitByte(writer, c)?;
@@ -142,7 +148,8 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
     var length: uint = 0;
     var significant: uint = 15;
     while significant <= 17 {
-        var cursor = ByteCursor((@storage[0])[..64]);
+        // Safety: `storage` is a local array of 64 bytes.
+        var cursor = ByteCursor(unsafe { (@storage[0])[..64] });
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
@@ -154,13 +161,15 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
             significant = significant + 1;
         }
     }
-    let text = (@storage[0])[..length];
+    // Safety: `length` is what the cursor wrote into the 64 bytes of `storage`, so it is at most 64.
+    let text = unsafe { (@storage[0])[..length] };
         Emit(writer, text)?;
     // TOML tells a float from an integer by its point or its exponent, so a whole value needs one written out or
     // it would read back as an integer and stop being the same document.
     var index: uint = 0;
     while index < length {
-        let c = text.data[index] as uint8;
+        // Safety: `index` is below `length`, the length of `text`, checked by the loop.
+        let c = unsafe { text.data[index] } as uint8;
         if c == 0x2E || c == 0x65 || c == 0x45 { return .Success(()); }
         index = index + 1;
     }
@@ -258,7 +267,9 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
             if index > 0 {
                 Emit(writer, ", ")?;
             }
-            EmitValue(writer, *value.At(index))?;
+            // Safety: `index` is below `value.Length()` of an array, so `At` returned an element stored in `value`,
+            // which is borrowed for the whole call.
+            unsafe { EmitValue(writer, *value.At(index))?; }
             index = index + 1;
         }
         return EmitByte(writer, 0x5D);
@@ -274,9 +285,13 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
                 Emit(writer, ", ")?;
             }
             let entry = value.EntryAt(index);
-            EmitKey(writer, (*entry).key.View().Bytes())?;
-            Emit(writer, " = ")?;
-            EmitValue(writer, (*entry).value)?;
+            // Safety: `index` is below `value.Length()` of a table, so `EntryAt` returned an entry stored in `value`,
+            // which is borrowed for the whole call.
+            unsafe {
+                EmitKey(writer, (*entry).key.View().Bytes())?;
+                Emit(writer, " = ")?;
+                EmitValue(writer, (*entry).value)?;
+            }
             index = index + 1;
         }
         return Emit(writer, " }");
@@ -298,11 +313,15 @@ func EmitBody(writer: &var TextWriter, table: &TomlValue) -> ! FormatError {
     var index: uint = 0;
     while index < table.Length() {
         let entry = table.EntryAt(index);
-        if IsBodyEntry((*entry).value) {
-                        EmitKey(writer, (*entry).key.View().Bytes())?;
-            Emit(writer, " = ")?;
-            EmitValue(writer, (*entry).value)?;
-            EmitByte(writer, 0x0A)?;
+        // Safety: `index` is below `table.Length()` of a table, so `EntryAt` returned an entry stored in `table`,
+        // which is borrowed for the whole call.
+        unsafe {
+            if IsBodyEntry((*entry).value) {
+                EmitKey(writer, (*entry).key.View().Bytes())?;
+                Emit(writer, " = ")?;
+                EmitValue(writer, (*entry).value)?;
+                EmitByte(writer, 0x0A)?;
+            }
         }
         index = index + 1;
     }
@@ -324,40 +343,50 @@ func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bo
 
 // The sub-tables of a table, each under a header of its own, after the body has been written. The order is the
 // table's own, so the output of a tree is the same every time.
-func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPath, written: *var uint,
+func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPath, written: &var uint,
                   root: bool) -> ! FormatError {
     var index: uint = 0;
     while index < table.Length() {
         let entry = table.EntryAt(index);
-        if IsBodyEntry((*entry).value) {
-            index = index + 1;
-            continue;
-        }
-        let mark = path.length;
-        if !root {
-            if !path.Append(".") { return PathTooLong(); }
-        }
-        KeyIntoPath(path, (*entry).key.View().Bytes())?;
-        if (*entry).value.Kind() == TomlKind::Table {
-            EmitHeader(writer, path, false, *written == 0)?;
-            *written = *written + 1;
-            EmitBody(writer, (*entry).value)?;
-            EmitSections(writer, (*entry).value, path, written, false)?;
-        }
-        else {
-            var element: uint = 0;
-            while element < (*entry).value.Length() {
-                let held = (*entry).value.At(element);
-                EmitHeader(writer, path, true, *written == 0)?;
-                *written = *written + 1;
-                EmitBody(writer, *held)?;
-                EmitSections(writer, *held, path, written, false)?;
-                element = element + 1;
-            }
-        }
-        path.length = mark;
+        // Safety: `index` is below `table.Length()` of a table, so `EntryAt` returned an entry stored in `table`,
+        // which is borrowed for the whole call.
+        unsafe { EmitSection(writer, *entry, path, written, root)?; }
         index = index + 1;
     }
+    return;
+}
+
+// One entry of a table under the header, or headers, of its own, unless it is written in the table's body.
+func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath, written: &var uint,
+                 root: bool) -> ! FormatError {
+    if IsBodyEntry(entry.value) { return; }
+    let mark = path.length;
+    if !root {
+        if !path.Append(".") { return PathTooLong(); }
+    }
+    KeyIntoPath(path, entry.key.View().Bytes())?;
+    if entry.value.Kind() == TomlKind::Table {
+        EmitHeader(writer, path, false, written == 0)?;
+        written = written + 1;
+        EmitBody(writer, entry.value)?;
+        EmitSections(writer, entry.value, path, written, false)?;
+    }
+    else {
+        var element: uint = 0;
+        while element < entry.value.Length() {
+            let held = entry.value.At(element);
+            EmitHeader(writer, path, true, written == 0)?;
+            written = written + 1;
+            // Safety: `element` is below `entry.value.Length()` of an array of tables, so `At` returned an element
+            // stored in `entry.value`, which is borrowed for the whole call.
+            unsafe {
+                EmitBody(writer, *held)?;
+                EmitSections(writer, *held, path, written, false)?;
+            }
+            element = element + 1;
+        }
+    }
+    path.length = mark;
     return;
 }
 
@@ -371,7 +400,8 @@ func PathTooLong() -> ! FormatError {
 func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> ! FormatError {
     if IsBareKey(name) { return path.Append(name) ? .Success(()) : PathTooLong(); }
     var storage: char8[512];
-    var cursor = ByteCursor((@storage[0])[..512]);
+    // Safety: `storage` is a local array of 512 bytes.
+    var cursor = ByteCursor(unsafe { (@storage[0])[..512] });
     let quoted: &var TextWriter = cursor;
     EmitBasicString(quoted, name)?;
     return path.Append(cursor.Written()) ? .Success(()) : PathTooLong();
@@ -395,12 +425,13 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> ! FormatError {
 pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> ! FormatError {
     if table.Kind() != TomlKind::Table { return EmitValue(writer, table); }
     var storage: char8[1024];
-    var path = TomlPath { room: (@storage[0])[..MaximumHeaderPath], length: 0 };
+    // Safety: `storage` is a local array of `MaximumHeaderPath` bytes, and `path` does not outlive it.
+    var path = TomlPath { room: unsafe { (@storage[0])[..MaximumHeaderPath] }, length: 0 };
     EmitBody(writer, table)?;
     // The root's own lines come first, so a header needs a blank line before it unless nothing has been
     // written yet.
     var written = CountBodyEntries(table);
-    return EmitSections(writer, table, path, @written, true);
+    return EmitSections(writer, table, path, written, true);
 }
 
 // How many of a table's entries are written as lines rather than as sections.
@@ -408,8 +439,12 @@ func CountBodyEntries(table: &TomlValue) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < table.Length() {
-        if IsBodyEntry((*table.EntryAt(index)).value) {
-            count = count + 1;
+        // Safety: `index` is below `table.Length()` of a table, so `EntryAt` returned an entry stored in `table`,
+        // which is borrowed for the whole call.
+        unsafe {
+            if IsBodyEntry((*table.EntryAt(index)).value) {
+                count = count + 1;
+            }
         }
         index = index + 1;
     }

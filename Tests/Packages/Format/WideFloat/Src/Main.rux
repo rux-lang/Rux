@@ -12,7 +12,7 @@ import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout,
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
-    return (text.data)[..text.length];
+    return text;
 }
 
 func Same(left: char8[..], right: char8[..]) -> bool {
@@ -21,7 +21,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
     }
     var index: uint = 0;
     while index < left.length {
-        if left.data[index] != right.data[index] {
+        if left[index] != right[index] {
             return false;
         }
         index = index + 1;
@@ -33,7 +33,7 @@ func StartsWith(text: char8[..], prefix: char8[..]) -> bool {
     if text.length < prefix.length {
         return false;
     }
-    return Same((text.data)[..prefix.length], prefix);
+    return Same(text[..prefix.length], prefix);
 }
 
 // Renders `bits` under `layout` into `storage` and hands back what was written.
@@ -53,7 +53,7 @@ func Precision(places: uint) -> FormatSpec {
     var text: char8[2];
     text[0] = c8'.';
     text[1] = (0x30 + places) as char8;
-    spec = ParseFormatSpec((@text[0])[..2]) catch { else => Panic("the precision spec parses") };
+    spec = ParseFormatSpec(text[..2]) catch { else => Panic("the precision spec parses") };
     return spec;
 }
 
@@ -72,7 +72,7 @@ func Refused(text: char8[..], layout: &FloatLayout) -> bool {
 
 func Main() -> int {
     var storage: char8[8192];
-    let room = (@storage[0])[..8192];
+    let room = storage[..8192];
     let plain = FormatSpec::Plain();
     let b128 = FloatLayout::Binary128();
     let b80 = FloatLayout::Extended80();

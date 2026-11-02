@@ -47,14 +47,26 @@ var WinsockState: uint32 = 0;
 // Starts Winsock once for the process; nothing to do elsewhere.
 func StartNetworking() {
     when #target.os == .Windows {
-        if AtomicLoad(@WinsockState, MemoryOrder::Acquire) == 2u32 { return; }
-        if AtomicCompareExchange(@WinsockState, 0u32, 1u32, MemoryOrder::Acquire, MemoryOrder::Acquire) == 0u32 {
+        // Safety: `WinsockState` is a module variable, live and aligned for the whole process, that every thread
+        // reaches only through atomic operations.
+        if unsafe { AtomicLoad(@WinsockState, MemoryOrder::Acquire) } == 2u32 { return; }
+        // Safety: `WinsockState` is a module variable, live and aligned for the whole process, that every thread
+        // reaches only through atomic operations.
+        let previous = unsafe {
+            AtomicCompareExchange(@WinsockState, 0u32, 1u32, MemoryOrder::Acquire, MemoryOrder::Acquire)
+        };
+        if previous == 0u32 {
             var data = WsaData();
-            WSAStartup(0x0202u16, @data);
-            AtomicStore(@WinsockState, 2u32, MemoryOrder::Release);
+            // Safety: `data` is a local `WsaData` the call fills in.
+            unsafe { WSAStartup(0x0202u16, @data); }
+            // Safety: `WinsockState` is a module variable, live and aligned for the whole process, that every thread
+        // reaches only through atomic operations.
+            unsafe { AtomicStore(@WinsockState, 2u32, MemoryOrder::Release); }
             return;
         }
-        while AtomicLoad(@WinsockState, MemoryOrder::Acquire) != 2u32 { SpinHint(); }
+        // Safety: `WinsockState` is a module variable, live and aligned for the whole process, that every thread
+        // reaches only through atomic operations.
+        while unsafe { AtomicLoad(@WinsockState, MemoryOrder::Acquire) } != 2u32 { SpinHint(); }
     }
 }
 
@@ -114,7 +126,8 @@ func FailureOf(code: int64) -> IoError {
 // The last error of a Winsock call, or the error a Unix wrapper returned.
 func LastFailure(result: int64) -> IoError {
     when #target.os == .Windows {
-        return FailureOf(WSAGetLastError() as int64);
+        // Safety: `WSAGetLastError` takes nothing and only reads the calling thread's last Winsock error.
+        return FailureOf(unsafe { WSAGetLastError() } as int64);
     }
     else {
         return FailureOf(-result);
@@ -126,7 +139,8 @@ func LastFailure(result: int64) -> IoError {
 func SocketFailure(handle: uint64, failure: IoError) -> IoError {
     when #target.os != .Windows {
         if failure.kind == IoErrorKind::TimedOut && failure.raw != 110i32 && failure.raw != 60i32 {
-            let flags = FcntlInt(handle as int32, F_GETFL, 0);
+            // Safety: `F_GETFL` takes an integer argument, not an address.
+            let flags = unsafe { FcntlInt(handle as int32, F_GETFL, 0) };
             if flags >= 0i64 && (flags & O_NONBLOCK as int64) != 0i64 {
                 return IoError { kind: IoErrorKind::WouldBlock, raw: failure.raw };
             }
@@ -139,14 +153,17 @@ func SocketFailure(handle: uint64, failure: IoError) -> IoError {
 func SetSocketNonBlocking(handle: uint64, enabled: bool) -> ! IoError {
     when #target.os == .Windows {
         var mode: uint32 = enabled ? 1u32 : 0u32;
-        if ioctlsocket(handle, FIONBIO, @mode) != 0 { fail LastFailure(0); }
+        // Safety: `FIONBIO` reads one `uint32` through its argument, and `mode` is that local.
+        if unsafe { ioctlsocket(handle, FIONBIO, @mode) } != 0 { fail LastFailure(0); }
     }
     else {
-        let flags = FcntlInt(handle as int32, F_GETFL, 0);
+        // Safety: `F_GETFL` takes an integer argument, not an address.
+        let flags = unsafe { FcntlInt(handle as int32, F_GETFL, 0) };
         if flags < 0i64 { fail LastFailure(flags); }
         let updated = enabled ? (flags | O_NONBLOCK as int64) : (flags & ~(O_NONBLOCK as int64));
         if updated != flags {
-            let result = FcntlInt(handle as int32, F_SETFL, updated);
+            // Safety: `F_SETFL` takes an integer argument, not an address.
+            let result = unsafe { FcntlInt(handle as int32, F_SETFL, updated) };
             if result < 0i64 { fail LastFailure(result); }
         }
     }
@@ -188,7 +205,9 @@ func Encode(address: SocketAddress) -> RawAddress {
 }
 
 // Decodes a `sockaddr`, or none for a family this package does not know.
-func Decode(bytes: *uint8) -> SocketAddress? {
+// Safety: `bytes` must address a readable `sockaddr` of at least four bytes whose family tells its true length: 16
+// bytes for `AF_INET` and 28 for `AF_INET6`.
+unsafe func Decode(bytes: *uint8) -> SocketAddress? {
     var family: int32 = 0;
     when #target.os == .macOS || #target.os == .FreeBSD {
         family = bytes[1] as int32;
@@ -218,12 +237,15 @@ func Decode(bytes: *uint8) -> SocketAddress? {
 // turns `SIGPIPE` into a `BrokenPipe` failure, as `MSG_NOSIGNAL` does on each send elsewhere.
 func KeepFromChildren(handle: uint64) {
     when #target.os == .Windows {
-        SetHandleInformation(handle as *opaque, HANDLE_FLAG_INHERIT, 0);
+        // Safety: the call reads no memory, and `handle` is the socket its caller just made.
+        unsafe { SetHandleInformation(handle as *opaque, HANDLE_FLAG_INHERIT, 0); }
     }
     else when #target.os == .macOS {
-        fcntl(handle as int32, F_SETFD, FD_CLOEXEC);
+        // Safety: `F_SETFD` takes a flag word, not an address.
+        unsafe { fcntl(handle as int32, F_SETFD, FD_CLOEXEC); }
         var one: int32 = 1;
-        SetSocketOption(handle as int32, SOL_SOCKET, SO_NOSIGPIPE, (@one) as *opaque, 4u32);
+        // Safety: `one` is a local `int32`, readable for the 4 bytes passed.
+        unsafe { SetSocketOption(handle as int32, SOL_SOCKET, SO_NOSIGPIPE, (@one) as *opaque, 4u32); }
     }
 }
 
@@ -232,7 +254,8 @@ func OpenSocket(address: SocketAddress, stream: bool) -> uint64 ! IoError {
     let family = address.ip.IsIpv6() ? AF_INET6 : AF_INET;
     let kind: int32 = stream ? 1 : 2;
     when #target.os == .Windows {
-        let handle = socket(family, kind, 0);
+        // Safety: `socket` takes three numbers and reads no memory of the caller's.
+        let handle = unsafe { socket(family, kind, 0) };
         if handle == INVALID_SOCKET { fail LastFailure(0); }
         KeepFromChildren(handle);
         return handle;
@@ -253,7 +276,8 @@ func OpenSocket(address: SocketAddress, stream: bool) -> uint64 ! IoError {
 func CloseSocket(handle: uint64) {
     if handle == NoSocket { return; }
     when #target.os == .Windows {
-        closesocket(handle);
+        // Safety: the call reads no memory, and `handle` is a socket its caller owns and gives up here.
+        unsafe { closesocket(handle); }
     }
     else {
         Close(handle as int32);
@@ -266,22 +290,26 @@ func BindSocket(handle: uint64, address: SocketAddress, reuse: bool) -> ! IoErro
         // else by the option, letting another socket take the port over, so it is not set there.
         if reuse {
             var one: int32 = 1;
-            SetSocketOption(handle as int32, SOL_SOCKET, SO_REUSEADDR, (@one) as *opaque, 4u32);
+            // Safety: `one` is a local `int32`, readable for the 4 bytes passed.
+            unsafe { SetSocketOption(handle as int32, SOL_SOCKET, SO_REUSEADDR, (@one) as *opaque, 4u32); }
         }
     }
     var raw = Encode(address);
     when #target.os == .Windows {
-        if bind(handle, (@raw.bytes[0]) as *opaque, raw.length as int32) != 0 { fail LastFailure(0); }
+        // Safety: `raw` is a local whose first `raw.length` bytes `Encode` filled with the `sockaddr`.
+        if unsafe { bind(handle, (@raw.bytes[0]) as *opaque, raw.length as int32) } != 0 { fail LastFailure(0); }
     }
     else {
-        let result = Bind(handle as int32, (@raw.bytes[0]) as *opaque, raw.length);
+        // Safety: `raw` is a local whose first `raw.length` bytes `Encode` filled with the `sockaddr`.
+        let result = unsafe { Bind(handle as int32, (@raw.bytes[0]) as *opaque, raw.length) };
         if result < 0 { fail LastFailure(result); }
     }
 }
 
 func ListenSocket(handle: uint64) -> ! IoError {
     when #target.os == .Windows {
-        if listen(handle, 128) != 0 { fail LastFailure(0); }
+        // Safety: `listen` takes two numbers and reads no memory of the caller's.
+        if unsafe { listen(handle, 128) } != 0 { fail LastFailure(0); }
     }
     else {
         let result = Listen(handle as int32, 128);
@@ -292,11 +320,13 @@ func ListenSocket(handle: uint64) -> ! IoError {
 func ConnectSocket(handle: uint64, address: SocketAddress) -> ! IoError {
     var raw = Encode(address);
     when #target.os == .Windows {
-        if connect(handle, (@raw.bytes[0]) as *opaque, raw.length as int32) != 0 { fail LastFailure(0); }
+        // Safety: `raw` is a local whose first `raw.length` bytes `Encode` filled with the `sockaddr`.
+        if unsafe { connect(handle, (@raw.bytes[0]) as *opaque, raw.length as int32) } != 0 { fail LastFailure(0); }
     }
     else {
         while true {
-            let result = Connect(handle as int32, (@raw.bytes[0]) as *opaque, raw.length);
+            // Safety: `raw` is a local whose first `raw.length` bytes `Encode` filled with the `sockaddr`.
+            let result = unsafe { Connect(handle as int32, (@raw.bytes[0]) as *opaque, raw.length) };
             if result >= 0 { return; }
             let failure = LastFailure(result);
             if failure.kind != IoErrorKind::Interrupted { fail failure; }
@@ -309,34 +339,45 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
     var raw = RawAddress { bytes: [0u8; 32], length: 32 };
     when #target.os == .Windows {
         var length: int32 = 32;
-        let accepted = accept(handle, (@raw.bytes[0]) as *var opaque, @length);
+        // Safety: `raw` is a local of 32 bytes, the `length` passed, and `length` is a local the call writes.
+        let accepted = unsafe { accept(handle, (@raw.bytes[0]) as *var opaque, @length) };
         if accepted == INVALID_SOCKET { fail LastFailure(0); }
         KeepFromChildren(accepted);
         SetSocketNonBlocking(accepted, false) catch { else => {} };
-        *peer = Decode(@raw.bytes[0]) ?? *peer;
+        // Safety: the documented contract makes `peer` a non-null pointer to the caller's writable
+        // `SocketAddress`, and `raw` is a 32-byte local the system filled with a `sockaddr`.
+        unsafe { *peer = Decode(@raw.bytes[0]) ?? *peer; }
         return accepted;
     }
     else {
         while true {
             var length: uint32 = 32;
             when #target.os == .macOS {
-                let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, 0);
+                // Safety: `raw` is a local of 32 bytes, the `length` passed, and `length` is a local the call writes.
+                let result = unsafe { Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, 0) };
                 if result >= 0 {
                     KeepFromChildren(result as uint64);
                     SetSocketNonBlocking(result as uint64, false) catch { else => {} };
-                    *peer = Decode(@raw.bytes[0]) ?? *peer;
+                    // Safety: the documented contract makes `peer` a non-null pointer to the caller's writable
+                    // `SocketAddress`, and `raw` is a 32-byte local the system filled with a `sockaddr`.
+                    unsafe { *peer = Decode(@raw.bytes[0]) ?? *peer; }
                     return result as uint64;
                 }
                 let failure = LastFailure(result);
                 if failure.kind != IoErrorKind::Interrupted { fail SocketFailure(handle, failure); }
             }
             else {
-                let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, SOCK_CLOEXEC);
+                // Safety: `raw` is a local of 32 bytes, the `length` passed, and `length` is a local the call writes.
+                let result = unsafe {
+                    Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, SOCK_CLOEXEC)
+                };
                 if result >= 0 {
                     when #target.os == .FreeBSD {
                         SetSocketNonBlocking(result as uint64, false) catch { else => {} };
                     }
-                    *peer = Decode(@raw.bytes[0]) ?? *peer;
+                    // Safety: the documented contract makes `peer` a non-null pointer to the caller's writable
+                    // `SocketAddress`, and `raw` is a 32-byte local the system filled with a `sockaddr`.
+                    unsafe { *peer = Decode(@raw.bytes[0]) ?? *peer; }
                     return result as uint64;
                 }
                 let failure = LastFailure(result);
@@ -357,7 +398,9 @@ func SendSocket(handle: uint64, bytes: char8[..], target: SocketAddress?) -> uin
     let address: *opaque = raw.length == 0u32 ? null : (@raw.bytes[0]) as *opaque;
     when #target.os == .Windows {
         let count = bytes.length > 0x40000000u ? 0x40000000i32 : bytes.length as int32;
-        let sent = sendto(handle, bytes.data as *opaque, count, 0, address, raw.length as int32);
+        // Safety: `bytes` is readable for `count` bytes, at most its length, and a non-null `address` is the local
+        // `raw`, readable for the `raw.length` bytes `Encode` filled.
+        let sent = unsafe { sendto(handle, bytes.data as *opaque, count, 0, address, raw.length as int32) };
         if sent < 0 { fail LastFailure(0); }
         return sent as uint;
     }
@@ -367,7 +410,11 @@ func SendSocket(handle: uint64, bytes: char8[..], target: SocketAddress?) -> uin
             flags = MSG_NOSIGNAL;
         }
         while true {
-            let result = SendTo(handle as int32, bytes.data as *opaque, bytes.length, flags, address, raw.length);
+            // Safety: `bytes` is a slice, readable for `bytes.length` bytes, and a non-null `address` is the local
+            // `raw`, readable for the `raw.length` bytes `Encode` filled.
+            let result = unsafe {
+                SendTo(handle as int32, bytes.data as *opaque, bytes.length, flags, address, raw.length)
+            };
             if result >= 0 { return result as uint; }
             let failure = LastFailure(result);
             if failure.kind != IoErrorKind::Interrupted { fail SocketFailure(handle, failure); }
@@ -386,23 +433,36 @@ func ReceiveSocket(handle: uint64, into: var char8[..], source: *var SocketAddre
     when #target.os == .Windows {
         var length: int32 = 32;
         let count = into.length > 0x40000000u ? 0x40000000i32 : into.length as int32;
-        var received = recvfrom(handle, into.data as *var opaque, count, 0, address, source == null ? null : @length);
+        // Safety: `into` is writable for `count` bytes, at most its length; `address` and the length pointer are
+        // null together, or the 32-byte local `raw` and the local `length` that states its size.
+        var received = unsafe {
+            recvfrom(handle, into.data as *var opaque, count, 0, address, source == null ? null : @length)
+        };
         if received < 0 {
             // A datagram longer than the buffer fills it and the rest is lost, as on the other systems; Windows says so
             // by failing with WSAEMSGSIZE after filling the buffer and the source.
-            if WSAGetLastError() != WsaMessageTooLong { fail LastFailure(0); }
+            // Safety: `WSAGetLastError` takes nothing and only reads the calling thread's last Winsock error.
+            if unsafe { WSAGetLastError() } != WsaMessageTooLong { fail LastFailure(0); }
             received = count;
         }
-        if source != null { *source = Decode(@raw.bytes[0]) ?? *source; }
+        // Safety: a non-null `source` is the caller's writable `SocketAddress`, by the documented contract, and `raw`
+        // holds the `sockaddr` the system filled.
+        if source != null { unsafe { *source = Decode(@raw.bytes[0]) ?? *source; } }
         return received as uint;
     }
     else {
         while true {
             var length: uint32 = 32;
-            let result = ReceiveFrom(handle as int32, into.data as *var opaque, into.length, 0, address,
-                                     source == null ? null : @length);
+            // Safety: `into` is a writable slice of `into.length` bytes; `address` and the length pointer are null
+            // together, or the 32-byte local `raw` and the local `length` that states its size.
+            let result = unsafe {
+                ReceiveFrom(handle as int32, into.data as *var opaque, into.length, 0, address,
+                            source == null ? null : @length)
+            };
             if result >= 0 {
-                if source != null { *source = Decode(@raw.bytes[0]) ?? *source; }
+                // Safety: a non-null `source` is the caller's writable `SocketAddress`, by the documented contract,
+                // and `raw` holds the `sockaddr` the system filled.
+                if source != null { unsafe { *source = Decode(@raw.bytes[0]) ?? *source; } }
                 return result as uint;
             }
             let failure = LastFailure(result);
@@ -414,7 +474,8 @@ func ReceiveSocket(handle: uint64, into: var char8[..], source: *var SocketAddre
 
 func ShutdownSocket(handle: uint64, how: int32) -> ! IoError {
     when #target.os == .Windows {
-        if shutdown(handle, how) != 0 { fail LastFailure(0); }
+        // Safety: `shutdown` takes two numbers and reads no memory of the caller's.
+        if unsafe { shutdown(handle, how) } != 0 { fail LastFailure(0); }
     }
     else {
         let result = Shutdown(handle as int32, how);
@@ -427,26 +488,35 @@ func SocketName(handle: uint64, peer: bool) -> SocketAddress ! IoError {
     var raw = RawAddress { bytes: [0u8; 32], length: 32 };
     when #target.os == .Windows {
         var length: int32 = 32;
-        let result = peer ? getpeername(handle, (@raw.bytes[0]) as *var opaque, @length)
-                          : getsockname(handle, (@raw.bytes[0]) as *var opaque, @length);
+        // Safety: `raw` is a local of 32 bytes, the `length` passed, and `length` is a local the call writes.
+        let result = unsafe {
+            peer ? getpeername(handle, (@raw.bytes[0]) as *var opaque, @length)
+                 : getsockname(handle, (@raw.bytes[0]) as *var opaque, @length)
+        };
         if result != 0 { fail LastFailure(0); }
     }
     else {
         var length: uint32 = 32;
-        let result = peer ? GetPeerName(handle as int32, (@raw.bytes[0]) as *var opaque, @length)
-                          : GetSocketName(handle as int32, (@raw.bytes[0]) as *var opaque, @length);
+        // Safety: `raw` is a local of 32 bytes, the `length` passed, and `length` is a local the call writes.
+        let result = unsafe {
+            peer ? GetPeerName(handle as int32, (@raw.bytes[0]) as *var opaque, @length)
+                 : GetSocketName(handle as int32, (@raw.bytes[0]) as *var opaque, @length)
+        };
         if result < 0 { fail LastFailure(result); }
     }
-    return Decode(@raw.bytes[0]) ?? fail IoError::Of(IoErrorKind::Other);
+    // Safety: `raw` is a 32-byte local the system filled with the socket's `sockaddr`.
+    return unsafe { Decode(@raw.bytes[0]) } ?? fail IoError::Of(IoErrorKind::Other);
 }
 
 func SetIntegerOption(handle: uint64, level: int32, name: int32, value: int32) -> ! IoError {
     var setting = value;
     when #target.os == .Windows {
-        if setsockopt(handle, level, name, (@setting) as *opaque, 4) != 0 { fail LastFailure(0); }
+        // Safety: `setting` is a local `int32`, readable for the 4 bytes passed.
+        if unsafe { setsockopt(handle, level, name, (@setting) as *opaque, 4) } != 0 { fail LastFailure(0); }
     }
     else {
-        let result = SetSocketOption(handle as int32, level, name, (@setting) as *opaque, 4u32);
+        // Safety: `setting` is a local `int32`, readable for the 4 bytes passed.
+        let result = unsafe { SetSocketOption(handle as int32, level, name, (@setting) as *opaque, 4u32) };
         if result < 0 { fail LastFailure(result); }
     }
 }
@@ -460,7 +530,8 @@ func SetTimeout(handle: uint64, receive: bool, nanoseconds: int64) -> ! IoError 
             let rounded = (nanoseconds + 999999i64) / 1000000i64;
             milliseconds = rounded > 0xFFFFFFFEi64 ? 0xFFFFFFFEu32 : rounded as uint32;
         }
-        if setsockopt(handle, SOL_SOCKET, name, (@milliseconds) as *opaque, 4) != 0 { fail LastFailure(0); }
+        // Safety: `milliseconds` is a local `uint32`, readable for the 4 bytes passed.
+        if unsafe { setsockopt(handle, SOL_SOCKET, name, (@milliseconds) as *opaque, 4) } != 0 { fail LastFailure(0); }
     }
     else {
         // A `timeval`: whole seconds and microseconds, each in a 64-bit field on every system this package supports
@@ -474,7 +545,8 @@ func SetTimeout(handle: uint64, receive: bool, nanoseconds: int64) -> ! IoError 
                 value[1] = 0;
             }
         }
-        let result = SetSocketOption(handle as int32, SOL_SOCKET, name, (@value[0]) as *opaque, 16u32);
+        // Safety: `value` is a local array of two `int64`, readable for the 16 bytes passed.
+        let result = unsafe { SetSocketOption(handle as int32, SOL_SOCKET, name, (@value[0]) as *opaque, 16u32) };
         if result < 0 { fail LastFailure(result); }
     }
 }

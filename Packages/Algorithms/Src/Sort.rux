@@ -52,7 +52,8 @@ pub func Sort<T>(items: var T[..]) {
     if budget == 0 {
         budget = 1;
     }
-    IntroSortRange<T>(data, 0, length, budget);
+    // Safety: `data` is `items.data`, which addresses the `length` elements of `items`.
+    unsafe { IntroSortRange<T>(data, 0, length, budget); }
 }
 
 /// Puts `items` into non-increasing order.
@@ -102,18 +103,22 @@ pub func NthElement<T>(items: var T[..], n: uint) -> bool {
         if budget == 0 {
             // Ordering the rest satisfies the postcondition too, and bounds
             // the worst case at O(n log n).
-            HeapSortRange<T>(data, lo, hi);
+            // Safety: `data` is `items.data` and `lo < hi <= items.length`, so `[lo, hi)` lies inside `items`.
+            unsafe { HeapSortRange<T>(data, lo, hi); }
             return true;
         }
         budget--;
 
         let middle = lo + (hi - lo) / 2;
-        let pivotIndex = MedianOfThree<T>(data, lo, middle, hi - 1);
-        let pivot = data[pivotIndex];
-
         var lessEnd: uint = 0;
         var greaterStart: uint = 0;
-        PartitionThreeWay<T>(data, lo, hi, pivot, @lessEnd, @greaterStart);
+        // Safety: `data` is `items.data` and `lo < hi <= items.length`, so `[lo, hi)` and the pivot index, which is
+        // one of `lo`, `middle` and `hi - 1`, lie inside `items`.
+        unsafe {
+            let pivotIndex = MedianOfThree<T>(data, lo, middle, hi - 1);
+            let pivot = data[pivotIndex];
+            PartitionThreeWay<T>(data, lo, hi, pivot, @lessEnd, @greaterStart);
+        }
 
         if n < lessEnd {
             hi = lessEnd;
@@ -128,7 +133,8 @@ pub func NthElement<T>(items: var T[..], n: uint) -> bool {
         }
     }
 
-    InsertionSortRange<T>(data, lo, hi);
+    // Safety: `data` is `items.data` and `lo <= hi <= items.length`, so `[lo, hi)` lies inside `items`.
+    unsafe { InsertionSortRange<T>(data, lo, hi); }
     return true;
 }
 
@@ -157,21 +163,27 @@ pub func PartialSort<T>(items: var T[..], count: uint) -> bool {
     var i = count / 2;
     while i > 0 {
         i--;
-        SiftDown<T>(data, 0, i, count);
+        // Safety: `data` is `items.data` and `count <= items.length`, checked above, so the heap lies inside `items`.
+        unsafe { SiftDown<T>(data, 0, i, count); }
     }
 
     var j = count;
     while j < length {
-        if data[j] < data[0] {
-            SwapAt<T>(data, 0, j);
-            SiftDown<T>(data, 0, 0, count);
+        // Safety: `data` is `items.data`; `j` is below `items.length`, the loop condition, and the heap of `count`
+        // elements, at least one, lies inside `items`, checked above.
+        unsafe {
+            if data[j] < data[0] {
+                SwapAt<T>(data, 0, j);
+                SiftDown<T>(data, 0, 0, count);
+            }
         }
         j++;
     }
 
     // The candidates are now the count smallest, but in heap order rather than
     // sorted order.
-    HeapSortRange<T>(data, 0, count);
+    // Safety: `data` is `items.data` and `count <= items.length`, checked above, so the heap lies inside `items`.
+    unsafe { HeapSortRange<T>(data, 0, count); }
     return true;
 }
 
@@ -190,7 +202,8 @@ func FloorLog2(value: uint) -> uint {
 }
 
 // Internal helper; not part of the package API.
-func SwapAt<T>(data: *var T, first: uint, second: uint) {
+// Safety: `data` must address live, writable elements at `first` and `second`.
+unsafe func SwapAt<T>(data: *var T, first: uint, second: uint) {
     if first == second { return; }
 
     let temp = data[first];
@@ -202,7 +215,8 @@ func SwapAt<T>(data: *var T, first: uint, second: uint) {
 // The index of the median of three elements, using only `<`. Sampling three
 // positions rather than taking the first element is what keeps already-sorted
 // and reverse-sorted input off the quadratic path.
-func MedianOfThree<T>(data: *T, first: uint, middle: uint, last: uint) -> uint {
+// Safety: `data` must address live elements at `first`, `middle` and `last`.
+unsafe func MedianOfThree<T>(data: *T, first: uint, middle: uint, last: uint) -> uint {
     if data[first] < data[middle] {
         if data[middle] < data[last] { return middle; }
         if data[first] < data[last] { return last; }
@@ -221,7 +235,9 @@ func MedianOfThree<T>(data: *T, first: uint, middle: uint, last: uint) -> uint {
 // from both recursions: an all-equal sequence becomes a single linear pass
 // instead of the quadratic behavior a two-way partition produces on it, and
 // input drawn from a small set of distinct values stops being a worst case.
-func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
+// Safety: `data` must address the live, writable elements `[low, high)`, and `lessEnd` and `greaterStart`
+// must be writable.
+unsafe func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
                           greaterStart: *var uint) {
     var less = low;
     var index = low;
@@ -252,12 +268,13 @@ func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd
 
 // Internal helper; not part of the package API.
 /// Provides the public `InsertionSortRange` operation.
+/// Safety: `data` must address the elements from `low` up to `high`, all live and writable.
 /// @typeParam T the element type
 /// @param data the sequence to work on
 /// @param low the first index of the range
 /// @param high the index one past the range
 /// @see https://rux-lang.dev/docs/api/algorithms/sorting#insertion-sort-range
-pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
+pub unsafe func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
     if high - low < 2 { return; }
 
     var i = low + 1;
@@ -280,7 +297,8 @@ pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
 // Internal helper; not part of the package API.
 // Restores the max-heap property at start within the first count elements of
 // the heap based at low. Iterative, so heapsort adds nothing to the stack.
-func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
+// Safety: `data` must address the `count` live, writable elements that start at `low`.
+unsafe func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
     var root = start;
     loop {
         let child = root * 2 + 1;
@@ -305,12 +323,13 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
 // O(1) space, at a larger constant factor than quicksort — which is why it is
 // reached only once the recursion budget is spent.
 /// Provides the public `HeapSortRange` operation.
+/// Safety: `data` must address the elements from `low` up to `high`, all live and writable.
 /// @typeParam T the element type
 /// @param data the sequence to work on
 /// @param low the first index of the range
 /// @param high the index one past the range
 /// @see https://rux-lang.dev/docs/api/algorithms/sorting#heap-sort-range
-pub func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
+pub unsafe func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
     let count = high - low;
     if count < 2 { return; }
 
@@ -329,7 +348,8 @@ pub func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
 }
 
 // Internal helper; not part of the package API.
-func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
+// Safety: `data` must address the live, writable elements `[low, high)`.
+unsafe func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
     var lo = low;
     var hi = high;
     var budget = depth;
@@ -397,7 +417,8 @@ pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     if budget == 0 {
         budget = 1;
     }
-    IntroSortRangeBy<T>(data, 0, length, budget, compare);
+    // Safety: `data` is `items.data`, which addresses the `length` elements of `items`.
+    unsafe { IntroSortRangeBy<T>(data, 0, length, budget, compare); }
 }
 
 /// Puts `items` into the reverse of the order `compare` describes.
@@ -439,18 +460,22 @@ pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Order
 
     while hi - lo > InsertionSortThreshold {
         if budget == 0 {
-            HeapSortRangeBy<T>(data, lo, hi, compare);
+            // Safety: `data` is `items.data` and `lo < hi <= items.length`, so `[lo, hi)` lies inside `items`.
+            unsafe { HeapSortRangeBy<T>(data, lo, hi, compare); }
             return true;
         }
         budget--;
 
         let middle = lo + (hi - lo) / 2;
-        let pivotIndex = MedianOfThreeBy<T>(data, lo, middle, hi - 1, compare);
-        let pivot = data[pivotIndex];
-
         var lessEnd: uint = 0;
         var greaterStart: uint = 0;
-        PartitionThreeWayBy<T>(data, lo, hi, pivot, @lessEnd, @greaterStart, compare);
+        // Safety: `data` is `items.data` and `lo < hi <= items.length`, so `[lo, hi)` and the pivot index, which is
+        // one of `lo`, `middle` and `hi - 1`, lie inside `items`.
+        unsafe {
+            let pivotIndex = MedianOfThreeBy<T>(data, lo, middle, hi - 1, compare);
+            let pivot = data[pivotIndex];
+            PartitionThreeWayBy<T>(data, lo, hi, pivot, @lessEnd, @greaterStart, compare);
+        }
 
         if n < lessEnd {
             hi = lessEnd;
@@ -463,7 +488,8 @@ pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Order
         }
     }
 
-    InsertionSortRangeBy<T>(data, lo, hi, compare);
+    // Safety: `data` is `items.data` and `lo <= hi <= items.length`, so `[lo, hi)` lies inside `items`.
+    unsafe { InsertionSortRangeBy<T>(data, lo, hi, compare); }
     return true;
 }
 
@@ -487,24 +513,32 @@ pub func PartialSortBy<T>(items: var T[..], count: uint, compare: func(T, T) -> 
     var i = count / 2;
     while i > 0 {
         i--;
-        SiftDownBy<T>(data, 0, i, count, compare);
+        // Safety: `data` is `items.data` and `count <= items.length`, checked above, so the heap lies inside `items`.
+        unsafe { SiftDownBy<T>(data, 0, i, count, compare); }
     }
 
     var j = count;
     while j < length {
-        if compare(data[j], data[0]).IsLess() {
-            SwapAt<T>(data, 0, j);
-            SiftDownBy<T>(data, 0, 0, count, compare);
+        // Safety: `data` is `items.data`; `j` is below `items.length`, the loop condition, and the heap of `count`
+        // elements, at least one, lies inside `items`, checked above.
+        unsafe {
+            if compare(data[j], data[0]).IsLess() {
+                SwapAt<T>(data, 0, j);
+                SiftDownBy<T>(data, 0, 0, count, compare);
+            }
         }
         j++;
     }
 
-    HeapSortRangeBy<T>(data, 0, count, compare);
+    // Safety: `data` is `items.data` and `count <= items.length`, checked above, so the heap lies inside `items`.
+    unsafe { HeapSortRangeBy<T>(data, 0, count, compare); }
     return true;
 }
 
 // Internal helper; not part of the package API.
-func MedianOfThreeBy<T>(data: *T, first: uint, middle: uint, last: uint, compare: func(T, T) -> Ordering) -> uint {
+// Safety: `data` must address live elements at `first`, `middle` and `last`.
+unsafe func MedianOfThreeBy<T>(data: *T, first: uint, middle: uint, last: uint,
+                               compare: func(T, T) -> Ordering) -> uint {
     if compare(data[first], data[middle]).IsLess() {
         if compare(data[middle], data[last]).IsLess() { return middle; }
         if compare(data[first], data[last]).IsLess() { return last; }
@@ -517,7 +551,9 @@ func MedianOfThreeBy<T>(data: *T, first: uint, middle: uint, last: uint, compare
 }
 
 // Internal helper; not part of the package API.
-func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
+// Safety: `data` must address the live, writable elements `[low, high)`, and `lessEnd` and `greaterStart`
+// must be writable.
+unsafe func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
                             greaterStart: *var uint, compare: func(T, T) -> Ordering) {
     var lower = low;
     var index = low;
@@ -545,7 +581,8 @@ func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessE
 }
 
 // Internal helper; not part of the package API.
-func InsertionSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address the live, writable elements `[low, high)`.
+unsafe func InsertionSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
     if high - low < 2 { return; }
 
     var i = low + 1;
@@ -563,7 +600,8 @@ func InsertionSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(
 }
 
 // Internal helper; not part of the package API.
-func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address the `count` live, writable elements that start at `low`.
+unsafe func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, compare: func(T, T) -> Ordering) {
     var root = start;
     loop {
         let child = root * 2 + 1;
@@ -584,7 +622,8 @@ func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, compare: f
 }
 
 // Internal helper; not part of the package API.
-func HeapSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address the live, writable elements `[low, high)`.
+unsafe func HeapSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
     let count = high - low;
     if count < 2 { return; }
 
@@ -603,7 +642,8 @@ func HeapSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T)
 }
 
 // Internal helper; not part of the package API.
-func IntroSortRangeBy<T>(data: *var T, low: uint, high: uint, depth: uint, compare: func(T, T) -> Ordering) {
+// Safety: `data` must address the live, writable elements `[low, high)`.
+unsafe func IntroSortRangeBy<T>(data: *var T, low: uint, high: uint, depth: uint, compare: func(T, T) -> Ordering) {
     var lo = low;
     var hi = high;
     var budget = depth;
