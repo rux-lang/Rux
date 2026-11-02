@@ -274,8 +274,11 @@ extend DirectoryIterator {
                     self.length = filled as uint;
                     self.offset = 0;
                 }
-                // Safety: `offset` is below `length`, so `record` is the start of a whole record the kernel wrote into
-                // `data`, and every record begins with a header longer than 18 bytes.
+                // Every record begins with a header of more than 18 bytes, so one that does not fit in what the
+                // kernel wrote is a layout this code does not understand.
+                if self.offset + 18 > self.length { throw IoError::Of(IoErrorKind::Other); }
+                // Safety: `offset + 18` is at most `length`, checked above, so `record` starts a header the kernel
+                // wrote into `data`.
                 let record = unsafe { (self.data as uint + self.offset) as *var char8 };
                 // Safety: as above, the record's header holds its length at bytes 16 and 17.
                 let reclen = unsafe { ((record[16] as uint8 as uint) | ((record[17] as uint8 as uint) << 8)) };
@@ -310,8 +313,10 @@ extend DirectoryIterator {
                         nameLength = unsafe { (record[18] as uint8 as uint) | ((record[19] as uint8 as uint) << 8) };
                     }
                 }
-                // Safety: the kernel's record holds its `nameLength`-byte name at `nameStart`, and the record lies
-                // inside the buffer, checked above.
+                // A name the header says runs past its own record would be read from the next one, or past the buffer.
+                if nameStart + nameLength > reclen { throw IoError::Of(IoErrorKind::Other); }
+                // Safety: the name's `nameLength` bytes at `nameStart` lie inside the record, checked just above, and
+                // the record lies inside the buffer, checked earlier.
                 let entry = unsafe { ((record as uint + nameStart) as *var char8)[..nameLength] };
                 if !IsDotEntry8(entry) {
                     let view = OsStringView::FromUnits(entry);

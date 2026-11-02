@@ -4,7 +4,7 @@
 // one that produces bytes in memory. Both seek, within what they hold.
 
 import Allocator::{ Allocator, Layout };
-import Memory::Copy;
+import Memory::{ Copy, Move };
 
 /// A reader of a slice of bytes, from its start. `Copy`.
 /// Borrows the bytes, which must outlive it.
@@ -48,9 +48,9 @@ extend ByteReader : Reader {
         let left = self.bytes.length - self.position;
         if left == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
         let count = if left < into.length { left } else { into.length };
-        // Safety: `count` is at most both `into.length` and the `left` bytes from `position`, and the caller's
-        // slice is not the bytes being read.
-        unsafe { Copy(into.data as *var opaque, @self.bytes[self.position] as *opaque, count); }
+        // Safety: `count` is at most both `into.length` and the `left` bytes from `position`. The caller's slice may
+        // be the very bytes being read, so the copy is a move, which allows the two ranges to overlap.
+        unsafe { Move(into.data as *var opaque, @self.bytes[self.position] as *opaque, count); }
         self.position = self.position + count;
         return count;
     }
@@ -179,10 +179,18 @@ extend ByteWriter : Writer {
     pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         if bytes.length == 0 { return 0; }
         let end = self.position + bytes.length;
+        // A slice of this writer's own storage, such as `Bytes()`, points into the block `Grow` may give back, so
+        // where it starts is kept as an offset into the storage and read again once the storage has grown.
+        let start = self.data as uint;
+        let owned = self.data != null && (bytes.data as uint) >= start && (bytes.data as uint) < start + self.capacity;
+        let offset = if owned { (bytes.data as uint) - start } else { 0 };
         try self.Grow(end);
-        // Safety: `Grow` made `capacity` at least `end`, so `data` has room from `position` for all of `bytes`,
-        // which is the caller's slice rather than this storage.
-        unsafe { Copy(@self.data[self.position] as *var opaque, bytes.data as *opaque, bytes.length); }
+        // Safety: an owned slice lies inside the storage, so its offset is still inside the grown block, which holds
+        // the same bytes.
+        let source = if owned { unsafe { (self.data as uint + offset) as *char8 } } else { bytes.data as *char8 };
+        // Safety: `Grow` made `capacity` at least `end`, so `data` has room from `position` for all of `bytes`, and
+        // the source and destination may overlap when the slice is this storage, which a move allows.
+        unsafe { Move(@self.data[self.position] as *var opaque, source as *opaque, bytes.length); }
         self.position = end;
         if end > self.length { self.length = end; }
         return bytes.length;
