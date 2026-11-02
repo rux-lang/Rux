@@ -535,7 +535,14 @@ bool HirConstantFolder::FoldUnary(HirExprPtr &expr) {
     if (!operand) {
         return false;
     }
-    auto result = EvaluateUnary(unary->op, *operand);
+    // A minus sign written before an integer literal is part of how the literal is spelled, so `-128i8` is the
+    // minimum rather than a negation of it that overflows.
+    const bool negatedLiteral = unary->op == TokenKind::Minus && HirCast<const HirLiteralExpr>(unary->operand.get()) &&
+                                operand->GetKind() != TypedConstant::Kind::Floating &&
+                                operand->GetKind() != TypedConstant::Kind::Boolean;
+    auto result = negatedLiteral
+                    ? EvaluateBinary(TokenKind::MinusPercent, *ParseConstant("0", operand->Type()), *operand)
+                    : EvaluateUnary(unary->op, *operand);
     if (!result) {
         return false;
     }
@@ -570,7 +577,9 @@ bool HirConstantFolder::FoldCast(HirExprPtr &expr) {
             return false;
         }
     }
-    const auto result = CastConstant(*operand, cast->targetType);
+    // A source `as` between integers that would not keep the value must reach lowering's trap.
+    const auto result =
+        cast->checksRange ? CastConstantExactly(*operand, cast->targetType) : CastConstant(*operand, cast->targetType);
     if (!result) {
         return false;
     }
@@ -584,11 +593,21 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
         return true;
     }
     if (const auto *unary = HirCast<const HirUnaryExpr>(&expr)) {
+        // An integer negation overflows at a signed minimum and at every nonzero unsigned value.
+        if (unary->op == TokenKind::Minus && unary->type.IsInteger() &&
+            !HirCast<const HirLiteralExpr>(unary->operand.get())) {
+            return false;
+        }
         return unary->op != TokenKind::Star && IsDiscardable(*unary->operand);
     }
     if (const auto *binary = HirCast<const HirBinaryExpr>(&expr)) {
         if (binary->op == TokenKind::Slash || binary->op == TokenKind::Percent || binary->op == TokenKind::LessLess ||
             binary->op == TokenKind::GreaterGreater || binary->op == TokenKind::GreaterGreaterGreater) {
+            return false;
+        }
+        // Checked integer arithmetic stops the program on overflow, which discarding it would not.
+        if (binary->type.IsInteger() &&
+            (binary->op == TokenKind::Plus || binary->op == TokenKind::Minus || binary->op == TokenKind::Star)) {
             return false;
         }
         return IsDiscardable(*binary->left) && IsDiscardable(*binary->right);
@@ -619,7 +638,7 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
         return std::ranges::all_of(tuple->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
     }
     if (const auto *cast = HirCast<const HirCastExpr>(&expr)) {
-        if (cast->targetType.IsChar()) {
+        if (cast->targetType.IsChar() || (cast->checksRange && cast->targetType.IsInteger())) {
             return false;
         }
         return IsDiscardable(*cast->operand);
@@ -674,6 +693,7 @@ bool HirConstantFolder::SimplifyBinary(HirExprPtr &expr) {
 
     switch (binary->op) {
     case TokenKind::Plus:
+    case TokenKind::PlusPercent:
         if (is(left, 0)) {
             return moveOperand(binary->right);
         }
@@ -682,11 +702,13 @@ bool HirConstantFolder::SimplifyBinary(HirExprPtr &expr) {
         }
         break;
     case TokenKind::Minus:
+    case TokenKind::MinusPercent:
         if (is(right, 0)) {
             return moveOperand(binary->left);
         }
         break;
     case TokenKind::Star:
+    case TokenKind::StarPercent:
         if (is(left, 0) && IsDiscardable(*binary->right)) {
             return makeLiteral(*left);
         }

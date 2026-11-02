@@ -346,6 +346,9 @@ protected:
     [[nodiscard]] HirFunc FallibleEntryWrapper(const HirFunc &body);
 
     [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
+    /// `value.Truncate<T>()`: a conversion that keeps the low bits rather than checking the value; null for any other
+    /// call.
+    [[nodiscard]] HirExprPtr LowerTruncateCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerZeroizeCall(const CallExpr &call);
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
     [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);

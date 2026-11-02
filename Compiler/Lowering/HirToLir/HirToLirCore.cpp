@@ -357,7 +357,7 @@ void HirToLirContext::Emit(LirInstr &&i) {
     if (EmitSoftFloatReplacement(i)) {
         return;
     }
-    if (i.op == LirOpcode::Panic || i.op == LirOpcode::Assert) {
+    if (IsRuntimeFailureOpcode(i.op)) {
         emittedRuntimeFailure = true;
     }
     RecordRegisterKind(i);

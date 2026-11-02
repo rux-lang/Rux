@@ -138,6 +138,15 @@ static void DumpInstr(std::ostream &out, const LirInstr &i, const LirFunc &fn) {
                            i.source.Get().function, i.source.Get().file, i.source.Get().line, i.source.Get().column);
         return;
 
+    case LirOpcode::CheckedAdd:
+    case LirOpcode::CheckedSub:
+    case LirOpcode::CheckedMul:
+        out << std::format("{} = {} {} {}, {}, \"{}\" at {} ({}:{}:{})\n", RegStr(i.dst), LirOpcodeName(i.op),
+                           i.type.ToString(), i.srcs.empty() ? "?" : RegStr(i.srcs[0]),
+                           i.srcs.size() > 1 ? RegStr(i.srcs[1]) : "?", i.strArg, i.source.Get().function,
+                           i.source.Get().file, i.source.Get().line, i.source.Get().column);
+        return;
+
     case LirOpcode::FieldPtr:
     case LirOpcode::RotateRight:
         out << std::format("{} = {} {} {}, {}\n", RegStr(i.dst), LirOpcodeName(i.op), i.type.ToString(),

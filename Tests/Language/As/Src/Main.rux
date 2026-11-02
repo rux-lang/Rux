@@ -1,9 +1,9 @@
 // `as`: the explicit conversion, and the one place a value is allowed to change meaning.
 // The keyword appears throughout the language tests as a means to an end and had no case of its own. What belongs
 // here is the conversion rules themselves, and specifically the ones where `as` does something other than
-// reinterpret bits: a widening that sign-extends only when the source is signed, a narrowing that keeps the low
-// bits and nothing else, a float conversion that truncates toward zero rather than rounding, and a boolean cast
-// that asks whether the whole source is non-zero.
+// reinterpret bits: a widening that sign-extends only when the source is signed, an integer conversion that keeps
+// the value or stops the program, with `Truncate` as the one that keeps the low bits, a float conversion that
+// truncates toward zero rather than rounding, and a boolean cast that asks whether the whole source is non-zero.
 // Character conversions get their own section because the implicit rule and the explicit one differ. A character
 // widens implicitly only to a wider character carrying the same thing, so `char8` and `char16` — which hold one
 // code unit of an encoding — widen implicitly to nothing at all. `as` crosses those boundaries anyway, which is
@@ -20,19 +20,29 @@ func Main() -> int {
     let unsigned: uint8 = 255u8;
     Assert(negative as int32 == -1i32, "a signed source sign-extends");
     Assert(unsigned as uint32 == 255u32, "an unsigned source zero-extends");
-    Assert(negative as uint8 == 255u8, "the two share a bit pattern at their own width");
-    Assert(unsigned as int8 == -1i8, "and reinterpreting one gives the other");
+    Assert(negative.Truncate<uint8>() == 255u8, "the two share a bit pattern at their own width");
+    Assert(unsigned.Truncate<int8>() == -1i8, "and reinterpreting one gives the other");
 
-    // Narrowing keeps the low bits and discards the rest, with no report and no saturation.
-    Assert(300i32 as int8 == 44i8, "narrowing keeps the low bits");
-    Assert(-1i64 as uint8 == 255u8, "every bit set narrows to every bit set at the smaller width");
-    Assert(int32::Max as int16 == -1i16, "a value that does not fit becomes whatever its low bits say");
-    Assert(65536i32 as int16 == 0i16, "a value whose low bits are zero narrows to zero");
+    // `as` between integers keeps the value or stops the program. `Truncate` keeps the low bits and discards the rest,
+    // with no report and no saturation.
+    let word: int32 = 300;
+    Assert(word as int16 == 300i16, "a value that fits keeps its value through `as`");
+    Assert(word.Truncate<int8>() == 44i8, "truncating keeps the low bits");
+    let ones: int64 = -1;
+    Assert(ones.Truncate<uint8>() == 255u8, "every bit set truncates to every bit set at the smaller width");
+    let largest: int32 = int32::Max;
+    Assert(largest.Truncate<int16>() == -1i16, "a value that does not fit becomes whatever its low bits say");
+    let lowZero: int32 = 65536;
+    Assert(lowZero.Truncate<int16>() == 0i16, "a value whose low bits are zero truncates to zero");
 
     // Same-width reinterpretation between signednesses changes what the bits mean, not the bits.
-    Assert(int32::Min as uint32 == 2147483648u32, "the signed minimum is the unsigned half-way point");
-    Assert(uint64::Max as int64 == -1i64, "every bit set is minus one when read as signed");
-    Assert((-1i16 as uint16) as int16 == -1i16, "a round trip through the other signedness is lossless");
+    let minimum: int32 = int32::Min;
+    Assert(minimum.Truncate<uint32>() == 2147483648u32, "the signed minimum is the unsigned half-way point");
+    let maximum: uint64 = uint64::Max;
+    Assert(maximum.Truncate<int64>() == -1i64, "every bit set is minus one when read as signed");
+    let minusOne: int16 = -1;
+    Assert(minusOne.Truncate<uint16>().Truncate<int16>() == -1i16,
+           "a round trip through the other signedness is lossless");
 
     // A boolean cast asks whether the whole source is non-zero, then stores one or zero. It is not a truncation:
     // 256 has a zero low byte and is still true.
@@ -73,14 +83,16 @@ func Main() -> int {
     // A cast folded while compiling must agree with the same cast performed at run time. These are the same
     // conversions again, with one side a constant the compiler can see through and the other a value it cannot.
     var runtime: int32 = 300i32;
-    Assert(runtime as int8 == 300i32 as int8, "a run-time narrowing agrees with the folded one");
+    Assert(runtime.Truncate<int8>() == word.Truncate<int8>(), "a run-time truncation agrees with the folded one");
+    Assert(runtime as int16 == 300i32 as int16, "a run-time narrowing agrees with the folded one");
     var floating: float64 = -7.9f64;
     Assert(floating as int32 == -7.9f64 as int32, "a run-time truncation agrees with the folded one");
     var wide: uint64 = uint64::Max;
-    Assert(wide as int64 == uint64::Max as int64, "a run-time reinterpretation agrees with the folded one");
+    Assert(wide.Truncate<int64>() == maximum.Truncate<int64>(),
+           "a run-time reinterpretation agrees with the folded one");
 
     // A cast is an expression, so it composes.
-    Assert(((300i32 as int8) as int32) == 44i32, "one cast feeds another");
+    Assert((runtime.Truncate<int8>() as int32) == 44i32, "one conversion feeds another");
     Assert((7i32 as float64 as int32) == 7i32, "a round trip through a float returns the value");
     return 0;
 }

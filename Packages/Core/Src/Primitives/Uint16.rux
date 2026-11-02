@@ -17,4 +17,76 @@ extend uint16 {
     /// The largest representable value.
     /// @see https://rux-lang.dev/docs/api/core/integers#uint16-max
     pub const Max: uint16 = 65535;
+
+    // Checked, saturating and truncating arithmetic. `+`, `-`, `*` and `as` stop the program when the value does not
+    // fit; these hand that case to the caller instead.
+
+    /// Adds `other` to this value, or reports that the sum does not fit.
+    /// Never stops the program: where `+` would, this returns none and the caller decides what an overflow means.
+    /// @param other the value to add
+    /// @returns the sum, or none when it lies outside the range of `uint16`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-checked-add
+    pub func CheckedAdd(self: &uint16, other: uint16) -> uint16? {
+        var sum: uint16 = 0;
+        if AddChecked<uint16>(self, other, @sum) { return none; }
+        return sum;
+    }
+
+    /// Subtracts `other` from this value, or reports that the difference does not fit.
+    /// Never stops the program: where `-` would, this returns none.
+    /// @param other the value to subtract
+    /// @returns the difference, or none when it lies outside the range of `uint16`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-checked-sub
+    pub func CheckedSub(self: &uint16, other: uint16) -> uint16? {
+        var difference: uint16 = 0;
+        if SubChecked<uint16>(self, other, @difference) { return none; }
+        return difference;
+    }
+
+    /// Multiplies this value by `other`, or reports that the product does not fit.
+    /// Never stops the program: where `*` would, this returns none, which is how a size computed from a count is
+    /// checked before it is used.
+    /// @param other the value to multiply by
+    /// @returns the product, or none when it lies outside the range of `uint16`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-checked-mul
+    pub func CheckedMul(self: &uint16, other: uint16) -> uint16? {
+        var product: uint16 = 0;
+        if MulChecked<uint16>(self, other, @product) { return none; }
+        return product;
+    }
+
+    /// Adds `other` to this value, clamping a sum that does not fit to the maximum.
+    /// Never stops the program.
+    /// @param other the value to add
+    /// @returns the sum, or the limit of `uint16` it ran past
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-saturating-add
+    pub func SaturatingAdd(self: &uint16, other: uint16) -> uint16 {
+        return AddSaturating<uint16>(self, other);
+    }
+
+    /// Subtracts `other` from this value, clamping a difference that does not fit to zero.
+    /// Never stops the program.
+    /// @param other the value to subtract
+    /// @returns the difference, or the limit of `uint16` it ran past
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-saturating-sub
+    pub func SaturatingSub(self: &uint16, other: uint16) -> uint16 {
+        return SubSaturating<uint16>(self, other);
+    }
+
+    /// Multiplies this value by `other`, clamping a product that does not fit to the maximum.
+    /// Never stops the program.
+    /// @param other the value to multiply by
+    /// @returns the product, or the limit of `uint16` it ran past
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-saturating-mul
+    pub func SaturatingMul(self: &uint16, other: uint16) -> uint16 {
+        return MulSaturating<uint16>(self, other);
+    }
+
+    /// The low bits of this value at the width of `T`, in two's complement, whether or not the value fits.
+    /// Where `as` keeps the value or stops the program, this keeps the bits on purpose, as a hash or an encoder taking
+    /// the low byte of a word does. A wider `T` extends the value by the signedness of `uint16`, as `as` does.
+    /// @typeParam T the integer type to convert to
+    /// @returns the low bits of this value as a `T`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint16-truncate
+    pub intrinsic func Truncate<T>(self: &uint16) -> T;
 }

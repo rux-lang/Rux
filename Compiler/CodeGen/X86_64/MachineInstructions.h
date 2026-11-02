@@ -111,6 +111,11 @@ enum class Op : std::uint16_t {
     Imul,
     // Operand 0 is defined from operand 1 times the immediate operand 2.
     ImulImm,
+    // Add, Sub and Imul whose flags an overflow check branches on: dead-code elimination keeps them even when nothing
+    // reads their result.
+    AddFlags,
+    SubFlags,
+    ImulFlags,
     // Flags only.
     Cmp,
     Test,
@@ -186,8 +191,8 @@ enum class Op : std::uint16_t {
     // UInt64ToFp: operand 0 (XMM) receives operand 1 (GPR) converted as an unsigned 64-bit integer to floating point
     // of `size` bytes, correctly rounded; operands 2 and 3 are GPR scratch registers.
     UInt64ToFp,
-    // Reports a runtime failure and never returns. Operand 0 holds the address of the message slice;
-    // `PanicSite` carries the static text.
+    // Reports a runtime failure and never returns. Operand 0 holds the address of the message slice, unless the
+    // site's message is in its prefix; `PanicSite` carries the static text.
     Panic,
     // `rep movsb`: copies RCX bytes from [RSI] to [RDI].
     RepMovsb,
@@ -233,6 +238,9 @@ struct PanicSite {
     std::uint32_t writeFile = Machine::NoSymbol;
     /// The stack-trace printer, when the program has one.
     std::uint32_t backtrace = Machine::NoSymbol;
+    /// A failure whose whole message is known while compiling, such as an integer overflow: the prefix carries it and
+    /// no message slice is written, so the instruction's first operand is unused.
+    bool messageInPrefix = false;
 };
 
 /// One selected function, ready for allocation.

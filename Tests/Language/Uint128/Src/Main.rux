@@ -21,7 +21,7 @@ func Main() -> int {
 
     // The top bit is magnitude here, so the value with it set is the largest rather than the smallest.
     Assert((1u128 << 127) > 0u128, "the top bit is a value bit, not a sign");
-    Assert((1u128 << 127) as int128 < 0i128, "the same bits read as int128 are negative");
+    Assert((1u128 << 127).Truncate<int128>() < 0i128, "the same bits read as int128 are negative");
 
     let low: uint128 = 18446744073709551615u128;
     Assert(low + 1u128 == 18446744073709551616u128, "addition carries out of the low lane");
@@ -29,8 +29,8 @@ func Main() -> int {
     Assert(low * 2u128 == 36893488147419103230u128, "multiplication carries out of the low lane");
 
     // Wrapping is at zero and at the maximum, with nothing in between.
-    Assert(maximum + 1u128 == 0u128, "addition wraps from the maximum to zero");
-    Assert(0u128 - 1u128 == maximum, "subtraction wraps from zero to the maximum");
+    Assert(maximum +% 1u128 == 0u128, "addition wraps from the maximum to zero");
+    Assert(0u128 -% 1u128 == maximum, "subtraction wraps from zero to the maximum");
 
     Assert(100u128 / 7u128 == 14u128, "division truncates");
     Assert(100u128 % 7u128 == 2u128, "remainder");
@@ -56,7 +56,7 @@ func Main() -> int {
     let widened: uint128 = uint64::Max as uint128;
     Assert(widened == 18446744073709551615u128, "a narrow unsigned value zero-extends");
     Assert(widened < maximum, "zero extension did not fill the high lane");
-    let narrowed: uint64 = maximum as uint64;
+    let narrowed: uint64 = maximum.Truncate<uint64>();
     Assert(narrowed == 18446744073709551615u64, "a wide value truncates to its low bits");
 
     Assert(Echo(maximum) == maximum, "the maximum survives an argument and a return");

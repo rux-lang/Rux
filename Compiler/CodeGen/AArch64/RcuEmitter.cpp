@@ -1,6 +1,7 @@
 #include "CodeGen/AArch64/MachineEmission.h"
 #include "CodeGen/AArch64/MachineSelection.h"
 #include "CodeGen/AArch64/ModuleEmitter.h"
+#include "Ir/Lir/LirCheckedArithmetic.h"
 #include "Ir/Lir/LirVectors.h"
 
 #include <algorithm>
@@ -110,6 +111,13 @@ void AArch64ModuleEmitter::GenFunc(const LirFunc &func) {
     }
     if (machineSelection && GenMachineFunc(func)) {
         currentFunc.clear();
+        return;
+    }
+    // The direct emitter tests no overflow flags: each check becomes the comparison and branch it stands for.
+    if (HasCheckedArithmetic(func)) {
+        LirFunc expanded = func;
+        ExpandCheckedArithmetic(expanded);
+        GenFunc(expanded);
         return;
     }
     const AArch64FramePlan framePlan = PlanAArch64Frame(func, layouts, interfaceNames, structDecls, targetOs);

@@ -17,4 +17,76 @@ extend uint256 {
     /// The largest representable value.
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-max
     pub const Max: uint256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935u256;
+
+    // Checked, saturating and truncating arithmetic. `+`, `-`, `*` and `as` stop the program when the value does not
+    // fit; these hand that case to the caller instead.
+
+    /// Adds `other` to this value, or reports that the sum does not fit.
+    /// Never stops the program: where `+` would, this returns none and the caller decides what an overflow means.
+    /// @param other the value to add
+    /// @returns the sum, or none when it lies outside the range of `uint256`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-checked-add
+    pub func CheckedAdd(self: &uint256, other: uint256) -> uint256? {
+        var sum: uint256 = 0;
+        if AddChecked<uint256>(self, other, @sum) { return none; }
+        return sum;
+    }
+
+    /// Subtracts `other` from this value, or reports that the difference does not fit.
+    /// Never stops the program: where `-` would, this returns none.
+    /// @param other the value to subtract
+    /// @returns the difference, or none when it lies outside the range of `uint256`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-checked-sub
+    pub func CheckedSub(self: &uint256, other: uint256) -> uint256? {
+        var difference: uint256 = 0;
+        if SubChecked<uint256>(self, other, @difference) { return none; }
+        return difference;
+    }
+
+    /// Multiplies this value by `other`, or reports that the product does not fit.
+    /// Never stops the program: where `*` would, this returns none, which is how a size computed from a count is
+    /// checked before it is used.
+    /// @param other the value to multiply by
+    /// @returns the product, or none when it lies outside the range of `uint256`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-checked-mul
+    pub func CheckedMul(self: &uint256, other: uint256) -> uint256? {
+        var product: uint256 = 0;
+        if MulChecked<uint256>(self, other, @product) { return none; }
+        return product;
+    }
+
+    /// Adds `other` to this value, clamping a sum that does not fit to the maximum.
+    /// Never stops the program.
+    /// @param other the value to add
+    /// @returns the sum, or the limit of `uint256` it ran past
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-saturating-add
+    pub func SaturatingAdd(self: &uint256, other: uint256) -> uint256 {
+        return AddSaturating<uint256>(self, other);
+    }
+
+    /// Subtracts `other` from this value, clamping a difference that does not fit to zero.
+    /// Never stops the program.
+    /// @param other the value to subtract
+    /// @returns the difference, or the limit of `uint256` it ran past
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-saturating-sub
+    pub func SaturatingSub(self: &uint256, other: uint256) -> uint256 {
+        return SubSaturating<uint256>(self, other);
+    }
+
+    /// Multiplies this value by `other`, clamping a product that does not fit to the maximum.
+    /// Never stops the program.
+    /// @param other the value to multiply by
+    /// @returns the product, or the limit of `uint256` it ran past
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-saturating-mul
+    pub func SaturatingMul(self: &uint256, other: uint256) -> uint256 {
+        return MulSaturating<uint256>(self, other);
+    }
+
+    /// The low bits of this value at the width of `T`, in two's complement, whether or not the value fits.
+    /// Where `as` keeps the value or stops the program, this keeps the bits on purpose, as a hash or an encoder taking
+    /// the low byte of a word does. A wider `T` extends the value by the signedness of `uint256`, as `as` does.
+    /// @typeParam T the integer type to convert to
+    /// @returns the low bits of this value as a `T`
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint256-truncate
+    pub intrinsic func Truncate<T>(self: &uint256) -> T;
 }

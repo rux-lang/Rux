@@ -64,10 +64,37 @@ TEST_CASE("integer arithmetic wraps to every declared signed width without host 
         const auto max = Constant(maximum, type);
         const auto min = Constant(minimum, type);
         const auto one = Constant("1", type);
-        CHECK(Binary(TokenKind::Plus, max, one).ToLiteral() == minimum);
-        CHECK(Binary(TokenKind::Minus, min, one).ToLiteral() == maximum);
-        CHECK(Binary(TokenKind::Star, min, Constant("2", type)).ToLiteral() == "0");
+        CHECK(Binary(TokenKind::PlusPercent, max, one).ToLiteral() == minimum);
+        CHECK(Binary(TokenKind::MinusPercent, min, one).ToLiteral() == maximum);
+        CHECK(Binary(TokenKind::StarPercent, min, Constant("2", type)).ToLiteral() == "0");
     }
+}
+
+TEST_CASE("checked integer arithmetic has no value where the wrapping operators wrap") {
+    const TypeRef int8 = TypeRef::MakeInt8();
+    const TypeRef uint8 = TypeRef::MakeUInt8();
+    const TypeRef uint512 = TypeRef::MakePrimitive(TypeRef::Kind::UInt512);
+    const auto signedMaximum = Constant("127", int8);
+    const auto signedMinimum = Constant("-128", int8);
+    const auto one = Constant("1", int8);
+    CHECK_FALSE(EvaluateBinary(TokenKind::Plus, signedMaximum, one).has_value());
+    CHECK_FALSE(EvaluateBinary(TokenKind::Minus, signedMinimum, one).has_value());
+    CHECK_FALSE(EvaluateBinary(TokenKind::Star, signedMinimum, Constant("-1", int8)).has_value());
+    CHECK_FALSE(EvaluateUnary(TokenKind::Minus, signedMinimum).has_value());
+    CHECK(Binary(TokenKind::Plus, Constant("126", int8), one).ToLiteral() == "127");
+    CHECK(Binary(TokenKind::Star, Constant("-64", int8), Constant("2", int8)).ToLiteral() == "-128");
+    CHECK_FALSE(EvaluateBinary(TokenKind::Minus, Constant("0", uint8), Constant("1", uint8)).has_value());
+    CHECK_FALSE(EvaluateUnary(TokenKind::Minus, Constant("1", uint8)).has_value());
+    CHECK(Binary(TokenKind::MinusPercent, Constant("0", uint8), Constant("1", uint8)).ToLiteral() == "255");
+    const auto huge =
+        Constant("1340780792994259709957402499820584612747936582059239337772356144372176403007354697680187429816690342"
+                 "7690031858186486050853753882811946569946433649006084095",
+                 uint512);
+    CHECK_FALSE(EvaluateBinary(TokenKind::Star, huge, Constant("2", uint512)).has_value());
+    CHECK_FALSE(CastConstantExactly(Constant("300", TypeRef::MakeInt32()), uint8).has_value());
+    CHECK_FALSE(CastConstantExactly(Constant("-1", TypeRef::MakeInt32()), uint8).has_value());
+    CHECK(CastConstantExactly(Constant("255", TypeRef::MakeInt32()), uint8)->ToLiteral() == "255");
+    CHECK(CastConstant(Constant("300", TypeRef::MakeInt32()), uint8)->ToLiteral() == "44");
 }
 
 TEST_CASE("integer arithmetic wraps to every declared unsigned width") {
@@ -83,8 +110,8 @@ TEST_CASE("integer arithmetic wraps to every declared unsigned width") {
         const auto max = Constant(maximum, type);
         const auto zero = Constant("0", type);
         const auto one = Constant("1", type);
-        CHECK(Binary(TokenKind::Plus, max, one).ToLiteral() == "0");
-        CHECK(Binary(TokenKind::Minus, zero, one).ToLiteral() == maximum);
+        CHECK(Binary(TokenKind::PlusPercent, max, one).ToLiteral() == "0");
+        CHECK(Binary(TokenKind::MinusPercent, zero, one).ToLiteral() == maximum);
     }
 }
 
@@ -101,11 +128,13 @@ TEST_CASE("constant evaluation uses the same arithmetic through 512 bits") {
         "7690031858186486050853753882811946569946433649006084095";
 
     CHECK(Constant(uint512Maximum, uint512).ToLiteral() == uint512Maximum);
-    CHECK(Binary(TokenKind::Plus, Constant(uint128Maximum, uint128), Constant("1", uint128)).ToLiteral() == "0");
-    CHECK(Binary(TokenKind::Plus, Constant(int128Maximum, int128), Constant("1", int128)).ToLiteral() == int128Minimum);
-    CHECK(Binary(TokenKind::Minus, Constant(int128Minimum, int128), Constant("1", int128)).ToLiteral() ==
+    CHECK(Binary(TokenKind::PlusPercent, Constant(uint128Maximum, uint128), Constant("1", uint128)).ToLiteral() == "0");
+    CHECK(Binary(TokenKind::PlusPercent, Constant(int128Maximum, int128), Constant("1", int128)).ToLiteral() ==
+          int128Minimum);
+    CHECK(Binary(TokenKind::MinusPercent, Constant(int128Minimum, int128), Constant("1", int128)).ToLiteral() ==
           int128Maximum);
-    CHECK(Binary(TokenKind::Star, Constant("1606938044258990275541962092341162602522202993782792835301376", uint256),
+    CHECK(Binary(TokenKind::StarPercent,
+                 Constant("1606938044258990275541962092341162602522202993782792835301376", uint256),
                  Constant("1267650600228229401496703205376", uint256))
               .ToLiteral() == "0");
     CHECK(Binary(TokenKind::Slash, Constant(uint128Maximum, uint128), Constant("10", uint128)).ToLiteral() ==

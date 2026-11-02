@@ -123,6 +123,9 @@ private:
     void SelectAddress(const LirInstr &instruction);
     void SelectBinary(const LirInstr &instruction);
     void SelectDivision(const LirInstr &instruction);
+    /// An overflow-checked `+`, `-` or `*`: the operation and a branch on its flags, or on a comparison of the exact
+    /// result with its narrowing, to a cold block that reports the overflow.
+    void SelectCheckedArithmetic(const LirInstr &instruction);
     [[nodiscard]] bool SelectConstantDivision(const LirInstr &instruction);
     [[nodiscard]] bool SelectSignedConstantDivision(const LirInstr &instruction);
     void SelectShift(const LirInstr &instruction);

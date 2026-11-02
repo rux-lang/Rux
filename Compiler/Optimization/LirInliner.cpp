@@ -177,6 +177,9 @@ std::optional<Size> Eligible(const LirFunc &function, const ConcreteReferenceTyp
             // whichever module emits it.
             case LirOpcode::Div:
             case LirOpcode::Mod:
+            case LirOpcode::CheckedAdd:
+            case LirOpcode::CheckedSub:
+            case LirOpcode::CheckedMul:
             case LirOpcode::Panic:
             case LirOpcode::Assert:
             case LirOpcode::StringAddr:

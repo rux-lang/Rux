@@ -225,8 +225,8 @@ TEST_CASE("Unrolling flattens a constant loop whose limit its header defines") {
             var value: uint64 = 0u64;
             var index: uint = 0u;
             while index < 8u {
-                value = value | ((at[index] as uint64) << ((index * 8u) as uint64 & 63u64));
-                index += 1u;
+                value = value | ((at[index] as uint64) << ((index *% 8u) as uint64 & 63u64));
+                index +%= 1u;
             }
             return value;
         }
@@ -289,7 +289,7 @@ TEST_CASE("Dead loop elimination removes loops that only count and read") {
             var index: uint = 0u;
             while index < length {
                 let value = values[index];
-                index += 1u;
+                index +%= 1u;
             }
             return length;
         }
@@ -299,20 +299,20 @@ TEST_CASE("Dead loop elimination removes loops that only count and read") {
         // Safety: `values` must address writable `uint8` elements at every index the body uses
         unsafe func Clear(values: *var uint8, length: uint) {
             var index: uint = 0u;
-            while index < length { values[index] = 0u8; index += 1u; }
+            while index < length { values[index] = 0u8; index +%= 1u; }
         }
     )"));
     CHECK_FALSE(removed(R"(
         func Skip(length: uint) -> uint {
             var index: uint = 0u;
-            while index < length { index += 2u; }
+            while index < length { index +%= 2u; }
             return length;
         }
     )"));
     CHECK_FALSE(removed(R"(
         func Last(length: uint) -> uint {
             var index: uint = 0u;
-            while index < length { index += 1u; }
+            while index < length { index +%= 1u; }
             return index;
         }
     )"));
@@ -346,10 +346,10 @@ TEST_CASE("If conversion turns conditional updates in loops into arithmetic") {
             var sum: uint64 = 0u64;
             var index: uint = 0u;
             while index < length {
-                if values[index] == 0u8 { count += 1u64; sum += index as uint64; }
-                index += 1u;
+                if values[index] == 0u8 { count +%= 1u64; sum +%= index as uint64; }
+                index +%= 1u;
             }
-            return count + sum;
+            return count +% sum;
         }
     )"));
     CHECK(converted(R"(
@@ -359,8 +359,8 @@ TEST_CASE("If conversion turns conditional updates in loops into arithmetic") {
             var index: uint = 0u;
             while index < length {
                 let value = values[index];
-                if value > best { best = value - 1; }
-                index += 1u;
+                if value > best { best = value -% 1; }
+                index +%= 1u;
             }
             return best;
         }
@@ -372,14 +372,14 @@ TEST_CASE("If conversion turns conditional updates in loops into arithmetic") {
             var index: uint = 0u;
             while index < length {
                 if values[index] == 0u8 { values[index] = 1u8; }
-                index += 1u;
+                index +%= 1u;
             }
         }
     )"));
     CHECK_FALSE(converted(R"(
         func Once(value: uint, flag: bool) -> uint {
             var result = value;
-            if flag { result += 1u; }
+            if flag { result +%= 1u; }
             return result;
         }
     )"));
@@ -449,7 +449,7 @@ TEST_CASE("Unrolling pairs 64-bit integer work and keeps loads that read back re
         unsafe func Mix(c: *var uint64, a: *uint64, b: *uint64, n: uint) {
             for j in 0u..n {
                 let x = a[j];
-                c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] + x);
+                c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] +% x);
             }
         }
     )");
@@ -468,7 +468,7 @@ TEST_CASE("Unrolling pairs 64-bit integer work and keeps loads that read back re
     const auto even = unrolled(R"(
         // Safety: `w` must address writable `uint64` elements at every index the body uses
         unsafe func Even(w: *var uint64) {
-            for t in 16u..80u { w[t] = w[t - 16u] + w[t - 2u]; }
+            for t in 16u..80u { w[t] = w[t - 16u] +% w[t - 2u]; }
         }
     )");
     CHECK_EQ(Count(even, LirOpcode::VectorStore), 2);
@@ -476,14 +476,14 @@ TEST_CASE("Unrolling pairs 64-bit integer work and keeps loads that read back re
     const auto odd = unrolled(R"(
         // Safety: `w` must address writable `uint64` elements at every index the body uses
         unsafe func Odd(w: *var uint64) {
-            for t in 16u..80u { w[t] = w[t - 16u] + w[t - 7u]; }
+            for t in 16u..80u { w[t] = w[t - 16u] +% w[t - 7u]; }
         }
     )");
     CHECK_EQ(Count(odd, LirOpcode::VectorStore), 0);
     const auto adjacent = unrolled(R"(
         // Safety: `w` must address writable `uint64` elements at every index the body uses
         unsafe func Adjacent(w: *var uint64) {
-            for t in 1u..80u { w[t] = w[t - 1u] + 1u64; }
+            for t in 1u..80u { w[t] = w[t - 1u] +% 1u64; }
         }
     )");
     CHECK_EQ(Count(adjacent, LirOpcode::VectorStore), 0);
@@ -619,10 +619,10 @@ TEST_CASE("Local numbering reuses expressions and loads without crossing aliasin
         // Safety: `pointer` must address a live `int`
         unsafe func Read(pointer: *int, a: int, b: int) -> int {
             let first = *pointer;
-            let x = a + b;
+            let x = a +% b;
             let second = *pointer;
-            let y = a + b;
-            return first + second + x + y;
+            let y = a +% b;
+            return first +% second +% x +% y;
         }
     )");
     REQUIRE_EQ(Count(package, LirOpcode::Load), 2);
@@ -637,7 +637,7 @@ TEST_CASE("Local numbering reuses expressions and loads without crossing aliasin
         unsafe func Read(pointer: *int, other: *var int) -> int {
             let first = *pointer;
             *other = 42;
-            return first + *pointer;
+            return first +% *pointer;
         }
     )");
     static_cast<void>(numbering.Run(aliasing, {}));
@@ -659,10 +659,10 @@ TEST_CASE("Dominator numbering reuses integer expressions across branches and me
     auto package = Promoted(R"(
         // Safety: `pointer` must address a live, writable `int`
         unsafe func Choose(test: bool, pointer: *var int, a: int, b: int) -> int {
-            let first = a + b;
+            let first = a +% b;
             *pointer = first;
-            if test { return (a + b) * first; }
-            return (a + b) - first;
+            if test { return (a +% b) *% first; }
+            return (a +% b) -% first;
         }
     )");
     REQUIRE_EQ(Count(package, LirOpcode::Add), 3);
@@ -675,8 +675,8 @@ TEST_CASE("Dominator numbering reuses integer expressions across branches and me
 
     auto siblings = Promoted(R"(
         func Choose(test: bool, a: int, b: int) -> int {
-            if test { return (a + b) * a; }
-            return (a + b) * b;
+            if test { return (a +% b) *% a; }
+            return (a +% b) *% b;
         }
     )");
     static_cast<void>(numbering.Run(siblings, {}));
@@ -862,7 +862,7 @@ TEST_CASE("Loop motion hoists invariant integer arithmetic but retains loads div
         // Safety: `pointer` must address `int` elements at every index the body uses
         unsafe func Sum(limit: int, scale: int, pointer: *int) -> int {
             var sum = 0;
-            for i in 0..limit { sum += scale * 3 + *pointer + 100 / (i + 1); }
+            for i in 0..limit { sum +%= scale *% 3 +% *pointer +% 100 / (i +% 1); }
             return sum;
         }
     )");
@@ -969,8 +969,8 @@ LirPackage VersioningLoop() {
         // Safety: `pointer` must address a live, writable `uint`
         unsafe func Walk(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
             for i in 0u..limit {
-                let index = row + i;
-                if index < bound { *pointer += index; }
+                let index = row +% i;
+                if index < bound { *pointer +%= index; }
                 else { return 123u; }
             }
             return *pointer;
@@ -1274,12 +1274,12 @@ TEST_CASE("Loop versioning proves byte-indexed and secondary-counter checks") {
             for i in 0u..limit {
                 if ((*bytes) as uint) < tableBound { *pointer += i; }
                 else { return 1u; }
-                if o < bound { *pointer += o; }
+                if o < bound { *pointer +%= o; }
                 else { return 2u; }
-                o += 1u;
-                if o + 1u < bound { *pointer += 1u; }
+                o +%= 1u;
+                if o +% 1u < bound { *pointer +%= 1u; }
                 else { return 3u; }
-                o += 2u;
+                o +%= 2u;
             }
             return o;
         }
@@ -1535,11 +1535,11 @@ LirPackage UnrollingLoop() {
             while i < limit {
                 let old = a;
                 a = b;
-                b = old + i;
-                *pointer = *pointer * 7u + a + b;
-                i += 1u;
+                b = old +% i;
+                *pointer = *pointer *% 7u +% a +% b;
+                i +%= 1u;
             }
-            return a + b;
+            return a +% b;
         }
     )");
     Optimization::LirBlockCoalescing coalescing;
@@ -1606,8 +1606,8 @@ TEST_CASE("Load facts cross unique checked edges without entering sibling writes
         unsafe func Read(pointer: *int, first: bool, second: bool) -> int {
             let before = *pointer;
             if first { return before; }
-            if second { return before + *pointer; }
-            return before - *pointer;
+            if second { return before +% *pointer; }
+            return before -% *pointer;
         }
     )");
     REQUIRE_EQ(Count(chain, LirOpcode::Load), 3);
@@ -1618,8 +1618,8 @@ TEST_CASE("Load facts cross unique checked edges without entering sibling writes
         // Safety: `pointer` must address a live `int`; `other` must address a live, writable `int`
         unsafe func Read(pointer: *int, other: *var int, test: bool) -> int {
             let before = *pointer;
-            if test { *other = 42; return before + *pointer; }
-            return before - *pointer;
+            if test { *other = 42; return before +% *pointer; }
+            return before -% *pointer;
         }
     )");
     static_cast<void>(numbering.Run(siblings, {}));
@@ -1630,7 +1630,7 @@ TEST_CASE("Load facts cross unique checked edges without entering sibling writes
         unsafe func Read(pointer: *int, other: *var int, test: bool) -> int {
             let before = *pointer;
             if test { *other = 42; }
-            return before + *pointer;
+            return before +% *pointer;
         }
     )");
     static_cast<void>(numbering.Run(join, {}));
@@ -1646,7 +1646,7 @@ TEST_CASE("Inherited load facts respect calls volatile accesses and loop backedg
         // Safety: `pointer` must address a live, writable `int`
         unsafe func Read(pointer: *var int, test: bool) -> int {
             let before = *pointer;
-            if test { Touch(pointer); return before + *pointer; }
+            if test { Touch(pointer); return before +% *pointer; }
             return before;
         }
     )");
@@ -1657,7 +1657,7 @@ TEST_CASE("Inherited load facts respect calls volatile accesses and loop backedg
         // Safety: `pointer` must address a live `int`; `other` must address a live, writable `int`
         unsafe func Read(pointer: *int, other: *var int, count: uint) -> int {
             var total = *pointer;
-            for i in 0u..count { *other += 1; total += *pointer; }
+            for i in 0u..count { *other +%= 1; total +%= *pointer; }
             return total;
         }
     )");
@@ -1669,7 +1669,7 @@ TEST_CASE("Inherited load facts respect calls volatile accesses and loop backedg
         // Safety: `pointer` must address a live `int`
         unsafe func Read(pointer: *int, test: bool) -> int {
             let before = *pointer;
-            if test { return before + *pointer; }
+            if test { return before +% *pointer; }
             return before;
         }
     )");
@@ -1687,8 +1687,8 @@ TEST_CASE("Exact stored values forward through both unique successors") {
         // Safety: `pointer` must address writable `int` elements at every index the body uses
         unsafe func Read(pointer: *var int, value: int, test: bool) -> int {
             *pointer = value;
-            if test { return *pointer + 1; }
-            return *pointer - 1;
+            if test { return *pointer +% 1; }
+            return *pointer -% 1;
         }
     )");
     Optimization::LirValueNumbering numbering;
@@ -1702,9 +1702,9 @@ TEST_CASE("Exact stored values forward through both unique successors") {
 TEST_CASE("Value numbering recognizes equal typed literals while retaining local constants") {
     auto package = Promoted(R"(
         func Read(value: int, test: bool) -> int {
-            let before = value + 15;
+            let before = value +% 15;
             if test { return before; }
-            return before + (value + 15);
+            return before +% (value +% 15);
         }
     )");
     REQUIRE_EQ(Count(package, LirOpcode::Add), 3);
@@ -1717,9 +1717,9 @@ TEST_CASE("Value numbering recognizes equal typed literals while retaining local
 
     auto distinct = Promoted(R"(
         func Read(value: int, test: bool) -> int {
-            let before = value + 15;
+            let before = value +% 15;
             if test { return before; }
-            return before + (value + 16);
+            return before +% (value +% 16);
         }
     )");
     static_cast<void>(numbering.Run(distinct, {}));
@@ -1753,8 +1753,8 @@ TEST_CASE("Literal expression keys remove repeated bounds without crossing write
     auto package = Promoted(R"(
         func Read(value: uint) -> uint {
             if value < 15u { return value; }
-            if value < 15u { return value + 1u; }
-            return value + 2u;
+            if value < 15u { return value +% 1u; }
+            return value +% 2u;
         }
     )");
     Optimization::LirValueNumbering numbering;
@@ -1770,7 +1770,7 @@ TEST_CASE("Literal expression keys remove repeated bounds without crossing write
         // Safety: `pointer` must address writable `int` elements; `other` must address a live, writable `int`
         unsafe func Read(pointer: *var int, other: *var int, test: bool) -> int {
             let before = *(pointer + 1u);
-            if test { *other = 99; return before + *(pointer + 1u); }
+            if test { *other = 99; return before +% *(pointer + 1u); }
             return before;
         }
     )");
@@ -1786,8 +1786,8 @@ LirPackage AffinePointers() {
         unsafe func Walk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
             var total = 0u;
             for i in start..limit {
-                *(pointer + (row + i)) += 3u;
-                total += *(other + (row + i));
+                *(pointer + (row +% i)) +%= 3u;
+                total +%= *(other + (row +% i));
             }
             return total;
         }

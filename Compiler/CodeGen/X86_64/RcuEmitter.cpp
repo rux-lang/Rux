@@ -2,6 +2,7 @@
 #include "CodeGen/X86_64/MachineEmission.h"
 #include "CodeGen/X86_64/MachineSelection.h"
 #include "CodeGen/X86_64/ModuleEmitter.h"
+#include "Ir/Lir/LirCheckedArithmetic.h"
 #include "Ir/Lir/LirVectors.h"
 
 #include <algorithm>
@@ -101,6 +102,13 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
         LirFunc scalar = func;
         Devectorize(scalar);
         GenFunc(scalar);
+        return;
+    }
+    // Nor does it test overflow flags: each check becomes the comparison and branch it stands for.
+    if (HasCheckedArithmetic(func)) {
+        LirFunc expanded = func;
+        ExpandCheckedArithmetic(expanded);
+        GenFunc(expanded);
         return;
     }
     const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);

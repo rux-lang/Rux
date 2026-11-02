@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "IntegerOverflow"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Integer +, -, * and narrowing as stop on overflow at every width; wrapping operators, Checked*, Saturating* and Truncate do not."
+
+[Dependencies]
+Allocator = { Path = "../../../Packages/Allocator" }
+Core = { Path = "../../../Packages/Core" }
+Path = { Path = "../../../Packages/Path" }
+Process = { Path = "../../../Packages/Process" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

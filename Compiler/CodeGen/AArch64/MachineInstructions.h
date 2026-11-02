@@ -60,6 +60,9 @@ enum class Op : std::uint16_t {
     Or,
     Xor,
     Mul,
+    // ADDS and SUBS: Add and Sub that also set the flags, which an overflow check branches on.
+    AddFlags,
+    SubFlags,
     // The high 64 bits of the 128-bit product of two registers.
     MulHigh,
     MulHighSigned,
@@ -117,8 +120,8 @@ enum class Op : std::uint16_t {
     // Copies `size` bytes from the address in operand 1 to the address in operand 0; both registers are advanced
     // past the copy (use and def).
     CopyBytes,
-    // Reports a runtime failure and never returns. Operand 0 holds the address of the message slice; `PanicSite`
-    // carries the static text.
+    // Reports a runtime failure and never returns. Operand 0 holds the address of the message slice, unless the
+    // site's message is in its prefix; `PanicSite` carries the static text.
     Panic,
 };
 
@@ -160,6 +163,9 @@ struct PanicSite {
     std::uint32_t writeFile = Machine::NoSymbol;
     /// The stack-trace printer, when the program has one.
     std::uint32_t backtrace = Machine::NoSymbol;
+    /// A failure whose whole message is known while compiling, such as an integer overflow: the prefix carries it and
+    /// no message slice is written, so the instruction's first operand is unused.
+    bool messageInPrefix = false;
 };
 
 /// One selected function, ready for allocation.

@@ -128,8 +128,10 @@ namespace {
     case Op::Lea:
         return "lea";
     case Op::Add:
+    case Op::AddFlags:
         return "add";
     case Op::Sub:
+    case Op::SubFlags:
         return "sub";
     case Op::And:
         return "and";
@@ -139,6 +141,7 @@ namespace {
         return "xor";
     case Op::Imul:
     case Op::ImulImm:
+    case Op::ImulFlags:
         return "imul";
     case Op::Cmp:
         return "cmp";
@@ -279,6 +282,8 @@ std::string PrintInstruction(const SelectedFunction &selected, const Instruction
         return std::format("cvtu64  {}, {}  ; via {}, {}", operand(0, size), operand(1, 8), operand(2, 8),
                            operand(3, 8));
     case Op::Panic:
+        if (operands[0].kind == Operand::Kind::Immediate)
+            return std::format("panic   ; site {}", operands[1].immediate);
         return std::format("panic   {}  ; site {}", operand(0, 8), operands[1].immediate);
     case Op::LoadFp:
     case Op::StoreFp:

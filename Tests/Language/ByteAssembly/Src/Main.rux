@@ -3,7 +3,7 @@
 // wrong width, order or starting byte shows, and one read stores into the buffer between its byte loads, which the
 // wide load must not move past.
 
-import Core::Assert;
+import Core::{ Assert, uint };
 
 var Buffer: uint8[24] = [0u8; 24];
 
@@ -51,7 +51,7 @@ func Expected(offset: uint, count: uint, bigEndian: bool) -> uint64 {
 
 func Main() -> int {
     for i in 0u..24u {
-        Buffer[i] = (0x11u * (i + 1) + 3u) as uint8;
+        Buffer[i] = (0x11u * (i + 1) + 3u).Truncate<uint8>();
     }
     for offset in 0u..16u {
         let at = @Buffer[offset];

@@ -173,9 +173,9 @@ TEST_CASE("a constant reports overflow, division by zero and the evaluation limi
 
 TEST_CASE("a constant reading a computed one is reported once") {
     const Analyzed analyzed = Analyze(R"(
-        func Broken() -> int8 { return 100i8 + 100i8; }
-        const First = Broken();
-        const Second = First + Broken();
+        func Broken(value: int8) -> int8 { return value + 100i8; }
+        const First = Broken(100i8);
+        const Second = First + Broken(100i8);
     )");
     // 'Second' fails because 'First' does, and only 'First' says why.
     REQUIRE_EQ(analyzed.model.diagnostics.size(), 1);

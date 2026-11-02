@@ -25,12 +25,12 @@ func Main() -> int {
     // The limits are derived from the width rather than written down, so check the derivation's shape.
     Assert(int::Min < 0 && int::Max > 0, "the range spans zero");
     Assert(int::Min + int::Max == -1, "two's complement: one more negative value than positive");
-    Assert(int::Max as uint == (uint::Max >> 1u), "the maximum is the unsigned maximum without its top bit");
-    Assert(int::Min as uint == (uint::Max >> 1u) + 1u, "the minimum is the next value round");
+    Assert(int::Max.Truncate<uint>() == (uint::Max >> 1u), "the maximum is the unsigned maximum without its top bit");
+    Assert(int::Min.Truncate<uint>() == (uint::Max >> 1u) + 1u, "the minimum is the next value round");
 
     // Wrapping happens at the derived limits, not at any particular bit count.
-    Assert(int::Max + 1 == int::Min, "addition wraps from the maximum to the minimum");
-    Assert(int::Min - 1 == int::Max, "subtraction wraps from the minimum to the maximum");
+    Assert(int::Max +% 1 == int::Min, "addition wraps from the maximum to the minimum");
+    Assert(int::Min -% 1 == int::Max, "subtraction wraps from the minimum to the maximum");
     Assert((1 << (int::Bits - 1u)) == int::Min, "shifting into the sign bit gives the minimum");
 
     // Ordinary signed behavior, at whatever width the target picked.

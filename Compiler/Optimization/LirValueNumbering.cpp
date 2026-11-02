@@ -22,6 +22,11 @@ bool Pure(const LirOpcode op) {
     case LirOpcode::Add:
     case LirOpcode::Sub:
     case LirOpcode::Mul:
+    // An overflow check writes nothing, and one that a dominating twin passed cannot fire: sharing the first keeps
+    // the only place the program could stop.
+    case LirOpcode::CheckedAdd:
+    case LirOpcode::CheckedSub:
+    case LirOpcode::CheckedMul:
     case LirOpcode::And:
     case LirOpcode::Or:
     case LirOpcode::Xor:

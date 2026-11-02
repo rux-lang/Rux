@@ -1,6 +1,6 @@
 // Checked arithmetic lowering. Each operation is emitted where it is called rather than through a runtime helper, so an
 // allocation size costs the arithmetic itself plus one comparison, and the overflow report is a value the caller
-// branches on.
+// branches on. The integer conversions that keep the low bits, `Truncate` and `ConvertBits`, are lowered here too.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
@@ -73,11 +73,11 @@ HirExprPtr AstToHirContext::LowerCheckedArithmeticCall(const std::string &intrin
     block->block.stmts.push_back(bind(rightName, valueType, LowerExprAs(*call.args[1], valueType)));
     block->block.stmts.push_back(bind(resultName, resultType, LowerExpr(*call.args[2])));
 
-    // The operation wraps, which is what makes the report meaningful: the caller sees both the value the machine
-    // produced and whether that value is the one the operands actually name.
-    const TokenKind arithmetic = intrinsicName == "CheckedAdd" ? TokenKind::Plus
-                               : intrinsicName == "CheckedSub" ? TokenKind::Minus
-                                                               : TokenKind::Star;
+    // The operation wraps rather than trapping, which is what makes the report meaningful: the caller sees both the
+    // value the machine produced and whether that value is the one the operands actually name.
+    const TokenKind arithmetic = intrinsicName == "CheckedAdd" ? TokenKind::PlusPercent
+                               : intrinsicName == "CheckedSub" ? TokenKind::MinusPercent
+                                                               : TokenKind::StarPercent;
     block->block.stmts.push_back(bind(
         valueName, valueType, binary(arithmetic, named(leftName, valueType), named(rightName, valueType), valueType)));
 
@@ -120,5 +120,41 @@ HirExprPtr AstToHirContext::LowerCheckedArithmeticCall(const std::string &intrin
     block->value = std::move(overflowed);
     PopScope();
     return block;
+}
+
+HirExprPtr AstToHirContext::LowerTruncateCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+    const auto *method = AstCast<const FuncDecl>(binding.selectedDeclaration);
+    if (method && method->intrinsicName == "ConvertBits" && call.args.size() == 1) {
+        // The generic form a generic body reaches the same conversion through.
+        auto cast = std::make_unique<HirCastExpr>();
+        cast->location = call.location;
+        cast->targetType = ResolvedExpressionType(call);
+        cast->type = cast->targetType;
+        cast->operand = LowerExpr(*call.args[0]);
+        return cast;
+    }
+    const auto *receiver = AstCast<const FieldExpr>(call.callee.get());
+    if (!method || !method->intrinsicName.ends_with(".Truncate") || !receiver) {
+        return nullptr;
+    }
+    // The conversion an `as` makes, without the range check: the low bits of the value at the target width, sign- or
+    // zero-extended by the source's signedness when the target is wider.
+    HirExprPtr value = LowerExpr(*receiver->object);
+    // A receiver held behind a reference is read through it, as the method's own `&self` would.
+    if (value->type->kind == TypeRef::Kind::Reference && !value->type->inner.empty()) {
+        auto read = std::make_unique<HirUnaryExpr>();
+        read->location = receiver->object->location;
+        read->op = TokenKind::Star;
+        read->type = value->type->inner.front();
+        read->type.isMut = false;
+        read->operand = std::move(value);
+        value = std::move(read);
+    }
+    auto cast = std::make_unique<HirCastExpr>();
+    cast->location = call.location;
+    cast->targetType = ResolvedExpressionType(call);
+    cast->type = cast->targetType;
+    cast->operand = std::move(value);
+    return cast;
 }
 } // namespace Rux::AstToHirDetail

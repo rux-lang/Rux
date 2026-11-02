@@ -82,14 +82,6 @@ std::optional<KnownDivisor> KnownDivisorOf(const HirExpr &divisor, const TypeRef
     return KnownDivisor{.nonZero = !digits.empty(), .minusOne = negative && digits == "1"};
 }
 
-/// The most negative value of a signed integer type, spelled as a literal a `const` instruction of that type accepts.
-std::string SignedMinimumLiteral(const TypeRef &type) {
-    const std::uint64_t bits = type.SizeInBytes().value_or(8) * 8;
-    if (bits <= 64) {
-        return "-" + std::to_string(std::uint64_t{1} << (bits - 1));
-    }
-    return "-0x8" + std::string(static_cast<std::size_t>(bits / 4 - 1), '0');
-}
 } // namespace
 
 void HirToLirContext::EmitDivisionChecks(const LirReg dividend, const LirReg divisor, const HirExpr &divisorExpr,
@@ -328,6 +320,10 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
             EmitTrapUnless(valid, "invalid character cast", e->location);
             return EmitCast(unsignedValue, checkType, e->type);
         }
+        // A source `as` between integers keeps the value or stops; one lowering wrote keeps the low bits.
+        if (e->checksRange && sourceType.IsInteger() && e->type.IsInteger() && !CastAlwaysFits(*e->operand, e->type)) {
+            EmitIntegerCastCheck(value, sourceType, e->type, e->location);
+        }
         return EmitCast(value, sourceType, e->type);
     }
     if (auto *e = HirCast<const HirIsExpr>(&expr)) {
@@ -375,8 +371,11 @@ LirReg HirToLirContext::LowerPostfix(const HirPostfixExpr &e) {
         BuilderFailure("postfix operator has no LIR opcode mapping");
         break;
     }
+    const LirReg one = IsPointerArithmetic(e.type) ? LirNoReg : EmitConst("1", e.type);
     const LirReg new_val = IsPointerArithmetic(e.type) ? EmitPointerStep(old_val, e.type, op == LirOpcode::Add)
-                                                       : EmitBinary(op, old_val, EmitConst("1", e.type), e.type);
+                         : e.type.IsInteger() ? EmitOverflowChecked(op, old_val, one, e.type,
+                                                                    op == LirOpcode::Add ? "++" : "--", e.location)
+                                              : EmitBinary(op, old_val, one, e.type);
     EmitStore(new_val, ptr, e.type);
     return old_val;
 }
@@ -384,8 +383,16 @@ LirReg HirToLirContext::LowerPostfix(const HirPostfixExpr &e) {
 LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
     using TK = TokenKind;
     switch (e.op) {
-    case TK::Minus:
-        return EmitUnary(LirOpcode::Neg, LowerExpr(*e.operand), e.type);
+    case TK::Minus: {
+        const LirReg operand = LowerExpr(*e.operand);
+        // Negating an integer is subtracting it from zero, and overflows where that does: at a signed minimum, and
+        // for an unsigned value at anything but zero.
+        // A minus written before a literal is part of the literal, as in `-128i8`, and analysis has checked it fits.
+        if (e.type.IsInteger() && !HirCast<const HirLiteralExpr>(e.operand.get())) {
+            return EmitOverflowChecked(LirOpcode::Sub, EmitConst("0", e.type), operand, e.type, "-", e.location);
+        }
+        return EmitUnary(LirOpcode::Neg, operand, e.type);
+    }
     case TK::Bang:
         return EmitUnary(LirOpcode::Not, LowerExpr(*e.operand), e.type);
     case TK::Tilde:
@@ -404,8 +411,11 @@ LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
         const LirReg ptr = LowerLValue(*e.operand);
         const LirReg old_val = EmitLoad(ptr, e.type);
         const LirOpcode aop = (e.op == TK::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
+        const LirReg one = IsPointerArithmetic(e.type) ? LirNoReg : EmitConst("1", e.type);
         const LirReg new_val = IsPointerArithmetic(e.type) ? EmitPointerStep(old_val, e.type, e.op == TK::PlusPlus)
-                                                           : EmitBinary(aop, old_val, EmitConst("1", e.type), e.type);
+                             : e.type.IsInteger() ? EmitOverflowChecked(aop, old_val, one, e.type,
+                                                                        e.op == TK::PlusPlus ? "++" : "--", e.location)
+                                                  : EmitBinary(aop, old_val, one, e.type);
         EmitStore(new_val, ptr, e.type);
         return new_val;
     }
@@ -687,6 +697,13 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
     if (countsOperand && (e.type.IsInteger() || e.type.IsChar())) {
         EmitShiftCheck(rhs, *e.right, e.type, e.location);
     }
+    if (e.type.IsInteger() && (e.op == TK::Plus || e.op == TK::Minus || e.op == TK::Star) && !ResultAlwaysFits(e)) {
+        return EmitOverflowChecked(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, rhs, e.type,
+                                   e.op == TK::Plus    ? "+"
+                                   : e.op == TK::Minus ? "-"
+                                                       : "*",
+                                   e.location);
+    }
     return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, rhs, e.type);
 }
 
@@ -750,7 +767,18 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
                 (e.type.IsInteger() || e.type.IsChar())) {
                 EmitShiftCheck(operand, *e.value, e.type, e.location);
             }
-            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, operand, e.type);
+            const LirOpcode operation = RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op));
+            if (e.type.IsInteger() &&
+                (e.op == TokenKind::PlusAssign || e.op == TokenKind::MinusAssign || e.op == TokenKind::StarAssign)) {
+                val = EmitOverflowChecked(operation, current, operand, e.type,
+                                          e.op == TokenKind::PlusAssign    ? "+="
+                                          : e.op == TokenKind::MinusAssign ? "-="
+                                                                           : "*=",
+                                          e.location);
+            }
+            else {
+                val = EmitBinary(operation, current, operand, e.type);
+            }
         }
     }
     else {

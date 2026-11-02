@@ -12,6 +12,7 @@
 #include "CodeGen/X86_64/CodeAlignment.h"
 #include "CodeGen/X86_64/MachineEmission.h"
 #include "CodeGen/X86_64/MachineSelection.h"
+#include "Ir/Lir/LirCheckedArithmetic.h"
 #include "Ir/Lir/LirVectors.h"
 #include "Target/AsmInstr.h"
 
@@ -867,6 +868,13 @@ void AssemblyControlFlowPrinter::EmitFunction(const LirFunc &function) {
         LirFunc scalar = function;
         Devectorize(scalar);
         EmitFunction(scalar);
+        return;
+    }
+    // Nor does it test overflow flags: each check becomes the comparison and branch it stands for.
+    if (HasCheckedArithmetic(function)) {
+        LirFunc expanded = function;
+        ExpandCheckedArithmetic(expanded);
+        EmitFunction(expanded);
         return;
     }
     FunctionAssemblyPrinter printer(modulePrinter, layouts, interfaceNames, targetOs);

@@ -633,6 +633,10 @@ private:
     [[nodiscard]] static std::string FieldNameList(const EnumDecl::Variant &variant);
     /// Refuses a shift whose count, known while compiling, is negative or at least the width of the shifted type.
     void CheckShiftCount(const TypeRef &shifted, const Expr &count, std::string_view operatorName);
+    /// Refuses a checked `+`, `-` or `*`, or a negation when `left` is null, whose operands are known while compiling
+    /// and whose exact result `type` cannot hold: it would stop the program on every run.
+    void CheckConstantOverflow(TokenKind op, const TypeRef &type, const Expr *left, const Expr &right,
+                               SourceLocation location);
     /// Refuses a constant bound of a range index past the end of a fixed array of `length` elements.
     void CheckConstantSliceBounds(const RangeExpr &range, std::uint64_t length);
     /// The type two operands of an arithmetic or comparison operator meet in, the same rule a range's bounds follow:

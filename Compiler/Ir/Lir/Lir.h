@@ -30,6 +30,11 @@ enum class LirOpcode {
     Mul,
     Div,
     Mod,
+    // Integer arithmetic of at most 64 bits that stops the program when the exact result does not fit `type`, and
+    // otherwise produces what Add, Sub or Mul would. strArg is the failure message and `source` where it is reported.
+    CheckedAdd,
+    CheckedSub,
+    CheckedMul,
     // Bitwise / shift
     And,
     Or,
@@ -135,6 +140,12 @@ inline constexpr std::string_view kProgramModuleName = "__rux_program";
         return "div";
     case LirOpcode::Mod:
         return "mod";
+    case LirOpcode::CheckedAdd:
+        return "checked_add";
+    case LirOpcode::CheckedSub:
+        return "checked_sub";
+    case LirOpcode::CheckedMul:
+        return "checked_mul";
     case LirOpcode::And:
         return "and";
     case LirOpcode::Or:
@@ -245,6 +256,31 @@ inline constexpr std::string_view kProgramModuleName = "__rux_program";
         return "vrotr";
     }
     return "?";
+}
+
+/// Whether `op` is one of the overflow-checked integer operations.
+[[nodiscard]] constexpr bool IsOverflowCheckedOpcode(const LirOpcode op) noexcept {
+    return op == LirOpcode::CheckedAdd || op == LirOpcode::CheckedSub || op == LirOpcode::CheckedMul;
+}
+
+/// The wrapping operation an overflow-checked one computes when it does not stop the program.
+[[nodiscard]] constexpr LirOpcode UncheckedOpcode(const LirOpcode op) noexcept {
+    switch (op) {
+    case LirOpcode::CheckedAdd:
+        return LirOpcode::Add;
+    case LirOpcode::CheckedSub:
+        return LirOpcode::Sub;
+    case LirOpcode::CheckedMul:
+        return LirOpcode::Mul;
+    default:
+        return op;
+    }
+}
+
+/// Whether an instruction of `op` can report a runtime failure and stop the program, which is what calls for the
+/// stack-trace printer and keeps the instruction's source context.
+[[nodiscard]] constexpr bool IsRuntimeFailureOpcode(const LirOpcode op) noexcept {
+    return op == LirOpcode::Panic || op == LirOpcode::Assert || IsOverflowCheckedOpcode(op);
 }
 
 /// A value few instructions carry, kept behind a pointer so the common instruction stays small and cheap to move. It

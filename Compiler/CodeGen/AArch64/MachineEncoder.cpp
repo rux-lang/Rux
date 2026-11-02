@@ -225,6 +225,12 @@ void MachineEncoder::Arithmetic(const Instruction &instruction) {
         case Op::Sub:
             Must(enc.SubImm(destination, left, immediate));
             return;
+        case Op::AddFlags:
+            Must(enc.AddsImm(destination, left, immediate));
+            return;
+        case Op::SubFlags:
+            Must(enc.SubsImm(destination, left, immediate));
+            return;
         case Op::And:
             Must(enc.AndImm(destination, left, immediate));
             return;
@@ -258,6 +264,12 @@ void MachineEncoder::Arithmetic(const Instruction &instruction) {
         return;
     case Op::Sub:
         Must(enc.Sub(destination, left, right));
+        return;
+    case Op::AddFlags:
+        Must(enc.Adds(destination, left, right));
+        return;
+    case Op::SubFlags:
+        Must(enc.Subs(destination, left, right));
         return;
     case Op::And:
         Must(enc.And(destination, left, right));
@@ -320,12 +332,15 @@ void MachineEncoder::Panic(const Instruction &instruction) {
     }
     const PanicSite &site = selected.panics.at(static_cast<std::size_t>(instruction.operands[1].immediate));
     const WriteCall call = WriteCallFor(targetOs);
-    Must(enc.Mov(A64::Xn(17), General(instruction.operands[0].reg, 8)));
+    if (!site.messageInPrefix)
+        Must(enc.Mov(A64::Xn(17), General(instruction.operands[0].reg, 8)));
     WriteStatic(site.prefix, site.prefixLength);
-    Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(17), 0));
-    Must(enc.LoadImm64(A64::Xn(0), 2));
-    Must(enc.LoadImm64(A64::Xn(call.numberReg), call.number));
-    Must(enc.Svc(call.trap));
+    if (!site.messageInPrefix) {
+        Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(17), 0));
+        Must(enc.LoadImm64(A64::Xn(0), 2));
+        Must(enc.LoadImm64(A64::Xn(call.numberReg), call.number));
+        Must(enc.Svc(call.trap));
+    }
     WriteStatic(site.location, site.locationLength);
     if (site.backtrace != Machine::NoSymbol) {
         symbolUses.push_back({enc.Size(), site.backtrace, RcuRelType::AArch64Call26, 0});
@@ -360,6 +375,8 @@ void MachineEncoder::Encode(const Instruction &instruction) {
         return;
     case Op::Add:
     case Op::Sub:
+    case Op::AddFlags:
+    case Op::SubFlags:
     case Op::And:
     case Op::Or:
     case Op::Xor:

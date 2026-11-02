@@ -90,8 +90,8 @@ TEST_CASE("Reusing global addresses does not reuse loads across mutable writes")
         // Safety: `pointer` must address a live, writable `uint`
         unsafe func Use(pointer: *var uint) -> uint {
             let before = Read();
-            *pointer += 1u;
-            return before + Read();
+            *pointer +%= 1u;
+            return before +% Read();
         }
     )",
                                 BuildProfile::Debug);

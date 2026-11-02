@@ -345,3 +345,89 @@ TEST_CASE("machine emission branches on a flag's comparison instead of testing t
     CHECK(between.find("test") == std::string::npos);
     CHECK(between.find("lea") != std::string::npos);
 }
+
+namespace {
+/// `a op b` on two parameters of `type`, overflow-checked, returned.
+[[nodiscard]] LirFunc CheckedOperation(const LirOpcode op, const TypeRef &type) {
+    LirFunc function;
+    function.name = "Checked";
+    function.returnType = type;
+    function.params.push_back({0, type, "a"});
+    function.params.push_back({1, type, "b"});
+    LirBlock block;
+    LirInstr checked = Instruction(op, 2, type, {0, 1}, "integer overflow in '+'");
+    checked.source.Edit() = {.file = "Src/Main.rux", .function = "Checked", .line = 3, .column = 14};
+    block.instrs.push_back(checked);
+    LirTerminator ret;
+    ret.kind = LirTermKind::Return;
+    ret.retVal = 2;
+    ret.retType = type;
+    block.term = ret;
+    function.blocks.push_back(block);
+    return function;
+}
+
+/// The assembly machine selection prints for `function`.
+[[nodiscard]] std::string SelectedAssembly(const LirFunc &function) {
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaces;
+    const SelectionContext context{layouts, interfaces, Target::OS::Linux, false};
+    auto selected = SelectFunction(function, context);
+    REQUIRE(selected.has_value());
+    const auto emitted = EmitFunction(*selected, Target::OS::Linux, true);
+    REQUIRE(emitted.has_value());
+    std::string text;
+    for (const auto &line : emitted->assembly)
+        text += line + "\n";
+    return text;
+}
+} // namespace
+
+TEST_CASE("machine selection tests the flags an overflow-checked operation sets") {
+    struct Case {
+        LirOpcode op;
+        TypeRef type;
+        std::vector<std::string> expected;
+    };
+
+    const std::vector<Case> cases{
+        {LirOpcode::CheckedAdd, TypeRef::MakePrimitive(TypeRef::Kind::Int64), {"add", "jo"}},
+        {LirOpcode::CheckedAdd, TypeRef::MakeUInt64(), {"add", "jb"}},
+        {LirOpcode::CheckedSub, TypeRef::MakePrimitive(TypeRef::Kind::Int32), {"sub", "jo"}},
+        {LirOpcode::CheckedSub, TypeRef::MakePrimitive(TypeRef::Kind::UInt32), {"sub", "jb"}},
+        {LirOpcode::CheckedAdd, TypeRef::MakePrimitive(TypeRef::Kind::Int8), {"add", "jo"}},
+        {LirOpcode::CheckedMul, TypeRef::MakePrimitive(TypeRef::Kind::Int64), {"imul", "jo"}},
+        {LirOpcode::CheckedMul, TypeRef::MakePrimitive(TypeRef::Kind::Int16), {"imul", "jo"}},
+        {LirOpcode::CheckedMul, TypeRef::MakeUInt64(), {"mul", "jo"}},
+        {LirOpcode::CheckedMul, TypeRef::MakePrimitive(TypeRef::Kind::UInt32), {"imul", "cmp", "jne"}},
+        {LirOpcode::CheckedMul, TypeRef::MakePrimitive(TypeRef::Kind::Int8), {"imul", "movsx", "cmp", "jne"}},
+    };
+    for (const auto &check : cases) {
+        CAPTURE(LirOpcodeName(check.op));
+        CAPTURE(check.type.ToString());
+        const std::string text = SelectedAssembly(CheckedOperation(check.op, check.type));
+        CAPTURE(text);
+        std::size_t at = 0;
+        for (const auto &mnemonic : check.expected) {
+            at = text.find(mnemonic, at);
+            CHECK(at != std::string::npos);
+            if (at == std::string::npos)
+                break;
+        }
+        // The report is the static message, written without a slice the program built.
+        CHECK(text.find("panic   ; site") != std::string::npos);
+    }
+}
+
+TEST_CASE("an overflow report carries its message in the static prefix") {
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaces;
+    const SelectionContext context{layouts, interfaces, Target::OS::Linux, false};
+    auto selected = SelectFunction(CheckedOperation(LirOpcode::CheckedAdd, TypeRef::MakeUInt64()), context);
+    REQUIRE(selected.has_value());
+    REQUIRE_EQ(selected->panics.size(), 1);
+    CHECK(selected->panics.front().messageInPrefix);
+    const auto prefix = selected->panics.front().prefix;
+    REQUIRE(prefix < selected->symbols.size());
+    CHECK_EQ(selected->symbols[prefix].text, "Panic: integer overflow in '+'");
+}

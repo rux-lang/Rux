@@ -4,7 +4,7 @@
 // pseudo-random sequence, for unsigned and signed divisors that take each path of the reciprocal, powers of two and
 // negative divisors. No divisor is -1, whose division of the most negative value traps.
 
-import Core::Assert;
+import Core::{ Assert, uint32, uint64, uint8 };
 
 var Divisor64: uint64 = 1u64;
 var Divisor32: uint32 = 1u32;
@@ -133,10 +133,10 @@ func SignedQuotient8_M80(n: int8) -> int8 { return n / (-128i8); }
 func SignedRemainder8_M80(n: int8) -> int8 { return n % (-128i8); }
 
 func Next(state: &var uint64) -> uint64 {
-    state += 0x9E3779B97F4A7C15u64;
+    state +%= 0x9E3779B97F4A7C15u64;
     var z: uint64 = state;
-    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9u64;
-    z = (z ^ (z >> 27)) * 0x94D049BB133111EBu64;
+    z = (z ^ (z >> 30)) *% 0xBF58476D1CE4E5B9u64;
+    z = (z ^ (z >> 27)) *% 0x94D049BB133111EBu64;
     return z ^ (z >> 31);
 }
 
@@ -342,33 +342,33 @@ func Main() -> int {
         Check64(n);
         Check64(n >> (i % 64u64));
         Check64(i);
-        Check64(0u64 - 1u64 - i);
-        Check32(n as uint32);
-        Check32((n >> (i % 32u64)) as uint32);
+        Check64(0u64 -% 1u64 -% i);
+        Check32(n.Truncate<uint32>());
+        Check32((n >> (i % 32u64)).Truncate<uint32>());
         Check32(0xFFFFFFFFu32 - (i as uint32));
-        CheckSigned64(n as int64);
-        CheckSigned64((n as int64) >> ((i % 64u64) as int64));
+        CheckSigned64(n.Truncate<int64>());
+        CheckSigned64(n.Truncate<int64>() >> ((i % 64u64) as int64));
         CheckSigned64(i as int64);
         CheckSigned64(0i64 - (i as int64));
-        CheckSigned64((0x8000000000000000u64 + i) as int64);
+        CheckSigned64((0x8000000000000000u64 + i).Truncate<int64>());
         CheckSigned64((0x7FFFFFFFFFFFFFFFu64 - i) as int64);
-        CheckSigned32(n as uint32 as int32);
-        CheckSigned32((0x80000000u32 + (i as uint32)) as int32);
+        CheckSigned32(n.Truncate<int32>());
+        CheckSigned32((0x80000000u32 + (i as uint32)).Truncate<int32>());
     }
     for d in [3u64, 7u64, 641u64, 1000000007u64, 0xFFFFFFFFu64, 0x8000000000000001u64] {
         for k in 0u64..64u64 {
-            let multiple = d * (k + 1u64);
+            let multiple = d *% (k + 1u64);
             Check64(multiple);
             Check64(multiple - 1u64);
-            Check64(multiple + 1u64);
-            CheckSigned64(multiple as int64);
-            CheckSigned64(0i64 - (multiple as int64));
-            CheckSigned64(1i64 - (multiple as int64));
+            Check64(multiple +% 1u64);
+            CheckSigned64(multiple.Truncate<int64>());
+            CheckSigned64(0i64 -% multiple.Truncate<int64>());
+            CheckSigned64(1i64 -% multiple.Truncate<int64>());
         }
     }
     for n in 0u..256u {
         Check8(n as uint8);
-        CheckSigned8(n as uint8 as int8);
+        CheckSigned8((n as uint8).Truncate<int8>());
     }
     return 0;
 }

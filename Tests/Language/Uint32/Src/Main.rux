@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, uint32, uint64 };
 
 func Main() -> int {
     let a: uint32 = 100000;
@@ -15,10 +15,10 @@ func Main() -> int {
     Assert(min == 0, "uint32 min is 0");
     Assert(max == 0xFFFFFFFF, "uint32 max is 0xFFFFFFFF");
 
-    let wrap_add: uint32 = (max + 1) as uint32;
+    let wrap_add: uint32 = max +% 1;
     Assert(wrap_add == 0, "uint32 addition wraps at 2^32");
 
-    let wrap_sub: uint32 = (0 - 1) as uint32;
+    let wrap_sub: uint32 = 0 -% (1 as uint32);
     Assert(wrap_sub == 0xFFFFFFFF, "uint32 subtraction wraps below 0");
 
     Assert(1000 as uint32 == 1000 as uint32, "uint32 equality");
@@ -31,7 +31,7 @@ func Main() -> int {
     Assert((0x00FF00FF as uint32 & 0x0F0F0F0F as uint32) == 0x000F000F, "uint32 bitwise AND");
     Assert((0x00FF00FF as uint32 | 0x0F0F0F0F as uint32) == 0x0FFF0FFF, "uint32 bitwise OR");
     Assert((0x00FF00FF as uint32 ^ 0x0F0F0F0F as uint32) == 0x0FF00FF0, "uint32 bitwise XOR");
-    Assert((~0x000000FF as uint32) == 0xFFFFFF00, "uint32 bitwise NOT");
+    Assert((~(0x000000FF as uint32)) == 0xFFFFFF00, "uint32 bitwise NOT");
 
     Assert((1 as uint32 << 16) == 65536, "uint32 left shift");
     Assert((0x80000000 as uint32 >> 24) == 0x80, "uint32 right shift is logical");
@@ -42,11 +42,11 @@ func Main() -> int {
     Assert(w64 == 4000000000, "uint32 zero-extends to uint64");
 
     let high: uint32 = 0xFFFFFF80;
-    let as_i32: int32 = high as int32;
+    let as_i32: int32 = high.Truncate<int32>();
     Assert(as_i32 == -128, "uint32 0xFFFFFF80 reinterprets as int32 -128");
 
     let wide: uint64 = 0x00000001FFFFFFFF;
-    let narrow: uint32 = wide as uint32;
+    let narrow: uint32 = wide.Truncate<uint32>();
     Assert(narrow == 0xFFFFFFFF, "uint64 to uint32 truncates to low dword");
 
     var x: uint32 = 5;

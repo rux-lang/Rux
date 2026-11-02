@@ -353,7 +353,7 @@ TEST_CASE("optimizer folds integer wrapping and parses hex/binary literals") {
     std::string source = R"(
         func Main() -> int {
             let a: int32 = -2147483648i32;
-            let b: int32 = 2147483647i32 + 1i32;
+            let b: int32 = 2147483647i32 +% 1i32;
             let c: int64 = 0x00000000FFFFFFFFi64;
             if b == a && c == 4294967295i64 {
                 return 100;

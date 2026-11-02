@@ -170,7 +170,7 @@ struct IntrinsicFunction {
     std::string_view signature;
 };
 
-constexpr std::array<IntrinsicFunction, 25> kIntrinsicFunctions{{
+constexpr std::array<IntrinsicFunction, 26> kIntrinsicFunctions{{
     {"CheckedAdd", false, {}, 0, {}},
     {"ProcessStartFrame", false, {}, 0, {}},
     {"AtomicLoad", false, {}, 0, {}},
@@ -187,6 +187,8 @@ constexpr std::array<IntrinsicFunction, 25> kIntrinsicFunctions{{
     {"CheckedSub", false, {}, 0, {}},
     {"CheckedMul", false, {}, 0, {}},
     {"Zeroize", false, {}, 0, {}},
+    // The conversion `as` makes, without the range check an integer `as` adds: what `Truncate` is for generic code.
+    {"ConvertBits", false, {}, 0, {}},
     {"Assert",
      true,
      {IntrinsicParameter::Condition, IntrinsicParameter::Message},
@@ -211,6 +213,13 @@ constexpr std::array<IntrinsicFunction, 25> kIntrinsicFunctions{{
 void AnalysisContext::ValidateIntrinsicFunction(const FuncDecl &declaration) {
     if (declaration.intrinsicName.empty()) {
         return;
+    }
+    // `value.Truncate<T>()` on an integer: the low bits at another integer width, emitted as a conversion.
+    if (const std::string_view name = declaration.intrinsicName; name.ends_with(".Truncate")) {
+        const auto receiver = PrimitiveTypeFromName(name.substr(0, name.size() - 9));
+        if (receiver && receiver->IsInteger()) {
+            return;
+        }
     }
     const auto known =
         std::ranges::find(kIntrinsicFunctions, std::string_view(declaration.intrinsicName), &IntrinsicFunction::name);

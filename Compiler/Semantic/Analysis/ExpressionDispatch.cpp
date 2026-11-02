@@ -481,6 +481,19 @@ TypeRef AnalysisContext::LiteralType(const Token &tok) const {
 /// joining the catalog rather than by being listed here.
 void AnalysisContext::ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                                            const TypeRef &targetType) const {
+    // An integer narrowed by `as` keeps its value or stops the program, so a constant the target cannot hold would
+    // stop it on every run.
+    if (targetType.IsInteger() && operandType.IsInteger()) {
+        if (const auto value = EvalConstInteger(*expression.operand);
+            value && !ConstantFitsTarget(*value, targetType)) {
+            EmitError(expression.location,
+                      std::format("constant cast from '{}' to '{}' is outside the target type's range",
+                                  operandType.ToString(), targetType.ToString()),
+                      {std::format("the value is {}", *value)},
+                      std::format("keep the low bits on purpose with '.Truncate<{}>()'", targetType.ToString()));
+        }
+        return;
+    }
     const auto maximum = MaxCharacterValue(targetType->kind);
     if (!maximum || !(operandType.IsInteger() || operandType.IsChar())) {
         return;

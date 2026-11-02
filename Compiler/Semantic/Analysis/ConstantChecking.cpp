@@ -478,10 +478,11 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
 namespace {
 using FoldedInteger = std::optional<std::int64_t>;
 
-/// Folds the integer operators over the leaves `leaf` accepts, with the two's-complement wrapping the generated code
-/// produces at run time, so the folded value always matches what the program computes. Division or modulo by zero,
-/// the INT64_MIN / -1 overflow, and out-of-range shifts are left unfolded so they keep their run-time behavior; '**'
-/// is not folded, since it lowers to a run-time helper call.
+/// Folds the integer operators over the leaves `leaf` accepts to their exact machine-word values. A sum, difference,
+/// product or negation the word cannot hold, division or modulo by zero, the INT64_MIN / -1 overflow, and out-of-range
+/// shifts are left unfolded so they keep their run-time behavior. The wrapping operators are not folded either: what
+/// they wrap at is the width of their type, which a word does not know; '**' is not folded, since it lowers to a
+/// run-time helper call.
 template <typename Leaf>
 FoldedInteger FoldIntegerExpression(const Expr &expr, const Leaf &leaf) {
     using I = std::int64_t;
@@ -496,7 +497,10 @@ FoldedInteger FoldIntegerExpression(const Expr &expr, const Leaf &leaf) {
         case TokenKind::Plus:
             return *v;
         case TokenKind::Minus:
-            return static_cast<I>(0u - static_cast<U>(*v));
+            if (*v == std::numeric_limits<I>::min()) {
+                return std::nullopt;
+            }
+            return -*v;
         case TokenKind::Tilde:
             return ~*v;
         default:
@@ -511,14 +515,14 @@ FoldedInteger FoldIntegerExpression(const Expr &expr, const Leaf &leaf) {
             return std::nullopt;
         }
         const U lu = static_cast<U>(*l);
-        const U ru = static_cast<U>(*r);
+        I exact = 0;
         switch (bin->op) {
         case TokenKind::Plus:
-            return static_cast<I>(lu + ru);
+            return __builtin_add_overflow(*l, *r, &exact) ? std::nullopt : FoldedInteger{exact};
         case TokenKind::Minus:
-            return static_cast<I>(lu - ru);
+            return __builtin_sub_overflow(*l, *r, &exact) ? std::nullopt : FoldedInteger{exact};
         case TokenKind::Star:
-            return static_cast<I>(lu * ru);
+            return __builtin_mul_overflow(*l, *r, &exact) ? std::nullopt : FoldedInteger{exact};
         case TokenKind::Slash:
             if (*r == 0 || (*l == std::numeric_limits<I>::min() && *r == -1)) {
                 return std::nullopt;

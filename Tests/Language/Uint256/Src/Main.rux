@@ -22,8 +22,8 @@ func Main() -> int {
 
     // The top bit is magnitude, so the value carrying it is the largest rather than the smallest.
     Assert((1u256 << 255) > 0u256, "the top bit is a value bit, not a sign");
-    Assert((1u256 << 255) as int256 == int256::Min, "the same bits read as int256 are the minimum");
-    Assert(maximum as int256 == -1i256, "all bits set is the maximum unsigned and minus one signed");
+    Assert((1u256 << 255).Truncate<int256>() == int256::Min, "the same bits read as int256 are the minimum");
+    Assert(maximum.Truncate<int256>() == -1i256, "all bits set is the maximum unsigned and minus one signed");
 
     // A carry that starts in the low lane and has to reach the high one.
     let acrossLanes: uint256 = 340282366920938463463374607431768211455u256;
@@ -33,8 +33,8 @@ func Main() -> int {
            "a borrow propagates back through them");
     Assert(acrossLanes * 2u256 == 680564733841876926926749214863536422910u256, "multiplication carries upward");
 
-    Assert(maximum + 1u256 == 0u256, "addition wraps from the maximum to zero");
-    Assert(0u256 - 1u256 == maximum, "subtraction wraps from zero to the maximum");
+    Assert(maximum +% 1u256 == 0u256, "addition wraps from the maximum to zero");
+    Assert(0u256 -% 1u256 == maximum, "subtraction wraps from zero to the maximum");
 
     Assert(maximum / maximum == 1u256, "a value divided by itself");
     Assert(maximum / 2u256 ==
@@ -60,7 +60,7 @@ func Main() -> int {
     let widened: uint256 = uint128::Max as uint256;
     Assert(widened == 340282366920938463463374607431768211455u256, "a narrow unsigned value zero-extends");
     Assert(widened < maximum, "zero extension did not fill the high lanes");
-    let narrowed: uint128 = maximum as uint128;
+    let narrowed: uint128 = maximum.Truncate<uint128>();
     Assert(narrowed == uint128::Max, "a wide value truncates to its low lanes");
 
     Assert(Echo(maximum) == maximum, "the maximum survives an argument and a return");

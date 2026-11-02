@@ -115,7 +115,7 @@ TEST_CASE("AArch64 RCU emitter wraps a narrow result at the width its type occup
         func Main() -> int {
             var small: uint8 = 200;
             var step: uint8 = 100;
-            var wrapped = small + step;
+            var wrapped = small +% step;
             return 0;
         }
     )");
@@ -183,10 +183,10 @@ TEST_CASE("AArch64 RCU emitter reads a right shift at the signedness its opcode 
 }
 
 TEST_CASE("AArch64 RCU emitter negates, complements and tests in one instruction each") {
+    // An integer `-` is a subtraction from zero checked for overflow, which the overflow tests cover.
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {
             var value: int = 37;
-            var negated = -value;
             var complemented = ~value;
             var flag: bool = true;
             var notted = !flag;
@@ -201,7 +201,6 @@ TEST_CASE("AArch64 RCU emitter negates, complements and tests in one instruction
     const auto words = FunctionWords(objects.front(), "Main");
 
     const std::vector<std::tuple<std::uint32_t, std::uint32_t, const char *>> expected = {
-        {0xFFE0FFE0U, 0xCB0003E0U, "neg  xD, xN     — SUB from the zero register"},
         {0xFFE0FFE0U, 0xAA2003E0U, "mvn  xD, xN     — ORN from the zero register"},
         {0xFFFFFC1FU, 0xF100001FU, "cmp  xN, #0"},
         {0xFFFFFFE0U, 0x9A9F17E0U, "cset xD, eq     — the logical negation, as a boolean"},
@@ -265,7 +264,7 @@ TEST_CASE("AArch64 RCU emitter casts between integers with the load and the stor
         func Main() -> int {
             var narrow: int16 = -5i16;
             var widened = narrow as int64;
-            var truncated = widened as uint8;
+            var truncated = (widened & 127) as uint8;
             return 0;
         }
     )");
@@ -282,11 +281,9 @@ TEST_CASE("AArch64 RCU emitter casts between integers with the load and the stor
     // destination writes the bytes its type occupies and no more.
     CHECK_MESSAGE(std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFFFFC00U) == 0x93403C00U; }),
                   "sxth xD, wN");
-    // One byte store, which is the uint8 local being written, and nothing that
-    // masks the value down to a byte before it.
+    // One byte store, which is the uint8 local being written. The narrowing is checked against the target's range
+    // first, which is what a value that does not fit stops at.
     CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFC00000U) == 0x39000000U; }), 1);
-    CHECK_FALSE(
-        std::ranges::any_of(words, [](const std::uint32_t w) { return (w & 0xFFFFFC00U) == 0x53001C00U; })); // uxtb
 }
 
 TEST_CASE("AArch64 RCU emitter reads an enum as the integer its discriminant is") {

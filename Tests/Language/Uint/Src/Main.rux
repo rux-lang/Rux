@@ -28,13 +28,13 @@ func Main() -> int {
 
     // Wrapping is at zero and at the maximum, which is what makes a size computation dangerous: the wrapped result
     // is a small length rather than an obviously wrong negative one.
-    Assert(uint::Max + 1u == 0u, "addition wraps from the maximum to zero");
-    Assert(0u - 1u == uint::Max, "subtraction wraps from zero to the maximum");
-    Assert(uint::Max * 2u == uint::Max - 1u, "multiplication wraps rather than widening");
+    Assert(uint::Max +% 1u == 0u, "addition wraps from the maximum to zero");
+    Assert(0u -% 1u == uint::Max, "subtraction wraps from zero to the maximum");
+    Assert(uint::Max *% 2u == uint::Max -% 1u, "multiplication wraps rather than widening");
 
     // The same bits read as signed are negative, which is the reason a length is never an int.
-    Assert(uint::Max as int == -1, "every bit set is minus one when read as signed");
-    Assert((1u << (uint::Bits - 1u)) as int == int::Min, "the top bit is the signed minimum");
+    Assert(uint::Max.Truncate<int>() == -1, "every bit set is minus one when read as signed");
+    Assert((1u << (uint::Bits - 1u)).Truncate<int>() == int::Min, "the top bit is the signed minimum");
     Assert((1u << (uint::Bits - 1u)) > 0u, "and is an ordinary large value when read as unsigned");
 
     Assert(100u / 7u == 14u, "division truncates");

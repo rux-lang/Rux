@@ -36,6 +36,9 @@ bool BodyOperation(const LirInstr &instruction) {
     // Duplicated in order, a trapping division traps at the same iteration it would have.
     case LirOpcode::Div:
     case LirOpcode::Mod:
+    case LirOpcode::CheckedAdd:
+    case LirOpcode::CheckedSub:
+    case LirOpcode::CheckedMul:
     case LirOpcode::Not:
     case LirOpcode::Sqrt:
     case LirOpcode::GlobalAddr:

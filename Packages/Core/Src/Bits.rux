@@ -38,7 +38,7 @@ pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     // Every bit the shift kept lives below `bits - amount`, so a mask of that many ones drops whatever an arithmetic
     // shift replicated above them. Building the mask by subtraction works at either signedness: the one bit above the
     // mask is the sign bit only when the mask spans the whole type, which `amount == 0` has already been sent home.
-    let mask = ((zero + 1) << (bits - amount)) - 1;
+    let mask = ((zero + 1) << (bits - amount)) -% 1;
     return (value >> amount) & mask;
 }
 
@@ -225,7 +225,7 @@ pub func ReverseBytes<T>(value: T) -> T {
     let bytes = sizeof(T);
     if bytes <= 1 { return value; }
     // Ones in the lowest byte only, shifted down from all ones rather than written as 255, which `int8` cannot hold.
-    let lowByte = ShiftRightLogical<T>(zero - 1, (bytes - 1u64) * 8u64);
+    let lowByte = ShiftRightLogical<T>(zero -% 1, (bytes - 1u64) * 8u64);
     var result = zero;
     var index: uint64 = 0;
     while index < bytes {

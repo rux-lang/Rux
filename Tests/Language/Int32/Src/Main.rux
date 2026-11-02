@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, int32, int64 };
 
 func Main() -> int {
     let a: int32 = 100000;
@@ -19,10 +19,10 @@ func Main() -> int {
     Assert(min == -2147483648, "int32 min is -2147483648");
     Assert(max == 2147483647, "int32 max is 2147483647");
 
-    let wrap_add: int32 = (max + 1) as int32;
+    let wrap_add: int32 = max +% 1;
     Assert(wrap_add == -2147483648, "int32 addition wraps at 2147483648");
 
-    let wrap_sub: int32 = (min - 1) as int32;
+    let wrap_sub: int32 = min -% 1;
     Assert(wrap_sub == 2147483647, "int32 subtraction wraps below -2147483648");
 
     Assert(1000 as int32 == 1000 as int32, "int32 equality");
@@ -48,11 +48,11 @@ func Main() -> int {
     Assert(w64 == -123456789, "int32 sign-extends to int64");
 
     let low: int32 = -128;
-    let as_u32: uint32 = low as uint32;
+    let as_u32: uint32 = low.Truncate<uint32>();
     Assert(as_u32 == 0xFFFFFF80, "int32 -128 reinterprets as uint32 0xFFFFFF80");
 
     let wide: int64 = 0x00000000FFFFFFFF;
-    let narrow: int32 = wide as int32;
+    let narrow: int32 = wide.Truncate<int32>();
     Assert(narrow == -1, "int64 0xFFFFFFFF truncates to int32 -1");
 
     var x: int32 = 5;

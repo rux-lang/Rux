@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, uint64 };
 
 func Main() -> int {
     let a: uint64 = 1000000000;
@@ -17,10 +17,10 @@ func Main() -> int {
     Assert(max == 0xFFFFFFFFFFFFFFFF, "uint64 max is 0xFFFFFFFFFFFFFFFF");
     Assert(decimal_max == max, "uint64 decimal max is 18446744073709551615");
 
-    let wrap_add: uint64 = (max + 1) as uint64;
+    let wrap_add: uint64 = max +% 1;
     Assert(wrap_add == 0, "uint64 addition wraps at 2^64");
 
-    let wrap_sub: uint64 = (0 - 1) as uint64;
+    let wrap_sub: uint64 = 0 -% (1 as uint64);
     Assert(wrap_sub == 0xFFFFFFFFFFFFFFFF, "uint64 subtraction wraps below 0");
 
     Assert(1000 as uint64 == 1000 as uint64, "uint64 equality");
@@ -33,17 +33,17 @@ func Main() -> int {
     Assert((0x00FF00FF00FF00FF as uint64 & 0x0F0F0F0F0F0F0F0F as uint64) == 0x000F000F000F000F, "uint64 bitwise AND");
     Assert((0x00FF00FF00FF00FF as uint64 | 0x0F0F0F0F0F0F0F0F as uint64) == 0x0FFF0FFF0FFF0FFF, "uint64 bitwise OR");
     Assert((0x00FF00FF00FF00FF as uint64 ^ 0x0F0F0F0F0F0F0F0F as uint64) == 0x0FF00FF00FF00FF0, "uint64 bitwise XOR");
-    Assert((~0x00000000000000FF as uint64) == 0xFFFFFFFFFFFFFF00, "uint64 bitwise NOT");
+    Assert((~(0x00000000000000FF as uint64)) == 0xFFFFFFFFFFFFFF00, "uint64 bitwise NOT");
 
     Assert((1 as uint64 << 32) == 0x0000000100000000, "uint64 left shift");
-    Assert((0x8000000000000000 as uint64 >> 56) == 0x80, "uint64 right shift is logical");
+    Assert((0x8000000000000000u64 >> 56) == 0x80, "uint64 right shift is logical");
     Assert((1 as uint64 << 63) == 0x8000000000000000, "uint64 left shift to MSB");
 
     let high: uint64 = 0xFFFFFFFFFFFFFF80;
-    let as_i64: int64 = high as int64;
+    let as_i64: int64 = high.Truncate<int64>();
     Assert(as_i64 == -128, "uint64 0xFFFFFFFFFFFFFF80 reinterprets as int64 -128");
 
-    let narrow: uint32 = max as uint32;
+    let narrow: uint32 = max.Truncate<uint32>();
     Assert(narrow == 0xFFFFFFFF, "uint64 to uint32 truncates to low dword");
 
     var x: uint64 = 5;

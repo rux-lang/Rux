@@ -581,7 +581,14 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method, methodSubstitutions,
                                   receiverType);
-            return ResolveMethodReturnType(receiverType, *method, methodSubstitutions);
+            const TypeRef returned = ResolveMethodReturnType(receiverType, *method, methodSubstitutions);
+            // `Truncate` keeps the low bits of an integer at another integer width, which only an integer has.
+            if (method->intrinsicName.ends_with(".Truncate") && !returned.IsUnknown() &&
+                returned->kind != TypeRef::Kind::TypeParam && !returned.IsInteger()) {
+                EmitError(e->location, std::format("'Truncate' converts to an integer type, but '{}' is not one",
+                                                   returned.ToString()));
+            }
+            return returned;
         }
 
         const std::string receiverName = NamedBaseTypeName(receiverType);

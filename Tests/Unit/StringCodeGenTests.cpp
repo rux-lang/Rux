@@ -136,7 +136,8 @@ TEST_CASE("the same text in two encodings is two distinct interned literals") {
             let eight = c8"hi";
             let repeated = c8"hi";
             let sixteen = c16"hi";
-            return (eight.length + repeated.length + sixteen.length) as int;
+            if eight.length +% repeated.length +% sixteen.length == 6u { return 1; }
+            return 0;
         }
     )";
 

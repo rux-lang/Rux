@@ -175,6 +175,58 @@ void Selector::SelectBinary(const LirInstr &instruction) {
     Emit(op, size, {Operand::Def(destination), Operand::Use(Value(left)), Operand::Use(Value(right))});
 }
 
+void Selector::SelectCheckedArithmetic(const LirInstr &instruction) {
+    // A sum or difference of 32 or 64 bits sets the flags at its own width: V for a signed result, C for an unsigned
+    // sum and its absence, a borrow, for an unsigned difference. Anything narrower, and every product, is computed
+    // exactly in 64 bits from extended operands and checked by narrowing the result back; a 64-bit product compares
+    // its high half with what the low half's sign extends to.
+    const int size = ScalarSize(instruction.type);
+    const bool isSigned = instruction.type.IsSigned();
+    const bool sum = instruction.op == LirOpcode::CheckedAdd;
+    const Reg destination = Value(instruction.dst);
+    const LirReg left = instruction.srcs[0];
+    const LirReg right = instruction.srcs[1];
+    A64Condition overflow = A64Condition::Ne;
+    if (instruction.op != LirOpcode::CheckedMul && size >= 4) {
+        Emit(sum ? Op::AddFlags : Op::SubFlags, static_cast<std::uint8_t>(size),
+             {Operand::Def(destination), Operand::Use(Value(left)), Operand::Use(Value(right))});
+        overflow = isSigned ? A64Condition::Vs : sum ? A64Condition::Cs : A64Condition::Cc;
+        if (size == 4)
+            NoteZeroAbove(instruction.dst, 32);
+    }
+    else if (instruction.op == LirOpcode::CheckedMul && size == 8) {
+        Emit(Op::Mul, 8, {Operand::Def(destination), Operand::Use(Value(left)), Operand::Use(Value(right))});
+        const Reg high = NewGpr();
+        Emit(isSigned ? Op::MulHighSigned : Op::MulHigh, 8,
+             {Operand::Def(high), Operand::Use(Value(left)), Operand::Use(Value(right))});
+        if (isSigned) {
+            const Reg sign = NewGpr();
+            Emit(Op::Sar, 8, {Operand::Def(sign), Operand::Use(destination), Operand::Imm(63)});
+            Emit(Op::Cmp, 8, {Operand::Use(high), Operand::Use(sign)});
+        }
+        else {
+            Emit(Op::Cmp, 8, {Operand::Use(high), Operand::Imm(0)});
+        }
+    }
+    else {
+        const Op op = instruction.op == LirOpcode::CheckedMul ? Op::Mul : sum ? Op::Add : Op::Sub;
+        Emit(op, 8, {Operand::Def(destination), Operand::Use(Extended(left)), Operand::Use(Extended(right))});
+        Emit(Op::Cmp, 8, {Operand::Use(ExtendRegister(destination, size, isSigned)), Operand::Use(destination)});
+        if (!isSigned)
+            NoteZeroAbove(instruction.dst, size * 8);
+    }
+    // Only the flags decide; the report is out of line, in a block placed with the other failure paths.
+    const std::uint32_t depth = out.function.blocks[current].loopDepth;
+    const bool cold = out.function.blocks[current].cold;
+    const std::uint32_t continuation = NewBlock(depth, cold);
+    const std::uint32_t failure = NewBlock(depth, true);
+    Emit(Op::Jcc, 8, {Operand::BlockTarget(failure)}).condition = static_cast<std::uint8_t>(overflow);
+    Emit(Op::Jmp, 8, {Operand::BlockTarget(continuation)});
+    current = failure;
+    Emit(Op::Panic, 8, {Operand::Imm(0), Operand::Imm(PanicSiteFor(instruction))});
+    current = continuation;
+}
+
 namespace {
 /// The multiplier and shift for signed division by `divisor` (Hacker's Delight, figure 10-1), for |divisor| >= 2.
 std::pair<std::int64_t, int> SignedMagic(const std::int64_t divisor) {

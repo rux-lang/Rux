@@ -139,6 +139,73 @@ void Selector::SelectBinary(const LirInstr &instruction) {
          {Operand::UseDef(destination), immediate ? Operand::Imm(*immediate) : Operand::Use(Value(right))});
 }
 
+void Selector::SelectCheckedArithmetic(const LirInstr &instruction) {
+    // The operation runs at the type's own width, so the flags it leaves describe that width: OF for a signed result
+    // and CF for an unsigned one. A product has no such form at every width: an 8-bit signed product is taken at 32
+    // bits and checked by narrowing it back, and an unsigned one below 64 bits at 64 bits, where it is exact, and
+    // checked for bits above the width.
+    const int size = ScalarSize(instruction.type);
+    const auto width = static_cast<std::uint8_t>(size);
+    const bool isSigned = instruction.type.IsSigned();
+    const Reg destination = Value(instruction.dst);
+    LirReg left = instruction.srcs[0];
+    LirReg right = instruction.srcs[1];
+    Cond overflow = isSigned ? Cond::Overflow : Cond::Below;
+    if (instruction.op != LirOpcode::CheckedMul) {
+        if (instruction.op == LirOpcode::CheckedAdd && integerConstants.Contains(left) &&
+            !integerConstants.Contains(right))
+            std::swap(left, right);
+        const auto immediate = Immediate(right, size == 8 ? 8 : 4);
+        EmitCopy(destination, Value(left), RegClass::General);
+        Emit(instruction.op == LirOpcode::CheckedAdd ? Op::AddFlags : Op::SubFlags, width,
+             {Operand::UseDef(destination), immediate ? Operand::Imm(*immediate) : Operand::Use(Value(right))});
+        if (size == 4)
+            NoteZeroAbove(instruction.dst, 32);
+    }
+    else if (isSigned && size >= 2) {
+        EmitCopy(destination, Value(left), RegClass::General);
+        Emit(Op::ImulFlags, width, {Operand::UseDef(destination), Operand::Use(Value(right))});
+        if (size == 4)
+            NoteZeroAbove(instruction.dst, 32);
+    }
+    else if (isSigned) {
+        const Reg product = ExtendRegister(Value(left), 1, true);
+        Emit(Op::Imul, 4, {Operand::UseDef(product), Operand::Use(ExtendRegister(Value(right), 1, true))});
+        const Reg narrowed = NewGpr();
+        Emit(Op::MovSx, 4, {Operand::Def(narrowed), Operand::Use(product)}).sourceSize = 1;
+        Emit(Op::Cmp, 4, {Operand::Use(narrowed), Operand::Use(product)});
+        EmitCopy(destination, product, RegClass::General);
+        overflow = Cond::NotEqual;
+    }
+    else if (size == 8) {
+        EmitCopy(Rax, Value(left), RegClass::General);
+        auto &multiply = Emit(Op::MulHigh, 8, {Operand::Use(Value(right))});
+        multiply.implicitUses = Machine::RegisterBit(Rax);
+        multiply.implicitDefs = Machine::RegisterBit(Rax) | Machine::RegisterBit(Rdx);
+        EmitCopy(destination, Rax, RegClass::General);
+        overflow = Cond::Overflow;
+    }
+    else {
+        const Reg product = NewGpr();
+        EmitCopy(product, ExtendRegister(Value(left), size, false), RegClass::General);
+        Emit(Op::Imul, 8, {Operand::UseDef(product), Operand::Use(ExtendRegister(Value(right), size, false))});
+        Emit(Op::Cmp, 8, {Operand::Use(ExtendRegister(product, size, false)), Operand::Use(product)});
+        EmitCopy(destination, product, RegClass::General);
+        NoteZeroAbove(instruction.dst, size * 8);
+        overflow = Cond::NotEqual;
+    }
+    // Only the flags decide; the report is out of line, in a block placed with the other failure paths.
+    const std::uint32_t depth = out.function.blocks[current].loopDepth;
+    const bool cold = out.function.blocks[current].cold;
+    const std::uint32_t continuation = NewBlock(depth, cold);
+    const std::uint32_t failure = NewBlock(depth, true);
+    Emit(Op::Jcc, 8, {Operand::BlockTarget(failure)}).condition = static_cast<std::uint8_t>(overflow);
+    Emit(Op::Jmp, 8, {Operand::BlockTarget(continuation)});
+    current = failure;
+    Emit(Op::Panic, 8, {Operand::Imm(0), Operand::Imm(PanicSiteFor(instruction))});
+    current = continuation;
+}
+
 namespace {
 /// The multiplier and shift for signed division by `divisor` (Hacker's Delight, figure 10-1), for |divisor| >= 2.
 std::pair<std::int64_t, int> SignedMagic(const std::int64_t divisor) {

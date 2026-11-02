@@ -211,3 +211,88 @@ TEST_CASE("AArch64 machine encoding picks the short form each operand allows") {
     CHECK(uses[0].type == RcuRelType::AArch64Call26);
     CHECK(call == Expected([](const A64Enc &enc) { return enc.Bl(0); }));
 }
+
+namespace {
+/// `a op b` on two parameters of `type`, overflow-checked, returned.
+[[nodiscard]] LirFunc CheckedOperation(const LirOpcode op, const TypeRef &type) {
+    LirFunc function;
+    function.name = "Checked";
+    function.returnType = type;
+    function.params.push_back({0, type, "a"});
+    function.params.push_back({1, type, "b"});
+    LirBlock block;
+    LirInstr checked = Instruction(op, 2, type, {0, 1}, "integer overflow in '*'");
+    checked.source.Edit() = {.file = "Src/Main.rux", .function = "Checked", .line = 3, .column = 14};
+    block.instrs.push_back(checked);
+    LirTerminator ret;
+    ret.kind = LirTermKind::Return;
+    ret.retVal = 2;
+    ret.retType = type;
+    block.term = ret;
+    function.blocks.push_back(block);
+    return function;
+}
+
+/// The instruction words machine selection emits for `function` on Linux.
+[[nodiscard]] std::vector<std::uint32_t> SelectedWords(const LirFunc &function) {
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaces;
+    const AArch64CallPlanner planner(layouts, interfaces, {}, Target::OS::Linux);
+    const SelectionContext context{layouts, interfaces, planner, Target::OS::Linux, false};
+    auto selected = SelectFunction(function, context);
+    REQUIRE(selected.has_value());
+    const auto emitted = EmitFunction(*selected, Target::OS::Linux);
+    REQUIRE(emitted.has_value());
+    return Words(emitted->bytes);
+}
+
+/// Whether some word matches `pattern` under `mask`.
+[[nodiscard]] bool Has(const std::vector<std::uint32_t> &words, const std::uint32_t mask, const std::uint32_t pattern) {
+    for (const std::uint32_t word : words)
+        if ((word & mask) == pattern)
+            return true;
+    return false;
+}
+
+/// Whether some word is a B.cond on `condition`.
+[[nodiscard]] bool HasBranch(const std::vector<std::uint32_t> &words, const A64Condition condition) {
+    return Has(words, 0xFF00001FU, 0x54000000U | static_cast<std::uint32_t>(condition));
+}
+} // namespace
+
+TEST_CASE("AArch64 machine selection tests the flags an overflow-checked operation sets") {
+    // ADDS and SUBS at the type's width, branching on V for a signed result and on C for an unsigned one.
+    auto words = SelectedWords(CheckedOperation(LirOpcode::CheckedAdd, TypeRef::MakePrimitive(TypeRef::Kind::Int64)));
+    CHECK(Has(words, 0xFF200000U, 0xAB000000U));
+    CHECK(HasBranch(words, A64Condition::Vs));
+    words = SelectedWords(CheckedOperation(LirOpcode::CheckedAdd, TypeRef::MakePrimitive(TypeRef::Kind::UInt32)));
+    CHECK(Has(words, 0xFF200000U, 0x2B000000U));
+    CHECK(HasBranch(words, A64Condition::Cs));
+    words = SelectedWords(CheckedOperation(LirOpcode::CheckedSub, TypeRef::MakeUInt64()));
+    CHECK(Has(words, 0xFF200000U, 0xEB000000U));
+    CHECK(HasBranch(words, A64Condition::Cc));
+    words = SelectedWords(CheckedOperation(LirOpcode::CheckedSub, TypeRef::MakePrimitive(TypeRef::Kind::Int32)));
+    CHECK(Has(words, 0xFF200000U, 0x6B000000U));
+    CHECK(HasBranch(words, A64Condition::Vs));
+    // A 64-bit product compares its high half, SMULH or UMULH, with what the low half implies.
+    words = SelectedWords(CheckedOperation(LirOpcode::CheckedMul, TypeRef::MakePrimitive(TypeRef::Kind::Int64)));
+    CHECK(Has(words, 0xFFE0FC00U, 0x9B407C00U));
+    CHECK(HasBranch(words, A64Condition::Ne));
+    words = SelectedWords(CheckedOperation(LirOpcode::CheckedMul, TypeRef::MakeUInt64()));
+    CHECK(Has(words, 0xFFE0FC00U, 0x9BC07C00U));
+    CHECK(HasBranch(words, A64Condition::Ne));
+    // A narrower product is exact in 64 bits and compared with its own narrowing.
+    words = SelectedWords(CheckedOperation(LirOpcode::CheckedMul, TypeRef::MakePrimitive(TypeRef::Kind::Int16)));
+    CHECK(Has(words, 0xFFE0FC00U, 0x9B007C00U));
+    CHECK(HasBranch(words, A64Condition::Ne));
+}
+
+TEST_CASE("AArch64 machine encoding sets the flags for an overflow check") {
+    using Machine::Operand;
+    CHECK(Encode(Make(Op::AddFlags, 8, {Operand::Def(0), Operand::Use(1), Operand::Use(2)})) ==
+          Expected([](const A64Enc &enc) { return enc.Adds(A64::Xn(0), A64::Xn(1), A64::Xn(2)); }));
+    CHECK(Encode(Make(Op::SubFlags, 4, {Operand::Def(3), Operand::Use(4), Operand::Use(5)})) ==
+          Expected([](const A64Enc &enc) { return enc.Subs(A64::Wn(3), A64::Wn(4), A64::Wn(5)); }));
+    CHECK(Encode(Make(Op::AddFlags, 4, {Operand::Def(3), Operand::Use(4), Operand::Imm(7)})) ==
+          Expected([](const A64Enc &enc) { return enc.AddsImm(A64::Wn(3), A64::Wn(4), 7); }));
+}

@@ -13,7 +13,7 @@ func Echo(value: int512) -> int512 {
 }
 
 func Sum(left: int512, right: int512) -> int512 {
-    return left + right;
+    return left +% right;
 }
 
 func Main() -> int {
@@ -43,8 +43,8 @@ func Main() -> int {
                acrossLanes,
            "a borrow propagates back across them");
 
-    Assert(int512::Max + 1i512 == int512::Min, "addition wraps from the maximum to the minimum");
-    Assert(int512::Min - 1i512 == int512::Max, "subtraction wraps from the minimum to the maximum");
+    Assert(int512::Max +% 1i512 == int512::Min, "addition wraps from the maximum to the minimum");
+    Assert(int512::Min -% 1i512 == int512::Max, "subtraction wraps from the minimum to the maximum");
 
     let negative: int512 = -123456789012345678901234567890i512;
     Assert(negative / 1000000000i512 == -123456789012345678901i512, "division truncates toward zero");
@@ -76,7 +76,7 @@ func Main() -> int {
     Assert(int256::Max as int512 ==
                57896044618658097711785492504343953926634992332820282019728792003956564819967i512,
            "the widest int256 value survives widening");
-    let narrowed: int256 = int512::Max as int256;
+    let narrowed: int256 = int512::Max.Truncate<int256>();
     Assert(narrowed == -1i256, "a wide value truncates to its low lanes");
 
     Assert(Echo(int512::Min) == int512::Min, "the minimum survives an argument and a return");

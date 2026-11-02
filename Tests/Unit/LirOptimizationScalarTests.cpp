@@ -34,18 +34,21 @@ TEST_CASE("Unsigned representation ranges remove only proven comparisons") {
     const auto source = R"(
         func Masked(value: uint32) -> bool { return ((value & 63u32) as uint64) < 64u64; }
         func Remainder(value: uint64) -> bool { return value % 17u64 >= 17u64; }
-        func Add(value: uint8) -> bool { return ((value as uint64) + 5u64) <= 260u64; }
-        func Multiply(value: uint8) -> bool { return (value as uint64) * 2u64 < 511u64; }
-        func Wrap(value: uint64) -> bool { return value + 1u64 > 0u64; }
-        func Underflow(value: uint64) -> bool { return value - 1u64 < 18446744073709551615u64; }
+        func Add(value: uint8) -> bool { return ((value as uint64) +% 5u64) <= 260u64; }
+        func Multiply(value: uint8) -> bool { return (value as uint64) *% 2u64 < 511u64; }
+        func Wrap(value: uint64) -> bool { return value +% 1u64 > 0u64; }
+        func Underflow(value: uint64) -> bool { return value -% 1u64 < 18446744073709551615u64; }
         func Signed(value: int64) -> bool { return value < 0i64; }
         func Unknown(value: uint64, limit: uint64) -> bool { return value < limit; }
-        func Narrow(value: uint64) -> bool { return (value as uint8) < 255u8; }
+        func Narrow(value: uint64) -> bool { return ((value & 255u64) as uint8) < 255u8; }
     )";
     auto package = Promoted(source);
     Optimization::LirScalarCombines combines;
     CHECK(combines.Run(package, {}) == Optimization::PassChange::Changed);
     for (const auto &function : package.modules[0].funcs) {
+        // The narrowing's range check made the program one that can fail, which brings the stack-trace printer.
+        if (function.name == kBacktraceFunctionName)
+            continue;
         std::size_t comparisons = 0;
         for (const auto &block : function.blocks)
             for (const auto &instruction : block.instrs)
@@ -83,9 +86,9 @@ TEST_CASE("Scalar combines drop a mask a logical shift already satisfies") {
 
 TEST_CASE("Scalar combines add two unsigned constants once") {
     auto package = Promoted(R"(
-        func Twice(value: uint) -> uint { return (value + 1u) + 1u; }
-        func Wrapping(value: uint8) -> uint8 { return (value + 200u8) + 100u8; }
-        func Signed(value: int64) -> int64 { return (value + 1i64) + 1i64; }
+        func Twice(value: uint) -> uint { return (value +% 1u) +% 1u; }
+        func Wrapping(value: uint8) -> uint8 { return (value +% 200u8) +% 100u8; }
+        func Signed(value: int64) -> int64 { return (value +% 1i64) +% 1i64; }
     )");
     Optimization::LirScalarCombines combines;
     CHECK(combines.Run(package, {}) == Optimization::PassChange::Changed);

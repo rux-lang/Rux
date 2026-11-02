@@ -1,0 +1,7 @@
+4:26: error: integer overflow in '+': the constant result does not fit 'uint8'
+8:22: error: integer overflow in '+': the constant result does not fit 'int32'
+9:20: error: integer overflow in '-': the constant result does not fit 'uint'
+10:39: error: integer overflow in '*': the constant result does not fit 'int'
+11:19: error: integer overflow in '-': the constant result does not fit 'int8'
+12:24: error: constant cast from 'int' to 'uint8' is outside the target type's range
+13:23: error: constant cast from 'int' to 'uint64' is outside the target type's range

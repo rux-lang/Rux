@@ -1,0 +1,17 @@
+// A `+`, `-`, `*` or negation whose operands are known while compiling, or an `as` of a known value, must produce a
+// value its type holds; the wrapping operators and `Truncate` keep the low bits instead.
+const Limit: int32 = 2147483647;
+const Sum: uint8 = 200u8 + 100u8;
+const Wrapped: uint8 = 200u8 +% 100u8;
+
+func Overflows() -> int64 {
+    let past = Limit + 1i32;
+    let below = 0u - 1u;
+    let doubled = 9223372036854775807 * 2;
+    let negated = -(-128i8);
+    let narrowed = 300 as uint8;
+    let signless = -1 as uint64;
+    let fits = 255 as uint8;
+    return (past as int64) + (below as int64) + doubled + (negated as int64) + (narrowed as int64) +
+           (fits as int64) + (Wrapped as int64) + (signless as int64);
+}

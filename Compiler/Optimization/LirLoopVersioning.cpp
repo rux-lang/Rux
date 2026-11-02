@@ -20,6 +20,13 @@ bool SignedWord(const TypeRef &type) {
     return type->kind == TypeRef::Kind::Int || type->kind == TypeRef::Kind::Int64;
 }
 
+/// An addition the proofs below read: a wrapping one, or an overflow-checked one, which computes the same value
+/// whenever it does not stop the program. The fast copy a proof guards turns the checked ones it covers into plain
+/// additions, since the guard shows every value they produce there is below a bound.
+bool IsAddition(const LirInstr &instruction) {
+    return instruction.op == LirOpcode::Add || instruction.op == LirOpcode::CheckedAdd;
+}
+
 struct Definition {
     const LirInstr *instruction;
     std::uint32_t block;
@@ -198,9 +205,8 @@ bool Version(LirFunc &function) {
         bool counted = start.has_value() && !inclusive;
         std::uint64_t stride = 1;
         const auto *step = get(increment);
-        if (!step || step->op != LirOpcode::Add || step->isVolatile || step->type != phi->type ||
-            step->srcs.size() != 2 || step->srcs[0] != induction ||
-            !dominance.Dominates(definitions.At(increment).block, latch)) {
+        if (!step || !IsAddition(*step) || step->isVolatile || step->type != phi->type || step->srcs.size() != 2 ||
+            step->srcs[0] != induction || !dominance.Dominates(definitions.At(increment).block, latch)) {
             counted = false;
         }
         else {
@@ -275,6 +281,11 @@ bool Version(LirFunc &function) {
             }
             return std::nullopt;
         };
+        // Checked additions whose every value in the fast copy a proof below bounds, and which that copy computes
+        // without the check: the induction step, other counters' steps, and the index expressions of proven checks.
+        std::vector<LirReg> proven;
+        if (counted)
+            proven.push_back(increment);
         // Other counters: header phis entered with an invariant value and advanced only by constant additions.
         std::unordered_map<LirReg, Secondary> secondaries;
         for (const auto &instruction : function.blocks[header].instrs) {
@@ -290,36 +301,44 @@ bool Version(LirFunc &function) {
             if (entered == LirNoReg || advanced == LirNoReg || !invariant(entered))
                 continue;
             std::uint64_t advance = 0;
+            std::vector<LirReg> steps;
             auto reg = advanced;
             for (std::size_t depth = 0; depth < 16 && reg != instruction.dst && advance <= MaximumStep; ++depth) {
                 const auto *add = get(reg);
-                const auto amount = add && add->op == LirOpcode::Add && !add->isVolatile &&
-                                            add->type == instruction.type && add->srcs.size() == 2
+                const auto amount = add && IsAddition(*add) && !add->isVolatile && add->type == instruction.type &&
+                                            add->srcs.size() == 2
                                       ? constantOf(add->srcs[1])
                                       : std::nullopt;
                 if (!amount || *amount > MaximumStep)
                     break;
                 advance += *amount;
+                steps.push_back(reg);
                 reg = add->srcs[0];
             }
-            if (reg == instruction.dst && advance <= MaximumStep)
+            if (reg == instruction.dst && advance <= MaximumStep) {
                 secondaries.emplace(instruction.dst, Secondary{entered, advance});
+                proven.insert(proven.end(), steps.begin(), steps.end());
+            }
         }
         // An index as another counter plus constants.
         const auto secondaryIndex = [&](LirReg reg) -> std::optional<std::pair<LirReg, std::uint64_t>> {
             std::uint64_t offset = 0;
+            std::vector<LirReg> steps;
             for (std::size_t depth = 0; depth < 16 && offset <= MaximumStep; ++depth) {
                 reg = strip(reg);
-                if (secondaries.contains(reg))
+                if (secondaries.contains(reg)) {
+                    proven.insert(proven.end(), steps.begin(), steps.end());
                     return std::pair{reg, offset};
+                }
                 const auto *add = get(reg);
                 const auto amount =
-                    add && add->op == LirOpcode::Add && !add->isVolatile && Word(add->type) && add->srcs.size() == 2
+                    add && IsAddition(*add) && !add->isVolatile && Word(add->type) && add->srcs.size() == 2
                         ? constantOf(add->srcs[1])
                         : std::nullopt;
                 if (!amount || *amount > MaximumStep)
                     return std::nullopt;
                 offset += *amount;
+                steps.push_back(reg);
                 reg = add->srcs[0];
             }
             return std::nullopt;
@@ -334,7 +353,9 @@ bool Version(LirFunc &function) {
             if (reg == induction)
                 return 0;
             const auto *arithmetic = get(reg);
-            if (!arithmetic || (arithmetic->op != LirOpcode::Add && arithmetic->op != LirOpcode::Sub) ||
+            if (!arithmetic ||
+                (!IsAddition(*arithmetic) && arithmetic->op != LirOpcode::Sub &&
+                 arithmetic->op != LirOpcode::CheckedSub) ||
                 arithmetic->isVolatile || arithmetic->srcs.size() != 2 || arithmetic->srcs[0] != induction)
                 return std::nullopt;
             const auto *amount = get(arithmetic->srcs[1]);
@@ -346,7 +367,8 @@ bool Version(LirFunc &function) {
             const auto magnitude = static_cast<std::int64_t>(value->RawBits());
             if (magnitude < -(std::int64_t{1} << 40) || magnitude > (std::int64_t{1} << 40))
                 return std::nullopt;
-            return arithmetic->op == LirOpcode::Add ? magnitude : -magnitude;
+            proven.push_back(reg);
+            return IsAddition(*arithmetic) ? magnitude : -magnitude;
         };
         bool eligible = true;
         std::size_t cost = 0;
@@ -406,7 +428,7 @@ bool Version(LirFunc &function) {
             LirReg offset = LirNoReg;
             if (index != induction) {
                 const auto *add = get(index);
-                if (!add || add->op != LirOpcode::Add || add->isVolatile || !Word(add->type) || add->srcs.size() != 2)
+                if (!add || !IsAddition(*add) || add->isVolatile || !Word(add->type) || add->srcs.size() != 2)
                     continue;
                 if (strip(add->srcs[0]) == induction && invariant(add->srcs[1]))
                     offset = add->srcs[1];
@@ -416,6 +438,7 @@ bool Version(LirFunc &function) {
                     continue;
             }
             checks.push_back({block, offset, comparison->srcs[1]});
+            proven.push_back(index);
         }
         if (!eligible || cost > 320 || checks.empty() || checks.size() > 16)
             continue;
@@ -467,6 +490,10 @@ bool Version(LirFunc &function) {
             auto clone = function.blocks[block];
             clone.label += ".range.fast." + std::to_string(block);
             for (auto &instruction : clone.instrs) {
+                if (IsOverflowCheckedOpcode(instruction.op) && std::ranges::contains(proven, instruction.dst)) {
+                    instruction.op = UncheckedOpcode(instruction.op);
+                    instruction.strArg.clear();
+                }
                 instruction.dst = mappedReg(instruction.dst);
                 for (auto &source : instruction.srcs)
                     source = mappedReg(source);
@@ -757,21 +784,43 @@ bool Version(LirFunc &function) {
             std::unordered_map<std::uint32_t, LirReg> atStart;
             std::unordered_map<std::uint32_t, LirInstr> merges;
             std::function<LirReg(std::uint32_t)> startOf;
+            std::function<LirReg(std::uint32_t)> startOfMerge;
             const auto endOf = [&](const std::uint32_t block) {
                 if (members.contains(block))
                     return value;
                 return block >= oldCount ? fast : startOf(block);
             };
-            startOf = [&](const std::uint32_t block) -> LirReg {
-                if (const auto found = atStart.find(block); found != atStart.end())
-                    return found->second;
-                const auto &predecessors = updated.predecessors[block];
-                if (predecessors.size() == 1) {
-                    atStart.emplace(block, value);
-                    return atStart[block] = endOf(predecessors.front());
+            startOf = [&](std::uint32_t block) -> LirReg {
+                // A run of blocks with one predecessor each holds whatever the block above it ends with. The run is
+                // followed upward before anything is recorded, so a later loop whose body is entered in the middle
+                // still finds its own header's phi on the way round the back edge rather than a placeholder.
+                std::vector<std::uint32_t> run;
+                LirReg result = value;
+                for (;;) {
+                    if (const auto found = atStart.find(block); found != atStart.end()) {
+                        result = found->second;
+                        break;
+                    }
+                    const auto &predecessors = updated.predecessors[block];
+                    if (predecessors.size() != 1 || std::ranges::contains(run, block)) {
+                        if (predecessors.size() > 1)
+                            result = startOfMerge(block);
+                        break;
+                    }
+                    run.push_back(block);
+                    const auto predecessor = predecessors.front();
+                    if (members.contains(predecessor) || predecessor >= oldCount) {
+                        result = endOf(predecessor);
+                        break;
+                    }
+                    block = predecessor;
                 }
-                if (predecessors.empty())
-                    return value;
+                for (const auto entered : run)
+                    atStart.emplace(entered, result);
+                return result;
+            };
+            startOfMerge = [&](const std::uint32_t block) -> LirReg {
+                const auto &predecessors = updated.predecessors[block];
                 LirInstr merge;
                 merge.op = LirOpcode::Phi;
                 merge.dst = next++;

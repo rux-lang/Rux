@@ -346,11 +346,16 @@ void Selector::SelectReturn(const LirTerminator &terminator) {
 }
 
 std::int32_t Selector::PanicSiteFor(const LirInstr &instruction) {
-    const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
+    RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
         instruction.op == LirOpcode::Assert ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
         instruction.source.Get().function, instruction.source.Get().file, instruction.source.Get().line,
         instruction.source.Get().column);
     PanicSite site;
+    // An overflow check's message is fixed, so it is written with the prefix rather than read from a slice.
+    if (IsOverflowCheckedOpcode(instruction.op)) {
+        layout.prefix += instruction.strArg;
+        site.messageInPrefix = true;
+    }
     site.prefix = Symbol({SymbolRef::Kind::String, layout.prefix});
     site.prefixLength = static_cast<std::uint32_t>(layout.prefix.size());
     site.location = Symbol({SymbolRef::Kind::String, layout.location});

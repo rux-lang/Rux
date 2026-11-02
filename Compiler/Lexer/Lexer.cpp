@@ -1001,14 +1001,17 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         }
         return MakeToken(TokenKind::Dot, start, tokenStart);
 
-    // +  or  ++  or  +=
+    // +  or  ++  or  +=  or  +%  or  +%=
     case '+':
         if (Match('+')) {
             return MakeToken(TokenKind::PlusPlus, start, tokenStart);
         }
+        if (Match('%')) {
+            return MakeToken(Match('=') ? TokenKind::PlusPercentAssign : TokenKind::PlusPercent, start, tokenStart);
+        }
         return MakeToken(Match('=') ? TokenKind::PlusAssign : TokenKind::Plus, start, tokenStart);
 
-    // -  or  --  or  -=  or  ->
+    // -  or  --  or  -=  or  ->  or  -%  or  -%=
     case '-':
         if (Match('-')) {
             return MakeToken(TokenKind::MinusMinus, start, tokenStart);
@@ -1019,12 +1022,18 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         if (Match('=')) {
             return MakeToken(TokenKind::MinusAssign, start, tokenStart);
         }
+        if (Match('%')) {
+            return MakeToken(Match('=') ? TokenKind::MinusPercentAssign : TokenKind::MinusPercent, start, tokenStart);
+        }
         return MakeToken(TokenKind::Minus, start, tokenStart);
 
-    // *  or  *=
+    // *  or  *=  or  *%  or  *%=
     case '*':
         if (Match('=')) {
             return MakeToken(TokenKind::StarAssign, start, tokenStart);
+        }
+        if (Match('%')) {
+            return MakeToken(Match('=') ? TokenKind::StarPercentAssign : TokenKind::StarPercent, start, tokenStart);
         }
         return MakeToken(TokenKind::Star, start, tokenStart);
 

@@ -259,8 +259,8 @@ LirDeclarationReferences FunctionReferences(const LirFunc &function) {
             if (instruction.op == LirOpcode::Call) {
                 Reference(declaration, LirSymbolReference::Scope::Function, instruction.strArg);
             }
-            // Code generation calls the stack-trace printer from every panic and failed assertion.
-            else if (instruction.op == LirOpcode::Panic || instruction.op == LirOpcode::Assert) {
+            // Code generation calls the stack-trace printer from every panic, failed assertion and overflow.
+            else if (IsRuntimeFailureOpcode(instruction.op)) {
                 Reference(declaration, LirSymbolReference::Scope::Function, std::string(kBacktraceFunctionName));
             }
             else if (instruction.op == LirOpcode::GlobalAddr || instruction.op == LirOpcode::ThreadLocalAddr) {

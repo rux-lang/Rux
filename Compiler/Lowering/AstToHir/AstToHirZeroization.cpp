@@ -104,7 +104,8 @@ HirExprPtr AstToHirContext::LowerZeroizeCall(const CallExpr &call) {
     step->location = call.location;
     step->op = TokenKind::Assign;
     step->target = named(indexName, lengthType);
-    step->value = binary(TokenKind::Plus, named(indexName, lengthType), literal("1", lengthType), lengthType);
+    // The index stays below the length, so the step never wraps and needs no overflow check.
+    step->value = binary(TokenKind::PlusPercent, named(indexName, lengthType), literal("1", lengthType), lengthType);
     step->type = lengthType;
     auto stepStatement = std::make_unique<HirExprStmt>();
     stepStatement->location = call.location;

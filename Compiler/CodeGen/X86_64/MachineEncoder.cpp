@@ -372,11 +372,10 @@ void MachineEncoder::EncodeUInt64ToFp(const Instruction &instruction) {
 }
 
 void MachineEncoder::EncodePanic(const Instruction &instruction) {
-    const Reg message = instruction.operands[0].reg;
     const PanicSite &site = function.panics.at(static_cast<std::size_t>(instruction.operands[1].immediate));
     // The failure path never returns, so it may use any register; RBX survives the calls it makes.
-    if (message != Rbx)
-        Emit(0, true, {0x8B}, HardwareNumber(Rbx), false, RegisterRm(message));
+    if (!site.messageInPrefix && instruction.operands[0].reg != Rbx)
+        Emit(0, true, {0x8B}, HardwareNumber(Rbx), false, RegisterRm(instruction.operands[0].reg));
     const auto movImmediate32 = [&](const Reg reg, const std::int64_t value) {
         const auto number = HardwareNumber(reg);
         if ((number & 8U) != 0)
@@ -411,10 +410,12 @@ void MachineEncoder::EncodePanic(const Instruction &instruction) {
             CallSymbol(site.writeFile);
         };
         writeStatic(site.prefix, site.prefixLength);
-        prepare();
-        loadFromRbx(Rdx, 0);
-        loadFromRbx(R8, 8);
-        CallSymbol(site.writeFile);
+        if (!site.messageInPrefix) {
+            prepare();
+            loadFromRbx(Rdx, 0);
+            loadFromRbx(R8, 8);
+            CallSymbol(site.writeFile);
+        }
         writeStatic(site.location, site.locationLength);
     }
     else {
@@ -428,9 +429,11 @@ void MachineEncoder::EncodePanic(const Instruction &instruction) {
         LeaRip(Rsi, site.prefix);
         movImmediate32(Rdx, site.prefixLength);
         syscall();
-        loadFromRbx(Rsi, 0);
-        loadFromRbx(Rdx, 8);
-        syscall();
+        if (!site.messageInPrefix) {
+            loadFromRbx(Rsi, 0);
+            loadFromRbx(Rdx, 8);
+            syscall();
+        }
         LeaRip(Rsi, site.location);
         movImmediate32(Rdx, site.locationLength);
         syscall();
@@ -508,6 +511,7 @@ void MachineEncoder::Encode(const Instruction &instruction) {
         Emit(0, instruction.size == 8, {0x8D}, number(0), false, MemoryRm(operands[1].address));
         return;
     case Op::Add:
+    case Op::AddFlags:
         EncodeAlu(instruction, 0, 0x03);
         return;
     case Op::Or:
@@ -517,6 +521,7 @@ void MachineEncoder::Encode(const Instruction &instruction) {
         EncodeAlu(instruction, 4, 0x23);
         return;
     case Op::Sub:
+    case Op::SubFlags:
         EncodeAlu(instruction, 5, 0x2B);
         return;
     case Op::Xor:
@@ -538,7 +543,8 @@ void MachineEncoder::Encode(const Instruction &instruction) {
              RegisterRm(reg(0), byte));
         return;
     }
-    case Op::Imul: {
+    case Op::Imul:
+    case Op::ImulFlags: {
         const Rm source =
             operands[1].kind == Operand::Kind::Memory ? MemoryRm(operands[1].address) : RegisterRm(reg(1));
         Emit(instruction.size == 2 ? 0x66 : 0, instruction.size == 8, {0x0F, 0xAF}, number(0), false, source);

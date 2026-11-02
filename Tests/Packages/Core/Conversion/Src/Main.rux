@@ -132,7 +132,7 @@ func Main() -> int {
            "the value one above the signed maximum");
     Assert(CheckExact<uint64, int64>(9223372036854775807u64, 9223372036854775807i64, 0i64) == 0,
            "the signed maximum itself converts either way");
-    Assert(CheckLost<int128, uint128>(0i128 - 1i128, 0u128 - 1u128, 0u128, 0u128) == 0, "minus one at 128 bits");
+    Assert(CheckLost<int128, uint128>(0i128 - 1i128, 0u128 -% 1u128, 0u128, 0u128) == 0, "minus one at 128 bits");
 
     // Floats to integers: a fraction is a loss, and so is a magnitude the integer cannot hold.
     Assert(CheckExact<float64, int32>(2.0f64, 2i32, 0i32) == 0, "a float that is a whole number");

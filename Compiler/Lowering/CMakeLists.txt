@@ -23,6 +23,7 @@ rux_add_component(RuxLowering
     HirToLir/HirToLirCore.cpp
     HirToLir/HirToLirDrop.cpp
     HirToLir/HirToLirExpressions.cpp
+    HirToLir/HirToLirIntegerChecks.cpp
     HirToLir/HirToLirSoftFloat.cpp
     HirToLir/HirToLirSoftFloatArithmetic.cpp
     HirToLir/HirToLirSoftFloatConvert.cpp

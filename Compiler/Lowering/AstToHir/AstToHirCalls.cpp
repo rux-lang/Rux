@@ -548,6 +548,9 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
     }
 
     const ResolvedCallableBinding binding = ResolvedCall(call);
+    if (HirExprPtr truncated = LowerTruncateCall(call, binding)) {
+        return truncated;
+    }
     using Dispatch = ResolvedCallableBinding::DispatchKind;
     switch (binding.dispatch) {
     case Dispatch::Direct:

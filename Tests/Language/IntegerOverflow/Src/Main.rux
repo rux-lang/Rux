@@ -1,0 +1,322 @@
+// Integer overflow: `+`, `-`, `*`, a negation, their compound forms and a narrowing `as` stop the program when the exact
+// result does not fit, at every width and signedness, in every profile. The wrapping operators `+%`, `-%` and `*%` keep
+// the low bits instead, `CheckedAdd` and its family answer none, `SaturatingAdd` and its family clamp, and `Truncate`
+// keeps the low bits of a conversion. A trap is observed from outside: this executable starts itself again with a case
+// name as its argument, and the parent reads the report the child writes before it stops.
+
+import Allocator::SystemAllocator;
+import Core::{ Assert, int, int128, int16, int256, int32, int512, int64, int8, uint, uint128, uint16, uint256, uint32,
+               uint512, uint64, uint8 };
+import Path::OsStringView;
+import Process::{ Argument, ArgumentCount, Command };
+
+// A one the compiler cannot fold away, so each case runs the instruction the program would.
+var One: int64 = 1;
+
+// Wrapping at a signed width: past either limit to the other, and the product that leaves the range.
+func WrapsSigned<T>(minimum: T, maximum: T, one: T) -> bool {
+    let zero = one -% one;
+    let two = one +% one;
+    return maximum +% one == minimum && minimum -% one == maximum && maximum *% two == zero -% two &&
+           minimum *% (zero -% one) == minimum && zero -% minimum == minimum;
+}
+
+// Wrapping at an unsigned width: zero and the maximum are neighbours.
+func WrapsUnsigned<T>(maximum: T, one: T) -> bool {
+    let zero = one -% one;
+    return maximum +% one == zero && zero -% one == maximum && maximum *% (one +% one) == maximum -% one;
+}
+
+// The child's side: performs the overflow `mode` names, which stops the program before it returns.
+func Overflow(mode: OsStringView) -> int {
+    let one = One;
+    if Is(mode, "add-int8") { return (int8::Max + one as int8) as int; }
+    if Is(mode, "add-uint8") { return (uint8::Max + one as uint8) as int; }
+    if Is(mode, "sub-int16") { return (int16::Min - one as int16) as int; }
+    if Is(mode, "sub-uint16") { return ((one as uint16) - 2u16) as int; }
+    if Is(mode, "mul-int32") { return (int32::Max * (one as int32 + 1i32)) as int; }
+    if Is(mode, "mul-uint32") { return (uint32::Max * (one as uint32 + 1u32)) as int; }
+    if Is(mode, "add-int64") { return (int64::Max + one) as int; }
+    if Is(mode, "sub-uint64") { return ((one as uint64) - 2u64) as int; }
+    if Is(mode, "mul-int64") { return (int64::Min * (0i64 - one)) as int; }
+    if Is(mode, "mul-uint64") { return (uint64::Max * (one as uint64 + 1u64)) as int; }
+    if Is(mode, "mul-int8") { return (int8::Min * (one as int8)) as int + (int8::Max * (one as int8 + 1i8)) as int; }
+    if Is(mode, "mul-uint16") { return (uint16::Max * (one as uint16 + 1u16)) as int; }
+    if Is(mode, "add-int") { return int::Max + one as int; }
+    if Is(mode, "sub-uint") { return ((one as uint) - 2u) as int; }
+    if Is(mode, "add-int128") { return (int128::Max + one as int128) as int; }
+    if Is(mode, "sub-uint128") { return ((one as uint128) - 2u128) as int; }
+    if Is(mode, "mul-int128") { return (int128::Min * (one as int128 + 1i128)) as int; }
+    if Is(mode, "mul-uint256") { return (uint256::Max * (one as uint256 + 1u256)) as int; }
+    if Is(mode, "add-int512") { return (int512::Max + one as int512) as int; }
+    if Is(mode, "mul-uint128-carry") {
+        // Each partial product fits; only adding the shifted cross term to the low one carries out.
+        let unit = one as uint128;
+        let half = unit << 64;
+        return (((half << 1) - unit) * ((half >> 1) + unit)) as int;
+    }
+    if Is(mode, "mul-int128-edge") {
+        // 2^63 times 2^64 is one past the largest positive value, although its negation fits.
+        let unit = one as int128;
+        return ((unit << 63) * (unit << 64)) as int;
+    }
+    if Is(mode, "mul-int512-negative") { return (int512::Min * (0i512 - (one as int512))) as int; }
+    if Is(mode, "neg-int8") { return (-(int8::Min * (one as int8))) as int; }
+    if Is(mode, "neg-int64") { return (-(int64::Min * one)) as int; }
+    if Is(mode, "neg-uint32") { return (-(one as uint32)) as int; }
+    if Is(mode, "increment") {
+        var counter = int32::Max * (one as int32);
+        counter++;
+        return counter as int;
+    }
+    if Is(mode, "decrement") {
+        var counter = (one as uint8) - 1u8;
+        counter--;
+        return counter as int;
+    }
+    if Is(mode, "add-assign") {
+        var total: int16 = int16::Max;
+        total += one as int16;
+        return total as int;
+    }
+    if Is(mode, "sub-assign") {
+        var total: uint32 = 0;
+        total -= one as uint32;
+        return total as int;
+    }
+    if Is(mode, "mul-assign") {
+        var total: int64 = int64::Max;
+        total *= one + 1;
+        return total as int;
+    }
+    if Is(mode, "cast-narrow") { return ((one * 300) as uint8) as int; }
+    if Is(mode, "cast-sign") { return ((0 - one) as uint64) as int; }
+    if Is(mode, "cast-top") { return (uint64::Max * (one as uint64)) as int64 as int; }
+    if Is(mode, "cast-wide") { return ((uint128::Max * (one as uint128)) as uint64) as int; }
+    return NotAChild;
+}
+
+// What `Overflow` answers when its argument names no case.
+const NotAChild: int = -1;
+
+// Whether a native string is the ASCII text `text`.
+func Is(view: OsStringView, text: char8[..]) -> bool {
+    let units = view.Units();
+    if units.length != text.length { return false; }
+    var index: uint = 0;
+    while index < text.length {
+        if units[index] as uint32 != text[index] as uint8 as uint32 { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Whether a child's report opens with `Panic: `, then `message`, then the end of that line.
+func Reports(report: char8[..], message: char8[..]) -> bool {
+    let prefix = "Panic: ";
+    if report.length <= prefix.length + message.length { return false; }
+    var index: uint = 0;
+    while index < prefix.length {
+        if report[index] != prefix[index] { return false; }
+        index = index + 1;
+    }
+    index = 0;
+    while index < message.length {
+        if report[prefix.length + index] != message[index] { return false; }
+        index = index + 1;
+    }
+    return report[prefix.length + message.length] == '\n';
+}
+
+// Starts this executable in `mode` and checks that it stopped with `message`.
+func Expect(program: OsStringView, mode: char8[..], message: char8[..]) {
+    var command = Command::FromNative(SystemAllocator(), program);
+    command.Argument(mode);
+    match command.Capture(SystemAllocator()) {
+        .Success(captured) => {
+            Assert(!captured.Status().Success(), mode);
+            Assert(Reports(captured.Error(), message), mode);
+        },
+        .Failure(_) => Assert(false, "the child starts")
+    }
+}
+
+func CheckWrapping() {
+    Assert(WrapsSigned<int8>(int8::Min, int8::Max, 1), "int8 wraps");
+    Assert(WrapsSigned<int16>(int16::Min, int16::Max, 1), "int16 wraps");
+    Assert(WrapsSigned<int32>(int32::Min, int32::Max, 1), "int32 wraps");
+    Assert(WrapsSigned<int64>(int64::Min, int64::Max, One), "int64 wraps");
+    Assert(WrapsSigned<int>(int::Min, int::Max, 1), "int wraps");
+    Assert(WrapsSigned<int128>(int128::Min, int128::Max, 1), "int128 wraps");
+    Assert(WrapsSigned<int256>(int256::Min, int256::Max, 1), "int256 wraps");
+    Assert(WrapsSigned<int512>(int512::Min, int512::Max, 1), "int512 wraps");
+    Assert(WrapsUnsigned<uint8>(uint8::Max, 1), "uint8 wraps");
+    Assert(WrapsUnsigned<uint16>(uint16::Max, 1), "uint16 wraps");
+    Assert(WrapsUnsigned<uint32>(uint32::Max, 1), "uint32 wraps");
+    Assert(WrapsUnsigned<uint64>(uint64::Max, One as uint64), "uint64 wraps");
+    Assert(WrapsUnsigned<uint>(uint::Max, 1), "uint wraps");
+    Assert(WrapsUnsigned<uint128>(uint128::Max, 1), "uint128 wraps");
+    Assert(WrapsUnsigned<uint256>(uint256::Max, 1), "uint256 wraps");
+    Assert(WrapsUnsigned<uint512>(uint512::Max, 1), "uint512 wraps");
+
+    // The compound forms wrap too, and a wrapping step written by hand is a hash's inner loop.
+    var hash: uint32 = 0x811C9DC5;
+    for byte in "overflow" {
+        hash = (hash ^ (byte as uint8 as uint32)) *% 16777619;
+    }
+    Assert(hash == 0x995CA76Bu32, "an FNV-1a step wraps at 32 bits");
+    var counter: uint8 = 250;
+    counter +%= 10;
+    Assert(counter == 4, "+%= wraps");
+    counter -%= 5;
+    Assert(counter == 255, "-%= wraps");
+    counter *%= 3;
+    Assert(counter == 253, "*%= wraps");
+    Assert(WrappedConstant == 44, "a constant may wrap on purpose");
+}
+
+// A constant whose value wraps, which `+` would reject while compiling.
+const WrappedConstant: uint8 = 200u8 +% 100u8;
+
+func CheckMethods() {
+    let small: int8 = 100;
+    Assert(small.CheckedAdd(27) == .Some(127i8), "a sum that fits is some");
+    Assert(small.CheckedAdd(28) == none, "a sum that does not is none");
+    Assert(small.CheckedSub(-27) == .Some(127i8) && small.CheckedSub(-28) == none, "int8 difference");
+    Assert(small.CheckedMul(-1) == .Some(-100i8) && small.CheckedMul(2) == none, "int8 product");
+    let minimum: int8 = int8::Min;
+    Assert(minimum.CheckedMul(-1) == none, "the minimum has no negation");
+    let byte: uint8 = 200;
+    Assert(byte.CheckedAdd(55) == .Some(255u8) && byte.CheckedAdd(56) == none, "uint8 sum");
+    Assert(byte.CheckedSub(201) == none && byte.CheckedSub(200) == .Some(0u8), "uint8 difference");
+    let word: uint64 = 0x100000000;
+    Assert(word.CheckedMul(0xFFFFFFFF) == .Some(0xFFFFFFFF00000000u64), "uint64 product that fits");
+    Assert(word.CheckedMul(0x100000000) == none, "uint64 product that does not");
+    let wide: int128 = int128::Max;
+    Assert(wide.CheckedAdd(1) == none && wide.CheckedSub(1) == .Some(int128::Max - 1), "int128 checks");
+
+    Assert(small.SaturatingAdd(100) == 127 && small.SaturatingSub(-100) == 127, "int8 saturates at the top");
+    Assert(minimum.SaturatingSub(1) == -128 && minimum.SaturatingMul(2) == -128, "int8 saturates at the bottom");
+    Assert(minimum.SaturatingMul(-1) == 127, "the minimum's negation saturates");
+    Assert(byte.SaturatingSub(201) == 0 && byte.SaturatingAdd(100) == 255, "uint8 saturates");
+    Assert(word.SaturatingMul(word) == uint64::Max, "uint64 saturates");
+
+    // Truncation keeps the low bits on purpose, and widening through it extends by the source's signedness.
+    let large: uint64 = 0x1234;
+    Assert(large.Truncate<uint8>() == 0x34, "the low byte");
+    let negative: int64 = -1;
+    Assert(negative.Truncate<uint64>() == uint64::Max, "minus one is every bit set");
+    let halfway: int16 = 0x0180;
+    Assert(halfway.Truncate<int8>() == -128, "a low byte with its top bit set is negative");
+    let unit: int8 = -1;
+    Assert(unit.Truncate<uint64>() == uint64::Max && unit.Truncate<uint16>() == 0xFFFF, "a widening sign-extends");
+    let huge: uint512 = uint512::Max;
+    Assert(huge.Truncate<uint64>() == uint64::Max && huge.Truncate<int32>() == -1, "a wide value keeps its low bits");
+}
+
+// Whether `left * right` is `expected`, which the wrapping product also equals whenever the product fits.
+func MultipliesTo<T>(left: T, right: T, expected: T) -> bool {
+    return left * right == expected && left *% right == expected;
+}
+
+func CheckWideProducts() {
+    // Products wider than a machine word are checked through their halves; these sit on each edge and fit.
+    let unit = One as uint128;
+    let half = unit << 64;
+    Assert(MultipliesTo<uint128>(half - unit, half + unit, uint128::Max), "uint128 maximum from both halves");
+    Assert(MultipliesTo<uint128>((half << 1) - unit, half >> 1, 0u128 -% (half >> 1)), "uint128 without a carry");
+    let signed = One as int128;
+    Assert(MultipliesTo<int128>(0i128 - (signed << 63), signed << 64, int128::Min), "int128 minimum");
+    Assert(MultipliesTo<int128>(int128::Min, signed, int128::Min), "int128 minimum times one");
+    Assert(MultipliesTo<int128>(0i128 - signed, int128::Max, int128::Min + 1i128), "int128 negated maximum");
+    let wide = One as uint256;
+    Assert(MultipliesTo<uint256>((wide << 128) - wide, (wide << 128) + wide, uint256::Max), "uint256 maximum");
+    let widest = One as int512;
+    Assert(MultipliesTo<int512>(0i512 - (widest << 255), widest << 256, int512::Min), "int512 minimum");
+    // Limbs widened from 64 bits multiply and accumulate without a check, and stay exact at the top of the range.
+    let limb = uint64::Max * (One as uint64);
+    let accumulated = (limb as uint128) * (limb as uint128) + (limb as uint128) + (limb as uint128);
+    Assert(accumulated == uint128::Max && (accumulated >> 64) as uint64 == limb, "a full multiply-accumulate");
+    let borrowed = ((limb as uint128) + (1u128 << 64)) - ((limb as uint128) + 1u128);
+    Assert(borrowed == (limb as uint128), "a borrow from the next limb");
+}
+
+func CheckConversions() {
+    // A value the target holds passes through `as` unchanged, whichever direction it goes.
+    let fits: int64 = 300;
+    Assert(fits as int16 == 300 && fits as uint16 == 300, "a narrowing that fits");
+    let minus: int32 = -5;
+    Assert(minus as int8 == -5 && minus as int64 == -5, "a negative value that fits");
+    let top: uint64 = 255;
+    Assert(top as uint8 == 255 && top as int16 == 255, "the top of the target");
+    let edge: uint32 = 0x7FFFFFFF;
+    Assert(edge as int32 == int32::Max, "the signed maximum");
+}
+
+func CheckLoops() {
+    // A counter stepped toward a bound is checked like any other sum, and the check never fires.
+    var total: uint64 = 0;
+    var index: uint64 = 0;
+    let limit = (One as uint64) * 1000;
+    while index < limit {
+        total += index;
+        index += 1;
+    }
+    Assert(total == 499500, "the guarded loop sums its counter");
+    var down: int32 = 10;
+    var steps = 0;
+    while down > int32::Min + 5 && steps < 3 {
+        down -= 1;
+        steps += 1;
+    }
+    Assert(down == 7, "a guarded decrement");
+}
+
+func Main() -> int {
+    if ArgumentCount() > 1u {
+        let code = Overflow(Argument(1) ?? OsStringView());
+        if code != NotAChild { return code; }
+    }
+    CheckWrapping();
+    CheckMethods();
+    CheckWideProducts();
+    CheckConversions();
+    CheckLoops();
+
+    let program = Argument(0) ?? OsStringView();
+    Expect(program, "add-int8", "integer overflow in '+'");
+    Expect(program, "add-uint8", "integer overflow in '+'");
+    Expect(program, "sub-int16", "integer overflow in '-'");
+    Expect(program, "sub-uint16", "integer overflow in '-'");
+    Expect(program, "mul-int32", "integer overflow in '*'");
+    Expect(program, "mul-uint32", "integer overflow in '*'");
+    Expect(program, "add-int64", "integer overflow in '+'");
+    Expect(program, "sub-uint64", "integer overflow in '-'");
+    Expect(program, "mul-int64", "integer overflow in '*'");
+    Expect(program, "mul-uint64", "integer overflow in '*'");
+    Expect(program, "mul-int8", "integer overflow in '*'");
+    Expect(program, "mul-uint16", "integer overflow in '*'");
+    Expect(program, "add-int", "integer overflow in '+'");
+    Expect(program, "sub-uint", "integer overflow in '-'");
+    Expect(program, "add-int128", "integer overflow in '+'");
+    Expect(program, "sub-uint128", "integer overflow in '-'");
+    Expect(program, "mul-int128", "integer overflow in '*'");
+    Expect(program, "mul-uint256", "integer overflow in '*'");
+    Expect(program, "add-int512", "integer overflow in '+'");
+    Expect(program, "mul-uint128-carry", "integer overflow in '*'");
+    Expect(program, "mul-int128-edge", "integer overflow in '*'");
+    Expect(program, "mul-int512-negative", "integer overflow in '*'");
+    Expect(program, "neg-int8", "integer overflow in '-'");
+    Expect(program, "neg-int64", "integer overflow in '-'");
+    Expect(program, "neg-uint32", "integer overflow in '-'");
+    Expect(program, "increment", "integer overflow in '++'");
+    Expect(program, "decrement", "integer overflow in '--'");
+    Expect(program, "add-assign", "integer overflow in '+='");
+    Expect(program, "sub-assign", "integer overflow in '-='");
+    Expect(program, "mul-assign", "integer overflow in '*='");
+    Expect(program, "cast-narrow", "integer cast out of range");
+    Expect(program, "cast-sign", "integer cast out of range");
+    Expect(program, "cast-top", "integer cast out of range");
+    Expect(program, "cast-wide", "integer cast out of range");
+    return 0;
+}

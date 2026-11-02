@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, int16, int8 };
 
 func Main() -> int {
     // Basic arithmetic
@@ -23,10 +23,10 @@ func Main() -> int {
     Assert(max == 127, "int8 max is 127");
 
     // Wrapping / overflow behaviour
-    let wrap_add: int8 = (127 + 1) as int8;
+    let wrap_add: int8 = 127i8 +% 1;
     Assert(wrap_add == -128, "int8 addition wraps at 128");
 
-    let wrap_sub: int8 = (-128 - 1) as int8;
+    let wrap_sub: int8 = -128i8 -% 1;
     Assert(wrap_sub == 127, "int8 subtraction wraps below -128");
 
     // Comparisons
@@ -65,7 +65,7 @@ func Main() -> int {
 
     // Casting to unsigned (same width)
     let low: int8 = -56;
-    let as_u8: uint8 = low as uint8;
+    let as_u8: uint8 = low.Truncate<uint8>();
     Assert(as_u8 == 200, "int8 -56 reinterprets as uint8 200");
 
     let positive: int8 = 127;
@@ -74,7 +74,7 @@ func Main() -> int {
 
     // Casting from wider signed (truncation)
     let wide: int16 = 0x00FF;
-    let narrow: int8 = wide as int8;
+    let narrow: int8 = wide.Truncate<int8>();
     Assert(narrow == -1, "int16 0x00FF truncates to int8 -1");
 
     // Assignment and mutation

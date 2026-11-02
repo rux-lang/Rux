@@ -228,6 +228,12 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "PlusPlus";
     case TokenKind::MinusMinus:
         return "MinusMinus";
+    case TokenKind::PlusPercent:
+        return "PlusPercent";
+    case TokenKind::MinusPercent:
+        return "MinusPercent";
+    case TokenKind::StarPercent:
+        return "StarPercent";
     case TokenKind::Amp:
         return "Amp";
     case TokenKind::Pipe:
@@ -272,6 +278,12 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "SlashAssign";
     case TokenKind::PercentAssign:
         return "PercentAssign";
+    case TokenKind::PlusPercentAssign:
+        return "PlusPercentAssign";
+    case TokenKind::MinusPercentAssign:
+        return "MinusPercentAssign";
+    case TokenKind::StarPercentAssign:
+        return "StarPercentAssign";
     case TokenKind::AmpAssign:
         return "AmpAssign";
     case TokenKind::PipeAssign:

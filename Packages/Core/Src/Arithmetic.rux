@@ -4,11 +4,12 @@
 // and the wrapping arithmetic the machine already does, so `int8` and `uint512` run the same code. Every helper below
 // derives what it needs the same way:
 //   zero     = value - value           the type's zero
-//   allOnes  = zero - 1                every bit set: the maximum when unsigned, -1 when signed
+//   allOnes  = zero -% 1               every bit set: the maximum when unsigned, -1 when signed
 //   signed   = allOnes < zero          only a signed type reads all-ones as negative
 //   signBit  = 1 << (sizeof(T) * 8 - 1)  the top bit, which is the most negative value when signed
-// Ordinary `+`, `-` and `*` wrap on overflow, which is what makes the checks below possible: they compute the wrapped
-// answer and then ask whether it is the true one.
+// Ordinary `+`, `-` and `*` stop the program on overflow, so the checks below compute the wrapped answer with `+%`,
+// `-%` and `*%` and then ask whether it is the true one. The `Checked*` and `Saturating*` methods each integer type
+// carries are built on them.
 // The operation comes first in each name because `CheckedAdd`, `CheckedSub` and `CheckedMul` already name the
 // compiler's own intrinsics, which are emitted inline for `uint64` and are the ones allocation-size arithmetic is
 // written with. These are the general family: any integer width, signed or unsigned, at the cost of being ordinary
@@ -23,11 +24,11 @@
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#maximum-of
 pub func MaximumOf<T>(sample: T) -> T {
     let zero = sample - sample;
-    let allOnes = zero - 1;
+    let allOnes = zero -% 1;
     // A signed type gives up its top bit to the sign, so its maximum is every bit below that one. An unsigned type
     // keeps the bit and tops out at all-ones.
     let signBit = (zero + 1) << (sizeof(T) * 8 - 1);
-    return allOnes < zero ? signBit - 1 : allOnes;
+    return allOnes < zero ? signBit -% 1 : allOnes;
 }
 
 /// The smallest value the integer type of `sample` can hold.
@@ -40,7 +41,7 @@ pub func MaximumOf<T>(sample: T) -> T {
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#minimum-of
 pub func MinimumOf<T>(sample: T) -> T {
     let zero = sample - sample;
-    let allOnes = zero - 1;
+    let allOnes = zero -% 1;
     // The sign bit alone is the most negative value; an unsigned type has nothing below zero.
     let signBit = (zero + 1) << (sizeof(T) * 8 - 1);
     return allOnes < zero ? signBit : zero;
@@ -59,11 +60,11 @@ pub func MinimumOf<T>(sample: T) -> T {
 /// @returns true when the sum does not fit; `result` then holds the wrapped sum
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#add-checked
 pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
-    let sum = left + right;
+    let sum = left +% right;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     unsafe { *result = sum; }
     let zero = left - left;
-    if (zero - 1) < zero {
+    if (zero -% 1) < zero {
         // Signed: the sum overflowed exactly when both operands agree in sign and the sum disagrees with them.
         return ((left ^ sum) & (right ^ sum)) < zero;
     }
@@ -83,11 +84,11 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @returns true when the difference does not fit; `result` then holds the wrapped difference
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-checked
 pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
-    let difference = left - right;
+    let difference = left -% right;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     unsafe { *result = difference; }
     let zero = left - left;
-    if (zero - 1) < zero {
+    if (zero -% 1) < zero {
         // Signed: the difference overflowed exactly when the operands disagree in sign and the result disagrees with
         // the left one.
         return ((left ^ right) & (left ^ difference)) < zero;
@@ -110,7 +111,7 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @returns true when the product does not fit; `result` then holds the wrapped product
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-checked
 pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
-    let product = left * right;
+    let product = left *% right;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     unsafe { *result = product; }
     let zero = left - left;
@@ -118,11 +119,11 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
         // Nothing to divide by, and zero times anything is exact.
         return false;
     }
-    if (zero - 1) < zero {
+    if (zero -% 1) < zero {
         // Dividing the most negative value by -1 is the one division that has no answer, so that pair is reported
         // before the check below would attempt it. It does overflow: negating the most negative value cannot fit.
         let minimum = MinimumOf<T>(left);
-        let negativeOne = zero - 1;
+        let negativeOne = zero -% 1;
         if left == negativeOne && right == minimum { return true; }
         if right == negativeOne && left == minimum { return true; }
     }
@@ -131,8 +132,8 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Adds two integers, wrapping around the type's range.
-/// `left` and `right` are read by value; the sum is returned by copy. This is what `+` already does, named so that
-/// wrapping on purpose reads differently from wrapping by accident.
+/// `left` and `right` are read by value; the sum is returned by copy. This is what `+%` does, named for code that
+/// passes the operation around.
 /// Cannot fail: every pair of operands has a wrapped sum. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -140,7 +141,7 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @returns the sum, wrapped into the type's range
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#add-wrapping
 pub func AddWrapping<T>(left: T, right: T) -> T {
-    return left + right;
+    return left +% right;
 }
 
 /// Subtracts one integer from another, wrapping around the type's range.
@@ -152,7 +153,7 @@ pub func AddWrapping<T>(left: T, right: T) -> T {
 /// @returns the difference, wrapped into the type's range
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-wrapping
 pub func SubWrapping<T>(left: T, right: T) -> T {
-    return left - right;
+    return left -% right;
 }
 
 /// Multiplies two integers, wrapping around the type's range.
@@ -164,7 +165,7 @@ pub func SubWrapping<T>(left: T, right: T) -> T {
 /// @returns the product, wrapped into the type's range
 /// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-wrapping
 pub func MulWrapping<T>(left: T, right: T) -> T {
-    return left * right;
+    return left *% right;
 }
 
 /// Adds two integers, clamping to the type's range instead of wrapping.
@@ -181,7 +182,7 @@ pub func AddSaturating<T>(left: T, right: T) -> T {
     var sum = left - left;
     if !AddChecked<T>(left, right, @sum) { return sum; }
     let zero = left - left;
-    if (zero - 1) < zero {
+    if (zero -% 1) < zero {
         // Adding a negative operand can only have run off the bottom, and a positive one off the top.
         return right < zero ? MinimumOf<T>(left) : MaximumOf<T>(left);
     }
@@ -201,7 +202,7 @@ pub func SubSaturating<T>(left: T, right: T) -> T {
     var difference = left - left;
     if !SubChecked<T>(left, right, @difference) { return difference; }
     let zero = left - left;
-    if (zero - 1) < zero {
+    if (zero -% 1) < zero {
         // Subtracting a negative operand can only have run off the top, and a positive one off the bottom.
         return right < zero ? MaximumOf<T>(left) : MinimumOf<T>(left);
     }
@@ -221,7 +222,7 @@ pub func MulSaturating<T>(left: T, right: T) -> T {
     var product = left - left;
     if !MulChecked<T>(left, right, @product) { return product; }
     let zero = left - left;
-    if (zero - 1) < zero {
+    if (zero -% 1) < zero {
         // The true product's sign is the operands' signs combined, and it ran past the limit on that side.
         let negative = (left < zero) != (right < zero);
         return negative ? MinimumOf<T>(left) : MaximumOf<T>(left);

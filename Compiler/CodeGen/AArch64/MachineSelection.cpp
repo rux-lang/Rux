@@ -261,6 +261,11 @@ bool Selector::EligibleInstruction(const LirInstr &instruction) const {
             return instruction.op == LirOpcode::Add || instruction.op == LirOpcode::Sub ||
                    instruction.op == LirOpcode::Mul || instruction.op == LirOpcode::Div;
         return true;
+    case LirOpcode::CheckedAdd:
+    case LirOpcode::CheckedSub:
+    case LirOpcode::CheckedMul:
+        return instruction.srcs.size() == 2 && result == ValueKind::Gpr && kind(0) == ValueKind::Gpr &&
+               kind(1) == ValueKind::Gpr && instruction.type.IsInteger() && ScalarSize(instruction.type) <= 8;
     case LirOpcode::Shl:
     case LirOpcode::Shr:
     case LirOpcode::Lshr:
@@ -867,6 +872,11 @@ void Selector::SelectInstruction(const LirInstr &instruction) {
             SelectBinary(instruction);
         else
             SelectDivision(instruction);
+        return;
+    case LirOpcode::CheckedAdd:
+    case LirOpcode::CheckedSub:
+    case LirOpcode::CheckedMul:
+        SelectCheckedArithmetic(instruction);
         return;
     case LirOpcode::Shl:
     case LirOpcode::Shr:

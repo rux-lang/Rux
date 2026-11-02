@@ -170,10 +170,13 @@ std::optional<LirOpcode> CheckedLirBuilder::BinaryOpcode(const TokenKind op) noe
     using TK = TokenKind;
     switch (op) {
     case TK::Plus:
+    case TK::PlusPercent:
         return LirOpcode::Add;
     case TK::Minus:
+    case TK::MinusPercent:
         return LirOpcode::Sub;
     case TK::Star:
+    case TK::StarPercent:
         return LirOpcode::Mul;
     case TK::Slash:
         return LirOpcode::Div;
@@ -214,10 +217,13 @@ std::optional<LirOpcode> CheckedLirBuilder::CompoundOpcode(const TokenKind op) n
     using TK = TokenKind;
     switch (op) {
     case TK::PlusAssign:
+    case TK::PlusPercentAssign:
         return LirOpcode::Add;
     case TK::MinusAssign:
+    case TK::MinusPercentAssign:
         return LirOpcode::Sub;
     case TK::StarAssign:
+    case TK::StarPercentAssign:
         return LirOpcode::Mul;
     case TK::SlashAssign:
         return LirOpcode::Div;

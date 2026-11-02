@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, uint16, uint32 };
 
 func Main() -> int {
     let a: uint16 = 1000;
@@ -15,10 +15,10 @@ func Main() -> int {
     Assert(min == 0, "uint16 min is 0");
     Assert(max == 65535, "uint16 max is 65535");
 
-    let wrap_add: uint16 = (max + 1) as uint16;
+    let wrap_add: uint16 = max +% 1;
     Assert(wrap_add == 0, "uint16 addition wraps at 65536");
 
-    let wrap_sub: uint16 = (0 - 1) as uint16;
+    let wrap_sub: uint16 = 0 -% (1 as uint16);
     Assert(wrap_sub == 65535, "uint16 subtraction wraps below 0");
 
     Assert(1000 as uint16 == 1000 as uint16, "uint16 equality");
@@ -31,7 +31,7 @@ func Main() -> int {
     Assert((0x00F0 as uint16 & 0x0F0F as uint16) == 0x0000, "uint16 bitwise AND");
     Assert((0x00F0 as uint16 | 0x0F0F as uint16) == 0x0FFF, "uint16 bitwise OR");
     Assert((0x00F0 as uint16 ^ 0x0F0F as uint16) == 0x0FFF, "uint16 bitwise XOR");
-    Assert((~0x00FF as uint16) == 0xFF00, "uint16 bitwise NOT");
+    Assert((~(0x00FF as uint16)) == 0xFF00, "uint16 bitwise NOT");
 
     Assert((1 as uint16 << 8) == 256, "uint16 left shift");
     Assert((0x8000 as uint16 >> 8) == 0x80, "uint16 right shift is logical");
@@ -44,11 +44,11 @@ func Main() -> int {
     Assert(w64 == 50000, "uint16 zero-extends to uint64");
 
     let high: uint16 = 0xFF80;
-    let as_i16: int16 = high as int16;
+    let as_i16: int16 = high.Truncate<int16>();
     Assert(as_i16 == -128, "uint16 0xFF80 reinterprets as int16 -128");
 
     let wide: uint32 = 0x0001FFFF;
-    let narrow: uint16 = wide as uint16;
+    let narrow: uint16 = wide.Truncate<uint16>();
     Assert(narrow == 0xFFFF, "uint32 to uint16 truncates to low word");
 
     var x: uint16 = 5;

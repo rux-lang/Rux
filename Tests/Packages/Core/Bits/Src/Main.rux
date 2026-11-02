@@ -44,7 +44,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     if BitAt<T>(allOnes, bits) { return 20; }
 
     // A logical shift brings zeros in at either signedness, which is the whole reason it exists.
-    if ShiftRightLogical<T>(allOnes, 1) != (one << (bits - 1)) - one { return 21; }
+    if ShiftRightLogical<T>(allOnes, 1) != (one << (bits - 1)) -% one { return 21; }
     if ShiftRightLogical<T>(allOnes, bits) != zero { return 22; }
     if ShiftRightLogical<T>(allOnes, 0) != allOnes { return 23; }
     if CountOnes<T>(ShiftRightLogical<T>(allOnes, 1)) != bits as uint32 - 1 { return 24; }
@@ -142,17 +142,17 @@ func Main() -> int {
     if CheckWidth<int16>(0i16, 1i16, -1i16) != 0 { return 500 + CheckWidth<int16>(0i16, 1i16, -1i16); }
     if CheckWidth<int32>(0i32, 1i32, -1i32) != 0 { return 600 + CheckWidth<int32>(0i32, 1i32, -1i32); }
     if CheckWidth<int64>(0i64, 1i64, -1i64) != 0 { return 700 + CheckWidth<int64>(0i64, 1i64, -1i64); }
-    if CheckWidth<uint128>(0u128, 1u128, 0u128 - 1u128) != 0 {
-        return 800 + CheckWidth<uint128>(0u128, 1u128, 0u128 - 1u128);
+    if CheckWidth<uint128>(0u128, 1u128, 0u128 -% 1u128) != 0 {
+        return 800 + CheckWidth<uint128>(0u128, 1u128, 0u128 -% 1u128);
     }
     if CheckWidth<int128>(0i128, 1i128, 0i128 - 1i128) != 0 {
         return 900 + CheckWidth<int128>(0i128, 1i128, 0i128 - 1i128);
     }
-    if CheckWidth<uint256>(0u256, 1u256, 0u256 - 1u256) != 0 {
-        return 1000 + CheckWidth<uint256>(0u256, 1u256, 0u256 - 1u256);
+    if CheckWidth<uint256>(0u256, 1u256, 0u256 -% 1u256) != 0 {
+        return 1000 + CheckWidth<uint256>(0u256, 1u256, 0u256 -% 1u256);
     }
-    if CheckWidth<uint512>(0u512, 1u512, 0u512 - 1u512) != 0 {
-        return 1100 + CheckWidth<uint512>(0u512, 1u512, 0u512 - 1u512);
+    if CheckWidth<uint512>(0u512, 1u512, 0u512 -% 1u512) != 0 {
+        return 1100 + CheckWidth<uint512>(0u512, 1u512, 0u512 -% 1u512);
     }
 
     // Known answers, so a rule that is self-consistent at every width but wrong is still caught.
@@ -171,8 +171,8 @@ func Main() -> int {
     Assert(CheckBytes<uint32>(0x01020304u32, 0u32) == 0, "byte conversion at 32 bits");
     Assert(CheckBytes<uint64>(0x0102030405060708u64, 0u64) == 0, "byte conversion at 64 bits");
     Assert(CheckBytes<int32>(-2i32, 0i32) == 0, "byte conversion of a negative value");
-    Assert(CheckBytes<uint128>(0u128 - 3u128, 0u128) == 0, "byte conversion at 128 bits");
-    Assert(CheckBytes<uint256>(0u256 - 3u256, 0u256) == 0, "byte conversion at 256 bits");
+    Assert(CheckBytes<uint128>(0u128 -% 3u128, 0u128) == 0, "byte conversion at 128 bits");
+    Assert(CheckBytes<uint256>(0u256 -% 3u256, 0u256) == 0, "byte conversion at 256 bits");
 
     // A single byte has one order, so both spellings agree and neither reverses anything.
     var single: byte[2] = [0, 0];

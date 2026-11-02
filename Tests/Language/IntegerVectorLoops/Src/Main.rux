@@ -15,7 +15,7 @@ var Stop: uint64 = 0;
 unsafe func Mix(c: *var uint64, a: *uint64, b: *uint64, n: uint) {
     for j in 0u..n {
         let x = a[j];
-        c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] - x) & 0xFFFF0000FFFF0000u64;
+        c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] -% x) & 0xFFFF0000FFFF0000u64;
     }
 }
 
@@ -24,7 +24,7 @@ unsafe func MixReference(c: *var uint64, a: *uint64, b: *uint64, n: uint) {
     for j in 0u..n {
         if Stop != 0 { break; }
         let x = a[j];
-        c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] - x) & 0xFFFF0000FFFF0000u64;
+        c[j] = ((x >> 3u64) | (x << 61u64)) ^ (b[j] -% x) & 0xFFFF0000FFFF0000u64;
     }
 }
 
@@ -36,7 +36,7 @@ func RotateRight(x: uint64, n: uint64) -> uint64 {
 unsafe func Schedule(w: *var uint64) {
     for t in 16u..80u {
         let s1 = RotateRight(w[t - 2u], 19u64) ^ RotateRight(w[t - 2u], 61u64) ^ (w[t - 2u] >> 6u64);
-        w[t] = w[t - 16u] + s1;
+        w[t] = w[t - 16u] +% s1;
     }
 }
 
@@ -45,14 +45,14 @@ unsafe func ScheduleReference(w: *var uint64) {
     for t in 16u..80u {
         if Stop != 0 { break; }
         let s1 = RotateRight(w[t - 2u], 19u64) ^ RotateRight(w[t - 2u], 61u64) ^ (w[t - 2u] >> 6u64);
-        w[t] = w[t - 16u] + s1;
+        w[t] = w[t - 16u] +% s1;
     }
 }
 
 // Safety: `w` must address 80 live, writable `uint64` elements.
 unsafe func OddSchedule(w: *var uint64) {
     for t in 16u..80u {
-        w[t] = w[t - 16u] + (w[t - 7u] << 1u64);
+        w[t] = w[t - 16u] +% (w[t - 7u] << 1u64);
     }
 }
 
@@ -60,14 +60,14 @@ unsafe func OddSchedule(w: *var uint64) {
 unsafe func OddScheduleReference(w: *var uint64) {
     for t in 16u..80u {
         if Stop != 0 { break; }
-        w[t] = w[t - 16u] + (w[t - 7u] << 1u64);
+        w[t] = w[t - 16u] +% (w[t - 7u] << 1u64);
     }
 }
 
 func Reset() {
     var state: uint64 = 0x9E3779B97F4A7C15u64;
     for k in 0u..96u {
-        state = state * 6364136223846793005u64 + 1442695040888963407u64;
+        state = state *% 6364136223846793005u64 +% 1442695040888963407u64;
         Buffer[k] = state;
         Expected[k] = state;
     }

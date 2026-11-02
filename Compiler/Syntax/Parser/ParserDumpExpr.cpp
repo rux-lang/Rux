@@ -24,6 +24,12 @@ namespace {
         return "/";
     case TokenKind::Percent:
         return "%";
+    case TokenKind::PlusPercent:
+        return "+%";
+    case TokenKind::MinusPercent:
+        return "-%";
+    case TokenKind::StarPercent:
+        return "*%";
     case TokenKind::Amp:
         return "&";
     case TokenKind::At:
@@ -74,6 +80,12 @@ namespace {
         return "/=";
     case TokenKind::PercentAssign:
         return "%=";
+    case TokenKind::PlusPercentAssign:
+        return "+%=";
+    case TokenKind::MinusPercentAssign:
+        return "-%=";
+    case TokenKind::StarPercentAssign:
+        return "*%=";
     case TokenKind::AmpAssign:
         return "&=";
     case TokenKind::PipeAssign:

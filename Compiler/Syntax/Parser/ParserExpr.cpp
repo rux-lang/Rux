@@ -106,6 +106,9 @@ ExprPtr Parser::ParseAssign() {
         TokenKind::StarAssign,
         TokenKind::SlashAssign,
         TokenKind::PercentAssign,
+        TokenKind::PlusPercentAssign,
+        TokenKind::MinusPercentAssign,
+        TokenKind::StarPercentAssign,
         TokenKind::AmpAssign,
         TokenKind::PipeAssign,
         TokenKind::CaretAssign,
@@ -486,7 +489,7 @@ ExprPtr Parser::ParseAdd() {
     if (!left) {
         return nullptr;
     }
-    while (CheckAny({TokenKind::Plus, TokenKind::Minus})) {
+    while (CheckAny({TokenKind::Plus, TokenKind::Minus, TokenKind::PlusPercent, TokenKind::MinusPercent})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
         const auto op = opToken.kind;
@@ -509,7 +512,7 @@ ExprPtr Parser::ParseMul() {
     if (!left) {
         return nullptr;
     }
-    while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
+    while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent, TokenKind::StarPercent})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
         const auto op = opToken.kind;

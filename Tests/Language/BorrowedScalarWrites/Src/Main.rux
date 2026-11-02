@@ -13,7 +13,7 @@ func Advance(count: &var int) -> int { return ++count; }
 func Retreat(count: &var int) -> int { return count--; }
 func Replace(count: &var int, value: &int) { count = value; }
 func Raise(level: &var int32) { level += 100i32; }
-func Wrap(flags: &var uint8) { flags += 200u8; }
+func Wrap(flags: &var uint8) { flags +%= 200u8; }
 func Toggle(flag: &var bool) { flag = !flag; }
 func Next(letter: &var char32) { letter = c32'z'; }
 func Halve(value: &var float64) { value /= 2.0; }

@@ -26,7 +26,7 @@ TEST_CASE("AArch64 RCU emitter lays a vtable out as a run of relocated function 
 
         extend Square : Figure {
             func Area(self: &Square) -> int {
-                return self.size * self.size;
+                return self.size *% self.size;
             }
         }
 
@@ -159,7 +159,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function multiplying and ad
     // with nothing between them the operators did not ask for.
     const auto package = CompileToAArch64Lir(R"(
         func Combine(a: int, b: int) -> int {
-            return a * b + a;
+            return a *% b +% a;
         }
     )");
 

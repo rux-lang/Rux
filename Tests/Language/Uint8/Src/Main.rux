@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, uint16, uint8 };
 
 func Main() -> int {
     // Basic arithmetic
@@ -19,10 +19,10 @@ func Main() -> int {
     Assert(max == 255, "uint8 max is 255");
 
     // Wrapping / overflow behaviour
-    let wrap_add: uint8 = (255 + 1) as uint8;
+    let wrap_add: uint8 = 255u8 +% 1;
     Assert(wrap_add == 0, "uint8 addition wraps at 256");
 
-    let wrap_sub: uint8 = (0 - 1) as uint8;
+    let wrap_sub: uint8 = 0u8 -% 1;
     Assert(wrap_sub == 255, "uint8 subtraction wraps below 0");
 
     // Comparisons
@@ -39,7 +39,7 @@ func Main() -> int {
     Assert((0b1010 as uint8 & 0b1100 as uint8) == 0b1000, "uint8 bitwise AND");
     Assert((0b1010 as uint8 | 0b0101 as uint8) == 0b1111, "uint8 bitwise OR");
     Assert((0b1010 as uint8 ^ 0b1100 as uint8) == 0b0110, "uint8 bitwise XOR");
-    Assert((~0b00001111 as uint8) == 0b11110000, "uint8 bitwise NOT");
+    Assert((~(0b00001111 as uint8)) == 0b11110000, "uint8 bitwise NOT");
 
     // Shifts
     Assert((1 as uint8 << 4) == 16, "uint8 left shift");
@@ -62,7 +62,7 @@ func Main() -> int {
 
     // Casting to signed (same width)
     let high: uint8 = 200;
-    let as_i8: int8 = high as int8;
+    let as_i8: int8 = high.Truncate<int8>();
     Assert(as_i8 == -56, "uint8 200 reinterprets as int8 -56");
 
     let low: uint8 = 127;
@@ -71,7 +71,7 @@ func Main() -> int {
 
     // Casting from wider unsigned (truncation)
     let wide: uint16 = 0x01FF;
-    let narrow: uint8 = wide as uint8;
+    let narrow: uint8 = wide.Truncate<uint8>();
     Assert(narrow == 0xFF, "uint16 → uint8 truncates to low byte");
 
     // Assignment and mutation

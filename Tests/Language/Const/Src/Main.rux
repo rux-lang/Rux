@@ -33,7 +33,7 @@ const HALF = LIMIT / 2u;
 func Sum(values: uint32[..]) -> uint32 {
     var total: uint32 = 0;
     for value in values {
-        total += value;
+        total +%= value;
     }
     return total;
 }
@@ -89,7 +89,7 @@ func Main() -> int {
     // Iterating and passing a constant array as a slice.
     var iterated: uint32 = 0;
     for value in WORDS {
-        iterated += value;
+        iterated +%= value;
     }
     if iterated != Sum(WORDS) {
         return 14;
@@ -99,7 +99,7 @@ func Main() -> int {
     var index: uint = 0;
     var total: uint32 = 0;
     while index < WORDS.length {
-        total += WORDS[index];
+        total +%= WORDS[index];
         index += 1;
     }
     if total != iterated {

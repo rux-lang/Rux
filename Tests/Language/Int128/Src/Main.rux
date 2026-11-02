@@ -13,7 +13,7 @@ func Echo(value: int128) -> int128 {
 }
 
 func Sum(left: int128, right: int128) -> int128 {
-    return left + right;
+    return left +% right;
 }
 
 func Main() -> int {
@@ -32,8 +32,8 @@ func Main() -> int {
     Assert(18446744073709551616i128 - 1i128 == low, "subtraction borrows into the low lane");
     Assert(low * 2i128 == 36893488147419103230i128, "multiplication carries out of the low lane");
 
-    Assert(int128::Max + 1i128 == int128::Min, "addition wraps from the maximum to the minimum");
-    Assert(int128::Min - 1i128 == int128::Max, "subtraction wraps from the minimum to the maximum");
+    Assert(int128::Max +% 1i128 == int128::Min, "addition wraps from the maximum to the minimum");
+    Assert(int128::Min -% 1i128 == int128::Max, "subtraction wraps from the minimum to the maximum");
 
     // Signed division truncates toward zero and the remainder keeps the dividend's sign.
     let negative: int128 = -100i128;
@@ -61,7 +61,7 @@ func Main() -> int {
     // Conversion in both directions: narrow to wide sign-extends, wide to narrow keeps the low bits.
     let widened: int128 = -7i64 as int128;
     Assert(widened == -7i128, "a narrow signed value sign-extends into the high lane");
-    let narrowed: int64 = int128::Max as int64;
+    let narrowed: int64 = int128::Max.Truncate<int64>();
     Assert(narrowed == -1i64, "a wide value truncates to its low bits");
     Assert(int64::Max as int128 == 9223372036854775807i128, "the widest narrow value survives widening");
 

@@ -167,6 +167,20 @@ private:
     void EmitRuntimeTrap(std::string_view message, const SourceLocation &location);
     /// Continues in a fresh block when `condition` holds and traps with `message` when it does not.
     void EmitTrapUnless(LirReg condition, std::string_view message, const SourceLocation &location);
+    /// `left op right` for `Add`, `Sub` or `Mul` on an integer `type`, stopping the program with
+    /// `integer overflow in '<spelled>'` at `location` when the exact result does not fit. Up to 64 bits this is one
+    /// overflow-checked instruction the back ends test with the flags; wider types are checked here.
+    [[nodiscard]] LirReg EmitOverflowChecked(LirOpcode op, LirReg left, LirReg right, const TypeRef &type,
+                                             std::string_view spelled, const SourceLocation &location);
+    /// Whether the operands' spelling bounds this `+` or `*` within its type, so it needs no overflow check.
+    [[nodiscard]] static bool ResultAlwaysFits(const HirBinaryExpr &expression);
+    /// Whether the operand's spelling bounds it within `target`, so an `as` to it needs no range check.
+    [[nodiscard]] static bool CastAlwaysFits(const HirExpr &operand, const TypeRef &target);
+    /// The product of two integers wider than a machine word, stopping the program with `message` when it overflows.
+    [[nodiscard]] LirReg EmitWideProductChecked(LirReg left, LirReg right, const TypeRef &type,
+                                                const std::string &message, const SourceLocation &location);
+    /// Stops the program with `integer cast out of range` when `value` of integer type `from` has no equal in `to`.
+    void EmitIntegerCastCheck(LirReg value, const TypeRef &from, const TypeRef &to, const SourceLocation &location);
 
     [[nodiscard]] LirReg EmitConst(std::string value, TypeRef type);
     [[nodiscard]] LirReg EmitAlloca(TypeRef type);
@@ -359,4 +373,6 @@ private:
     void StoreArrayInit(const HirArrayExpr &expression, LirReg slot);
 };
 
+/// The most negative value of a signed integer type, spelled as a literal a `const` instruction of that type accepts.
+[[nodiscard]] std::string SignedMinimumLiteral(const TypeRef &type);
 } // namespace Rux::HirToLirDetail

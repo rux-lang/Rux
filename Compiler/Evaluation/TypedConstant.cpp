@@ -192,8 +192,16 @@ std::optional<TypedConstant> EvaluateUnary(const TokenKind op, const TypedConsta
     switch (op) {
     case TokenKind::Plus:
         return operand;
-    case TokenKind::Minus:
-        return Make(operand.Type(), operand.Bits().Negated());
+    case TokenKind::Minus: {
+        // Negation is subtraction from zero and overflows where that does: at a signed minimum, and for an unsigned
+        // value at anything but zero. Such a negation stays in HIR, where it stops the program.
+        const bool isSigned = operand.GetKind() == TypedConstant::Kind::SignedInteger;
+        const WideInteger &bits = operand.Bits();
+        if (isSigned ? bits == WideInteger::MinMagnitude(operand.Width(), true).Negated() : !bits.IsZero()) {
+            return std::nullopt;
+        }
+        return Make(operand.Type(), bits.Negated());
+    }
     case TokenKind::Tilde:
         return Make(operand.Type(), operand.Bits().BitwiseNot());
     default:
@@ -273,12 +281,31 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
     const WideInteger &lhs = left.Bits();
     const WideInteger &rhs = right.Bits();
     const bool isSigned = left.GetKind() == TypedConstant::Kind::SignedInteger;
+    // `+`, `-` and `*` are checked: a result the type cannot hold is no value here, and the operation stays in IR to
+    // stop the program. The wrapping operators keep the low bits.
+    const auto sign = [](const WideInteger &value) { return value.IsNegative(); };
     switch (op) {
-    case TokenKind::Plus:
+    case TokenKind::Plus: {
+        const WideInteger sum = lhs.Added(rhs);
+        const bool overflow = isSigned ? sign(lhs) == sign(rhs) && sign(sum) != sign(lhs)
+                                       : sum.Compare(lhs, false) == std::strong_ordering::less;
+        return overflow ? std::nullopt : std::optional{Make(left.Type(), sum)};
+    }
+    case TokenKind::Minus: {
+        const WideInteger difference = lhs.Subtracted(rhs);
+        const bool overflow = isSigned ? sign(lhs) != sign(rhs) && sign(difference) != sign(lhs)
+                                       : lhs.Compare(rhs, false) == std::strong_ordering::less;
+        return overflow ? std::nullopt : std::optional{Make(left.Type(), difference)};
+    }
+    case TokenKind::Star: {
+        const auto product = lhs.MultipliedChecked(rhs, isSigned);
+        return product ? std::optional{Make(left.Type(), *product)} : std::nullopt;
+    }
+    case TokenKind::PlusPercent:
         return Make(left.Type(), lhs.Added(rhs));
-    case TokenKind::Minus:
+    case TokenKind::MinusPercent:
         return Make(left.Type(), lhs.Subtracted(rhs));
-    case TokenKind::Star:
+    case TokenKind::StarPercent:
         return Make(left.Type(), lhs.MultipliedWrapping(rhs));
     case TokenKind::Slash:
     case TokenKind::Percent: {
@@ -325,6 +352,20 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
     default:
         return std::nullopt;
     }
+}
+
+std::optional<TypedConstant> CastConstantExactly(const TypedConstant &value, const TypeRef &targetType) {
+    const auto target = Properties(targetType);
+    const bool integers =
+        (value.GetKind() == TypedConstant::Kind::SignedInteger ||
+         value.GetKind() == TypedConstant::Kind::UnsignedInteger) &&
+        target &&
+        (target->kind == TypedConstant::Kind::SignedInteger || target->kind == TypedConstant::Kind::UnsignedInteger);
+    if (integers && !value.Bits().ConvertedChecked(target->width, value.GetKind() == TypedConstant::Kind::SignedInteger,
+                                                   target->kind == TypedConstant::Kind::SignedInteger)) {
+        return std::nullopt;
+    }
+    return CastConstant(value, targetType);
 }
 
 std::optional<TypedConstant> CastConstant(const TypedConstant &value, const TypeRef &targetType) {
@@ -428,8 +469,9 @@ CheckedConstant EvaluateBinaryChecked(const TokenKind op, const TypedConstant &l
     switch (op) {
     case TokenKind::Plus:
     case TokenKind::Minus: {
+        // `EvaluateBinary` has no value for an integer sum or difference the type cannot hold.
         auto result = EvaluateBinary(op, left, right);
-        if (result && AdditionOverflows(op, left.Bits(), right.Bits(), result->Bits(), isSigned)) {
+        if (!result || AdditionOverflows(op, left.Bits(), right.Bits(), result->Bits(), isSigned)) {
             return Failed(CheckedFailure::Overflow);
         }
         return Checked(std::move(result));

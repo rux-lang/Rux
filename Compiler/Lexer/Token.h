@@ -95,6 +95,10 @@ enum class TokenKind : std::uint8_t {
     Percent,    // %
     PlusPlus,   // ++
     MinusMinus, // --
+    // Wrapping arithmetic: two's-complement results that never trap on overflow
+    PlusPercent,  // +%
+    MinusPercent, // -%
+    StarPercent,  // *%
 
     // Bitwise operators
     Amp,                   // &
@@ -126,6 +130,9 @@ enum class TokenKind : std::uint8_t {
     StarAssign,                  // *=
     SlashAssign,                 // /=
     PercentAssign,               // %=
+    PlusPercentAssign,           // +%=
+    MinusPercentAssign,          // -%=
+    StarPercentAssign,           // *%=
     AmpAssign,                   // &=
     PipeAssign,                  // |=
     CaretAssign,                 // ^=

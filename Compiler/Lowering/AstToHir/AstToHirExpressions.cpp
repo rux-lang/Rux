@@ -421,6 +421,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->operand = IsNullLiteral(*cast->operand) ? LowerExprAs(*cast->operand, lowered->targetType)
                                                          : LowerExpr(*cast->operand);
         lowered->type = lowered->targetType;
+        lowered->checksRange = true;
         return lowered;
     }
 

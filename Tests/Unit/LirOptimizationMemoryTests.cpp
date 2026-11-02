@@ -156,9 +156,9 @@ TEST_CASE("Memory promotion forms loop-carried SSA values without memory traffic
             var i = 0;
             var sum = 0;
             while i < n {
-                let increment = i + 1;
-                sum += increment;
-                i += 1;
+                let increment = i +% 1;
+                sum +%= increment;
+                i +%= 1;
             }
             return sum;
         }
@@ -180,7 +180,7 @@ TEST_CASE("Memory promotion rewrites call arguments and branch merges") {
         func Identity(value: int) -> int { return value; }
         func Choose(test: bool, input: int) -> int {
             var result = input;
-            if test { result = input + 2; } else { result = input - 3; }
+            if test { result = input +% 2; } else { result = input -% 3; }
             return Identity(result);
         }
     )",
@@ -238,7 +238,7 @@ TEST_CASE("Scalar replacement promotes private range descriptors and loop-local 
         func Sum(n: int) -> int {
             var sum = 0;
             for i in 0..n {
-                for j in 0..i { sum += j; }
+                for j in 0..i { sum +%= j; }
             }
             return sum;
         }
@@ -267,7 +267,7 @@ TEST_CASE("Scalar replacement preserves snapshots in private struct and tuple co
             var pair = (second.large, first.large);
             let copy = pair;
             pair.0 = 11;
-            return copy.0 + copy.1 + (second.small as int64);
+            return copy.0 +% copy.1 +% (second.small as int64);
         }
     )",
                                 BuildProfile::Debug);

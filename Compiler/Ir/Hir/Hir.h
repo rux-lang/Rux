@@ -375,6 +375,9 @@ struct HirTupleExpr : HirExpr {
 struct HirCastExpr : HirExpr {
     HirExprPtr operand;
     TypeRef targetType;
+    /// A source `as` between integer types, which keeps the value or stops the program. Conversions lowering inserts
+    /// itself, and `Truncate`, keep the low bits instead.
+    bool checksRange = false;
 };
 
 // expr is Type

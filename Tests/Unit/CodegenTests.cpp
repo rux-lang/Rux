@@ -115,7 +115,7 @@ TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
         func Product(left: int, right: int) -> int {
             Sink("shared", 1.25f32);
             Sink("shared", 1.25f32);
-            return left * right;
+            return left *% right;
         }
 
         func Main() -> int {
@@ -155,7 +155,7 @@ TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
         func Product(left: int, right: int) -> int {
             Sink("shared", 1.3f32);
             Sink("shared", 1.3f32);
-            return left * right;
+            return left *% right;
         }
 
         func Main() -> int {

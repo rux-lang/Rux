@@ -146,6 +146,9 @@ private:
     void SelectAddress(const LirInstr &instruction);
     void SelectBinary(const LirInstr &instruction);
     void SelectDivision(const LirInstr &instruction);
+    /// An overflow-checked `+`, `-` or `*`: the operation at the type's width, then a branch on the flags it set to a
+    /// cold block that reports the overflow.
+    void SelectCheckedArithmetic(const LirInstr &instruction);
     void SelectShift(const LirInstr &instruction);
     void SelectUnary(const LirInstr &instruction);
     void SelectPackedInteger(const LirInstr &instruction);

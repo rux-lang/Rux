@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, uint64 };
 
 func Aliasing(first: *var int, second: *var int, input: int) -> int {
     // Safety: both pointers address live `int` locals of `Main`; that they may be the same one is what this checks.
@@ -49,9 +49,9 @@ func Main() -> int {
 
 func GuardedWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> uint {
     for i in 0u..limit {
-        let index = row + i;
+        let index = row +% i;
         // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
-        if index < bound { unsafe { *result += index; } }
+        if index < bound { unsafe { *result +%= index; } }
         else { return 123u; }
     }
     // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
@@ -64,7 +64,7 @@ func ReferenceWalk(limit: uint, row: uint, bound: uint, result: *var uint) -> ui
     while remaining != 0u {
         if index >= bound { return 123u; }
         // Safety: `result` points at a live `uint` local of `CheckGuardedLoops`.
-        unsafe { *result += index; }
+        unsafe { *result +%= index; }
         index += 1u;
         remaining -= 1u;
     }
@@ -114,11 +114,11 @@ func AliasPair(first: *var BorrowedPair, second: *var BorrowedPair) {
 }
 
 func Masked(value: uint8) -> uint64 { return (value & 63u8) as uint64; }
-func Wrapped(value: uint8) -> bool { return value + 1u8 > 0u8; }
-func Subtracted(value: uint8) -> bool { return value - 1u8 < 255u8; }
+func Wrapped(value: uint8) -> bool { return value +% 1u8 > 0u8; }
+func Subtracted(value: uint8) -> bool { return value -% 1u8 < 255u8; }
 func SmallProduct(value: uint8) -> bool { return (value as uint64) * 2u64 < 511u64; }
-func Narrowed(value: uint64) -> bool { return (value as uint8) < 255u8; }
-func WideWrapped(value: uint64) -> bool { return value + 1u64 > 0u64; }
+func Narrowed(value: uint64) -> bool { return value.Truncate<uint8>() < 255u8; }
+func WideWrapped(value: uint64) -> bool { return value +% 1u64 > 0u64; }
 
 func Repeated(a: int, b: int) -> int {
     if a < b {

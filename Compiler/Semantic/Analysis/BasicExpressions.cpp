@@ -36,6 +36,12 @@ std::string_view OperatorName(const TokenKind op) noexcept {
         return "/";
     case TK::Percent:
         return "%";
+    case TK::PlusPercent:
+        return "+%";
+    case TK::MinusPercent:
+        return "-%";
+    case TK::StarPercent:
+        return "*%";
     case TK::Amp:
         return "&";
     case TK::At:
@@ -82,6 +88,12 @@ std::string_view OperatorName(const TokenKind op) noexcept {
         return "/=";
     case TK::PercentAssign:
         return "%=";
+    case TK::PlusPercentAssign:
+        return "+%=";
+    case TK::MinusPercentAssign:
+        return "-%=";
+    case TK::StarPercentAssign:
+        return "*%=";
     case TK::AmpAssign:
         return "&=";
     case TK::PipeAssign:
@@ -120,6 +132,12 @@ TokenKind BinaryOperation(const TokenKind op) noexcept {
         return TK::Slash;
     case TK::PercentAssign:
         return TK::Percent;
+    case TK::PlusPercentAssign:
+        return TK::PlusPercent;
+    case TK::MinusPercentAssign:
+        return TK::MinusPercent;
+    case TK::StarPercentAssign:
+        return TK::StarPercent;
     case TK::AmpAssign:
         return TK::Amp;
     case TK::PipeAssign:
@@ -132,6 +150,21 @@ TokenKind BinaryOperation(const TokenKind op) noexcept {
         return TK::GreaterGreater;
     case TK::GreaterGreaterGreaterAssign:
         return TK::GreaterGreaterGreater;
+    default:
+        return op;
+    }
+}
+
+/// The checked operator a wrapping one wraps: `+` for `+%` and `+%=`.
+TokenKind WrappedOperation(const TokenKind op) noexcept {
+    using TK = TokenKind;
+    switch (BinaryOperation(op)) {
+    case TK::PlusPercent:
+        return TK::Plus;
+    case TK::MinusPercent:
+        return TK::Minus;
+    case TK::StarPercent:
+        return TK::Star;
     default:
         return op;
     }
@@ -275,7 +308,12 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             unary->op == TokenKind::Tilde) {
             operandType = ReadBorrowedScalar(*unary->operand, operandType);
         }
-        return CheckUnary(unary->op, operandType, unary->location);
+        const TypeRef result = CheckUnary(unary->op, operandType, unary->location);
+        // A minus written before a literal is part of how the literal is spelled, and its range is checked as such.
+        if (unary->op == TokenKind::Minus && !AstCast<const LiteralExpr>(unary->operand.get())) {
+            CheckConstantOverflow(TokenKind::Minus, result, nullptr, *unary->operand, unary->location);
+        }
+        return result;
     }
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         const TypeRef operandType = CheckExpr(*move->operand);
@@ -329,7 +367,12 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         TypeRef left = CheckExpr(*binary->left);
         TypeRef right = CheckExpr(*binary->right);
-        return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location, binary);
+        const TypeRef result =
+            CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location, binary);
+        if (binary->op == TokenKind::Plus || binary->op == TokenKind::Minus || binary->op == TokenKind::Star) {
+            CheckConstantOverflow(binary->op, result, binary->left.get(), *binary->right, binary->location);
+        }
+        return result;
     }
     if (const auto *assignment = AstCast<const AssignExpr>(&expression)) {
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
@@ -698,6 +741,52 @@ void AnalysisContext::CheckShiftCount(const TypeRef &shifted, const Expr &count,
         *value >= width ? "to clear the value, assign zero" : "shift the other way by the positive count");
 }
 
+void AnalysisContext::CheckConstantOverflow(const TokenKind op, const TypeRef &type, const Expr *left,
+                                            const Expr &right, const SourceLocation location) {
+    // Folded values are machine words, so the exact result of two of them always fits 128 bits; a type wider than a
+    // word holds every such result except a product, which is checked at run time like any other.
+    const std::optional<std::uint64_t> bytes = type.SizeInBytes();
+    if (!type.IsInteger() || !bytes || *bytes > 8) {
+        return;
+    }
+    const std::optional<std::int64_t> rightValue = EvalConstInteger(right);
+    const std::optional<std::int64_t> leftValue = left ? EvalConstInteger(*left) : std::optional<std::int64_t>{0};
+    if (!leftValue || !rightValue) {
+        return;
+    }
+    const __int128 l = *leftValue;
+    const __int128 r = *rightValue;
+    const __int128 exact = op == TokenKind::Plus ? l + r : op == TokenKind::Minus ? l - r : l * r;
+    const unsigned width = static_cast<unsigned>(*bytes * 8);
+    const __int128 minimum = type.IsSigned() ? -(static_cast<__int128>(1) << (width - 1)) : 0;
+    const __int128 maximum =
+        type.IsSigned() ? (static_cast<__int128>(1) << (width - 1)) - 1 : (static_cast<__int128>(1) << width) - 1;
+    if (exact >= minimum && exact <= maximum) {
+        return;
+    }
+    // Rendered by hand: the standard formatter has no 128-bit integer.
+    const auto decimal = [](__int128 value) {
+        const bool negative = value < 0;
+        unsigned __int128 magnitude = negative
+                                        ? static_cast<unsigned __int128>(0) - static_cast<unsigned __int128>(value)
+                                        : static_cast<unsigned __int128>(value);
+        std::string digits;
+        do {
+            digits.insert(digits.begin(), static_cast<char>('0' + static_cast<int>(magnitude % 10)));
+            magnitude /= 10;
+        }
+        while (magnitude != 0);
+        return negative ? "-" + digits : digits;
+    };
+    const std::string_view spelled = left ? OperatorName(op) : "-";
+    EmitError(location,
+              std::format("integer overflow in '{}': the constant result does not fit '{}'", spelled, type.ToString()),
+              {std::format("the result is {}, and '{}' holds {} through {}", decimal(exact), type.ToString(),
+                           decimal(minimum), decimal(maximum))},
+              left ? std::format("write '{}%' to wrap around on purpose", spelled)
+                   : std::string("write '0 -% value' to wrap around on purpose"));
+}
+
 std::optional<TypeRef> AnalysisContext::CommonOperandType(const Expr &leftExpr, const TypeRef &leftType,
                                                           const Expr &rightExpr, const TypeRef &rightType) {
     if ((leftType.IsInteger() && rightType.IsChar()) || (rightType.IsInteger() && leftType.IsChar())) {
@@ -832,6 +921,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     case TK::Plus:
     case TK::Minus:
     case TK::Star:
+    case TK::PlusPercent:
+    case TK::MinusPercent:
+    case TK::StarPercent:
     case TK::Slash:
     case TK::Percent:
     case TK::Amp:
@@ -894,6 +986,25 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
                 return *result;
             }
+        }
+        reportIncompatible("combine");
+        return left;
+    }
+    case TK::PlusPercent:
+    case TK::MinusPercent:
+    case TK::StarPercent: {
+        // Wrapping is a property of two's-complement integers, so the wrapping operators take nothing else: a float
+        // has no wrapped result, and a character or pointer has no meaningful one.
+        if (!left.IsInteger() || !right.IsInteger()) {
+            EmitError(location,
+                      std::format("operator '{}' requires integer operands, but found '{}' and '{}'", operatorName,
+                                  left.ToString(), right.ToString()),
+                      {},
+                      std::format("use '{}' for a value that is not an integer", OperatorName(WrappedOperation(op))));
+            return left;
+        }
+        if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
+            return *result;
         }
         reportIncompatible("combine");
         return left;

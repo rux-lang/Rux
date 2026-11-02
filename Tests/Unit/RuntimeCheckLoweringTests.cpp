@@ -756,3 +756,292 @@ TEST_CASE("discarded character division still traps in release builds") {
         CHECK_NE(result.exitCode, 0);
     }
 }
+
+namespace {
+/// Every instruction of `op` in `function`.
+std::vector<const LirInstr *> Instructions(const LirPackage &package, const std::string_view function,
+                                           const LirOpcode op) {
+    std::vector<const LirInstr *> found;
+    for (const auto &module : package.modules) {
+        for (const auto &func : module.funcs) {
+            if (func.name != function) {
+                continue;
+            }
+            for (const auto &block : func.blocks) {
+                for (const auto &instruction : block.instrs) {
+                    if (instruction.op == op) {
+                        found.push_back(&instruction);
+                    }
+                }
+            }
+        }
+    }
+    return found;
+}
+} // namespace
+
+TEST_CASE("integer overflow stops the program with a panic at every width") {
+    CheckTrapsOnHost(R"(func Add(a: int8, b: int8) -> int8 {
+    return a + b;
+}
+
+func Main() -> int {
+    return Add(100, 28) as int;
+}
+)",
+                     Report("integer overflow in '+'", "Add", 2, 14));
+
+    CheckTrapsOnHost(R"(func Subtract(a: uint32, b: uint32) -> uint32 {
+    return a - b;
+}
+
+func Main() -> int {
+    return Subtract(2, 3) as int;
+}
+)",
+                     Report("integer overflow in '-'", "Subtract", 2, 14));
+
+    CheckTrapsOnHost(R"(func Multiply(a: int64, b: int64) -> int64 {
+    return a * b;
+}
+
+func Main() -> int {
+    return Multiply(4294967296, 2147483648) as int;
+}
+)",
+                     Report("integer overflow in '*'", "Multiply", 2, 14));
+
+    CheckTrapsOnHost(R"(func Multiply(a: uint64, b: uint64) -> uint64 {
+    return a * b;
+}
+
+func Main() -> int {
+    return Multiply(4294967296, 4294967296) as int;
+}
+)",
+                     Report("integer overflow in '*'", "Multiply", 2, 14));
+
+    CheckTrapsOnHost(R"(func Add(a: int128, b: int128) -> int128 {
+    return a + b;
+}
+
+func Main() -> int {
+    return Add(170141183460469231731687303715884105727, 1) as int;
+}
+)",
+                     Report("integer overflow in '+'", "Add", 2, 14));
+
+    CheckTrapsOnHost(R"(func Main() -> int {
+    var level: uint16 = 65535;
+    var step: uint16 = 1;
+    level += step;
+    return level as int;
+}
+)",
+                     Report("integer overflow in '+='", "Main", 4, 11));
+
+    CheckTrapsOnHost(R"(func Negate(value: int32) -> int32 {
+    return -value;
+}
+
+func Main() -> int {
+    return Negate(-2147483647 - 1) as int;
+}
+)",
+                     Report("integer overflow in '-'", "Negate", 2, 12));
+}
+
+TEST_CASE("a narrowing integer cast that loses the value stops the program with a panic") {
+    CheckTrapsOnHost(R"(func Narrow(value: int32) -> uint8 {
+    return value as uint8;
+}
+
+func Main() -> int {
+    return Narrow(256) as int;
+}
+)",
+                     Report("integer cast out of range", "Narrow", 2, 18));
+
+    CheckTrapsOnHost(R"(func Reinterpret(value: int64) -> uint64 {
+    return value as uint64;
+}
+
+func Main() -> int {
+    return Reinterpret(-1) as int;
+}
+)",
+                     Report("integer cast out of range", "Reinterpret", 2, 18));
+
+    CheckRunsOnHost(R"(func Narrow(value: int64) -> int8 {
+    return value as int8;
+}
+
+func Main() -> int {
+    return (Narrow(-100) as int) + (Narrow(127) as int) + 30;
+}
+)",
+                    57);
+}
+
+TEST_CASE("checked and wrapping arithmetic compute the same value when nothing overflows") {
+    CheckRunsOnHost(R"(func Mix(a: int16, b: int16) -> int16 {
+    return a * b - (a + b);
+}
+
+func Wrap(a: uint8, b: uint8) -> uint8 {
+    return a *% b +% (a -% b);
+}
+
+func Main() -> int {
+    return (Mix(-12, 9) as int) + (Wrap(200, 7) as int) + 200;
+}
+)",
+                    152);
+}
+
+TEST_CASE("overflow checks lower to one checked instruction up to a machine word and to a written-out check above") {
+    const LirPackage package = CompileChecks(R"(func Narrow(a: int32, b: int32) -> int32 {
+    return a + b;
+}
+
+func Wrapping(a: int32, b: int32) -> int32 {
+    return a +% b;
+}
+
+func Wide(a: uint256, b: uint256) -> uint256 {
+    return a * b;
+}
+
+func Literal() -> int8 {
+    return -128i8;
+}
+)",
+                                             BuildProfile::Debug);
+    const auto narrow = Instructions(package, "Narrow", LirOpcode::CheckedAdd);
+    REQUIRE_EQ(narrow.size(), 1);
+    CHECK_EQ(narrow.front()->strArg, "integer overflow in '+'");
+    CHECK_EQ(narrow.front()->source.Get().function, "Narrow");
+    CHECK_EQ(narrow.front()->source.Get().line, 2);
+    CHECK(Traps(package, "Narrow", "integer overflow in '+'").empty());
+    CHECK(Instructions(package, "Wrapping", LirOpcode::CheckedAdd).empty());
+    CHECK_EQ(Instructions(package, "Wrapping", LirOpcode::Add).size(), 1);
+    CHECK(Instructions(package, "Wide", LirOpcode::CheckedMul).empty());
+    CHECK_EQ(Traps(package, "Wide", "integer overflow in '*'").size(), 1);
+    CHECK(Instructions(package, "Literal", LirOpcode::CheckedSub).empty());
+}
+
+TEST_CASE("a product wider than a machine word is checked through its halves without a division") {
+    const LirPackage package = CompileChecks(R"(func Unsigned(a: uint128, b: uint128) -> uint128 {
+    return a * b;
+}
+
+func Signed(a: int256, b: int256) -> int256 {
+    return a * b;
+}
+)",
+                                             BuildProfile::Debug);
+    for (const char *function : {"Unsigned", "Signed"}) {
+        CAPTURE(function);
+        CHECK_EQ(Traps(package, function, "integer overflow in '*'").size(), 1);
+        CHECK(Instructions(package, function, LirOpcode::Div).empty());
+    }
+}
+
+TEST_CASE("operands whose spelling bounds the result carry no overflow or range check") {
+    const LirPackage package = CompileChecks(R"(func Accumulate(a: uint64, b: uint64, c: uint64, d: uint64) -> uint128 {
+    return (a as uint128) * (b as uint128) + (c as uint128) + (d as uint128);
+}
+
+func High(value: uint128) -> uint64 {
+    return (value >> 64) as uint64;
+}
+
+func Borrow(a: uint64, b: uint64) -> uint128 {
+    return ((a as uint128) + (1u128 << 64)) - ((b as uint128) + 1u128);
+}
+
+func Bytes(a: uint8, b: uint8) -> uint32 {
+    return (a as uint32) * (b as uint32) + 255u32;
+}
+
+func Kept(a: uint64, b: uint128) -> uint128 {
+    return (a as uint128) * b;
+}
+
+func Narrow(value: uint128) -> uint64 {
+    return (value >> 63) as uint64;
+}
+
+func Signed(a: int64, b: int64) -> int128 {
+    return (a as int128) * (b as int128);
+}
+)",
+                                             BuildProfile::Debug);
+    CHECK(Traps(package, "Accumulate", "integer overflow in '*'").empty());
+    CHECK(Traps(package, "Accumulate", "integer overflow in '+'").empty());
+    CHECK(Traps(package, "High", "integer cast out of range").empty());
+    CHECK(Traps(package, "Borrow", "integer overflow in '-'").empty());
+    CHECK(Traps(package, "Borrow", "integer overflow in '+'").empty());
+    CHECK(Instructions(package, "Bytes", LirOpcode::CheckedMul).empty());
+    CHECK(Instructions(package, "Bytes", LirOpcode::CheckedAdd).empty());
+    // A full-width operand, a shift that leaves a bit too many, and a signed value bound only by its type keep theirs.
+    CHECK_EQ(Traps(package, "Kept", "integer overflow in '*'").size(), 1);
+    CHECK_EQ(Traps(package, "Narrow", "integer cast out of range").size(), 1);
+    CHECK_EQ(Traps(package, "Signed", "integer overflow in '*'").size(), 1);
+}
+
+TEST_CASE("release removes overflow checks its operands or a loop bound settle") {
+    const LirPackage package = CompileChecks(R"(func Constant() -> int32 {
+    let a: int32 = 40;
+    return a + 2;
+}
+
+func Bytes(a: uint8, b: uint8) -> uint32 {
+    return (a as uint32) * (b as uint32) + (a as uint32);
+}
+
+func Count(limit: uint64) -> uint64 {
+    var index: uint64 = 0;
+    var steps: uint64 = 0;
+    while index < limit {
+        index += 1;
+        steps = steps +% 1;
+    }
+    return steps;
+}
+
+func Kept(a: uint32, b: uint32) -> uint32 {
+    return a * b;
+}
+)",
+                                             BuildProfile::Release);
+    CHECK(Instructions(package, "Constant", LirOpcode::CheckedAdd).empty());
+    CHECK(Instructions(package, "Bytes", LirOpcode::CheckedMul).empty());
+    CHECK(Instructions(package, "Bytes", LirOpcode::CheckedAdd).empty());
+    CHECK(Instructions(package, "Count", LirOpcode::CheckedAdd).empty());
+    CHECK_EQ(Instructions(package, "Kept", LirOpcode::CheckedMul).size(), 1);
+}
+
+TEST_CASE("AArch64 emits overflow checks on every system") {
+    for (const Target::OS os : {Target::OS::Linux, Target::OS::MacOS, Target::OS::Windows}) {
+        for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            const auto triple = Target::TargetTriple::From(os, Target::Arch::AArch64);
+            REQUIRE(triple.has_value());
+            const LirPackage package = CompileChecks(R"(func Multiply(a: int64, b: int64) -> int64 {
+    return a * b;
+}
+
+func Add(a: uint8, b: uint8) -> uint8 {
+    return a + b;
+}
+)",
+                                                     profile, *triple);
+            CHECK_EQ(Instructions(package, "Multiply", LirOpcode::CheckedMul).size(), 1);
+            AArch64RcuEmitter emitter(package, "RuntimeCheckTest", os);
+            const auto objects = emitter.Generate();
+            CAPTURE(emitter.Diagnostics().empty() ? std::string{} : emitter.Diagnostics().front().message);
+            CHECK(emitter.Diagnostics().empty());
+            CHECK_FALSE(objects.empty());
+        }
+    }
+}

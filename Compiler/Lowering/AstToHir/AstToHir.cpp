@@ -28,6 +28,12 @@ std::string_view OpStr(TokenKind op) {
         return "/";
     case TK::Percent:
         return "%";
+    case TK::PlusPercent:
+        return "+%";
+    case TK::MinusPercent:
+        return "-%";
+    case TK::StarPercent:
+        return "*%";
     case TK::PlusPlus:
         return "++";
     case TK::MinusMinus:
@@ -80,6 +86,12 @@ std::string_view OpStr(TokenKind op) {
         return "/=";
     case TK::PercentAssign:
         return "%=";
+    case TK::PlusPercentAssign:
+        return "+%=";
+    case TK::MinusPercentAssign:
+        return "-%=";
+    case TK::StarPercentAssign:
+        return "*%=";
     case TK::AmpAssign:
         return "&=";
     case TK::PipeAssign:

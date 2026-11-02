@@ -81,6 +81,8 @@ private:
 [[nodiscard]] std::optional<TypedConstant> EvaluateBinary(TokenKind op, const TypedConstant &left,
                                                           const TypedConstant &right);
 [[nodiscard]] std::optional<TypedConstant> CastConstant(const TypedConstant &value, const TypeRef &targetType);
+/// `CastConstant` for a source `as` between integers, which has no value when the target cannot hold the source's.
+[[nodiscard]] std::optional<TypedConstant> CastConstantExactly(const TypedConstant &value, const TypeRef &targetType);
 
 /// Why a checked operation produced no value.
 enum class CheckedFailure {

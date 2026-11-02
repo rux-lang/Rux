@@ -50,6 +50,9 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
         return InstructionEffect::Pure;
     case LirOpcode::Div:
     case LirOpcode::Mod:
+    case LirOpcode::CheckedAdd:
+    case LirOpcode::CheckedSub:
+    case LirOpcode::CheckedMul:
     case LirOpcode::Sqrt:
         return InstructionEffect::MayTrap;
     case LirOpcode::Load:
