@@ -1,4 +1,4 @@
-import Core::{ Assert, Failed, Succeeded };
+import Core::Assert;
 import Format::{ IsInfinite, IsNan, ParseBool, ParseChar, ParseError, ParseFloat32, ParseFloat64, ParseInt128,
                  ParseInt64, ParseInt8, ParseUint128, ParseUint512, ParseUint64, ParseUint8 };
 import Text::ParseFailure;
@@ -108,30 +108,30 @@ func Main() -> int {
     }
 
     // What is refused, and why.
-    if Succeeded(ParseInt64("")) { return 20; }
-    if Succeeded(ParseInt64("12a")) { return 21; }
-    if Succeeded(ParseInt64("-")) { return 22; }
-    if Succeeded(ParseInt64("0x")) { return 23; }
-    if Succeeded(ParseUint64("-1")) { return 24; }
-    if Succeeded(ParseUint64("0xG")) { return 25; }
-    if Succeeded(ParseUint64("0b2")) { return 26; }
+    if ParseInt64("") is .Success(_) { return 20; }
+    if ParseInt64("12a") is .Success(_) { return 21; }
+    if ParseInt64("-") is .Success(_) { return 22; }
+    if ParseInt64("0x") is .Success(_) { return 23; }
+    if ParseUint64("-1") is .Success(_) { return 24; }
+    if ParseUint64("0xG") is .Success(_) { return 25; }
+    if ParseUint64("0b2") is .Success(_) { return 26; }
 
     // The bounds, narrow and wide: the largest in, one past it out.
     match ParseInt8("127") {
         .Success(value) => { if value != 127 { return 30; } },
         .Failure(_) => { return 31; }
     }
-    if Succeeded(ParseInt8("128")) { return 32; }
+    if ParseInt8("128") is .Success(_) { return 32; }
     match ParseInt8("-128") {
         .Success(value) => { if value != -128i8 { return 33; } },
         .Failure(_) => { return 34; }
     }
-    if Succeeded(ParseInt8("-129")) { return 35; }
+    if ParseInt8("-129") is .Success(_) { return 35; }
     match ParseUint8("255") {
         .Success(value) => { if value != 255 { return 36; } },
         .Failure(_) => { return 37; }
     }
-    if Succeeded(ParseUint8("256")) { return 38; }
+    if ParseUint8("256") is .Success(_) { return 38; }
 
     match ParseUint128("340282366920938463463374607431768211455") {
         .Success(value) => {
@@ -139,16 +139,16 @@ func Main() -> int {
         },
         .Failure(_) => { return 41; }
     }
-    if Succeeded(ParseUint128("340282366920938463463374607431768211456")) { return 42; }
+    if ParseUint128("340282366920938463463374607431768211456") is .Success(_) { return 42; }
     match ParseInt128("-170141183460469231731687303715884105728") {
         .Success(value) => { if value >= 0 { return 43; } },
         .Failure(_) => { return 44; }
     }
-    if Succeeded(ParseInt128("170141183460469231731687303715884105728")) { return 45; }
+    if ParseInt128("170141183460469231731687303715884105728") is .Success(_) { return 45; }
 
     // The widest width takes its largest value, and one more digit is an overflow rather than a wrap.
-    if Failed(ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095")) { return 50; }
-    if Succeeded(ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096")) { return 51; }
+    if ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095") is .Failure(_) { return 50; }
+    if ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096") is .Success(_) { return 51; }
 
     // Booleans are the two words and nothing else.
     match ParseBool("true") {
@@ -159,9 +159,9 @@ func Main() -> int {
         .Success(value) => { if value { return 62; } },
         .Failure(_) => { return 63; }
     }
-    if Succeeded(ParseBool("True")) { return 64; }
-    if Succeeded(ParseBool("1")) { return 65; }
-    if Succeeded(ParseBool("")) { return 66; }
+    if ParseBool("True") is .Success(_) { return 64; }
+    if ParseBool("1") is .Success(_) { return 65; }
+    if ParseBool("") is .Success(_) { return 66; }
 
     // A character is one whole scalar value.
     match ParseChar("A") {
@@ -172,8 +172,8 @@ func Main() -> int {
         .Success(value) => { if (value as uint32) != 0x20AC { return 72; } },
         .Failure(_) => { return 73; }
     }
-    if Succeeded(ParseChar("ab")) { return 74; }
-    if Succeeded(ParseChar("")) { return 75; }
+    if ParseChar("ab") is .Success(_) { return 74; }
+    if ParseChar("") is .Success(_) { return 75; }
 
     // Floats: the special spellings formatting writes, the exponent's edges, and the narrower width's bound.
     match ParseFloat64("NaN") {
@@ -188,13 +188,13 @@ func Main() -> int {
         .Success(value) => { if !IsInfinite(value) || value > 0.0 { return 84; } },
         .Failure(_) => { return 85; }
     }
-    if Succeeded(ParseFloat64("Infinity")) { return 86; }
+    if ParseFloat64("Infinity") is .Success(_) { return 86; }
 
     match ParseFloat64("1.5e300") {
         .Success(value) => { if value < 1.0e300 { return 87; } },
         .Failure(_) => { return 88; }
     }
-    if Succeeded(ParseFloat64("1e400")) { return 89; }
+    if ParseFloat64("1e400") is .Success(_) { return 89; }
     match ParseFloat64("1e-400") {
         .Success(value) => { if value != 0.0 { return 90; } },
         .Failure(_) => { return 91; }
@@ -205,7 +205,7 @@ func Main() -> int {
         .Failure(_) => { return 93; }
     }
     // A value a float64 holds and a float32 does not is the narrow width's overflow, not a quiet infinity.
-    if Succeeded(ParseFloat32("1e39")) { return 94; }
+    if ParseFloat32("1e39") is .Success(_) { return 94; }
     match ParseFloat32("1e-39") {
         .Success(value) => { if value <= 0.0f32 { return 95; } },
         .Failure(_) => { return 96; }
@@ -236,7 +236,7 @@ func Main() -> int {
         .Success(value) => { if value as uint32 != 0x20AC { return 108; } },
         .Failure(_) => { return 109; }
     }
-    if Succeeded(ParseInt64("nope")) { return 110; }
+    if ParseInt64("nope") is .Success(_) { return 110; }
 
     // Where each refusal happened. An empty text has one position and it is zero, which is also its length.
     Assert(FailedAt(ParseInt64(""), 1, 0), "an empty text is Empty at zero");

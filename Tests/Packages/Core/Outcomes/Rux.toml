@@ -5,7 +5,7 @@ Version = 1
 Name = "Outcomes"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Core: Option, Result, Unit and Ordering"
+Description = "Package test for Core: Result, outcome questions and Ordering"
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

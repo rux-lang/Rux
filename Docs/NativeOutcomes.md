@@ -92,7 +92,7 @@ Deliberately not introduced: optional chaining `?.`, a brace-less `catch fallbac
 | A bare `catch fallback`             | `result catch { _ => fallback }`                                                 |
 | `From` conversion                   | `value? else (e => Wrap(e, context))`                                            |
 | `unwrap`/`expect` in a test         | `let value = result catch { e => Panic(message) };`                              |
-| A method on an optional or fallible | A generic free function, such as `Core::Succeeded` and `Core::Failed`            |
+| A method on an optional or fallible | A generic free function, or binding `is`, as in `outcome is .Success(_)`         |
 | Absence turned into a failure       | `option ?? fail NotFound {}`                                                     |
 
 ## Where the Compiler Implements Them
@@ -121,7 +121,7 @@ Code written against shape-recognized `Result`/`Option` variants migrates leaf A
 | Option matching                                                           | `.Some(pattern)` and `none`                                                                    |
 | `IsSome`/`IsNone`                                                         | `value is T`, or a presence match                                                              |
 | `ValueOr` on an option / on a result                                      | `option ?? fallback` / `result catch { _ => fallback }`                                        |
-| `IsSuccess`/`IsError`                                                     | A two-arm match, or `Core::Succeeded`/`Core::Failed`                                           |
+| `IsSuccess`/`IsError`                                                     | `outcome is .Success(_)` / `outcome is .Failure(_)`, or a two-arm match                        |
 | Assertion followed by extraction                                          | `let value = result catch { e => Panic(message) };`                                            |
 | Status enum with a success member (`-> IoError` with `None = 0`)          | `! E` with the success member, `IsOk`, and `IsError` removed                                   |
 | Output slot beside a status (`Write(bytes, taken: *var uint) -> IoError`) | The slot becomes the success payload: `uint ! IoError`                                         |

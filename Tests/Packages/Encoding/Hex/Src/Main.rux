@@ -4,7 +4,7 @@
 // The refusals check two things together: the reason and offset reported, and that the destination still holds the
 // sentinel it was filled with beforehand, which is what "left exactly as it was" means.
 
-import Core::{ Failed, Panic };
+import Core::Panic;
 import Encoding::{ DecodeError, HexCase, HexDecode, HexDecodedLength, HexEncode, HexEncodedLength, ViewHex };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter };
 
@@ -69,7 +69,7 @@ func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = ViewHex(bytes, letterCase);
-    if Failed(shown.WriteDisplay(sink, Spec(spec))) { return false; }
+    if shown.WriteDisplay(sink, Spec(spec)) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 

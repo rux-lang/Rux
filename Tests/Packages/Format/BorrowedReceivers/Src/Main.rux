@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Format::Render;
 import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec };
 
@@ -21,22 +21,22 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter(storage[..192]);
-    Assert(Succeeded(value.WriteDisplay(writer, spec)), "a constrained borrowed receiver renders");
+    Assert(value.WriteDisplay(writer, spec) is .Success(_), "a constrained borrowed receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Display = value;
-    Assert(Succeeded(shown.WriteDisplay(writer, spec)), "a borrowed interface receiver renders");
+    Assert(shown.WriteDisplay(writer, spec) is .Success(_), "a borrowed interface receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
 func Inspected<T: Debug>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter(storage[..192]);
-    Assert(Succeeded(value.WriteDebug(writer, spec)), "a constrained borrowed debug receiver renders");
+    Assert(value.WriteDebug(writer, spec) is .Success(_), "a constrained borrowed debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Debug = value;
-    Assert(Succeeded(shown.WriteDebug(writer, spec)), "a borrowed debug interface renders");
+    Assert(shown.WriteDebug(writer, spec) is .Success(_), "a borrowed debug interface renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -139,14 +139,14 @@ func Direct() {
     let plain = FormatSpec::Plain();
     var number: int32 = -71;
     let borrowed: &var int32 = number;
-    Assert(Succeeded(borrowed.WriteDisplay(writer, plain)), "a direct call accepts a mutable primitive borrow");
+    Assert(borrowed.WriteDisplay(writer, plain) is .Success(_), "a direct call accepts a mutable primitive borrow");
     Assert(Same(writer.Written(), "-71"), "the direct borrowed integer receiver reads its value");
     writer.Clear();
     let character = c32'A';
-    Assert(Succeeded(character.WriteDebug(writer, plain)), "a direct concrete character receiver borrows");
+    Assert(character.WriteDebug(writer, plain) is .Success(_), "a direct concrete character receiver borrows");
     Assert(Same(writer.Written(), "'A'"), "the direct character call retains Debug quoting");
     writer.Clear();
     let real = -0.5f64;
-    Assert(Succeeded(real.WriteDisplay(writer, plain)), "a direct floating receiver borrows");
+    Assert(real.WriteDisplay(writer, plain) is .Success(_), "a direct floating receiver borrows");
     Assert(Same(writer.Written(), "-0.5"), "the direct floating receiver reads its value");
 }

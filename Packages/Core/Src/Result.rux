@@ -1,0 +1,21 @@
+// An outcome kept as a value: the success of an operation that throws, or the error it threw.
+// A function that can fail declares `throws E`, and its caller handles the error at the call with `try`, `try?` or
+// `catch`. That leaves nothing to store, which is right for nearly every call. `Result` is for the rest: an outcome
+// that has to outlive the call, travel through a container or a channel, or be decided later. It is an ordinary
+// variant with no compiler privileges, so it is built, matched and asked about the way any variant is:
+//   let stored: Result<int, DigitError> = try .Success(ReadDigit(c)) catch { e => .Failure(e) };
+//   if stored is .Success(_) { ... }
+// Asking which case a result holds with `is` borrows it rather than consuming it, so a result whose payload owns
+// something can be asked and then matched.
+
+/// The outcome of an operation that can fail, kept as a value: what it produced, or the error it threw.
+/// Owns its payload, so a `Result` is move-only exactly when its success or error type is.
+/// @typeParam T what a success holds
+/// @typeParam E what a failure holds
+/// @see https://rux-lang.dev/docs/api/core/result
+pub variant Result<T, E> {
+    /// The operation succeeded and produced this value.
+    Success(T),
+    /// The operation failed with this error.
+    Failure(E)
+}

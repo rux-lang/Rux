@@ -1,7 +1,8 @@
 // Cases written without their type: `.Case` and `.Case(...)` take their enum or variant from the type their context
 // expects -- an annotated binding, a parameter, a field, a return value, a `fail` operand, an assignment target, or the
-// type of the match whose arm they are. Nothing searches for a case name anywhere else. A user variant that is itself
-// the expected type also takes over `.Some(v)`, `.Success(v)` and `.Failure(v)` when it declares that case.
+// type of the match whose arm they are. A `try` passes the type it is expected to have on to its operand and its
+// `catch` arms. Nothing searches for a case name anywhere else. A user variant that is itself the expected type also
+// takes over `.Some(v)`, `.Success(v)` and `.Failure(v)` when it declares that case.
 
 #include "Semantic/Analysis/AnalysisContext.h"
 
@@ -31,7 +32,9 @@ void AnalysisContext::ExpectContextualCaseArguments(const CallExpr &call, const 
 }
 
 void AnalysisContext::ExpectContextualCaseArgument(const Expr *expression, const TypeRef &type) {
-    if (expression && IsContextualCaseExpression(*expression) && !type.IsUnknown()) {
+    // A `try` passes the type on to its operand, which may be such a case.
+    if (expression && (IsContextualCaseExpression(*expression) || AstCast<const TryMarkExpr>(expression)) &&
+        !type.IsUnknown()) {
         expectedExpressionTypes.insert_or_assign(expression, type);
     }
 }

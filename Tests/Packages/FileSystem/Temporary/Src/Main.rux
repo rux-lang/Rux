@@ -2,7 +2,7 @@
 // handle is done with it — through Close, and through a scope ending without one.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
 import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle,
@@ -31,7 +31,7 @@ func SamePath(left: Path, right: Path) -> bool {
 }
 
 func Exists(allocator: Allocator, path: Path) -> bool {
-    return Succeeded(MetadataOf(allocator, path, true));
+    return MetadataOf(allocator, path, true) is .Success(_);
 }
 
 // Makes a temporary file, writes to it, and lets it fall out of scope without a Close.

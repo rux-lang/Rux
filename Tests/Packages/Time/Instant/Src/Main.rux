@@ -1,4 +1,4 @@
-import Core::{ Assert, Failed, Panic };
+import Core::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, Instant, SleepFor, TimeError };
 
@@ -19,7 +19,7 @@ func TicksShown(reading: Instant, ticks: &var uint64) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let shown: Debug = reading;
-    if Failed(shown.WriteDebug(writer, FormatSpec::Plain())) { return false; }
+    if shown.WriteDebug(writer, FormatSpec::Plain()) is .Failure(_) { return false; }
     let text = writer.Written();
     let opening = "Instant(nanoseconds: ";
     if text.length <= opening.length + 1 { return false; }
@@ -47,7 +47,7 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
     let shown: Debug = reading;
-    return Failed(shown.WriteDebug(writer, spec));
+    return shown.WriteDebug(writer, spec) is .Failure(_);
 }
 
 func Main() -> int {

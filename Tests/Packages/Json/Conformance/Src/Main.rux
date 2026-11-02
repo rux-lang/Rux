@@ -5,7 +5,7 @@
 // same way, to survive it.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
                JsonValue, Parse, ParseWith, WriteValue };
@@ -212,14 +212,14 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    wrote = Succeeded(WriteValue(sink, value, JsonStyle::Compact()));
+    wrote = WriteValue(sink, value, JsonStyle::Compact()) is .Success(_);
     Assert(wrote, "and writes");
     var once = builder.IntoString();
 
     let again = Parse(allocator, once.View().Bytes()) catch { else => Panic("and the written form parses") };
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
-    wrote = Succeeded(WriteValue(secondSink, again, JsonStyle::Compact()));
+    wrote = WriteValue(secondSink, again, JsonStyle::Compact()) is .Success(_);
     var twice = secondBuilder.IntoString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
@@ -245,7 +245,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
 // check is that whatever the parser built before it stopped was released rather than leaked, and the allocator
 // counting that is in the parser test.
 func CheckRefused(allocator: Allocator, text: char8[..]) {
-    Assert(Failed(Parse(allocator, text)), "a malformed document is refused");
+    Assert(Parse(allocator, text) is .Failure(_), "a malformed document is refused");
 }
 
 // Whether an outcome is the refusal it should be, by the failure's own rendering, which names the case and the
@@ -257,7 +257,7 @@ func RefusedWith(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) ->
             var storage: char8[96];
             var writer = BufferWriter(storage[..96]);
             let sink: &var TextWriter = writer;
-            if Failed(reason.WriteDebug(sink, FormatSpec::Plain())) { return false; }
+            if reason.WriteDebug(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
             let shown = writer.Written();
             if shown.length != expected.length { return false; }
             var index: uint = 0;

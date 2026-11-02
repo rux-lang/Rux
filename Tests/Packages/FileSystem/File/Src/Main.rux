@@ -3,7 +3,7 @@
 // requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, Path };
 import FileSystem::{ File, NativeKind, OpenOptions, TranslateNative };
@@ -37,7 +37,7 @@ func Main() -> int ! IoError {
     var written = File::Open(allocator, scratch, OpenOptions::Writing())?;
     Assert(written.IsOpen(), "writing creates the missing file");
     written.Close()?;
-    Assert(!written.IsOpen() && Succeeded(written.Close()), "a second close is a no-op");
+    Assert(!written.IsOpen() && written.Close() is .Success(_), "a second close is a no-op");
 
     // Now that it exists: reading finds it, and a creation claim is refused.
     var opened = File::Open(allocator, scratch, OpenOptions::Reading())?;

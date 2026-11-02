@@ -300,9 +300,10 @@ void AnalysisContext::ExpectArmValue(const Expr &body, const TypeRef &type) {
         ExpectContextualCaseArgument(&body, type);
         return;
     }
-    // A block or a nested `if` passes the type on to the value it yields.
+    // A block or a nested `if` passes the type on to the value it yields, and a `try` to its operand.
     const auto *match = AstCast<const MatchExpr>(&body);
-    if (AstCast<const BlockExpr>(&body) || (match && match->form == MatchExpr::Form::If)) {
+    if (AstCast<const BlockExpr>(&body) || (match && match->form == MatchExpr::Form::If) ||
+        AstCast<const TryMarkExpr>(&body)) {
         if (!type.IsUnknown()) {
             expectedExpressionTypes.insert_or_assign(&body, type);
         }

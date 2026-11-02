@@ -2,7 +2,7 @@
 // system's own units — refused deletion while full, and deleted once empty.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, Path };
 import FileSystem::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };
@@ -96,7 +96,7 @@ func Main() -> int ! IoError {
     iterator.Release();
 
     // Deletion respects fullness: refused while anything is inside, clean once nothing is.
-    Assert(Failed(DeleteDirectory(allocator, dir)), "a full directory refuses deletion");
+    Assert(DeleteDirectory(allocator, dir) is .Failure(_), "a full directory refuses deletion");
     DeleteFile(allocator, one)?;
     DeleteFile(allocator, two)?;
     DeleteFile(allocator, accent)?;

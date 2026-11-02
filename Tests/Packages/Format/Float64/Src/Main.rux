@@ -2,7 +2,7 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
 import Format::{ ByteCursor, IsFinite, IsInfinite, IsNan, ParseError, ParseFloat64 };
-import Core::{ Failed, Succeeded };
+
 
 
 // A failed check returns its numbered exit code for `rux test`.
@@ -11,7 +11,7 @@ func Check(value: float64, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
+    if shown.WriteDisplay(writer, FormatSpec::Plain()) is .Failure(_) {
         return code;
     }
     let actual = cursor.Written();
@@ -81,7 +81,7 @@ func CheckParseOverloads() -> int {
         .Failure(_) => { return 121; }
     }
     if value != 6.25 { return 122; }
-    if Succeeded(ParseFloat64("invalid")) { return 123; }
+    if ParseFloat64("invalid") is .Success(_) { return 123; }
     if value != 6.25 { return 124; }
 
     text = StringView::FromBytes("-4.5") ?? StringView();
@@ -92,7 +92,7 @@ func CheckParseOverloads() -> int {
     if value != -4.5 { return 127; }
 
     text = StringView::FromBytes("bad") ?? StringView();
-    if Succeeded(ParseFloat64(text)) { return 128; }
+    if ParseFloat64(text) is .Success(_) { return 128; }
     if value != -4.5 { return 129; }
     return 0;
 }

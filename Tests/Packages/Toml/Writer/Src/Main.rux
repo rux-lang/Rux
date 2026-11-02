@@ -4,7 +4,7 @@
 // and a document written, read and written again is the same the second time.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Format::ByteCursor;
 import Text::{ BufferWriter, FormatError, StringView, TextError, TextWriter };
 import Time::UtcOffset;
@@ -19,7 +19,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
-    Assert(Succeeded(TomlWriteDocument(writer, value)), "writing succeeds");
+    Assert(TomlWriteDocument(writer, value) is .Success(_), "writing succeeds");
     return cursor.Written();
 }
 
@@ -207,7 +207,7 @@ func Main() -> int {
     var enough: char8[128];
     var roomy = BufferWriter(enough[..128]);
     let roomySink: &var TextWriter = roomy;
-    Assert(Succeeded(TomlWriteDocument(roomySink, bounded)),
+    Assert(TomlWriteDocument(roomySink, bounded) is .Success(_),
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 23, "all twenty-three bytes of it");
 

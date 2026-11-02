@@ -1,4 +1,4 @@
-import Core::{ Assert, Failed, Ordering, Succeeded };
+import Core::{ Assert, Ordering, Result };
 
 struct Handle {
     value: int32;
@@ -14,18 +14,42 @@ enum Failure: int8 {
     Invalid
 }
 
+// Throws `Invalid` for a negative `value`.
+func Checked(value: int32) -> int32 throws Failure {
+    if value < 0 { throw Failure::Invalid; }
+    return value;
+}
+
 func Main() -> int {
     // Which channel a native fallible holds, asked without unwrapping it.
     let success: int32 ! Failure = .Success(13);
-    Assert(Succeeded(success) && !Failed(success), "Success channel inspection");
+    Assert(success is .Success(_) && !(success is .Failure(_)), "Success channel inspection");
     let failure: int32 ! Failure = .Failure(Failure::Invalid);
-    Assert(Failed(failure) && !Succeeded(failure), "Failure channel inspection");
+    Assert(failure is .Failure(_) && !(failure is .Success(_)), "Failure channel inspection");
     let completed: ! Failure = .Success(());
-    Assert(Succeeded(completed), "Unit success inspection");
+    Assert(completed is .Success(_), "Unit success inspection");
 
-    // A move-only payload is asked by transferring the outcome, which is then gone.
+    // Asking borrows, so an outcome whose payload cannot be copied is still there to be matched afterwards.
     let held: Handle ! Failure = .Success(Handle { value: 23 });
-    Assert(Succeeded(<-held), "A move-only outcome is asked by transfer");
+    Assert(held is .Success(_), "A move-only outcome is asked without consuming it");
+    let heldValue = match move held {
+        .Success(handle) => handle.value,
+        .Failure(_) => 0
+    };
+    Assert(heldValue == 23, "and is still there to be matched");
+
+    // An outcome kept as a value is a `Result`, an ordinary variant built from what a `try` produced.
+    let kept: Result<int32, Failure> = try .Success(Checked(5)) catch { error => .Failure(error) };
+    Assert(kept is .Success(5), "A success kept as a result");
+    let refused: Result<int32, Failure> = try .Success(Checked(-1)) catch { error => .Failure(error) };
+    Assert(refused is .Failure(Failure::Invalid), "A failure kept as a result");
+    let owned: Result<Handle, Failure> = .Success(Handle { value: 31 });
+    Assert(owned is .Success(_) && !(owned is .Failure(_)), "Asking a result borrows it");
+    let ownedValue = match move owned {
+        .Success(handle) => handle.value,
+        .Failure(_) => 0
+    };
+    Assert(ownedValue == 31, "so it can still be matched");
 
     Assert(Ordering::Less.IsLess(), "Less classification");
     Assert(Ordering::Equal.IsEqual(), "Equal classification");

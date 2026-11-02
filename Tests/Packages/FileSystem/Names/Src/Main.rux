@@ -7,9 +7,9 @@
 // UTF-8 and required to round-trip anyway.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
-import Core::{ #target };
+import Core::#target;
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import FileSystem::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
 
@@ -113,7 +113,7 @@ func Main() -> int ! IoError {
         RoundTrip(allocator, dir, hostile, "a name that is not UTF-8 at all is created");
 
         // And its text conversion must fail rather than invent replacement characters.
-        Assert(Failed(hostile.ToText(allocator)), "and refuses to become text rather than being mangled into it");
+        Assert(hostile.ToText(allocator) is .Failure(_), "and refuses to become text rather than being mangled into it");
     }
 
     DeleteDirectory(allocator, dir)?;

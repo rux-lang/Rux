@@ -1,7 +1,7 @@
 // The NanoId value: generated identifiers differ, parsing accepts exactly the standard form and says where anything
 // else went wrong, and equality, ordering and presentation all read the same twenty-one characters.
 
-import Core::{ Failed, Ordering };
+import Core::Ordering;
 import NanoId::{ NanoId, NanoIdParseError };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFailure, ParseFormatSpec, TextWriter };
 
@@ -37,7 +37,7 @@ func ShownWith(value: NanoId, spec: FormatSpec, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = value;
-    if Failed(shown.WriteDisplay(sink, spec)) { return false; }
+    if shown.WriteDisplay(sink, spec) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 

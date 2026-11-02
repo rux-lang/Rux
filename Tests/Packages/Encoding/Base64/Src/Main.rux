@@ -5,7 +5,7 @@
 // The strictness cases are the point of a strict decoder: each is a text some other decoder accepts, refused here
 // with the reason and the offset, and with the destination left holding its sentinel.
 
-import Core::{ Failed, Panic };
+import Core::Panic;
 import Encoding::{ Base64Decode, Base64DecodedLength, Base64Encode, Base64EncodedLength, Base64Variant, DecodeError,
                    ViewBase64 };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
@@ -143,7 +143,7 @@ func Shown(bytes: byte[..], form: Base64Variant, spec: char8[..], expected: char
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = ViewBase64(bytes, form);
-    if Failed(shown.WriteDisplay(sink, Spec(spec))) { return false; }
+    if shown.WriteDisplay(sink, Spec(spec)) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 

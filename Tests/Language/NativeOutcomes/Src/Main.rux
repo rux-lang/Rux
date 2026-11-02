@@ -175,7 +175,7 @@ func Main() -> ! IoError {
 
     let accepted: Options ! ParseError = .Success(Options { verbose: false });
     let rejected: Options ! ParseError = .Failure(ParseError { position: 1i32 });
-    Assert(!Failed(accepted) && Failed(rejected), "constructed outcomes are ordinary values");
+    Assert(!(accepted is .Failure(_)) && rejected is .Failure(_), "constructed outcomes are ordinary values");
 
     let loaded = match Load(2i32) {
         .Success(_) => 0i32,
@@ -190,14 +190,14 @@ func Main() -> ! IoError {
     };
     Assert(mapped == 42i32, "a mapped error carries local context");
     Assert(Describe(LoadWithDefaults(1i32)?) == 0i32, "a parse failure recovered as defaults");
-    Assert(Failed(LoadWithDefaults(2i32)), "an i/o failure still fails");
+    Assert(LoadWithDefaults(2i32) is .Failure(_), "an i/o failure still fails");
     Assert(!(Configured(1i32)?).verbose, "a unit case recovered");
     Assert((Configured(2i32)?).verbose, "a payload case recovered");
-    Assert(Failed(Configured(3i32)), "an i/o failure is forwarded by the arm");
+    Assert(Configured(3i32) is .Failure(_), "an i/o failure is forwarded by the arm");
 
     let inner: R = .Failure(ParseError { position: 8i32 });
     let kept = match KeepAsData(inner) {
-        .Success(data: R) => Failed(data),
+        .Success(data: R) => data is .Failure(_),
         else => false
     };
     let forwarded = match Forward(inner) {
@@ -229,7 +229,7 @@ func Main() -> ! IoError {
     Assert(required, "absence turned into failure explicitly");
 
     let completed: ! IoError = .Success(());
-    Assert(!Failed(completed) && Failed(Save(false)), "unit success is generic");
+    Assert(!(completed is .Failure(_)) && Save(false) is .Failure(_), "unit success is generic");
     Assert(ValueOr<int32, IoError>(.Failure(IoError { code: 1i32 }), 6i32) == 6i32, "a generic fallback");
     let same: int32 = Choose<int32, int32>(true, 1i32, 2i32);
     Assert(same == 1i32, "equal generic members collapse");

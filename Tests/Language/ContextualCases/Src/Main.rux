@@ -1,7 +1,9 @@
 // Contextual cases: `.Case` and `.Case(...)` name a case without its type wherever the type is already known -- an
 // annotated binding, a parameter, a field, a return value, a `fail` operand, an assignment to a typed place, or an arm
 // of a match whose type is known. The expected type is the only place the case is looked up. A user variant that is
-// itself the expected type takes over `.Some(...)` when it declares a `Some` case.
+// itself the expected type takes over `.Some(...)` when it declares a `Some` case, and `.Success(...)` and
+// `.Failure(...)` when it declares those; the type a `try` expression is expected to have is its operand's and its
+// `catch` arms' too.
 
 import Core::{ Assert };
 
@@ -35,6 +37,11 @@ variant Frame {
 variant Problem {
     NotFound,
     Invalid(int32),
+}
+
+variant Kept<T, E> {
+    Success(T),
+    Failure(E),
 }
 
 struct Brush {
@@ -111,6 +118,17 @@ func Choose(warm: bool) -> Color {
     return chosen;
 }
 
+// Throws for a negative `value`.
+func Checked(value: int32) -> int32 throws Problem {
+    if value < 0i32 { throw Problem::Invalid(value); }
+    return value;
+}
+
+// The outcome of `Checked`, kept as a value: the cases take their type from the return type through the `try`.
+func Keep(value: int32) -> Kept<int32, Problem> {
+    return try .Success(Checked(value)) catch { error => .Failure(error) };
+}
+
 func Main() -> int {
     let annotated: Color = .Green;
     Assert(Weight(annotated) == 10i32, "an annotated binding gives the case its type");
@@ -161,5 +179,15 @@ func Main() -> int {
     Assert((match Load(-2i32) { .Failure(.Invalid(value)) => value, _ => 0i32 }) == -2i32,
            "a 'fail' operand with a payload");
     Assert((match Load(4i32) { .Success(value) => value, _ => 0i32 }) == 4i32, "a success passes through");
+
+    Assert(Keep(6i32) is .Success(6i32), "a 'try' operand takes the expected type");
+    Assert(Keep(-3i32) is .Failure(.Invalid(-3i32)), "and so does a 'catch' arm");
+    let annotatedKeep: Kept<int32, Problem> = try .Success(Checked(1i32)) catch { error => .Failure(error) };
+    Assert(annotatedKeep is .Success(1i32), "an annotated binding gives a 'try' its type");
+    var assigned: Kept<int32, Problem> = .Success(0i32);
+    assigned = try .Success(Checked(-1i32)) catch { error => .Failure(error) };
+    Assert(assigned is .Failure(_), "and so does an assignment");
+    let optional: Kept<int32, Problem>? = try? .Success(Checked(2i32));
+    Assert(optional is .Some(.Success(2i32)), "and 'try?' expects the optional's payload");
     return 0;
 }

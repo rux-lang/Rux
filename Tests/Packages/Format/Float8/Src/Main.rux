@@ -1,4 +1,3 @@
-import Core::Failed;
 
 
 import Text::{ Debug, Display, FormatSpec, TextWriter };
@@ -34,7 +33,7 @@ func Shows(value: float8, prefix: char8[..], expected: char8[..]) -> bool {
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
+    if shown.WriteDisplay(writer, FormatSpec::Plain()) is .Failure(_) {
         return false;
     }
     let actual = cursor.Written();
@@ -47,7 +46,7 @@ func Formats(format: char8[..], value: float8, expected: char8[..]) -> bool {
     var storage: char8[64];
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
-    if Failed(WriteFormat(writer, format, value)) {
+    if WriteFormat(writer, format, value) is .Failure(_) {
         return false;
     }
     return Same(cursor.Written(), expected);
@@ -128,7 +127,7 @@ func Main() -> int {
     var cursor = ByteCursor(storage[..64]);
     let writer: &var TextWriter = cursor;
     let debugged: Debug = 0.34375f8;
-    if Failed(debugged.WriteDebug(writer, FormatSpec::Plain())) { return 50; }
+    if debugged.WriteDebug(writer, FormatSpec::Plain()) is .Failure(_) { return 50; }
     if !Same(cursor.Written(), "0.34") { return 51; }
 
     // Classification by the bits, so an infinity of this width is recognised as one.

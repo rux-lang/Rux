@@ -14,7 +14,7 @@
 // count or element size is a zero-byte request rather than an error, so a
 // caller may pass a length it has not yet tested.
 
-import Core::{ Failed, uint };
+import Core::uint;
 func ByteSize(count: uint, elementSize: uint) -> uint ! CollectionError {
     if count == 0 || elementSize == 0 {
         return 0;
@@ -59,7 +59,7 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
         grown = doubled;
     }
 
-    if Failed(ByteSize(grown, elementSize)) {
+    if ByteSize(grown, elementSize) is .Failure(_) {
         grown = required;
     }
     return grown;

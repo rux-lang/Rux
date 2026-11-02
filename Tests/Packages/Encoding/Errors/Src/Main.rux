@@ -1,6 +1,5 @@
 // A decode error says where it was found, or how much room was needed, and renders as a short description.
 
-import Core::Failed;
 import Encoding::{ DecodeError, HexDecode };
 import Text::{ BufferWriter, Debug, Display, FormatSpec, TextWriter };
 
@@ -19,7 +18,7 @@ func Displayed(error: DecodeError, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = error;
-    if Failed(shown.WriteDisplay(sink, FormatSpec::Plain())) { return false; }
+    if shown.WriteDisplay(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -28,7 +27,7 @@ func Inspected(error: DecodeError, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let inspected: Debug = error;
-    if Failed(inspected.WriteDebug(sink, FormatSpec::Plain())) { return false; }
+    if inspected.WriteDebug(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 

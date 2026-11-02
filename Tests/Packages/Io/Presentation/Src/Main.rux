@@ -1,4 +1,4 @@
-import Core::{ Assert, Failed, Succeeded };
+import Core::Assert;
 import Format::WriteFormat;
 import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToIoError, WriteFormatLine, WriteValueLine,
              Writer };
@@ -134,7 +134,7 @@ func Pattern(text: char8[..]) -> char8[..] {
 
 func Main() -> int {
     // Going out: success is the formatter's success value, and every failure is the one case the protocol has.
-    Assert(Succeeded(FromIoError(.Success(()))), "a stream that took the bytes reports success");
+    Assert(FromIoError(.Success(())) is .Success(_), "a stream that took the bytes reports success");
     Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::StorageFull)))), "a full disk is a writer failure");
     Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::PermissionDenied)))), "and so is a refusal");
     Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::EndOfStream)))),
@@ -199,14 +199,14 @@ func Main() -> int {
 
     var destroyed: int32 = 0;
     var value = Owned { counter: @destroyed, tag: 7i32 };
-    Assert(Succeeded(WriteValueLine(out, value)), "a value writes itself into a stream");
+    Assert(WriteValueLine(out, value) is .Success(_), "a value writes itself into a stream");
     Assert(Same(second.written[..second.length], "owned-7\n"), "with its newline after it");
     Assert(!(healthy is IoError), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
     Assert(destroyed == 0, "writing a value destroys nothing");
-    Assert(Succeeded(WriteValueLine(out, value)), "so the same value goes out again");
+    Assert(WriteValueLine(out, value) is .Success(_), "so the same value goes out again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(second.written[..second.length], "owned-7\nowned-7\n"), "identically");
 
@@ -226,13 +226,13 @@ func Main() -> int {
     Assert(!(thirdFailure is IoError), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
-    Assert(Failed(WriteFormatLine(thirdOut, "abc{")), "a pattern that does not parse is refused");
+    Assert(WriteFormatLine(thirdOut, "abc{") is .Failure(_), "a pattern that does not parse is refused");
     Assert(third.length == 0, "with no newline after it");
-    Assert(Failed(WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32)), "and so is one short of arguments");
+    Assert(WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32) is .Failure(_), "and so is one short of arguments");
     Assert(third.length == 0, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.
-    Assert(Succeeded(WriteFormatLine(thirdOut, "n={}", 42i32)), "a pattern that is right writes its line");
+    Assert(WriteFormatLine(thirdOut, "n={}", 42i32) is .Success(_), "a pattern that is right writes its line");
     Assert(Same(third.written[..third.length], "n=42\n"), "terminator and all");
 
     // The line rule against a destination that fails partway: the value goes out, the newline does not, and the
@@ -274,7 +274,7 @@ func Main() -> int {
     let notFound = IoError { kind: IoErrorKind::NotFound, raw: 2 };
     let noListener = IoError::Of(IoErrorKind::ConnectionRefused);
     let negativeCode = IoError { kind: IoErrorKind::Other, raw: -5 };
-    Assert(Succeeded(WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode)),
+    Assert(WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode) is .Success(_),
            "I/O failures render");
     Assert(Same(shownWriter.Written(),
                 "not found (os error 2)|connection refused|timed out |other error (os error -5)"),

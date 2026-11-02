@@ -12,7 +12,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ Ordering, Succeeded };
+import Core::Ordering;
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
@@ -373,7 +373,7 @@ extend JsonValue {
     /// @see https://rux-lang.dev/docs/api/json/json-value#push
     pub func Push(self: &var JsonValue, value: JsonValue) -> bool {
         if self.kind != JsonKind::Array { return false; }
-        return Succeeded(self.elements.Push(<-value));
+        return self.elements.Push(<-value) is .Success(_);
     }
 
     /// Appends a member to an object, taking ownership of both name and value.
@@ -387,7 +387,7 @@ extend JsonValue {
     pub func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
         if self.kind != JsonKind::Object { return false; }
         var member = JsonMember { name: move name, value: <-value };
-        return Succeeded(self.members.Push(<-member));
+        return self.members.Push(<-member) is .Success(_);
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.

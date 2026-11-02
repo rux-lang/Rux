@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Format::Render;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView,
                TextWriter, WriteBytes };
@@ -37,11 +37,11 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter(storage[..192]);
-    Assert(Succeeded(value.WriteDisplay(writer, spec)), "a constrained receiver renders");
+    Assert(value.WriteDisplay(writer, spec) is .Success(_), "a constrained receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Display = value;
-    Assert(Succeeded(shown.WriteDisplay(writer, spec)), "an interface receiver renders");
+    Assert(shown.WriteDisplay(writer, spec) is .Success(_), "an interface receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -49,11 +49,11 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 func Inspected<T: Debug>(value: &T, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter(storage[..192]);
-    Assert(Succeeded(value.WriteDebug(writer, FormatSpec::Plain())), "a constrained debug receiver renders");
+    Assert(value.WriteDebug(writer, FormatSpec::Plain()) is .Success(_), "a constrained debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Debug = value;
-    Assert(Succeeded(shown.WriteDebug(writer, FormatSpec::Plain())), "an interface debug receiver renders");
+    Assert(shown.WriteDebug(writer, FormatSpec::Plain()) is .Success(_), "an interface debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -61,7 +61,7 @@ func Inspected<T: Debug>(value: &T, expected: char8[..]) {
 func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
     var storage: char8[16];
     var writer = BufferWriter(storage[..16]);
-    return Failed(value.WriteDisplay(writer, spec));
+    return value.WriteDisplay(writer, spec) is .Failure(_);
 }
 
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
@@ -78,10 +78,10 @@ func InspectedEscape<T: Debug>(value: &T, high: char8[..], low: char8[..]) {
     var storage: char8[192];
     var expected = BufferWriter(storage[..192]);
     let sink: &var TextWriter = expected;
-    Assert(Succeeded(WriteBytes(sink, "'\\u{")), "the expected prefix fits");
-    Assert(Succeeded(WriteBytes(sink, high)), "the expected high digits fit");
-    Assert(Succeeded(WriteBytes(sink, low)), "the expected low digits fit");
-    Assert(Succeeded(WriteBytes(sink, "}'")), "the expected suffix fits");
+    Assert(WriteBytes(sink, "'\\u{") is .Success(_), "the expected prefix fits");
+    Assert(WriteBytes(sink, high) is .Success(_), "the expected high digits fit");
+    Assert(WriteBytes(sink, low) is .Success(_), "the expected low digits fit");
+    Assert(WriteBytes(sink, "}'") is .Success(_), "the expected suffix fits");
     Inspected<T>(value, expected.Written());
 }
 

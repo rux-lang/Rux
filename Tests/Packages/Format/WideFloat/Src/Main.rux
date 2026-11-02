@@ -6,7 +6,7 @@
 
 import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128,
                  ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
 
@@ -42,7 +42,7 @@ func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var 
     let allocator: Allocator = system;
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
-    Assert(Succeeded(WriteWideFloat(allocator, writer, spec, bits, layout)), "rendering succeeds");
+    Assert(WriteWideFloat(allocator, writer, spec, bits, layout) is .Success(_), "rendering succeeds");
     return cursor.Written();
 }
 
@@ -67,7 +67,7 @@ func Bits(text: char8[..], layout: &FloatLayout) -> uint512 {
 func Refused(text: char8[..], layout: &FloatLayout) -> bool {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    return Failed(ParseWideFloat(allocator, text, layout));
+    return ParseWideFloat(allocator, text, layout) is .Failure(_);
 }
 
 func Main() -> int {
@@ -214,7 +214,7 @@ func Main() -> int {
     var cursor = ByteCursor(room);
     let writer: &var TextWriter = cursor;
     let one = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
-    Assert(Succeeded(one.FormatWith(allocator, writer, plain)), "the explicit entry point renders");
+    Assert(one.FormatWith(allocator, writer, plain) is .Success(_), "the explicit entry point renders");
     Assert(Same(cursor.Written(), "1.0"), "to the same text it always did");
 
     // A style is refused by the value, which the removed Display wrapper used to do on its way past.
@@ -222,7 +222,7 @@ func Main() -> int {
     styled = ParseFormatSpec("x") catch { else => Panic("a base spec parses") };
     var second = ByteCursor(room);
     let other: &var TextWriter = second;
-    Assert(Failed(one.FormatWith(allocator, other, styled)), "and a style is still refused");
+    Assert(one.FormatWith(allocator, other, styled) is .Failure(_), "and a style is still refused");
     let value = ParseFloat256(allocator, "2.5") catch { else => Panic("the typed entry point reads") };
     Assert(value.IsFinite() && !value.IsNegative() && !value.IsNan(), "and answers the questions a caller asks");
     let tiny = ParseFloat80(allocator, "1e-4940") catch { else => Panic("a float80 subnormal reads") };

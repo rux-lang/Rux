@@ -2,7 +2,7 @@
 // or positional by the name its specification gives, so a program can print one without the arguments at hand.
 
 import CommandLine::CommandLineError;
-import Core::{ #target, Failed };
+import Core::#target;
 import Path::{ OsStringView, OsUnit };
 import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
 
@@ -21,7 +21,7 @@ func Shown(error: CommandLineError, expected: char8[..]) -> bool {
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Display = error;
-    if Failed(shown.WriteDisplay(sink, FormatSpec::Plain())) { return false; }
+    if shown.WriteDisplay(sink, FormatSpec::Plain()) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 

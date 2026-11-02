@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ #target, Assert, Failed };
+import Core::{ #target, Assert };
 import Format::Render;
 import Text::{ FormatError, String, StringView };
 
@@ -220,9 +220,9 @@ func Main() -> int {
     Assert(Same(Render(allocator, "{:>8x}", 255u32), "      ff"), "alignment pads outside the digits");
 
     // A style that is not one of the four bases is refused by the value rather than ignored, at every width.
-    Assert(Failed(Render(allocator, "{:q}", 1i8)), "int8 refuses a style it does not have");
-    Assert(Failed(Render(allocator, "{:q}", 1u64)), "and so does uint64");
-    Assert(Failed(Render(allocator, "{:q}", 1i512)), "and so does the widest signed width");
+    Assert(Render(allocator, "{:q}", 1i8) is .Failure(_), "int8 refuses a style it does not have");
+    Assert(Render(allocator, "{:q}", 1u64) is .Failure(_), "and so does uint64");
+    Assert(Render(allocator, "{:q}", 1i512) is .Failure(_), "and so does the widest signed width");
 
     return 0;
 }

@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Succeeded };
+import Core::Assert;
 import Format::{ MaximumPrecision, Render };
 import Text::{ FormatError, String, StringView };
 
@@ -104,14 +104,14 @@ func Main() -> int {
     // The bound, and the absence of a fallback. The old engine answered a precision it could not reach with the
     // shortest form instead, which is the behaviour these two cases exist to keep out.
     Assert(MaximumPrecision == 1100, "the supported precision is eleven hundred digits");
-    Assert(Succeeded(Render(allocator, "{:.1100}", 1.0)), "the bound itself is supported");
+    Assert(Render(allocator, "{:.1100}", 1.0) is .Success(_), "the bound itself is supported");
     Assert(Refused(Render(allocator, "{:.1101}", 1.0)), "one past it is refused");
     Assert(Refused(Render(allocator, "{:.2000}", 3.14159)), "and so is a request well past it");
     Assert(Refused(Render(allocator, "{:.1101}", 1.0f32)), "at the narrow width too");
 
     // A supported precision that the value cannot fill is still supported: the digits are there, they are zeros.
-    Assert(Succeeded(Render(allocator, "{:.1000}", 1.0)), "a thousand digits of one is a thousand zeros");
-    Assert(Succeeded(Render(allocator, "{:.1074}", 5.0e-324)),
+    Assert(Render(allocator, "{:.1000}", 1.0) is .Success(_), "a thousand digits of one is a thousand zeros");
+    Assert(Render(allocator, "{:.1074}", 5.0e-324) is .Success(_),
            "and the smallest subnormal's exact expansion fits inside the bound");
 
     return 0;

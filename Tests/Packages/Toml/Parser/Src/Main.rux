@@ -4,7 +4,7 @@
 // writer to work out which of the three they had broken.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Failed, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 
@@ -34,7 +34,7 @@ func Refusal(outcome: &(TomlValue ! TomlParseFailure), into: var char8[..]) -> u
         .Failure(failure) => {
             var writer = BufferWriter(into);
             let sink: &var TextWriter = writer;
-            Assert(Succeeded(failure.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
+            Assert(failure.WriteDebug(sink, FormatSpec::Plain()) is .Success(_), "a failure renders");
             return writer.Length();
         }
     };
@@ -230,7 +230,7 @@ func Main() -> int {
     Assert(RefusedAt(allocator, "a = 1\nb = 2\na = 3", "TomlParseError::DuplicateKey at 3:6"),
            "the duplicate is found on the line it is written on");
     let refused = TomlParse(allocator, "a = 1\nb = 2\na = 3");
-    Assert(Failed(<-refused), "and the document does not come back beside the reason");
+    Assert(<-refused is .Failure(_), "and the document does not come back beside the reason");
 
     // A bad scalar is reported at the character inside it, which takes two positions added together: the token's
     // own place in the document, and the failure's place inside the token's text. Neither alone is any use — the

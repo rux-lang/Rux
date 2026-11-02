@@ -2,7 +2,7 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
 import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextWriter };
 
@@ -15,7 +15,7 @@ func View(bytes: char8[..]) -> StringView {
 func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: &var bool) -> String {
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    outcome = Succeeded(WriteValue(sink, value, style));
+    outcome = WriteValue(sink, value, style) is .Success(_);
     return builder.IntoString();
 }
 
@@ -118,8 +118,8 @@ func Main() -> int {
     // reaches it anyway. Setting the kind by hand is the one way left to give a value number text JSON cannot spell:
     // none at all.
     let outOfRange = FormatError::ValueOutOfRange;
-    Assert(!Succeeded(JsonValue::Number(allocator, "NaN")), "a NaN is not a number that can be made");
-    Assert(!Succeeded(JsonValue::Number(allocator, "Infinity")), "and neither is an infinity");
+    Assert(!(JsonValue::Number(allocator, "NaN") is .Success(_)), "a NaN is not a number that can be made");
+    Assert(!(JsonValue::Number(allocator, "Infinity") is .Success(_)), "and neither is an infinity");
     var forged = JsonValue::Null(allocator);
     forged.kind = JsonKind::Number;
     Assert(RefusedAs(allocator, forged, JsonStyle::Compact(), outOfRange),
@@ -147,7 +147,7 @@ func Main() -> int {
     var enough: char8[64];
     var roomy = BufferWriter(enough[..64]);
     let roomySink: &var TextWriter = roomy;
-    Assert(Succeeded(WriteValue(roomySink, wholeDocument, JsonStyle::Compact())),
+    Assert(WriteValue(roomySink, wholeDocument, JsonStyle::Compact()) is .Success(_),
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 26, "all twenty-six bytes of it");
 

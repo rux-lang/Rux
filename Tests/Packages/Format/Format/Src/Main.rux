@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Failed, Succeeded };
+import Core::Assert;
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
 
@@ -189,7 +189,7 @@ func PropagationCases(allocator: Allocator) {
     var writer = BufferWriter(room[..64]);
     let sink: &var TextWriter = writer;
     let failed = WriteFormat(sink, "head {} tail", refusing);
-    Assert(Failed(failed) && calls == 2 && writer.Length() == 12, "writer failure stops after the accepted prefix");
+    Assert(failed is .Failure(_) && calls == 2 && writer.Length() == 12, "writer failure stops after the accepted prefix");
     let written = StringView::FromValidated(writer.Written());
     let wanted = StringView::FromValidated("head partial");
     Assert(written.Equals(wanted), "direct writing retains the exact bytes accepted before the refusal");
@@ -197,7 +197,7 @@ func PropagationCases(allocator: Allocator) {
 
     writer.Clear();
     let checked: &var TextWriter = writer;
-    Assert(Failed(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2)), "the whole pattern is validated first");
+    Assert(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2) is .Failure(_), "the whole pattern is validated first");
     Assert(calls == 2 && writer.Length() == 0, "late validation failure invokes no renderer and writes no prefix");
     Assert(Matches(Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"), "successful Unicode rendering preserves its output");
     Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
@@ -299,11 +299,11 @@ func Main() -> int {
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
     var second = BufferWriter(room[..8]);
     let other: &var TextWriter = second;
-    if Succeeded(WriteFormat(other, "abc{", 1)) { return 92; }
+    if WriteFormat(other, "abc{", 1) is .Success(_) { return 92; }
     if second.Length() != 0 { return 93; }
     var third = BufferWriter(room[..8]);
     let last: &var TextWriter = third;
-    if Succeeded(WriteFormat(last, Pattern("abc{}"), 1, 2)) { return 94; }
+    if WriteFormat(last, Pattern("abc{}"), 1, 2) is .Success(_) { return 94; }
     if third.Length() != 0 { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean

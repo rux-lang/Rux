@@ -13,7 +13,6 @@
 // document, not the same file, and this package is not the one to reach for when the file belongs to someone
 // else.
 
-import Core::Failed;
 import Allocator::Allocator;
 import Collections::Vector;
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView, TextError,
@@ -580,7 +579,7 @@ extend TomlParser {
                 part.Clear();
                 return false;
             }
-            if Failed(parts.Push(move part)) {
+            if parts.Push(move part) is .Failure(_) {
                 self.Stop(TomlStop::OutOfMemory);
                 return false;
             }

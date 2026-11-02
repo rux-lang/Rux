@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Text::{ CString, StringView, TextError };
 
 // A C string is a pointer and a promise, and both edges of the boundary need a check nothing else needs. Going out,
@@ -32,7 +32,7 @@ func Main() -> int {
     Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
     // Empty text is one byte of terminator, not a null pointer.
-    Assert(Succeeded(CString::FromView(allocator, StringView())), "empty text crosses too");
+    Assert(CString::FromView(allocator, StringView()) is .Success(_), "empty text crosses too");
 
     // A zero byte in the middle is refused, not truncated.
     var smuggled: char8[8];
@@ -84,7 +84,7 @@ func Main() -> int {
 
     // Null is C's nothing, and nothing is not text.
     // Safety: the readability obligation covers only a non-null `raw`; a null one is refused before any read.
-    Assert(Failed(unsafe { CString::FromRaw(allocator, null, 8) }), "and a null pointer makes nothing");
+    Assert((unsafe { CString::FromRaw(allocator, null, 8) }) is .Failure(_), "and a null pointer makes nothing");
 
     return 0;
 }

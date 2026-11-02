@@ -10,7 +10,7 @@
 // base does not have is the sixth character and the fourth digit, and the case below would report four if the
 // mapping from stripped text back to written text were dropped.
 
-import Core::{ Assert, Failed, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger, TomlScalarError };
@@ -34,7 +34,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Rendered(reason: &TomlScalarError, into: var char8[..]) -> uint {
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(Succeeded(reason.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
+    Assert(reason.WriteDebug(sink, FormatSpec::Plain()) is .Success(_), "a failure renders");
     return writer.Length();
 }
 
@@ -45,7 +45,7 @@ func Integer(text: char8[..]) -> int64 {
 }
 
 func IntegerFails(text: char8[..]) -> bool {
-    return Failed(TomlParseInteger(text));
+    return TomlParseInteger(text) is .Failure(_);
 }
 
 // Whether the integer is refused with exactly this rendering — the case and the position together.
@@ -67,7 +67,7 @@ func Float(text: char8[..]) -> float64 {
 }
 
 func FloatFails(text: char8[..]) -> bool {
-    return Failed(TomlParseFloat(text));
+    return TomlParseFloat(text) is .Failure(_);
 }
 
 func FloatRefused(text: char8[..], expected: char8[..]) -> bool {
@@ -95,7 +95,7 @@ func Moment(text: char8[..]) -> TomlDateTime {
 }
 
 func MomentFails(text: char8[..]) -> bool {
-    return Failed(TomlParseDateTime(text));
+    return TomlParseDateTime(text) is .Failure(_);
 }
 
 func MomentRefused(text: char8[..], expected: char8[..]) -> bool {

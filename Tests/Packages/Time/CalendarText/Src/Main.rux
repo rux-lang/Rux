@@ -1,4 +1,4 @@
-import Core::{ Assert, Failed, Panic };
+import Core::{ Assert, Panic };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, Timestamp, UtcOffset };
 
@@ -28,14 +28,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown(value: Display, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
-    if Failed(value.WriteDisplay(writer, spec)) { return false; }
+    if value.WriteDisplay(writer, spec) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Refused(value: Display, spec: FormatSpec) -> bool {
     var storage: char8[64];
     var writer = BufferWriter(storage[..64]);
-    return Failed(value.WriteDisplay(writer, spec));
+    return value.WriteDisplay(writer, spec) is .Failure(_);
 }
 
 func DateOf(year: int32, month: uint8, day: uint8) -> Date {

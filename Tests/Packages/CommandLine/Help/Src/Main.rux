@@ -4,7 +4,7 @@
 
 import CommandLine::{ Command, CommandSpec, Flag, OptionSpec, Optional, Parse, PositionalSpec, Remaining, Required,
                       ValueOption, WriteHelp, WriteUsage, WriteVersion };
-import Core::{ #target, Failed, Panic };
+import Core::{ #target, Panic };
 import Path::OsStringView;
 import Text::{ BufferWriter, TextWriter };
 
@@ -22,7 +22,7 @@ func HelpIs(spec: &CommandSpec, expected: char8[..]) -> bool {
     var storage: char8[2048];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    if Failed(WriteHelp(spec, sink)) { return false; }
+    if WriteHelp(spec, sink) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -40,13 +40,13 @@ func Main() -> int {
     var storage: char8[256];
     var writer = BufferWriter(storage[..]);
     let sink: &var TextWriter = writer;
-    if Failed(WriteVersion(tool, sink)) { return 2; }
+    if WriteVersion(tool, sink) is .Failure(_) { return 2; }
     if !Same(writer.Written(), "tool 1.2.3\n") { return 3; }
 
     var usageStorage: char8[256];
     var usageWriter = BufferWriter(usageStorage[..]);
     let usageSink: &var TextWriter = usageWriter;
-    if Failed(WriteUsage(tool, usageSink)) { return 4; }
+    if WriteUsage(tool, usageSink) is .Failure(_) { return 4; }
     if !Same(usageWriter.Written(), "Usage: tool [options] <input> [files...]\n") { return 5; }
 
     // A command with subcommands, and no version, so no `--version` is listed.
@@ -84,7 +84,7 @@ func Main() -> int {
     var subStorage: char8[512];
     var subWriter = BufferWriter(subStorage[..]);
     let subSink: &var TextWriter = subWriter;
-    if Failed(sub.WriteHelp(subSink)) { return 8; }
+    if sub.WriteHelp(subSink) is .Failure(_) { return 8; }
     let buildHelp = "Compile\n\nUsage: git build [options] [target]\n\nArguments:\n  [target]  What to build\n\nOptions:\n  -r, --release  Optimize\n  -h, --help     Print this help\n";
     if !Same(subWriter.Written(), buildHelp) { return 9; }
     return 0;

@@ -1,6 +1,6 @@
 import Text::{ FormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Succeeded };
+import Core::Assert;
 import Format::{ ByteCursor, FloatLayout, WriteWideFloat };
 
 func Check(bits: uint512, expected: char8[..]) {
@@ -10,7 +10,7 @@ func Check(bits: uint512, expected: char8[..]) {
     var storage: char8[256];
     var cursor = ByteCursor(storage[..256]);
     let writer: &var TextWriter = cursor;
-    Assert(Succeeded(WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout)), "extreme value renders");
+    Assert(WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout) is .Success(_), "extreme value renders");
     let text = cursor.Written();
     Assert(text.length == expected.length, "shortest limit text length");
     var index: uint = 0;

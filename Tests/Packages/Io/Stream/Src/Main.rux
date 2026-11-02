@@ -1,5 +1,5 @@
 
-import Core::{ Assert, Panic, Succeeded };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer, ZeroProgressLimit };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
@@ -148,7 +148,7 @@ func Main() -> int {
     source.interruptions = 10;
     var storage: char8[8];
     let into = storage[..8];
-    Assert(Succeeded(ReadExact(source, into)), "the exact read assembles from partial, interrupted reads");
+    Assert(ReadExact(source, into) is .Success(_), "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
     // Four two-byte reads, and an interruption before each of the three after the first.
     Assert(source.calls == 7, "asking once per short read and once per interruption");
@@ -158,7 +158,7 @@ func Main() -> int {
     interrupted.interruptions = 1;
     interrupted.pendingInterruption = true;
     var pair: char8[2];
-    Assert(Succeeded(ReadExact(interrupted, pair[..])), "an interrupted read is retried");
+    Assert(ReadExact(interrupted, pair[..]) is .Success(_), "an interrupted read is retried");
     Assert(interrupted.calls == 2, "exactly once");
 
     // A stream that ends partway says so with its own kind, rather than succeeding by silence or looking like a
@@ -206,7 +206,7 @@ func Main() -> int {
         interruptions: 2,
         calls: 0
     };
-    Assert(Succeeded(WriteAll(sink, TextBytes("hello world"))), "the whole write goes through partial writes");
+    Assert(WriteAll(sink, TextBytes("hello world")) is .Success(_), "the whole write goes through partial writes");
     Assert(sink.written == 11 && sinkStorage[10] == c8'd', "every byte in its place");
     // Two interruptions, then four writes of three, three, three and two bytes.
     Assert(sink.calls == 6, "asking once per short write and once per interruption");

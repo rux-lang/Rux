@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Panic };
+import Core::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter };
 
 // How text presents itself, checked through the protocols rather than through a format call, so a failure here is
@@ -17,7 +17,7 @@ func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let value: Display = view;
-    if Failed(value.WriteDisplay(writer, spec)) { return false; }
+    if value.WriteDisplay(writer, spec) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -26,7 +26,7 @@ func Inspected(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool 
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
     let value: Debug = view;
-    if Failed(value.WriteDebug(writer, spec)) { return false; }
+    if value.WriteDebug(writer, spec) is .Failure(_) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -115,7 +115,7 @@ func Main() -> int {
     var writer = BufferWriter(storage[..32]);
     let styled: &var TextWriter = writer;
     let shown: Display = hello;
-    Assert(Failed(shown.WriteDisplay(styled, Spec("iso8601"))), "a style on text is refused");
+    Assert(shown.WriteDisplay(styled, Spec("iso8601")) is .Failure(_), "a style on text is refused");
     Assert(writer.Length() == 0, "and nothing was written before the refusal");
 
     // A String presents as the view it spans, and is untouched by having been rendered.

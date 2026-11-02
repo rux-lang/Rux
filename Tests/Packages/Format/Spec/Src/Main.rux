@@ -1,5 +1,5 @@
 
-import Core::{ Failed, Succeeded };
+
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Render;
 import Text::{ FormatError, ParseFormatSpec, String, StringView };
@@ -173,10 +173,10 @@ func Main() -> int {
     // `{:q}` is no longer among them. A style is an identifier in the grammar, so `q` parses; whether it means
     // anything is the value's question, and every value here answers no. The failure moved from the parser to the
     // value, which is where it belongs — the parser cannot know what an integer or a string supports.
-    if Succeeded(Render(allocator, "{:q}", 42)) { return 64; }
-    if Succeeded(Render(allocator, "{:q}", "text")) { return 65; }
-    if Succeeded(Render(allocator, "{:q}", true)) { return 66; }
-    if Succeeded(Render(allocator, "{:iso8601}", 42)) { return 67; }
+    if Render(allocator, "{:q}", 42) is .Success(_) { return 64; }
+    if Render(allocator, "{:q}", "text") is .Success(_) { return 65; }
+    if Render(allocator, "{:q}", true) is .Success(_) { return 66; }
+    if Render(allocator, "{:iso8601}", 42) is .Success(_) { return 67; }
 
     // What an integer does support is its four bases, checked above: those are styles too, and they parse by the
     // same rule as `iso8601` does, which is why `{:x}` still works and `{:q}` does not.
@@ -184,8 +184,8 @@ func Main() -> int {
     // The parser itself, where a failure carries where it was found. The cases above check that a format call
     // reports the same failure with the offset moved into the pattern; these check the parser against the body it
     // was actually given.
-    if Failed(ParseFormatSpec("")) { return 80; }
-    if Failed(ParseFormatSpec(">8.2iso8601")) { return 81; }
+    if ParseFormatSpec("") is .Failure(_) { return 80; }
+    if ParseFormatSpec(">8.2iso8601") is .Failure(_) { return 81; }
     if MalformedAt("{>8", 0) != 0 { return 82; }
     if MalformedAt(".", 1) != 0 { return 83; }
     if MalformedAt(".x", 1) != 0 { return 84; }
@@ -197,7 +197,7 @@ func Main() -> int {
     // fit, which is the twentieth digit: nineteen nines fit a 64-bit uint and twenty do not.
     if MalformedAt("999999999999999999999", 19) != 0 { return 88; }
     if MalformedAt(".999999999999999999999", 20) != 0 { return 89; }
-    if Failed(ParseFormatSpec("18446744073709551615")) { return 90; }
+    if ParseFormatSpec("18446744073709551615") is .Failure(_) { return 90; }
 
     // Float precision: digits after the point, rounded to nearest with ties to even. A tie goes to the even
     // neighbour rather than away from zero, which is what reading the result back would do with it — so 1.25 at one

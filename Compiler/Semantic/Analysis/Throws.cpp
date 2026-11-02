@@ -383,6 +383,17 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
 }
 
 TypeRef AnalysisContext::CheckTryMark(const TryMarkExpr &expression) {
+    // The type the context expects of the whole expression is the operand's type too, so a case written without its
+    // type, as in `try .Success(Read()) catch { e => .Failure(e) }`, takes it; `try?` expects the optional's payload.
+    if (const auto expected = expectedExpressionTypes.find(&expression);
+        expected != expectedExpressionTypes.end() && expression.operand) {
+        TypeRef operandExpected = expected->second;
+        if (expression.form == TryMarkExpr::Form::Optional && operandExpected.IsOptional() &&
+            !operandExpected->inner.empty()) {
+            operandExpected = operandExpected->inner.front();
+        }
+        ExpectArmValue(*expression.operand, operandExpected);
+    }
     if (expression.form == TryMarkExpr::Form::Propagate) {
         throwMarkFrames.push_back({nullptr, &expression, 0});
         const TypeRef type = expression.operand ? CheckExpr(*expression.operand) : TypeRef::MakeUnknown();
