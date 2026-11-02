@@ -52,7 +52,7 @@ func Accepts(text: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -110,7 +110,7 @@ func RefusedByWriter(value: Uuid, spec: FormatSpec, room: uint) -> bool {
     };
     return match reported {
         .InsufficientCapacity => true,
-        else => false
+        _ => false
     };
 }
 
@@ -127,7 +127,7 @@ func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
     if writer.Length() != 0 { return false; }
     return match reported {
         .UnsupportedRequest => true,
-        else => false
+        _ => false
     };
 }
 

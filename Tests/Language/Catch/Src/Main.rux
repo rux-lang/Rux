@@ -36,9 +36,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -123,7 +121,7 @@ func Close(ok: bool) -> ! IoError {
 }
 
 func Track(counter: *var Counter) -> int32 ! Tracked {
-    fail Tracked { counter: counter };
+    fail Tracked { counter };
 }
 
 func Main() -> int {
@@ -134,12 +132,12 @@ func Main() -> int {
     Assert(Recover(300i32) == 600i32, "another member of the error sum");
 
     // Postfix binding: the arithmetic around a catch needs no grouping, and a chain continues after it.
-    Assert(1i32 + Parse(-5i32) catch { else => 10i32 } == 11i32, "catch takes only the call before it");
-    Assert(Origin(true) catch { else => Point { x: 0i32, y: 0i32 } }.y == 4i32, "the recovered value continues");
-    Assert(Origin(false) catch { else => Point { x: 0i32, y: 8i32 } }.y == 8i32, "the fallback continues too");
+    Assert(1i32 + Parse(-5i32) catch { _ => 10i32 } == 11i32, "catch takes only the call before it");
+    Assert(Origin(true) catch { _ => Point { x: 0i32, y: 0i32 } }.y == 4i32, "the recovered value continues");
+    Assert(Origin(false) catch { _ => Point { x: 0i32, y: 8i32 } }.y == 8i32, "the fallback continues too");
 
     var calls = 0i32;
-    let once = Counted(@calls, -1i32) catch { else => 0i32 };
+    let once = Counted(@calls, -1i32) catch { _ => 0i32 };
     Assert(once == 0i32 && calls == 1i32, "the subject is evaluated once");
 
     Assert(Unlayer(0i32) == 5i32, "an inner success passes through");
@@ -150,7 +148,7 @@ func Main() -> int {
     Assert(EscalateValue(-3i32) == 1003i32, "a failing arm leaves the enclosing function");
 
     var closed = 0i32;
-    Close(true) catch { else => {} };
+    Close(true) catch { _ => {} };
     Close(false) catch {
         e: IoError => {
             closed = e.code;
@@ -159,7 +157,7 @@ func Main() -> int {
     Assert(closed == 9i32, "a block arm recovers a unit success");
 
     var counter = Counter { count: 0i32 };
-    let discarded = Track(@counter) catch { else => 0i32 };
+    let discarded = Track(@counter) catch { _ => 0i32 };
     Assert(counter.count == 1i32, "an error the arm does not bind is destroyed");
     let bound = Track(@counter) catch { error => 0i32 };
     Assert(counter.count == 2i32, "and one it binds is destroyed when the arm ends");

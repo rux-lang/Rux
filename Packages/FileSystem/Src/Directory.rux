@@ -136,7 +136,7 @@ func DirectoryBufferSize() -> uint {
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#read-directory
 pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! IoError {
     var iterator = DirectoryIterator {
-        allocator: allocator,
+        allocator,
         handle: NoFile(),
         data: null,
         capacity: 0,
@@ -148,7 +148,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
     let wanted = DirectoryBufferSize();
     let layout = Layout { size: wanted, alignment: 8 };
     var borrowed = allocator;
-    let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
+    let block = borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
     // Safety: `block` is a fresh allocation of `wanted` bytes, so it holds `wanted` `char8`s.
     iterator.data = unsafe { block as *var char8 };
     iterator.capacity = wanted;
@@ -157,7 +157,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         // The search takes a pattern, so the path gets a separator and a star appended.
         let units = path.name.units;
         let patternLayout = Layout { size: (units.length + 3) * 2, alignment: 2 };
-        let raw = borrowed.Allocate(patternLayout) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        let raw = borrowed.Allocate(patternLayout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
         // Safety: `raw` is a fresh allocation of `patternLayout`: `units.length + 3` units at their alignment.
         let pattern = unsafe { raw as *var uint16 };
         var index: uint = 0;
@@ -166,7 +166,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
             // Safety: `index` is below `units.length`, the loop condition.
             let unit = unsafe { units.data[index] };
             if (unit as uint32) == 0 {
-                borrowed.Deallocate(raw, patternLayout) catch { else => {} };
+                borrowed.Deallocate(raw, patternLayout) catch { _ => {} };
                 fail IoError::Of(IoErrorKind::InvalidInput);
             }
             // Safety: `length` equals `index`, below `units.length`, and `pattern` holds `units.length + 3` units.
@@ -187,7 +187,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         // Safety: `pattern` was just NUL-terminated and a `uint16` unit is a `char16`; `iterator.data` is the
         // record buffer of `DirectoryBufferSize()` bytes, one `WIN32_FIND_DATAW`.
         let found = unsafe { FindFirstFileW(pattern as *char16, iterator.data as *var opaque) };
-        borrowed.Deallocate(raw, patternLayout) catch { else => {} };
+        borrowed.Deallocate(raw, patternLayout) catch { _ => {} };
         if (found as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             fail TranslateNative(unsafe { GetLastError() } as int32);
@@ -195,7 +195,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         iterator.handle = found;
         iterator.pending = true;
         iterator.open = true;
-        return <-iterator;
+        return move iterator;
     }
     else {
         let native = NativePath(allocator, path)?;
@@ -205,20 +205,17 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         if opened < 0 { fail TranslateNative((0 - opened) as int32); }
         iterator.handle = opened as int32;
         iterator.open = true;
-        return <-iterator;
+        return move iterator;
     }
 }
 
 extend DirectoryIterator {
-    /// The enumeration handle and record buffer cannot be duplicated.
-    func =(self: &var DirectoryIterator, other: &DirectoryIterator);
-
     /// Hands over the next entry's name, or reports that the directory is done.
     /// Succeeds with a name freshly owned by the caller, or with `none` at the end; a failure says what stopped the
     /// enumeration. The `.` and `..` entries are skipped.
     /// @returns the next entry's name, or `none` when the directory is done
     /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-next
-    pub func Next(self: &var DirectoryIterator) -> OsString? ! IoError {
+    pub func Next(&var self) -> OsString? ! IoError {
         if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
         when #target.os == .Windows {
             while true {
@@ -246,7 +243,7 @@ extend DirectoryIterator {
                 if !IsDotEntry16(entry) {
                     let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view);
-                    return .Some(<-name);
+                    return .Some(move name);
                 }
             }
         }
@@ -323,7 +320,7 @@ extend DirectoryIterator {
                 if !IsDotEntry8(entry) {
                     let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view);
-                    return .Some(<-name);
+                    return .Some(move name);
                 }
             }
         }
@@ -332,7 +329,7 @@ extend DirectoryIterator {
 
     /// Gives back the handle and the buffer.
     /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-release
-    pub func Release(self: &var DirectoryIterator) {
+    pub func Release(&var self) {
         if self.open {
             self.open = false;
             when #target.os == .Windows {
@@ -346,7 +343,7 @@ extend DirectoryIterator {
         }
         if self.data != null {
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 }) catch { else => {} };
+            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 }) catch { _ => {} };
             self.data = null;
             self.capacity = 0;
         }
@@ -354,7 +351,7 @@ extend DirectoryIterator {
 
     /// `Release`, as the safety net.
     /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-destructor
-    func ~DirectoryIterator(self: &var DirectoryIterator) {
+    func ~DirectoryIterator(&var self) {
         self.Release();
     }
 }

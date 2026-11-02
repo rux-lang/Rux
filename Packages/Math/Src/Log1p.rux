@@ -49,7 +49,7 @@ pub func Log1p(x: float64) -> float64 {
         k = red.k;
         // The rounding error of `1 + x`, recovered exactly: for a large argument the one was rounded away, and for a
         // small one the argument was. Either way this is the part the sum dropped.
-        let dropped = x > 1.0 ? 1.0 - (sum - x) : x - (sum - 1.0);
+        let dropped = if x > 1.0 { 1.0 - (sum - x) } else { x - (sum - 1.0) };
         correction = dropped / sum;
         reduced = red.m - 1.0;
     }

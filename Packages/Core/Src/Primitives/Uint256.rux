@@ -26,7 +26,7 @@ extend uint256 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `uint256`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-checked-add
-    pub func CheckedAdd(self: &uint256, other: uint256) -> uint256? {
+    pub func CheckedAdd(&self, other: uint256) -> uint256? {
         var sum: uint256 = 0;
         if AddChecked<uint256>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend uint256 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `uint256`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-checked-sub
-    pub func CheckedSub(self: &uint256, other: uint256) -> uint256? {
+    pub func CheckedSub(&self, other: uint256) -> uint256? {
         var difference: uint256 = 0;
         if SubChecked<uint256>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend uint256 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `uint256`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-checked-mul
-    pub func CheckedMul(self: &uint256, other: uint256) -> uint256? {
+    pub func CheckedMul(&self, other: uint256) -> uint256? {
         var product: uint256 = 0;
         if MulChecked<uint256>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend uint256 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `uint256` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-saturating-add
-    pub func SaturatingAdd(self: &uint256, other: uint256) -> uint256 {
+    pub func SaturatingAdd(&self, other: uint256) -> uint256 {
         return AddSaturating<uint256>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend uint256 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `uint256` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-saturating-sub
-    pub func SaturatingSub(self: &uint256, other: uint256) -> uint256 {
+    pub func SaturatingSub(&self, other: uint256) -> uint256 {
         return SubSaturating<uint256>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend uint256 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `uint256` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-saturating-mul
-    pub func SaturatingMul(self: &uint256, other: uint256) -> uint256 {
+    pub func SaturatingMul(&self, other: uint256) -> uint256 {
         return MulSaturating<uint256>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend uint256 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint256-truncate
-    pub intrinsic func Truncate<T>(self: &uint256) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

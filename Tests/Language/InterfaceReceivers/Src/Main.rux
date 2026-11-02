@@ -1,10 +1,10 @@
-// A requirement with no receiver, or with `self: &Self`, reads the implementing value; one that writes it declares
-// `self: &var Self` and is reached only through a writable view or writable storage.
+// A requirement with no receiver, or with `&self`, reads the implementing value; one that writes it declares
+// `&var self` and is reached only through a writable view or writable storage.
 
 interface Dial {
     func Level() -> int32;
-    func Peek(self: &Self) -> int32;
-    func Turn(self: &var Self, amount: int32);
+    func Peek(&self) -> int32;
+    func Turn(&var self, amount: int32);
 }
 
 struct Knob {
@@ -12,15 +12,15 @@ struct Knob {
 }
 
 extend Knob : Dial {
-    func Level(self: &Knob) -> int32 {
+    func Level(&self) -> int32 {
         return self.level;
     }
 
-    func Peek(self: &Knob) -> int32 {
+    func Peek(&self) -> int32 {
         return self.level;
     }
 
-    func Turn(self: &var Knob, amount: int32) {
+    func Turn(&var self, amount: int32) {
         self.level += amount;
     }
 }
@@ -31,17 +31,17 @@ struct Counter {
 }
 
 extend Counter : Dial {
-    func Level(self: &Counter) -> int32 {
+    func Level(&self) -> int32 {
         // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
         return unsafe { *self.total };
     }
 
-    func Peek(self: &Counter) -> int32 {
+    func Peek(&self) -> int32 {
         // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
         return unsafe { *self.total };
     }
 
-    func Turn(self: &Counter, amount: int32) {
+    func Turn(&self, amount: int32) {
         // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
         unsafe { *self.total += amount; }
     }

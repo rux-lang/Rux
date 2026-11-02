@@ -22,7 +22,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 
 // The failure an outcome carries, which the test expects to be there.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => Panic("expected a failure"),
         .Failure(error) => error
     };
@@ -38,8 +38,8 @@ func Main() -> int ! IoError {
     var fileHolder = OsString(allocator);
     let file = PathOf(allocator, "Bin/FileSystemMeta.tmp/f.txt", fileHolder);
 
-    DeleteFile(allocator, file) catch { else => {} };
-    DeleteDirectory(allocator, dir) catch { else => {} };
+    DeleteFile(allocator, file) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
     MakeDirectory(allocator, dir)?;
 
     // A file of known length reports that length and calls itself a file.
@@ -82,9 +82,9 @@ func Main() -> int ! IoError {
     Assert(!locked.permissions.IsWritable(), "and reads back without owner-write permission");
     match File::Open(allocator, file, OpenOptions::Writing()) {
         .Success(opened) => {
-            var probe <- opened;
+            var probe = move opened;
             Assert(able.unixPermissions, "only a privileged Unix writer may bypass read-only");
-            probe.Close() catch { else => Panic("and the privileged probe closes") };
+            probe.Close() catch { _ => Panic("and the privileged probe closes") };
         },
         .Failure(error) => {
             Assert(error.kind == IoErrorKind::PermissionDenied, "an ordinary write is PermissionDenied");

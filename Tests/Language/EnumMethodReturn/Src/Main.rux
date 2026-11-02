@@ -17,7 +17,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Advance(self: &var Counter) -> Option<int32> {
+    func Advance(&var self) -> Option<int32> {
         if self.value >= self.limit {
             return Option::None<int32>();
         }
@@ -33,7 +33,7 @@ struct Pairs {
 
 extend Pairs {
     // Two payloads put the second one past the first, which only an aggregate has room for.
-    func Advance(self: &var Pairs) -> Option<int64> {
+    func Advance(&var self) -> Option<int64> {
         if self.index >= 2i32 {
             return Option::None<int64>();
         }

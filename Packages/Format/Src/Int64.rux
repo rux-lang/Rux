@@ -13,12 +13,12 @@ extend int64 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/integer-text#int64-write-display
-    pub func WriteDisplay(self: &int64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let wide = self;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
         let negative = wide < 0;
-        let magnitude = negative ? ~wide.Truncate<uint64>() + 1 : wide as uint64;
+        let magnitude = if negative { ~wide.Truncate<uint64>() + 1 } else { wide as uint64 };
         return WriteIntegerSpec(writer, spec, magnitude, negative);
     }
 }
@@ -30,7 +30,7 @@ extend int64 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/integer-text#int64-write-debug
-    pub func WriteDebug(self: &int64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

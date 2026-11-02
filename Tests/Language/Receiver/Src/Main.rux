@@ -1,6 +1,6 @@
 // The three receiver forms, and the one thing that separates them: what the
-// method may do to the value the call site named. `self: &T` reads it,
-// `self: &var T` rewrites it in place, and `self: T` gets a copy the caller
+// method may do to the value the call site named. `&self` reads it,
+// `&var self` rewrites it in place, and `self` gets a copy the caller
 // never sees again.
 
 struct Vector {
@@ -9,18 +9,18 @@ struct Vector {
 }
 
 extend Vector {
-    func Sum(self: &Vector) -> float64 {
+    func Sum(&self) -> float64 {
         return self.x + self.y;
     }
 
-    func Scale(self: &var Vector, factor: float64) {
+    func Scale(&var self, factor: float64) {
         self.x *= factor;
         self.y *= factor;
     }
 
     // The receiver is immutable like every parameter. A writable local copy is
     // what scaling changes, so the caller's value remains untouched.
-    func Scaled(self: Vector, factor: float64) -> Vector {
+    func Scaled(self, factor: float64) -> Self {
         var result = self;
         result.Scale(factor);
         return result;
@@ -38,12 +38,12 @@ struct Wide {
 }
 
 extend Wide {
-    func Total(self: Wide) -> float64 {
+    func Total(self) -> float64 {
         return self.a + self.b + self.c + self.d + self.e;
     }
 
-    func Bumped(self: Wide, amount: float64) -> Wide {
-        return Wide { a: self.a + amount, b: self.b, c: self.c, d: self.d, e: self.e };
+    func Bumped(self, amount: float64) -> Self {
+        return Self { a: self.a + amount, b: self.b, c: self.c, d: self.d, e: self.e };
     }
 }
 
@@ -56,11 +56,11 @@ struct Key {
 }
 
 extend Key {
-    func ==(self: Key, other: Key) -> bool {
+    func ==(self, other: Self) -> bool {
         return self.id == other.id && self.origin == other.origin;
     }
 
-    func !=(self: Key, other: Key) -> bool {
+    func !=(self, other: Self) -> bool {
         return !(self == other);
     }
 }
@@ -73,11 +73,11 @@ struct Pair<T> {
 extend Pair<T> {
     // A receiver is written with the type being extended, type arguments and
     // all, and reads its own type parameter through it.
-    func Second(self: &Pair<T>) -> T {
+    func Second(&self) -> T {
         return self.second;
     }
 
-    func Swap(self: &var Pair<T>) {
+    func Swap(&var self) {
         let held = self.first;
         self.first = self.second;
         self.second = held;

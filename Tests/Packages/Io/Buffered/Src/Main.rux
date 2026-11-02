@@ -24,7 +24,7 @@ struct SourceHandle {
 }
 
 extend SourceHandle : Reader {
-    func Read(self: &var SourceHandle, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the `CountingSource` local of `Main`, which outlives every handle made from it.
         unsafe {
@@ -60,7 +60,7 @@ struct SinkHandle {
 }
 
 extend SinkHandle : Writer {
-    func Write(self: &var SinkHandle, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
         unsafe {
@@ -79,7 +79,7 @@ extend SinkHandle : Writer {
         }
     }
 
-    func Flush(self: &var SinkHandle) -> ! IoError {
+    func Flush(&var self) -> ! IoError {
         // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
         unsafe { self.state.flushes = self.state.flushes + 1; }
     }
@@ -91,7 +91,7 @@ struct BlockedHandle {
 }
 
 extend BlockedHandle : Reader {
-    func Read(self: &var BlockedHandle, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         // Safety: `calls` points at a counter local of `Main`, which outlives the handle.
         unsafe { *self.calls = *self.calls + 1; }
         fail IoError::Of(IoErrorKind::WouldBlock);
@@ -106,7 +106,7 @@ func Main() -> int {
     var source = CountingSource { served: 0, calls: 0, limit: 64 };
     let sourceHandle: Reader = SourceHandle { state: @source };
     var reader = BufferedReader::New(allocator, sourceHandle, 16) catch {
-        else => Panic("the reader takes its buffer")
+        _ => Panic("the reader takes its buffer")
     };
     var one: char8[1];
     let oneRoom = one[..1];
@@ -115,7 +115,7 @@ func Main() -> int {
     while true {
         let filled = reader.Read(oneRoom) catch {
             error if error.IsEnd() => break,
-            else => Panic("every read before the end succeeds")
+            _ => Panic("every read before the end succeeds")
         };
         Assert(filled == 1, "each read fills the one-byte room");
         count = count + 1;
@@ -129,11 +129,11 @@ func Main() -> int {
     var bigSource = CountingSource { served: 0, calls: 0, limit: 64 };
     let bigHandle: Reader = SourceHandle { state: @bigSource };
     var bypassReader = BufferedReader::New(allocator, bigHandle, 8) catch {
-        else => Panic("the reader takes its buffer")
+        _ => Panic("the reader takes its buffer")
     };
     var bigStorage: char8[32];
     let bigRoom = bigStorage[..32];
-    let filled = bypassReader.Read(bigRoom) catch { else => Panic("the large read succeeds") };
+    let filled = bypassReader.Read(bigRoom) catch { _ => Panic("the large read succeeds") };
     Assert(filled == 32, "whole");
     Assert(bigSource.calls == 1, "in one conversation, straight past the buffer");
 
@@ -141,9 +141,9 @@ func Main() -> int {
     var peekSource = CountingSource { served: 0, calls: 0, limit: 10 };
     let peekHandle: Reader = SourceHandle { state: @peekSource };
     var peekReader = BufferedReader::New(allocator, peekHandle, 16) catch {
-        else => Panic("the reader takes its buffer")
+        _ => Panic("the reader takes its buffer")
     };
-    peekReader.Fill() catch { else => Panic("the buffer fills on request") };
+    peekReader.Fill() catch { _ => Panic("the buffer fills on request") };
     Assert(peekReader.Available() == 10, "with everything the source had");
     let peeked = peekReader.Buffered();
     Assert(peeked[0] == c8'a' && peeked[9] == c8'j', "visible without being consumed");
@@ -159,25 +159,25 @@ func Main() -> int {
         flushes: 0
     };
     let sinkHandle: Writer = SinkHandle { state: @sink };
-    var writer = BufferedWriter::New(allocator, sinkHandle, 32) catch { else => Panic("the writer takes its buffer") };
+    var writer = BufferedWriter::New(allocator, sinkHandle, 32) catch { _ => Panic("the writer takes its buffer") };
     var piece: uint = 0;
     while piece < 8 {
-        let taken = writer.Write(TextBytes("ab")) catch { else => Panic("each small write succeeds") };
+        let taken = writer.Write(TextBytes("ab")) catch { _ => Panic("each small write succeeds") };
         Assert(taken == 2, "each small write is taken whole");
         piece = piece + 1;
     }
     Assert(sink.calls == 0, "and none of them reached the sink yet");
     Assert(writer.Pending() == 16, "they wait in the buffer");
-    writer.Flush() catch { else => Panic("until the flush") };
+    writer.Flush() catch { _ => Panic("until the flush") };
     Assert(sink.calls == 1, "which is one conversation");
     Assert(sink.flushes == 1, "passed through to the sink");
     Assert(sink.written == 16 && sinkStorage[0] == c8'a' && sinkStorage[15] == c8'b', "carrying every byte in order");
 
     // A write larger than the buffer goes around it — after what was gathered, so order holds.
-    let gathered = writer.Write(TextBytes("xy")) catch { else => Panic("a small write gathers") };
+    let gathered = writer.Write(TextBytes("xy")) catch { _ => Panic("a small write gathers") };
     Assert(gathered == 2, "and is taken whole");
     let around = writer.Write(TextBytes("0123456789abcdefghijklmnopqrstuvwxyz")) catch {
-        else => Panic("a huge one goes around")
+        _ => Panic("a huge one goes around")
     };
     Assert(around == 36, "whole");
     Assert(sinkStorage[16] == c8'x' && sinkStorage[17] == c8'y', "the gathered bytes went first");
@@ -189,7 +189,7 @@ func Main() -> int {
     var blockedCalls: uint = 0;
     let blockedHandle: Reader = BlockedHandle { calls: @blockedCalls };
     var blocked = BufferedReader::New(allocator, blockedHandle, 8) catch {
-        else => Panic("the reader takes its buffer")
+        _ => Panic("the reader takes its buffer")
     };
     match blocked.Fill() {
         .Success(_) => Panic("a source that is never ready fills nothing"),

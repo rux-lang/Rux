@@ -6,12 +6,12 @@ struct Record { value: int32; }
 struct Holder<T> { value: T; }
 enum Mode: uint8 { Ready = 3 }
 union Bits { value: uint32 }
-extend Record { func Record(value: int32) -> Record { return Record { value: value }; } func Sum(self: &Record) -> int32 { return self.value; } }
-extend Holder<T> { func Value(self: &Holder<T>) -> T { return self.value; } }
+extend Record { func Record(value: int32) -> Self { return Self { value }; } func Sum(&self) -> int32 { return self.value; } }
+extend Holder<T> { func Value(&self) -> T { return self.value; } }
 
 struct Tracked { counter: *var int; }
 // Safety: the only `Tracked` here stores `@drops`, a local that outlives it.
-extend Tracked { func ~Tracked(self: &var Tracked) { unsafe { *self.counter += 10; } } }
+extend Tracked { func ~Tracked(&var self) { unsafe { *self.counter += 10; } } }
 module Left {
     pub struct Record { pub value: uint8; }
     pub func Make() -> Record { return Record { value: 71u8 }; }
@@ -21,7 +21,7 @@ module Right {
     pub func Make() -> Record { return Record { value: 73i32 }; }
 }
 interface Reader { func Read() -> int32; }
-extend Record : Reader { func Read(self: &Record) -> int32 { return self.value; } }
+extend Record : Reader { func Read(&self) -> int32 { return self.value; } }
 func ReadLocal(value: &Reader) -> int32 { return value.Read(); }
 
 func Main() -> int {

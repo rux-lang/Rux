@@ -16,13 +16,13 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
     var room: char8[128];
-    let written = PercentEncode(text, room[..], set) catch { else => return false };
+    let written = PercentEncode(text, room[..], set) catch { _ => return false };
     return written == PercentEncodedLength(text, set) && Same(room[..written], expected);
 }
 
 func Decoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
     var room: byte[128];
-    let written = PercentDecode(text, room[..], set) catch { else => return false };
+    let written = PercentDecode(text, room[..], set) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {
@@ -43,7 +43,7 @@ func BadEscapeAt(text: char8[..], at: uint) -> bool {
     }
     return match reported {
         .InvalidEscape(offset) => offset == at,
-        else => false
+        _ => false
     };
 }
 
@@ -85,7 +85,7 @@ func Main() -> int {
                 .InsufficientCapacity(needed) => {
                     if needed != 3 { return 19; }
                 },
-                else => return 20
+                _ => return 20
             }
         },
         .Success(_) => return 21

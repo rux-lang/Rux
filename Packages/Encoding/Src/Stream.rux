@@ -41,13 +41,13 @@ func EncodeWith(codec: StreamCodec, bytes: byte[..], into: var char8[..]) -> uin
     var written: uint = 0;
     match codec {
         StreamCodec::Hex(letterCase) => written = HexEncode(bytes, into, letterCase) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
+            _ => fail IoError::Of(IoErrorKind::Other)
         },
         StreamCodec::Base64(form) => written = Base64Encode(bytes, into, form) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
+            _ => fail IoError::Of(IoErrorKind::Other)
         },
         StreamCodec::Base32(form) => written = Base32Encode(bytes, into, form) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
+            _ => fail IoError::Of(IoErrorKind::Other)
         }
     }
     return written;
@@ -57,13 +57,13 @@ func DecodeWith(codec: StreamCodec, text: char8[..], into: var byte[..]) -> uint
     var written: uint = 0;
     match codec {
         StreamCodec::Hex(_) => written = HexDecode(text, into) catch {
-            else => fail IoError::Of(IoErrorKind::InvalidInput)
+            _ => fail IoError::Of(IoErrorKind::InvalidInput)
         },
         StreamCodec::Base64(form) => written = Base64Decode(text, into, form) catch {
-            else => fail IoError::Of(IoErrorKind::InvalidInput)
+            _ => fail IoError::Of(IoErrorKind::InvalidInput)
         },
         StreamCodec::Base32(form) => written = Base32Decode(text, into, form) catch {
-            else => fail IoError::Of(IoErrorKind::InvalidInput)
+            _ => fail IoError::Of(IoErrorKind::InvalidInput)
         }
     }
     return written;
@@ -72,6 +72,7 @@ func DecodeWith(codec: StreamCodec, text: char8[..], into: var byte[..]) -> uint
 /// A writer that encodes what is written to it onto another writer. Not copied.
 /// The text is complete only once `Finish` has written the last group and its padding.
 /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer
+#NoCopy
 pub struct EncodingWriter {
     sink: Writer;
     codec: StreamCodec;
@@ -81,19 +82,17 @@ pub struct EncodingWriter {
 }
 
 extend EncodingWriter {
-    func =(self: &var EncodingWriter, other: &EncodingWriter);
-
     /// A writer encoding with `codec` onto `sink`.
     /// @param sink where the text goes
     /// @param codec the encoding and its form
     /// @returns the writer
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-new
-    pub func New(sink: Writer, codec: StreamCodec) -> EncodingWriter {
-        return EncodingWriter { sink: sink, codec: codec, pending: [0u8; 8], pendingLength: 0, finished: false };
+    pub func New(sink: Writer, codec: StreamCodec) -> Self {
+        return Self { sink, codec, pending: [0u8; 8], pendingLength: 0, finished: false };
     }
 
     // Encodes `bytes`, a whole number of groups or the final partial one, and writes the text.
-    func Emit(self: &var EncodingWriter, bytes: byte[..]) -> ! IoError {
+    func Emit(&var self, bytes: byte[..]) -> ! IoError {
         var text: char8[512] = [c8' '; 512];
         let length = EncodeWith(self.codec, bytes, text[..])?;
         WriteAll(self.sink, text[..length])?;
@@ -103,7 +102,7 @@ extend EncodingWriter {
     /// flushes the writer underneath. Nothing more may be written afterwards.
     /// @returns nothing, or why the writer underneath failed
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-finish
-    pub func Finish(self: &var EncodingWriter) -> ! IoError {
+    pub func Finish(&var self) -> ! IoError {
         if self.finished { return; }
         self.finished = true;
         if self.pendingLength > 0 {
@@ -121,7 +120,7 @@ extend EncodingWriter : Writer {
     /// @param bytes the bytes to encode
     /// @returns how many were taken, which is all of them, or fails with `InvalidInput` after `Finish`
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-write
-    pub func Write(self: &var EncodingWriter, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.finished { fail IoError::Of(IoErrorKind::InvalidInput); }
         // Safety: `char8` and `byte` are both one byte wide and every bit pattern is a valid `byte`, and `bytes.data`
         // addresses `bytes.length` live code units for the duration of this call.
@@ -161,7 +160,7 @@ extend EncodingWriter : Writer {
     /// not yet written; `Finish` is what writes it.
     /// @returns nothing, or why the writer underneath failed
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-flush
-    pub func Flush(self: &var EncodingWriter) -> ! IoError {
+    pub func Flush(&var self) -> ! IoError {
         self.sink.Flush()?;
     }
 }
@@ -170,6 +169,7 @@ extend EncodingWriter : Writer {
 /// The text is held to the same rules as the slice decoders, so text that would not decode whole fails with
 /// `InvalidInput` when the reader reaches it. Crockford Base32 skips its hyphens, as its specification asks.
 /// @see https://rux-lang.dev/docs/api/encoding/stream#decoding-reader
+#NoCopy
 pub struct DecodingReader {
     source: Reader;
     codec: StreamCodec;
@@ -182,17 +182,15 @@ pub struct DecodingReader {
 }
 
 extend DecodingReader {
-    func =(self: &var DecodingReader, other: &DecodingReader);
-
     /// A reader decoding `codec` text from `source`.
     /// @param source where the text comes from
     /// @param codec the encoding and its form
     /// @returns the reader
     /// @see https://rux-lang.dev/docs/api/encoding/stream#decoding-reader-new
-    pub func New(source: Reader, codec: StreamCodec) -> DecodingReader {
-        return DecodingReader {
-            source: source,
-            codec: codec,
+    pub func New(source: Reader, codec: StreamCodec) -> Self {
+        return Self {
+            source,
+            codec,
             text: [c8' '; 512],
             textLength: 0,
             decoded: [0u8; 384],
@@ -203,10 +201,10 @@ extend DecodingReader {
     }
 
     // Reads more text, skipping what the form ignores; reports false once the source has ended.
-    func Fill(self: &var DecodingReader) -> bool ! IoError {
+    func Fill(&var self) -> bool ! IoError {
         var chunk: char8[256] = [c8' '; 256];
         let room = 512 - self.textLength;
-        let wanted = room < 256u ? room : 256u;
+        let wanted = if room < 256u { room } else { 256u };
         var count: uint = 0;
         match self.source.Read(chunk[..wanted]) {
             .Success(read) => count = read,
@@ -218,7 +216,7 @@ extend DecodingReader {
         var skipsHyphens = false;
         match self.codec {
             StreamCodec::Base32(form) => skipsHyphens = form == Base32Variant::Crockford,
-            else => {}
+            _ => {}
         }
         var index: uint = 0;
         while index < count {
@@ -233,7 +231,7 @@ extend DecodingReader {
     }
 
     // Decodes the first `length` characters of text and keeps the rest for later.
-    func DecodeFront(self: &var DecodingReader, length: uint) -> ! IoError {
+    func DecodeFront(&var self, length: uint) -> ! IoError {
         let text = self.text;
         self.decodedEnd = DecodeWith(self.codec, text[..length], self.decoded[..])?;
         self.decodedStart = 0;
@@ -252,7 +250,7 @@ extend DecodingReader : Reader {
     /// @returns how many were decoded, or fails with `EndOfStream` after the last, or with `InvalidInput` for text
     ///   that is not in the form
     /// @see https://rux-lang.dev/docs/api/encoding/stream#decoding-reader-read
-    pub func Read(self: &var DecodingReader, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if into.length == 0 { return 0; }
         let group = GroupCharacters(self.codec);
         while self.decodedStart == self.decodedEnd {

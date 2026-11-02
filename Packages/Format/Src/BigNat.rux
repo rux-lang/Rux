@@ -29,22 +29,19 @@ struct BigNat {
 }
 
 extend BigNat {
-    /// Copying would give two owners of the same limb block.
-    func =(self: &var BigNat, other: &BigNat);
-
     /// Zero, holding no storage yet.
     /// @param allocator where the working storage comes from
     /// @returns a zero that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-new
-    func BigNat(allocator: Allocator) -> BigNat {
-        return BigNat { allocator: allocator, limbs: null, capacity: 0, length: 0 };
+    func BigNat(allocator: Allocator) -> Self {
+        return Self { allocator, limbs: null, capacity: 0, length: 0 };
     }
 
     /// Makes room for `count` limbs, keeping the value. Reports `false` when the allocator refuses.
     /// @param count how many digits there are
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-reserve
-    func Reserve(self: &var BigNat, count: uint) -> bool {
+    func Reserve(&var self, count: uint) -> bool {
         if count <= self.capacity { return true; }
         // Growing by halves keeps repeated multiplication linear in allocations rather than quadratic.
         var wanted = self.capacity + self.capacity / 2 + 8;
@@ -54,7 +51,7 @@ extend BigNat {
         let empty = Layout { size: 0, alignment: 1 };
         let layout = Layout::New(wanted * 8, 8) ?? (empty);
         if layout.size == 0 { return false; }
-        let block = self.allocator.Allocate(layout) catch { else => return false };
+        let block = self.allocator.Allocate(layout) catch { _ => return false };
         // Safety: `block` came from `Allocate` with `wanted * 8` bytes at alignment eight, room for `wanted` limbs,
         // and every bit pattern is a valid `uint64`.
         let fresh = unsafe { block as *var uint64 };
@@ -69,18 +66,18 @@ extend BigNat {
         // whole point of growing is to keep the value.
         if self.limbs != null {
             let old = Layout::New(self.capacity * 8, 8) ?? (empty);
-            self.allocator.Deallocate(self.limbs as *var opaque, old) catch { else => {} };
+            self.allocator.Deallocate(self.limbs as *var opaque, old) catch { _ => {} };
         }
         self.limbs = fresh;
         self.capacity = wanted;
         return true;
     }
 
-    func Release(self: &var BigNat) {
+    func Release(&var self) {
         if self.limbs != null {
             let empty = Layout { size: 0, alignment: 1 };
             let layout = Layout::New(self.capacity * 8, 8) ?? (empty);
-            self.allocator.Deallocate(self.limbs as *var opaque, layout) catch { else => {} };
+            self.allocator.Deallocate(self.limbs as *var opaque, layout) catch { _ => {} };
             self.limbs = null;
             self.capacity = 0;
         }
@@ -88,7 +85,7 @@ extend BigNat {
     }
 
     // Drops leading zero limbs so that `length` is canonical, which every comparison relies on.
-    func Trim(self: &var BigNat) {
+    func Trim(&var self) {
         // Safety: `self.length` is above zero, tested first, and at most `self.capacity` (the BigNat invariant).
         while self.length > 0 && unsafe { self.limbs[self.length - 1] } == 0 {
             self.length = self.length - 1;
@@ -98,7 +95,7 @@ extend BigNat {
     /// Whether this is zero.
     /// @returns whether the value is zero
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-is-zero
-    func IsZero(self: &BigNat) -> bool {
+    func IsZero(&self) -> bool {
         return self.length == 0;
     }
 
@@ -106,11 +103,11 @@ extend BigNat {
     /// @param value the value to act on
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-set-small
-    func SetSmall(self: &var BigNat, value: uint64) -> bool {
+    func SetSmall(&var self, value: uint64) -> bool {
         if !self.Reserve(1) { return false; }
         // Safety: `Reserve` made room for at least one limb.
         unsafe { self.limbs[0] = value; }
-        self.length = value == 0 ? 0 : 1;
+        self.length = if value == 0 { 0 } else { 1 };
         return true;
     }
 
@@ -118,7 +115,7 @@ extend BigNat {
     /// @param value the value to act on
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-set-wide
-    func SetWide(self: &var BigNat, value: uint512) -> bool {
+    func SetWide(&var self, value: uint512) -> bool {
         if !self.Reserve(8) { return false; }
         var index: uint = 0;
         while index < 8 {
@@ -135,7 +132,7 @@ extend BigNat {
     /// @param other the value to operate against
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-assign
-    func Assign(self: &var BigNat, other: &BigNat) -> bool {
+    func Assign(&var self, other: &Self) -> bool {
         if !self.Reserve(other.length) { return false; }
         var index: uint = 0;
         while index < other.length {
@@ -151,7 +148,7 @@ extend BigNat {
     /// How many bits the value needs; zero for zero.
     /// @returns how many bits the value occupies, zero for zero
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-bit-length
-    func BitLength(self: &BigNat) -> uint {
+    func BitLength(&self) -> uint {
         if self.length == 0 { return 0; }
         // Safety: `self.length` is above zero, checked above, and at most `self.capacity` (the BigNat invariant).
         var top = unsafe { self.limbs[self.length - 1] };
@@ -167,8 +164,8 @@ extend BigNat {
     /// @param other the value to operate against
     /// @returns negative, zero or positive as this value orders against `other`
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-compare
-    func Compare(self: &BigNat, other: &BigNat) -> int32 {
-        if self.length != other.length { return self.length < other.length ? -1 : 1; }
+    func Compare(&self, other: &Self) -> int32 {
+        if self.length != other.length { return if self.length < other.length { -1 } else { 1 }; }
         var index = self.length;
         while index > 0 {
             index = index - 1;
@@ -177,7 +174,7 @@ extend BigNat {
             let mine = unsafe { self.limbs[index] };
             // Safety: the same `index`, below `other.length`, which is within `other`'s block.
             let theirs = unsafe { other.limbs[index] };
-            if mine != theirs { return mine < theirs ? -1 : 1; }
+            if mine != theirs { return if mine < theirs { -1 } else { 1 }; }
         }
         return 0;
     }
@@ -186,7 +183,7 @@ extend BigNat {
     /// @param bits the value's bit pattern
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-shift-left
-    func ShiftLeft(self: &var BigNat, bits: uint) -> bool {
+    func ShiftLeft(&var self, bits: uint) -> bool {
         if self.length == 0 || bits == 0 { return true; }
         let limbShift = bits / 64;
         let bitShift = bits % 64;
@@ -226,7 +223,7 @@ extend BigNat {
     /// @param factor what to multiply by
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-multiply-small
-    func MultiplySmall(self: &var BigNat, factor: uint64) -> bool {
+    func MultiplySmall(&var self, factor: uint64) -> bool {
         if factor == 0 {
             self.length = 0;
             return true;
@@ -255,7 +252,7 @@ extend BigNat {
     /// @param value the value to act on
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-add-small
-    func AddSmall(self: &var BigNat, value: uint64) -> bool {
+    func AddSmall(&var self, value: uint64) -> bool {
         if !self.Reserve(self.length + 1) { return false; }
         var carry = value;
         var index: uint = 0;
@@ -280,8 +277,8 @@ extend BigNat {
     /// @param other the value to operate against
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-add
-    func Add(self: &var BigNat, other: &BigNat) -> bool {
-        let longest = self.length > other.length ? self.length : other.length;
+    func Add(&var self, other: &Self) -> bool {
+        let longest = if self.length > other.length { self.length } else { other.length };
         if !self.Reserve(longest + 1) { return false; }
         var carry: uint64 = 0;
         var index: uint = 0;
@@ -290,8 +287,8 @@ extend BigNat {
             // invariant), and the write at `index`, below `longest`, is inside the `longest + 1` limbs `Reserve`
             // made room for.
             unsafe {
-                let left = index < self.length ? self.limbs[index] : 0;
-                let right = index < other.length ? other.limbs[index] : 0;
+                let left = if index < self.length { self.limbs[index] } else { 0 };
+                let right = if index < other.length { other.limbs[index] } else { 0 };
                 let sum = (left as uint128) + (right as uint128) + (carry as uint128);
                 self.limbs[index] = sum.Truncate<uint64>();
                 carry = (sum >> 64) as uint64;
@@ -310,14 +307,14 @@ extend BigNat {
     /// Subtracts `other` in place. It must not exceed this, which every caller compares for first.
     /// @param other the value to operate against
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-subtract
-    func Subtract(self: &var BigNat, other: &BigNat) {
+    func Subtract(&var self, other: &Self) {
         var borrow: uint64 = 0;
         var index: uint = 0;
         while index < self.length {
             // Safety: `other` is read only below `other.length` and this value only below `self.length`, each within
             // its own block (the BigNat invariant).
             unsafe {
-                let right = index < other.length ? other.limbs[index] : 0u64;
+                let right = if index < other.length { other.limbs[index] } else { 0u64 };
                 let left = self.limbs[index];
                 let taken = (right as uint128) + (borrow as uint128);
                 if (left as uint128) >= taken {
@@ -339,7 +336,7 @@ extend BigNat {
     /// @param right the other
     /// @returns true when the allocator refused, leaving the value unusable
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-set-product
-    func SetProduct(self: &var BigNat, left: &BigNat, right: &BigNat) -> bool {
+    func SetProduct(&var self, left: &Self, right: &Self) -> bool {
         let total = left.length + right.length;
         if !self.Reserve(total + 1) { return false; }
         // The recursion works in one block taken here, so a product of any size asks the allocator twice, however
@@ -362,7 +359,7 @@ extend BigNat {
     /// @param divisor the value to divide by, which must be at most ten times this one
     /// @returns the leading decimal digit, with that multiple of `divisor` subtracted from this value
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-take-digit
-    func TakeDigit(self: &var BigNat, divisor: &BigNat) -> uint {
+    func TakeDigit(&var self, divisor: &Self) -> uint {
         var digit: uint = 0;
         while digit < 9 && self.Compare(divisor) >= 0 {
             self.Subtract(divisor);
@@ -373,7 +370,7 @@ extend BigNat {
 
     /// Gives the limbs back.
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-destructor
-    func ~BigNat(self: &var BigNat) {
+    func ~BigNat(&var self) {
         self.Release();
     }
 }
@@ -396,14 +393,14 @@ func KaratsubaWork(count: uint) -> uint {
 
 // The working room `MultiplyLimbs` needs for factors of these lengths.
 func ProductWork(leftCount: uint, rightCount: uint) -> uint {
-    let long = leftCount > rightCount ? leftCount : rightCount;
-    let short = leftCount > rightCount ? rightCount : leftCount;
+    let long = if leftCount > rightCount { leftCount } else { rightCount };
+    let short = if leftCount > rightCount { rightCount } else { leftCount };
     if short < KaratsubaLimbs { return 0; }
     if long == short { return KaratsubaWork(short); }
     let rest = long % short;
     let whole = KaratsubaWork(short);
-    let tail = rest == 0 ? 0u : ProductWork(short, rest);
-    return 2 * short + (whole > tail ? whole : tail);
+    let tail = if rest == 0 { 0u } else { ProductWork(short, rest) };
+    return 2 * short + (if whole > tail { whole } else { tail });
 }
 
 // out[0, l + r) = left[0, l) * right[0, r), one row at a time.
@@ -437,7 +434,7 @@ unsafe func AddLimbsAt(out: *var uint64, end: uint, offset: uint, value: *uint64
     var carry: uint64 = 0;
     var index: uint = 0;
     while index < count || (carry != 0 && offset + index < end) {
-        let addend = index < count ? value[index] : 0u64;
+        let addend = if index < count { value[index] } else { 0u64 };
         let sum = (out[offset + index] as uint128) + (addend as uint128) + (carry as uint128);
         out[offset + index] = sum.Truncate<uint64>();
         carry = (sum >> 64) as uint64;
@@ -451,7 +448,7 @@ unsafe func SubtractLimbs(out: *var uint64, length: uint, value: *uint64, count:
     var borrow: uint64 = 0;
     var index: uint = 0;
     while index < length {
-        let right = ((index < count ? value[index] : 0u64) as uint128) + (borrow as uint128);
+        let right = ((if index < count { value[index] } else { 0u64 }) as uint128) + (borrow as uint128);
         let left = out[index] as uint128;
         if left >= right {
             out[index] = (left - right) as uint64;
@@ -471,7 +468,7 @@ unsafe func SumHalves(sum: *var uint64, low: *uint64, lower: uint, high: *uint64
     var carry: uint64 = 0;
     var index: uint = 0;
     while index < upper {
-        let addend = index < lower ? low[index] : 0u64;
+        let addend = if index < lower { low[index] } else { 0u64 };
         let total = (high[index] as uint128) + (addend as uint128) + (carry as uint128);
         sum[index] = total.Truncate<uint64>();
         carry = (total >> 64) as uint64;
@@ -536,7 +533,7 @@ unsafe func MultiplyLimbs(out: *var uint64, left: *uint64, leftCount: uint, righ
     let piece = work;
     var offset: uint = 0;
     while offset < leftCount {
-        let count = leftCount - offset < rightCount ? leftCount - offset : rightCount;
+        let count = if leftCount - offset < rightCount { leftCount - offset } else { rightCount };
         MultiplyLimbs(piece, @left[offset], count, right, rightCount, @work[2 * rightCount]);
         AddLimbsAt(out, total, offset, piece, count + rightCount);
         offset = offset + rightCount;

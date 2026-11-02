@@ -223,7 +223,7 @@ func RuleDay(date: &RuleDate, year: int32) -> int64 {
 }
 
 func MonthLength(year: int32, month: uint8) -> int64 {
-    if month == 2u8 { return IsLeapYear(year) ? 29i64 : 28i64; }
+    if month == 2u8 { return if IsLeapYear(year) { 29i64 } else { 28i64 }; }
     if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 { return 30i64; }
     return 31i64;
 }
@@ -242,6 +242,6 @@ func RuleTypeAt(rule: &Rule, seconds: int64) -> ZoneType {
     let year = YearAt(seconds, rule.standard.offset);
     let start = RuleDay(rule.start, year) * 86400i64 + rule.start.time as int64 - rule.standard.offset as int64;
     let end = RuleDay(rule.end, year) * 86400i64 + rule.end.time as int64 - rule.daylight.offset as int64;
-    let inDaylight = start < end ? (seconds >= start && seconds < end) : !(seconds >= end && seconds < start);
-    return inDaylight ? rule.daylight : rule.standard;
+    let inDaylight = if start < end { seconds >= start && seconds < end } else { !(seconds >= end && seconds < start) };
+    return if inDaylight { rule.daylight } else { rule.standard };
 }

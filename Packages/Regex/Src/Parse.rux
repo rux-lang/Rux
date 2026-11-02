@@ -111,23 +111,23 @@ func DecodeAt(text: char8[..], at: uint) -> Decoded {
     else if first >= 0xE0u32 && first <= 0xEFu32 && left >= 3u {
         let second = text[at + 1] as uint32;
         let third = text[at + 2] as uint32;
-        let low: uint32 = first == 0xE0u32 ? 0xA0u32 : 0x80u32;
-        let high: uint32 = first == 0xEDu32 ? 0x9Fu32 : 0xBFu32;
+        let low: uint32 = if first == 0xE0u32 { 0xA0u32 } else { 0x80u32 };
+        let high: uint32 = if first == 0xEDu32 { 0x9Fu32 } else { 0xBFu32 };
         if second >= low && second <= high && (third & 0xC0u32) == 0x80u32 {
             let scalar = ((first & 0x0Fu32) << 12) | ((second & 0x3Fu32) << 6) | (third & 0x3Fu32);
-            return Decoded { scalar: scalar, length: 3, valid: true };
+            return Decoded { scalar, length: 3, valid: true };
         }
     }
     else if first >= 0xF0u32 && first <= 0xF4u32 && left >= 4u {
         let second = text[at + 1] as uint32;
         let third = text[at + 2] as uint32;
         let fourth = text[at + 3] as uint32;
-        let low: uint32 = first == 0xF0u32 ? 0x90u32 : 0x80u32;
-        let high: uint32 = first == 0xF4u32 ? 0x8Fu32 : 0xBFu32;
+        let low: uint32 = if first == 0xF0u32 { 0x90u32 } else { 0x80u32 };
+        let high: uint32 = if first == 0xF4u32 { 0x8Fu32 } else { 0xBFu32 };
         if second >= low && second <= high && (third & 0xC0u32) == 0x80u32 && (fourth & 0xC0u32) == 0x80u32 {
             let scalar = ((first & 0x07u32) << 18) | ((second & 0x3Fu32) << 12) | ((third & 0x3Fu32) << 6) |
                          (fourth & 0x3Fu32);
-            return Decoded { scalar: scalar, length: 4, valid: true };
+            return Decoded { scalar, length: 4, valid: true };
         }
     }
     return Decoded { scalar: 0xFFFDu32, length: 1, valid: false };
@@ -279,26 +279,24 @@ struct Parser {
 }
 
 extend Parser {
-    func =(self: &var Parser, other: &Parser);
-
-    func Fail(self: &Parser, kind: RegexErrorKind, offset: uint) -> RegexError {
-        return RegexError { kind: kind, offset: offset };
+    func Fail(&self, kind: RegexErrorKind, offset: uint) -> RegexError {
+        return RegexError { kind, offset };
     }
 
     // The byte at the cursor, or 0xFFFFFFFF at the end.
-    func Peek(self: &Parser) -> uint32 {
+    func Peek(&self) -> uint32 {
         if self.at >= self.pattern.length { return 0xFFFFFFFFu32; }
         return self.pattern[self.at] as uint32;
     }
 
     // The byte `ahead` past the cursor, or 0xFFFFFFFF past the end.
-    func PeekAt(self: &Parser, ahead: uint) -> uint32 {
+    func PeekAt(&self, ahead: uint) -> uint32 {
         if self.at + ahead >= self.pattern.length { return 0xFFFFFFFFu32; }
         return self.pattern[self.at + ahead] as uint32;
     }
 
     // Skips the spaces and `#` comments that `(?x)` lets a pattern hold.
-    func SkipLayout(self: &var Parser) {
+    func SkipLayout(&var self) {
         if (self.flags & FlagExtended) == 0u8 { return; }
         while self.at < self.pattern.length {
             let byte = self.pattern[self.at] as uint32;
@@ -314,23 +312,23 @@ extend Parser {
         }
     }
 
-    func Add(self: &var Parser, node: Node) -> uint32 {
+    func Add(&var self, node: Node) -> uint32 {
         let index = self.nodes.Length();
         self.nodes.Push(node);
         return index as uint32;
     }
 
-    func AddNode(self: &var Parser, kind: NodeKind, flags: uint8, value: uint32, low: uint32, high: uint32,
+    func AddNode(&var self, kind: NodeKind, flags: uint8, value: uint32, low: uint32, high: uint32,
                  child: uint32) -> uint32 {
-        return self.Add(Node { kind: kind, flags: flags, value: value, low: low, high: high, child: child, next: NoNode });
+        return self.Add(Node { kind, flags, value, low, high, child, next: NoNode });
     }
 
-    func Link(self: &var Parser, from: uint32, to: uint32) {
+    func Link(&var self, from: uint32, to: uint32) {
         self.nodes.AsMutableSlice()[from as uint].next = to;
     }
 
     // Alternatives separated by `|`.
-    func ParseAlternation(self: &var Parser, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
+    func ParseAlternation(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let first = self.ParseConcat(regex, depth)?;
         if self.Peek() != 0x7Cu32 { return first; }
         let alternation = self.AddNode(NodeKind::Alternate, 0, 0, 0, 0, first);
@@ -345,7 +343,7 @@ extend Parser {
     }
 
     // Repeated atoms, up to a `|` or `)`.
-    func ParseConcat(self: &var Parser, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
+    func ParseConcat(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         var first = NoNode;
         var last = NoNode;
         var count: uint = 0;
@@ -366,7 +364,7 @@ extend Parser {
     }
 
     // Whether a `{` at the cursor starts a count: `{n}`, `{n,}` or `{n,m}`.
-    func AtCount(self: &Parser) -> bool {
+    func AtCount(&self) -> bool {
         var at = self.at + 1;
         var digits: uint = 0;
         while at < self.pattern.length && self.pattern[at] >= c8'0' && self.pattern[at] <= c8'9' {
@@ -382,7 +380,7 @@ extend Parser {
     }
 
     // Reads a number of a count, refusing one over `MaximumCount`.
-    func ParseNumber(self: &var Parser) -> uint32 ! RegexError {
+    func ParseNumber(&var self) -> uint32 ! RegexError {
         let start = self.at;
         var value: uint32 = 0;
         while self.at < self.pattern.length && self.pattern[self.at] >= c8'0' && self.pattern[self.at] <= c8'9' {
@@ -395,7 +393,7 @@ extend Parser {
     }
 
     // An atom and the repetitions that follow it.
-    func ParseRepeat(self: &var Parser, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
+    func ParseRepeat(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         var atom = self.ParseAtom(regex, depth)?;
         while true {
             self.SkipLayout();
@@ -444,13 +442,13 @@ extend Parser {
     }
 
     // A literal character, folded when `(?i)` is on and it has another case.
-    func Literal(self: &var Parser, scalar: uint32) -> uint32 {
+    func Literal(&var self, scalar: uint32) -> uint32 {
         let fold = (self.flags & FlagCase) != 0u8 && HasCase(scalar);
-        return self.AddNode(NodeKind::Literal, fold ? NodeFold : 0u8, scalar, 0, 0, NoNode);
+        return self.AddNode(NodeKind::Literal, if fold { NodeFold } else { 0u8 }, scalar, 0, 0, NoNode);
     }
 
     // One character, class, group, assertion or escape.
-    func ParseAtom(self: &var Parser, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
+    func ParseAtom(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let start = self.at;
         let byte = self.Peek();
         if byte == 0x28u32 { return self.ParseGroup(regex, depth)?; }
@@ -458,16 +456,16 @@ extend Parser {
         if byte == 0x2Eu32 {
             self.at = self.at + 1;
             let dotAll = (self.flags & FlagDotAll) != 0u8;
-            return self.AddNode(NodeKind::Any, dotAll ? NodeDotAll : 0u8, 0, 0, 0, NoNode);
+            return self.AddNode(NodeKind::Any, if dotAll { NodeDotAll } else { 0u8 }, 0, 0, 0, NoNode);
         }
         if byte == 0x5Eu32 {
             self.at = self.at + 1;
-            let kind = (self.flags & FlagMultiLine) != 0u8 ? StartLine : StartText;
+            let kind = if (self.flags & FlagMultiLine) != 0u8 { StartLine } else { StartText };
             return self.AddNode(NodeKind::Assertion, 0, kind, 0, 0, NoNode);
         }
         if byte == 0x24u32 {
             self.at = self.at + 1;
-            let kind = (self.flags & FlagMultiLine) != 0u8 ? EndLine : EndText;
+            let kind = if (self.flags & FlagMultiLine) != 0u8 { EndLine } else { EndText };
             return self.AddNode(NodeKind::Assertion, 0, kind, 0, 0, NoNode);
         }
         if byte == 0x2Au32 || byte == 0x2Bu32 || byte == 0x3Fu32 || (byte == 0x7Bu32 && self.AtCount()) {
@@ -480,7 +478,7 @@ extend Parser {
                 EscapeKind::Scalar => return self.Literal(escape.value),
                 EscapeKind::Assertion => return self.AddNode(NodeKind::Assertion, 0, escape.value, 0, 0, NoNode),
                 EscapeKind::Class => {
-                    let fold = (self.flags & FlagCase) != 0u8 ? NodeFold : 0u8;
+                    let fold = if (self.flags & FlagCase) != 0u8 { NodeFold } else { 0u8 };
                     return self.AddNode(NodeKind::Class, fold, first as uint32, 1, 0, NoNode);
                 }
             }
@@ -492,7 +490,7 @@ extend Parser {
     }
 
     // A `(...)` group, or a `(?flags)` that sets flags for the rest of the enclosing group.
-    func ParseGroup(self: &var Parser, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
+    func ParseGroup(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let start = self.at;
         self.at = self.at + 1;
         let saved = self.flags;
@@ -562,7 +560,7 @@ extend Parser {
     }
 
     // A group's name up to its `>`, recorded as the name of group `index`.
-    func ParseName(self: &var Parser, regex: &var Regex, index: uint32) -> ! RegexError {
+    func ParseName(&var self, regex: &var Regex, index: uint32) -> ! RegexError {
         let start = self.at;
         while self.at < self.pattern.length && self.pattern[self.at] != c8'>' {
             let byte = self.pattern[self.at] as uint8;
@@ -577,17 +575,17 @@ extend Parser {
         if regex.IndexOfName(name) != none { fail self.Fail(RegexErrorKind::DuplicateGroupName, start); }
         let offset = regex.nameBytes.Length();
         regex.nameBytes.PushSlice(name);
-        let entry = GroupName { index: index, start: offset as uint32, length: name.length as uint32 };
+        let entry = GroupName { index, start: offset as uint32, length: name.length as uint32 };
         regex.names.Push(entry);
         self.at = self.at + 1;
     }
 
-    func PushItem(self: &var Parser, regex: &var Regex, item: ClassItem) {
+    func PushItem(&var self, regex: &var Regex, item: ClassItem) {
         regex.items.Push(item);
     }
 
     // The name of a `\p` property: one letter, or the text between braces. A `^` after the brace negates it.
-    func ParseProperty(self: &var Parser, regex: &var Regex, negated: bool, start: uint) -> ! RegexError {
+    func ParseProperty(&var self, regex: &var Regex, negated: bool, start: uint) -> ! RegexError {
         var name = self.pattern[self.at..self.at];
         var negate = negated;
         if self.Peek() == 0x7Bu32 {
@@ -618,7 +616,7 @@ extend Parser {
     }
 
     // Reads hexadecimal digits for `\x` and `\u`: exactly `count` of them, or any number between braces.
-    func ParseHex(self: &var Parser, count: uint, start: uint) -> uint32 ! RegexError {
+    func ParseHex(&var self, count: uint, start: uint) -> uint32 ! RegexError {
         var value: uint32 = 0;
         if self.Peek() == 0x7Bu32 {
             self.at = self.at + 1;
@@ -649,7 +647,7 @@ extend Parser {
     }
 
     // A `\` escape. Class escapes push their item; `\b`, `\B`, `\A` and `\z` are assertions outside a class only.
-    func ParseEscape(self: &var Parser, regex: &var Regex, inClass: bool) -> Escaped ! RegexError {
+    func ParseEscape(&var self, regex: &var Regex, inClass: bool) -> Escaped ! RegexError {
         let start = self.at;
         self.at = self.at + 1;
         let byte = self.Peek();
@@ -710,7 +708,7 @@ extend Parser {
     }
 
     // One end of a class range: a character or an escape for one. Class escapes push their item and give none.
-    func ParseClassCharacter(self: &var Parser, regex: &var Regex) -> uint32? ! RegexError {
+    func ParseClassCharacter(&var self, regex: &var Regex) -> uint32? ! RegexError {
         let start = self.at;
         if self.Peek() == 0x5Cu32 {
             let escape = self.ParseEscape(regex, true)?;
@@ -724,10 +722,10 @@ extend Parser {
     }
 
     // A `[...]` class.
-    func ParseClass(self: &var Parser, regex: &var Regex) -> uint32 ! RegexError {
+    func ParseClass(&var self, regex: &var Regex) -> uint32 ! RegexError {
         let start = self.at;
         self.at = self.at + 1;
-        var flags: uint8 = (self.flags & FlagCase) != 0u8 ? NodeFold : 0u8;
+        var flags: uint8 = if (self.flags & FlagCase) != 0u8 { NodeFold } else { 0u8 };
         if self.Peek() == 0x5Eu32 {
             flags = flags | NodeNegated;
             self.at = self.at + 1;
@@ -771,7 +769,7 @@ extend Parser {
                         high = self.ParseClassCharacter(regex)? ?? fail self.Fail(RegexErrorKind::InvalidRange, at);
                         if high < low { fail self.Fail(RegexErrorKind::InvalidRange, at); }
                     }
-                    self.PushItem(regex, ClassItem { kind: ItemKind::Range, negated: false, low: low, high: high });
+                    self.PushItem(regex, ClassItem { kind: ItemKind::Range, negated: false, low, high });
                 },
                 none => {
                     if self.Peek() == 0x2Du32 && self.PeekAt(1) != 0x5Du32 {

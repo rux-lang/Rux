@@ -35,7 +35,7 @@ pub func ArcTan(x: float64) -> float64 {
     var ax = Abs(x);
     if ax >= 4.722366482869645e21 { // 2^72, including infinity
         let y = atanhi3 + atanlo3;
-        return negative ? -y : y;
+        return if negative { -y } else { y };
     }
     if ax < 1.862645149230957e-9 { return x; }
     var id: int64 = -1;
@@ -79,7 +79,7 @@ pub func ArcTan(x: float64) -> float64 {
         }
         y = hi - ((correction - lo) - ax);
     }
-    return negative ? -y : y;
+    return if negative { -y } else { y };
 }
 
 /// Computes the inverse tangent of `x` in radians at `float32` precision.

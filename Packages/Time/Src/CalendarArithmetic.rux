@@ -16,13 +16,13 @@ extend Date {
     /// @param days how many days
     /// @returns the date that many days later, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date#plus-days
-    pub func PlusDays(self: &Date, days: int64) -> Date? {
+    pub func PlusDays(&self, days: int64) -> Self? {
         var landed: int64 = 0;
         if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) { return none; }
         // The four-digit formatting range is the honest bound for the whole package; the arithmetic works further
         // but the answers would be dates nothing else here can speak.
         if landed < -719468i64 || landed > 2932896 { return none; }
-        return Date::FromEpochDays(landed);
+        return Self::FromEpochDays(landed);
     }
 
     /// The date `months` later, clamped to the month's end where the day is missing.
@@ -30,7 +30,7 @@ extend Date {
     /// @param months how many months
     /// @returns the date that many months later, clamped to the month's last day, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date#plus-months
-    pub func PlusMonths(self: &Date, months: int64) -> Date? {
+    pub func PlusMonths(&self, months: int64) -> Self? {
         // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
         var flat: int64 = (self.year as int64) * 12 + (self.month as int64) - 1;
         if AddChecked<int64>(flat, months, @flat) { return none; }
@@ -42,28 +42,28 @@ extend Date {
         }
         if year < 0 || year > 9999 { return none; }
         let cap = DaysInMonth(year as int32, (month + 1) as uint8);
-        let day = self.day <= cap ? self.day : cap;
-        return Date::New(year as int32, (month + 1) as uint8, day);
+        let day = if self.day <= cap { self.day } else { cap };
+        return Self::New(year as int32, (month + 1) as uint8, day);
     }
 
     /// The date `years` later, with February 29th clamping to the 28th where the year is not leap.
     /// @param years how many years
     /// @returns the date that many years later, clamped for 29 February, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date#plus-years
-    pub func PlusYears(self: &Date, years: int64) -> Date? {
+    pub func PlusYears(&self, years: int64) -> Self? {
         var target: int64 = 0;
         if AddChecked<int64>(self.year as int64, years, @target) { return none; }
         if target < 0 || target > 9999 { return none; }
         let cap = DaysInMonth(target as int32, self.month);
-        let day = self.day <= cap ? self.day : cap;
-        return Date::New(target as int32, self.month, day);
+        let day = if self.day <= cap { self.day } else { cap };
+        return Self::New(target as int32, self.month, day);
     }
 
     /// The whole days from `earlier` to this date, negative when it is the later one.
     /// @param earlier the earlier reading
     /// @returns how many days `earlier` is before this date, negative if it is after
     /// @see https://rux-lang.dev/docs/api/time/date#days-since
-    pub func DaysSince(self: &Date, earlier: Date) -> int64 {
+    pub func DaysSince(&self, earlier: Self) -> int64 {
         return self.DaysFromEpoch() - earlier.DaysFromEpoch();
     }
 }

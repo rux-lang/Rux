@@ -39,7 +39,7 @@ struct RefusingAllocator {
 }
 
 extend RefusingAllocator : Allocator {
-    func Allocate(self: &RefusingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
         // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
         unsafe { self.state.requests = self.state.requests + 1; }
         // Safety: `state` points at the test's live `StorageState`.
@@ -51,14 +51,14 @@ extend RefusingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(self: &RefusingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
         // Safety: `state` points at the test's live `StorageState`.
         unsafe { self.state.backing.Deallocate(block, layout)?; }
         // Safety: `state` points at the test's live `StorageState`.
         unsafe { self.state.live = self.state.live - 1; }
     }
 
-    func Reallocate(self: &RefusingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
         unsafe { self.state.requests = self.state.requests + 1; }
@@ -70,7 +70,7 @@ extend RefusingAllocator : Allocator {
 }
 
 func Refusing(state: *var StorageState) -> RefusingAllocator {
-    return RefusingAllocator { state: state };
+    return RefusingAllocator { state };
 }
 
 // An element occupying no bytes. A run of these has nothing to tell one from another, which is exactly the case the
@@ -85,9 +85,7 @@ struct Counted {
 }
 
 extend Counted {
-    func =(self: &var Counted, other: &Counted);
-
-    func ~Counted(self: &var Counted) {
+    func ~Counted(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -101,7 +99,7 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterFi
     var vector = Vector<Counted>(allocator);
     var index: uint = 0;
     while index < count {
-        vector.Push(Counted { counter: counter, tag: index as int32 });
+        vector.Push(Counted { counter, tag: index as int32 });
         index++;
     }
     Assert(vector.Length() == count, "and the vector holds every one of them");
@@ -117,7 +115,7 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
     var vector = Vector<Counted>(allocator);
     var index: uint = 0;
     while index < 4 {
-        vector.Push(Counted { counter: counter, tag: index as int32 });
+        vector.Push(Counted { counter, tag: index as int32 });
         index++;
     }
 
@@ -268,7 +266,7 @@ func Main() -> int {
     var counted = Vector<Counted>(plain);
     var tag: int32 = 0;
     while tag < 6 {
-        counted.Push(Counted { counter: @tally, tag: tag });
+        counted.Push(Counted { counter: @tally, tag });
         tag = tag + 1;
     }
     Assert(tally == 0, "nothing is destroyed while it is held");
@@ -280,7 +278,7 @@ func Main() -> int {
     tally = 0;
     tag = 0;
     while tag < 6 {
-        counted.Push(Counted { counter: @tally, tag: tag });
+        counted.Push(Counted { counter: @tally, tag });
         tag = tag + 1;
     }
     counted.Truncate(2);

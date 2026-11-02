@@ -6,11 +6,11 @@ import Core::Assert;
 // generic adaptors needs no type arguments written.
 
 interface Source<T> {
-    func Next(self: &var Self) -> T?;
+    func Next(&var self) -> T?;
 }
 
 interface Sink<T> {
-    func Put(self: &var Self, value: T);
+    func Put(&var self, value: T);
 }
 
 struct Counter {
@@ -19,7 +19,7 @@ struct Counter {
 }
 
 extend Counter : Source<int32> {
-    func Next(self: &var Counter) -> int32? {
+    func Next(&var self) -> int32? {
         if self.at >= self.end { return none; }
         self.at = self.at + 1;
         return self.at - 1;
@@ -32,7 +32,7 @@ struct Letters {
 }
 
 extend Letters {
-    func Next(self: &var Letters) -> char8? {
+    func Next(&var self) -> char8? {
         let text = "abc";
         if self.at >= text.length { return none; }
         self.at = self.at + 1;
@@ -46,14 +46,14 @@ struct Mapped<I: Source<T>, T, U> {
 }
 
 extend Mapped<I, T, U> {
-    func Next(self: &var Mapped<I, T, U>) -> U? {
+    func Next(&var self) -> U? {
         let item = self.source.Next() ?? return none;
         return self.transform(item);
     }
 }
 
 func Map<I: Source<T>, T, U>(source: I, transform: func(T) -> U) -> Mapped<I, T, U> {
-    return Mapped<I, T, U> { source: source, transform: transform };
+    return Mapped<I, T, U> { source, transform };
 }
 
 struct Total {
@@ -61,7 +61,7 @@ struct Total {
 }
 
 extend Total : Sink<int64> {
-    func Put(self: &var Total, value: int64) {
+    func Put(&var self, value: int64) {
         self.sum = self.sum + value;
     }
 }

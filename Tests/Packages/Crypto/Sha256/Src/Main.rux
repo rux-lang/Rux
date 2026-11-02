@@ -36,18 +36,18 @@ func FromHex(text: char8[..], into: var char8[..]) {
 
 func CheckDigest(message: char8[..], expectedHex: char8[..], wide: bool, what: char8[..]) {
     var expected: char8[32];
-    let expectedRoom = expected[..wide ? 32u : 28u];
+    let expectedRoom = expected[..if wide { 32u } else { 28u }];
     FromHex(expectedHex, expectedRoom);
     var got: char8[32];
-    let gotRoom = got[..wide ? 32u : 28u];
+    let gotRoom = got[..if wide { 32u } else { 28u }];
     if wide {
         Sha256Of(message, gotRoom);
     }
     else {
         Sha224Of(message, gotRoom);
     }
-    let gotBytes = got[..wide ? 32u : 28u];
-    let expectedBytes = expected[..wide ? 32u : 28u];
+    let gotBytes = got[..if wide { 32u } else { 28u }];
+    let expectedBytes = expected[..if wide { 32u } else { 28u }];
     Assert(Equal(gotBytes, expectedBytes), what);
 }
 

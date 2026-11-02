@@ -13,9 +13,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         Destroyed = Destroyed + 1;
     }
 }

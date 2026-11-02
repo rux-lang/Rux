@@ -103,28 +103,28 @@ func Text512(value: float512, storage: var char8[..]) -> char8[..] {
 func Read80(text: char8[..]) -> float80 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let wide = ParseFloat80(allocator, text) catch { else => Panic("a float80 text reads") };
+    let wide = ParseFloat80(allocator, text) catch { _ => Panic("a float80 text reads") };
     return wide.Value();
 }
 
 func Read128(text: char8[..]) -> float128 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let wide = ParseFloat128(allocator, text) catch { else => Panic("a float128 text reads") };
+    let wide = ParseFloat128(allocator, text) catch { _ => Panic("a float128 text reads") };
     return wide.Value();
 }
 
 func Read256(text: char8[..]) -> float256 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let wide = ParseFloat256(allocator, text) catch { else => Panic("a float256 text reads") };
+    let wide = ParseFloat256(allocator, text) catch { _ => Panic("a float256 text reads") };
     return wide.Value();
 }
 
 func Read512(text: char8[..]) -> float512 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let wide = ParseFloat512(allocator, text) catch { else => Panic("a float512 text reads") };
+    let wide = ParseFloat512(allocator, text) catch { _ => Panic("a float512 text reads") };
     return wide.Value();
 }
 

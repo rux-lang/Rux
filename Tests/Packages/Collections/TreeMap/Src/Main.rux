@@ -20,9 +20,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -35,7 +33,7 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
@@ -49,11 +47,11 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
     var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
 
-    var walker = (<-map).IntoIterator();
+    var walker = (move map).IntoIterator();
     var taken: int32 = 0;
     while taken < take {
         match walker.Next() {
@@ -195,7 +193,7 @@ func Main() -> int {
     Assert(reused.Length() == 1 && (reused.First() ?? missing).key == 3, "holding only what came after");
 
     // The consuming walk hands out ownership one entry at a time, in the same order.
-    var consuming = (<-map).IntoIterator();
+    var consuming = (move map).IntoIterator();
     var consumed: uint = 0;
     var last: int32 = -1;
     var draining = true;

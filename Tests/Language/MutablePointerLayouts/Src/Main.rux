@@ -8,7 +8,7 @@ struct Cursor<T> {
 }
 
 extend Cursor<T> {
-    func Next(self: &var Cursor<T>) -> (*var T)? {
+    func Next(&var self) -> (*var T)? {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses a local array of `length` elements.
         let pointer = unsafe { @self.data[self.position] };
@@ -16,8 +16,8 @@ extend Cursor<T> {
         return .Some(pointer);
     }
 
-    func Read(self: &Cursor<T>) -> Option<*T> {
-        return self.length == 0 ? Option::None<*T>() : Option::Some<*T>(self.data);
+    func Read(&self) -> Option<*T> {
+        return if self.length == 0 { Option::None<*T>() } else { Option::Some<*T>(self.data) };
     }
 }
 
@@ -67,17 +67,17 @@ func Main() -> int {
     var sum = 0;
     loop {
         // Safety: `Next` yields only addresses of `values` elements, a live local array.
-        match again.Next() { pointer? => { sum = sum + unsafe { *pointer }; }, none => { break; } }
+        match again.Next() { .Some(pointer) => { sum = sum + unsafe { *pointer }; }, none => { break; } }
     }
     if sum != 36 { return 11; }
-    match cursor.Next() { _? => { return 4; }, none => {} }
-    match cursor.Next() { _? => { return 5; }, none => {} }
+    match cursor.Next() { .Some(_) => { return 4; }, none => {} }
+    match cursor.Next() { .Some(_) => { return 5; }, none => {} }
 
     var wide = 99i64;
     Change<int64>(@wide, 1234567890123i64);
     if Inspect<int64>(@wide) != 1234567890123i64 { return 6; }
     var empty = Cursor<int64> { data: @wide, length: 0, position: 0 };
-    match empty.Next() { _? => { return 7; }, none => {} }
+    match empty.Next() { .Some(_) => { return 7; }, none => {} }
     match empty.Read() { .Some(_) => { return 8; }, .None => {} }
     let writable = Wrap<*var int64>(@wide);
     let readable = Wrap<*int64>(@wide);

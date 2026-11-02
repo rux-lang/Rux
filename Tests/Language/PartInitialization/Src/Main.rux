@@ -22,7 +22,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -65,7 +65,7 @@ func Reset(log: *var Log) {
 }
 
 func Make(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
 }
 
 // Plain values have nothing to destroy, so their parts initialize them.
@@ -93,7 +93,7 @@ func PlainParts() {
     Assert(values[0] == 0i32 && values[2] == 4i32, "a plain array is initialized element by element");
 
     var moved = Point { x: 7i32, y: 8i32 };
-    let taken <- moved;
+    let taken = move moved;
     moved.x = 9i32;
     moved.y = 10i32;
     Assert(taken.x == 7i32 && moved.x == 9i32 && moved.y == 10i32, "a plain struct moved from is initialized again");
@@ -129,7 +129,7 @@ func PlainParts() {
 func WholeThenPart(log: *var Log) {
     var holder: Holder;
     holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
-    holder.tracked <- Make(log, 2i32);
+    holder.tracked = Make(log, 2i32);
     holder.count = 1i32;
     Mark(log);
     Assert(holder.tracked.id == 2i32 && holder.count == 1i32, "the part written after the whole is installed");
@@ -138,9 +138,9 @@ func WholeThenPart(log: *var Log) {
 // A moved-from local assigned whole again owns that value, and its parts are replaced as usual.
 func ReinitializedAfterMove(log: *var Log) {
     var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
-    let taken <- holder;
+    let taken = move holder;
     holder = Holder { tracked: Make(log, 2i32), count: 0i32 };
-    holder.tracked <- Make(log, 3i32);
+    holder.tracked = Make(log, 3i32);
     Mark(log);
     Assert(taken.tracked.id == 1i32 && holder.tracked.id == 3i32, "the moved value and the new one are kept apart");
 }
@@ -154,7 +154,7 @@ func WholeOnEveryPath(log: *var Log, first: bool) {
     else {
         holder = Holder { tracked: Make(log, 2i32), count: 0i32 };
     }
-    holder.tracked <- Make(log, 3i32);
+    holder.tracked = Make(log, 3i32);
     Mark(log);
 }
 
@@ -163,7 +163,7 @@ func PartInLoop(log: *var Log) {
     var holder: Holder;
     holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
     for i in 2..4 {
-        holder.tracked <- Make(log, i as int32);
+        holder.tracked = Make(log, i as int32);
     }
     Mark(log);
 }

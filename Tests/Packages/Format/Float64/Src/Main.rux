@@ -31,7 +31,7 @@ func Check(value: float64, expected: char8[..], code: int) -> int {
 func CheckParse(str: char8[..], expected: float64, code: int) -> int {
     let result = ParseFloat64(str);
     return match result {
-        .Success(value) => value == expected ? 0 : code,
+        .Success(value) => if value == expected { 0 } else { code },
         .Failure(_) => code
     };
 }
@@ -40,7 +40,7 @@ func CheckParseError(str: char8[..], expected: ParseError, code: int) -> int {
     let result = ParseFloat64(str);
     return match result {
         .Success(_) => code,
-        .Failure(error) => error == expected ? 0 : code
+        .Failure(error) => if error == expected { 0 } else { code }
     };
 }
 
@@ -68,7 +68,7 @@ func CheckParseOverloads() -> int {
     var text = StringView::FromBytes("3.5") ?? StringView();
     let parsed = ParseFloat64(text);
     let code = match parsed {
-        .Success(value) => value == 3.5 ? 0 : 120,
+        .Success(value) => if value == 3.5 { 0 } else { 120 },
         .Failure(_) => 120
     };
     if code != 0 { return code; }

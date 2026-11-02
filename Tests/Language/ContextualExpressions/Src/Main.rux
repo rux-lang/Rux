@@ -3,19 +3,19 @@ import Core::Assert;
 // The contextual width must reach the arms before the merge. Widening an int after the merge has already lost
 // every bit above the first word, even when semantic checking accepted the original unsuffixed literal.
 func Wide(condition: bool) -> uint128 {
-    return condition ? 18446744073709551616 : 7;
+    return if condition { 18446744073709551616 } else { 7 };
 }
 
 func WideSigned(condition: bool) -> int128 {
-    return condition ? -18446744073709551616 : 18446744073709551616;
+    return if condition { -18446744073709551616 } else { 18446744073709551616 };
 }
 
 func Narrow(condition: bool) -> uint8 {
-    return condition ? 0 : 255;
+    return if condition { 0 } else { 255 };
 }
 
 func Signed(condition: bool) -> int8 {
-    return condition ? -128 : 127;
+    return if condition { -128 } else { 127 };
 }
 
 func Accept(value: uint128) -> uint128 {
@@ -27,16 +27,21 @@ func Identity<T>(value: T) -> T {
 }
 
 func Argument(condition: bool) -> uint128 {
-    return Accept(condition ? 18446744073709551616 : 9);
+    return Accept(if condition { 18446744073709551616 } else { 9 });
 }
 
 func GenericArgument(condition: bool) -> uint128 {
-    return Identity<uint128>(condition ? 18446744073709551616 : 11);
+    return Identity<uint128>(if condition { 18446744073709551616 } else { 11 });
 }
 
 func Nested(first: bool, second: bool) -> uint128 {
-    return first ? (second ? 18446744073709551616 : 18446744073709551617) :
-                   (second ? 18446744073709551618 : 18446744073709551619);
+    return if first {
+        if second { 18446744073709551616 } else { 18446744073709551617 }
+    } else if second {
+        18446744073709551618
+    } else {
+        18446744073709551619
+    };
 }
 
 struct WideField {
@@ -44,23 +49,23 @@ struct WideField {
 }
 
 func Field(condition: bool) -> uint128 {
-    let record = WideField { value: condition ? 18446744073709551616 : 13 };
+    let record = WideField { value: if condition { 18446744073709551616 } else { 13 } };
     return record.value;
 }
 
 func Tuple(condition: bool) -> uint128 {
-    let pair: (uint128, uint8) = (condition ? 18446744073709551616 : 15, 3);
+    let pair: (uint128, uint8) = (if condition { 18446744073709551616 } else { 15 }, 3);
     return pair.0;
 }
 
 func Array(condition: bool) -> uint128 {
-    let values: uint128[2] = [condition ? 18446744073709551616 : 17, 19];
+    let values: uint128[2] = [if condition { 18446744073709551616 } else { 17 }, 19];
     return values[0];
 }
 
 func Local(condition: bool) -> uint128 {
-    var value: uint128 = condition ? 18446744073709551616 : 21;
-    value = condition ? 18446744073709551617 : 23;
+    var value: uint128 = if condition { 18446744073709551616 } else { 21 };
+    value = if condition { 18446744073709551617 } else { 23 };
     return value;
 }
 
@@ -82,11 +87,14 @@ func Lazy(condition: bool) -> uint128 {
     var conditionCalls = Calls { count: 0 };
     var firstCalls = Calls { count: 0 };
     var secondCalls = Calls { count: 0 };
-    let value: uint128 = Choose(conditionCalls, condition) ?
-                        Arm(firstCalls, 18446744073709551616) : Arm(secondCalls, 25);
+    let value: uint128 = if Choose(conditionCalls, condition) {
+        Arm(firstCalls, 18446744073709551616)
+    } else {
+        Arm(secondCalls, 25)
+    };
     Assert(conditionCalls.count == 1, "evaluate the condition exactly once");
-    Assert(firstCalls.count == (condition ? 10 : 0), "run the first arm only when selected");
-    Assert(secondCalls.count == (condition ? 0 : 10), "run the second arm only when selected");
+    Assert(firstCalls.count == (if condition { 10 } else { 0 }), "run the first arm only when selected");
+    Assert(secondCalls.count == (if condition { 0 } else { 10 }), "run the second arm only when selected");
     return value;
 }
 

@@ -40,7 +40,7 @@ func SameBytes(actual: char8[..], expected: char8[..]) -> bool {
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
 func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.View().Equals(wanted),
         .Failure(_) => false
     };

@@ -10,19 +10,18 @@ pub struct Job {
 }
 
 extend Job {
-    pub func <(self: &Job, other: Job) -> bool {
+    pub func <(&self, other: Self) -> bool {
         return self.priority > other.priority;
     }
 }
 
+#NoCopy
 pub struct Owned {
     value: int32;
 }
 
 extend Owned {
-    func =(self: &var Owned, other: &Owned);
-
-    pub func <(self: &Owned, other: &Owned) -> bool {
+    pub func <(&self, other: &Self) -> bool {
         return self.value < other.value;
     }
 }

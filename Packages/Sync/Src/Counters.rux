@@ -20,29 +20,27 @@ pub struct Semaphore {
 }
 
 extend Semaphore {
-    func =(self: &var Semaphore, other: &Semaphore);
-
     /// A semaphore holding `permits` permits. Running out of memory for it is a program error.
     /// @param permits how many permits there are to start with
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/counters#semaphore-new
-    pub func Semaphore(permits: uint32) -> Semaphore {
-        return Semaphore { block: AllocateBlock(SemaphoreBlock { references: 1, permits: permits, waiters: 0 }) };
+    pub func Semaphore(permits: uint32) -> Self {
+        return Self { block: AllocateBlock(SemaphoreBlock { references: 1, permits, waiters: 0 }) };
     }
 
     /// Another handle to the same permits.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/counters#clone-semaphore
-    pub func Clone(self: &Semaphore) -> Semaphore {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return Semaphore { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Takes a permit, waiting while none is left.
     /// @see https://rux-lang.dev/docs/api/sync/counters#acquire
-    pub func Acquire(self: &Semaphore) {
+    pub func Acquire(&self) {
         let block = self.block;
         while !self.TryAcquire() {
             // Safety: this handle holds a count on `block`, so the block and its words outlive the wait on `permits`,
@@ -58,7 +56,7 @@ extend Semaphore {
     /// Takes a permit if one is left, without waiting.
     /// @returns whether a permit was taken
     /// @see https://rux-lang.dev/docs/api/sync/counters#try-acquire
-    pub func TryAcquire(self: &Semaphore) -> bool {
+    pub func TryAcquire(&self) -> bool {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
@@ -79,7 +77,7 @@ extend Semaphore {
     /// Gives back `count` permits, waking threads waiting for them.
     /// @param count how many permits to give back
     /// @see https://rux-lang.dev/docs/api/sync/counters#release
-    pub func Release(self: &Semaphore, count: uint32 = 1) {
+    pub func Release(&self, count: uint32 = 1) {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
@@ -96,13 +94,13 @@ extend Semaphore {
     /// The permits left right now, which other threads may change at any moment.
     /// @returns the number of permits
     /// @see https://rux-lang.dev/docs/api/sync/counters#available
-    pub func Available(self: &Semaphore) -> uint32 {
+    pub func Available(&self) -> uint32 {
         // Safety: this handle holds a count on `self.block`, so its `permits` word is live, and every thread reaches it
         // only atomically.
         return unsafe { AtomicLoad(@self.block.permits, MemoryOrder::Relaxed) };
     }
 
-    func ~Semaphore(self: &var Semaphore) {
+    func ~Semaphore(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         unsafe {
@@ -129,33 +127,31 @@ pub struct Barrier {
 }
 
 extend Barrier {
-    func =(self: &var Barrier, other: &Barrier);
-
     /// A barrier for `parties` threads. Zero parties is a program error. Running out of memory is one too.
     /// @param parties how many threads each round waits for
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/counters#barrier-new
-    pub func Barrier(parties: uint32) -> Barrier {
+    pub func Barrier(parties: uint32) -> Self {
         if parties == 0u32 { Panic("a barrier needs at least one party"); }
-        return Barrier {
-            block: AllocateBlock(BarrierBlock { references: 1, parties: parties, arrived: 0, generation: 0 })
+        return Self {
+            block: AllocateBlock(BarrierBlock { references: 1, parties, arrived: 0, generation: 0 })
         };
     }
 
     /// Another handle to the same barrier.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/counters#clone-barrier
-    pub func Clone(self: &Barrier) -> Barrier {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return Barrier { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Waits until every party of this round has arrived.
     /// @returns true on exactly one of the round's threads, the last to arrive, for work done once per round
     /// @see https://rux-lang.dev/docs/api/sync/counters#wait-barrier
-    pub func Wait(self: &Barrier) -> bool {
+    pub func Wait(&self) -> bool {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
@@ -186,7 +182,7 @@ extend Barrier {
         return false;
     }
 
-    func ~Barrier(self: &var Barrier) {
+    func ~Barrier(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         unsafe {
@@ -210,29 +206,27 @@ pub struct WaitGroup {
 }
 
 extend WaitGroup {
-    func =(self: &var WaitGroup, other: &WaitGroup);
-
     /// A wait group with nothing pending. Running out of memory for it is a program error.
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/counters#wait-group-new
-    pub func WaitGroup() -> WaitGroup {
-        return WaitGroup { block: AllocateBlock(WaitGroupBlock { references: 1, pending: 0 }) };
+    pub func WaitGroup() -> Self {
+        return Self { block: AllocateBlock(WaitGroupBlock { references: 1, pending: 0 }) };
     }
 
     /// Another handle to the same count.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/counters#clone-wait-group
-    pub func Clone(self: &WaitGroup) -> WaitGroup {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return WaitGroup { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Adds `count` pieces of pending work, before the work is started.
     /// @param count how many to add
     /// @see https://rux-lang.dev/docs/api/sync/counters#add
-    pub func Add(self: &WaitGroup, count: uint32 = 1) {
+    pub func Add(&self, count: uint32 = 1) {
         // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread reaches it
         // only atomically.
         unsafe { AtomicFetchAdd(@self.block.pending, count, MemoryOrder::Relaxed); }
@@ -241,7 +235,7 @@ extend WaitGroup {
     /// Marks one piece of work done, waking the waiters when it was the last. Marking more done than were added is a
     /// program error.
     /// @see https://rux-lang.dev/docs/api/sync/counters#done
-    pub func Done(self: &WaitGroup) {
+    pub func Done(&self) {
         // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread reaches it
         // only atomically.
         let previous = unsafe { AtomicFetchSub(@self.block.pending, 1u32, MemoryOrder::AcquireRelease) };
@@ -252,7 +246,7 @@ extend WaitGroup {
 
     /// Waits until no work is pending.
     /// @see https://rux-lang.dev/docs/api/sync/counters#wait-wait-group
-    pub func Wait(self: &WaitGroup) {
+    pub func Wait(&self) {
         while true {
             // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread
             // reaches it only atomically.
@@ -264,7 +258,7 @@ extend WaitGroup {
         }
     }
 
-    func ~WaitGroup(self: &var WaitGroup) {
+    func ~WaitGroup(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         unsafe {

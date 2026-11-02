@@ -33,7 +33,7 @@ extend NanoIdParseError : ParseFailure {
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#nano-id-parse-error-offset
-    pub func Offset(self: &NanoIdParseError) -> uint {
+    pub func Offset(&self) -> uint {
         return match self {
             .WrongLength(at) => at,
             .InvalidCharacter(at) => at
@@ -54,8 +54,8 @@ extend NanoId {
     /// supply random bytes, and produces no identifier in that case.
     /// @returns the identifier, or why none could be made
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#generate
-    pub func Generate() -> NanoId ! EntropyError {
-        var value = NanoId { text: ['A'; 21] };
+    pub func Generate() -> Self ! EntropyError {
+        var value = Self { text: ['A'; 21] };
         GenerateNanoId(value.text[..])?;
         return value;
     }
@@ -67,11 +67,11 @@ extend NanoId {
     /// @param text the text to read
     /// @returns the identifier, or why the text is not one
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#parse
-    pub func Parse(text: char8[..]) -> NanoId ! NanoIdParseError {
+    pub func Parse(text: char8[..]) -> Self ! NanoIdParseError {
         if text.length != NanoIdLength {
-            fail NanoIdParseError::WrongLength(text.length < NanoIdLength ? text.length : NanoIdLength);
+            fail NanoIdParseError::WrongLength(if text.length < NanoIdLength { text.length } else { NanoIdLength });
         }
-        var value = NanoId { text: ['A'; 21] };
+        var value = Self { text: ['A'; 21] };
         var index: uint = 0;
         while index < NanoIdLength {
             if !InDefaultAlphabet(text[index]) { fail NanoIdParseError::InvalidCharacter(index); }
@@ -86,7 +86,7 @@ extend NanoId {
     /// allocates nothing.
     /// @returns the text, always `NanoIdLength` bytes of the default alphabet
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#text
-    pub func Text(self: &NanoId) -> char8[..] {
+    pub func Text(&self) -> char8[..] {
         return self.text[..NanoIdLength];
     }
 
@@ -96,7 +96,7 @@ extend NanoId {
     /// @param other the identifier to compare against
     /// @returns whether the two have the same text
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#equals
-    pub func Equals(self: &NanoId, other: &NanoId) -> bool {
+    pub func Equals(&self, other: &Self) -> bool {
         var difference: uint8 = 0;
         var index: uint = 0;
         while index < NanoIdLength {
@@ -112,7 +112,7 @@ extend NanoId {
     /// @param other the identifier to compare against
     /// @returns how this identifier orders against `other`
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#compare
-    pub func Compare(self: &NanoId, other: &NanoId) -> Ordering {
+    pub func Compare(&self, other: &Self) -> Ordering {
         var index: uint = 0;
         while index < NanoIdLength {
             if self.text[index] < other.text[index] { return Ordering::Less; }
@@ -130,7 +130,7 @@ extend NanoId : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-display
-    pub func WriteDisplay(self: &NanoId, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectStyle(spec)?;
         return WriteBytes(writer, self.Text());
@@ -144,7 +144,7 @@ extend NanoId : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-debug
-    pub func WriteDebug(self: &NanoId, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

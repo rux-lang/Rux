@@ -11,7 +11,7 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ ETIMEDOUT, Timespec, UmtxWait, UmtxWake },
     .macOS => import macOS::{ ETIMEDOUT, UL_COMPARE_AND_WAIT, ULF_NO_ERRNO, ULF_WAKE_ALL, __ulock_wait, __ulock_wake },
     .Windows => import Windows::{ INFINITE, WaitOnAddress, WakeByAddressAll, WakeByAddressSingle },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // Sleeps while `*word` holds `expected`, for at most `nanoseconds`, or without a limit when that is negative. Returns
@@ -23,7 +23,7 @@ unsafe func WaitWhile(word: *var uint32, expected: uint32, nanoseconds: int64) -
         var milliseconds: uint32 = INFINITE;
         if nanoseconds >= 0 {
             let rounded = (nanoseconds + 999999) / 1000000;
-            milliseconds = rounded >= 0xFFFFFFFE as int64 ? 0xFFFFFFFEu32 : rounded as uint32;
+            milliseconds = if rounded >= 0xFFFFFFFE as int64 { 0xFFFFFFFEu32 } else { rounded as uint32 };
         }
         var seen = expected;
         let woken = WaitOnAddress(word as *opaque, (@seen) as *opaque, 4u64, milliseconds);
@@ -33,7 +33,13 @@ unsafe func WaitWhile(word: *var uint32, expected: uint32, nanoseconds: int64) -
         var microseconds: uint32 = 0;
         if nanoseconds >= 0 {
             let rounded = (nanoseconds + 999) / 1000;
-            microseconds = rounded < 1 ? 1u32 : (rounded >= 0xFFFFFFFF as int64 ? 0xFFFFFFFFu32 : rounded as uint32);
+            microseconds = if rounded < 1 {
+                1u32
+            } else if rounded >= 0xFFFFFFFF as int64 {
+                0xFFFFFFFFu32
+            } else {
+                rounded as uint32
+            };
         }
         let result = __ulock_wait(UL_COMPARE_AND_WAIT | ULF_NO_ERRNO, word as *opaque, expected as uint64,
                                   microseconds);

@@ -46,7 +46,7 @@ func PutInteger(builder: &var StringBuilder, value: int64) -> bool {
 }
 
 func PutFloat(builder: &var StringBuilder, value: float64) -> bool {
-    WriteFormat(builder, "{}", value) catch { else => return false };
+    WriteFormat(builder, "{}", value) catch { _ => return false };
     return true;
 }
 
@@ -134,7 +134,7 @@ func PutTextField(builder: &var StringBuilder, field: Field) -> bool {
         Value::Integer(number) => return PutInteger(builder, number),
         Value::Unsigned(number) => return PutUnsigned(builder, number),
         Value::Float(number) => return PutFloat(builder, number),
-        Value::Boolean(truth) => return Put(builder, truth ? "true" : "false")
+        Value::Boolean(truth) => return Put(builder, if truth { "true" } else { "false" })
     }
 }
 
@@ -152,7 +152,7 @@ func PutJsonField(builder: &var StringBuilder, field: Field) -> bool {
             if !(number - number == 0.0) { return Put(builder, "null"); }
             return PutFloat(builder, number);
         },
-        Value::Boolean(truth) => return Put(builder, truth ? "true" : "false")
+        Value::Boolean(truth) => return Put(builder, if truth { "true" } else { "false" })
     }
 }
 

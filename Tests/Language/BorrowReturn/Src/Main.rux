@@ -97,8 +97,8 @@ func Inner(pair: &var Pair, count: int32) -> &var int32 {
 
 func People(drops: *var int32) {
     var people = Slots<Named> {
-        items: [Named { id: 1i32, drops: drops }, Named { id: 2i32, drops: drops }, Named { id: 3i32, drops: drops },
-                Named { id: 4i32, drops: drops }],
+        items: [Named { id: 1i32, drops }, Named { id: 2i32, drops }, Named { id: 3i32, drops },
+                Named { id: 4i32, drops }],
         count: 4,
     };
     let person = people.At(2);

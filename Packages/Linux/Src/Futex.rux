@@ -13,7 +13,7 @@ when #target.arch {
     .AArch64 => {
         const SysFutex: uint64 = 98;
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 /// `FUTEX_WAIT_PRIVATE`: sleep while the word holds the expected value.

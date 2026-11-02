@@ -126,7 +126,7 @@ when #target.arch {
         /// @see https://rux-lang.dev/docs/api/linux/files#open-directory
         pub const OpenDirectory: int32 = 16384;
     }
-    else => #Error("Unsupported Linux architecture")
+    _ => #Error("Unsupported Linux architecture")
 }
 
 /// `SEEK_SET`: measure the new offset from the start of the file.

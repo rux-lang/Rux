@@ -33,7 +33,7 @@ struct T {
 }
 
 extend Box<T> {
-    func Get(self: &Box<T>) -> T {
+    func Get(&self) -> T {
         return self.value;
     }
 }

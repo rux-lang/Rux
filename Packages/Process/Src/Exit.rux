@@ -10,7 +10,7 @@ when #target.os {
     .FreeBSD => import FreeBSD::GetPid,
     .macOS => import macOS::GetPid,
     .Windows => import Windows::{ ExitProcess, GetCurrentProcessId },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // The Unix systems name their exit `Exit`, as this package does, so the system's is reached from a module of its own.
@@ -21,7 +21,7 @@ module SystemExit {
         .Linux => import Linux::Exit,
         .FreeBSD => import FreeBSD::Exit,
         .macOS => import macOS::Exit,
-        else => {}
+        _ => {}
     }
 
     /// Ends the whole process through the system's own exit, reporting `code` to its parent.

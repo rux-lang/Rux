@@ -28,9 +28,9 @@ extend Xoshiro256 {
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256#new
-    pub func Xoshiro256(seed: uint64) -> Xoshiro256 {
+    pub func Xoshiro256(seed: uint64) -> Self {
         var mixer = SplitMix64(seed);
-        var generator = Xoshiro256 { state: [0; 4] };
+        var generator = Self { state: [0; 4] };
         var index: uint = 0;
         while index < 4 {
             generator.state[index] = mixer.NextUint64();
@@ -45,9 +45,9 @@ extend Xoshiro256 {
     /// @param words the generator's state words, taken as they are
     /// @returns a generator with exactly those state words
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256#from-state
-    pub func FromState(words: uint64[4]) -> Xoshiro256 {
+    pub func FromState(words: uint64[4]) -> Self {
         if words[0] == 0 && words[1] == 0 && words[2] == 0 && words[3] == 0 { return Xoshiro256(0); }
-        return Xoshiro256 { state: words };
+        return Self { state: words };
     }
 }
 
@@ -57,7 +57,7 @@ extend Xoshiro256 : RandomGenerator {
     /// two implementations agree on the first word rather than being one step apart forever.
     /// @returns the next 64 bits
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256#next-uint64
-    pub func NextUint64(self: &var Xoshiro256) -> uint64 {
+    pub func NextUint64(&var self) -> uint64 {
         let result = RotateLeft64(self.state[1] *% 5, 7) *% 9;
         let t = self.state[1] << 17;
         self.state[2] = self.state[2] ^ self.state[0];

@@ -48,23 +48,21 @@ func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> {
         items.Push(value);
         index = index + 1;
     }
-    return <-items;
+    return move items;
 }
 
 extend Scratch {
-    func =(self: &var Scratch, other: &Scratch);
-
     // Storage for searching `program` with `slotCount` capture slots.
-    func New(allocator: Allocator, program: Program, slotCount: uint) -> Scratch {
+    func New(allocator: Allocator, program: Program, slotCount: uint) -> Self {
         let size = program.instructions.length;
-        return Scratch {
+        return Self {
             sparse: Filled(allocator, size * 2, 0u32),
             dense: Filled(allocator, size * 2, 0u32),
             slots: Filled(allocator, size * 2 * slotCount, NoPosition),
             stack: Filled(allocator, size + 1, StackEntry { restore: false, index: 0, value: 0 }),
             working: Filled(allocator, slotCount, NoPosition),
             counts: [0u, 0u],
-            slotCount: slotCount
+            slotCount
         };
     }
 }
@@ -204,7 +202,7 @@ extend Scratch {
     // Searches `text` from `start` for the leftmost-first match of `program`, filling `found` with its capture slots.
     // With `earliest`, stops at the first match seen, which is enough to know there is one. With `here`, a match must
     // start at `start`, as one the DFA has found does.
-    func Run(self: &var Scratch, program: Program, text: char8[..], start: uint, earliest: bool, here: bool,
+    func Run(&var self, program: Program, text: char8[..], start: uint, earliest: bool, here: bool,
              found: var uint[..]) -> bool {
         var counts: uint[2] = [0u, 0u];
         let space = Space {

@@ -97,7 +97,7 @@ when #target.arch {
         const SysClockGetRes: uint64 = 114;
         const SysClockNanosleep: uint64 = 115;
     },
-    else => #Error("Unsupported Linux architecture")
+    _ => #Error("Unsupported Linux architecture")
 }
 
 // Linux returns either a non-negative result or -errno from every system call,
@@ -282,7 +282,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported Linux architecture")
+    _ => #Error("Unsupported Linux architecture")
 }
 
 /// Widens a file descriptor to the register width a system call takes it in.

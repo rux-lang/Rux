@@ -17,9 +17,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds a pointer to a `Log` local of `Main` that outlives it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -40,7 +38,7 @@ func Mark(log: *var Log) {
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
 }
 
 func MakePair(log: *var Log) -> (Tracked, Tracked) {
@@ -49,20 +47,20 @@ func MakePair(log: *var Log) -> (Tracked, Tracked) {
 
 func LetDiscardsFirst(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    let (_, second) <- pair;
+    let (_, second) = move pair;
     Mark(log);
     Assert(second.id == 2, "the bound element is the second one");
 }
 
 func LetDiscardsBoth(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    let (_, _) <- pair;
+    let (_, _) = move pair;
     Mark(log);
 }
 
 func LetDiscardsNested(log: *var Log) {
     let nested = ((Track(log, 1), Track(log, 2)), Track(log, 3));
-    let ((first, _), _) <- nested;
+    let ((first, _), _) = move nested;
     Mark(log);
     Assert(first.id == 1, "the nested bound element is the first one");
 }
@@ -75,7 +73,7 @@ func LetDiscardsFromTemporary(log: *var Log) {
 
 func MatchDiscardsFirst(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match <-pair {
+    match move pair {
         (_, second) => {
             Mark(log);
             Assert(second.id == 2, "the arm binds the second element");
@@ -85,8 +83,8 @@ func MatchDiscardsFirst(log: *var Log) {
 
 func MatchBindsEveryField(log: *var Log) {
     let parcel = Parcel { label: Track(log, 1), contents: Track(log, 2) };
-    match <-parcel {
-        Parcel { label: label, contents: contents } => {
+    match move parcel {
+        Parcel { label, contents } => {
             Mark(log);
             Assert(label.id == 1 && contents.id == 2, "the arm binds both fields");
         }
@@ -95,8 +93,8 @@ func MatchBindsEveryField(log: *var Log) {
 
 func MatchOmitsField(log: *var Log) {
     let parcel = Parcel { label: Track(log, 1), contents: Track(log, 2) };
-    match <-parcel {
-        Parcel { label: label } => {
+    match move parcel {
+        Parcel { label } => {
             Mark(log);
             Assert(label.id == 1, "the arm binds the label");
         }
@@ -106,7 +104,7 @@ func MatchOmitsField(log: *var Log) {
 // The first arm tests the first element and fails, so only the arm that is taken destroys anything.
 func MatchAfterRefutedArm(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match <-pair {
+    match move pair {
         (Tracked { id: 9 }, second) => {
             Assert(second.id < 0, "an arm whose test failed was taken");
         },
@@ -123,7 +121,7 @@ func MatchAfterRefutedArm(log: *var Log) {
 // An arm that binds nothing leaves the whole subject to be destroyed as one value.
 func MatchArmBindsNothing(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match <-pair {
+    match move pair {
         (Tracked { id: 1 }, _) => {
             Mark(log);
         },
@@ -144,7 +142,7 @@ func MatchKeepsSubject(log: *var Log) {
         (Tracked { id: 1 }, _) => {
             Mark(log);
         },
-        else => {
+        _ => {
             Assert(false, "the first element did not match");
         }
     }

@@ -21,26 +21,26 @@ extend Level {
     /// The level's name in lower case, as JSON records give it: `trace`, `debug`, `info`, `warn` or `error`.
     /// @returns the name
     /// @see https://rux-lang.dev/docs/api/log/level#name
-    pub func Name(self: &Level) -> char8[..] {
+    pub func Name(&self) -> char8[..] {
         match self {
-            Level::Trace => return "trace",
-            Level::Debug => return "debug",
-            Level::Info => return "info",
-            Level::Warn => return "warn",
-            Level::Error => return "error"
+            Self::Trace => return "trace",
+            Self::Debug => return "debug",
+            Self::Info => return "info",
+            Self::Warn => return "warn",
+            Self::Error => return "error"
         }
     }
 
     /// The level's label in upper case and five columns wide, as text records give it.
     /// @returns the label
     /// @see https://rux-lang.dev/docs/api/log/level#label
-    pub func Label(self: &Level) -> char8[..] {
+    pub func Label(&self) -> char8[..] {
         match self {
-            Level::Trace => return "TRACE",
-            Level::Debug => return "DEBUG",
-            Level::Info => return "INFO ",
-            Level::Warn => return "WARN ",
-            Level::Error => return "ERROR"
+            Self::Trace => return "TRACE",
+            Self::Debug => return "DEBUG",
+            Self::Info => return "INFO ",
+            Self::Warn => return "WARN ",
+            Self::Error => return "ERROR"
         }
     }
 
@@ -48,12 +48,12 @@ extend Level {
     /// @param text the name
     /// @returns the level, or `none` for a name that is not one
     /// @see https://rux-lang.dev/docs/api/log/level#parse
-    pub func Parse(text: char8[..]) -> Level? {
-        if SameName(text, "trace") { return Level::Trace; }
-        if SameName(text, "debug") { return Level::Debug; }
-        if SameName(text, "info") { return Level::Info; }
-        if SameName(text, "warn") || SameName(text, "warning") { return Level::Warn; }
-        if SameName(text, "error") { return Level::Error; }
+    pub func Parse(text: char8[..]) -> Self? {
+        if SameName(text, "trace") { return Self::Trace; }
+        if SameName(text, "debug") { return Self::Debug; }
+        if SameName(text, "info") { return Self::Info; }
+        if SameName(text, "warn") || SameName(text, "warning") { return Self::Warn; }
+        if SameName(text, "error") { return Self::Error; }
         return none;
     }
 }

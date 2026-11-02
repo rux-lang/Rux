@@ -17,7 +17,7 @@ when #target.os {
     .FreeBSD => import Core::ProcessStartFrame,
     .macOS => import macOS::{ _NSGetArgc, _NSGetArgv, _NSGetEnviron },
     .Windows => import Windows::{ CommandLineToArgvW, GetCommandLineW, GetEnvironmentStringsW },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 when #target.os == .Windows {

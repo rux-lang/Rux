@@ -73,7 +73,7 @@ func Main() -> int {
     let elements = [c64'A', c64'λ', c64'😀'];
     Assert(elements[0] == letter && elements[2] == face, "inferred array elements are char64");
     var chooseFirst = false;
-    let selected = chooseFirst ? c64'A' : c64'😀';
+    let selected = if chooseFirst { c64'A' } else { c64'😀' };
     Assert(selected == face, "a char64 ternary keeps its selected code point");
     when c64'A' == c64'\u{41}' {
         Assert(true, "constant evaluation uses the same decoded scalar");

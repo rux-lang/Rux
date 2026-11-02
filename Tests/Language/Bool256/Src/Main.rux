@@ -108,8 +108,8 @@ func Main() -> int {
     };
     Assert(matched == 1, "a match on a bool256 takes the true arm");
     Assert(match no { true => false, false => true }, "and the false one");
-    Assert((yes ? 7 : 9) == 7 && (no ? 7 : 9) == 9, "a bool256 chooses a ternary arm");
-    let chosen: bool256 = reached ? no : yes;
+    Assert((if yes { 7 } else { 9 }) == 7 && (if no { 7 } else { 9 }) == 9, "a bool256 chooses a ternary arm");
+    let chosen: bool256 = if reached { no } else { yes };
     Assert(!chosen, "and both arms of a bool256 ternary keep their value");
 
     // Storage: fields, padding and elements.

@@ -148,42 +148,42 @@ pub struct Blake3Chunk {
 }
 
 extend Blake3Chunk {
-    func Blake3Chunk(key: uint32[8], counter: uint64, flags: uint32) -> Blake3Chunk {
+    func Blake3Chunk(key: uint32[8], counter: uint64, flags: uint32) -> Self {
         var block: char8[64];
         var index: uint = 0;
         while index < 64 {
             block[index] = 0u8 as char8;
             index = index + 1;
         }
-        return Blake3Chunk {
+        return Self {
             chaining: key,
-            counter: counter,
-            block: block,
+            counter,
+            block,
             blockLength: 0,
             blocksCompressed: 0,
-            flags: flags
+            flags
         };
     }
 
     // The start flag applies only to the first block of the chunk.
-    func StartFlag(self: &Blake3Chunk) -> uint32 {
-        return self.blocksCompressed == 0 ? Blake3ChunkStart : 0;
+    func StartFlag(&self) -> uint32 {
+        return if self.blocksCompressed == 0 { Blake3ChunkStart } else { 0 };
     }
 
-    func Length(self: &Blake3Chunk) -> uint {
+    func Length(&self) -> uint {
         return self.blocksCompressed * Blake3BlockLength + self.blockLength;
     }
 
     // Reads the current block as sixteen little-endian words, zero-padded.
     // Safety: `words` must address sixteen writable words.
-    unsafe func BlockWords(self: &Blake3Chunk, words: *var uint32) {
+    unsafe func BlockWords(&self, words: *var uint32) {
         var index: uint = 0;
         while index < 16 {
             var word: uint32 = 0;
             var part: uint = 0;
             while part < 4 {
                 let position = index * 4 + part;
-                let value = position < self.blockLength ? (self.block[position] as uint8) : 0;
+                let value = if position < self.blockLength { self.block[position] as uint8 } else { 0 };
                 word = word | ((value as uint32) << ((part * 8) as uint32));
                 part = part + 1;
             }
@@ -199,7 +199,7 @@ extend Blake3Chunk {
     /// @param bytes the bytes to absorb
     /// @returns how many bytes were absorbed
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-chunk-update
-    pub func Update(self: &var Blake3Chunk, bytes: char8[..]) -> uint {
+    pub func Update(&var self, bytes: char8[..]) -> uint {
         var index: uint = 0;
         while index < bytes.length && self.Length() < Blake3ChunkLength {
             if self.blockLength == Blake3BlockLength {
@@ -232,7 +232,7 @@ extend Blake3Chunk {
     /// @param extraFlags the domain flags to add for this output
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-chunk-output
-    pub unsafe func Output(self: &Blake3Chunk, extraFlags: uint32, into: *var uint32) {
+    pub unsafe func Output(&self, extraFlags: uint32, into: *var uint32) {
         var words: uint32[16];
         var index: uint = 0;
         while index < 16 {
@@ -240,7 +240,7 @@ extend Blake3Chunk {
             var part: uint = 0;
             while part < 4 {
                 let position = index * 4 + part;
-                let value = position < self.blockLength ? (self.block[position] as uint8) : 0;
+                let value = if position < self.blockLength { self.block[position] as uint8 } else { 0 };
                 word = word | ((value as uint32) << ((part * 8) as uint32));
                 part = part + 1;
             }
@@ -269,32 +269,32 @@ pub struct Blake3 {
 }
 
 extend Blake3 {
-    func Start(key: uint32[8], flags: uint32) -> Blake3 {
+    func Start(key: uint32[8], flags: uint32) -> Self {
         var stack: uint32[512];
         var index: uint = 0;
         while index < 512 {
             stack[index] = 0;
             index = index + 1;
         }
-        return Blake3 {
+        return Self {
             chunk: Blake3Chunk(key, 0, flags),
-            stack: stack,
+            stack,
             stackDepth: 0,
-            key: key,
-            flags: flags
+            key,
+            flags
         };
     }
 
     /// An unkeyed BLAKE3 hash.
     /// @returns a hasher with nothing absorbed
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#new
-    pub func Blake3() -> Blake3 {
-        return Blake3::Start(Blake3InitialValue, 0);
+    pub func Blake3() -> Self {
+        return Self::Start(Blake3InitialValue, 0);
     }
 
     // Joins two child chaining values into their parent.
     // Safety: `left` and `right` must each address eight readable words and `into` sixteen writable words.
-    unsafe func JoinParent(self: &Blake3, left: *uint32, right: *uint32, extraFlags: uint32, into: *var uint32) {
+    unsafe func JoinParent(&self, left: *uint32, right: *uint32, extraFlags: uint32, into: *var uint32) {
         var words: uint32[16];
         var index: uint = 0;
         while index < 8 {
@@ -310,7 +310,7 @@ extend Blake3 {
     // Merges the finished chunk into the stack. The number of merges is the number of trailing one bits in the
     // chunk's index, which is the arithmetic that replaces tracking which subtrees are complete.
     // Safety: `chaining` must address eight readable words.
-    unsafe func PushChunk(self: &var Blake3, chaining: *uint32, chunkIndex: uint64) {
+    unsafe func PushChunk(&var self, chaining: *uint32, chunkIndex: uint64) {
         var carried: uint32[8];
         var index: uint = 0;
         while index < 8 {
@@ -342,7 +342,7 @@ extend Blake3 : Digest {
     /// Adds `bytes` to the message.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#update
-    pub func Update(self: &var Blake3, bytes: char8[..]) {
+    pub func Update(&var self, bytes: char8[..]) {
         var offset: uint = 0;
         while offset < bytes.length {
             if self.chunk.Length() == Blake3ChunkLength {
@@ -367,7 +367,7 @@ extend Blake3 : Digest {
     /// produce as many bytes as asked. Thirty-two is the usual choice and is what `DigestLength` reports.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#finish
-    pub func Finish(self: &var Blake3, into: var char8[..]) {
+    pub func Finish(&var self, into: var char8[..]) {
         var rootChaining: uint32[8];
         var rootMessage: uint32[16];
         var rootCounter: uint64 = 0;
@@ -388,7 +388,7 @@ extend Blake3 : Digest {
                 var part: uint = 0;
                 while part < 4 {
                     let position = index * 4 + part;
-                    let value = position < self.chunk.blockLength ? (self.chunk.block[position] as uint8) : 0;
+                    let value = if position < self.chunk.blockLength { self.chunk.block[position] as uint8 } else { 0 };
                     word = word | ((value as uint32) << ((part * 8) as uint32));
                     part = part + 1;
                 }
@@ -458,14 +458,14 @@ extend Blake3 : Digest {
     /// Thirty-two bytes, the conventional length; `Finish` writes any length asked of it.
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#digest-length
-    pub func DigestLength(self: &Blake3) -> uint {
+    pub func DigestLength(&self) -> uint {
         return 32;
     }
 
     /// Sixty-four bytes.
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#block-length
-    pub func BlockLength(self: &Blake3) -> uint {
+    pub func BlockLength(&self) -> uint {
         return Blake3BlockLength;
     }
 }

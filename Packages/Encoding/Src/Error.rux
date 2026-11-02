@@ -37,7 +37,7 @@ extend DecodeError {
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based byte offset into the text, or none for `InsufficientCapacity`
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#offset
-    pub func Offset(self: &DecodeError) -> uint? {
+    pub func Offset(&self) -> uint? {
         return match self {
             .InvalidCharacter(at) => .Some(at),
             .InvalidLength(at) => .Some(at),
@@ -70,7 +70,7 @@ extend DecodeError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-display
-    pub func WriteDisplay(self: &DecodeError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         WriteBytes(writer, DescribeDecodeError(self))?;
         var digits: char8[20];
@@ -81,7 +81,7 @@ extend DecodeError : Display {
                 WriteBytes(writer, ", need ")?;
                 value = needed;
             },
-            else => {
+            _ => {
                 WriteBytes(writer, " at ")?;
                 value = self.Offset() ?? 0;
             }
@@ -99,9 +99,9 @@ extend DecodeError : Display {
         WriteBytes(writer, digits[20 - count..])?;
         match self {
             .InsufficientCapacity(needed) => {
-                WriteBytes(writer, needed == 1 ? " byte" : " bytes")?;
+                WriteBytes(writer, if needed == 1 { " byte" } else { " bytes" })?;
             },
-            else => {}
+            _ => {}
         }
         return;
     }
@@ -114,7 +114,7 @@ extend DecodeError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-debug
-    pub func WriteDebug(self: &DecodeError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

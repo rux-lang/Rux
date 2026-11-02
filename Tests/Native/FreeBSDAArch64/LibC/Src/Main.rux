@@ -12,5 +12,5 @@ func Main() -> int {
 
     // Safety: the format is a NUL-terminated literal whose two conversions match the `int` and `double` passed.
     let written = unsafe { printf("freebsd-aarch64:%d:%.1f\n".data, 42, 2.5) };
-    return written == 23 ? 0 : 2;
+    return if written == 23 { 0 } else { 2 };
 }

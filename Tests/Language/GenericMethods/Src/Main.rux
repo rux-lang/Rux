@@ -1,7 +1,7 @@
 import GenericMethodProvider::{ Factory, Holder, Scored };
 
 struct Number { value: int; }
-extend Number : Scored { func Score(self: &Number) -> int { return self.value; } }
+extend Number : Scored { func Score(&self) -> int { return self.value; } }
 
 func Forward<T>(value: T) -> T {
     let factory = Factory { bias: 0 };

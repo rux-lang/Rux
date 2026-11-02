@@ -27,9 +27,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -38,7 +36,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "T(")?;
         let tag: Debug = self.tag;
         tag.WriteDebug(writer, spec)?;
@@ -59,7 +57,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -148,7 +146,7 @@ func Main() -> int {
     var owned = Vector<Tracked>(allocator);
     var tag: int32 = 0;
     while tag < 3 {
-        owned.Push(Tracked { counter: @destroyed, tag: tag });
+        owned.Push(Tracked { counter: @destroyed, tag });
         tag = tag + 1;
     }
 
@@ -187,7 +185,7 @@ func Main() -> int {
     let refused = WriteVectorDebug<Tracked>(tightSink, owned, plain);
     let overflowed = match refused {
         .Success(_) => false,
-        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
     };
     Assert(overflowed, "a destination without room reports it");
     Assert(tight.Length() <= 6, "having written no more than it had");

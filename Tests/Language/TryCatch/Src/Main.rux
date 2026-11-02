@@ -33,7 +33,7 @@ func Parse(text: int32) -> int32 throws ParseError {
 
 func Read(code: int32) -> int32 throws IoError {
     if code != 0i32 {
-        throw IoError { code: code };
+        throw IoError { code };
     }
     return 7i32;
 }

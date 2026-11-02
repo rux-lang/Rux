@@ -42,21 +42,21 @@ func ShownWith(value: NanoId, spec: FormatSpec, expected: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    let first = NanoId::Generate() catch { else => return 1 };
-    let second = NanoId::Generate() catch { else => return 2 };
+    let first = NanoId::Generate() catch { _ => return 1 };
+    let second = NanoId::Generate() catch { _ => return 2 };
     if first.Equals(second) { return 3; }
     if first.Text().length != 21 { return 4; }
 
     // Round trip through text.
-    let reread = NanoId::Parse(first.Text()) catch { else => return 5 };
+    let reread = NanoId::Parse(first.Text()) catch { _ => return 5 };
     if !reread.Equals(first) || reread.Compare(first) != Ordering::Equal { return 6; }
 
     let text = "V1StGXR8_Z5jdHi6B-myT";
-    let parsed = NanoId::Parse(text) catch { else => return 7 };
+    let parsed = NanoId::Parse(text) catch { _ => return 7 };
     if !Same(parsed.Text(), text) || !Shown(parsed, text) { return 8; }
     // A width pads the identifier like any other text.
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(">23") catch { else => return 30 };
+    spec = ParseFormatSpec(">23") catch { _ => return 30 };
     var padded: char8[23] = [' '; 23];
     var at: uint = 2;
     for unit in text {
@@ -64,7 +64,7 @@ func Main() -> int {
         at = at + 1;
     }
     if !ShownWith(parsed, spec, padded[..]) { return 31; }
-    let later = NanoId::Parse("V1StGXR8_Z5jdHi6B-myU") catch { else => return 9 };
+    let later = NanoId::Parse("V1StGXR8_Z5jdHi6B-myU") catch { _ => return 9 };
     if parsed.Compare(later) != Ordering::Less || later.Compare(parsed) != Ordering::Greater { return 10; }
     if parsed.Equals(later) { return 11; }
 

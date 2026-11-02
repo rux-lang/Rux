@@ -21,7 +21,7 @@ pub func Tan(x: float64) -> float64 {
     // tan(-0.0) is -0.0.
     if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 { return x; }
     let negative = x < 0.0;
-    let ax = negative ? -x : x;
+    let ax = if negative { -x } else { x };
     var result = 0.0;
     if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
@@ -32,7 +32,7 @@ pub func Tan(x: float64) -> float64 {
         result = KernelTan(red.hi, red.lo, (red.quadrant & 1) == 1);
     }
     // The tangent is odd.
-    return negative ? -result : result;
+    return if negative { -result } else { result };
 }
 
 /// Computes the tangent of `x` at `float32` precision, where `x` is in radians.

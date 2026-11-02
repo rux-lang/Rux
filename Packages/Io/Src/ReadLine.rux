@@ -54,7 +54,7 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
         if filled == 0 {
             if invalid || carryLength > 0 { fail IoError::Of(IoErrorKind::InvalidText); }
             if pendingCarriageReturn {
-                builder.AppendAscii(c8'\r') catch { else => fail IoError::Of(IoErrorKind::Other) };
+                builder.AppendAscii(c8'\r') catch { _ => fail IoError::Of(IoErrorKind::Other) };
             }
             if !sawAnything { fail IoError::Of(IoErrorKind::EndOfStream); }
             return;
@@ -92,14 +92,14 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
             continue;
         }
         if pendingCarriageReturn {
-            builder.AppendAscii(c8'\r') catch { else => fail IoError::Of(IoErrorKind::Other) };
+            builder.AppendAscii(c8'\r') catch { _ => fail IoError::Of(IoErrorKind::Other) };
             pendingCarriageReturn = false;
         }
         if ch == c8'\r' {
             pendingCarriageReturn = true;
         }
         else if (ch as uint8) < 0x80 {
-            builder.AppendAscii(ch) catch { else => fail IoError::Of(IoErrorKind::Other) };
+            builder.AppendAscii(ch) catch { _ => fail IoError::Of(IoErrorKind::Other) };
         }
         else {
             // The first byte of a longer character. One that cannot start a character fails the line at once.

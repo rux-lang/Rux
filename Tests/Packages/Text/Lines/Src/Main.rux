@@ -44,15 +44,15 @@ func Main() -> int {
     var blank = View("\n").Lines();
     Assert(Same(blank.Next() ?? View("x"), "") && Ended(blank.Next()), "a single break is one empty line");
 
-    let upper = ToUpper(SystemAllocator(), View("Straße ﬁx ǆ é")) catch { else => Panic("upper") };
+    let upper = ToUpper(SystemAllocator(), View("Straße ﬁx ǆ é")) catch { _ => Panic("upper") };
     Assert(Same(upper.View(), "STRASSE FIX Ǆ É"), "full upper-case mappings change the length");
-    let lower = ToLower(SystemAllocator(), View("ÀÉÎ ΣΑΣ İ")) catch { else => Panic("lower") };
+    let lower = ToLower(SystemAllocator(), View("ÀÉÎ ΣΑΣ İ")) catch { _ => Panic("lower") };
     Assert(Same(lower.View(), "àéî σασ i̇"), "lower case is unconditional");
-    let folded = FoldCase(SystemAllocator(), View("Straße")) catch { else => Panic("fold") };
-    let foldedUpper = FoldCase(SystemAllocator(), View("STRASSE")) catch { else => Panic("fold upper") };
+    let folded = FoldCase(SystemAllocator(), View("Straße")) catch { _ => Panic("fold") };
+    let foldedUpper = FoldCase(SystemAllocator(), View("STRASSE")) catch { _ => Panic("fold upper") };
     let foldedView = foldedUpper.View();
     Assert(folded.View().Equals(foldedView) && Same(folded.View(), "strasse"), "folding ignores case");
-    let ascii = ToUpper(SystemAllocator(), View("plain 123")) catch { else => Panic("ascii") };
+    let ascii = ToUpper(SystemAllocator(), View("plain 123")) catch { _ => Panic("ascii") };
     Assert(Same(ascii.View(), "PLAIN 123"), "ASCII text maps as ASCII");
     return 0;
 }

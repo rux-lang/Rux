@@ -23,8 +23,8 @@ extend Complex {
     /// @param imaginary the imaginary part
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/math/complex#new
-    pub func New(real: float64, imaginary: float64) -> Complex {
-        return Complex { real: real, imaginary: imaginary };
+    pub func New(real: float64, imaginary: float64) -> Self {
+        return Self { real, imaginary };
     }
 
     /// The number with magnitude `magnitude` at `angle` radians from the positive real axis.
@@ -32,77 +32,77 @@ extend Complex {
     /// @param angle the angle in radians
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/math/complex#from-polar
-    pub func FromPolar(magnitude: float64, angle: float64) -> Complex {
-        return Complex { real: magnitude * Cos(angle), imaginary: magnitude * Sin(angle) };
+    pub func FromPolar(magnitude: float64, angle: float64) -> Self {
+        return Self { real: magnitude * Cos(angle), imaginary: magnitude * Sin(angle) };
     }
 
     /// The distance from zero, computed without overflow or underflow on the way.
     /// @returns the magnitude
     /// @see https://rux-lang.dev/docs/api/math/complex#abs
-    pub func Abs(self: &Complex) -> float64 {
+    pub func Abs(&self) -> float64 {
         return Hypot(self.real, self.imaginary);
     }
 
     /// The angle from the positive real axis, in (-π, π].
     /// @returns the argument in radians
     /// @see https://rux-lang.dev/docs/api/math/complex#arg
-    pub func Arg(self: &Complex) -> float64 {
+    pub func Arg(&self) -> float64 {
         return ArcTan2(self.imaginary, self.real);
     }
 
     /// The square of the magnitude, which needs no square root.
     /// @returns the squared magnitude
     /// @see https://rux-lang.dev/docs/api/math/complex#norm
-    pub func Norm(self: &Complex) -> float64 {
+    pub func Norm(&self) -> float64 {
         return self.real * self.real + self.imaginary * self.imaginary;
     }
 
     /// The number reflected across the real axis.
     /// @returns the conjugate
     /// @see https://rux-lang.dev/docs/api/math/complex#conjugate
-    pub func Conjugate(self: &Complex) -> Complex {
-        return Complex { real: self.real, imaginary: -self.imaginary };
+    pub func Conjugate(&self) -> Self {
+        return Self { real: self.real, imaginary: -self.imaginary };
     }
 
     /// The number with both parts negated.
     /// @returns the negation
     /// @see https://rux-lang.dev/docs/api/math/complex#negate
-    pub func Negate(self: &Complex) -> Complex {
-        return Complex { real: -self.real, imaginary: -self.imaginary };
+    pub func Negate(&self) -> Self {
+        return Self { real: -self.real, imaginary: -self.imaginary };
     }
 
     /// The number with both parts multiplied by `factor`.
     /// @param factor the real factor
     /// @returns the scaled number
     /// @see https://rux-lang.dev/docs/api/math/complex#scale
-    pub func Scale(self: &Complex, factor: float64) -> Complex {
-        return Complex { real: self.real * factor, imaginary: self.imaginary * factor };
+    pub func Scale(&self, factor: float64) -> Self {
+        return Self { real: self.real * factor, imaginary: self.imaginary * factor };
     }
 
     /// e raised to this number.
     /// @returns the exponential
     /// @see https://rux-lang.dev/docs/api/math/complex#exp
-    pub func Exp(self: &Complex) -> Complex {
+    pub func Exp(&self) -> Self {
         let magnitude = Exp(self.real);
-        return Complex { real: magnitude * Cos(self.imaginary), imaginary: magnitude * Sin(self.imaginary) };
+        return Self { real: magnitude * Cos(self.imaginary), imaginary: magnitude * Sin(self.imaginary) };
     }
 
     /// The natural logarithm on the principal branch: the logarithm of the magnitude, and the argument.
     /// @returns the logarithm
     /// @see https://rux-lang.dev/docs/api/math/complex#log
-    pub func Log(self: &Complex) -> Complex {
-        return Complex { real: Log(self.Abs()), imaginary: self.Arg() };
+    pub func Log(&self) -> Self {
+        return Self { real: Log(self.Abs()), imaginary: self.Arg() };
     }
 
     /// The principal square root, whose real part is never negative.
     /// @returns the square root
     /// @see https://rux-lang.dev/docs/api/math/complex#sqrt
-    pub func Sqrt(self: &Complex) -> Complex {
-        if self.real == 0.0 && self.imaginary == 0.0 { return Complex { real: 0.0, imaginary: self.imaginary }; }
+    pub func Sqrt(&self) -> Self {
+        if self.real == 0.0 && self.imaginary == 0.0 { return Self { real: 0.0, imaginary: self.imaginary }; }
         let root = Sqrt((Abs(self.real) + self.Abs()) / 2.0);
-        if self.real >= 0.0 { return Complex { real: root, imaginary: self.imaginary / (2.0 * root) }; }
+        if self.real >= 0.0 { return Self { real: root, imaginary: self.imaginary / (2.0 * root) }; }
         let other = Abs(self.imaginary) / (2.0 * root);
-        return Complex { real: other, imaginary: self.imaginary < 0.0 ? -root : root };
+        return Self { real: other, imaginary: if self.imaginary < 0.0 { -root } else { root } };
     }
 
     /// This number raised to `exponent`, as e raised to `exponent` times the logarithm, so on the principal branch.
@@ -110,8 +110,8 @@ extend Complex {
     /// @param exponent the power
     /// @returns the power
     /// @see https://rux-lang.dev/docs/api/math/complex#pow
-    pub func Pow(self: &Complex, exponent: Complex) -> Complex {
-        if self.real == 0.0 && self.imaginary == 0.0 { return Complex { real: 0.0, imaginary: 0.0 }; }
+    pub func Pow(&self, exponent: Self) -> Self {
+        if self.real == 0.0 && self.imaginary == 0.0 { return Self { real: 0.0, imaginary: 0.0 }; }
         let product = exponent * self.Log();
         return product.Exp();
     }
@@ -120,24 +120,24 @@ extend Complex {
     /// @param other the number to add
     /// @returns the sum
     /// @see https://rux-lang.dev/docs/api/math/complex#add
-    pub func +(self: &Complex, other: Complex) -> Complex {
-        return Complex { real: self.real + other.real, imaginary: self.imaginary + other.imaginary };
+    pub func +(&self, other: Self) -> Self {
+        return Self { real: self.real + other.real, imaginary: self.imaginary + other.imaginary };
     }
 
     /// The difference.
     /// @param other the number to subtract
     /// @returns the difference
     /// @see https://rux-lang.dev/docs/api/math/complex#subtract
-    pub func -(self: &Complex, other: Complex) -> Complex {
-        return Complex { real: self.real - other.real, imaginary: self.imaginary - other.imaginary };
+    pub func -(&self, other: Self) -> Self {
+        return Self { real: self.real - other.real, imaginary: self.imaginary - other.imaginary };
     }
 
     /// The product.
     /// @param other the number to multiply by
     /// @returns the product
     /// @see https://rux-lang.dev/docs/api/math/complex#multiply
-    pub func *(self: &Complex, other: Complex) -> Complex {
-        return Complex {
+    pub func *(&self, other: Self) -> Self {
+        return Self {
             real: self.real * other.real - self.imaginary * other.imaginary,
             imaginary: self.real * other.imaginary + self.imaginary * other.real
         };
@@ -148,18 +148,18 @@ extend Complex {
     /// @param other the number to divide by
     /// @returns the quotient
     /// @see https://rux-lang.dev/docs/api/math/complex#divide
-    pub func /(self: &Complex, other: Complex) -> Complex {
+    pub func /(&self, other: Self) -> Self {
         if Abs(other.real) >= Abs(other.imaginary) {
             let ratio = other.imaginary / other.real;
             let denominator = other.real + other.imaginary * ratio;
-            return Complex {
+            return Self {
                 real: (self.real + self.imaginary * ratio) / denominator,
                 imaginary: (self.imaginary - self.real * ratio) / denominator
             };
         }
         let ratio = other.real / other.imaginary;
         let denominator = other.real * ratio + other.imaginary;
-        return Complex {
+        return Self {
             real: (self.real * ratio + self.imaginary) / denominator,
             imaginary: (self.imaginary * ratio - self.real) / denominator
         };
@@ -181,8 +181,8 @@ extend Complex32 {
     /// @param imaginary the imaginary part
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/math/complex#new
-    pub func New(real: float32, imaginary: float32) -> Complex32 {
-        return Complex32 { real: real, imaginary: imaginary };
+    pub func New(real: float32, imaginary: float32) -> Self {
+        return Self { real, imaginary };
     }
 
     /// The number with magnitude `magnitude` at `angle` radians from the positive real axis.
@@ -190,77 +190,77 @@ extend Complex32 {
     /// @param angle the angle in radians
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/math/complex#from-polar
-    pub func FromPolar(magnitude: float32, angle: float32) -> Complex32 {
-        return Complex32 { real: magnitude * Cos(angle), imaginary: magnitude * Sin(angle) };
+    pub func FromPolar(magnitude: float32, angle: float32) -> Self {
+        return Self { real: magnitude * Cos(angle), imaginary: magnitude * Sin(angle) };
     }
 
     /// The distance from zero, computed without overflow or underflow on the way.
     /// @returns the magnitude
     /// @see https://rux-lang.dev/docs/api/math/complex#abs
-    pub func Abs(self: &Complex32) -> float32 {
+    pub func Abs(&self) -> float32 {
         return Hypot(self.real, self.imaginary);
     }
 
     /// The angle from the positive real axis, in (-π, π].
     /// @returns the argument in radians
     /// @see https://rux-lang.dev/docs/api/math/complex#arg
-    pub func Arg(self: &Complex32) -> float32 {
+    pub func Arg(&self) -> float32 {
         return ArcTan2(self.imaginary, self.real);
     }
 
     /// The square of the magnitude, which needs no square root.
     /// @returns the squared magnitude
     /// @see https://rux-lang.dev/docs/api/math/complex#norm
-    pub func Norm(self: &Complex32) -> float32 {
+    pub func Norm(&self) -> float32 {
         return self.real * self.real + self.imaginary * self.imaginary;
     }
 
     /// The number reflected across the real axis.
     /// @returns the conjugate
     /// @see https://rux-lang.dev/docs/api/math/complex#conjugate
-    pub func Conjugate(self: &Complex32) -> Complex32 {
-        return Complex32 { real: self.real, imaginary: -self.imaginary };
+    pub func Conjugate(&self) -> Self {
+        return Self { real: self.real, imaginary: -self.imaginary };
     }
 
     /// The number with both parts negated.
     /// @returns the negation
     /// @see https://rux-lang.dev/docs/api/math/complex#negate
-    pub func Negate(self: &Complex32) -> Complex32 {
-        return Complex32 { real: -self.real, imaginary: -self.imaginary };
+    pub func Negate(&self) -> Self {
+        return Self { real: -self.real, imaginary: -self.imaginary };
     }
 
     /// The number with both parts multiplied by `factor`.
     /// @param factor the real factor
     /// @returns the scaled number
     /// @see https://rux-lang.dev/docs/api/math/complex#scale
-    pub func Scale(self: &Complex32, factor: float32) -> Complex32 {
-        return Complex32 { real: self.real * factor, imaginary: self.imaginary * factor };
+    pub func Scale(&self, factor: float32) -> Self {
+        return Self { real: self.real * factor, imaginary: self.imaginary * factor };
     }
 
     /// e raised to this number.
     /// @returns the exponential
     /// @see https://rux-lang.dev/docs/api/math/complex#exp
-    pub func Exp(self: &Complex32) -> Complex32 {
+    pub func Exp(&self) -> Self {
         let magnitude = Exp(self.real);
-        return Complex32 { real: magnitude * Cos(self.imaginary), imaginary: magnitude * Sin(self.imaginary) };
+        return Self { real: magnitude * Cos(self.imaginary), imaginary: magnitude * Sin(self.imaginary) };
     }
 
     /// The natural logarithm on the principal branch: the logarithm of the magnitude, and the argument.
     /// @returns the logarithm
     /// @see https://rux-lang.dev/docs/api/math/complex#log
-    pub func Log(self: &Complex32) -> Complex32 {
-        return Complex32 { real: Log(self.Abs()), imaginary: self.Arg() };
+    pub func Log(&self) -> Self {
+        return Self { real: Log(self.Abs()), imaginary: self.Arg() };
     }
 
     /// The principal square root, whose real part is never negative.
     /// @returns the square root
     /// @see https://rux-lang.dev/docs/api/math/complex#sqrt
-    pub func Sqrt(self: &Complex32) -> Complex32 {
-        if self.real == 0.0f32 && self.imaginary == 0.0f32 { return Complex32 { real: 0.0f32, imaginary: self.imaginary }; }
+    pub func Sqrt(&self) -> Self {
+        if self.real == 0.0f32 && self.imaginary == 0.0f32 { return Self { real: 0.0f32, imaginary: self.imaginary }; }
         let root = Sqrt((Abs(self.real) + self.Abs()) / 2.0f32);
-        if self.real >= 0.0f32 { return Complex32 { real: root, imaginary: self.imaginary / (2.0f32 * root) }; }
+        if self.real >= 0.0f32 { return Self { real: root, imaginary: self.imaginary / (2.0f32 * root) }; }
         let other = Abs(self.imaginary) / (2.0f32 * root);
-        return Complex32 { real: other, imaginary: self.imaginary < 0.0f32 ? -root : root };
+        return Self { real: other, imaginary: if self.imaginary < 0.0f32 { -root } else { root } };
     }
 
     /// This number raised to `exponent`, as e raised to `exponent` times the logarithm, so on the principal branch.
@@ -268,8 +268,8 @@ extend Complex32 {
     /// @param exponent the power
     /// @returns the power
     /// @see https://rux-lang.dev/docs/api/math/complex#pow
-    pub func Pow(self: &Complex32, exponent: Complex32) -> Complex32 {
-        if self.real == 0.0f32 && self.imaginary == 0.0f32 { return Complex32 { real: 0.0f32, imaginary: 0.0f32 }; }
+    pub func Pow(&self, exponent: Self) -> Self {
+        if self.real == 0.0f32 && self.imaginary == 0.0f32 { return Self { real: 0.0f32, imaginary: 0.0f32 }; }
         let product = exponent * self.Log();
         return product.Exp();
     }
@@ -278,24 +278,24 @@ extend Complex32 {
     /// @param other the number to add
     /// @returns the sum
     /// @see https://rux-lang.dev/docs/api/math/complex#add
-    pub func +(self: &Complex32, other: Complex32) -> Complex32 {
-        return Complex32 { real: self.real + other.real, imaginary: self.imaginary + other.imaginary };
+    pub func +(&self, other: Self) -> Self {
+        return Self { real: self.real + other.real, imaginary: self.imaginary + other.imaginary };
     }
 
     /// The difference.
     /// @param other the number to subtract
     /// @returns the difference
     /// @see https://rux-lang.dev/docs/api/math/complex#subtract
-    pub func -(self: &Complex32, other: Complex32) -> Complex32 {
-        return Complex32 { real: self.real - other.real, imaginary: self.imaginary - other.imaginary };
+    pub func -(&self, other: Self) -> Self {
+        return Self { real: self.real - other.real, imaginary: self.imaginary - other.imaginary };
     }
 
     /// The product.
     /// @param other the number to multiply by
     /// @returns the product
     /// @see https://rux-lang.dev/docs/api/math/complex#multiply
-    pub func *(self: &Complex32, other: Complex32) -> Complex32 {
-        return Complex32 {
+    pub func *(&self, other: Self) -> Self {
+        return Self {
             real: self.real * other.real - self.imaginary * other.imaginary,
             imaginary: self.real * other.imaginary + self.imaginary * other.real
         };
@@ -306,18 +306,18 @@ extend Complex32 {
     /// @param other the number to divide by
     /// @returns the quotient
     /// @see https://rux-lang.dev/docs/api/math/complex#divide
-    pub func /(self: &Complex32, other: Complex32) -> Complex32 {
+    pub func /(&self, other: Self) -> Self {
         if Abs(other.real) >= Abs(other.imaginary) {
             let ratio = other.imaginary / other.real;
             let denominator = other.real + other.imaginary * ratio;
-            return Complex32 {
+            return Self {
                 real: (self.real + self.imaginary * ratio) / denominator,
                 imaginary: (self.imaginary - self.real * ratio) / denominator
             };
         }
         let ratio = other.real / other.imaginary;
         let denominator = other.real * ratio + other.imaginary;
-        return Complex32 {
+        return Self {
             real: (self.real * ratio + self.imaginary) / denominator,
             imaginary: (self.imaginary * ratio - self.real) / denominator
         };

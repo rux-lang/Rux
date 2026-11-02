@@ -27,7 +27,7 @@ when #target.os {
                                   GetSystemInfo, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE, PAGE_EXECUTE_READ,
                                   PAGE_EXECUTE_READWRITE, PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, SystemInfo,
                                   VirtualAlloc, VirtualFree, VirtualProtect },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// What may be done with a page, as a set of flags to combine with `|`.
@@ -110,7 +110,7 @@ pub func PageSize() -> uint ! PageError {
             if info.pageSize == 0 { fail PageError::Unsupported; }
             return info.pageSize as uint;
         }
-        else => {
+        _ => {
             let size = QueryPageSize();
             if size <= 0 { fail PageError::Unsupported; }
             return size as uint;
@@ -142,7 +142,7 @@ pub func PageAllocate(length: uint, protection: uint32) -> (*var opaque) ! PageE
             if mapped == null { fail WindowsError(unsafe { GetLastError() }); }
             return mapped;
         }
-        else => {
+        _ => {
             // Safety: a fresh private anonymous mapping at no fixed address replaces nothing the program uses.
             let mapped = unsafe { Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0) };
             if IsError(mapped) { fail UnixError(Errno(mapped)); }
@@ -172,7 +172,7 @@ pub unsafe func PageRelease(address: *var opaque, length: uint) -> ! PageError {
             // so that a caller's arithmetic error is reported on every system rather than on some of them.
             if VirtualFree(address, 0, MEM_RELEASE) == 0 { fail WindowsError(GetLastError()); }
         }
-        else => {
+        _ => {
             if Munmap(address as *opaque, length) != 0 { fail PageError::Failed; }
         }
     }
@@ -200,7 +200,7 @@ pub unsafe func PageProtect(address: *var opaque, length: uint, protection: uint
                 fail WindowsError(GetLastError());
             }
         }
-        else => {
+        _ => {
             if Mprotect(address as *opaque, length, UnixProtection(protection)) != 0 { fail PageError::Failed; }
         }
     }
@@ -222,7 +222,7 @@ pub unsafe func PageProtect(address: *var opaque, length: uint, protection: uint
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-align
 pub func PageAlign(length: uint) -> uint {
     let rounded = AlignUp(length, MinimumPageSize);
-    return rounded < length ? length : rounded;
+    return if rounded < length { length } else { rounded };
 }
 
 when #target.os {
@@ -251,7 +251,7 @@ when #target.os {
             return PageError::Failed;
         }
     }
-    else => {
+    _ => {
         // The Unix flag sets are the same shape as this module's, so the mapping is a translation rather than a
         // choice. The numbering differs between the three systems, which is why it is done per target.
         func UnixProtection(protection: uint32) -> int32 {

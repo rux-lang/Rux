@@ -25,5 +25,5 @@ func Main() -> int {
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
 func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
-    return (<-outcome) catch { else => String(allocator) };
+    return (move outcome) catch { _ => String(allocator) };
 }

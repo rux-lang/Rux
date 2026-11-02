@@ -17,10 +17,10 @@ func Wrap(flags: &var uint8) { flags +%= 200u8; }
 func Toggle(flag: &var bool) { flag = !flag; }
 func Next(letter: &var char32) { letter = c32'z'; }
 func Halve(value: &var float64) { value /= 2.0; }
-func Move(count: &var int, value: int) { count <- value; }
+func Move(count: &var int, value: int) { count = move value; }
 
 extend int32 {
-    func Double(self: &var int32) { self *= 2i32; }
+    func Double(&var self) { self *= 2i32; }
 }
 
 func Main() -> int {

@@ -11,8 +11,8 @@ func Main() -> int {
     Assert(resError is .Failure(_), "resError should be a failure");
     Assert(!(resError is .Success(_)), "resError should not be a success");
 
-    Assert((resSuccess catch { else => 0 }) == 42, "catch on a success should pass 42 through");
-    Assert((resError catch { else => 100 }) == 100, "catch on a failure should recover with 100");
+    Assert((resSuccess catch { _ => 0 }) == 42, "catch on a success should pass 42 through");
+    Assert((resError catch { _ => 100 }) == 100, "catch on a failure should recover with 100");
 
     let val = match resSuccess {
         .Success(v) => v,

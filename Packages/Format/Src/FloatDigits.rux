@@ -86,7 +86,7 @@ pub func DecomposeFloat64(value: float64) -> FloatParts {
     if biased == 0 {
         // Subnormal: no implicit bit, and the exponent is the smallest the format has. The lower gap is never
         // halved here, because there is no binade below to step into.
-        return FloatParts { significand: mantissa, exponent: -1074, atBinadeBottom: false, negative: negative };
+        return FloatParts { significand: mantissa, exponent: -1074, atBinadeBottom: false, negative };
     }
     return FloatParts {
         significand: mantissa | 0x10000000000000,
@@ -94,7 +94,7 @@ pub func DecomposeFloat64(value: float64) -> FloatParts {
         // The smallest normal is at the bottom of its binade by the mantissa test, but its lower neighbour is the
         // largest subnormal, a full gap away — the exponent does not step down below it.
         atBinadeBottom: mantissa == 0 && biased > 1,
-        negative: negative
+        negative
     };
 }
 
@@ -110,13 +110,13 @@ pub func DecomposeFloat32(value: float32) -> FloatParts {
     let biased = ((bits >> 23) & 0xFF) as int;
     let negative = (bits >> 31) != 0;
     if biased == 0 {
-        return FloatParts { significand: mantissa, exponent: -149, atBinadeBottom: false, negative: negative };
+        return FloatParts { significand: mantissa, exponent: -149, atBinadeBottom: false, negative };
     }
     return FloatParts {
         significand: mantissa | 0x800000,
         exponent: biased - 150,
         atBinadeBottom: mantissa == 0 && biased > 1,
-        negative: negative
+        negative
     };
 }
 
@@ -134,13 +134,13 @@ pub func DecomposeFloat16(value: float16) -> FloatParts {
     let biased = ((bits >> 10) & 0x1F) as int;
     let negative = (bits >> 15) != 0;
     if biased == 0 {
-        return FloatParts { significand: mantissa, exponent: -24, atBinadeBottom: false, negative: negative };
+        return FloatParts { significand: mantissa, exponent: -24, atBinadeBottom: false, negative };
     }
     return FloatParts {
         significand: mantissa | 0x400,
         exponent: biased - 25,
         atBinadeBottom: mantissa == 0 && biased > 1,
-        negative: negative
+        negative
     };
 }
 
@@ -157,13 +157,13 @@ pub func DecomposeFloat8(value: float8) -> FloatParts {
     let biased = ((bits >> 3) & 0xF) as int;
     let negative = (bits >> 7) != 0;
     if biased == 0 {
-        return FloatParts { significand: mantissa, exponent: -9, atBinadeBottom: false, negative: negative };
+        return FloatParts { significand: mantissa, exponent: -9, atBinadeBottom: false, negative };
     }
     return FloatParts {
         significand: mantissa | 0x8,
         exponent: biased - 10,
         atBinadeBottom: mantissa == 0 && biased > 1,
-        negative: negative
+        negative
     };
 }
 

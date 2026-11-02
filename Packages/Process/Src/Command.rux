@@ -38,7 +38,7 @@ when #target.os {
         GetStdHandle, HANDLE_FLAG_INHERIT, InvalidHandleValue, ProcessInformation, STARTF_USESTDHANDLES,
         SecurityAttributes, SetHandleInformation, StartupInfo, StdErrorHandle, StdInputHandle, StdOutputHandle
     },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// What a child's standard stream is connected to. `Copy`.
@@ -73,23 +73,21 @@ pub struct Command {
 }
 
 extend Command {
-    func =(self: &var Command, other: &Command);
-
     /// A command to start `program`, found through `PATH` when it names no directory. The program is also the child's
     /// first argument, as every system expects. Its streams start as `Stdio::Inherit`.
     /// @param allocator what the command's parts are kept in
     /// @param program the program's name or path, as UTF-8 text
     /// @returns the command
     /// @see https://rux-lang.dev/docs/api/process/command#command-new
-    pub func Command(allocator: Allocator, program: char8[..]) -> Command {
-        var command = Command {
-            allocator: allocator, words: Buffer<OsUnit>(allocator), wordCount: 0,
+    pub func Command(allocator: Allocator, program: char8[..]) -> Self {
+        var command = Self {
+            allocator, words: Buffer<OsUnit>(allocator), wordCount: 0,
             directory: Buffer<OsUnit>(allocator), changes: Buffer<OsUnit>(allocator), clearEnvironment: false,
             input: Stdio::Inherit, output: Stdio::Inherit, error: Stdio::Inherit, failure: none
         };
         if program.length == 0 { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
         command.Argument(program);
-        return <-command;
+        return move command;
     }
 
     /// A command to start `program` given in native form, such as this process's own first argument.
@@ -97,19 +95,19 @@ extend Command {
     /// @param program the program's name or path
     /// @returns the command
     /// @see https://rux-lang.dev/docs/api/process/command#from-native
-    pub func FromNative(allocator: Allocator, program: OsStringView) -> Command {
+    pub func FromNative(allocator: Allocator, program: OsStringView) -> Self {
         var command = Command(allocator, "-");
         command.words.Clear();
         command.wordCount = 0;
         if program.IsEmpty() { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
         command.NativeArgument(program);
-        return <-command;
+        return move command;
     }
 
     /// Adds an argument, as UTF-8 text.
     /// @param value the argument
     /// @see https://rux-lang.dev/docs/api/process/command#argument
-    pub func Argument(self: &var Command, value: char8[..]) {
+    pub func Argument(&var self, value: char8[..]) {
         self.Note(AppendText(self.words, value));
         self.Note(self.words.Push(0 as OsUnit));
         self.wordCount = self.wordCount + 1;
@@ -118,7 +116,7 @@ extend Command {
     /// Adds an argument already in native form, such as one of this process's own arguments.
     /// @param value the argument
     /// @see https://rux-lang.dev/docs/api/process/command#native-argument
-    pub func NativeArgument(self: &var Command, value: OsStringView) {
+    pub func NativeArgument(&var self, value: OsStringView) {
         self.Note(AppendUnits(self.words, value.Units()));
         self.Note(self.words.Push(0 as OsUnit));
         self.wordCount = self.wordCount + 1;
@@ -127,7 +125,7 @@ extend Command {
     /// Starts the child in `path` rather than in this process's working directory.
     /// @param path the directory, as UTF-8 text
     /// @see https://rux-lang.dev/docs/api/process/command#directory
-    pub func Directory(self: &var Command, path: char8[..]) {
+    pub func Directory(&var self, path: char8[..]) {
         self.directory.Clear();
         self.Note(AppendText(self.directory, path));
         self.Note(self.directory.Push(0 as OsUnit));
@@ -137,7 +135,7 @@ extend Command {
     /// @param name the variable's name, which may not be empty or contain `=`
     /// @param value its value
     /// @see https://rux-lang.dev/docs/api/process/command#set-variable
-    pub func SetVariable(self: &var Command, name: char8[..], value: char8[..]) {
+    pub func SetVariable(&var self, name: char8[..], value: char8[..]) {
         self.CheckName(name);
         self.Note(self.changes.Push(0x53 as OsUnit));
         self.Note(AppendText(self.changes, name));
@@ -149,7 +147,7 @@ extend Command {
     /// Leaves the variable `name` out of the child's environment.
     /// @param name the variable's name
     /// @see https://rux-lang.dev/docs/api/process/command#remove-variable
-    pub func RemoveVariable(self: &var Command, name: char8[..]) {
+    pub func RemoveVariable(&var self, name: char8[..]) {
         self.CheckName(name);
         self.Note(self.changes.Push(0x52 as OsUnit));
         self.Note(AppendText(self.changes, name));
@@ -158,7 +156,7 @@ extend Command {
 
     /// Starts the child with no variables but those set on the command.
     /// @see https://rux-lang.dev/docs/api/process/command#clear-environment
-    pub func ClearEnvironment(self: &var Command) {
+    pub func ClearEnvironment(&var self) {
         self.clearEnvironment = true;
         self.changes.Clear();
     }
@@ -166,21 +164,21 @@ extend Command {
     /// Connects the child's standard input.
     /// @param stdio what it reads from
     /// @see https://rux-lang.dev/docs/api/process/command#standard-input
-    pub func StandardInput(self: &var Command, stdio: Stdio) {
+    pub func StandardInput(&var self, stdio: Stdio) {
         self.input = stdio;
     }
 
     /// Connects the child's standard output.
     /// @param stdio what it writes to
     /// @see https://rux-lang.dev/docs/api/process/command#standard-output
-    pub func StandardOutput(self: &var Command, stdio: Stdio) {
+    pub func StandardOutput(&var self, stdio: Stdio) {
         self.output = stdio;
     }
 
     /// Connects the child's standard error.
     /// @param stdio what it writes to
     /// @see https://rux-lang.dev/docs/api/process/command#standard-error
-    pub func StandardError(self: &var Command, stdio: Stdio) {
+    pub func StandardError(&var self, stdio: Stdio) {
         self.error = stdio;
     }
 
@@ -188,7 +186,7 @@ extend Command {
     /// @returns the child, or fails: with a part of the command the system could not take, with `NotFound` for a
     ///   program that is not there, or with the system's reason
     /// @see https://rux-lang.dev/docs/api/process/command#spawn
-    pub func Spawn(self: &Command) -> Child ! IoError {
+    pub func Spawn(&self) -> Child ! IoError {
         if self.failure != none { fail self.failure ?? IoError::Of(IoErrorKind::Other); }
         return self.Launch(self.input, self.output, self.error);
     }
@@ -196,13 +194,13 @@ extend Command {
     /// Starts the program and waits for it to finish.
     /// @returns how it finished
     /// @see https://rux-lang.dev/docs/api/process/command#run
-    pub func Run(self: &Command) -> ExitStatus ! IoError {
+    pub func Run(&self) -> ExitStatus ! IoError {
         var child = self.Spawn()?;
         return child.Wait()?;
     }
 
     // Remembers the first failure among the command's parts.
-    func Note(self: &var Command, outcome: () ! IoError) {
+    func Note(&var self, outcome: () ! IoError) {
         match outcome {
             .Success(_) => {},
             .Failure(error) => {
@@ -211,7 +209,7 @@ extend Command {
         }
     }
 
-    func CheckName(self: &var Command, name: char8[..]) {
+    func CheckName(&var self, name: char8[..]) {
         var index: uint = 0;
         while index < name.length {
             if name[index] as uint8 == 0x3Du8 { self.failure = self.failure ?? IoError::Of(IoErrorKind::InvalidInput); }
@@ -221,7 +219,7 @@ extend Command {
     }
 
     // The record that decides `name`: its last `S` or `R` record, as the offset of its kind unit, or none.
-    func LastChange(self: &Command, name: OsStringView) -> uint? {
+    func LastChange(&self, name: OsStringView) -> uint? {
         let units = self.changes.View();
         var found: uint? = none;
         var at: uint = 0;
@@ -238,7 +236,7 @@ extend Command {
     }
 
     // The child's environment as `name=value` entries, each followed by a NUL.
-    func EnvironmentEntries(self: &Command) -> Buffer<OsUnit> ! IoError {
+    func EnvironmentEntries(&self) -> Buffer<OsUnit> ! IoError {
         var entries = Buffer<OsUnit>(self.allocator);
         if !self.clearEnvironment {
             for variable in Environment() {
@@ -263,11 +261,11 @@ extend Command {
             }
             at = end + 1;
         }
-        return <-entries;
+        return move entries;
     }
 
     // Starts the child with the given streams.
-    func Launch(self: &Command, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+    func Launch(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
         when #target.os == .Windows {
             return self.LaunchWindows(input, output, error);
         }
@@ -277,7 +275,7 @@ extend Command {
     }
 
     // `posix_spawnp` with an argument vector, an environment vector and the file actions for the streams.
-    func LaunchPosix(self: &Command, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+    func LaunchPosix(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
         when #target.os != .Windows {
             let words = self.words.View();
             var arguments = Buffer<*char8>(self.allocator);
@@ -312,7 +310,7 @@ extend Command {
             while stream < 3u && failure == none {
                 let target = stream as int32;
                 if streams[stream] == Stdio::Null {
-                    let flags = stream == 0u ? OpenReadOnly : OpenWriteOnly;
+                    let flags = if stream == 0u { OpenReadOnly } else { OpenWriteOnly };
                     let devnull: char8[..] = "/dev/null\0";
                     // Safety: `actions` is the local this function initialized above and destroys below, and
                     // `devnull` is a NUL-terminated literal.
@@ -335,8 +333,8 @@ extend Command {
                         if result < 0 { failure = FailureOf(-result); break; }
                     }
                     // The read end goes to a reader: the child for input, the parent for output and error.
-                    let childEnd = stream == 0u ? ends[0] : ends[1];
-                    let parentEnd = stream == 0u ? ends[1] : ends[0];
+                    let childEnd = if stream == 0u { ends[0] } else { ends[1] };
+                    let parentEnd = if stream == 0u { ends[1] } else { ends[0] };
                     childEnds[stream] = childEnd as uint64;
                     parentEnds[stream] = parentEnd as uint64;
                     // Safety: `actions` is the local this function initialized above and destroys below.
@@ -382,7 +380,7 @@ extend Command {
     }
 
     // `CreateProcessW` with a quoted command line, an environment block and inheritable standard handles.
-    func LaunchWindows(self: &Command, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
+    func LaunchWindows(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
         when #target.os == .Windows {
             var line = Buffer<OsUnit>(self.allocator);
             let words = self.words.View();
@@ -447,8 +445,8 @@ extend Command {
                         failure = FailureOf(LastError());
                         break;
                     }
-                    let childEnd = stream == 0u ? readEnd : writeEnd;
-                    let parentEnd = stream == 0u ? writeEnd : readEnd;
+                    let childEnd = if stream == 0u { readEnd } else { writeEnd };
+                    let parentEnd = if stream == 0u { writeEnd } else { readEnd };
                     // Safety: `parentEnd` is the pipe end `CreatePipe` just gave this process, and the call reads no
                     // memory.
                     unsafe { SetHandleInformation(parentEnd, HANDLE_FLAG_INHERIT, 0); }
@@ -466,7 +464,7 @@ extend Command {
             var created = ProcessInformation { process: null, thread: null, processId: 0, threadId: 0 };
             if failure == none {
                 let directory = self.directory.View();
-                let directoryUnits: *uint16 = directory.length == 0 ? null : directory.data;
+                let directoryUnits: *uint16 = if directory.length == 0 { null } else { directory.data };
                 // Safety: `line` is the NUL-terminated, writable command line built above; `block` ends in two NULs as
                 // the environment block must; a given directory is kept followed by a NUL; `startup` and `created`
                 // are locals, the first filled in and sized, the second for the call to write.

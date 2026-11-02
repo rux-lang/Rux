@@ -26,9 +26,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Tracked`.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -131,11 +129,11 @@ func Deferred(log: *var int32, text: int32) -> int32 ! ParseError {
 
 // A completed field of an interrupted aggregate is destroyed when the failure leaves.
 func Interrupted(counter: *var Counter, text: int32) -> Pair ! ParseError {
-    return Pair { first: Tracked { counter: counter }, second: Parse(text)? };
+    return Pair { first: Tracked { counter }, second: Parse(text)? };
 }
 
 func Owned(counter: *var Counter, text: int32) -> int32 ! ParseError {
-    let held = Tracked { counter: counter };
+    let held = Tracked { counter };
     if text < 0i32 {
         fail ParseError { position: 1i32 };
     }

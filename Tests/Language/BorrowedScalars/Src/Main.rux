@@ -2,19 +2,19 @@ import Core::Assert;
 
 func GenericRead<T>(value: &T) -> T { return value; }
 func Take(value: int32) -> int32 { return value; }
-func Take(value: bool) -> int32 { return value ? 1i32 : 0i32; }
+func Take(value: bool) -> int32 { return if value { 1i32 } else { 0i32 }; }
 func Borrow(value: &int32) -> int32 { return value; }
 func Select(value: &int32) -> int32 { return 17i32; }
 func Select(value: int32) -> int32 { return 29i32; }
 
 interface Number { func Read() -> int32; }
 extend int32 : Number {
-    func Read(self: &int32) -> int32 { return self; }
+    func Read(&self) -> int32 { return self; }
 }
 
 struct Calls {}
 extend Calls {
-    func Read(self: &Calls, value: int32) -> int32 { return value; }
+    func Read(&self, value: int32) -> int32 { return value; }
 }
 
 func Main() -> int {
@@ -40,7 +40,7 @@ func Main() -> int {
     Assert(calls.Read(next) == 53i32, "method argument lookup accepts the scalar read");
     let alternate = 71i32;
     let other: &int32 = alternate;
-    let selected: int32 = true ? next : other;
+    let selected: int32 = if true { next } else { other };
     let array: int32[2] = [next, other];
     Assert(selected == 53i32 && array[0] == 53i32 && array[1] == 71i32, "contextual aggregates and ternaries read scalar elements");
     Integers();
@@ -161,7 +161,7 @@ func Booleans() {
     Assert(!next && (next || copied), "new borrows observe boolean writes");
     Assert(GenericRead<bool>(next) == false, "generic boolean reads preserve false");
     if next { Assert(false, "a borrowed false condition skips its body"); }
-    let chosen: bool = next ? next : copied;
+    let chosen: bool = if next { next } else { copied };
     Assert(chosen, "a contextual boolean ternary loads its chosen value");
     var wide: bool64 = true;
     let wideBorrow: &var bool64 = wide;

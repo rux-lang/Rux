@@ -31,9 +31,6 @@ pub struct TreeSet<T> {
 }
 
 extend TreeSet<T> {
-    /// Copying a set would give two owners of every node and element.
-    func =(self: &var TreeSet<T>, other: &TreeSet<T>);
-
     /// An empty set ordered by `compare`, which has allocated nothing.
     /// `allocator` is borrowed for the call and kept for the set's life. `compare` must impose the same order every
     /// call; a set whose comparison changes under it loses elements it still holds.
@@ -42,21 +39,21 @@ extend TreeSet<T> {
     /// @param compare how two keys order against each other
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#new
-    pub func TreeSet(allocator: Allocator, compare: func(T, T) -> Ordering) -> TreeSet<T> {
-        return TreeSet<T> { tree: Tree<T, ()>(allocator), compare: compare };
+    pub func TreeSet(allocator: Allocator, compare: func(T, T) -> Ordering) -> Self {
+        return Self { tree: Tree<T, ()>(allocator), compare };
     }
 
     /// How many elements the set holds.
     /// @returns how many elements it holds
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#length
-    pub func Length(self: &TreeSet<T>) -> uint {
+    pub func Length(&self) -> uint {
         return self.tree.length;
     }
 
     /// Whether the set holds no elements.
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#is-empty
-    pub func IsEmpty(self: &TreeSet<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.tree.length == 0;
     }
 
@@ -65,7 +62,7 @@ extend TreeSet<T> {
     /// @param value the value to act on
     /// @returns whether the value is present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#contains
-    pub func Contains(self: &TreeSet<T>, value: T) -> bool {
+    pub func Contains(&self, value: T) -> bool {
         return self.tree.Find(value, self.compare) != null;
     }
 
@@ -77,8 +74,8 @@ extend TreeSet<T> {
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#insert
-    pub func Insert(self: &var TreeSet<T>, value: T) -> bool {
-        let replaced = self.tree.Attach(<-value, (), self.compare);
+    pub func Insert(&var self, value: T) -> bool {
+        let replaced = self.tree.Attach(move value, (), self.compare);
         return !(replaced is ());
     }
 
@@ -87,7 +84,7 @@ extend TreeSet<T> {
     /// @param value the value to act on
     /// @returns whether the value was there to remove
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#remove
-    pub func Remove(self: &var TreeSet<T>, value: T) -> bool {
+    pub func Remove(&var self, value: T) -> bool {
         let node = self.tree.Find(value, self.compare);
         if node == null { return false; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
@@ -97,7 +94,7 @@ extend TreeSet<T> {
 
     /// Destroys every element, leaving an empty set that is still usable.
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#clear
-    pub func Clear(self: &var TreeSet<T>) {
+    pub func Clear(&var self) {
         self.tree.Clear();
     }
 
@@ -105,7 +102,7 @@ extend TreeSet<T> {
     /// Runs in time proportional to the height and allocates nothing.
     /// @returns the smallest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#first
-    pub func First(self: &TreeSet<T>) -> T? {
+    pub func First(&self) -> T? {
         // Safety: the tree invariant: `root` is null or a live node, and so is the leftmost node below it.
         return unsafe { TreeSet::ElementOf<T>(Tree::Minimum<T, ()>(self.tree.root)) };
     }
@@ -113,7 +110,7 @@ extend TreeSet<T> {
     /// The largest element, or `none` for an empty set.
     /// @returns the largest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#last
-    pub func Last(self: &TreeSet<T>) -> T? {
+    pub func Last(&self) -> T? {
         // Safety: the tree invariant: `root` is null or a live node, and so is the rightmost node below it.
         return unsafe { TreeSet::ElementOf<T>(Tree::Maximum<T, ()>(self.tree.root)) };
     }
@@ -122,7 +119,7 @@ extend TreeSet<T> {
     /// @param value the value to act on
     /// @returns the largest element at or below `value`, or `none`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#floor
-    pub func Floor(self: &TreeSet<T>, value: T) -> T? {
+    pub func Floor(&self, value: T) -> T? {
         let exact = self.tree.Find(value, self.compare);
         // Safety: the tree invariant: `exact` is non-null, checked here, and `Find` hands back only live nodes.
         if exact != null { return unsafe { TreeSet::ElementOf<T>(exact) }; }
@@ -134,7 +131,7 @@ extend TreeSet<T> {
     /// @param value the value to act on
     /// @returns the smallest element at or above `value`, or `none`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#ceiling
-    pub func Ceiling(self: &TreeSet<T>, value: T) -> T? {
+    pub func Ceiling(&self, value: T) -> T? {
         let exact = self.tree.Find(value, self.compare);
         // Safety: the tree invariant: `exact` is non-null, checked here, and `Find` hands back only live nodes.
         if exact != null { return unsafe { TreeSet::ElementOf<T>(exact) }; }
@@ -153,7 +150,7 @@ extend TreeSet<T> {
     /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
     /// @returns a cursor over the elements in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#iterate
-    pub func Iterate(self: &TreeSet<T>) -> TreeSetIterator<T> {
+    pub func Iterate(&self) -> TreeSetIterator<T> {
         // Safety: the tree invariant: `root` is null or a live node of the tree.
         return TreeSetIterator<T> { next: unsafe { Tree::Minimum<T, ()>(self.tree.root) } };
     }
@@ -166,29 +163,29 @@ extend TreeSet<T> {
     /// @param end the element one past the last, exclusive
     /// @returns a cursor over the elements that fall in `[start, end)`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#range
-    pub func Range(self: &TreeSet<T>, start: T, end: T) -> TreeSetRangeIterator<T> {
+    pub func Range(&self, start: T, end: T) -> TreeSetRangeIterator<T> {
         var first = self.tree.Find(start, self.compare);
         if first == null {
             first = self.tree.Above(start, self.compare);
         }
-        return TreeSetRangeIterator<T> { next: first, end: end, compare: self.compare };
+        return TreeSetRangeIterator<T> { next: first, end, compare: self.compare };
     }
 
     /// A walk that consumes this set, smallest element first.
     /// Takes ownership; the set is gone afterwards.
     /// @returns a cursor that consumes the set as it goes, in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#into-iterator
-    pub func IntoIterator(self: TreeSet<T>) -> TreeSetIntoIterator<T> {
+    pub func IntoIterator(self) -> TreeSetIntoIterator<T> {
         // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
         // function ends, and a set left holding the nodes would have its destructor free the very nodes the
         // iterator was handed.
-        var set <- self;
+        var set = move self;
         let taken = TreeSetIntoIterator<T> {
             tree: Tree<T, ()> { root: set.tree.root, length: set.tree.length, allocator: set.tree.allocator }
         };
         set.tree.root = null;
         set.tree.length = 0;
-        return <-taken;
+        return move taken;
     }
 
     /// Whether every element of this set is in `other`.
@@ -197,13 +194,13 @@ extend TreeSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether every element of this set is in `other`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#is-subset-of
-    pub func IsSubsetOf(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
+    pub func IsSubsetOf(&self, other: &Self) -> bool {
         if self.Length() > other.Length() { return false; }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     if !other.Contains(value) { return false; }
                 },
                 none => {
@@ -218,7 +215,7 @@ extend TreeSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether every element of `other` is in this set
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#is-superset-of
-    pub func IsSupersetOf(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
+    pub func IsSupersetOf(&self, other: &Self) -> bool {
         return other.IsSubsetOf(self);
     }
 
@@ -228,13 +225,13 @@ extend TreeSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether the two share no element
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#is-disjoint-from
-    pub func IsDisjointFrom(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
+    pub func IsDisjointFrom(&self, other: &Self) -> bool {
         if self.Length() > other.Length() { return other.IsDisjointFrom(self); }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     if other.Contains(value) { return false; }
                 },
                 none => {
@@ -251,7 +248,7 @@ extend TreeSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether both hold exactly the same elements
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#equals
-    pub func Equals(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
+    pub func Equals(&self, other: &Self) -> bool {
         return self.Length() == other.Length() && self.IsSubsetOf(other);
     }
 
@@ -260,12 +257,12 @@ extend TreeSet<T> {
     /// first node that cannot be allocated.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#union-with
-    pub func UnionWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
+    pub func UnionWith(&var self, other: &Self) {
         var walker = other.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     self.Insert(value);
                 },
                 none => {
@@ -284,7 +281,7 @@ extend TreeSet<T> {
     /// than an edge.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#intersect-with
-    pub func IntersectWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
+    pub func IntersectWith(&var self, other: &Self) {
         // Safety: the tree invariant: `root` is null or a live node of the tree.
         var node = unsafe { Tree::Minimum<T, ()>(self.tree.root) };
         while node != null {
@@ -303,7 +300,7 @@ extend TreeSet<T> {
     /// Allocates nothing and cannot fail, and walks the same way `IntersectWith` does and for the same reason.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#subtract
-    pub func Subtract(self: &var TreeSet<T>, other: &TreeSet<T>) {
+    pub func Subtract(&var self, other: &Self) {
         if other.Length() == 0 { return; }
         // Safety: the tree invariant: `root` is null or a live node of the tree.
         var node = unsafe { Tree::Minimum<T, ()>(self.tree.root) };
@@ -326,13 +323,13 @@ extend TreeSet<T> {
     /// and only then is what is left of `other` put in.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#symmetric-difference-with
-    pub func SymmetricDifferenceWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
+    pub func SymmetricDifferenceWith(&var self, other: &Self) {
         var shared = TreeSet<T>(self.tree.allocator, self.compare);
         var walker = other.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     if self.Contains(value) {
                         shared.Insert(value);
                     }
@@ -348,7 +345,7 @@ extend TreeSet<T> {
         var addingMore = true;
         while addingMore {
             match adding.Next() {
-                value? => {
+                .Some(value) => {
                     if !shared.Contains(value) {
                         self.Insert(value);
                     }
@@ -367,10 +364,10 @@ extend TreeSet<T> {
     /// owning element type is rejected while compiling, at the copy.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#clone
-    pub func Clone(self: &TreeSet<T>) -> TreeSet<T> {
+    pub func Clone(&self) -> Self {
         var copy = TreeSet<T>(self.tree.allocator, self.compare);
         copy.UnionWith(self);
-        return <-copy;
+        return move copy;
     }
 }
 
@@ -387,7 +384,7 @@ extend TreeSetIterator<T> : Iterator {
     /// Runs in constant amortized time: a whole walk crosses every edge of the tree exactly twice.
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-iterator-next
-    pub func Next(self: &var TreeSetIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         let node = self.next;
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and a live node of the set: `Iterate` requires the set to
@@ -415,7 +412,7 @@ extend TreeSetRangeIterator<T> : Iterator {
     /// The next element below the bound, or `none` once the walk reaches it.
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-range-iterator-next
-    pub func Next(self: &var TreeSetRangeIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         let node = self.next;
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and a live node of the set: `Range` requires the set to outlive
@@ -443,8 +440,6 @@ pub struct TreeSetIntoIterator<T> {
 }
 
 extend TreeSetIntoIterator<T> {
-    /// Copying a consuming iterator would give two owners of its nodes.
-    func =(self: &var TreeSetIntoIterator<T>, other: &TreeSetIntoIterator<T>);
 }
 
 extend TreeSetIntoIterator<T> : Iterator {
@@ -452,7 +447,7 @@ extend TreeSetIntoIterator<T> : Iterator {
     /// Takes the smallest element out of the tree rather than reading past it, which is what makes it the caller's.
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-into-iterator-next
-    pub func Next(self: &var TreeSetIntoIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         // Safety: the tree invariant: `root` is null or a live node of the tree this iterator owns.
         let node = unsafe { Tree::Minimum<T, ()>(self.tree.root) };
         if node == null { return none; }

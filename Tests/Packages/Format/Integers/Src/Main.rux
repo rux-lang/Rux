@@ -23,7 +23,7 @@ import Text::{ FormatError, String, StringView };
 // than read past: an error is never a match.
 func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.View().Equals(wanted),
         .Failure(_) => false
     };
@@ -34,10 +34,10 @@ func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
 // character literal would say, and says it in a line a reader can check.
 func RunOf(outcome: String ! FormatError, signed: bool, digit: char8, count: uint) -> bool {
     var ok = false;
-    match <-outcome {
+    match move outcome {
         .Success(text) => {
             let bytes = text.View().Bytes();
-            let lead = signed ? 1u : 0u;
+            let lead = if signed { 1u } else { 0u };
             if bytes.length == count + lead {
                 ok = true;
                 if signed && bytes[0] != c8'-' { ok = false; }
@@ -60,7 +60,7 @@ func RunOf(outcome: String ! FormatError, signed: bool, digit: char8, count: uin
 // negated instead of taking the magnitude would get wrong.
 func TopBitHex(outcome: String ! FormatError, zeros: uint) -> bool {
     var ok = false;
-    match <-outcome {
+    match move outcome {
         .Success(text) => {
             let bytes = text.View().Bytes();
             if bytes.length == zeros + 2 && bytes[0] == c8'-' && bytes[1] == c8'8' {

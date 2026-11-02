@@ -11,18 +11,18 @@ import Text::{ FormatError, String, StringView };
 
 func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.View().Equals(wanted),
         .Failure(_) => false
     };
 }
 
 func Refused(outcome: String ! FormatError) -> bool {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .UnsupportedRequest => true,
-            else => false
+            _ => false
         }
     };
 }
@@ -75,7 +75,7 @@ func Main() -> int {
     // Any other style, and a precision past the bound, are refused rather than answered differently.
     Assert(Refused(Render(allocator, "{:f}", 1.0)), "a style a float does not have is refused");
     Assert(Refused(Render(allocator, "{:.1101e}", 1.0)), "and so is a precision past the bound");
-    let longest = Render(allocator, "{:.1100e}", 1.0) catch { else => Panic("the largest precision is accepted") };
+    let longest = Render(allocator, "{:.1100e}", 1.0) catch { _ => Panic("the largest precision is accepted") };
     Assert(longest.Length() == 1106, "and honoured in full");
 
     return 0;

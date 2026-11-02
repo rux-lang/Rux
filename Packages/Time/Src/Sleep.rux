@@ -22,7 +22,7 @@ when #target.os {
     .Linux => import Linux::{ EINTR, Errno, IsError, Nanosleep, Timespec },
     .macOS => import macOS::{ EINTR, Errno, IsError, Nanosleep, Timespec },
     .Windows => import Windows::Sleep,
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// Why a wait did not happen. `Copy`.
@@ -71,7 +71,7 @@ pub func WaitChunkMilliseconds(span: Duration) -> int64 {
     // Rounding up is what makes the promise "at least this long" true: a sub-millisecond remainder still costs a
     // whole millisecond of waiting rather than being dropped.
     if span.SubsecondNanoseconds() % 1000000 != 0 { whole = whole + 1; }
-    return whole == 0 ? 1 : whole;
+    return if whole == 0 { 1 } else { whole };
 }
 
 /// One wait, however the caller reaches the system.
@@ -88,7 +88,7 @@ pub interface Waiter {
     /// @param span how much time to wait for
     /// @returns what is left of `span`, or why the wait did not happen
     /// @see https://rux-lang.dev/docs/api/time/waiter#wait-for
-    func WaitFor(self: &var Self, span: Duration) -> Duration ! TimeError;
+    func WaitFor(&var self, span: Duration) -> Duration ! TimeError;
 }
 
 /// The wait every supported system actually provides. `Copy`.
@@ -106,13 +106,13 @@ extend SystemWaiter {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the waiter
     /// @see https://rux-lang.dev/docs/api/time/waiter#system-waiter-new
-    pub func SystemWaiter() -> SystemWaiter {
-        return SystemWaiter { reserved: 0 };
+    pub func SystemWaiter() -> Self {
+        return Self { reserved: 0 };
     }
 }
 
 extend SystemWaiter : Waiter {
-    func WaitFor(self: &var SystemWaiter, span: Duration) -> Duration ! TimeError {
+    func WaitFor(&var self, span: Duration) -> Duration ! TimeError {
         let chunk = WaitChunkMilliseconds(span);
         if chunk == 0 { return Duration::Zero(); }
 
@@ -120,7 +120,7 @@ extend SystemWaiter : Waiter {
         // than one wait can express, and the loop above will come back for the rest.
         let asked = Duration::FromMilliseconds(chunk);
         let rest = span.Minus(asked) ?? Duration::Zero();
-        let leftover = rest.IsNegative() ? Duration::Zero() : rest;
+        let leftover = if rest.IsNegative() { Duration::Zero() } else { rest };
 
         when #target.os == .Windows {
             // Rounded up above, so this waits at least as long as asked and never less.

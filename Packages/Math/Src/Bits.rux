@@ -59,7 +59,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 // The safe faces of the four moves above, which the rest of the package calls. An `asm` body is outside what the

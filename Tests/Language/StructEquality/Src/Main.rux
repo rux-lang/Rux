@@ -7,28 +7,28 @@ variant Payload { Pairs(Pair, Pair), Empty }
 
 struct Money { cents: int64; }
 extend Money {
-    func Equal(self: &Money, other: &Money) -> bool { return self.cents % 100 == other.cents % 100; }
-    func ==(self: &Money, other: &Money) -> bool { return self.Equal(other); }
-    func <(self: &Money, other: &Money) -> bool { return self.cents < other.cents; }
+    func Equal(&self, other: &Self) -> bool { return self.cents % 100 == other.cents % 100; }
+    func ==(&self, other: &Self) -> bool { return self.Equal(other); }
+    func <(&self, other: &Self) -> bool { return self.cents < other.cents; }
 }
 struct Wide { value: int64; tail: int64; trace: *var int32; }
 extend Wide {
-    func ==(self: &Wide, other: &Wide) -> bool {
+    func ==(&self, other: &Self) -> bool {
         // Safety: `self.trace` points at `Main`'s `trace` local, which outlives every `Wide` it compares.
         unsafe { *self.trace = *self.trace * 10 + self.value as int32; }
         return self.value == other.value && self.tail == other.tail;
     }
-    func <(self: &Wide, other: &Wide) -> bool { return self.tail < other.tail; }
+    func <(&self, other: &Self) -> bool { return self.tail < other.tail; }
 }
 struct OrderedFields { first: Wide; second: Wide; }
 struct CustomView { view: char8[..]; code: int32; }
-extend CustomView { func ==(self: &CustomView, other: &CustomView) -> bool { return self.code == other.code; } }
+extend CustomView { func ==(&self, other: &Self) -> bool { return self.code == other.code; } }
 
 func Equal<T>(left: T, right: T) -> bool { return left == right; }
 func Make(calls: *var int32, tail: int64) -> Pair {
     // Safety: the only caller passes `@calls`, a live local of `Main`.
     unsafe { *calls = *calls + 1; }
-    return Pair { head: 1, tail: tail };
+    return Pair { head: 1, tail };
 }
 func Forward(value: Payload) -> Payload { return value; }
 func Sum(value: Payload) -> int64 {
@@ -42,23 +42,22 @@ struct Floating { leading: int64; value: float64; }
 
 struct Tracked { value: int64; drops: *var int32; }
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.drops` points at `Main`'s `drops` local, which outlives every `Tracked`.
         unsafe { *self.drops = *self.drops * 10 + self.value as int32; }
     }
 }
 variant Owners { Both(Tracked, Tracked) }
 func DropPayloads(drops: *var int32) {
-    let value = Owners::Both(Tracked { value: 1, drops: drops }, Tracked { value: 2, drops: drops });
-    let moved <- value;
+    let value = Owners::Both(Tracked { value: 1, drops }, Tracked { value: 2, drops });
+    let moved = move value;
 }
 
 struct Copied { value: int64; source: *var int32; }
 variant Transfers { Both(Copied, Copied) }
 // Plain data copies its bytes and runs no code, leaving the source usable; a move is the same bytes and runs none.
 func TransferPayloads(source: *var int32) -> bool {
-    let value = Transfers::Both(Copied { value: 1, source: source }, Copied { value: 2, source: source });
+    let value = Transfers::Both(Copied { value: 1, source }, Copied { value: 2, source });
     let copied = value;
     let moved = move copied;
     if value != moved { return false; }
@@ -105,10 +104,10 @@ func Main() -> int {
     let changed = Wide { value: 2, tail: 30, trace: @trace };
     if !(first == first) || !(second < changed) || trace != 1 { return 16; }
     trace = 0;
-    let ordered = OrderedFields { first: first, second: second };
+    let ordered = OrderedFields { first, second };
     if ordered != ordered || trace != 12 { return 17; }
     trace = 0;
-    if (ordered == OrderedFields { first: second, second: second } || trace != 1) { return 18; }
+    if (ordered == OrderedFields { first: second, second } || trace != 1) { return 18; }
     let viewA = CustomView { view: "a", code: 7 };
     let viewB = CustomView { view: "different", code: 7 };
     if (Box<CustomView> { value: viewA } != Box<CustomView> { value: viewB }) { return 19; }

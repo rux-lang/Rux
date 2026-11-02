@@ -105,7 +105,7 @@ func Main() -> int {
     let plain = ParseRfc3339("2024-02-29T12:30:45Z");
     Assert(plain is .Success(_), "the plain shape parses");
     let moment = plain catch {
-        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
+        _ => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
     Assert(moment.dateTime.date.year == 2024 && moment.dateTime.date.month == 2 &&
            moment.dateTime.date.day == 29, "a leap day in a leap year is a day");
@@ -122,7 +122,7 @@ func Main() -> int {
     let leap = ParseRfc3339("2016-12-31T23:59:60Z");
     Assert(leap is .Success(_), "the leap second parses");
     let folded = leap catch {
-        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
+        _ => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
     Assert(folded.dateTime.time.second == 59 && folded.dateTime.time.nanosecond == 999999999,
            "and folds to the last nanosecond of second 59");
@@ -166,12 +166,12 @@ func Main() -> int {
     let source = ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(source is .Success(_), "the round-trip source parses");
     let original = source catch {
-        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
+        _ => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
     Assert(Rendered(original, "2024-02-29T12:30:45.5-08:00"), "and renders back to the text it came from");
     let again = ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(again is .Success(_), "which parses again");
-    let second = (again catch { else => original });
+    let second = (again catch { _ => original });
     Assert(second.ToTimestamp().seconds == original.ToTimestamp().seconds, "to the same instant");
     Assert(second.offset.TotalSeconds() == original.offset.TotalSeconds(), "at the same offset");
 

@@ -12,9 +12,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.destroyed != null {
             // Safety: a non-null `destroyed` is the address of the local counter in `Main`, which outlives the value.
             unsafe { *self.destroyed += 1; }
@@ -24,7 +22,7 @@ extend Tracked {
 
 func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     // A box accepts a move-only value.
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91 });
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed, value: 91 });
     let held = (boxed.Get() ?? Panic("the box was just filled")).value;
     // Safety: `destroyed` is the address of the caller's live counter.
     let destroyedCount = unsafe { *destroyed };
@@ -33,7 +31,7 @@ func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError 
 }
 
 func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27 });
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed, value: 27 });
     let taken = boxed.Take() ?? Panic("a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
     // Safety: `destroyed` is the address of the live counter the caller passed in.
@@ -79,7 +77,7 @@ func Main() -> ! AllocError {
 
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
     var source = Box::Create<int64>(allocator, 7);
-    var destination <- source;
+    var destination = move source;
     let movedValue: int64 = destination.Get() ?? Panic("the destination took over the filled box");
     Assert(movedValue == 7, "the destination holds the value");
     Assert(destination.Take() is .Some(emptied) && emptied == 7, "and it is still takeable from there");

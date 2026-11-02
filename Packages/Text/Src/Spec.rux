@@ -81,8 +81,8 @@ extend FormatSpec {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns a spec with no width, no precision, default alignment and base ten
     /// @see https://rux-lang.dev/docs/api/text/format-spec#plain
-    pub func Plain() -> FormatSpec {
-        return FormatSpec {
+    pub func Plain() -> Self {
+        return Self {
             fill: c8' ',
             align: FormatAlign::Default,
             showSign: false,
@@ -100,7 +100,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the fill byte, a space unless the placeholder named one
     /// @see https://rux-lang.dev/docs/api/text/format-spec#fill
-    pub func Fill(self: &FormatSpec) -> char8 {
+    pub func Fill(&self) -> char8 {
         return self.fill;
     }
 
@@ -110,7 +110,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested alignment, or `Default` when the placeholder named none
     /// @see https://rux-lang.dev/docs/api/text/format-spec#alignment
-    pub func Alignment(self: &FormatSpec) -> FormatAlign {
+    pub func Alignment(&self) -> FormatAlign {
         return self.align;
     }
 
@@ -118,7 +118,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the placeholder wrote `+`
     /// @see https://rux-lang.dev/docs/api/text/format-spec#shows-sign
-    pub func ShowsSign(self: &FormatSpec) -> bool {
+    pub func ShowsSign(&self) -> bool {
         return self.showSign;
     }
 
@@ -126,7 +126,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the placeholder wrote `#`
     /// @see https://rux-lang.dev/docs/api/text/format-spec#is-alternate
-    pub func IsAlternate(self: &FormatSpec) -> bool {
+    pub func IsAlternate(&self) -> bool {
         return self.alternate;
     }
 
@@ -134,7 +134,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the placeholder wrote a leading `0`
     /// @see https://rux-lang.dev/docs/api/text/format-spec#zero-pads
-    pub func ZeroPads(self: &FormatSpec) -> bool {
+    pub func ZeroPads(&self) -> bool {
         return self.zeroPad;
     }
 
@@ -143,7 +143,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested width, or zero when the placeholder asked for none
     /// @see https://rux-lang.dev/docs/api/text/format-spec#width
-    pub func Width(self: &FormatSpec) -> uint {
+    pub func Width(&self) -> uint {
         return self.width;
     }
 
@@ -153,7 +153,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested precision, meaningful only alongside `HasPrecision`
     /// @see https://rux-lang.dev/docs/api/text/format-spec#precision
-    pub func Precision(self: &FormatSpec) -> uint {
+    pub func Precision(&self) -> uint {
         return self.precision;
     }
 
@@ -161,7 +161,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when a precision was written, including `.0`
     /// @see https://rux-lang.dev/docs/api/text/format-spec#has-precision
-    pub func HasPrecision(self: &FormatSpec) -> bool {
+    pub func HasPrecision(&self) -> bool {
         return self.hasPrecision;
     }
 
@@ -169,7 +169,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested base, or `Decimal` when the placeholder named none
     /// @see https://rux-lang.dev/docs/api/text/format-spec#base
-    pub func Base(self: &FormatSpec) -> FormatBase {
+    pub func Base(&self) -> FormatBase {
         return self.base;
     }
 
@@ -180,7 +180,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the style bytes, empty when no style was written
     /// @see https://rux-lang.dev/docs/api/text/format-spec#style
-    pub func Style(self: &FormatSpec) -> char8[..] {
+    pub func Style(&self) -> char8[..] {
         return self.style;
     }
 
@@ -188,7 +188,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when a style was written
     /// @see https://rux-lang.dev/docs/api/text/format-spec#has-style
-    pub func HasStyle(self: &FormatSpec) -> bool {
+    pub func HasStyle(&self) -> bool {
         return self.style.length > 0;
     }
 
@@ -199,7 +199,7 @@ extend FormatSpec {
     /// @param name the style to compare against
     /// @returns true when the specification named exactly that style
     /// @see https://rux-lang.dev/docs/api/text/format-spec#style-is
-    pub func StyleIs(self: &FormatSpec, name: char8[..]) -> bool {
+    pub func StyleIs(&self, name: char8[..]) -> bool {
         if self.style.length != name.length { return false; }
         var index: uint = 0;
         while index < name.length {

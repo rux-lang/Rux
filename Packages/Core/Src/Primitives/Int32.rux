@@ -26,7 +26,7 @@ extend int32 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `int32`
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-checked-add
-    pub func CheckedAdd(self: &int32, other: int32) -> int32? {
+    pub func CheckedAdd(&self, other: int32) -> int32? {
         var sum: int32 = 0;
         if AddChecked<int32>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend int32 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `int32`
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-checked-sub
-    pub func CheckedSub(self: &int32, other: int32) -> int32? {
+    pub func CheckedSub(&self, other: int32) -> int32? {
         var difference: int32 = 0;
         if SubChecked<int32>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend int32 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `int32`
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-checked-mul
-    pub func CheckedMul(self: &int32, other: int32) -> int32? {
+    pub func CheckedMul(&self, other: int32) -> int32? {
         var product: int32 = 0;
         if MulChecked<int32>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend int32 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `int32` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-saturating-add
-    pub func SaturatingAdd(self: &int32, other: int32) -> int32 {
+    pub func SaturatingAdd(&self, other: int32) -> int32 {
         return AddSaturating<int32>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend int32 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `int32` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-saturating-sub
-    pub func SaturatingSub(self: &int32, other: int32) -> int32 {
+    pub func SaturatingSub(&self, other: int32) -> int32 {
         return SubSaturating<int32>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend int32 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `int32` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-saturating-mul
-    pub func SaturatingMul(self: &int32, other: int32) -> int32 {
+    pub func SaturatingMul(&self, other: int32) -> int32 {
         return MulSaturating<int32>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend int32 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#int32-truncate
-    pub intrinsic func Truncate<T>(self: &int32) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

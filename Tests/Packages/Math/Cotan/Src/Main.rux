@@ -19,7 +19,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 // Every expected value below is the correctly rounded cotangent of the same

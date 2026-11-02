@@ -53,8 +53,8 @@ extend SystemAllocator {
     /// sufficient; no adapter or owning conversion is required.
     /// @returns the allocator, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#new
-    pub func SystemAllocator() -> SystemAllocator {
-        return SystemAllocator { reserved: 0 };
+    pub func SystemAllocator() -> Self {
+        return Self { reserved: 0 };
     }
 
 }
@@ -69,7 +69,7 @@ extend SystemAllocator : Allocator {
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#allocate
-    pub func Allocate(self: &SystemAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    pub func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
@@ -89,7 +89,7 @@ extend SystemAllocator : Allocator {
 
         let base = PageAllocate(length, PageRead | PageWrite) catch {
             .OutOfMemory => fail AllocError::OutOfMemory,
-            else => fail AllocError::Unsupported
+            _ => fail AllocError::Unsupported
         };
 
         let address = (base as uint) + prefix;
@@ -115,7 +115,7 @@ extend SystemAllocator : Allocator {
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#deallocate
-    pub func Deallocate(self: &SystemAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    pub func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null || IsEmptyBlock(block) { fail AllocError::InvalidBlock; }
 
@@ -130,7 +130,7 @@ extend SystemAllocator : Allocator {
         // and was given for this mapping, which is released only here.
         unsafe {
             header.magic = 0;
-            PageRelease(header.base as *var opaque, header.length) catch { else => fail AllocError::InvalidBlock };
+            PageRelease(header.base as *var opaque, header.length) catch { _ => fail AllocError::InvalidBlock };
         }
     }
 
@@ -146,7 +146,7 @@ extend SystemAllocator : Allocator {
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#reallocate
-    pub func Reallocate(self: &SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    pub func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
@@ -154,7 +154,7 @@ extend SystemAllocator : Allocator {
         }
 
         let fresh = self.Allocate(newLayout)?;
-        let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
+        let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
         unsafe { CopyBlock(fresh, block, keep); }
@@ -162,7 +162,7 @@ extend SystemAllocator : Allocator {
         // When the old block cannot be released, the new block is still good. Reporting the release failure would leave
         // the caller holding an address it was never told about, so the allocation stands and the leak is the lesser
         // outcome.
-        self.Deallocate(block, oldLayout) catch { else => {} };
+        self.Deallocate(block, oldLayout) catch { _ => {} };
         return fresh;
     }
 }

@@ -117,7 +117,7 @@ extend Duration : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-display
-    pub func WriteDisplay(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectDurationStyle(spec)?;
         var whole: uint64 = 0;
@@ -137,7 +137,7 @@ extend Duration : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-debug
-    pub func WriteDebug(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }
@@ -155,7 +155,7 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     var at: uint = 0;
     var negative = false;
     // Safety: the read runs only when `at` is below `text.length`, checked first.
-    let sign = at < text.length ? unsafe { text.data[at] } : c8'0';
+    let sign = if at < text.length { unsafe { text.data[at] } } else { c8'0' };
     if sign == c8'-' || sign == c8'+' {
         negative = sign == c8'-';
         at = at + 1;
@@ -233,5 +233,5 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     // -whole.fraction is stored as seconds = -(whole + 1), nanoseconds = 1e9 - fraction.
     let seconds = (~(whole + 1) +% 1).Truncate<int64>();
     return
-        Duration { seconds: seconds, nanoseconds: 1000000000 - fraction };
+        Duration { seconds, nanoseconds: 1000000000 - fraction };
 }

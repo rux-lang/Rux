@@ -49,8 +49,8 @@ extend ArgumentIterator {
     /// The walk itself, so that `for argument in Arguments()` reads every argument.
     /// @returns a copy of this walk from its current position
     /// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator-iterate
-    pub func Iterate(self: &ArgumentIterator) -> ArgumentIterator {
-        return ArgumentIterator { next: self.next };
+    pub func Iterate(&self) -> Self {
+        return Self { next: self.next };
     }
 
     /// Leaves out the next `count` arguments, as `Skip(1)` leaves out the program.
@@ -58,9 +58,9 @@ extend ArgumentIterator {
     /// @param count how many arguments to pass over
     /// @returns this walk, advanced
     /// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator-skip
-    pub func Skip(self: &var ArgumentIterator, count: uint) -> ArgumentIterator {
+    pub func Skip(&var self, count: uint) -> Self {
         self.next = self.next + count;
-        return ArgumentIterator { next: self.next };
+        return Self { next: self.next };
     }
 }
 
@@ -68,7 +68,7 @@ extend ArgumentIterator : Iterator {
     /// The next argument, or none after the last.
     /// @returns the argument's native units, borrowing storage the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/process/arguments#argument-iterator-next
-    pub func Next(self: &var ArgumentIterator) -> OsStringView? {
+    pub func Next(&var self) -> OsStringView? {
         let argument = Argument(self.next)?;
         self.next = self.next + 1;
         return argument;

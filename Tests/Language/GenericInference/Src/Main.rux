@@ -34,7 +34,7 @@ func First<T>(pair: Pair<T>) -> T {
 }
 
 func Pick<T>(value: T, flag: bool) -> uint {
-    return flag ? 1u : 2u;
+    return if flag { 1u } else { 2u };
 }
 
 func Pick<T>(value: T, offset: uint) -> uint {

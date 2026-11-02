@@ -35,8 +35,8 @@ func Local(year: int32, month: uint8, day: uint8, hour: uint8, minute: uint8) ->
 
 func Main() -> int {
     let allocator = SystemAllocator();
-    let berlin = TimeZone::FromTzif(allocator, "Europe/Berlin", BerlinData[..]) catch { else => return 10 };
-    let sydney = TimeZone::FromTzif(allocator, "Australia/Sydney", SydneyData[..]) catch { else => return 11 };
+    let berlin = TimeZone::FromTzif(allocator, "Europe/Berlin", BerlinData[..]) catch { _ => return 10 };
+    let sydney = TimeZone::FromTzif(allocator, "Australia/Sydney", SydneyData[..]) catch { _ => return 11 };
     Assert(Same(berlin.Name(), "Europe/Berlin"), "a zone keeps its name");
 
     Assert(Check(berlin, -2208988800i64, 3600, false, "CET"), "Europe/Berlin at -2208988800");
@@ -70,16 +70,16 @@ func Main() -> int {
     Assert(Check(sydney, 4102488000i64, 39600, true, "AEDT"), "Australia/Sydney at 4102488000");
     Assert(Check(sydney, 4118126400i64, 36000, false, "AEST"), "Australia/Sydney at 4118126400");
     // A POSIX rule, north and south of the equator.
-    let paris = TimeZone::FromRule(allocator, "Paris", "CET-1CEST,M3.5.0,M10.5.0/3") catch { else => return 12 };
+    let paris = TimeZone::FromRule(allocator, "Paris", "CET-1CEST,M3.5.0,M10.5.0/3") catch { _ => return 12 };
     let melbourne = TimeZone::FromRule(allocator, "Melbourne", "AEST-10AEDT,M10.1.0,M4.1.0/3")
-        catch { else => return 13 };
+        catch { _ => return 13 };
     let winter = Local(2025, 1, 15, 12, 0).ToTimestamp(UtcOffset::Utc());
     let summer = Local(2025, 7, 15, 12, 0).ToTimestamp(UtcOffset::Utc());
     Assert(paris.OffsetAt(winter).seconds == 3600 && paris.OffsetAt(summer).seconds == 7200, "a northern rule");
     Assert(melbourne.OffsetAt(winter).seconds == 39600 && melbourne.OffsetAt(summer).seconds == 36000,
            "a southern rule has daylight time over the new year");
     Assert(Same(paris.StateAt(summer).abbreviation, "CEST"), "a rule's abbreviation");
-    let quoted = TimeZone::FromRule(allocator, "Plus", "<+0330>-3:30") catch { else => return 14 };
+    let quoted = TimeZone::FromRule(allocator, "Plus", "<+0330>-3:30") catch { _ => return 14 };
     Assert(quoted.OffsetAt(winter).seconds == 12600 && Same(quoted.StateAt(winter).abbreviation, "+0330"),
            "a quoted abbreviation and a minute offset");
     let utc = TimeZone::Utc(allocator);
@@ -114,7 +114,7 @@ func Main() -> int {
     }
     // The Unix systems keep the tz database where the zone can be loaded from by name.
     when #target.os == .Linux {
-        let loaded = TimeZone::Load(allocator, "Europe/Berlin") catch { else => return 16 };
+        let loaded = TimeZone::Load(allocator, "Europe/Berlin") catch { _ => return 16 };
         Assert(loaded.OffsetAt(summer).seconds == 7200 && Same(loaded.Name(), "Europe/Berlin"),
                "a zone loads from the system database");
     }

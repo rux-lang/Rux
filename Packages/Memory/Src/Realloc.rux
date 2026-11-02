@@ -22,7 +22,7 @@ when #target.os == .Windows {
 /// @see https://rux-lang.dev/docs/api/memory/allocation#realloc
 pub unsafe func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
-        .FreeBSD, .Linux, .macOS => {
+        .FreeBSD | .Linux | .macOS => {
             if ptr == null { return Alloc(size); }
             if size == 0 {
                 Free(ptr);
@@ -32,7 +32,7 @@ pub unsafe func Realloc(ptr: *opaque, size: uint) -> *var opaque {
             let oldSize = *header;
             let resized = Alloc(size);
             if resized == null { return null; }
-            let copySize = oldSize < size ? oldSize : size;
+            let copySize = if oldSize < size { oldSize } else { size };
             Copy(resized, ptr, copySize);
             Free(ptr);
             return resized;
@@ -46,6 +46,6 @@ pub unsafe func Realloc(ptr: *opaque, size: uint) -> *var opaque {
             }
             return HeapReAlloc(heap, 0, ptr, size);
         },
-        else => #Error("Unsupported operating system")
+        _ => #Error("Unsupported operating system")
     }
 }

@@ -19,7 +19,7 @@ pub func Cos(x: float64) -> float64 {
     // Below 2^-27 the quadratic term is under half an ulp of 1.
     if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 { return 1.0; }
     // Cosine is even, so the sign of the argument never reaches the result.
-    let ax = x < 0.0 ? -x : x;
+    let ax = if x < 0.0 { -x } else { x };
     if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
         return KernelCos(ax, 0.0);

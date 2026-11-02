@@ -68,7 +68,7 @@ func SameFailure(outcome: &(! FormatError), expected: &FormatError) -> bool {
 
 // A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
 func Parsed(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    return TomlParse(allocator, text) catch { else => Panic(note) };
+    return TomlParse(allocator, text) catch { _ => Panic(note) };
 }
 
 func Main() -> int {

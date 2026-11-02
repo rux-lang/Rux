@@ -26,7 +26,7 @@ extend uint8 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `uint8`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-checked-add
-    pub func CheckedAdd(self: &uint8, other: uint8) -> uint8? {
+    pub func CheckedAdd(&self, other: uint8) -> uint8? {
         var sum: uint8 = 0;
         if AddChecked<uint8>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend uint8 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `uint8`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-checked-sub
-    pub func CheckedSub(self: &uint8, other: uint8) -> uint8? {
+    pub func CheckedSub(&self, other: uint8) -> uint8? {
         var difference: uint8 = 0;
         if SubChecked<uint8>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend uint8 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `uint8`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-checked-mul
-    pub func CheckedMul(self: &uint8, other: uint8) -> uint8? {
+    pub func CheckedMul(&self, other: uint8) -> uint8? {
         var product: uint8 = 0;
         if MulChecked<uint8>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend uint8 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `uint8` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-saturating-add
-    pub func SaturatingAdd(self: &uint8, other: uint8) -> uint8 {
+    pub func SaturatingAdd(&self, other: uint8) -> uint8 {
         return AddSaturating<uint8>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend uint8 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `uint8` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-saturating-sub
-    pub func SaturatingSub(self: &uint8, other: uint8) -> uint8 {
+    pub func SaturatingSub(&self, other: uint8) -> uint8 {
         return SubSaturating<uint8>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend uint8 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `uint8` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-saturating-mul
-    pub func SaturatingMul(self: &uint8, other: uint8) -> uint8 {
+    pub func SaturatingMul(&self, other: uint8) -> uint8 {
         return MulSaturating<uint8>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend uint8 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint8-truncate
-    pub intrinsic func Truncate<T>(self: &uint8) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

@@ -22,5 +22,5 @@ func Main() -> int {
     let result = answer();
     // Safety: `library` is the module loaded above, and `answer` is not called after this.
     if !unsafe { FreeLibrary(library) } { return 3; }
-    return result == 42 ? 0 : 4;
+    return if result == 42 { 0 } else { 4 };
 }

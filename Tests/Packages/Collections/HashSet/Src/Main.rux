@@ -13,9 +13,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -26,7 +24,7 @@ extend Tracked {
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
 /// cannot pass by accident.
 func Refusal<T, E>(outcome: T ! E) -> E {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the operation was expected to fail")
     };
@@ -170,7 +168,7 @@ func Main() -> int {
         drained.Insert(value);
         value = value + 1;
     }
-    var moving = (<-drained).IntoIterator();
+    var moving = (move drained).IntoIterator();
     var moved: uint = 0;
     var draining = true;
     while draining {

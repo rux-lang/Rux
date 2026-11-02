@@ -13,13 +13,11 @@ struct MoveOnly {
 }
 
 extend MoveOnly {
-    func =(self: &var MoveOnly, other: &MoveOnly);
-
-    func MoveOnly(value: int32) -> MoveOnly {
-        return MoveOnly { value: value };
+    func MoveOnly(value: int32) -> Self {
+        return Self { value };
     }
 
-    func ~MoveOnly(self: &var MoveOnly) {}
+    func ~MoveOnly(&var self) {}
 }
 
 #NoMove
@@ -33,7 +31,7 @@ func Consume(value: MoveOnly) -> int32 {
 
 func MoveNamed() -> int32 {
     let source = MoveOnly { value: 17i32 };
-    let moved <- source;
+    let moved = move source;
     return moved.value;
 }
 
@@ -47,10 +45,10 @@ func CopyFrom(source: CopyOnly) -> int32 {
 
 func Main() -> int {
     let first = 40i32;
-    let second <- first;
+    let second = move first;
     var destination = 0i32;
-    destination <- second;
-    if Take(<-destination) != 40i32 {
+    destination = move second;
+    if Take(move destination) != 40i32 {
         return 1;
     }
 

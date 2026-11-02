@@ -268,7 +268,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported FreeBSD architecture")
+    _ => #Error("Unsupported FreeBSD architecture")
 }
 
 /// Widens a file descriptor to the register width a system call takes it in.

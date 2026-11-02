@@ -40,7 +40,7 @@ extend TomlScalarError : ParseFailure {
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based byte offset into the scalar's own text
     /// @see https://rux-lang.dev/docs/api/toml/toml-scalar-error#offset
-    pub func Offset(self: &TomlScalarError) -> uint {
+    pub func Offset(&self) -> uint {
         return match self {
             .Malformed(at) => at,
             .OutOfRange(at) => at,
@@ -58,7 +58,7 @@ extend TomlScalarError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-scalar-error#write-display
-    pub func WriteDisplay(self: &TomlScalarError, writer: &var TextWriter,
+    pub func WriteDisplay(&self, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
@@ -77,7 +77,7 @@ extend TomlScalarError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-scalar-error#write-debug
-    pub func WriteDebug(self: &TomlScalarError, writer: &var TextWriter,
+    pub func WriteDebug(&self, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
@@ -112,7 +112,7 @@ struct Stripped {
 extend Stripped {
     // The byte of the original text that stripped byte `at` came from. At the end of the digits, the end of the
     // original — which is where "it stopped early" points.
-    func Source(self: &Stripped, at: uint) -> uint {
+    func Source(&self, at: uint) -> uint {
         if at >= self.length { return self.source; }
         return self.origin[at];
     }
@@ -207,12 +207,12 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
             fail TomlScalarError::Malformed(stripped.Source(start));
         }
     }
-    var index = based ? start + 2 : start;
+    var index = if based { start + 2 } else { start };
     if index >= digits.length {
         fail TomlScalarError::Malformed(stripped.Source(index));
     }
     // Safety: `based` is set only when two bytes remain at `start`, checked above.
-    let radix = based ? BaseOf(unsafe { digits.data[start + 1] } as uint8) : 10;
+    let radix = if based { BaseOf(unsafe { digits.data[start + 1] } as uint8) } else { 10 };
     while index < digits.length {
         // Safety: `index` is below `digits.length`, checked by the loop.
         if !DigitFits(unsafe { digits.data[index] } as uint8, radix) {
@@ -221,7 +221,7 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
         index = index + 1;
     }
     let parsed = ParseInt64(digits) catch {
-        else => return .Failure(TomlScalarError::OutOfRange(0))
+        _ => return .Failure(TomlScalarError::OutOfRange(0))
     };
     return parsed;
 }
@@ -277,7 +277,7 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     }
     // The three named values, which have no digits to check.
     if MatchesWord(digits, start, "inf") {
-        return negative ? -PositiveInfinity64() : PositiveInfinity64();
+        return if negative { -PositiveInfinity64() } else { PositiveInfinity64() };
     }
     if MatchesWord(digits, start, "nan") {
         // The sign of a NaN is not a value, so `-nan` is the same NaN as `nan` — which is what TOML means when
@@ -291,7 +291,7 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     // The shape is a float's; what the reader refused is the magnitude, which is the whole value rather than any
     // character of it.
     let parsed = ParseFloat64(digits) catch {
-        else => return .Failure(TomlScalarError::OutOfRange(0))
+        _ => return .Failure(TomlScalarError::OutOfRange(0))
     };
     return parsed;
 }

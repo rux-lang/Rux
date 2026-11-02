@@ -15,11 +15,11 @@ const CastTable: char128[2] = [c128'a', 0x41u32 as char128];
 const CastCopies: char256[3] = [0x1F600u128 as char256; 3];
 
 func InLetterRange(value: char128) -> bool {
-    return match value { c128'a'..=c128'z' => true, else => false };
+    return match value { c128'a'..=c128'z' => true, _ => false };
 }
 
 func InWideRange(value: char512) -> bool {
-    return match value { c512'A'..c512'Z' => true, else => false };
+    return match value { c512'A'..c512'Z' => true, _ => false };
 }
 
 func Identity<T>(value: T) -> T { return value; }
@@ -60,7 +60,7 @@ func Classify(value: char128) -> int {
         c128'λ' => 3,
         c128'\u{1F600}' => 4,
         c128'\u{10FFFF}' => 5,
-        else => 9
+        _ => 9
     };
 }
 
@@ -210,12 +210,12 @@ func Main() -> int {
     Assert(Fifth(face, face, face, face, letter) == letter, "and does not take a neighbour's value");
     Assert(Between(3i32, letter, 4i32) == 72, "a char128 between two int32 arguments keeps all three");
 
-    // Conditional selection: ternary, match and when.
+    // Conditional selection: if, match and when.
     var chooseFirst = false;
-    let selected = chooseFirst ? c128'A' : c128'😀';
+    let selected = if chooseFirst { c128'A' } else { c128'😀' };
     Assert(selected == face, "a char128 ternary keeps its selected code point");
     chooseFirst = true;
-    Assert((chooseFirst ? letter : face) == letter, "and the other arm");
+    Assert((if chooseFirst { letter } else { face }) == letter, "and the other arm");
     Assert(Classify(c128'\0') == 1, "a NUL subject does not match another character");
     Assert(Classify(letter) == 2 && Classify(c128'\u{41}') == 2, "an escape matches plain text");
     Assert(Classify(Narrow('λ')) == 3, "a widened subject matches");

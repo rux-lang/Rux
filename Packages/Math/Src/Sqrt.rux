@@ -33,7 +33,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 /// Computes the correctly rounded square root of `x` at `float32` precision.

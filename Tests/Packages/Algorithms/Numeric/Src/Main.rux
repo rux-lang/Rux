@@ -9,7 +9,7 @@ func Multiply(left: int32, right: int32) -> int32 {
 }
 
 func Larger(left: int32, right: int32) -> int32 {
-    return left > right ? left : right;
+    return if left > right { left } else { right };
 }
 
 func Main() -> int {

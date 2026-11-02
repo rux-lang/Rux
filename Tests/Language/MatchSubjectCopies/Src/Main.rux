@@ -20,13 +20,13 @@ struct Tracked {
 }
 
 extend Tracked {
-    func Clone(&self) -> Tracked {
+    func Clone(&self) -> Self {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every `Tracked`.
         unsafe { self.log.copies = self.log.copies + 1; }
-        return Tracked { log: self.log, id: self.id + 10 };
+        return Self { log: self.log, id: self.id + 10 };
     }
 
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every `Tracked`.
         unsafe {
             self.log.drops = self.log.drops + 1;
@@ -53,7 +53,7 @@ func Mark(log: *var Log) {
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
 }
 
 func MakePair(log: *var Log) -> (Tracked, int32) {
@@ -120,7 +120,7 @@ func TupleLeavesPart(log: *var Log) {
 func StructBindsField(log: *var Log) {
     let holder = Holder { item: Track(log, 1), count: 2i32 };
     match CloneHolder(holder) {
-        Holder { item: item, count: count } => {
+        Holder { item, count } => {
             Mark(log);
             Assert(item.id == 11 && count == 2, "the arm binds both fields of the clone");
         }
@@ -130,7 +130,7 @@ func StructBindsField(log: *var Log) {
 func StructOmitsField(log: *var Log) {
     let holder = Holder { item: Track(log, 1), count: 2i32 };
     match CloneHolder(holder) {
-        Holder { count: count } => {
+        Holder { count } => {
             Mark(log);
             Assert(count == 2, "the arm binds the count");
         }
@@ -153,7 +153,7 @@ func OptionalPayload(log: *var Log) {
     let source = Track(log, 1);
     let maybe: Tracked? = source.Clone();
     match move maybe {
-        item? => {
+        .Some(item) => {
             Mark(log);
             Assert(item.id == 11, "the arm binds the payload handed over");
         },
@@ -200,7 +200,7 @@ func ArmBindsNothing(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
     match ClonePair(pair) {
         (item, 7) => Assert(item.id < 0, "the count is not 7"),
-        else => Mark(log)
+        _ => Mark(log)
     }
 }
 
@@ -209,7 +209,7 @@ func NothingBound(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
     match pair {
         (_, 2) => Mark(log),
-        else => Assert(false, "the count is 2")
+        _ => Assert(false, "the count is 2")
     }
 }
 
@@ -226,7 +226,7 @@ func TemporarySubject(log: *var Log) {
 // A value handed over that no arm takes is destroyed as the match ends.
 func MovedSubjectNotTaken(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match <-pair {
+    match move pair {
         (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only binding arm"),
         _ => {}
     }
@@ -241,7 +241,7 @@ func CatchMoved(log: *var Log) {
 }
 
 func CatchTemporary(log: *var Log) {
-    let value = Fail(log, 1) catch { else => 0i32 };
+    let value = Fail(log, 1) catch { _ => 0i32 };
     Mark(log);
     Assert(value == 0, "the arm recovers");
 }

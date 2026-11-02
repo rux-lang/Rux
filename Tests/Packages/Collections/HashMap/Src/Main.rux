@@ -13,9 +13,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -28,7 +26,7 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterF
     var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
@@ -42,10 +40,10 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint
     var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
-    var taken = (<-map).IntoIterator();
+    var taken = (move map).IntoIterator();
     var yielded: uint = 0;
     var draining = true;
     while draining {
@@ -66,10 +64,10 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAf
     var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
-    var taken = (<-map).IntoIterator();
+    var taken = (move map).IntoIterator();
     var yielded: uint = 0;
     var draining = true;
     while draining && yielded < stopAfter {
@@ -87,7 +85,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAf
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
 /// cannot pass by accident.
 func Refusal<T, E>(outcome: T ! E) -> E {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the operation was expected to fail")
     };
@@ -118,18 +116,18 @@ func VerifyEntryHashes(allocator: Allocator) {
         hashes = 0;
         var stored: *var int32 = null;
         var inserted = false;
-        map.GetOrInsert(CountedKey { value: value, hashes: @hashes }, value * 3, @stored, @inserted);
-        let expectedHashes = capacity == map.Capacity() ? 1 : (previousLength as int32) + 1;
+        map.GetOrInsert(CountedKey { value, hashes: @hashes }, value * 3, @stored, @inserted);
+        let expectedHashes = if capacity == map.Capacity() { 1 } else { (previousLength as int32) + 1 };
         Assert(hashes == expectedHashes, "hash the requested key once, plus existing entries when growing");
         // Safety: `GetOrInsert` pointed `stored` at the value it holds for the key.
         Assert(unsafe { inserted && *stored == value * 3 }, "the returned slot survives displacement and growth");
         hashes = 0;
-        map.GetOrInsert(CountedKey { value: value, hashes: @hashes }, 999, @stored, @inserted);
+        map.GetOrInsert(CountedKey { value, hashes: @hashes }, 999, @stored, @inserted);
         // Safety: `GetOrInsert` pointed `stored` at the value it holds for the key.
         Assert(unsafe { hashes == 1 && !inserted && *stored == value * 3 }, "an existing key is hashed once");
     }
     for value in 0i32..40i32 {
-        Assert(map.Get(CountedKey { value: value, hashes: @hashes }) == .Some(value * 3),
+        Assert(map.Get(CountedKey { value, hashes: @hashes }) == .Some(value * 3),
                "every colliding key remains findable after growth");
     }
     for value in 40i32..80i32 {
@@ -137,25 +135,25 @@ func VerifyEntryHashes(allocator: Allocator) {
         let previousLength = map.Length();
         hashes = 0;
         if value % 2 == 0 {
-            map.Insert(CountedKey { value: value, hashes: @hashes }, value);
+            map.Insert(CountedKey { value, hashes: @hashes }, value);
         } else {
-            let old = map.Replace(CountedKey { value: value, hashes: @hashes }, value);
+            let old = map.Replace(CountedKey { value, hashes: @hashes }, value);
             Assert(old == none, "replacing an absent key inserts it");
         }
-        let expectedHashes = capacity == map.Capacity() ? 1 : (previousLength as int32) + 1;
+        let expectedHashes = if capacity == map.Capacity() { 1 } else { (previousLength as int32) + 1 };
         Assert(hashes == expectedHashes, "Insert and Replace reuse the requested key hash across growth");
-        Assert(map.Get(CountedKey { value: value, hashes: @hashes }) == .Some(value), "new entries remain findable");
+        Assert(map.Get(CountedKey { value, hashes: @hashes }) == .Some(value), "new entries remain findable");
     }
     var set = HashSet::WithSeed<CountedKey>(allocator, TableSeed::Of(17, 29), CountedHash, CountedEquals);
     for value in 0i32..40i32 {
         let capacity = set.Capacity();
         let previousLength = set.Length();
         hashes = 0;
-        let inserted = set.Insert(CountedKey { value: value, hashes: @hashes });
-        let expectedHashes = capacity == set.Capacity() ? 1 : (previousLength as int32) + 1;
+        let inserted = set.Insert(CountedKey { value, hashes: @hashes });
+        let expectedHashes = if capacity == set.Capacity() { 1 } else { (previousLength as int32) + 1 };
         Assert(inserted && hashes == expectedHashes, "set insertion reuses the hash during collisions and growth");
         hashes = 0;
-        let duplicate = set.Insert(CountedKey { value: value, hashes: @hashes });
+        let duplicate = set.Insert(CountedKey { value, hashes: @hashes });
         Assert(!duplicate && hashes == 1, "set duplicates hash once and leave the existing key in place");
     }
 }
@@ -432,7 +430,7 @@ func Main() -> int {
         drained.Insert(key, key + 100);
         key = key + 1;
     }
-    var moving = (<-drained).IntoIterator();
+    var moving = (move drained).IntoIterator();
     var moved: uint = 0;
     var movedSum: int64 = 0;
     var draining = true;

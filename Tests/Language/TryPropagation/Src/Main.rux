@@ -48,7 +48,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(self: &var Counter) -> int32 throws Overflow {
+    func Next(&var self) -> int32 throws Overflow {
         self.value = self.value + 1i32;
         if self.value > 2i32 {
             throw Overflow { limit: 2i32 };
@@ -56,7 +56,7 @@ extend Counter {
         return self.value;
     }
 
-    func Doubled(self: &Counter) -> int32 {
+    func Doubled(&self) -> int32 {
         return self.value * 2i32;
     }
 }

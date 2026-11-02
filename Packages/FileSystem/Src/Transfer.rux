@@ -148,7 +148,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> ! IoError {
 
         let layout = Layout { size: 65536, alignment: 8 };
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        let block = borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
         // Safety: `block` is a fresh allocation of `layout`, 65536 bytes, released only after the loop below.
         let buffer = unsafe { (block as *var char8)[..65536] };
 
@@ -183,12 +183,12 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> ! IoError {
             }
         }
 
-        borrowed.Deallocate(block, layout) catch { else => {} };
+        borrowed.Deallocate(block, layout) catch { _ => {} };
         // Both files close whatever happened; a close failure is reported only when the copy itself went through.
         let closedSource = source.Close();
         let closedDestination = destination.Close();
         match failure {
-            error? => fail error,
+            .Some(error) => fail error,
             none => {}
         }
         closedSource?;

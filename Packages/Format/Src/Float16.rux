@@ -61,7 +61,7 @@ extend float16 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float-text#float16-write-display
-    pub func WriteDisplay(self: &float16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         var mark = c8'e';
         let scientific = ScientificMark(spec, @mark)?;
         // A NaN or an infinity has no digits for a precision or an exponent to place, so it renders the same under
@@ -98,7 +98,7 @@ extend float16 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float-text#float16-write-debug
-    pub func WriteDebug(self: &float16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

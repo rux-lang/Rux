@@ -14,16 +14,16 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 
 // The failure an outcome carries, which the test expects to be there.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => Panic("expected a failure"),
         .Failure(error) => error
     };
 }
 
 func Touch(allocator: Allocator, path: Path) {
-    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { else => Panic("a file is made") };
+    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
     Assert(made.IsOpen(), "a file is made");
-    made.Close() catch { else => Panic("and closed") };
+    made.Close() catch { _ => Panic("and closed") };
 }
 
 func NameOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> OsStringView {
@@ -45,10 +45,10 @@ func Main() -> int ! IoError {
     let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", accentHolder);
 
     // Fresh ground: an earlier run may have left the tree behind, and cleanup is not the thing under test yet.
-    DeleteFile(allocator, one) catch { else => {} };
-    DeleteFile(allocator, two) catch { else => {} };
-    DeleteFile(allocator, accent) catch { else => {} };
-    DeleteDirectory(allocator, dir) catch { else => {} };
+    DeleteFile(allocator, one) catch { _ => {} };
+    DeleteFile(allocator, two) catch { _ => {} };
+    DeleteFile(allocator, accent) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
 
     // Made once; a second claim on the name is refused with the reason named.
     MakeDirectory(allocator, dir)?;
@@ -71,9 +71,9 @@ func Main() -> int ! IoError {
     var seenAccent = false;
     var count: uint = 0;
     while true {
-        let next = iterator.Next() catch { else => Panic("the enumeration ends rather than fails") };
+        let next = iterator.Next() catch { _ => Panic("the enumeration ends rather than fails") };
         match move next {
-            entry? => {
+            .Some(entry) => {
                 count = count + 1;
                 let view = entry.View();
                 if view.Equals(oneWant) {
@@ -103,7 +103,7 @@ func Main() -> int ! IoError {
     Assert(Refusal(DeleteFile(allocator, one)).kind == IoErrorKind::NotFound, "deleting it again is NotFound");
 
     var emptied = ReadDirectory(allocator, dir)?;
-    let nothing = emptied.Next() catch { else => Panic("the emptied directory reads without failing") };
+    let nothing = emptied.Next() catch { _ => Panic("the emptied directory reads without failing") };
     Assert(!(nothing is OsString), "and holds nothing");
     emptied.Release();
 

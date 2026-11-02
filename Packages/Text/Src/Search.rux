@@ -19,7 +19,7 @@ extend StringView {
     /// @param prefix the text to look for at the start
     /// @returns whether the text begins with `prefix`
     /// @see https://rux-lang.dev/docs/api/text/string-view#starts-with
-    pub func StartsWith(self: &StringView, prefix: StringView) -> bool {
+    pub func StartsWith(&self, prefix: Self) -> bool {
         if prefix.bytes.length > self.bytes.length { return false; }
         var index: uint = 0;
         while index < prefix.bytes.length {
@@ -34,7 +34,7 @@ extend StringView {
     /// @param suffix the text to look for at the end
     /// @returns whether the text ends with `suffix`
     /// @see https://rux-lang.dev/docs/api/text/string-view#ends-with
-    pub func EndsWith(self: &StringView, suffix: StringView) -> bool {
+    pub func EndsWith(&self, suffix: Self) -> bool {
         if suffix.bytes.length > self.bytes.length { return false; }
         let offset = self.bytes.length - suffix.bytes.length;
         var index: uint = 0;
@@ -54,7 +54,7 @@ extend StringView {
     /// @param needle the text to look for
     /// @returns the byte offset of the first occurrence, or `none`
     /// @see https://rux-lang.dev/docs/api/text/string-view#index-of
-    pub func IndexOf(self: &StringView, needle: StringView) -> uint? {
+    pub func IndexOf(&self, needle: Self) -> uint? {
         if needle.bytes.length == 0 { return 0; }
         if needle.bytes.length > self.bytes.length { return none; }
         let last = self.bytes.length - needle.bytes.length;
@@ -83,7 +83,7 @@ extend StringView {
     /// @param needle the text to look for
     /// @returns the byte offset of the last occurrence, or `none`
     /// @see https://rux-lang.dev/docs/api/text/string-view#last-index-of
-    pub func LastIndexOf(self: &StringView, needle: StringView) -> uint? {
+    pub func LastIndexOf(&self, needle: Self) -> uint? {
         if needle.bytes.length == 0 { return self.bytes.length; }
         if needle.bytes.length > self.bytes.length { return none; }
         var start = self.bytes.length - needle.bytes.length + 1;
@@ -111,7 +111,7 @@ extend StringView {
     /// @param needle the text to look for
     /// @returns whether `needle` occurs anywhere in the text
     /// @see https://rux-lang.dev/docs/api/text/string-view#contains
-    pub func Contains(self: &StringView, needle: StringView) -> bool {
+    pub func Contains(&self, needle: Self) -> bool {
         return self.IndexOf(needle) != none;
     }
 
@@ -119,7 +119,7 @@ extend StringView {
     /// Borrows: what comes back names the same bytes, further in.
     /// @returns the text without its leading ASCII spaces
     /// @see https://rux-lang.dev/docs/api/text/string-view#trim-start
-    pub func TrimStart(self: &StringView) -> StringView {
+    pub func TrimStart(&self) -> Self {
         var start: uint = 0;
         // Safety: `start` is below `self.bytes.length`, checked first in the same condition.
         while start < self.bytes.length && IsAsciiSpace(unsafe { self.bytes.data[start] }) {
@@ -131,7 +131,7 @@ extend StringView {
     /// This view without the ASCII whitespace at its end.
     /// @returns the text without its trailing ASCII spaces
     /// @see https://rux-lang.dev/docs/api/text/string-view#trim-end
-    pub func TrimEnd(self: &StringView) -> StringView {
+    pub func TrimEnd(&self) -> Self {
         var end = self.bytes.length;
         // Safety: `end` is positive, checked first, and at most `self.bytes.length`, so `end - 1` is inside the view.
         while end > 0 && IsAsciiSpace(unsafe { self.bytes.data[end - 1] }) {
@@ -143,7 +143,7 @@ extend StringView {
     /// This view without the ASCII whitespace at either end.
     /// @returns the text without its leading and trailing ASCII spaces
     /// @see https://rux-lang.dev/docs/api/text/string-view#trim
-    pub func Trim(self: &StringView) -> StringView {
+    pub func Trim(&self) -> Self {
         let front = self.TrimStart();
         return front.TrimEnd();
     }
@@ -154,7 +154,7 @@ extend StringView {
     /// `self` is borrowed and must outlive the walk.
     /// @returns a cursor over the lines
     /// @see https://rux-lang.dev/docs/api/text/string-view#lines
-    pub func Lines(self: &StringView) -> LineIterator {
+    pub func Lines(&self) -> LineIterator {
         return LineIterator { rest: self.bytes, finished: self.bytes.length == 0 };
     }
 
@@ -163,10 +163,10 @@ extend StringView {
     /// @param separator the text that separates the pieces
     /// @returns a cursor over the pieces between separators
     /// @see https://rux-lang.dev/docs/api/text/string-view#split
-    pub func Split(self: &StringView, separator: StringView) -> SplitIterator {
+    pub func Split(&self, separator: Self) -> SplitIterator {
         return SplitIterator {
-            rest: StringView::FromValidated(self.bytes),
-            separator: separator,
+            rest: Self::FromValidated(self.bytes),
+            separator,
             finished: false
         };
     }
@@ -204,7 +204,7 @@ extend SplitIterator : Iterator {
     /// endless walk.
     /// @returns the next piece, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/text/string-view#split-iterator-next
-    pub func Next(self: &var SplitIterator) -> StringView? {
+    pub func Next(&var self) -> StringView? {
         if self.finished { return none; }
         if self.separator.bytes.length == 0 {
             self.finished = true;
@@ -237,7 +237,7 @@ extend LineIterator : Iterator {
     /// The next line, without its `\n` or `\r\n`, or `none` after the last.
     /// @returns the next line, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/text/string-view#line-iterator-next
-    pub func Next(self: &var LineIterator) -> StringView? {
+    pub func Next(&var self) -> StringView? {
         if self.finished { return none; }
         var at: uint = 0;
         while at < self.rest.length && self.rest[at] != c8'\n' { at = at + 1; }

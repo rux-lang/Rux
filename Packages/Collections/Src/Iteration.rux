@@ -37,8 +37,8 @@ extend ValueIterator<T> {
     /// @param items the elements to take
     /// @returns a cursor yielding copies of those elements
     /// @see https://rux-lang.dev/docs/api/collections/iterators#value-iterator-new
-    pub func ValueIterator(items: T[..]) -> ValueIterator<T> {
-        return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
+    pub func ValueIterator(items: T[..]) -> Self {
+        return Self { data: items.data, length: items.length, position: 0 };
     }
 }
 
@@ -48,7 +48,7 @@ extend ValueIterator<T> : Iterator {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/iterators#value-iterator-next
-    pub func Next(self: &var ValueIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses the `length` elements of the slice this
         // was made from, which the constructor's contract keeps alive and in place.
@@ -81,8 +81,8 @@ extend ReferenceIterator<T> {
     /// @param items the elements to take
     /// @returns a cursor yielding those elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/iterators#reference-iterator-new
-    pub func ReferenceIterator(items: T[..]) -> ReferenceIterator<T> {
-        return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
+    pub func ReferenceIterator(items: T[..]) -> Self {
+        return Self { data: items.data, length: items.length, position: 0 };
     }
 }
 
@@ -92,7 +92,7 @@ extend ReferenceIterator<T> : Iterator {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/iterators#reference-iterator-next
-    pub func Next(self: &var ReferenceIterator<T>) -> (*T)? {
+    pub func Next(&var self) -> (*T)? {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses the `length` elements of the slice this
         // was made from, which the constructor's contract keeps alive and in place.
@@ -123,8 +123,8 @@ extend MutableReferenceIterator<T> {
     /// @param items the elements to borrow for writing
     /// @returns a cursor yielding writable addresses
     /// @see https://rux-lang.dev/docs/api/collections/iterators#mutable-reference-iterator-new
-    pub func MutableReferenceIterator(items: var T[..]) -> MutableReferenceIterator<T> {
-        return MutableReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
+    pub func MutableReferenceIterator(items: var T[..]) -> Self {
+        return Self { data: items.data, length: items.length, position: 0 };
     }
 }
 
@@ -134,7 +134,7 @@ extend MutableReferenceIterator<T> : Iterator {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element's address, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/iterators#mutable-reference-iterator-next
-    pub func Next(self: &var MutableReferenceIterator<T>) -> (*var T)? {
+    pub func Next(&var self) -> (*var T)? {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses the `length` elements of the slice this
         // was made from, which the constructor's contract keeps alive and in place.

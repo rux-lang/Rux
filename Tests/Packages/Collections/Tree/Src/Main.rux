@@ -161,9 +161,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -177,7 +175,7 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     var tree = Tree<int32, Tracked>(allocator);
     var key: int32 = 0;
     while key < count {
-        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32);
+        tree.Attach(key, Tracked { counter, value: key }, CompareInt32);
         key = key + 1;
     }
     Assert(tree.Length() == count as uint, "the tree holds what was put into it");
@@ -189,10 +187,10 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 // has to be destroyed exactly once when the caller is done with it.
 func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *var int32) {
     var tree = Tree<int32, Tracked>(allocator);
-    let first = tree.Attach(7, Tracked { counter: counter, value: 1 }, CompareInt32);
+    let first = tree.Attach(7, Tracked { counter, value: 1 }, CompareInt32);
     Assert(!(first is Tracked), "nothing was displaced by a fresh key");
 
-    let second = tree.Attach(7, Tracked { counter: counter, value: 2 }, CompareInt32);
+    let second = tree.Attach(7, Tracked { counter, value: 2 }, CompareInt32);
     Assert(second is Tracked, "an equal key hands the old value back");
     Assert(tree.Length() == 1, "and does not make the tree longer");
     // Safety: both point at locals of `Main`, which outlive this call.
@@ -205,7 +203,7 @@ func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take
     var tree = Tree<int32, Tracked>(allocator);
     var key: int32 = 0;
     while key < count {
-        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32);
+        tree.Attach(key, Tracked { counter, value: key }, CompareInt32);
         key = key + 1;
     }
 

@@ -26,13 +26,13 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: &var SliceHandle, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
         let current = unsafe { *state };
         let remaining = current.bytes.length - current.offset;
         if remaining == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
-        var give = remaining < 7 ? remaining : 7;
+        var give = if remaining < 7 { remaining } else { 7 };
         if into.length < give {
             give = into.length;
         }
@@ -52,7 +52,7 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: &var uint, ope
                   names: &var uint) -> bool {
     var state = SliceState { bytes: text, offset: 0 };
     let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default()) catch { else => return false };
+    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default()) catch { _ => return false };
     scalars = 0;
     opens = 0;
     names = 0;
@@ -208,7 +208,7 @@ func Main() -> int {
 // Parses, writes, parses again, and requires the two writings to agree — then requires the streaming reader to
 // see the same shape as the tree.
 func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
-    let value = Parse(allocator, text) catch { else => Panic("a well-formed document parses") };
+    let value = Parse(allocator, text) catch { _ => Panic("a well-formed document parses") };
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
@@ -216,7 +216,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
     Assert(wrote, "and writes");
     var once = builder.IntoString();
 
-    let again = Parse(allocator, once.View().Bytes()) catch { else => Panic("and the written form parses") };
+    let again = Parse(allocator, once.View().Bytes()) catch { _ => Panic("and the written form parses") };
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
     wrote = WriteValue(secondSink, again, JsonStyle::Compact()) is .Success(_);

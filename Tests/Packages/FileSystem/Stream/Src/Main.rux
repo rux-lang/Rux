@@ -23,7 +23,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 
 // The failure an outcome carries, which the test expects to be there.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => Panic("expected a failure"),
         .Failure(error) => error
     };

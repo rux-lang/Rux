@@ -32,11 +32,11 @@ const NoCommand: uint = 0xFFFFFFFF;
 func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource, start: uint) -> Parsed ! CommandLineError {
     let end = source.Count();
     var parsed = Parsed {
-        spec: spec,
-        parent: parent,
-        source: source,
-        start: start,
-        end: end,
+        spec,
+        parent,
+        source,
+        start,
+        end,
         command: NoCommand,
         commandAt: 0,
         help: false,
@@ -153,8 +153,8 @@ extend ValueIterator {
     /// The walk itself, so that a `for` loop reads every value.
     /// @returns a copy of this walk from its current position
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#value-iterator-iterate
-    pub func Iterate(self: &ValueIterator) -> ValueIterator {
-        return ValueIterator { scanner: self.scanner.Copy(), target: self.target, positional: self.positional };
+    pub func Iterate(&self) -> Self {
+        return Self { scanner: self.scanner.Copy(), target: self.target, positional: self.positional };
     }
 }
 
@@ -162,10 +162,10 @@ extend ValueIterator : Iterator {
     /// The next value, or none after the last.
     /// @returns the value as typed, borrowing the arguments
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#value-iterator-next
-    pub func Next(self: &var ValueIterator) -> OsStringView? {
+    pub func Next(&var self) -> OsStringView? {
         while true {
             // The arguments were validated, so the walk cannot fail; a failure ends it like the end of the arguments.
-            let step = self.scanner.Next() catch { else => return none };
+            let step = self.scanner.Next() catch { _ => return none };
             let item = step ?? return none;
             match item {
                 .Option(option, value, _) => {
@@ -185,14 +185,14 @@ extend ValueIterator : Iterator {
 
 extend Parsed {
     // The command this parse is for, read through the stored handle.
-    func Declared(self: &Parsed) -> CommandSpec {
+    func Declared(&self) -> CommandSpec {
         // Safety: `self.spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which
         // the documented contract keeps alive for as long as the `Parsed` result.
         return unsafe { *self.spec };
     }
 
     // A fresh walk over this level's arguments.
-    func Walk(self: &Parsed) -> Scanner {
+    func Walk(&self) -> Scanner {
         return Scan(self.spec, self.source, self.start, self.end);
     }
 
@@ -200,7 +200,7 @@ extend Parsed {
     /// A program usually writes the help text and exits successfully when this is true. Cannot fail.
     /// @returns whether help was asked for
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#help-requested
-    pub func HelpRequested(self: &Parsed) -> bool {
+    pub func HelpRequested(&self) -> bool {
         return self.help;
     }
 
@@ -208,7 +208,7 @@ extend Parsed {
     /// Cannot fail.
     /// @returns whether the version was asked for
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#version-requested
-    pub func VersionRequested(self: &Parsed) -> bool {
+    pub func VersionRequested(&self) -> bool {
         return self.version;
     }
 
@@ -218,7 +218,7 @@ extend Parsed {
     /// @param name the option's long name without its dashes
     /// @returns the number of times it was given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#count
-    pub func Count(self: &Parsed, name: char8[..]) -> uint {
+    pub func Count(&self, name: char8[..]) -> uint {
         let declared = self.Declared();
         let option = OptionIndex(declared, name) ?? return 0;
         var count: uint = 0;
@@ -234,7 +234,7 @@ extend Parsed {
     /// @param name the option's long name without its dashes
     /// @returns whether it was given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#has
-    pub func Has(self: &Parsed, name: char8[..]) -> bool {
+    pub func Has(&self, name: char8[..]) -> bool {
         return self.Count(name) > 0;
     }
 
@@ -244,7 +244,7 @@ extend Parsed {
     /// @param name the option's long name without its dashes
     /// @returns the value as typed, or none when the option was not given or takes no value
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#value
-    pub func Value(self: &Parsed, name: char8[..]) -> OsStringView? {
+    pub func Value(&self, name: char8[..]) -> OsStringView? {
         let declared = self.Declared();
         let option = OptionIndex(declared, name) ?? return none;
         if !TakesValue(declared, option) { return none; }
@@ -261,7 +261,7 @@ extend Parsed {
     /// @param name the option's long name without its dashes
     /// @returns a walk over the values, empty when the option was not given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#values
-    pub func Values(self: &Parsed, name: char8[..]) -> ValueIterator {
+    pub func Values(&self, name: char8[..]) -> ValueIterator {
         let declared = self.Declared();
         let option = OptionIndex(declared, name) ?? NoCommand;
         var empty = self.Walk();
@@ -275,7 +275,7 @@ extend Parsed {
     /// @param name the positional's name
     /// @returns the argument as typed, or none when it was not given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#positional
-    pub func Positional(self: &Parsed, name: char8[..]) -> OsStringView? {
+    pub func Positional(&self, name: char8[..]) -> OsStringView? {
         var values = self.Positionals(name);
         return values.Next();
     }
@@ -285,7 +285,7 @@ extend Parsed {
     /// @param name the positional's name
     /// @returns a walk over the arguments, empty when none was given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#positionals
-    pub func Positionals(self: &Parsed, name: char8[..]) -> ValueIterator {
+    pub func Positionals(&self, name: char8[..]) -> ValueIterator {
         let declared = self.Declared();
         let slot = PositionalIndex(declared, name) ?? NoCommand;
         var walk = self.Walk();
@@ -298,7 +298,7 @@ extend Parsed {
     /// The name of the subcommand that was given, for a command that has subcommands.
     /// @returns the subcommand's name as its specification spells it, or none
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#command-name
-    pub func CommandName(self: &Parsed) -> char8[..]? {
+    pub func CommandName(&self) -> char8[..]? {
         if self.command == NoCommand { return none; }
         return self.Declared().commands[self.command].name;
     }
@@ -307,11 +307,11 @@ extend Parsed {
     /// Those arguments were validated with this parse, so this cannot fail.
     /// @returns the subcommand's parse, or none when no subcommand was given
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#subcommand
-    pub func Subcommand(self: &Parsed) -> Parsed? {
+    pub func Subcommand(&self) -> Self? {
         if self.command == NoCommand { return none; }
         let declared = self.Declared();
         let parsed = ParseLevel(@declared.commands[self.command], self.spec, self.source, self.commandAt + 1) catch {
-            else => return none
+            _ => return none
         };
         return parsed;
     }
@@ -322,7 +322,7 @@ extend Parsed {
     /// @param name an option's long name, or a positional's name
     /// @returns the number, none when the value was not given, or why it is not a number
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#integer
-    pub func Integer(self: &Parsed, name: char8[..]) -> int64? ! CommandLineError {
+    pub func Integer(&self, name: char8[..]) -> int64? ! CommandLineError {
         let text = self.Value(name) ?? self.Positional(name) ?? return .Success(none);
         let units = text.Units();
         var index: uint = 0;

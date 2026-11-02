@@ -43,7 +43,7 @@ func SpanWidth(span: int..int, tail: int) -> int {
 }
 
 interface Sink {
-    func Put(self: &var Self, bytes: char8[..]) -> uint;
+    func Put(&var self, bytes: char8[..]) -> uint;
 }
 
 struct Counter {
@@ -53,7 +53,7 @@ struct Counter {
 extend Counter : Sink {
     // Folds the length and the first byte together, so a slice whose `data` or `length` arrived as something else
     // cannot produce the number the caller checks for.
-    func Put(self: &var Counter, bytes: char8[..]) -> uint {
+    func Put(&var self, bytes: char8[..]) -> uint {
         self.total = self.total + bytes.length;
         // Safety: the callers in this test pass only non-empty text, so element 0 exists.
         return bytes.length * 256u + (unsafe { bytes.data[0] } as uint8 as uint);

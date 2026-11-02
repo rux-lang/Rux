@@ -57,22 +57,22 @@ extend Permissions {
     /// @param mode the permission bits
     /// @returns permissions carrying those bits
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions#from-mode
-    pub func FromMode(mode: uint32) -> Permissions {
-        return Permissions { mode: mode & 0xFFF, readOnly: (mode & 0x80) == 0 };
+    pub func FromMode(mode: uint32) -> Self {
+        return Self { mode: mode & 0xFFF, readOnly: (mode & 0x80) == 0 };
     }
 
     /// Permissions from the read-only flag alone, with the mode synthesized from it.
     /// @param readOnly whether the file may only be read
     /// @returns permissions that are writable or not, which is all Windows records
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions#from-read-only
-    pub func FromReadOnly(readOnly: bool) -> Permissions {
-        return Permissions { mode: readOnly ? 0x124 : 0x1B6, readOnly: readOnly };
+    pub func FromReadOnly(readOnly: bool) -> Self {
+        return Self { mode: if readOnly { 0x124 } else { 0x1B6 }, readOnly };
     }
 
     /// Whether the owner may write.
     /// @returns whether the owner may write the file
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions#is-writable
-    pub func IsWritable(self: &Permissions) -> bool {
+    pub func IsWritable(&self) -> bool {
         return !self.readOnly;
     }
 }
@@ -243,7 +243,7 @@ when #target.os != .Windows {
             // range would break Timestamp's own invariant, so it is dropped rather than carried inward.
             fraction = 0;
         }
-        return Timestamp { seconds: seconds, nanoseconds: fraction as uint32 };
+        return Timestamp { seconds, nanoseconds: fraction as uint32 };
     }
 
     func KindOfMode(mode: uint32) -> FileKind {
@@ -276,8 +276,8 @@ when #target.os != .Windows {
             permissions: Permissions::FromMode(mode),
             accessed: StatTimeAt(buffer, accessOffset),
             modified: StatTimeAt(buffer, accessOffset + 16),
-            created: created,
-            hasCreated: hasCreated
+            created,
+            hasCreated
         };
     }
 }
@@ -303,7 +303,7 @@ when #target.os == .Windows {
         let ticks = (high << 32) | low;
         let seconds = (ticks / 10000000) as int64 - (FileTimeToUnixEpochSeconds as int64);
         let rest = (ticks % 10000000) as uint32;
-        return Timestamp { seconds: seconds, nanoseconds: rest * 100 };
+        return Timestamp { seconds, nanoseconds: rest * 100 };
     }
 
     func FileTimeFromTimestamp(moment: Timestamp) -> FileTime {
@@ -387,7 +387,7 @@ pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Meta
         return MetadataFromHandleInformation(buffer[0..256]);
     }
     else {
-        let flags = followLinks ? 0i32 : SymlinkNoFollow;
+        let flags = if followLinks { 0i32 } else { SymlinkNoFollow };
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
         // `buffer` is a local `char8[256]`, larger than any supported system's `struct stat`.
         let outcome = unsafe { FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags) };
@@ -402,7 +402,7 @@ extend File {
     /// query the way a path-based one can.
     /// @returns what the system knows about the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#metadata
-    pub func Metadata(self: &File) -> Metadata ! IoError {
+    pub func Metadata(&self) -> Metadata ! IoError {
         if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
         var buffer: char8[256];
         when #target.os == .Windows {
@@ -531,7 +531,7 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
         var times: char8[32];
         WriteTimespec(times[0..32], 0, accessed);
         WriteTimespec(times[0..32], 16, modified);
-        let flags = followLinks ? 0i32 : SymlinkNoFollow;
+        let flags = if followLinks { 0i32 } else { SymlinkNoFollow };
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
         // `times` is the local pair of timespecs just written.
         let result = unsafe { UtimensAt(AtFdCwd, native as *char8, @times[0] as *opaque, flags) };

@@ -71,7 +71,7 @@ pub struct CommandSpec {
 /// @returns the option's specification
 /// @see https://rux-lang.dev/docs/api/commandline/spec#flag
 pub func Flag(name: char8[..], short: char32, help: char8[..]) -> OptionSpec {
-    return OptionSpec { name: name, short: short, value: "", help: help };
+    return OptionSpec { name, short, value: "", help };
 }
 
 /// An option that takes a value, such as `--output FILE`.
@@ -84,7 +84,7 @@ pub func Flag(name: char8[..], short: char32, help: char8[..]) -> OptionSpec {
 /// @returns the option's specification
 /// @see https://rux-lang.dev/docs/api/commandline/spec#value-option
 pub func ValueOption(name: char8[..], short: char32, value: char8[..], help: char8[..]) -> OptionSpec {
-    return OptionSpec { name: name, short: short, value: value, help: help };
+    return OptionSpec { name, short, value, help };
 }
 
 /// A positional argument that must be given.
@@ -93,7 +93,7 @@ pub func ValueOption(name: char8[..], short: char32, value: char8[..], help: cha
 /// @returns the positional's specification
 /// @see https://rux-lang.dev/docs/api/commandline/spec#required
 pub func Required(name: char8[..], help: char8[..]) -> PositionalSpec {
-    return PositionalSpec { name: name, kind: PositionalKind::Required, help: help };
+    return PositionalSpec { name, kind: PositionalKind::Required, help };
 }
 
 /// A positional argument that may be left out.
@@ -102,7 +102,7 @@ pub func Required(name: char8[..], help: char8[..]) -> PositionalSpec {
 /// @returns the positional's specification
 /// @see https://rux-lang.dev/docs/api/commandline/spec#optional
 pub func Optional(name: char8[..], help: char8[..]) -> PositionalSpec {
-    return PositionalSpec { name: name, kind: PositionalKind::Optional, help: help };
+    return PositionalSpec { name, kind: PositionalKind::Optional, help };
 }
 
 /// A positional argument that takes every positional argument left, which may be none.
@@ -111,7 +111,7 @@ pub func Optional(name: char8[..], help: char8[..]) -> PositionalSpec {
 /// @returns the positional's specification
 /// @see https://rux-lang.dev/docs/api/commandline/spec#remaining
 pub func Remaining(name: char8[..], help: char8[..]) -> PositionalSpec {
-    return PositionalSpec { name: name, kind: PositionalKind::Remaining, help: help };
+    return PositionalSpec { name, kind: PositionalKind::Remaining, help };
 }
 
 /// A command with a name and a summary, and as yet no version, options, positionals or subcommands.
@@ -121,7 +121,7 @@ pub func Remaining(name: char8[..], help: char8[..]) -> PositionalSpec {
 /// @returns the command's specification
 /// @see https://rux-lang.dev/docs/api/commandline/spec#command
 pub func Command(name: char8[..], summary: char8[..]) -> CommandSpec {
-    return CommandSpec { name: name, summary: summary, version: "", options: [], positionals: [], commands: [] };
+    return CommandSpec { name, summary, version: "", options: [], positionals: [], commands: [] };
 }
 
 extend CommandSpec {
@@ -129,11 +129,11 @@ extend CommandSpec {
     /// @param version the version text, such as `1.4.2`
     /// @returns the changed copy
     /// @see https://rux-lang.dev/docs/api/commandline/spec#with-version
-    pub func WithVersion(self: &CommandSpec, version: char8[..]) -> CommandSpec {
-        return CommandSpec {
+    pub func WithVersion(&self, version: char8[..]) -> Self {
+        return Self {
             name: self.name,
             summary: self.summary,
-            version: version,
+            version,
             options: self.options,
             positionals: self.positionals,
             commands: self.commands
@@ -144,12 +144,12 @@ extend CommandSpec {
     /// @param options the options, in the order the help text lists them
     /// @returns the changed copy
     /// @see https://rux-lang.dev/docs/api/commandline/spec#with-options
-    pub func WithOptions(self: &CommandSpec, options: OptionSpec[..]) -> CommandSpec {
-        return CommandSpec {
+    pub func WithOptions(&self, options: OptionSpec[..]) -> Self {
+        return Self {
             name: self.name,
             summary: self.summary,
             version: self.version,
-            options: options,
+            options,
             positionals: self.positionals,
             commands: self.commands
         };
@@ -159,13 +159,13 @@ extend CommandSpec {
     /// @param positionals the positional arguments, in the order they are given
     /// @returns the changed copy
     /// @see https://rux-lang.dev/docs/api/commandline/spec#with-positionals
-    pub func WithPositionals(self: &CommandSpec, positionals: PositionalSpec[..]) -> CommandSpec {
-        return CommandSpec {
+    pub func WithPositionals(&self, positionals: PositionalSpec[..]) -> Self {
+        return Self {
             name: self.name,
             summary: self.summary,
             version: self.version,
             options: self.options,
-            positionals: positionals,
+            positionals,
             commands: self.commands
         };
     }
@@ -174,14 +174,14 @@ extend CommandSpec {
     /// @param commands the subcommands, in the order the help text lists them
     /// @returns the changed copy
     /// @see https://rux-lang.dev/docs/api/commandline/spec#with-commands
-    pub func WithCommands(self: &CommandSpec, commands: CommandSpec[..]) -> CommandSpec {
-        return CommandSpec {
+    pub func WithCommands(&self, commands: Self[..]) -> Self {
+        return Self {
             name: self.name,
             summary: self.summary,
             version: self.version,
             options: self.options,
             positionals: self.positionals,
-            commands: commands
+            commands
         };
     }
 }

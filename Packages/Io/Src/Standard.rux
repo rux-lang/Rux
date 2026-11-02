@@ -48,7 +48,7 @@ func KindOfRaw(raw: int32) -> IoErrorKind {
 }
 
 func PlatformFailure(raw: int32) -> IoError {
-    return IoError { kind: KindOfRaw(raw), raw: raw };
+    return IoError { kind: KindOfRaw(raw), raw };
 }
 
 // One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
@@ -56,7 +56,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
     if bytes.length == 0 { return 0; }
     when #target.os == .Windows {
         if !console {
-            let count = bytes.length > 0x100000 ? 0x100000u32 : bytes.length as uint32;
+            let count = if bytes.length > 0x100000 { 0x100000u32 } else { bytes.length as uint32 };
             var written: uint32 = 0;
             // Safety: `bytes` is readable for `bytes.length` bytes and `count` is at most that; `written` is a
             // local `uint32`; `handle` is the stream's handle from `GetStdHandle`.
@@ -152,19 +152,19 @@ extend StandardIn {
     /// Asks the platform once whether the stream is a console; nothing is opened, and nothing needs closing.
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-in#acquire
-    pub func Acquire() -> StandardIn {
+    pub func Acquire() -> Self {
         when #target.os == .Windows {
             // Safety: `GetStdHandle` takes only a stream number and touches no memory of the caller's.
             let handle = unsafe { GetStdHandle(StdInputHandle) };
             var mode: uint32 = 0;
             // Safety: `mode` is a local `uint32`, which the call fills; `handle` was just returned.
-            let console = unsafe { GetConsoleMode(handle, @mode) } ? true : false;
-            return StandardIn {
-                handle: handle, console: console, pending: 0, pendingCount: 0, heldUnit: 0, hasHeldUnit: false
+            let console = if (unsafe { GetConsoleMode(handle, @mode) }) { true } else { false };
+            return Self {
+                handle, console, pending: 0, pendingCount: 0, heldUnit: 0, hasHeldUnit: false
             };
         }
         else {
-            return StandardIn {
+            return Self {
                 handle: StdIn, console: false, pending: 0, pendingCount: 0, heldUnit: 0, hasHeldUnit: false
             };
         }
@@ -176,7 +176,7 @@ extend StandardIn : Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/standard-in#read
-    pub func Read(self: &var StandardIn, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if into.length == 0 { return 0; }
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
@@ -190,7 +190,7 @@ extend StandardIn : Reader {
             if self.console { return self.ReadConsole(into, served); }
             var read: uint32 = 0;
             let room = into.length - served;
-            let count = room > 0x100000 ? 0x100000u32 : room as uint32;
+            let count = if room > 0x100000 { 0x100000u32 } else { room as uint32 };
             // Safety: `served` is below `into.length`, checked above, and `count` is at most the room after it;
             // `read` is a local `uint32`; `handle` is this stream's handle from `GetStdHandle`.
             let accepted = unsafe { ReadFile(self.handle, @into[served] as *var opaque, count, @read, null) };
@@ -225,7 +225,7 @@ when #target.os == .Windows {
         // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
         // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
         // substitute character first in a read is the console's end-of-input.
-        func ReadConsole(self: &var StandardIn, into: var char8[..], served: uint) -> uint ! IoError {
+        func ReadConsole(&var self, into: var char8[..], served: uint) -> uint ! IoError {
             var wide: char16[257];
             var base: uint = 0;
             if self.hasHeldUnit {
@@ -309,17 +309,17 @@ extend StandardOut {
     /// The process's standard output.
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-out#acquire
-    pub func Acquire() -> StandardOut {
+    pub func Acquire() -> Self {
         when #target.os == .Windows {
             // Safety: `GetStdHandle` takes only a stream number and touches no memory of the caller's.
             let handle = unsafe { GetStdHandle(StdOutputHandle) };
             var mode: uint32 = 0;
             // Safety: `mode` is a local `uint32`, which the call fills; `handle` was just returned.
-            let console = unsafe { GetConsoleMode(handle, @mode) } ? true : false;
-            return StandardOut { handle: handle, console: console };
+            let console = if (unsafe { GetConsoleMode(handle, @mode) }) { true } else { false };
+            return Self { handle, console };
         }
         else {
-            return StandardOut { handle: StdOut, console: false };
+            return Self { handle: StdOut, console: false };
         }
     }
 }
@@ -329,14 +329,14 @@ extend StandardOut : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-out#write
-    pub func Write(self: &var StandardOut, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         return WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-out#flush
-    pub func Flush(self: &var StandardOut) -> ! IoError {
+    pub func Flush(&var self) -> ! IoError {
     }
 }
 
@@ -353,17 +353,17 @@ extend StandardError {
     /// The process's standard error.
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-error#acquire
-    pub func Acquire() -> StandardError {
+    pub func Acquire() -> Self {
         when #target.os == .Windows {
             // Safety: `GetStdHandle` takes only a stream number and touches no memory of the caller's.
             let handle = unsafe { GetStdHandle(StdErrorHandle) };
             var mode: uint32 = 0;
             // Safety: `mode` is a local `uint32`, which the call fills; `handle` was just returned.
-            let console = unsafe { GetConsoleMode(handle, @mode) } ? true : false;
-            return StandardError { handle: handle, console: console };
+            let console = if (unsafe { GetConsoleMode(handle, @mode) }) { true } else { false };
+            return Self { handle, console };
         }
         else {
-            return StandardError { handle: StdErr, console: false };
+            return Self { handle: StdErr, console: false };
         }
     }
 }
@@ -373,13 +373,13 @@ extend StandardError : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-error#write
-    pub func Write(self: &var StandardError, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         return WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-error#flush
-    pub func Flush(self: &var StandardError) -> ! IoError {
+    pub func Flush(&var self) -> ! IoError {
     }
 }

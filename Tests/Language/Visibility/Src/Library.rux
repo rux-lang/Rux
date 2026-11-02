@@ -5,11 +5,11 @@ struct PackageCounter {
 }
 
 extend PackageCounter {
-    func PackageCounter(value: int) -> PackageCounter {
-        return PackageCounter { value: value };
+    func PackageCounter(value: int) -> Self {
+        return Self { value };
     }
 
-    func Read(self: &PackageCounter) -> int {
+    func Read(&self) -> int {
         return self.value;
     }
 }
@@ -25,19 +25,19 @@ pub struct PublicCounter {
 }
 
 extend PublicCounter {
-    pub func PublicCounter(value: int) -> PublicCounter {
-        return PublicCounter { value: value, hidden: 1 };
+    pub func PublicCounter(value: int) -> Self {
+        return Self { value, hidden: 1 };
     }
 
-    pub func Zero() -> PublicCounter {
+    pub func Zero() -> Self {
         return PublicCounter(0);
     }
 
-    pub func Read(self: &PublicCounter) -> int {
+    pub func Read(&self) -> int {
         return self.value + self.hidden;
     }
 
-    pub func +(self: &PublicCounter, other: PublicCounter) -> PublicCounter {
+    pub func +(&self, other: Self) -> Self {
         return PublicCounter(self.value + other.value);
     }
 }
@@ -64,11 +64,11 @@ pub const Ceiling: int32 = 99i32;
 pub type Measure = int32;
 
 pub interface Readable {
-    func Value(self: &Self) -> int32;
+    func Value(&self) -> int32;
 }
 
 extend PublicCounter : Readable {
-    pub func Value(self: &PublicCounter) -> int32 {
+    pub func Value(&self) -> int32 {
         return self.value as int32;
     }
 }
@@ -78,6 +78,6 @@ extend PublicCounter : Readable {
 pub func LevelOf(reading: &Reading) -> Level {
     return match reading {
         .Absent => Level::Low,
-        .Present(value) => value > Ceiling ? Level::High : Level::Low
+        .Present(value) => if value > Ceiling { Level::High } else { Level::Low }
     };
 }

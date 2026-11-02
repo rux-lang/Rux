@@ -61,7 +61,7 @@ pub struct CompressWriter {
 func Take(allocator: Allocator, size: uint) -> *var opaque ! IoError {
     var borrowed = allocator;
     let layout = Layout::New(size, 8) ?? fail IoError::Of(IoErrorKind::LimitExceeded);
-    return borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+    return borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::LimitExceeded) };
 }
 
 // Gives back a block `Take` handed out.
@@ -69,12 +69,10 @@ func Take(allocator: Allocator, size: uint) -> *var opaque ! IoError {
 unsafe func Give(allocator: Allocator, block: *var opaque, size: uint) {
     if block == null { return; }
     var borrowed = allocator;
-    borrowed.Deallocate(block, Layout::New(size, 8) ?? Layout::ForValue<uint64>()) catch { else => {} };
+    borrowed.Deallocate(block, Layout::New(size, 8) ?? Layout::ForValue<uint64>()) catch { _ => {} };
 }
 
 extend CompressWriter {
-    func =(self: &var CompressWriter, other: &CompressWriter);
-
     /// A writer that compresses into `sink` in `format`, at `level`.
     /// @param allocator what the writer's buffers are kept in, about 750 KiB
     /// @param sink where the compressed stream goes, which the writer takes
@@ -83,7 +81,7 @@ extend CompressWriter {
     /// @returns the writer, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/deflate#new
     pub func New(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
-        -> CompressWriter ! IoError {
+        -> Self ! IoError {
         // Safety: `Take` returns a fresh block of the bytes asked for, eight-byte aligned, which holds exactly
         // `DataCapacity` bytes.
         let data = unsafe { Take(allocator, DataCapacity)? as *var uint8 };
@@ -101,9 +99,9 @@ extend CompressWriter {
             unsafe { head[index] = -1; }
             index = index + 1;
         }
-        return CompressWriter {
-            sink: <-sink, format: format, level: level, allocator: allocator, data: data, dataLength: 0,
-            blockStart: 0, head: head, previous: previous, tokens: tokens, tokenCount: 0, output: output,
+        return Self {
+            sink: move sink, format, level, allocator, data, dataLength: 0,
+            blockStart: 0, head, previous, tokens, tokenCount: 0, output,
             outputLength: 0, bits: 0, bitCount: 0, started: false, finished: false, crc: Crc32(), adler: Adler32(),
             size: 0
         };
@@ -113,7 +111,7 @@ extend CompressWriter {
     /// the sink. Writing after finishing fails; finishing twice does nothing.
     /// @returns nothing, or fails with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#finish
-    pub func Finish(self: &var CompressWriter) -> ! IoError {
+    pub func Finish(&var self) -> ! IoError {
         if self.finished { return; }
         self.Start()?;
         self.EncodeBlock(true)?;
@@ -135,12 +133,17 @@ extend CompressWriter {
     }
 
     // Writes the container's header, once.
-    func Start(self: &var CompressWriter) -> ! IoError {
+    func Start(&var self) -> ! IoError {
         if self.started { return; }
         self.started = true;
         if self.format == Format::Zlib {
-            let levelBits: uint = self.level == Level::Store || self.level == Level::Fastest ? 0u
-                                  : (self.level == Level::Default ? 2u : 3u);
+            let levelBits: uint = if self.level == Level::Store || self.level == Level::Fastest {
+                0u
+            } else if self.level == Level::Default {
+                2u
+            } else {
+                3u
+            };
             var flags = levelBits << 6;
             flags = flags + 31u - ((0x78u * 256u + flags) % 31u);
             self.PutByte(0x78u8)?;
@@ -157,16 +160,16 @@ extend CompressWriter {
     }
 
     // Appends whole bytes to the output, after any pending bits.
-    func PutByte(self: &var CompressWriter, value: uint8) -> ! IoError {
+    func PutByte(&var self, value: uint8) -> ! IoError {
         self.PutBits(value as uint64, 8)?;
     }
 
-    func PutWord(self: &var CompressWriter, value: uint32) -> ! IoError {
+    func PutWord(&var self, value: uint32) -> ! IoError {
         self.PutBits(value as uint64, 32)?;
     }
 
     // Appends `count` bits of `value`, least significant first.
-    func PutBits(self: &var CompressWriter, value: uint64, count: uint) -> ! IoError {
+    func PutBits(&var self, value: uint64, count: uint) -> ! IoError {
         self.bits = self.bits | ((value & ((1u64 << count as uint64) - 1u64)) << self.bitCount as uint64);
         self.bitCount = self.bitCount + count;
         while self.bitCount >= 8u {
@@ -180,12 +183,12 @@ extend CompressWriter {
     }
 
     // Pads the output to a whole byte.
-    func AlignBits(self: &var CompressWriter) -> ! IoError {
+    func AlignBits(&var self) -> ! IoError {
         if self.bitCount > 0u { self.PutBits(0, 8u - self.bitCount)?; }
     }
 
     // Hands the output gathered so far to the sink.
-    func SendOutput(self: &var CompressWriter) -> ! IoError {
+    func SendOutput(&var self) -> ! IoError {
         var sent: uint = 0;
         while sent < self.outputLength {
             // Safety: the buffer invariant: the first `outputLength` bytes of `output` are in use, and `sent` is below
@@ -200,14 +203,14 @@ extend CompressWriter {
 
     // The hash of the three bytes at `position`, which is below `HashSize`.
     // Safety: `position + MinimumMatch` must be at most `self.dataLength`.
-    unsafe func HashAt(self: &CompressWriter, position: uint) -> uint {
+    unsafe func HashAt(&self, position: uint) -> uint {
         let value = (self.data[position] as uint32 << 16) | (self.data[position + 1u] as uint32 << 8) |
                     self.data[position + 2u] as uint32;
         return ((value *% 2654435761u32) >> (32u32 - HashBits as uint32)) as uint;
     }
 
     // Records that the three bytes at `position` start there.
-    func Insert(self: &var CompressWriter, position: uint) {
+    func Insert(&var self, position: uint) {
         if position + MinimumMatch > self.dataLength { return; }
         // Safety: the three bytes at `position` lie below `dataLength`, checked above; `hash` is below `HashSize`
         // and the masked position below `WindowSize`, the sizes of `head` and `previous`.
@@ -219,11 +222,17 @@ extend CompressWriter {
     }
 
     // The longest match for `position` within `end`, as its length and distance.
-    func Search(self: &CompressWriter, position: uint, end: uint) -> uint64 {
+    func Search(&self, position: uint, end: uint) -> uint64 {
         if position + MinimumMatch > end { return 0; }
-        let chain: uint = self.level == Level::Fastest ? 4u : (self.level == Level::Default ? 32u : 256u);
-        let nice: uint = self.level == Level::Best ? MaximumMatch : 128u;
-        let limit = end - position > MaximumMatch ? MaximumMatch : end - position;
+        let chain: uint = if self.level == Level::Fastest {
+            4u
+        } else if self.level == Level::Default {
+            32u
+        } else {
+            256u
+        };
+        let nice: uint = if self.level == Level::Best { MaximumMatch } else { 128u };
+        let limit = if end - position > MaximumMatch { MaximumMatch } else { end - position };
         // Safety: the three bytes at `position` lie below `end`, which is at most `dataLength`, checked above; the
         // hash is below `HashSize`, the size of `head`.
         var candidate = unsafe { self.head[self.HashAt(position)] };
@@ -259,7 +268,7 @@ extend CompressWriter {
     }
 
     // Turns the waiting data into literals and matches.
-    func Tokenize(self: &var CompressWriter) {
+    func Tokenize(&var self) {
         let end = self.dataLength;
         let lazy = self.level == Level::Default || self.level == Level::Best;
         var position = self.blockStart;
@@ -297,7 +306,7 @@ extend CompressWriter {
     }
 
     // Encodes the data waiting since the last block as one or more blocks, the last of them final when `final`.
-    func EncodeBlock(self: &var CompressWriter, final: bool) -> ! IoError {
+    func EncodeBlock(&var self, final: bool) -> ! IoError {
         let start = self.blockStart;
         let end = self.dataLength;
         if start == end && !final { return; }
@@ -371,7 +380,15 @@ extend CompressWriter {
         while index < runCount {
             let symbol = (runs[index] & 0x1Fu16) as uint;
             codeCounts[symbol] = codeCounts[symbol] + 1u32;
-            runBits = runBits + (symbol == 16u ? 2u64 : (symbol == 17u ? 3u64 : (symbol == 18u ? 7u64 : 0u64)));
+            runBits = runBits + (if symbol == 16u {
+                2u64
+            } else if symbol == 17u {
+                3u64
+            } else if symbol == 18u {
+                7u64
+            } else {
+                0u64
+            });
             index = index + 1;
         }
         var codeLengths: uint8[19] = [0u8; 19];
@@ -407,7 +424,7 @@ extend CompressWriter {
             self.WriteStored(start, end, final)?;
         }
         else if fixedBits <= dynamicBits {
-            self.PutBits(final ? 1u64 : 0u64, 1)?;
+            self.PutBits(if final { 1u64 } else { 0u64 }, 1)?;
             self.PutBits(1, 2)?;
             var fixedLiterals: uint8[288] = [0u8; 288];
             index = 0;
@@ -420,7 +437,7 @@ extend CompressWriter {
             unsafe { self.WriteTokens(@fixedLiterals[0], @fixedDistances[0])?; }
         }
         else {
-            self.PutBits(final ? 1u64 : 0u64, 1)?;
+            self.PutBits(if final { 1u64 } else { 0u64 }, 1)?;
             self.PutBits(2, 2)?;
             self.PutBits((literalCount - 257u) as uint64, 5)?;
             self.PutBits((distanceCount - 1u) as uint64, 5)?;
@@ -458,7 +475,7 @@ extend CompressWriter {
 
     // Writes the block's tokens with the given code lengths, and the end-of-block code.
     // Safety: `literalLengths` must be readable for 288 lengths and `distanceLengths` for 30.
-    unsafe func WriteTokens(self: &var CompressWriter, literalLengths: *uint8, distanceLengths: *uint8) -> ! IoError {
+    unsafe func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) -> ! IoError {
         var literalCodes: uint16[288] = [0u16; 288];
         var distanceCodes: uint16[30] = [0u16; 30];
         AssignCodes(literalLengths, 288, @literalCodes[0]);
@@ -488,12 +505,12 @@ extend CompressWriter {
     }
 
     // Writes data as stored blocks of at most 65535 bytes, the last final when `final`.
-    func WriteStored(self: &var CompressWriter, start: uint, end: uint, final: bool) -> ! IoError {
+    func WriteStored(&var self, start: uint, end: uint, final: bool) -> ! IoError {
         var at = start;
         while true {
-            let length = end - at > 65535u ? 65535u : end - at;
+            let length = if end - at > 65535u { 65535u } else { end - at };
             let last = at + length == end;
-            self.PutBits(final && last ? 1u64 : 0u64, 1)?;
+            self.PutBits(if final && last { 1u64 } else { 0u64 }, 1)?;
             self.PutBits(0, 2)?;
             self.AlignBits()?;
             self.PutBits(length as uint64, 16)?;
@@ -511,7 +528,7 @@ extend CompressWriter {
     }
 
     // Keeps only the last 32 KiB of data, the history the next block's matches may reach into.
-    func Slide(self: &var CompressWriter) {
+    func Slide(&var self) {
         if self.dataLength <= WindowSize { return; }
         let shift = self.dataLength - WindowSize;
         var index: uint = 0;
@@ -525,7 +542,7 @@ extend CompressWriter {
             // Safety: `index` is below `HashSize`, the size of `head`.
             unsafe {
                 let entry = self.head[index];
-                self.head[index] = entry >= shift as int32 ? entry - shift as int32 : -1;
+                self.head[index] = if entry >= shift as int32 { entry - shift as int32 } else { -1 };
             }
             index = index + 1;
         }
@@ -534,7 +551,7 @@ extend CompressWriter {
             // Safety: `index` is below `WindowSize`, the size of `previous`.
             unsafe {
                 let entry = self.previous[index];
-                self.previous[index] = entry >= shift as int32 ? entry - shift as int32 : -1;
+                self.previous[index] = if entry >= shift as int32 { entry - shift as int32 } else { -1 };
             }
             index = index + 1;
         }
@@ -544,7 +561,7 @@ extend CompressWriter {
         self.blockStart = WindowSize;
     }
 
-    func ~CompressWriter(self: &var CompressWriter) {
+    func ~CompressWriter(&var self) {
         // Safety: the buffer invariant: each block came from `Take` in `New` with this allocator and this size.
         unsafe {
             Give(self.allocator, self.data as *var opaque, DataCapacity);
@@ -561,7 +578,7 @@ extend CompressWriter : Writer {
     /// @param bytes the data
     /// @returns how many bytes were taken, which is all of them, or fails after `Finish` or with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#write
-    pub func Write(self: &var CompressWriter, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.finished { fail IoError::Of(IoErrorKind::InvalidHandle); }
         self.Start()?;
         if self.format == Format::Zlib {
@@ -582,7 +599,7 @@ extend CompressWriter : Writer {
                 self.Slide();
             }
             let room = DataCapacity - self.dataLength;
-            let count = bytes.length - taken > room ? room : bytes.length - taken;
+            let count = if bytes.length - taken > room { room } else { bytes.length - taken };
             var index: uint = 0;
             while index < count {
                 // Safety: `count` is at most `room`, so `dataLength + index` is below `DataCapacity`.
@@ -599,7 +616,7 @@ extend CompressWriter : Writer {
     /// then flushes the sink. The stream continues afterwards.
     /// @returns nothing, or fails with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#flush
-    pub func Flush(self: &var CompressWriter) -> ! IoError {
+    pub func Flush(&var self) -> ! IoError {
         if self.finished { return; }
         self.Start()?;
         self.EncodeBlock(false)?;
@@ -648,7 +665,7 @@ unsafe func RunLengths(lengths: *uint8, count: uint, runs: *var uint16) -> uint 
             var left = run;
             while left >= 3u {
                 if left >= 11u {
-                    let take = left > 138u ? 138u : left;
+                    let take = if left > 138u { 138u } else { left };
                     runs[written] = (18u | ((take - 11u) << 5)) as uint16;
                     left = left - take;
                 }
@@ -669,7 +686,7 @@ unsafe func RunLengths(lengths: *uint8, count: uint, runs: *var uint16) -> uint 
             written = written + 1;
             var left = run - 1u;
             while left >= 3u {
-                let take = left > 6u ? 6u : left;
+                let take = if left > 6u { 6u } else { left };
                 runs[written] = (16u | ((take - 3u) << 5)) as uint16;
                 written = written + 1;
                 left = left - take;

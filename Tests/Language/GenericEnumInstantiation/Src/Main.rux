@@ -14,9 +14,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null `counter` is the address of a counter local that outlives every `Tracked`.
             unsafe { *self.counter += 1i32; }
@@ -30,13 +28,13 @@ struct Shelf<K, V> {
 }
 
 extend Shelf<K, V> {
-    func Shelf(label: K, value: V) -> Shelf<K, V> {
-        return Shelf<K, V> { held: Option::Some<V>(<-value), label: label };
+    func Shelf(label: K, value: V) -> Self {
+        return Self { held: Option::Some<V>(move value), label };
     }
 }
 
 func Hold(counter: *var int32) {
-    let shelf = Shelf<int32, Tracked>(1i32, Tracked { counter: counter });
+    let shelf = Shelf<int32, Tracked>(1i32, Tracked { counter });
     match shelf.held {
         .Some(_) => {
         },

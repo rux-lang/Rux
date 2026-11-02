@@ -23,7 +23,7 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
     while written < into.length {
         // Ask for about as many bytes as the rest of the identifier should need, given the rejection rate.
         let wanted = (into.length - written) * (mask + 1) * 16 / (alphabet.length * 10) + 1;
-        let take = wanted > BatchSize ? BatchSize : wanted;
+        let take = if wanted > BatchSize { BatchSize } else { wanted };
         // Safety: `batch` is a local array of `BatchSize` bytes and `take` is at most `BatchSize`; on failure,
         // `into.data` addresses the `into.length` writable bytes of the caller's slice, which is not empty there.
         unsafe {

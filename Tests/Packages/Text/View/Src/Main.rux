@@ -63,7 +63,7 @@ func Main() -> int {
     var walking = true;
     while walking {
         match walker.Next() {
-            scalar? => {
+            .Some(scalar) => {
                 total = total + (scalar as uint32);
                 seen = seen + 1;
             },

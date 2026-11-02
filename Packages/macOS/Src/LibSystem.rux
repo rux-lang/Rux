@@ -126,7 +126,7 @@ extern {
     func madvise(address: *opaque, length: uint, advice: int32) -> int32;
 
     // Ends the process; does not return
-    // An extern block does not take a #NoReturn() attribute, so this is declared as an ordinary call that happens
+    // An extern block does not take a #NoReturn attribute, so this is declared as an ordinary call that happens
     // never to come back.
     // https://keith.github.io/xcode-man-pages/exit.3.html
     func _exit(status: int32);
@@ -257,7 +257,7 @@ when #target.arch {
         #Symbol("fstat$INODE64")
         extern func fstat(fd: int32, statBuffer: *var opaque) -> int32;
     },
-    else => {
+    _ => {
         #Library("libSystem.B.dylib")
         extern func fstatat(directoryFd: int32, path: *char8, statBuffer: *var opaque, flags: int32) -> int32;
 

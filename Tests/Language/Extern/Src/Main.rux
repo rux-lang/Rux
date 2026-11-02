@@ -36,7 +36,7 @@ when #target.os {
         const DataRuntime = "msvcrt.dll";
         const FlagSymbol = "_fmode";
     }
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // A block applies its library to every member, so the library is written once rather than per declaration.
@@ -72,8 +72,8 @@ extern func printf(format: *char8, ...) -> int32;
 #Link(DataRuntime, FlagSymbol)
 extern RuntimeFlag: int32;
 
-// `#NoReturn()` on an extern says control does not come back. Declared, obviously not called.
-#NoReturn()
+// `#NoReturn` on an extern says control does not come back. Declared, obviously not called.
+#NoReturn
 #Link(CRuntime)
 extern func abort();
 

@@ -157,8 +157,8 @@ pub func Midpoint(a: uint32, b: uint32) -> uint32 {
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
 pub func Midpoint(a: float64, b: float64) -> float64 {
     let large = 8.98846567431158e307;
-    let absoluteA = a < 0.0 ? -a : a;
-    let absoluteB = b < 0.0 ? -b : b;
+    let absoluteA = if a < 0.0 { -a } else { a };
+    let absoluteB = if b < 0.0 { -b } else { b };
     if absoluteA <= large && absoluteB <= large { return (a + b) / 2.0; }
     return a / 2.0 + b / 2.0;
 }

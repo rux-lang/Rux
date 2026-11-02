@@ -55,7 +55,7 @@ pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
             IsDriveLetter(units.data[start]) && (units.data[start + 1] as uint32) == 0x3A
         } {
             // Safety: the documented contract makes `kind` a non-null pointer to the caller's writable `PrefixKind`.
-            unsafe { *kind = verbatim ? PrefixKind::Verbatim : PrefixKind::Drive; }
+            unsafe { *kind = if verbatim { PrefixKind::Verbatim } else { PrefixKind::Drive }; }
             return start + 2;
         }
 

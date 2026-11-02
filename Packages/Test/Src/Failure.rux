@@ -22,8 +22,8 @@ extend TestFailure {
     /// @param message what went wrong
     /// @returns the failure
     /// @see https://rux-lang.dev/docs/api/test/failure#of
-    pub func Of(message: char8[..]) -> TestFailure {
-        var failure = TestFailure::Empty();
+    pub func Of(message: char8[..]) -> Self {
+        var failure = Self::Empty();
         failure.Append(message);
         return failure;
     }
@@ -32,8 +32,8 @@ extend TestFailure {
     /// @param reason why it was skipped
     /// @returns the skip
     /// @see https://rux-lang.dev/docs/api/test/failure#skip
-    pub func Skip(reason: char8[..]) -> TestFailure {
-        var failure = TestFailure::Of(reason);
+    pub func Skip(reason: char8[..]) -> Self {
+        var failure = Self::Of(reason);
         failure.skipped = true;
         return failure;
     }
@@ -41,23 +41,23 @@ extend TestFailure {
     /// The message, or a skip's reason.
     /// @returns the message
     /// @see https://rux-lang.dev/docs/api/test/failure#message
-    pub func Message(self: &TestFailure) -> char8[..] {
+    pub func Message(&self) -> char8[..] {
         return self.text[..self.length];
     }
 
     /// Whether this is a skip rather than a failure.
     /// @returns whether the test was skipped
     /// @see https://rux-lang.dev/docs/api/test/failure#is-skip
-    pub func IsSkip(self: &TestFailure) -> bool {
+    pub func IsSkip(&self) -> bool {
         return self.skipped;
     }
 
-    func Empty() -> TestFailure {
-        return TestFailure { text: [c8' '; 480], length: 0, skipped: false };
+    func Empty() -> Self {
+        return Self { text: [c8' '; 480], length: 0, skipped: false };
     }
 
     // Appends what fits of `bytes`.
-    func Append(self: &var TestFailure, bytes: char8[..]) {
+    func Append(&var self, bytes: char8[..]) {
         var index: uint = 0;
         while index < bytes.length && self.length < MessageRoom {
             self.text[self.length] = bytes[index];
@@ -67,11 +67,11 @@ extend TestFailure {
     }
 
     // A writer over the room left, for formatting into; `Grow` then takes what it wrote.
-    func Rest(self: &var TestFailure) -> BufferWriter {
+    func Rest(&var self) -> BufferWriter {
         return BufferWriter(self.text[self.length..MessageRoom]);
     }
 
-    func Grow(self: &var TestFailure, writer: &BufferWriter) {
+    func Grow(&var self, writer: &BufferWriter) {
         self.length = self.length + writer.Length();
     }
 }

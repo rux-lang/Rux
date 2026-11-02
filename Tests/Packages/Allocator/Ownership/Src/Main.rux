@@ -46,7 +46,7 @@ unsafe func Holds(block: *var opaque, size: uint) -> bool {
 }
 
 func LayoutOr(size: uint, alignment: uint) -> Layout {
-    return Layout::New(size, alignment) ?? Layout { size: size, alignment: alignment };
+    return Layout::New(size, alignment) ?? Layout { size, alignment };
 }
 
 /// The first promise: an address handed back satisfies the layout it was asked for.
@@ -279,7 +279,7 @@ func Main() -> ! AllocError {
     // An arena is move-only: it owns its blocks and copying would give two owners of each. A handle holds the
     // arena's address, so it does not survive the move — the rule `Arena::Handle` documents. What a caller does
     // instead is take a handle from the arena where it now is, which is what this checks works.
-    var relocated <- counted;
+    var relocated = move counted;
     Assert(relocated.BytesUsed() == afterFirst, "a moved arena carries its accounting with it");
     Assert(relocated.BlockCount() == 1, "and the block it holds");
 
@@ -300,7 +300,7 @@ func Main() -> ! AllocError {
     let early = beforeMoveAllocator.Allocate(unit)?;
     let earlyUsed = moving.BytesUsed();
 
-    var carried <- moving;
+    var carried = move moving;
     Assert(carried.BytesUsed() == earlyUsed, "a moved fixed buffer carries its accounting");
     // Safety: `carried` is a local that outlives `lateHandle` and is not moved again.
     var lateHandle = unsafe { carried.Handle() };
@@ -315,7 +315,7 @@ func Main() -> ! AllocError {
 /// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
 /// refusal cannot pass by accident.
 func Refusal<T>(outcome: T ! AllocError) -> AllocError {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the allocator was expected to refuse")
     };

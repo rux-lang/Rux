@@ -29,7 +29,7 @@ extend Timestamp {
     /// Borrows the moment and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the calendar form exists for this moment
     /// @see https://rux-lang.dev/docs/api/time/timestamp#is-in-calendar-range
-    pub func IsInCalendarRange(self: &Timestamp) -> bool {
+    pub func IsInCalendarRange(&self) -> bool {
         return self.seconds >= CalendarFloorSecond && self.seconds <= CalendarCeilingSecond;
     }
 }
@@ -83,7 +83,7 @@ extend Timestamp : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-display
-    pub func WriteDisplay(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         RejectTimestampStyle(spec)?;
         if spec.StyleIs("unix") { return WriteUnixSeconds(writer, self, spec); }
@@ -98,7 +98,7 @@ extend Timestamp : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-debug
-    pub func WriteDebug(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

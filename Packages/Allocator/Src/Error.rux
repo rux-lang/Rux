@@ -29,8 +29,8 @@ extend AllocError {
     /// `InvalidBlock` describe the request rather than the moment, so repeating either gives the same answer.
     /// @returns whether asking again later could succeed
     /// @see https://rux-lang.dev/docs/api/allocator/alloc-error#is-transient
-    pub func IsTransient(self: AllocError) -> bool {
-        return self == AllocError::OutOfMemory;
+    pub func IsTransient(self) -> bool {
+        return self == Self::OutOfMemory;
     }
 }
 

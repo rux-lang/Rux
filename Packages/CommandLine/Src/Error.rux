@@ -105,7 +105,7 @@ extend CommandLineError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-display
-    pub func WriteDisplay(self: &CommandLineError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         match self {
             .UnknownOption(argument) => {
@@ -160,7 +160,7 @@ extend CommandLineError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-debug
-    pub func WriteDebug(self: &CommandLineError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

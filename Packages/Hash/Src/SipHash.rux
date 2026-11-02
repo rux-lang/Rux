@@ -63,8 +63,8 @@ extend SipState {
     /// @param high the key's second eight bytes as a word
     /// @returns the four-word state that key starts from
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#sip-state-from-key
-    pub func FromKey(low: uint64, high: uint64) -> SipState {
-        return SipState {
+    pub func FromKey(low: uint64, high: uint64) -> Self {
+        return Self {
             first: low ^ SipInit0,
             second: high ^ SipInit1,
             third: low ^ SipInit2,
@@ -78,7 +78,7 @@ extend SipState {
     /// Cannot fail. Runs in time proportional to `count` and allocates nothing.
     /// @param count how many rounds to run
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#sip-state-round
-    pub func Round(self: &var SipState, count: uint) {
+    pub func Round(&var self, count: uint) {
         if count == 0 { return; }
         // Round has no callbacks or observable intermediate states. Keep its four words local across rounds and
         // write the completed state once, allowing scalar promotion without aliasing the borrowed state fields.
@@ -115,7 +115,7 @@ extend SipState {
     }
 
     // One eight-byte word of input, mixed in and compressed.
-    func Absorb(self: &var SipState, word: uint64) {
+    func Absorb(&var self, word: uint64) {
         self.fourth = self.fourth ^ word;
         self.Round(SipCompressionRounds);
         self.first = self.first ^ word;
@@ -150,8 +150,8 @@ extend SipHash24 {
     /// @param high the key's second eight bytes as a word
     /// @returns a hasher keyed with those two words
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#with-key
-    pub func WithKey(low: uint64, high: uint64) -> SipHash24 {
-        return SipHash24 {
+    pub func WithKey(low: uint64, high: uint64) -> Self {
+        return Self {
             keyLow: low,
             keyHigh: high,
             state: SipState::FromKey(low, high),
@@ -170,7 +170,7 @@ extend SipHash24 {
     /// @param key sixteen key bytes, read as two little-endian words
     /// @returns a hasher keyed with them
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#with-key-bytes
-    pub unsafe func WithKeyBytes(key: *byte) -> SipHash24 {
+    pub unsafe func WithKeyBytes(key: *byte) -> Self {
         var low: uint64 = 0;
         var high: uint64 = 0;
         var index: uint = 0;
@@ -179,14 +179,14 @@ extend SipHash24 {
             high = high | ((*(key + 8 + index) as uint64) << ((index * 8) as uint64));
             index++;
         }
-        return SipHash24::WithKey(low, high);
+        return Self::WithKey(low, high);
     }
 
     /// Puts the hasher back to where it started, keeping its key.
     /// `self` is borrowed mutably. Everything written so far is forgotten; the key is not.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#reset
-    pub func Reset(self: &var SipHash24) {
+    pub func Reset(&var self) {
         self.state = SipState::FromKey(self.keyLow, self.keyHigh);
         self.total = 0;
         self.buffered = 0;
@@ -203,7 +203,7 @@ extend SipHash24 : Hasher {
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#write
-    pub func Write(self: &var SipHash24, bytes: *byte, length: uint) {
+    pub func Write(&var self, bytes: *byte, length: uint) {
         if length == 0 { return; }
         self.total = self.total +% (length as uint64);
 
@@ -257,7 +257,7 @@ extend SipHash24 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/sip-hash24#finish
-    pub func Finish(self: &var SipHash24) -> uint64 {
+    pub func Finish(&var self) -> uint64 {
         // The last word is the trailing bytes with the length's low byte on top, which is what keeps two inputs that
         // differ only in trailing zeroes from hashing alike.
         var last: uint64 = (self.total & 0xFF) << 56;

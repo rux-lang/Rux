@@ -17,7 +17,7 @@ struct Journal {
 }
 
 extend Journal {
-    func Note(self: &var Journal, entry: int32) {
+    func Note(&var self, entry: int32) {
         self.entries[self.count] = entry;
         self.count = self.count + 1i32;
     }
@@ -29,7 +29,7 @@ struct Guard {
 }
 
 extend Guard {
-    func ~Guard(self: &var Guard) {
+    func ~Guard(&var self) {
         // Safety: every `Guard` in this test stores `@journal`, a local that outlives the guard.
         unsafe { (*self.journal).Note(self.id); }
     }
@@ -37,13 +37,13 @@ extend Guard {
 
 func Fail(code: int32) -> int32 throws Failure {
     if code != 0i32 {
-        throw Failure { code: code };
+        throw Failure { code };
     }
     return 0i32;
 }
 
 func Passes(journal: *var Journal) -> int32 throws Failure {
-    let guard = Guard { journal: journal, id: 30i32 };
+    let guard = Guard { journal, id: 30i32 };
     // Safety: `journal` is `@journal` from `Main`, which outlives this call.
     defer unsafe { (*journal).Note(31i32); }
     try Fail(1i32);

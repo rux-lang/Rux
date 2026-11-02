@@ -11,7 +11,7 @@ when #target.os {
     .Linux => const CLibrary = "libc.so.6";
     .macOS => const CLibrary = "libSystem.B.dylib";
     .Windows => const CLibrary = "ucrtbase.dll";
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 #Link(CLibrary)
@@ -25,7 +25,7 @@ struct Node {
 extend Node {
     /// The value of the node `self` addresses.
     /// Safety: `self` must address a live `Node`.
-    unsafe func ValueAt(self: *Node) -> int32 {
+    unsafe func ValueAt(*self) -> int32 {
         return self.value;
     }
 }

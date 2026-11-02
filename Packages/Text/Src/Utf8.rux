@@ -218,7 +218,7 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
         step = step + 1;
     }
 
-    var value = leading & (expected == 2 ? 0x1F : (expected == 3 ? 0x0F : 0x07));
+    var value = leading & (if expected == 2 { 0x1F } else if expected == 3 { 0x0F } else { 0x07 });
     var taken: uint = 1;
     while taken < expected {
         // Safety: `taken` is below `expected`, and `index + expected` is at most `bytes.length`, checked above.
@@ -237,7 +237,7 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
 pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
     var index: uint = 0;
     while index < bytes.length {
-        let decoded = DecodeAt(bytes, index) catch { reason => fail Utf8Failure { reason: reason, index: index } };
+        let decoded = DecodeAt(bytes, index) catch { reason => fail Utf8Failure { reason, index } };
         index = index + decoded.width;
     }
 }

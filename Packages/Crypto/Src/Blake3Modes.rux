@@ -25,7 +25,7 @@ unsafe func Blake3KeyWords(key: char8[..], words: *var uint32) {
         var part: uint = 0;
         while part < 4 {
             let position = index * 4 + part;
-            let value = position < key.length ? (key.data[position] as uint8) : 0;
+            let value = if position < key.length { key.data[position] as uint8 } else { 0 };
             word = word | ((value as uint32) << ((part * 8) as uint32));
             part = part + 1;
         }
@@ -44,11 +44,11 @@ extend Blake3 {
     /// @param key the key
     /// @returns a hasher keyed with those thirty-two bytes
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#new-keyed
-    pub func NewKeyed(key: char8[..]) -> Blake3 {
+    pub func NewKeyed(key: char8[..]) -> Self {
         var words: uint32[8];
         // Safety: `words` is a local array of eight words.
         unsafe { Blake3KeyWords(key, @words[0]); }
-        return Blake3::Start(words, Blake3KeyedHash);
+        return Self::Start(words, Blake3KeyedHash);
     }
 
     /// A BLAKE3 state deriving output under `context`.
@@ -59,16 +59,16 @@ extend Blake3 {
     /// @param context the application-specific context string, which must be a constant
     /// @returns a hasher in key-derivation mode for that context
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#new-derive-key
-    pub func NewDeriveKey(context: char8[..]) -> Blake3 {
+    pub func NewDeriveKey(context: char8[..]) -> Self {
         // The first stage hashes the context under the unkeyed initial value, producing the key for the second.
-        var contextHasher = Blake3::Start(Blake3InitialValue, Blake3DeriveKeyContext);
+        var contextHasher = Self::Start(Blake3InitialValue, Blake3DeriveKeyContext);
         contextHasher.Update(context);
         var contextKey: char8[32];
         contextHasher.Finish(contextKey[..]);
         var words: uint32[8];
         // Safety: `words` is a local array of eight words.
         unsafe { Blake3KeyWords(contextKey[..], @words[0]); }
-        return Blake3::Start(words, Blake3DeriveKeyMaterial);
+        return Self::Start(words, Blake3DeriveKeyMaterial);
     }
 }
 

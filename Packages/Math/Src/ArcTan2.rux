@@ -22,19 +22,19 @@ pub func ArcTan2(y: float64, x: float64) -> float64 {
     let yNegative = SignBit(y);
     // Both infinite: the answer is one of the four diagonals, and the ordinary route would form Inf/Inf.
     if IsInfinite(x) && IsInfinite(y) {
-        let angle = SignBit(x) ? QuarterPi + HalfPi : QuarterPi;
-        return yNegative ? -angle : angle;
+        let angle = if SignBit(x) { QuarterPi + HalfPi } else { QuarterPi };
+        return if yNegative { -angle } else { angle };
     }
     // A vertical direction: x finite (or zero) and y infinite, or x zero and y nonzero.
-    if IsInfinite(y) || (IsZero(x) && !IsZero(y)) { return yNegative ? -HalfPi : HalfPi; }
+    if IsInfinite(y) || (IsZero(x) && !IsZero(y)) { return if yNegative { -HalfPi } else { HalfPi }; }
     // A horizontal direction: y zero, or x infinite with y finite.
     if IsZero(y) || IsInfinite(x) {
         if SignBit(x) {
             // Pointing along the negative axis, which is a half turn on whichever side y sits.
-            return yNegative ? -Pi : Pi;
+            return if yNegative { -Pi } else { Pi };
         }
         // Pointing along the positive axis, including the origin: zero, signed like y.
-        return yNegative ? -0.0 : 0.0;
+        return if yNegative { -0.0 } else { 0.0 };
     }
     // The ordinary case. The ratio's magnitude is what the inverse tangent takes; the signs decide the quadrant.
     let ratio = Abs(y / x);
@@ -44,7 +44,7 @@ pub func ArcTan2(y: float64, x: float64) -> float64 {
         // from the high part would otherwise cancel away.
         angle = (Pi - (angle - piLo));
     }
-    return yNegative ? -angle : angle;
+    return if yNegative { -angle } else { angle };
 }
 
 /// Computes the angle from the positive x axis to `(x, y)` at `float32` precision.

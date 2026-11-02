@@ -52,7 +52,7 @@ func RunChild() -> int {
                         if byte >= 0x61u8 && byte <= 0x7Au8 { chunk[index] = (byte - 32u8) as char8; }
                         index = index + 1;
                     }
-                    WriteAll(output, chunk[..count]) catch { else => return 2 };
+                    WriteAll(output, chunk[..count]) catch { _ => return 2 };
                 },
                 .Failure(_) => return 0
             }
@@ -64,8 +64,8 @@ func RunChild() -> int {
         line[63] = '\n';
         var count: uint = 0;
         while count < 4000u {
-            WriteAll(error, line[..]) catch { else => return 3 };
-            WriteAll(output, line[..]) catch { else => return 3 };
+            WriteAll(error, line[..]) catch { _ => return 3 };
+            WriteAll(output, line[..]) catch { _ => return 3 };
             count = count + 1;
         }
         return 0;
@@ -79,7 +79,7 @@ func RunChild() -> int {
         if Present(a) && Is(a ?? OsStringView(), "one") { report[0] = 'A'; }
         if Present(b) && Is(b ?? OsStringView(), "two") { report[1] = 'B'; }
         if !Present(gone) { report[2] = 'G'; }
-        WriteAll(output, report[..]) catch { else => return 4 };
+        WriteAll(output, report[..]) catch { _ => return 4 };
         return 0;
     }
     if ModeIs("argument") {
@@ -89,7 +89,7 @@ func RunChild() -> int {
         var index: uint = 0;
         while index < units.length {
             var byte: char8[1] = [units[index] as uint8 as char8];
-            WriteAll(output, byte[..]) catch { else => return 5 };
+            WriteAll(output, byte[..]) catch { _ => return 5 };
             index = index + 1;
         }
         return 0;
@@ -98,7 +98,7 @@ func RunChild() -> int {
         // Waits for input that never comes, until it is killed.
         var input = StandardIn::Acquire();
         var chunk: char8[16] = ['\0'; 16];
-        input.Read(chunk[..]) catch { else => 0u };
+        input.Read(chunk[..]) catch { _ => 0u };
         return 0;
     }
     // No mode this test starts itself in, such as a filter `rux test` hands every package: the parent's run, then.
@@ -112,7 +112,7 @@ const NotAChild: int = -1;
 func NewSelf(program: OsStringView, mode: char8[..]) -> Command {
     var command = Command::FromNative(SystemAllocator(), program);
     command.Argument(mode);
-    return <-command;
+    return move command;
 }
 
 // Whether bytes a child wrote are the text `text`.
@@ -136,7 +136,7 @@ func Main() -> int {
 
     // An exit code comes back.
     let exit = NewSelf(program, "exit");
-    let status = exit.Run() catch { else => return 10 };
+    let status = exit.Run() catch { _ => return 10 };
     Assert(!status.Success() && status.Code() == 7, "a child's exit code comes back");
     Assert(status.Signal() == none, "an exit is not a signal");
 
@@ -144,10 +144,10 @@ func Main() -> int {
     var echo = NewSelf(program, "echo");
     echo.StandardInput(Stdio::Pipe);
     echo.StandardOutput(Stdio::Pipe);
-    var child = echo.Spawn() catch { else => return 11 };
+    var child = echo.Spawn() catch { _ => return 11 };
     var input = child.TakeInput() ?? return 12;
     var output = child.TakeOutput() ?? return 13;
-    WriteAll(input, "hello, child") catch { else => return 14 };
+    WriteAll(input, "hello, child") catch { _ => return 14 };
     input.Close();
     var received: char8[64] = ['\0'; 64];
     var length: uint = 0;
@@ -161,25 +161,25 @@ func Main() -> int {
         }
     }
     Assert(Same(received[..length], "HELLO, CHILD"), "the child echoed its input");
-    Assert((child.Wait() catch { else => return 15 }).Success(), "the echoing child exits cleanly");
+    Assert((child.Wait() catch { _ => return 15 }).Success(), "the echoing child exits cleanly");
 
     // Captured output keeps both streams whole, however much the child writes to each.
     let flood = NewSelf(program, "flood");
-    let captured = flood.Capture(allocator) catch { else => return 16 };
+    let captured = flood.Capture(allocator) catch { _ => return 16 };
     Assert(captured.Status().Success(), "the flooding child exits cleanly");
     Assert(captured.Output().length == 4000u * 64u, "all of the output is captured");
     Assert(captured.Error().length == 4000u * 64u, "all of the error is captured");
 
     // A child sees this process's environment changes and the command's own.
-    SetVariable("RUX_SPAWN_A", "one") catch { else => return 17 };
-    SetVariable("RUX_SPAWN_GONE", "here") catch { else => return 18 };
+    SetVariable("RUX_SPAWN_A", "one") catch { _ => return 17 };
+    SetVariable("RUX_SPAWN_GONE", "here") catch { _ => return 18 };
     Assert(Is(Variable("RUX_SPAWN_A") ?? OsStringView(), "one"), "a variable set here reads back");
     var environment = NewSelf(program, "environment");
     environment.SetVariable("RUX_SPAWN_B", "two");
     environment.RemoveVariable("RUX_SPAWN_GONE");
-    let report = environment.Capture(allocator) catch { else => return 19 };
+    let report = environment.Capture(allocator) catch { _ => return 19 };
     Assert(Same(report.Output(), "ABG"), "the child sees every environment change");
-    RemoveVariable("RUX_SPAWN_A") catch { else => return 20 };
+    RemoveVariable("RUX_SPAWN_A") catch { _ => return 20 };
     Assert(!Present(Variable("RUX_SPAWN_A")), "a removed variable is gone");
     var seen = false;
     for variable in Environment() {
@@ -196,7 +196,7 @@ func Main() -> int {
     var quoting = NewSelf(program, "argument");
     let awkward = "a \"quoted\" arg\\ with \\\\ slashes\\";
     quoting.Argument(awkward);
-    let echoed = quoting.Capture(allocator) catch { else => return 21 };
+    let echoed = quoting.Capture(allocator) catch { _ => return 21 };
     Assert(Same(echoed.Output(), awkward), "an awkward argument arrives whole");
 
     // A program that does not exist is reported as not found.
@@ -209,11 +209,11 @@ func Main() -> int {
     // A child can be killed while it waits.
     var waiting = NewSelf(program, "wait");
     waiting.StandardInput(Stdio::Pipe);
-    var sleeper = waiting.Spawn() catch { else => return 22 };
+    var sleeper = waiting.Spawn() catch { _ => return 22 };
     let keep = sleeper.TakeInput();
-    sleeper.Kill() catch { else => return 23 };
-    let killed = sleeper.Wait() catch { else => return 24 };
+    sleeper.Kill() catch { _ => return 23 };
+    let killed = sleeper.Wait() catch { _ => return 24 };
     Assert(!killed.Success(), "a killed child did not succeed");
-    Assert((sleeper.TryWait() catch { else => return 25 }) != none, "a finished child reports its status");
+    Assert((sleeper.TryWait() catch { _ => return 25 }) != none, "a finished child reports its status");
     return 0;
 }

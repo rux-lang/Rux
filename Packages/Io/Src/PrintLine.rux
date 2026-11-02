@@ -56,13 +56,13 @@ pub func PrintLine(value: StringView) -> IoError? {
 }
 
 /// Writes `format` with each placeholder replaced by the next argument, then a newline.
-/// A placeholder is `{}` or `{:spec}`, and `{{` and `}}` write a literal brace. `format` is marked `#Format()`, so a
+/// A placeholder is `{}` or `{:spec}`, and `{{` and `}}` write a literal brace. `format` is marked `#Format`, so a
 /// string literal passed for it has its placeholders counted against the arguments while compiling, and a mismatch is
 /// a compile error. The newline is written only when the whole pattern was.
 /// @param format the format string, with a placeholder for each argument
 /// @returns the failure, or `none` when the whole line was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(#Format() format: char8[..], args: Display...) -> IoError? {
+pub func PrintLine(#Format format: char8[..], args: Display...) -> IoError? {
     return Terminate(Print(format, args...));
 }
 

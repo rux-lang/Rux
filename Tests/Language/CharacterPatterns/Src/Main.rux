@@ -5,7 +5,7 @@ func Byte(value: char8) -> int {
         c8'A' => 1,
         c8'\n' => 2,
         c8'\0' => 3,
-        else => 9
+        _ => 9
     };
 }
 
@@ -14,7 +14,7 @@ func Unit(value: char16) -> int {
         c16'λ' => 1,
         c16'\t' => 2,
         c16'\u{20AC}' => 3,
-        else => 9
+        _ => 9
     };
 }
 
@@ -26,7 +26,7 @@ func Scalar(value: char32) -> int {
         '\0' => 4,
         '\\' => 5,
         '\'' => 6,
-        else => 9
+        _ => 9
     };
 }
 
@@ -37,7 +37,7 @@ func Wide(value: char64) -> int {
         c64'λ' => 3,
         c64'\u{1F600}' => 4,
         c64'\u{10FFFF}' => 5,
-        else => 9
+        _ => 9
     };
 }
 
@@ -48,7 +48,7 @@ func Wide128(value: char128) -> int {
         c128'λ' => 3,
         c128'\u{1F600}' => 4,
         c128'\u{10FFFF}' => 5,
-        else => 9
+        _ => 9
     };
 }
 
@@ -59,7 +59,7 @@ func Wide256(value: char256) -> int {
         c256'λ' => 3,
         c256'\u{1F600}' => 4,
         c256'\u{10FFFF}' => 5,
-        else => 9
+        _ => 9
     };
 }
 
@@ -70,7 +70,7 @@ func Wide512(value: char512) -> int {
         c512'λ' => 3,
         c512'\u{1F600}' => 4,
         c512'\u{10FFFF}' => 5,
-        else => 9
+        _ => 9
     };
 }
 
@@ -78,7 +78,7 @@ func Guarded(value: char32, allowed: bool) -> int {
     return match value {
         'A' if allowed => 7,
         'A' => 8,
-        else => 9
+        _ => 9
     };
 }
 
@@ -133,7 +133,7 @@ func Main() -> int {
     }
     Assert(selected == 11, "an unmatched character arm has no effect");
     var calls = 0u;
-    let answer = match Once(@calls) { 'A' => 23, else => 29 };
+    let answer = match Once(@calls) { 'A' => 23, _ => 29 };
     Assert(answer == 23 && calls == 1u, "the character subject is evaluated once");
     let value = 'A';
     let borrowed: &char32 = value;

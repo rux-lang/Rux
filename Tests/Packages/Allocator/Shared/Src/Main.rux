@@ -13,9 +13,7 @@ pub struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `Destroyed` is a global `int64`, aligned and live for the whole run, and only touched atomically.
         unsafe { AtomicFetchAdd<int64>(@Destroyed, 1, MemoryOrder::Relaxed); }
     }
@@ -58,17 +56,17 @@ func Counted() -> int {
     Assert(Keep(second.Clone()) == 3u && first.Count() == 2u, "a clone passed by value counts while it lives");
     second = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 9 });
     Assert(first.Count() == 1u && !second.SameAs(first) && Destroys() == 0, "reassigning releases one count");
-    let moved <- first;
+    let moved = move first;
     Assert(moved.Count() == 1u && Destroys() == 0, "moving a handle does not count");
     return 0;
 }
 
 func Threaded() -> int {
     var shared = Arc::Create<Tracked>(SystemAllocator(), Tracked { value: 1 });
-    var one = Spawn(Churn, shared.Clone()) catch { else => return 4 };
-    var two = Spawn(Churn, shared.Clone()) catch { else => return 5 };
-    var three = Spawn(Churn, shared.Clone()) catch { else => return 6 };
-    var four = Spawn(Churn, shared.Clone()) catch { else => return 7 };
+    var one = Spawn(Churn, shared.Clone()) catch { _ => return 4 };
+    var two = Spawn(Churn, shared.Clone()) catch { _ => return 5 };
+    var three = Spawn(Churn, shared.Clone()) catch { _ => return 6 };
+    var four = Spawn(Churn, shared.Clone()) catch { _ => return 7 };
     let sum = one.Join() + two.Join() + three.Join() + four.Join();
     Assert(sum == 80000 && shared.Count() == 1u && Destroys() == 2, "every thread's clones were counted and dropped");
     match shared.GetMutable() {

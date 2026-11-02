@@ -10,7 +10,7 @@ import Text::{ CString, StringView, TextError };
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
 /// cannot pass by accident.
 func Refusal<T, E>(outcome: T ! E) -> E {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the operation was expected to fail")
     };
@@ -22,7 +22,7 @@ func Main() -> int {
 
     // Out: ordinary text picks up its terminator, invisible from the Rux side.
     let text = StringView::FromValidated("hello");
-    let kept = CString::FromView(allocator, text) catch { else => Panic("ordinary text crosses the boundary") };
+    let kept = CString::FromView(allocator, text) catch { _ => Panic("ordinary text crosses the boundary") };
     Assert(kept.Length() == 5, "the length counts the text alone");
     // Safety: `kept` is a live C string of five bytes, so its block holds indexes 0 through 5, the terminator last.
     let (terminator, first) = unsafe { (kept.Raw()[5], kept.Raw()[0]) };
@@ -52,7 +52,7 @@ func Main() -> int {
     // In: reading back from a raw pointer, to the terminator and no further.
     // Safety: `kept.Raw()` addresses the live six-byte block of `kept`, terminated within the 64-byte limit.
     let arrived = (unsafe { CString::FromRaw(allocator, kept.Raw(), 64) })
-        catch { else => Panic("C text with a terminator in reach comes in") };
+        catch { _ => Panic("C text with a terminator in reach comes in") };
     Assert(arrived.Length() == 5, "read to the terminator and no further");
 
     // A terminator out of reach is a broken promise, and costs the limit rather than a walk off the map.
@@ -76,7 +76,7 @@ func Main() -> int {
         "a surrogate half from C is refused");
 
     // Text crosses the boundary the same way a view does, since a view is what it becomes.
-    let crossed = CString::FromText(allocator, "crossing") catch { else => Panic("text makes a C string") };
+    let crossed = CString::FromText(allocator, "crossing") catch { _ => Panic("text makes a C string") };
     Assert(crossed.Length() == 8, "spanning what it was given");
     // Safety: `crossed` is a live C string of eight bytes, so index 8 is the terminator inside its block.
     let crossedEnd = unsafe { crossed.Raw()[8] };

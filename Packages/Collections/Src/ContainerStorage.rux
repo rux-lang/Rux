@@ -25,10 +25,10 @@ func ElementLayout<T>(count: uint) -> Layout throws AllocError {
     // request, which every allocator here answers with the shared empty address — and a store into that address
     // faults, however few bytes it writes. One byte apiece gives the run a real address; every index lands on the
     // same one, which is exactly right for a type with nothing to distinguish.
-    let elementSize = sizeof(T) == 0 ? 1u : sizeof(T);
+    let elementSize = if sizeof(T) == 0 { 1u } else { sizeof(T) };
     let bytes = try ByteSize(count, elementSize);
 
-    let alignment = alignof(T) == 0 ? 1u : alignof(T);
+    let alignment = if alignof(T) == 0 { 1u } else { alignof(T) };
     // A layout the allocator's own rules reject has a rounded size past the end of the address space. The element's
     // alignment is whatever the compiler gave it, so it is a power of two by construction.
     return Layout::New(bytes, alignment) ?? throw AllocError::Unsupported;
@@ -74,5 +74,5 @@ func ReleaseBlock<T>(allocator: Allocator, block: *var T, count: uint) {
     // whose size cannot be named, and nothing to report it to.
     let layout = try ElementLayout<T>(count) catch { _ => return };
     // The block came from this allocator with this layout, and there is no caller to report a refusal to.
-    allocator.Deallocate(block as *var opaque, layout) catch { else => {} };
+    allocator.Deallocate(block as *var opaque, layout) catch { _ => {} };
 }

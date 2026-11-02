@@ -57,10 +57,10 @@ extend FormatError {
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true for `WriterFailure`, false for every other case
     /// @see https://rux-lang.dev/docs/api/text/format-error#is-writer-failure
-    pub func IsWriterFailure(self: &FormatError) -> bool {
+    pub func IsWriterFailure(&self) -> bool {
         return match self {
             .WriterFailure => true,
-            else => false
+            _ => false
         };
     }
 }

@@ -85,29 +85,29 @@ extend Ipv4Address {
     /// @param d the fourth octet
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-new
-    pub func New(a: uint8, b: uint8, c: uint8, d: uint8) -> Ipv4Address {
-        return Ipv4Address { octets: [a, b, c, d] };
+    pub func New(a: uint8, b: uint8, c: uint8, d: uint8) -> Self {
+        return Self { octets: [a, b, c, d] };
     }
 
     /// `127.0.0.1`, this machine.
     /// @returns the loopback address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-localhost
-    pub func Localhost() -> Ipv4Address {
-        return Ipv4Address { octets: [127u8, 0u8, 0u8, 1u8] };
+    pub func Localhost() -> Self {
+        return Self { octets: [127u8, 0u8, 0u8, 1u8] };
     }
 
     /// `0.0.0.0`, every address of this machine when binding.
     /// @returns the unspecified address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-unspecified
-    pub func Unspecified() -> Ipv4Address {
-        return Ipv4Address { octets: [0u8, 0u8, 0u8, 0u8] };
+    pub func Unspecified() -> Self {
+        return Self { octets: [0u8, 0u8, 0u8, 0u8] };
     }
 
     /// Reads dotted-decimal text such as `192.168.0.1`, each octet without leading zeros.
     /// @param text the text
     /// @returns the address, or none when the text is not one
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-parse
-    pub func Parse(text: char8[..]) -> Ipv4Address? {
+    pub func Parse(text: char8[..]) -> Self? {
         var octets: uint8[4] = [0u8, 0u8, 0u8, 0u8];
         var index: uint = 0;
         var part: uint = 0;
@@ -129,27 +129,27 @@ extend Ipv4Address {
             }
         }
         if index != text.length { return none; }
-        return Ipv4Address { octets: octets };
+        return Self { octets };
     }
 
     /// Whether this is a loopback address, in `127.0.0.0/8`.
     /// @returns true for loopback
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-loopback
-    pub func IsLoopback(self: &Ipv4Address) -> bool {
+    pub func IsLoopback(&self) -> bool {
         return self.octets[0] == 127u8;
     }
 
     /// Whether this is the unspecified address, `0.0.0.0`, which binds every local address.
     /// @returns true for `0.0.0.0`
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-unspecified
-    pub func IsUnspecified(self: &Ipv4Address) -> bool {
+    pub func IsUnspecified(&self) -> bool {
         return self.octets[0] == 0u8 && self.octets[1] == 0u8 && self.octets[2] == 0u8 && self.octets[3] == 0u8;
     }
 
     /// Whether this is a private address of RFC 1918: in `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`.
     /// @returns true for a private address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-private
-    pub func IsPrivate(self: &Ipv4Address) -> bool {
+    pub func IsPrivate(&self) -> bool {
         return self.octets[0] == 10u8 || (self.octets[0] == 172u8 && (self.octets[1] & 0xF0u8) == 16u8) ||
                (self.octets[0] == 192u8 && self.octets[1] == 168u8);
     }
@@ -157,14 +157,14 @@ extend Ipv4Address {
     /// Whether this is a link-local address, in `169.254.0.0/16`.
     /// @returns true for a link-local address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-link-local
-    pub func IsLinkLocal(self: &Ipv4Address) -> bool {
+    pub func IsLinkLocal(&self) -> bool {
         return self.octets[0] == 169u8 && self.octets[1] == 254u8;
     }
 
     /// Whether this is a multicast address, in `224.0.0.0/4`.
     /// @returns true for a multicast address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-is-multicast
-    pub func IsMulticast(self: &Ipv4Address) -> bool {
+    pub func IsMulticast(&self) -> bool {
         return (self.octets[0] & 0xF0u8) == 224u8;
     }
 
@@ -172,7 +172,7 @@ extend Ipv4Address {
     /// @param into where to write
     /// @returns how many characters the text takes, which is more than were written when `into` is too short
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-write-text
-    pub func WriteText(self: &Ipv4Address, into: var char8[..]) -> uint {
+    pub func WriteText(&self, into: var char8[..]) -> uint {
         var at: uint = 0;
         var part: uint = 0;
         while part < 4u {
@@ -187,7 +187,7 @@ extend Ipv4Address {
     /// @param other the address to compare with
     /// @returns true when they are equal
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-equals
-    pub func Equals(self: &Ipv4Address, other: Ipv4Address) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         return self.octets[0] == other.octets[0] && self.octets[1] == other.octets[1] &&
                self.octets[2] == other.octets[2] && self.octets[3] == other.octets[3];
     }
@@ -197,24 +197,24 @@ extend Ipv6Address {
     /// `::1`, this machine.
     /// @returns the loopback address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-localhost
-    pub func Localhost() -> Ipv6Address {
+    pub func Localhost() -> Self {
         var octets: uint8[16] = [0u8; 16];
         octets[15] = 1;
-        return Ipv6Address { octets: octets };
+        return Self { octets };
     }
 
     /// `::`, every address of this machine when binding.
     /// @returns the unspecified address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-unspecified
-    pub func Unspecified() -> Ipv6Address {
-        return Ipv6Address { octets: [0u8; 16] };
+    pub func Unspecified() -> Self {
+        return Self { octets: [0u8; 16] };
     }
 
     /// Reads text such as `2001:db8::1` or `::ffff:192.0.2.1`. A zone such as `%eth0` is not accepted.
     /// @param text the text
     /// @returns the address, or none when the text is not one
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-parse
-    pub func Parse(text: char8[..]) -> Ipv6Address? {
+    pub func Parse(text: char8[..]) -> Self? {
         var groups: uint16[8] = [0u16; 8];
         var count: uint = 0;
         var gap: uint = 9;
@@ -291,13 +291,13 @@ extend Ipv6Address {
             octets[group * 2u + 1u] = groups[group].Truncate<uint8>();
             group = group + 1;
         }
-        return Ipv6Address { octets: octets };
+        return Self { octets };
     }
 
     /// Whether this is the loopback address, `::1`.
     /// @returns true for loopback
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-loopback
-    pub func IsLoopback(self: &Ipv6Address) -> bool {
+    pub func IsLoopback(&self) -> bool {
         var index: uint = 0;
         while index < 15u {
             if self.octets[index] != 0u8 { return false; }
@@ -309,7 +309,7 @@ extend Ipv6Address {
     /// Whether this is the unspecified address, `::`, which binds every local address.
     /// @returns true for `::`
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-unspecified
-    pub func IsUnspecified(self: &Ipv6Address) -> bool {
+    pub func IsUnspecified(&self) -> bool {
         var index: uint = 0;
         while index < 16u {
             if self.octets[index] != 0u8 { return false; }
@@ -322,28 +322,28 @@ extend Ipv6Address {
     /// address.
     /// @returns true for a unique local address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-private
-    pub func IsPrivate(self: &Ipv6Address) -> bool {
+    pub func IsPrivate(&self) -> bool {
         return (self.octets[0] & 0xFEu8) == 0xFCu8;
     }
 
     /// Whether this is a link-local address, in `fe80::/10`.
     /// @returns true for a link-local address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-link-local
-    pub func IsLinkLocal(self: &Ipv6Address) -> bool {
+    pub func IsLinkLocal(&self) -> bool {
         return self.octets[0] == 0xFEu8 && (self.octets[1] & 0xC0u8) == 0x80u8;
     }
 
     /// Whether this is a multicast address, in `ff00::/8`.
     /// @returns true for a multicast address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-is-multicast
-    pub func IsMulticast(self: &Ipv6Address) -> bool {
+    pub func IsMulticast(&self) -> bool {
         return self.octets[0] == 0xFFu8;
     }
 
     /// The IPv4 address this one maps, for an address in `::ffff:0:0/96`, or none for any other.
     /// @returns the mapped IPv4 address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-as-mapped-ipv4
-    pub func AsMappedIpv4(self: &Ipv6Address) -> Ipv4Address? {
+    pub func AsMappedIpv4(&self) -> Ipv4Address? {
         var index: uint = 0;
         while index < 10u {
             if self.octets[index] != 0u8 { return none; }
@@ -358,12 +358,12 @@ extend Ipv6Address {
     /// @param into where to write
     /// @returns how many characters the text takes, which is more than were written when `into` is too short
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-write-text
-    pub func WriteText(self: &Ipv6Address, into: var char8[..]) -> uint {
+    pub func WriteText(&self, into: var char8[..]) -> uint {
         match self.AsMappedIpv4() {
             .Some(mapped) => {
                 var at: uint = 0;
                 for c in "::ffff:" { at = Put(into, at, c); }
-                return at + mapped.WriteText(at < into.length ? into[at..] : into[into.length..]);
+                return at + mapped.WriteText(if at < into.length { into[at..] } else { into[into.length..] });
             },
             none => {}
         }
@@ -406,7 +406,7 @@ extend Ipv6Address {
             while shift >= 0 {
                 let nibble = ((value >> (shift as uint16)) & 0xFu16) as uint8;
                 if nibble != 0u8 || started || shift == 0 {
-                    at = Put(into, at, (nibble < 10u8 ? 0x30u8 + nibble : 0x57u8 + nibble) as char8);
+                    at = Put(into, at, (if nibble < 10u8 { 0x30u8 + nibble } else { 0x57u8 + nibble }) as char8);
                     started = true;
                 }
                 shift = shift - 4;
@@ -420,7 +420,7 @@ extend Ipv6Address {
     /// @param other the address to compare with
     /// @returns true when they are equal
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-equals
-    pub func Equals(self: &Ipv6Address, other: Ipv6Address) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         var index: uint = 0;
         while index < 16u {
             if self.octets[index] != other.octets[index] { return false; }
@@ -435,29 +435,29 @@ extend IpAddress {
     /// @param address the IPv4 address
     /// @returns the IP address
     /// @see https://rux-lang.dev/docs/api/net/address#from-ipv4
-    pub func FromIpv4(address: Ipv4Address) -> IpAddress {
-        return IpAddress { version6: false, v4: address, v6: Ipv6Address::Unspecified() };
+    pub func FromIpv4(address: Ipv4Address) -> Self {
+        return Self { version6: false, v4: address, v6: Ipv6Address::Unspecified() };
     }
 
     /// An IPv6 address as an IP address.
     /// @param address the IPv6 address
     /// @returns the IP address
     /// @see https://rux-lang.dev/docs/api/net/address#from-ipv6
-    pub func FromIpv6(address: Ipv6Address) -> IpAddress {
-        return IpAddress { version6: true, v4: Ipv4Address::Unspecified(), v6: address };
+    pub func FromIpv6(address: Ipv6Address) -> Self {
+        return Self { version6: true, v4: Ipv4Address::Unspecified(), v6: address };
     }
 
     /// Reads an IPv4 or IPv6 address.
     /// @param text the text
     /// @returns the address, or none when the text is neither
     /// @see https://rux-lang.dev/docs/api/net/address#ip-parse
-    pub func Parse(text: char8[..]) -> IpAddress? {
+    pub func Parse(text: char8[..]) -> Self? {
         match Ipv4Address::Parse(text) {
-            .Some(v4) => return IpAddress::FromIpv4(v4),
+            .Some(v4) => return Self::FromIpv4(v4),
             none => {}
         }
         match Ipv6Address::Parse(text) {
-            .Some(v6) => return IpAddress::FromIpv6(v6),
+            .Some(v6) => return Self::FromIpv6(v6),
             none => return none
         }
     }
@@ -465,14 +465,14 @@ extend IpAddress {
     /// Whether this is an IPv6 address.
     /// @returns true for IPv6
     /// @see https://rux-lang.dev/docs/api/net/address#is-ipv6
-    pub func IsIpv6(self: &IpAddress) -> bool {
+    pub func IsIpv6(&self) -> bool {
         return self.version6;
     }
 
     /// The IPv4 address, or none for an IPv6 one.
     /// @returns the IPv4 address
     /// @see https://rux-lang.dev/docs/api/net/address#as-ipv4
-    pub func AsIpv4(self: &IpAddress) -> Ipv4Address? {
+    pub func AsIpv4(&self) -> Ipv4Address? {
         if self.version6 { return none; }
         return self.v4;
     }
@@ -480,7 +480,7 @@ extend IpAddress {
     /// The IPv6 address, or none for an IPv4 one.
     /// @returns the IPv6 address
     /// @see https://rux-lang.dev/docs/api/net/address#as-ipv6
-    pub func AsIpv6(self: &IpAddress) -> Ipv6Address? {
+    pub func AsIpv6(&self) -> Ipv6Address? {
         if !self.version6 { return none; }
         return self.v6;
     }
@@ -488,53 +488,53 @@ extend IpAddress {
     /// Whether this is a loopback address.
     /// @returns true for loopback
     /// @see https://rux-lang.dev/docs/api/net/address#ip-is-loopback
-    pub func IsLoopback(self: &IpAddress) -> bool {
-        return self.version6 ? self.v6.IsLoopback() : self.v4.IsLoopback();
+    pub func IsLoopback(&self) -> bool {
+        return if self.version6 { self.v6.IsLoopback() } else { self.v4.IsLoopback() };
     }
 
     /// Whether this is the unspecified address, `0.0.0.0` or `::`.
     /// @returns true for the unspecified address
     /// @see https://rux-lang.dev/docs/api/net/address#ip-is-unspecified
-    pub func IsUnspecified(self: &IpAddress) -> bool {
-        return self.version6 ? self.v6.IsUnspecified() : self.v4.IsUnspecified();
+    pub func IsUnspecified(&self) -> bool {
+        return if self.version6 { self.v6.IsUnspecified() } else { self.v4.IsUnspecified() };
     }
 
     /// Whether this is a private IPv4 address or a unique local IPv6 address.
     /// @returns true for a private address
     /// @see https://rux-lang.dev/docs/api/net/address#ip-is-private
-    pub func IsPrivate(self: &IpAddress) -> bool {
-        return self.version6 ? self.v6.IsPrivate() : self.v4.IsPrivate();
+    pub func IsPrivate(&self) -> bool {
+        return if self.version6 { self.v6.IsPrivate() } else { self.v4.IsPrivate() };
     }
 
     /// Whether this is a link-local address.
     /// @returns true for a link-local address
     /// @see https://rux-lang.dev/docs/api/net/address#ip-is-link-local
-    pub func IsLinkLocal(self: &IpAddress) -> bool {
-        return self.version6 ? self.v6.IsLinkLocal() : self.v4.IsLinkLocal();
+    pub func IsLinkLocal(&self) -> bool {
+        return if self.version6 { self.v6.IsLinkLocal() } else { self.v4.IsLinkLocal() };
     }
 
     /// Whether this is a multicast address.
     /// @returns true for a multicast address
     /// @see https://rux-lang.dev/docs/api/net/address#ip-is-multicast
-    pub func IsMulticast(self: &IpAddress) -> bool {
-        return self.version6 ? self.v6.IsMulticast() : self.v4.IsMulticast();
+    pub func IsMulticast(&self) -> bool {
+        return if self.version6 { self.v6.IsMulticast() } else { self.v4.IsMulticast() };
     }
 
     /// Writes the address into `into`, at most 45 characters.
     /// @param into where to write
     /// @returns how many characters the text takes
     /// @see https://rux-lang.dev/docs/api/net/address#ip-write-text
-    pub func WriteText(self: &IpAddress, into: var char8[..]) -> uint {
-        return self.version6 ? self.v6.WriteText(into) : self.v4.WriteText(into);
+    pub func WriteText(&self, into: var char8[..]) -> uint {
+        return if self.version6 { self.v6.WriteText(into) } else { self.v4.WriteText(into) };
     }
 
     /// Whether two addresses are the same, which an IPv4 and an IPv6 address never are.
     /// @param other the address to compare with
     /// @returns true when they are equal
     /// @see https://rux-lang.dev/docs/api/net/address#ip-equals
-    pub func Equals(self: &IpAddress, other: IpAddress) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         if self.version6 != other.version6 { return false; }
-        return self.version6 ? self.v6.Equals(other.v6) : self.v4.Equals(other.v4);
+        return if self.version6 { self.v6.Equals(other.v6) } else { self.v4.Equals(other.v4) };
     }
 }
 
@@ -544,15 +544,15 @@ extend SocketAddress {
     /// @param port the port
     /// @returns the socket address
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-new
-    pub func New(ip: IpAddress, port: uint16) -> SocketAddress {
-        return SocketAddress { ip: ip, port: port };
+    pub func New(ip: IpAddress, port: uint16) -> Self {
+        return Self { ip, port };
     }
 
     /// Reads `address:port`, with an IPv6 address in brackets, as in `[::1]:8080`.
     /// @param text the text
     /// @returns the socket address, or none when the text is not one
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-parse
-    pub func Parse(text: char8[..]) -> SocketAddress? {
+    pub func Parse(text: char8[..]) -> Self? {
         var portAt: uint = 0;
         var ip = IpAddress::FromIpv4(Ipv4Address::Unspecified());
         if text.length > 0u && text[0] == '[' {
@@ -588,18 +588,18 @@ extend SocketAddress {
             if port > 65535u { return none; }
             index = index + 1;
         }
-        return SocketAddress { ip: ip, port: port as uint16 };
+        return Self { ip, port: port as uint16 };
     }
 
     /// Writes `address:port` into `into`, an IPv6 address in brackets, at most 47 characters.
     /// @param into where to write
     /// @returns how many characters the text takes
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-write-text
-    pub func WriteText(self: &SocketAddress, into: var char8[..]) -> uint {
+    pub func WriteText(&self, into: var char8[..]) -> uint {
         var at: uint = 0;
         if self.ip.IsIpv6() {
             at = Put(into, at, c8'[');
-            at = at + self.ip.WriteText(at < into.length ? into[at..] : into[into.length..]);
+            at = at + self.ip.WriteText(if at < into.length { into[at..] } else { into[into.length..] });
             at = Put(into, at, c8']');
         }
         else {
@@ -613,7 +613,7 @@ extend SocketAddress {
     /// @param allocator what the text is kept in
     /// @returns the text
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-to-string
-    pub func ToString(self: &SocketAddress, allocator: Allocator) -> String ! TextError {
+    pub func ToString(&self, allocator: Allocator) -> String ! TextError {
         var buffer: char8[56] = ['\0'; 56];
         let length = self.WriteText(buffer[..]);
         return String::FromBytes(allocator, buffer[..length])?;
@@ -623,7 +623,7 @@ extend SocketAddress {
     /// @param other the address to compare with
     /// @returns true when they are equal
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-equals
-    pub func Equals(self: &SocketAddress, other: SocketAddress) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         return self.port == other.port && self.ip.Equals(other.ip);
     }
 }
@@ -637,7 +637,7 @@ extend Ipv4Address : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-write-display
-    pub func WriteDisplay(self: &Ipv4Address, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         var text: char8[16] = ['\0'; 16];
         let length = self.WriteText(text[..]);
@@ -652,7 +652,7 @@ extend Ipv6Address : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-write-display
-    pub func WriteDisplay(self: &Ipv6Address, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         var text: char8[48] = ['\0'; 48];
         let length = self.WriteText(text[..]);
@@ -667,7 +667,7 @@ extend IpAddress : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#ip-write-display
-    pub func WriteDisplay(self: &IpAddress, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         var text: char8[48] = ['\0'; 48];
         let length = self.WriteText(text[..]);
@@ -682,7 +682,7 @@ extend SocketAddress : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole address was accepted
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-write-display
-    pub func WriteDisplay(self: &SocketAddress, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         var text: char8[56] = ['\0'; 56];
         let length = self.WriteText(text[..]);

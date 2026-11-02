@@ -11,8 +11,8 @@ struct Closed {
 }
 
 interface Source {
-    func Next(self: &var Self) -> int32 throws Closed;
-    func Reset(self: &var Self) throws Closed;
+    func Next(&var self) -> int32 throws Closed;
+    func Reset(&var self) throws Closed;
 }
 
 struct Countdown {
@@ -20,7 +20,7 @@ struct Countdown {
 }
 
 extend Countdown : Source {
-    func Next(self: &var Countdown) -> int32 throws Closed {
+    func Next(&var self) -> int32 throws Closed {
         if self.left <= 0i32 {
             throw Closed { reason: 1i32 };
         }
@@ -28,7 +28,7 @@ extend Countdown : Source {
         return self.left;
     }
 
-    func Reset(self: &var Countdown) throws Closed {
+    func Reset(&var self) throws Closed {
         if self.left < 0i32 {
             throw Closed { reason: 2i32 };
         }

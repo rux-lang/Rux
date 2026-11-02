@@ -61,7 +61,7 @@ func Main() -> int {
 
     // Numbers keep their text, which is what makes them exact.
     var large = JsonValue::Number(allocator, "9007199254740993") catch {
-        else => Panic("a large integer is stored")
+        _ => Panic("a large integer is stored")
     };
     var exact: uint64 = 0;
     // Safety: `AsNumber` points at the number payload inside `large`, which is live.
@@ -74,16 +74,16 @@ func Main() -> int {
     Assert((asFloat as uint64) != 9007199254740993,
            "and that reading loses the last digit, which is why the exact one is offered separately");
 
-    var written = JsonValue::Number(allocator, "1.2000") catch { else => Panic("1.2000 is stored") };
+    var written = JsonValue::Number(allocator, "1.2000") catch { _ => Panic("1.2000 is stored") };
     // Safety: `AsNumber` points at the number payload inside `written`, which is live.
     let writtenText = unsafe { Number(written).Text() };
     let expectedText = View("1.2000");
     Assert(writtenText.Equals(expectedText), "a number keeps the text it was written with, trailing zeros too");
 
     // Integral means no fraction and no exponent, which is a statement about the text rather than the value.
-    var whole = JsonValue::Number(allocator, "42") catch { else => Panic("42 is stored") };
-    var pointZero = JsonValue::Number(allocator, "42.0") catch { else => Panic("42.0 is stored") };
-    var exponent = JsonValue::Number(allocator, "4.2e1") catch { else => Panic("4.2e1 is stored") };
+    var whole = JsonValue::Number(allocator, "42") catch { _ => Panic("42 is stored") };
+    var pointZero = JsonValue::Number(allocator, "42.0") catch { _ => Panic("42.0 is stored") };
+    var exponent = JsonValue::Number(allocator, "4.2e1") catch { _ => Panic("4.2e1 is stored") };
     // Safety: `AsNumber` points at the number payload inside `whole`, which is live.
     Assert(unsafe { Number(whole).IsIntegral() }, "42 is integral");
     // Safety: `AsNumber` points at the number payload inside `pointZero`, which is live.
@@ -100,7 +100,7 @@ func Main() -> int {
            "while it reads fine as a float");
 
     var negative = JsonValue::Number(allocator, "-9223372036854775808") catch {
-        else => Panic("the most negative signed integer is stored")
+        _ => Panic("the most negative signed integer is stored")
     };
     var signedValue: int64 = 0;
     // Safety: `AsNumber` points at the number payload inside `negative`, which is live.
@@ -145,7 +145,7 @@ func Main() -> int {
     Assert(AcceptedNumber(allocator, "10"), "and a zero after the first digit is no leading zero");
 
     // Strings.
-    var text = JsonValue::Text(allocator, "hello") catch { else => Panic("a string is stored") };
+    var text = JsonValue::Text(allocator, "hello") catch { _ => Panic("a string is stored") };
     Assert(text.Kind() == JsonKind::Text, "a string is a string");
     let expectedHello = View("hello");
     Assert(text.AsText().Equals(expectedHello), "and reads back");
@@ -157,7 +157,7 @@ func Main() -> int {
     var index: uint = 0;
     while index < 5 {
         var element = JsonValue::Boolean(allocator, (index % 2) == 0);
-        Assert(array.Push(<-element), "elements append");
+        Assert(array.Push(move element), "elements append");
         index = index + 1;
     }
     Assert(array.Length() == 5, "and the array grows");
@@ -175,15 +175,15 @@ func Main() -> int {
     // Objects keep insertion order, which is what lets a document be written back recognisably.
     var object = JsonValue::Object(allocator);
     Assert(object.Kind() == JsonKind::Object && object.Length() == 0, "a new object is empty");
-    var zetaName = String::FromBytes(allocator, "zeta") catch { else => Panic("a name is built") };
-    var zetaValue = JsonValue::Number(allocator, "1") catch { else => Panic("1 is stored") };
-    Assert(object.Insert(move zetaName, <-zetaValue), "a member inserts");
-    var alphaName = String::FromBytes(allocator, "alpha") catch { else => Panic("a name is built") };
-    var alphaValue = JsonValue::Number(allocator, "2") catch { else => Panic("2 is stored") };
-    Assert(object.Insert(move alphaName, <-alphaValue), "and another");
-    var muName = String::FromBytes(allocator, "mu") catch { else => Panic("a name is built") };
-    var muValue = JsonValue::Text(allocator, "found") catch { else => Panic("a string is stored") };
-    Assert(object.Insert(move muName, <-muValue), "and a third");
+    var zetaName = String::FromBytes(allocator, "zeta") catch { _ => Panic("a name is built") };
+    var zetaValue = JsonValue::Number(allocator, "1") catch { _ => Panic("1 is stored") };
+    Assert(object.Insert(move zetaName, move zetaValue), "a member inserts");
+    var alphaName = String::FromBytes(allocator, "alpha") catch { _ => Panic("a name is built") };
+    var alphaValue = JsonValue::Number(allocator, "2") catch { _ => Panic("2 is stored") };
+    Assert(object.Insert(move alphaName, move alphaValue), "and another");
+    var muName = String::FromBytes(allocator, "mu") catch { _ => Panic("a name is built") };
+    var muValue = JsonValue::Text(allocator, "found") catch { _ => Panic("a string is stored") };
+    Assert(object.Insert(move muName, move muValue), "and a third");
     Assert(object.Length() == 3, "and the object grows");
 
     let zeta = View("zeta");
@@ -208,7 +208,7 @@ func Main() -> int {
     Assert(object.MemberAt(0) is .Some(_) && array.MemberAt(0) is none, "and members the other way round");
     Assert(nullValue.Length() == 0 && text.Length() == 0, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
-    Assert(!nullValue.Push(<-pushRefused), "pushing into a scalar is refused rather than ignored");
+    Assert(!nullValue.Push(move pushRefused), "pushing into a scalar is refused rather than ignored");
 
     return 0;
 }

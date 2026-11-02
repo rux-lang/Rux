@@ -19,13 +19,13 @@ struct Circle {
 }
 
 extend Square : Shape {
-    func Area(self: &Square) -> int32 {
+    func Area(&self) -> int32 {
         return self.side * self.side;
     }
 }
 
 extend Circle : Shape {
-    func Area(self: &Circle) -> int32 {
+    func Area(&self) -> int32 {
         return 3 * self.radius * self.radius;
     }
 }
@@ -47,7 +47,7 @@ func Where(point: (int32, int32)) -> int32 {
 }
 
 func Where(flags: (bool, bool)) -> int32 {
-    return flags.0 ? 1 : 0;
+    return if flags.0 { 1 } else { 0 };
 }
 
 func Pick(flag: bool) -> int32 {
@@ -63,7 +63,7 @@ func Main() -> int {
     let picked: int32 = match true { true => 1, false => 2 };
     Assert(picked == 1, "an annotated match takes the annotation's width");
     Assert(Pick(false) == 4, "a returned match takes the return type");
-    let narrow: uint8 = match picked { 1 => 255, else => 0 };
+    let narrow: uint8 = match picked { 1 => 255, _ => 0 };
     Assert(narrow == 255, "an arm literal may use the whole range of a narrow type");
     Assert(Widest(true) == int128::Max, "an arm literal wider than 64 bits keeps every bit");
 

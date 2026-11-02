@@ -47,36 +47,36 @@ extend Path {
     /// A path over nothing.
     /// @returns an empty path
     /// @see https://rux-lang.dev/docs/api/path/path#new
-    pub func Path() -> Path {
-        return Path { name: OsStringView() };
+    pub func Path() -> Self {
+        return Self { name: OsStringView() };
     }
 
     /// A path over `view`'s units as they stand.
     /// @param view the borrowed text to copy
     /// @returns a path over those units, which it does not copy
     /// @see https://rux-lang.dev/docs/api/path/path#from-view
-    pub func FromView(view: OsStringView) -> Path {
-        return Path { name: view };
+    pub func FromView(view: OsStringView) -> Self {
+        return Self { name: view };
     }
 
     /// How many native units the path spans.
     /// @returns how many units the path holds
     /// @see https://rux-lang.dev/docs/api/path/path#length
-    pub func Length(self: &Path) -> uint {
+    pub func Length(&self) -> uint {
         return self.name.Length();
     }
 
     /// Whether the path is empty, which names nothing at all.
     /// @returns whether the path holds no units
     /// @see https://rux-lang.dev/docs/api/path/path#is-empty
-    pub func IsEmpty(self: &Path) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.name.IsEmpty();
     }
 
     /// The name under the structure.
     /// @returns the path's units, borrowed
     /// @see https://rux-lang.dev/docs/api/path/path#as-view
-    pub func AsView(self: &Path) -> OsStringView {
+    pub func AsView(&self) -> OsStringView {
         return self.name;
     }
 
@@ -86,7 +86,7 @@ extend Path {
     /// @param other the value to compare against
     /// @returns whether both hold the same units in the same order, without normalizing either
     /// @see https://rux-lang.dev/docs/api/path/path#equals
-    pub func Equals(self: &Path, other: Path) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         let mine = self.name;
         return mine.Equals(other.name);
     }
@@ -94,7 +94,7 @@ extend Path {
     /// A walk over the path's components, first to last.
     /// @returns a cursor over the path's components
     /// @see https://rux-lang.dev/docs/api/path/path#components
-    pub func Components(self: &Path) -> ComponentIterator {
+    pub func Components(&self) -> ComponentIterator {
         return ComponentIterator { units: self.name.Units(), cursor: 0 };
     }
 }
@@ -115,7 +115,7 @@ extend ComponentIterator {
     /// The next component, or `none` when the walk is done.
     /// @returns the next component, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/path/path#component-iterator-next
-    pub func Next(self: &var ComponentIterator) -> OsStringView? {
+    pub func Next(&var self) -> OsStringView? {
         // The root: a separator at the very start yields the empty component once, then the walk continues past
         // every separator that follows it.
         // Safety: `self.units.length` is positive, checked just before the read.

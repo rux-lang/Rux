@@ -16,7 +16,7 @@ struct Problem {
 }
 
 extend Problem {
-    func ~Problem(self: &var Problem) {
+    func ~Problem(&var self) {
         // Safety: every `Problem` in this test holds `@counter`, a local of `Main` that outlives it.
         unsafe { self.counter.count = self.counter.count + 1i32; }
     }
@@ -28,7 +28,7 @@ struct Small {
 
 func Check(counter: *var Counter, value: int32) -> int32 throws Problem {
     if value < 0i32 {
-        throw Problem { counter: counter, code: value };
+        throw Problem { counter, code: value };
     }
     return value;
 }

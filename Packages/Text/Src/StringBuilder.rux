@@ -38,17 +38,14 @@ pub struct StringBuilder {
 }
 
 extend StringBuilder {
-    /// Copying a builder would give two owners of one mutable block.
-    func =(self: &var StringBuilder, other: &StringBuilder);
-
     /// A builder that has allocated nothing.
     /// `allocator` is borrowed for the call and kept.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty builder that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/text/string-builder#new
-    pub func StringBuilder(allocator: Allocator) -> StringBuilder {
-        return StringBuilder { data: null, length: 0, capacity: 0, allocator: allocator };
+    pub func StringBuilder(allocator: Allocator) -> Self {
+        return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
     /// A builder with room for `capacity` bytes already taken.
@@ -58,37 +55,37 @@ extend StringBuilder {
     /// @param capacity how many bytes to reserve up front
     /// @returns an empty builder with room for that many bytes already taken
     /// @see https://rux-lang.dev/docs/api/text/string-builder#with-capacity
-    pub func WithCapacity(allocator: Allocator, capacity: uint) -> StringBuilder {
+    pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
         var builder = StringBuilder(allocator);
         builder.Reserve(capacity);
-        return <-builder;
+        return move builder;
     }
 
     /// How many bytes are in use.
     /// @returns how many bytes have been appended
     /// @see https://rux-lang.dev/docs/api/text/string-builder#length
-    pub func Length(self: &StringBuilder) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
     /// How many bytes the block holds.
     /// @returns how many bytes fit before the next growth
     /// @see https://rux-lang.dev/docs/api/text/string-builder#capacity
-    pub func Capacity(self: &StringBuilder) -> uint {
+    pub func Capacity(&self) -> uint {
         return self.capacity;
     }
 
     /// Whether nothing has been appended.
     /// @returns whether nothing has been appended
     /// @see https://rux-lang.dev/docs/api/text/string-builder#is-empty
-    pub func IsEmpty(self: &StringBuilder) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.length == 0;
     }
 
     /// The bytes in use, borrowed.
     /// @returns the appended bytes, borrowed
     /// @see https://rux-lang.dev/docs/api/text/string-builder#bytes
-    pub func Bytes(self: &StringBuilder) -> char8[..] {
+    pub func Bytes(&self) -> char8[..] {
         // Safety: the storage invariant: the first `length` bytes at `data` are initialized and owned by this
         // builder.
         return unsafe { (self.data)[..self.length] };
@@ -99,7 +96,7 @@ extend StringBuilder {
     /// well-formed at every moment rather than only once it is finished.
     /// @returns a borrowed view of what has been appended
     /// @see https://rux-lang.dev/docs/api/text/string-builder#view
-    pub func View(self: &StringBuilder) -> StringView {
+    pub func View(&self) -> StringView {
         return StringView::FromValidated(self.Bytes());
     }
 
@@ -108,7 +105,7 @@ extend StringBuilder {
     /// reports both instead.
     /// @param additional how many more bytes to make room for
     /// @see https://rux-lang.dev/docs/api/text/string-builder#reserve
-    pub func Reserve(self: &var StringBuilder, additional: uint) {
+    pub func Reserve(&var self, additional: uint) {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant.
         unsafe { ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional); }
     }
@@ -119,7 +116,7 @@ extend StringBuilder {
     /// @param additional how many more bytes to make room for
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/text/string-builder#try-reserve
-    pub func TryReserve(self: &var StringBuilder, additional: uint) throws AllocError {
+    pub func TryReserve(&var self, additional: uint) throws AllocError {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant.
         unsafe { try TryReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional); }
     }
@@ -130,7 +127,7 @@ extend StringBuilder {
     /// Terminates the program when the builder cannot grow.
     /// @param bytes the bytes to act on, taken as valid without checking
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append-validated
-    pub func AppendValidated(self: &var StringBuilder, bytes: char8[..]) {
+    pub func AppendValidated(&var self, bytes: char8[..]) {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant; `bytes` is
         // readable for its length and cannot borrow this builder's block while `self` is borrowed exclusively.
         unsafe { AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes); }
@@ -141,7 +138,7 @@ extend StringBuilder {
     /// cannot grow.
     /// @param view the borrowed text to act on
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append
-    pub func Append(self: &var StringBuilder, view: StringView) {
+    pub func Append(&var self, view: StringView) {
         self.AppendValidated(view.bytes);
     }
 
@@ -150,7 +147,7 @@ extend StringBuilder {
     /// cannot grow.
     /// @param text the text to act on
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append
-    pub func Append(self: &var StringBuilder, text: char8[..]) {
+    pub func Append(&var self, text: char8[..]) {
         self.AppendValidated(text);
     }
 
@@ -159,8 +156,8 @@ extend StringBuilder {
     /// @param bytes the bytes to act on
     /// @returns nothing when the bytes were appended, after checking they are valid UTF-8, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append-bytes
-    pub func AppendBytes(self: &var StringBuilder, bytes: char8[..]) -> ! TextError {
-        Validate(bytes) catch { else => fail TextError::InvalidUtf8 };
+    pub func AppendBytes(&var self, bytes: char8[..]) -> ! TextError {
+        Validate(bytes) catch { _ => fail TextError::InvalidUtf8 };
         self.AppendValidated(bytes);
     }
 
@@ -170,11 +167,11 @@ extend StringBuilder {
     /// @param scalar the Unicode scalar value
     /// @returns nothing when the scalar's encoding was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append-scalar
-    pub func AppendScalar(self: &var StringBuilder, scalar: char32) -> ! TextError {
+    pub func AppendScalar(&var self, scalar: char32) -> ! TextError {
         var encoded: char8[4];
         var written: uint = 0;
         let sink = encoded[..];
-        written = Encode(scalar, sink) catch { else => fail TextError::InvalidUtf8 };
+        written = Encode(scalar, sink) catch { _ => fail TextError::InvalidUtf8 };
         self.AppendValidated(encoded[..written]);
     }
 
@@ -184,7 +181,7 @@ extend StringBuilder {
     /// @param byte the byte
     /// @returns nothing when the byte was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append-ascii
-    pub func AppendAscii(self: &var StringBuilder, byte: char8) -> ! TextError {
+    pub func AppendAscii(&var self, byte: char8) -> ! TextError {
         if (byte as uint32) > 0x7F { fail TextError::InvalidUtf8; }
         var one: char8[1];
         one[0] = byte;
@@ -194,18 +191,18 @@ extend StringBuilder {
     /// Forgets everything appended, keeping the room.
     /// The block is kept, so a builder used in a loop allocates once rather than once per pass.
     /// @see https://rux-lang.dev/docs/api/text/string-builder#clear
-    pub func Clear(self: &var StringBuilder) {
+    pub func Clear(&var self) {
         self.length = 0;
     }
 
     /// Gives the block back and leaves a builder that owns nothing.
     /// @see https://rux-lang.dev/docs/api/text/string-builder#release
-    pub func Release(self: &var StringBuilder) {
+    pub func Release(&var self) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
             var borrowed = self.allocator;
             borrowed.Deallocate(self.data as *var opaque,
-                                (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { else => {} };
+                                (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;
         self.length = 0;
@@ -218,7 +215,7 @@ extend StringBuilder {
     /// be made.
     /// @returns a copy of what has been appended, leaving the builder as it was
     /// @see https://rux-lang.dev/docs/api/text/string-builder#to-string
-    pub func ToString(self: &StringBuilder) -> String {
+    pub func ToString(&self) -> String {
         return String::FromValidated(self.allocator, self.Bytes());
     }
 
@@ -229,7 +226,7 @@ extend StringBuilder {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns what has been appended, taking the builder's storage rather than copying
     /// @see https://rux-lang.dev/docs/api/text/string-builder#into-string
-    pub func IntoString(self: &var StringBuilder) -> String {
+    pub func IntoString(&var self) -> String {
         let taken = String {
             data: self.data,
             length: self.length,
@@ -239,14 +236,14 @@ extend StringBuilder {
         self.data = null;
         self.length = 0;
         self.capacity = 0;
-        return <-taken;
+        return move taken;
     }
 
     /// Gives the block back.
     /// Runs when the builder dies. A builder whose block was handed over by `IntoString` owns nothing, so this is
     /// then a no-op rather than a second release.
     /// @see https://rux-lang.dev/docs/api/text/string-builder#destructor
-    func ~StringBuilder(self: &var StringBuilder) {
+    func ~StringBuilder(&var self) {
         self.Release();
     }
 }
@@ -278,7 +275,11 @@ unsafe func TryReserveBuilderStorage(data: *var *var char8, length: uint, capaci
         let want = layout;
         var borrowed = allocator;
         let have = Layout::New(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
-        let block = try *data == null ? borrowed.Allocate(want) : borrowed.Reallocate(*data as *var opaque, have, want);
+        let block = try if *data == null {
+            borrowed.Allocate(want)
+        } else {
+            borrowed.Reallocate(*data as *var opaque, have, want)
+        };
         *data = block as *var char8;
         *capacity = wanted;
 }

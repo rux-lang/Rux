@@ -83,47 +83,47 @@ pub struct Sha512 {
 }
 
 extend Sha512 {
-    func Start(initial: uint64[8], outputLength: uint) -> Sha512 {
+    func Start(initial: uint64[8], outputLength: uint) -> Self {
         var buffer: char8[128];
         var index: uint = 0;
         while index < 128 {
             buffer[index] = 0u8 as char8;
             index = index + 1;
         }
-        return Sha512 { state: initial, buffer: buffer, buffered: 0, length: 0, outputLength: outputLength };
+        return Self { state: initial, buffer, buffered: 0, length: 0, outputLength };
     }
 
     /// A SHA-512 state.
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#new
-    pub func Sha512() -> Sha512 {
-        return Sha512::Start(Sha512InitialState, 64);
+    pub func Sha512() -> Self {
+        return Self::Start(Sha512InitialState, 64);
     }
 
     /// A SHA-384 state.
     /// @returns a hasher producing a 384-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#new-384
-    pub func New384() -> Sha512 {
-        return Sha512::Start(Sha384InitialState, 48);
+    pub func New384() -> Self {
+        return Self::Start(Sha384InitialState, 48);
     }
 
     /// A SHA-512/224 state.
     /// @returns a hasher producing SHA-512/224
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#new-trunc224
-    pub func NewTrunc224() -> Sha512 {
-        return Sha512::Start(Sha512Trunc224InitialState, 28);
+    pub func NewTrunc224() -> Self {
+        return Self::Start(Sha512Trunc224InitialState, 28);
     }
 
     /// A SHA-512/256 state.
     /// @returns a hasher producing SHA-512/256
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#new-trunc256
-    pub func NewTrunc256() -> Sha512 {
-        return Sha512::Start(Sha512Trunc256InitialState, 32);
+    pub func NewTrunc256() -> Self {
+        return Self::Start(Sha512Trunc256InitialState, 32);
     }
 
     // One block of a hundred and twenty eight bytes.
     // Safety: `block` must address a hundred and twenty eight readable bytes.
-    unsafe func Compress(self: &var Sha512, block: *char8) {
+    unsafe func Compress(&var self, block: *char8) {
         var schedule: uint64[80];
         var index: uint = 0;
         while index < 16 {
@@ -188,7 +188,7 @@ extend Sha512 : Digest {
     /// Adds `bytes` to the message.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#update
-    pub func Update(self: &var Sha512, bytes: char8[..]) {
+    pub func Update(&var self, bytes: char8[..]) {
         self.length = self.length +% (bytes.length as uint64);
         var index: uint = 0;
         if self.buffered > 0 {
@@ -220,7 +220,7 @@ extend Sha512 : Digest {
     /// rather than nine; a block with fewer takes a whole further block.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#finish
-    pub func Finish(self: &var Sha512, into: var char8[..]) {
+    pub func Finish(&var self, into: var char8[..]) {
         let bitLength = self.length *% 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1;
@@ -267,14 +267,14 @@ extend Sha512 : Digest {
     /// Sixty-four, forty-eight, thirty-two or twenty-eight bytes, depending on which variant this is.
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#digest-length
-    pub func DigestLength(self: &Sha512) -> uint {
+    pub func DigestLength(&self) -> uint {
         return self.outputLength;
     }
 
     /// A hundred and twenty eight bytes, for every variant.
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#block-length
-    pub func BlockLength(self: &Sha512) -> uint {
+    pub func BlockLength(&self) -> uint {
         return 128;
     }
 }

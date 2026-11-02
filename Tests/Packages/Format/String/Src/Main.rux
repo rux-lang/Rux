@@ -15,7 +15,7 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    let hello = String::FromBytes(allocator, "Hello World!") catch { else => return 1 };
+    let hello = String::FromBytes(allocator, "Hello World!") catch { _ => return 1 };
 
     // Through a placeholder, which is the path an argument takes.
     let alone = Rendered(allocator, Render(allocator, "{}", hello.View()));
@@ -70,5 +70,5 @@ func Main() -> int {
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success.
 func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
-    return (<-outcome) catch { else => String(allocator) };
+    return (move outcome) catch { _ => String(allocator) };
 }

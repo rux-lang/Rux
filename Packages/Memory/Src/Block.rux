@@ -168,7 +168,7 @@ pub unsafe func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering
     if offset == length { return Ordering::Equal; }
     let first = *((left as *byte) + offset);
     let second = *((right as *byte) + offset);
-    return first < second ? Ordering::Less : Ordering::Greater;
+    return if first < second { Ordering::Less } else { Ordering::Greater };
 }
 
 /// Whether two blocks hold the same bytes.

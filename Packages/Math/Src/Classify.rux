@@ -150,7 +150,7 @@ pub func Classify(value: float64) -> FloatClass {
     if magnitude > 0x7FF0000000000000 { return FloatClass::NotANumber; }
     if magnitude == 0x7FF0000000000000 { return FloatClass::Infinite; }
     if magnitude == 0 { return FloatClass::Zero; }
-    return magnitude < 0x0010000000000000 ? FloatClass::Subnormal : FloatClass::Normal;
+    return if magnitude < 0x0010000000000000 { FloatClass::Subnormal } else { FloatClass::Normal };
 }
 
 /// Classifies `value` at `float32` precision.
@@ -162,7 +162,7 @@ pub func Classify(value: float32) -> FloatClass {
     if magnitude > 0x7F800000 { return FloatClass::NotANumber; }
     if magnitude == 0x7F800000 { return FloatClass::Infinite; }
     if magnitude == 0 { return FloatClass::Zero; }
-    return magnitude < 0x00800000 ? FloatClass::Subnormal : FloatClass::Normal;
+    return if magnitude < 0x00800000 { FloatClass::Subnormal } else { FloatClass::Normal };
 }
 
 /// Whether `value`'s sign bit is set.
@@ -222,7 +222,7 @@ pub func NextAfter(from: float64, toward: float64) -> float64 {
     // Away from zero increases the magnitude field; toward zero decreases it. Since the ordering of the magnitude bits
     // matches the ordering of the values, that is the whole step.
     let awayFromZero = (from < toward) == (from > 0.0);
-    return FromBits(awayFromZero ? bits + 1 : bits - 1);
+    return FromBits(if awayFromZero { bits + 1 } else { bits - 1 });
 }
 
 /// Finds the `float32` value adjacent to `from` in the direction of `toward`.
@@ -236,7 +236,7 @@ pub func NextAfter(from: float32, toward: float32) -> float32 {
     if IsZero(from) { return CopySign(Float32FromBits(1), toward); }
     let bits = Float32Bits(from);
     let awayFromZero = (from < toward) == (from > 0.0f32);
-    return Float32FromBits(awayFromZero ? bits + 1 : bits - 1);
+    return Float32FromBits(if awayFromZero { bits + 1 } else { bits - 1 });
 }
 
 /// The next representable value above `value`.
@@ -411,13 +411,13 @@ pub func SplitIntegral(value: float64, integral: *var float64) -> float64 {
     if IsNan(value) || IsInfinite(value) {
         // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
         unsafe { *integral = value; }
-        return IsNan(value) ? value : CopySign(0.0, value);
+        return if IsNan(value) { value } else { CopySign(0.0, value) };
     }
     let whole = Trunc(value);
     // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
     unsafe { *integral = whole; }
     // Subtracting is exact here, and the sign of a zero remainder follows the value rather than the subtraction.
-    return IsZero(value - whole) ? CopySign(0.0, value) : value - whole;
+    return if IsZero(value - whole) { CopySign(0.0, value) } else { value - whole };
 }
 
 /// Splits `value` into integral and fractional `float32` parts.
@@ -451,7 +451,7 @@ pub func UlpDistance(left: float64, right: float64) -> uint64 {
     let leftBits = FloatBits(left) & 0x7FFFFFFFFFFFFFFF;
     let rightBits = FloatBits(right) & 0x7FFFFFFFFFFFFFFF;
     if SignBit(left) == SignBit(right) {
-        return leftBits > rightBits ? leftBits - rightBits : rightBits - leftBits;
+        return if leftBits > rightBits { leftBits - rightBits } else { rightBits - leftBits };
     }
     // Opposite signs: cross at zero, which both sides share, so the two halves simply add.
     return leftBits + rightBits;
@@ -467,7 +467,7 @@ pub func UlpDistance(left: float32, right: float32) -> uint64 {
     let leftBits = (Float32Bits(left) & 0x7FFFFFFF) as uint64;
     let rightBits = (Float32Bits(right) & 0x7FFFFFFF) as uint64;
     if SignBit(left) == SignBit(right) {
-        return leftBits > rightBits ? leftBits - rightBits : rightBits - leftBits;
+        return if leftBits > rightBits { leftBits - rightBits } else { rightBits - leftBits };
     }
     return leftBits + rightBits;
 }

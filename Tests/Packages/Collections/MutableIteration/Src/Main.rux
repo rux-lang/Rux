@@ -9,8 +9,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `destroyed` points at a local of `Main` that outlives every element.
         unsafe { *self.destroyed = *self.destroyed + 1; }
     }
@@ -18,8 +17,8 @@ extend Tracked {
 
 func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
     var vector = Vector<Tracked>(allocator);
-    vector.Push(Tracked { destroyed: destroyed, value: 10, tail: 100 });
-    vector.Push(Tracked { destroyed: destroyed, value: 20, tail: 200 });
+    vector.Push(Tracked { destroyed, value: 10, tail: 100 });
+    vector.Push(Tracked { destroyed, value: 20, tail: 200 });
     for element in vector.MutableReferences() {
         // Safety: the cursor yields addresses of the vector's elements, and the vector is untouched during the loop.
         unsafe { element.value = element.value + 7; }
@@ -37,7 +36,7 @@ func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
     }
     Assert(total == 44 && tails == 300, "only the selected fields changed in the vector");
 
-    var array = (<-vector).IntoArray();
+    var array = (move vector).IntoArray();
     for element in array.MutableReferences() {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
         unsafe { element.value = element.value * 2; }

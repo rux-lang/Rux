@@ -74,5 +74,5 @@ pub func NativeKind(raw: int32) -> IoErrorKind {
 /// @returns the error this package gives that platform code, keeping the raw value
 /// @see https://rux-lang.dev/docs/api/filesystem/native-errors#translate-native
 pub func TranslateNative(raw: int32) -> IoError {
-    return IoError { kind: NativeKind(raw), raw: raw };
+    return IoError { kind: NativeKind(raw), raw };
 }

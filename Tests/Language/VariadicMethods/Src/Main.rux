@@ -13,12 +13,12 @@ func Exact(value: int32) -> int32 { return 1i32; }
 func Exact(value: int32, extra: int32 = 0i32) -> int32 { return 2i32; }
 
 interface Merger {
-    func Merge(self: &Self, others: Self...) -> uint;
+    func Merge(&self, others: Self...) -> uint;
 }
 
 struct Item<T> { value: T; }
 extend Item<T> : Merger {
-    func Merge(self: &Item<T>, others: Item<T>...) -> uint { return others.length; }
+    func Merge(&self, others: Self...) -> uint { return others.length; }
 }
 
 func MergeItems<T: Merger>(item: &T, other: T) -> uint { return item.Merge(other); }
@@ -30,7 +30,7 @@ struct Total {
 
 /// A requirement that spells out its receiver: the receiver is still not one of the collected arguments.
 interface Summer {
-    func Tally(self: &Self, seed: int32, values: int128...) -> int128;
+    func Tally(&self, seed: int32, values: int128...) -> int128;
 }
 
 /// A requirement that leaves its receiver implicit.
@@ -39,7 +39,7 @@ interface Counter {
 }
 
 extend Total : Summer {
-    func Tally(self: &Total, seed: int32, values: int128...) -> int128 {
+    func Tally(&self, seed: int32, values: int128...) -> int128 {
         var total = self.base + seed as int128;
         for value in values {
             total += value;
@@ -50,7 +50,7 @@ extend Total : Summer {
 
 extend Total : Counter {
     /// Only a variadic parameter after the receiver.
-    func Sum(self: &Total, values: int128...) -> int128 {
+    func Sum(&self, values: int128...) -> int128 {
         var total = self.base;
         for value in values {
             total += value;
@@ -59,7 +59,7 @@ extend Total : Counter {
     }
 
     /// A fixed parameter before the variadic one, through a writable receiver.
-    func Add(self: &var Total, label: int32, values: int64...) {
+    func Add(&var self, label: int32, values: int64...) {
         self.count += label;
         for value in values {
             self.base += value as int128;
@@ -67,12 +67,12 @@ extend Total : Counter {
     }
 
     /// How many values arrived, so an empty call is told apart from a missing one.
-    func Count(self: &Total, values: int128...) -> uint {
+    func Count(&self, values: int128...) -> uint {
         return values.length;
     }
 
     /// The high words of each element, which only a sign extension writes.
-    func HighWords(self: &Total, values: int128...) -> int128 {
+    func HighWords(&self, values: int128...) -> int128 {
         var total = 0i128;
         for value in values {
             total += value >> 64;
@@ -81,18 +81,18 @@ extend Total : Counter {
     }
 
     /// A method with its own type parameter, deduced from the variadic elements.
-    func Pick<T>(self: &Total, index: uint, values: T...) -> T {
+    func Pick<T>(&self, index: uint, values: T...) -> T {
         return values[index];
     }
 
     /// A parameter with a default value may be left out of a method call as out of a function call.
-    func Scaled(self: &Total, amount: int128, factor: int128 = 2i128) -> int128 {
+    func Scaled(&self, amount: int128, factor: int128 = 2i128) -> int128 {
         return self.base + amount * factor;
     }
 
     /// A receiverless associated function, reached through the type's path.
-    func Of(values: int128...) -> Total {
-        var total = Total { base: 0i128, count: 0i32 };
+    func Of(values: int128...) -> Self {
+        var total = Self { base: 0i128, count: 0i32 };
         for value in values {
             total.base += value;
             total.count += 1i32;
@@ -107,7 +107,7 @@ struct Bag<T> {
 
 extend Bag<T> {
     /// A method of a generic type: the element type is the receiver's type argument.
-    func PickOr(self: &Bag<T>, index: uint, values: T...) -> T {
+    func PickOr(&self, index: uint, values: T...) -> T {
         if index < values.length {
             return values[index];
         }
@@ -117,7 +117,7 @@ extend Bag<T> {
 
 extend int64 {
     /// A method on a primitive, taking its receiver by value.
-    func Plus(self: int64, values: int64...) -> int64 {
+    func Plus(self, values: int64...) -> int64 {
         var total = self;
         for value in values {
             total += value;

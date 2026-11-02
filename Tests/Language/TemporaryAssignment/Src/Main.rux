@@ -20,17 +20,17 @@ struct Tracked {
 }
 
 extend Tracked {
-    func Tracked(log: *var Log, id: int32) -> Tracked {
-        return Tracked { log: log, id: id };
+    func Tracked(log: *var Log, id: int32) -> Self {
+        return Self { log, id };
     }
 
-    func Clone(&self) -> Tracked {
+    func Clone(&self) -> Self {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
         unsafe { self.log.copies = self.log.copies + 1; }
-        return Tracked { log: self.log, id: self.id + 10 };
+        return Self { log: self.log, id: self.id + 10 };
     }
 
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.drops = self.log.drops + 1;
@@ -38,7 +38,7 @@ extend Tracked {
         }
     }
 
-    func Renew(self: &var Tracked, id: int32) {
+    func Renew(&var self, id: int32) {
         self = Track(self.log, id);
     }
 }
@@ -50,7 +50,7 @@ struct Plain {
 }
 
 extend Plain {
-    func ~Plain(self: &var Plain) {
+    func ~Plain(&var self) {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.drops = self.log.drops + 1;
@@ -70,11 +70,11 @@ func Mark(log: *var Log) {
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
 }
 
 func MakePlain(log: *var Log, id: int32) -> Plain {
-    return Plain { log: log, id: id };
+    return Plain { log, id };
 }
 
 func Reset(log: *var Log) {
@@ -95,7 +95,7 @@ func CallIntoLocal(log: *var Log) {
 
 func LiteralIntoLocal(log: *var Log) {
     var item = Track(log, 1i32);
-    item = Tracked { log: log, id: 2i32 };
+    item = Tracked { log, id: 2i32 };
     Mark(log);
     Assert(item.id == 2i32, "the literal is installed as it stands");
 }
@@ -109,7 +109,7 @@ func ConstructorIntoLocal(log: *var Log) {
 
 func ConditionalIntoLocal(log: *var Log, pick: bool) {
     var item = Track(log, 1i32);
-    item = pick ? Track(log, 2i32) : Track(log, 3i32);
+    item = if pick { Track(log, 2i32) } else { Track(log, 3i32) };
     Mark(log);
     Assert(item.id == 2i32, "the conditional's value is installed as it stands");
 }
@@ -118,7 +118,7 @@ func MatchIntoLocal(log: *var Log, which: int32) {
     var item = Track(log, 1i32);
     item = match which {
         2 => Track(log, 2i32),
-        else => Track(log, 3i32)
+        _ => Track(log, 3i32)
     };
     Mark(log);
     Assert(item.id == 2i32, "the match's value is installed as it stands");
@@ -128,7 +128,7 @@ func MatchIntoLocal(log: *var Log, which: int32) {
 func ConditionalOfNamed(log: *var Log, pick: bool) {
     var item = Track(log, 1i32);
     let source = Track(log, 2i32);
-    item = pick ? source.Clone() : source.Clone();
+    item = if pick { source.Clone() } else { source.Clone() };
     Mark(log);
     Assert(item.id == 12i32 && source.id == 2i32, "the arm clones its source once");
 }
@@ -184,7 +184,7 @@ func TupleIntoLocal(log: *var Log) {
 func MovedSource(log: *var Log) {
     var item = Track(log, 1i32);
     var source = Track(log, 2i32);
-    item = <-source;
+    item = move source;
     Mark(log);
     Assert(item.id == 2i32, "a source handed over with '<-' is installed as it stands");
 }

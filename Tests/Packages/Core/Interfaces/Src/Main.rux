@@ -8,9 +8,7 @@ struct Guard {
 }
 
 extend Guard {
-    func =(self: &var Guard, other: &Guard);
-
-    func ~Guard(self: &var Guard) {
+    func ~Guard(&var self) {
         // Safety: every `Guard` is built in `Main` with `drops` addressing its local counter, which outlives the guard.
         unsafe { *self.drops += 1; }
     }
@@ -26,13 +24,13 @@ struct Card {
 }
 
 extend Card : Equatable {
-    func Equals(self: &Card, other: &Card) -> bool {
+    func Equals(&self, other: &Self) -> bool {
         return self.value == other.value;
     }
 }
 
 extend Card : Comparable {
-    func Compare(self: &Card, other: &Card) -> Ordering {
+    func Compare(&self, other: &Self) -> Ordering {
         if self.value < other.value {
             return Ordering::Less;
         }
@@ -44,7 +42,7 @@ extend Card : Comparable {
 }
 
 extend Card : Hashable {
-    func Hash(self: &Card) -> uint64 {
+    func Hash(&self) -> uint64 {
         return self.value as uint64;
     }
 }
@@ -57,7 +55,7 @@ struct Counter {
 }
 
 extend Counter : Iterator {
-    func Next(self: &var Counter) -> int32? {
+    func Next(&var self) -> int32? {
         if self.next >= self.limit { return none; }
         let current = self.next;
         self.next += 1;
@@ -70,7 +68,7 @@ struct Span {
 }
 
 extend Span : Iterable {
-    func Iterate(self: &Span) -> Counter {
+    func Iterate(&self) -> Counter {
         return Counter { next: 0, limit: self.limit };
     }
 }
@@ -143,14 +141,14 @@ func Main() -> int {
     // value that was moved into the call is the one that arrives.
     var drops: int32 = 0;
     let guard = Guard { value: 5, drops: @drops };
-    Assert(Spend(<-guard) == 5, "A droppable value is passed by consuming it");
+    Assert(Spend(move guard) == 5, "A droppable value is passed by consuming it");
     Assert(drops == 1, "The consumed value is destroyed in the callee");
 
     // Reinitializing after a complete move gives a fresh value to consume.
     var reused = Guard { value: 7, drops: @drops };
-    Assert(Spend(<-reused) == 7, "A move-only value can be consumed once");
-    reused <- Guard { value: 11, drops: @drops };
-    Assert(Spend(<-reused) == 11, "And consumed again after being reinitialized");
+    Assert(Spend(move reused) == 7, "A move-only value can be consumed once");
+    reused = Guard { value: 11, drops: @drops };
+    Assert(Spend(move reused) == 11, "And consumed again after being reinitialized");
     Assert(drops == 3, "Each owned value is destroyed exactly once");
 
     return 0;

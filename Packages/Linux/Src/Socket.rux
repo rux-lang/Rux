@@ -32,7 +32,7 @@ when #target.arch {
         const SysShutdown: uint64 = 210;
         const SysAccept4: uint64 = 242;
     },
-    else => #Error("Unsupported Linux architecture")
+    _ => #Error("Unsupported Linux architecture")
 }
 
 /// `AF_INET`: the IPv4 address family.

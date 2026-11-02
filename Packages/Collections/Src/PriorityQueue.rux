@@ -16,27 +16,25 @@ pub struct PriorityQueue<T> {
 }
 
 extend PriorityQueue<T> {
-    func =(self: &var PriorityQueue<T>, other: &PriorityQueue<T>);
-
     /// An empty queue that has not allocated anything.
     /// @param allocator where the storage comes from
     /// @returns the queue
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#new
-    pub func PriorityQueue(allocator: Allocator) -> PriorityQueue<T> {
-        return PriorityQueue<T> { items: Vector<T>(allocator) };
+    pub func PriorityQueue(allocator: Allocator) -> Self {
+        return Self { items: Vector<T>(allocator) };
     }
 
     /// How many elements it holds.
     /// @returns the count
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#length
-    pub func Length(self: &PriorityQueue<T>) -> uint {
+    pub func Length(&self) -> uint {
         return self.items.Length();
     }
 
     /// Whether it holds nothing.
     /// @returns whether it is empty
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#is-empty
-    pub func IsEmpty(self: &PriorityQueue<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.items.IsEmpty();
     }
 
@@ -44,8 +42,8 @@ extend PriorityQueue<T> {
     /// the storage cannot grow.
     /// @param value the element
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#push
-    pub func Push(self: &var PriorityQueue<T>, value: T) {
-        self.items.Push(<-value);
+    pub func Push(&var self, value: T) {
+        self.items.Push(move value);
         let items = self.items.AsMutableSlice();
         var index = items.length - 1;
         while index > 0 {
@@ -61,14 +59,14 @@ extend PriorityQueue<T> {
     /// `self` stays borrowed while the reference is in use, so the queue cannot change under it.
     /// @returns a reference to it, or `none` when the queue is empty
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#peek
-    pub func Peek(self: &PriorityQueue<T>) -> &T? {
+    pub func Peek(&self) -> &T? {
         return self.items.First();
     }
 
     /// Takes the largest element out. Logarithmic time.
     /// @returns the element, or `none` when the queue is empty
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#pop
-    pub func Pop(self: &var PriorityQueue<T>) -> T? {
+    pub func Pop(&var self) -> T? {
         let count = self.items.Length();
         if count == 0 { return none; }
         let items = self.items.AsMutableSlice();
@@ -92,14 +90,14 @@ extend PriorityQueue<T> {
 
     /// Destroys every element, keeping the storage.
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#clear
-    pub func Clear(self: &var PriorityQueue<T>) {
+    pub func Clear(&var self) {
         self.items.Clear();
     }
 
     /// The elements in heap order: the largest first, the rest in no useful order.
     /// @returns a view of them, valid until the queue next changes
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#as-slice
-    pub func AsSlice(self: &PriorityQueue<T>) -> T[..] {
+    pub func AsSlice(&self) -> T[..] {
         return self.items.AsSlice();
     }
 }
@@ -110,7 +108,7 @@ extend PriorityQueue<T> {
 unsafe func SwapElements<T>(items: var T[..], left: uint, right: uint) {
     if left == right { return; }
     let data = items.data;
-    let held <- data[left];
-    data[left] <- data[right];
-    data[right] <- held;
+    let held = move data[left];
+    data[left] = move data[right];
+    data[right] = move held;
 }

@@ -89,7 +89,7 @@ pub func CompareChar8(left: char8, right: char8) -> Ordering {
 /// @returns how the two order byte by byte, then by length
 /// @see https://rux-lang.dev/docs/api/collections/comparing#compare-slice
 pub func CompareSlice(left: char8[..], right: char8[..]) -> Ordering {
-    let shared = left.length < right.length ? left.length : right.length;
+    let shared = if left.length < right.length { left.length } else { right.length };
     var index: uint = 0;
     while index < shared {
         // Safety: `index < shared`, the shorter of the two lengths, so both slices hold an element there.

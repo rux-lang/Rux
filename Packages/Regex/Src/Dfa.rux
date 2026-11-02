@@ -112,10 +112,8 @@ func Consumes(op: Op) -> bool {
 }
 
 extend Dfa {
-    func =(self: &var Dfa, other: &Dfa);
-
     // A DFA for the program starting at `start`, which allocates nothing until it is first searched with.
-    func New(allocator: Allocator, program: Program, start: uint32, leftmostFirst: bool, seeking: bool) -> Dfa {
+    func New(allocator: Allocator, program: Program, start: uint32, leftmostFirst: bool, seeking: bool) -> Self {
         var context: uint8 = 0;
         for instruction in program.all {
             if instruction.op == Op::Assert {
@@ -125,12 +123,12 @@ extend Dfa {
                 else if kind == WordBoundary || kind == NotWordBoundary { context = context | FlagWord; }
             }
         }
-        return Dfa {
-            program: program,
-            start: start,
-            leftmostFirst: leftmostFirst,
-            seeking: seeking,
-            context: context,
+        return Self {
+            program,
+            start,
+            leftmostFirst,
+            seeking,
+            context,
             ready: false,
             roots: Vector<uint32>(allocator),
             firstRoot: Vector<uint>(allocator),
@@ -147,11 +145,11 @@ extend Dfa {
             ordered: Vector<uint32>(allocator),
             following: Vector<uint32>(allocator),
             drops: 0,
-            allocator: allocator
+            allocator
         };
     }
 
-    func Prepare(self: &var Dfa) {
+    func Prepare(&var self) {
         if self.ready { return; }
         self.buckets = Filled(self.allocator, BucketCount, 0u32);
         self.wideKeys = Filled(self.allocator, WideSlots, 0u64);
@@ -161,7 +159,7 @@ extend Dfa {
     }
 
     // Drops every state, keeping the storage.
-    func Drop(self: &var Dfa) {
+    func Drop(&var self) {
         self.roots.Clear();
         self.firstRoot.Clear();
         self.rootCount.Clear();
@@ -184,7 +182,7 @@ extend Dfa {
     }
 
     // A fresh mark for `stamps`, clearing them when the marks run out.
-    func NextGeneration(self: &var Dfa) -> uint32 {
+    func NextGeneration(&var self) -> uint32 {
         if self.generation == 0xFFFFFFFFu32 {
             let stamps = self.stamps.AsMutableSlice();
             var index: uint = 0;
@@ -199,7 +197,7 @@ extend Dfa {
     }
 
     // The state with `roots` and `flags`, made if it is new; `NoState` when the states are full.
-    func Find(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 {
+    func Find(&var self, roots: uint32[..], flags: uint8) -> uint32 {
         var hash: uint64 = 0xCBF29CE484222325u64 ^ flags as uint64;
         for root in roots {
             hash = (hash ^ root as uint64) *% 0x100000001B3u64;
@@ -239,7 +237,7 @@ extend Dfa {
     }
 
     // The state for `roots` and `flags`, dropping every state first when there is no room for another.
-    func Add(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 {
+    func Add(&var self, roots: uint32[..], flags: uint8) -> uint32 {
         let state = self.Find(roots, flags);
         if state != NoState { return state; }
         self.Drop();
@@ -247,7 +245,7 @@ extend Dfa {
     }
 
     // The state a search starts in, after `before`, the character it starts after.
-    func Initial(self: &var Dfa, before: uint32) -> uint32 {
+    func Initial(&var self, before: uint32) -> uint32 {
         self.Prepare();
         var flags = FlagsAfter(before) & self.context;
         if self.seeking { flags = flags | FlagSeeking; }
@@ -258,7 +256,7 @@ extend Dfa {
     // Follows the moves from `root` that read nothing, in order of preference, appending to `ordered` every
     // instruction they reach that reads a character or matches. Returns whether a match was reached; in
     // leftmost-first mode nothing after it is followed.
-    func Close(self: &var Dfa, root: uint32, flags: uint8, after: uint32, mark: uint32) -> bool {
+    func Close(&var self, root: uint32, flags: uint8, after: uint32, mark: uint32) -> bool {
         let instructions = self.program.all;
         self.stack.Clear();
         self.stack.Push(root);
@@ -293,7 +291,7 @@ extend Dfa {
     // Computes where `state` goes on `character`: the next state, and whether a match ends before the character.
     // Encoded as the next state plus one, doubled, plus one when a match ends; the next state is absent at the end of
     // the text.
-    func Compute(self: &var Dfa, state: uint32, character: uint32) -> uint32 {
+    func Compute(&var self, state: uint32, character: uint32) -> uint32 {
         let index = state as uint;
         let flags = self.flags.AsSlice()[index];
         let first = self.firstRoot.AsSlice()[index];
@@ -312,7 +310,7 @@ extend Dfa {
                 if self.program.all[pc as uint].op == Op::Match { matched = true; }
             }
         }
-        let found: uint32 = matched ? 1u32 : 0u32;
+        let found: uint32 = if matched { 1u32 } else { 0u32 };
         if character == EndOfText { return found; }
 
         let stepped = self.NextGeneration();
@@ -345,10 +343,10 @@ extend Dfa {
     }
 
     // Where `state` goes on `character`, remembered after the first time it is asked.
-    func Transition(self: &var Dfa, state: uint32, character: uint32) -> uint32 {
+    func Transition(&var self, state: uint32, character: uint32) -> uint32 {
         let drops = self.drops;
         if character < 0x80u32 || character == EndOfText {
-            let slot = state as uint * DirectSlots + (character == EndOfText ? 128u : character as uint);
+            let slot = state as uint * DirectSlots + (if character == EndOfText { 128u } else { character as uint });
             let known = self.direct.AsSlice()[slot];
             if known != 0u32 { return known - 1u32; }
             let value = self.Compute(state, character);
@@ -370,8 +368,8 @@ extend Dfa {
     // any match ends. `NoEnd` when there is no match.
     // The loop reads remembered transitions straight from the table, and asks `Transition` only for one not yet
     // known; the views of the tables are taken again after that, since computing a transition can grow them.
-    func FindEnd(self: &var Dfa, text: char8[..], from: uint, earliest: bool) -> uint {
-        var state = self.Initial(from > 0u ? DecodeBefore(text, from).scalar : EndOfText);
+    func FindEnd(&var self, text: char8[..], from: uint, earliest: bool) -> uint {
+        var state = self.Initial(if from > 0u { DecodeBefore(text, from).scalar } else { EndOfText });
         var direct = self.direct.AsSlice();
         var info = self.info.AsSlice();
         var found = NoEnd;
@@ -441,8 +439,8 @@ extend Dfa {
 
     // Reads backwards from `end`, over the reversed pattern, for where the longest match ending there starts, never
     // before `from`. The search before has found that a match ends at `end`.
-    func FindStart(self: &var Dfa, text: char8[..], end: uint, from: uint) -> uint {
-        var state = self.Initial(end < text.length ? DecodeAt(text, end).scalar : EndOfText);
+    func FindStart(&var self, text: char8[..], end: uint, from: uint) -> uint {
+        var state = self.Initial(if end < text.length { DecodeAt(text, end).scalar } else { EndOfText });
         var found = NoEnd;
         var at = end;
         while true {

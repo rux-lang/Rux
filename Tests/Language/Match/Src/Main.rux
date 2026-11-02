@@ -43,7 +43,7 @@ func Describe(value: int32) -> int32 {
     return match value {
         0 => 100i32,
         1 => 101i32,
-        else => 999i32
+        _ => 999i32
     };
 }
 
@@ -56,7 +56,7 @@ variant Reading {
 func Classify(reading: Reading) -> int32 {
     return match reading {
         Reading::Gauge { level: 0 } => 1i32,
-        Reading::Gauge { level: level } => level,
+        Reading::Gauge { level } => level,
         Reading::Pair(0, second) => 100i32 + second,
         Reading::Pair(1..=5, _) => 200i32,
         Reading::Pair(_, _) => 300i32
@@ -67,14 +67,14 @@ func Classify(reading: Reading) -> int32 {
 func Leave(day: uint) -> int32 {
     match day {
         0 => return 10i32,
-        else => return 11i32
+        _ => return 11i32
     }
 }
 
 func LeaveOrStop(day: uint) -> int32 {
     match day {
         0 => return 1i32,
-        else => Panic("out of range")
+        _ => Panic("out of range")
     }
 }
 
@@ -83,7 +83,7 @@ func DayName(day: uint) -> char8[..] {
     return match day {
         0 => "Monday",
         1 => "Tuesday",
-        else => Panic("out of range")
+        _ => Panic("out of range")
     };
 }
 
@@ -96,7 +96,7 @@ struct Box {
 }
 
 extend Box : Measured {
-    func Size(self: &Box) -> int32 {
+    func Size(&self) -> int32 {
         return self.side * self.side;
     }
 }
@@ -106,7 +106,7 @@ func Bucket(value: int32, small: bool) -> int32 {
     return match value {
         1..=9 if small => 1i32,
         1..=9 => 2i32,
-        else => 3i32
+        _ => 3i32
     };
 }
 
@@ -115,7 +115,7 @@ func Bucket(value: int32, small: bool) -> int32 {
 func Positive(value: int32) -> int32? {
     return match value {
         0 => none,
-        else => .Some(value)
+        _ => .Some(value)
     };
 }
 
@@ -123,7 +123,7 @@ func Positive(value: int32) -> int32? {
 func Checked(value: int32) -> int32 ! bool {
     return match value {
         0 => .Failure(true),
-        else => .Success(value)
+        _ => .Success(value)
     };
 }
 
@@ -175,7 +175,7 @@ func Main() -> int {
     // `_` accepts a payload without naming it, which is how a case is matched for its shape alone.
     let isRound = match round {
         .Round(_) => true,
-        else => false
+        _ => false
     };
     Assert(isRound, "a wildcard payload matches without binding");
 
@@ -189,12 +189,12 @@ func Main() -> int {
     // with the same pattern are rejected rather than silently shadowing one another.
     let specific = match 1i32 {
         1 => 10i32,
-        else => 30i32
+        _ => 30i32
     };
     Assert(specific == 10i32, "a named value beats the default that would also have matched");
     let defaulted = match 2i32 {
         1 => 10i32,
-        else => 30i32
+        _ => 30i32
     };
     Assert(defaulted == 30i32, "and the default takes what nothing named");
 
@@ -205,7 +205,7 @@ func Main() -> int {
         1 => 111i32,
         2 => 111i32,
         3 => 111i32,
-        else => 333i32
+        _ => 333i32
     };
     Assert(grouped == 111i32, "separate arms may share an outcome");
 
@@ -259,7 +259,7 @@ func Main() -> int {
             accumulated += 5i32;
             accumulated *= 2i32;
         },
-        else => {
+        _ => {
             accumulated = -1i32;
         }
     }
@@ -268,7 +268,7 @@ func Main() -> int {
     // The subject is an expression, not only a name.
     let computed = match 2i32 + 1i32 {
         3 => true,
-        else => false
+        _ => false
     };
     Assert(computed, "the subject may be computed");
 
@@ -276,25 +276,25 @@ func Main() -> int {
     // an annotation, a parameter, or the first arm that has a whole type.
     Assert(Positive(0i32) == none, "a leading none arm takes the returned optional type");
     Assert(OrZero(Positive(6i32)) == 6i32, "and the arm after it is present in that type");
-    Assert((Checked(4i32) catch { else => -1i32 }) == 4i32, "a success arm takes the returned fallible type");
-    Assert((Checked(0i32) catch { else => -1i32 }) == -1i32, "and so does a failure arm");
+    Assert((Checked(4i32) catch { _ => -1i32 }) == 4i32, "a success arm takes the returned fallible type");
+    Assert((Checked(0i32) catch { _ => -1i32 }) == -1i32, "and so does a failure arm");
 
     let subject = 3i32;
     let annotated: int8? = match subject {
         0 => none,
         3 => .Some(7),
-        else => 9
+        _ => 9
     };
     Assert((annotated ?? 0i8) == 7i8, "an annotation types every arm, literals included");
     let joined = match subject {
         0 => none,
-        else => .Some(subject)
+        _ => .Some(subject)
     };
     Assert(OrZero(joined) == 3i32, "with no annotation the first whole arm types the match");
-    Assert(OrZero(match subject { 3 => none, else => .Some(subject) }) == 0i32, "a parameter types an argument match");
+    Assert(OrZero(match subject { 3 => none, _ => .Some(subject) }) == 0i32, "a parameter types an argument match");
     let nested: int32? = match subject {
-        3 => subject > 0i32 ? none : .Some(1i32),
-        else => .Some(subject)
+        3 => if subject > 0i32 { none } else { .Some(1i32) },
+        _ => .Some(subject)
     };
     Assert(nested == none, "a ternary arm is typed the same way");
 

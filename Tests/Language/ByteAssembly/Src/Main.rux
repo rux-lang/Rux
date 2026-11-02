@@ -44,7 +44,7 @@ func Expected(offset: uint, count: uint, bigEndian: bool) -> uint64 {
     var value: uint64 = 0;
     for b in 0u..count {
         let byte = Buffer[offset + b] as uint64;
-        value = bigEndian ? (value << 8) | byte : value | (byte << ((8 * b) as uint64));
+        value = if bigEndian { (value << 8) | byte } else { value | (byte << ((8 * b) as uint64)) };
     }
     return value;
 }

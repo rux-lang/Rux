@@ -25,7 +25,7 @@ pub interface EntropySource {
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill
-    func Fill(self: &var Self, buffer: *var opaque, length: uint) -> ! EntropyError;
+    func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError;
 }
 
 /// The operating system's generator, as an `EntropySource`.
@@ -42,8 +42,8 @@ extend SystemEntropy {
     /// Runs in constant time and allocates nothing.
     /// @returns the source, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#new
-    pub func SystemEntropy() -> SystemEntropy {
-        return SystemEntropy {};
+    pub func SystemEntropy() -> Self {
+        return Self {};
     }
 
 }
@@ -57,7 +57,7 @@ extend SystemEntropy : EntropySource {
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill
-    pub func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> ! EntropyError {
+    pub func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError {
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes, which is exactly
         // what `FillFromSource` asks of its caller.
         return unsafe { FillFromSource(buffer, length) };
@@ -85,7 +85,7 @@ pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length
     var filled: uint = 0;
     while filled < length {
         let remaining = length - filled;
-        let take = remaining > MaxEntropyRequest ? MaxEntropyRequest : remaining;
+        let take = if remaining > MaxEntropyRequest { MaxEntropyRequest } else { remaining };
         let target = ((buffer as uint) + filled) as *var opaque;
         source.Fill(target, take) catch {
             error => {

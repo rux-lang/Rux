@@ -78,7 +78,7 @@ func Main() -> int {
         arguments[0] = OsStringView::FromUnits(units[..5]);
         arguments[1] = OsStringView::FromUnits(units[6..8]);
     }
-    let parsed = Parse(@git, arguments[..]) catch { else => Panic("the arguments parse") };
+    let parsed = Parse(@git, arguments[..]) catch { _ => Panic("the arguments parse") };
     let sub = parsed.Subcommand() ?? Panic("the subcommand parses");
     if !sub.HelpRequested() { return 7; }
     var subStorage: char8[512];

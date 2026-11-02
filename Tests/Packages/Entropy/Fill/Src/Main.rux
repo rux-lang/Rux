@@ -18,7 +18,7 @@ struct ScriptedSource {
 }
 
 extend ScriptedSource : EntropySource {
-    func Fill(self: &var ScriptedSource, buffer: *var opaque, length: uint) -> ! EntropyError {
+    func Fill(&var self, buffer: *var opaque, length: uint) -> ! EntropyError {
         self.calls = self.calls + 1;
 
         // Write a recognizable pattern first, exactly as a real source that fails part-way through would. If the
@@ -39,7 +39,7 @@ extend ScriptedSource : EntropySource {
 }
 
 func Scripted(error: EntropyError, failures: uint) -> ScriptedSource {
-    return ScriptedSource { error: error, failures: failures, calls: 0 };
+    return ScriptedSource { error, failures, calls: 0 };
 }
 
 func AllBytesAre(buffer: byte[..], value: byte) -> bool {
@@ -136,7 +136,7 @@ func Main() -> ! EntropyError {
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
 /// cannot pass by accident.
 func Refusal<T>(outcome: T ! EntropyError) -> EntropyError {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the operation was expected to fail")
     };

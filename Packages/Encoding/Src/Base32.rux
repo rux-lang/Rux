@@ -33,7 +33,7 @@ func TailCharacters(rest: uint) -> uint {
         2 => 4,
         3 => 5,
         4 => 7,
-        else => 0
+        _ => 0
     };
 }
 
@@ -93,7 +93,7 @@ func CrockfordValue(c: char8) -> int32 {
         88 => 29,
         89 => 30,
         90 => 31,
-        else => -1
+        _ => -1
     };
 }
 
@@ -238,7 +238,7 @@ pub func Base32Decode(text: char8[..], into: var byte[..],
     let needed = count * 5 / 8;
     // Data characters sit at the front of RFC text; Crockford text interleaves them with hyphens to skip.
     let crockford = form == Base32Variant::Crockford;
-    let end = crockford ? text.length : count;
+    let end = if crockford { text.length } else { count };
     var invalid: int32 = 0;
     var last: uint = 0;
     var index: uint = 0;

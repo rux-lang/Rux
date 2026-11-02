@@ -30,7 +30,7 @@ func Scripted(text: char8[..], chunk: uint) -> ScriptedReader {
     return ScriptedReader {
         bytes: TextBytes(text),
         cursor: 0,
-        chunk: chunk,
+        chunk,
         interruptions: 0,
         pendingInterruption: false,
         endsSilently: false,
@@ -39,7 +39,7 @@ func Scripted(text: char8[..], chunk: uint) -> ScriptedReader {
 }
 
 extend ScriptedReader : Reader {
-    func Read(self: &var ScriptedReader, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         self.calls = self.calls + 1;
         if self.pendingInterruption && self.interruptions > 0 {
             self.interruptions = self.interruptions - 1;
@@ -80,7 +80,7 @@ struct ScriptedWriter {
 }
 
 extend ScriptedWriter : Writer {
-    func Write(self: &var ScriptedWriter, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         self.calls = self.calls + 1;
         if self.interruptions > 0 {
             self.interruptions = self.interruptions - 1;
@@ -105,7 +105,7 @@ extend ScriptedWriter : Writer {
         return take;
     }
 
-    func Flush(self: &var ScriptedWriter) -> ! IoError {
+    func Flush(&var self) -> ! IoError {
         return;
     }
 }
@@ -117,19 +117,19 @@ struct BlockedStream {
 }
 
 extend BlockedStream : Reader {
-    func Read(self: &var BlockedStream, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         self.calls = self.calls + 1;
         fail IoError::Of(IoErrorKind::WouldBlock);
     }
 }
 
 extend BlockedStream : Writer {
-    func Write(self: &var BlockedStream, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         self.calls = self.calls + 1;
         fail IoError::Of(IoErrorKind::WouldBlock);
     }
 
-    func Flush(self: &var BlockedStream) -> ! IoError {
+    func Flush(&var self) -> ! IoError {
         return;
     }
 }

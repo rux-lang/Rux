@@ -12,23 +12,23 @@ struct Vect {
 }
 
 extend Vect {
-    func [](self: &Vect, index: uint) -> int {
+    func [](&self, index: uint) -> int {
         return self.data[index];
     }
 
-    func []=(self: &var Vect, index: uint, value: int) {
+    func []=(&var self, index: uint, value: int) {
         self.data[index] = value;
     }
 
     // A second overload of each, separated only by its index type. Overload
     // resolution on the index is what lets one type answer both `v[i]` and
     // `v[a..b]`, and read and write on the same index shape.
-    func [](self: &Vect, span: int..int) -> int[..] {
+    func [](&self, span: int..int) -> int[..] {
         return self.data[span];
     }
 
     // The receiver reads its own indexer the way any other caller does.
-    func Sum(self: &Vect, count: uint) -> int {
+    func Sum(&self, count: uint) -> int {
         var total = 0;
         var index: uint = 0;
         while index < count {
@@ -39,7 +39,7 @@ extend Vect {
     }
 
     // The receiver writes through its own setter too.
-    func Clear(self: &var Vect, count: uint) {
+    func Clear(&var self, count: uint) {
         var index: uint = 0;
         while index < count {
             self[index] = 0;
@@ -60,16 +60,16 @@ struct Grid {
 }
 
 extend Grid {
-    func [](self: &Grid, at: Coord) -> int32 {
+    func [](&self, at: Coord) -> int32 {
         return self.cells[at.row * 3 + at.column];
     }
 
-    func []=(self: &var Grid, at: Coord, value: int32) {
+    func []=(&var self, at: Coord, value: int32) {
         self.cells[at.row * 3 + at.column] = value;
     }
 
     // A second read overload, separated by its tuple index type.
-    func [](self: &Grid, at: (uint, uint)) -> int32 {
+    func [](&self, at: (uint, uint)) -> int32 {
         return self.cells[at.0 * 3 + at.1];
     }
 }
@@ -81,11 +81,11 @@ struct Box<T> {
 }
 
 extend Box<T> {
-    func [](self: &Box<T>, index: uint) -> T {
+    func [](&self, index: uint) -> T {
         return self.items[index];
     }
 
-    func []=(self: &var Box<T>, index: uint, value: T) {
+    func []=(&var self, index: uint, value: T) {
         self.items[index] = value;
     }
 }

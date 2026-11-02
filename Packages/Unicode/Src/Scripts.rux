@@ -45,11 +45,11 @@ extend Script {
     /// @param name the name, such as `Greek` or `old_italic`
     /// @returns the script, or `none` when no script has that name
     /// @see https://rux-lang.dev/docs/api/unicode/scripts#from-name
-    pub func FromName(name: char8[..]) -> Script? {
+    pub func FromName(name: char8[..]) -> Self? {
         let count = (ScriptNameIndex.length / 2) as uint32;
         var number: uint32 = 0;
         while number < count {
-            if ScriptNamed(number, name) { return Script { number: number }; }
+            if ScriptNamed(number, name) { return Self { number }; }
             number = number + 1u32;
         }
         return none;
@@ -58,22 +58,22 @@ extend Script {
     /// The script of points the database assigns to none.
     /// @returns the Unknown script
     /// @see https://rux-lang.dev/docs/api/unicode/scripts#unknown
-    pub func Unknown() -> Script {
-        return Script { number: UnknownScript[0] };
+    pub func Unknown() -> Self {
+        return Self { number: UnknownScript[0] };
     }
 
     /// Whether `other` is the same script.
     /// @param other the other script
     /// @returns whether they are one script
     /// @see https://rux-lang.dev/docs/api/unicode/scripts#equals
-    pub func Equals(self: &Script, other: Script) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         return self.number == other.number;
     }
 
     /// The script's number: a stable small integer, less than `ScriptCount()`, in the order of the scripts' names.
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/unicode/scripts#number
-    pub func Number(self: &Script) -> uint32 {
+    pub func Number(&self) -> uint32 {
         return self.number;
     }
 
@@ -81,7 +81,7 @@ extend Script {
     /// @param into room for the name; the longest is under 32 bytes
     /// @returns how many bytes were written, which is fewer than the name's length when `into` is too short
     /// @see https://rux-lang.dev/docs/api/unicode/scripts#write-name
-    pub func WriteName(self: &Script, into: var char8[..]) -> uint {
+    pub func WriteName(&self, into: var char8[..]) -> uint {
         let length = ScriptNameIndex[self.number as uint * 2 + 1] as uint;
         var index: uint = 0;
         while index < length && index < into.length {

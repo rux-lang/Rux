@@ -19,7 +19,7 @@ struct MemorySink {
 }
 
 extend MemorySink : Writer {
-    pub func Write(self: &var MemorySink, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.broken { fail IoError::Of(IoErrorKind::BrokenPipe); }
         var index: uint = 0;
         while index < bytes.length {
@@ -33,7 +33,7 @@ extend MemorySink : Writer {
         return bytes.length;
     }
 
-    pub func Flush(self: &var MemorySink) -> ! IoError {}
+    pub func Flush(&var self) -> ! IoError {}
 }
 
 func Same(left: char8[..], right: char8[..]) -> bool {

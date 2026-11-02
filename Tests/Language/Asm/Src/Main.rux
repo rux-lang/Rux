@@ -144,7 +144,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture for the inline-assembly test")
+    _ => #Error("Unsupported architecture for the inline-assembly test")
 }
 
 func Main() -> int {

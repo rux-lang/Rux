@@ -178,7 +178,7 @@ pub func PercentDecode(text: char8[..], into: var byte[..],
             index = index + 3;
         }
         else {
-            into[to] = set == PercentSet::Form && c == '+' ? 0x20 : c as uint8;
+            into[to] = if set == PercentSet::Form && c == '+' { 0x20 } else { c as uint8 };
             index = index + 1;
         }
         to = to + 1;

@@ -28,7 +28,7 @@ when #target.os {
 /// @see https://rux-lang.dev/docs/api/memory/allocation#alloc
 pub func Alloc(size: uint) -> *var opaque {
     when #target.os {
-        .FreeBSD, .Linux, .macOS => {
+        .FreeBSD | .Linux | .macOS => {
             // Two machine words keep the returned address aligned to 16 bytes.
             const HeaderSize: uint = 16;
             let total = size + HeaderSize;
@@ -53,6 +53,6 @@ pub func Alloc(size: uint) -> *var opaque {
             // Safety: `heap` is the process heap just returned, and no flags are passed.
             return unsafe { HeapAlloc(heap, 0, size) };
         },
-        else => #Error("Unsupported operating system")
+        _ => #Error("Unsupported operating system")
     }
 }

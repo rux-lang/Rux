@@ -40,7 +40,7 @@ when #target.os {
     .Linux => const PlatformCode: int32 = 2i32;
     .macOS => const PlatformCode: int32 = 3i32;
     .Windows => const PlatformCode: int32 = 4i32;
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // A condition built from a primitive's associated constants rather than from a literal.

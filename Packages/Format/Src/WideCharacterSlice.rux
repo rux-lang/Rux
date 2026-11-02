@@ -64,7 +64,7 @@ extend char16[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-display
-    pub func WriteDisplay(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = self[..];
         var before: uint = 0;
@@ -97,7 +97,7 @@ extend char16[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-debug
-    pub func WriteDebug(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = self[..];
         WriteAscii(writer, c8'"')?;
@@ -126,7 +126,7 @@ extend char32[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-display
-    pub func WriteDisplay(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = self[..];
         var before: uint = 0;
@@ -156,7 +156,7 @@ extend char32[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-debug
-    pub func WriteDebug(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = self[..];
         WriteAscii(writer, c8'"')?;

@@ -11,7 +11,7 @@ pub func Compute<T>(value: T) -> int {
 }
 
 pub func Compute(value: bool, offset: int) -> int {
-    return value ? Main() + offset : 0;
+    return if value { Main() + offset } else { 0 };
 }
 
 pub type Word = int;

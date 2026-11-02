@@ -14,7 +14,7 @@ func Main() -> int {
             Assert(sizeof(clock_t) == 4, "clock_t is a 32-bit long under the Universal CRT");
             Assert(CLOCKS_PER_SEC == 1000, "and counts milliseconds");
         }
-        else => {
+        _ => {
             Assert(sizeof(clock_t) == 8, "clock_t is a 64-bit long on a supported Unix");
             Assert(CLOCKS_PER_SEC == 1000000, "and counts by the POSIX million");
         }
@@ -25,7 +25,7 @@ func Main() -> int {
         .LLP64 => {
             Assert(sizeof(timespec) == 16, "timespec is padded to sixteen bytes under LLP64");
         }
-        else => {
+        _ => {
             Assert(sizeof(timespec) == 16, "timespec is two 64-bit fields under LP64");
         }
     }

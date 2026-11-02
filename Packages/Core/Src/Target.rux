@@ -142,7 +142,7 @@ extend Target {
     /// @param feature the target feature to ask about
     /// @returns whether the target being built for has it
     /// @see https://rux-lang.dev/docs/api/core/target#has-feature
-    pub intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
+    pub intrinsic func HasFeature(&self, feature: TargetFeature) -> bool;
 }
 
 /// The machine being compiled for, as a compile-time value.

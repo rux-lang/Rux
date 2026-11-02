@@ -58,14 +58,14 @@ extend OpenOptions {
     /// Nothing at all: the caller states every intention.
     /// @returns options that permit nothing, which must be added to before opening
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-new
-    pub func OpenOptions() -> OpenOptions {
-        return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
+    pub func OpenOptions() -> Self {
+        return Self { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
     }
 
     /// Reading an existing file.
     /// @returns options that open an existing file for reading
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-reading
-    pub func Reading() -> OpenOptions {
+    pub func Reading() -> Self {
         var options = OpenOptions();
         options.read = true;
         return options;
@@ -74,7 +74,7 @@ extend OpenOptions {
     /// Writing a file from its beginning: created if missing, emptied if not.
     /// @returns options that create or truncate a file for writing
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-writing
-    pub func Writing() -> OpenOptions {
+    pub func Writing() -> Self {
         var options = OpenOptions();
         options.write = true;
         options.create = true;
@@ -85,7 +85,7 @@ extend OpenOptions {
     /// Adding to a file's end: created if missing, appended to if not.
     /// @returns options that create or open a file and write at its end
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-appending
-    pub func Appending() -> OpenOptions {
+    pub func Appending() -> Self {
         var options = OpenOptions();
         options.append = true;
         options.create = true;
@@ -93,7 +93,7 @@ extend OpenOptions {
     }
 
     // The contradictions, refused before any platform is asked.
-    func Validate(self: &OpenOptions) -> ! IoError {
+    func Validate(&self) -> ! IoError {
         if !self.read && !self.write && !self.append { fail IoError::Of(IoErrorKind::InvalidInput); }
         if self.truncate && !self.write { fail IoError::Of(IoErrorKind::InvalidInput); }
         if (self.create || self.createNew) && !self.write && !self.append {
@@ -129,7 +129,7 @@ func NativePath(allocator: Allocator, path: Path) -> *var OsUnit ! IoError {
     let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
                  ?? fail IoError::Of(IoErrorKind::InvalidInput);
     var borrowed = allocator;
-    let raw = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
+    let raw = borrowed.Allocate(layout) catch { _ => fail IoError::Of(IoErrorKind::Other) };
     // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
     let copied = unsafe { raw as *var OsUnit };
     index = 0;
@@ -152,13 +152,10 @@ func NativePath(allocator: Allocator, path: Path) -> *var OsUnit ! IoError {
 func ReleaseNativePath(allocator: Allocator, block: *var OsUnit, length: uint) {
     let layout = Layout { size: (length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
     var borrowed = allocator;
-    borrowed.Deallocate(block as *var opaque, layout) catch { else => {} };
+    borrowed.Deallocate(block as *var opaque, layout) catch { _ => {} };
 }
 
 extend File {
-    /// An owned handle cannot be duplicated.
-    func =(self: &var File, other: &File);
-
     /// Opens `path` under `options`.
     /// The allocator is borrowed for the platform form of the path and holds nothing afterward. A failure says why
     /// in the platform's own terms, translated.
@@ -167,7 +164,7 @@ extend File {
     /// @param options what may be done with the file, and what to do about existence
     /// @returns the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open
-    pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> File ! IoError {
+    pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self ! IoError {
         options.Validate()?;
         let native = NativePath(allocator, path)?;
         defer ReleaseNativePath(allocator, native, path.name.units.length);
@@ -209,7 +206,7 @@ extend File {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
                 fail TranslateNative(unsafe { GetLastError() } as int32);
             }
-            return File { handle: handle as *var opaque, open: true };
+            return Self { handle: handle as *var opaque, open: true };
         }
         else {
             var flags = OpenReadOnly;
@@ -236,14 +233,14 @@ extend File {
             // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
             let opened = unsafe { OpenAt(AtFdCwd, native as *char8, flags, 438) };
             if opened < 0 { fail TranslateNative((0 - opened) as int32); }
-            return File { handle: opened as int32, open: true };
+            return Self { handle: opened as int32, open: true };
         }
     }
 
     /// Whether the handle is still open.
     /// @returns whether the file is open
     /// @see https://rux-lang.dev/docs/api/filesystem/file#is-open
-    pub func IsOpen(self: &File) -> bool {
+    pub func IsOpen(&self) -> bool {
         return self.open;
     }
 
@@ -252,7 +249,7 @@ extend File {
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     /// @returns success when the descriptor was released; closing twice is not an error
     /// @see https://rux-lang.dev/docs/api/filesystem/file#close
-    pub func Close(self: &var File) -> ! IoError {
+    pub func Close(&var self) -> ! IoError {
         if !self.open { return; }
         self.open = false;
         when #target.os == .Windows {
@@ -268,8 +265,8 @@ extend File {
     }
     /// Closes with the outcome discarded: the safety net, not the contract.
     /// @see https://rux-lang.dev/docs/api/filesystem/file#destructor
-    func ~File(self: &var File) {
-        self.Close() catch { else => {} };
+    func ~File(&var self) {
+        self.Close() catch { _ => {} };
     }
 }
 

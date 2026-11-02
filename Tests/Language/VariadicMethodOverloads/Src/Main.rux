@@ -8,14 +8,14 @@ struct Totals {
 }
 
 extend Totals {
-    func Sum(self: &var Totals, values: int64...) -> int64 {
+    func Sum(&var self, values: int64...) -> int64 {
         self.calls = self.calls + 1;
         var total: int64 = 0;
         for value in values { total = total + value; }
         return total;
     }
 
-    func Sum(self: &var Totals, values: int128...) -> int64 {
+    func Sum(&var self, values: int128...) -> int64 {
         self.calls = self.calls + 100;
         var total: int128 = 0;
         for value in values { total = total + value; }

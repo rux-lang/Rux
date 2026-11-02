@@ -26,7 +26,7 @@ func Check(value: char16, length: uint, bytes: uint64, code: int) -> int {
         packed = (packed << 8) | (actual[index] as uint64);
         index = index + 1;
     }
-    return packed == bytes ? 0 : code;
+    return if packed == bytes { 0 } else { code };
 }
 
 func Main() -> int {

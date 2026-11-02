@@ -25,9 +25,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: every `Tracked` is built with `counter` at the test's local `destroyed`, which outlives it.
             unsafe { *self.counter = *self.counter + 1; }
@@ -36,7 +34,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "T(")?;
         WriteNumber(writer, self.tag)?;
         return WriteAscii(writer, c8')');
@@ -50,7 +48,7 @@ extend Tracked : Debug {
 struct Spy {}
 
 extend Spy : Debug {
-    func WriteDebug(self: &Spy, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteAscii(writer, c8'w')?;
         WriteNumber(writer, spec.Width())?;
         WriteAscii(writer, c8'p')?;
@@ -78,7 +76,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -177,7 +175,7 @@ func Main() -> int {
     let refused = WriteSliceDebug<Tracked>(tightSink, elements[..], plain);
     let overflowed = match refused {
         .Success(_) => false,
-        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
     };
     Assert(overflowed, "a destination without room reports it");
     Assert(tight.Length() <= 11, "having written no more than it had");

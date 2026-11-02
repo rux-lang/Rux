@@ -27,8 +27,8 @@ extend Atomic<T> {
     /// @param value the initial value
     /// @returns an atomic holding `value`
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#new
-    pub func Atomic(value: T) -> Atomic<T> {
-        return Atomic<T> { value: value };
+    pub func Atomic(value: T) -> Self {
+        return Self { value };
     }
 
     // The address every operation goes through. The shared reference is the point: the value is changed through
@@ -36,14 +36,14 @@ extend Atomic<T> {
     // so the address is retyped through `*opaque`, which says that this one is deliberate.
     // Safety: the caller must reach the value through the returned address only with `Core`'s atomic intrinsics,
     // because other threads may hold the same shared reference.
-    unsafe func Address(self: &Atomic<T>) -> *var T {
+    unsafe func Address(&self) -> *var T {
         return (@self.value) as *opaque as *var T;
     }
 
     /// The current value, read with sequential consistency.
     /// @returns the value
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#load
-    pub func Load(self: &Atomic<T>) -> T {
+    pub func Load(&self) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent) };
@@ -55,7 +55,7 @@ extend Atomic<T> {
     /// @param order which other operations may move across this one
     /// @returns the value
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#load-with
-    pub func LoadWith(self: &Atomic<T>, order: MemoryOrder) -> T {
+    pub func LoadWith(&self, order: MemoryOrder) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe {
@@ -63,7 +63,7 @@ extend Atomic<T> {
                 .Relaxed => AtomicLoad(self.Address(), MemoryOrder::Relaxed),
                 .Acquire => AtomicLoad(self.Address(), MemoryOrder::Acquire),
                 .Release => AtomicLoad(self.Address(), MemoryOrder::Acquire),
-                else => AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent)
+                _ => AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent)
             })
         };
     }
@@ -71,7 +71,7 @@ extend Atomic<T> {
     /// Replaces the value, with sequential consistency.
     /// @param value the new value
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#store
-    pub func Store(self: &Atomic<T>, value: T) {
+    pub func Store(&self, value: T) {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         unsafe { AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent); }
@@ -83,7 +83,7 @@ extend Atomic<T> {
     /// @param value the new value
     /// @param order which other operations may move across this one
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#store-with
-    pub func StoreWith(self: &Atomic<T>, value: T, order: MemoryOrder) {
+    pub func StoreWith(&self, value: T, order: MemoryOrder) {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         unsafe {
@@ -91,7 +91,7 @@ extend Atomic<T> {
                 .Relaxed => AtomicStore(self.Address(), value, MemoryOrder::Relaxed),
                 .Release => AtomicStore(self.Address(), value, MemoryOrder::Release),
                 .Acquire => AtomicStore(self.Address(), value, MemoryOrder::Release),
-                else => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+                _ => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
             }
         }
     }
@@ -100,7 +100,7 @@ extend Atomic<T> {
     /// @param value the new value
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#exchange
-    pub func Exchange(self: &Atomic<T>, value: T) -> T {
+    pub func Exchange(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicExchange(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
@@ -113,7 +113,7 @@ extend Atomic<T> {
     /// @param desired the value to put there
     /// @returns the value before, as success when it was replaced and as failure when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange
-    pub func CompareExchange(self: &Atomic<T>, expected: T, desired: T) -> T ! T {
+    pub func CompareExchange(&self, expected: T, desired: T) -> T ! T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         let previous = unsafe {
@@ -135,7 +135,7 @@ extend Atomic<T> {
     /// @param failure the order when it is not
     /// @returns the value before, as success when it was replaced and as failure when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange-with
-    pub func CompareExchangeWith(self: &Atomic<T>, expected: T, desired: T, success: MemoryOrder,
+    pub func CompareExchangeWith(&self, expected: T, desired: T, success: MemoryOrder,
                                  failure: MemoryOrder) -> T ! T {
         let acquireOnFailure = failure == MemoryOrder::Acquire || failure == MemoryOrder::AcquireRelease ||
                                failure == MemoryOrder::SequentiallyConsistent;
@@ -148,19 +148,21 @@ extend Atomic<T> {
                                                   MemoryOrder::Relaxed),
                 .Release => AtomicCompareExchange(address, expected, desired, MemoryOrder::Release,
                                                   MemoryOrder::Relaxed),
-                .Acquire => acquireOnFailure
-                    ? AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Acquire)
-                    : AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Relaxed),
-                .AcquireRelease => acquireOnFailure
-                    ? AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease,
-                                            MemoryOrder::Acquire)
-                    : AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease,
-                                            MemoryOrder::Relaxed),
-                else => failure == MemoryOrder::SequentiallyConsistent
-                    ? AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
-                                            MemoryOrder::SequentiallyConsistent)
-                    : AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent,
-                                            MemoryOrder::Relaxed)
+                .Acquire => if acquireOnFailure {
+                    AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Acquire)
+                } else {
+                    AtomicCompareExchange(address, expected, desired, MemoryOrder::Acquire, MemoryOrder::Relaxed)
+                },
+                .AcquireRelease => if acquireOnFailure {
+                    AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease, MemoryOrder::Acquire)
+                } else {
+                    AtomicCompareExchange(address, expected, desired, MemoryOrder::AcquireRelease, MemoryOrder::Relaxed)
+                },
+                _ => if failure == MemoryOrder::SequentiallyConsistent {
+                    AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent, MemoryOrder::SequentiallyConsistent)
+                } else {
+                    AtomicCompareExchange(address, expected, desired, MemoryOrder::SequentiallyConsistent, MemoryOrder::Relaxed)
+                }
             })
         };
         if previous == expected { return previous; }
@@ -172,7 +174,7 @@ extend Atomic<T> {
     /// @param value what to add
     /// @returns the value before the addition
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-add
-    pub func FetchAdd(self: &Atomic<T>, value: T) -> T {
+    pub func FetchAdd(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
@@ -184,7 +186,7 @@ extend Atomic<T> {
     /// @param value what to subtract
     /// @returns the value before the subtraction
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-sub
-    pub func FetchSub(self: &Atomic<T>, value: T) -> T {
+    pub func FetchSub(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
@@ -196,7 +198,7 @@ extend Atomic<T> {
     /// @param order which other operations may move across this one
     /// @returns the value before the addition
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-add-with
-    pub func FetchAddWith(self: &Atomic<T>, value: T, order: MemoryOrder) -> T {
+    pub func FetchAddWith(&self, value: T, order: MemoryOrder) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe {
@@ -205,7 +207,7 @@ extend Atomic<T> {
                 .Acquire => AtomicFetchAdd(self.Address(), value, MemoryOrder::Acquire),
                 .Release => AtomicFetchAdd(self.Address(), value, MemoryOrder::Release),
                 .AcquireRelease => AtomicFetchAdd(self.Address(), value, MemoryOrder::AcquireRelease),
-                else => AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+                _ => AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent)
             })
         };
     }
@@ -217,7 +219,7 @@ extend Atomic<T> {
     /// @param order which other operations may move across this one
     /// @returns the value before the subtraction
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-sub-with
-    pub func FetchSubWith(self: &Atomic<T>, value: T, order: MemoryOrder) -> T {
+    pub func FetchSubWith(&self, value: T, order: MemoryOrder) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe {
@@ -226,7 +228,7 @@ extend Atomic<T> {
                 .Acquire => AtomicFetchSub(self.Address(), value, MemoryOrder::Acquire),
                 .Release => AtomicFetchSub(self.Address(), value, MemoryOrder::Release),
                 .AcquireRelease => AtomicFetchSub(self.Address(), value, MemoryOrder::AcquireRelease),
-                else => AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent)
+                _ => AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent)
             })
         };
     }
@@ -236,7 +238,7 @@ extend Atomic<T> {
     /// @param value the bits to keep
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-and
-    pub func FetchAnd(self: &Atomic<T>, value: T) -> T {
+    pub func FetchAnd(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicFetchAnd(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
@@ -247,7 +249,7 @@ extend Atomic<T> {
     /// @param value the bits to set
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-or
-    pub func FetchOr(self: &Atomic<T>, value: T) -> T {
+    pub func FetchOr(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicFetchOr(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
@@ -259,7 +261,7 @@ extend Atomic<T> {
     /// @param value the bits to flip
     /// @returns the value before
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#fetch-xor
-    pub func FetchXor(self: &Atomic<T>, value: T) -> T {
+    pub func FetchXor(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         return unsafe { AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
@@ -274,75 +276,75 @@ extend Atomic<int8> {
     /// An atomic `int8` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<int8>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int8
-    pub const Zero: Atomic<int8> = Atomic<int8> { value: 0i8 };
+    pub const Zero: Self = Self { value: 0i8 };
 }
 
 extend Atomic<int16> {
     /// An atomic `int16` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<int16>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int16
-    pub const Zero: Atomic<int16> = Atomic<int16> { value: 0i16 };
+    pub const Zero: Self = Self { value: 0i16 };
 }
 
 extend Atomic<int32> {
     /// An atomic `int32` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<int32>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int32
-    pub const Zero: Atomic<int32> = Atomic<int32> { value: 0i32 };
+    pub const Zero: Self = Self { value: 0i32 };
 }
 
 extend Atomic<int64> {
     /// An atomic `int64` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<int64>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int64
-    pub const Zero: Atomic<int64> = Atomic<int64> { value: 0i64 };
+    pub const Zero: Self = Self { value: 0i64 };
 }
 
 extend Atomic<int> {
     /// An atomic `int` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<int>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-int
-    pub const Zero: Atomic<int> = Atomic<int> { value: 0 };
+    pub const Zero: Self = Self { value: 0 };
 }
 
 extend Atomic<uint8> {
     /// An atomic `uint8` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<uint8>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint8
-    pub const Zero: Atomic<uint8> = Atomic<uint8> { value: 0u8 };
+    pub const Zero: Self = Self { value: 0u8 };
 }
 
 extend Atomic<uint16> {
     /// An atomic `uint16` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<uint16>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint16
-    pub const Zero: Atomic<uint16> = Atomic<uint16> { value: 0u16 };
+    pub const Zero: Self = Self { value: 0u16 };
 }
 
 extend Atomic<uint32> {
     /// An atomic `uint32` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<uint32>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint32
-    pub const Zero: Atomic<uint32> = Atomic<uint32> { value: 0u32 };
+    pub const Zero: Self = Self { value: 0u32 };
 }
 
 extend Atomic<uint64> {
     /// An atomic `uint64` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<uint64>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint64
-    pub const Zero: Atomic<uint64> = Atomic<uint64> { value: 0u64 };
+    pub const Zero: Self = Self { value: 0u64 };
 }
 
 extend Atomic<uint> {
     /// An atomic `uint` holding zero, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<uint>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#zero-uint
-    pub const Zero: Atomic<uint> = Atomic<uint> { value: 0u };
+    pub const Zero: Self = Self { value: 0u };
 }
 
 extend Atomic<bool> {
     /// An atomic `bool` holding false, as a constant, so a module variable can start as one through an alias of
     /// `Atomic<bool>`.
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#false
-    pub const False: Atomic<bool> = Atomic<bool> { value: false };
+    pub const False: Self = Self { value: false };
 }

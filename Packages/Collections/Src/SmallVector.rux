@@ -32,19 +32,17 @@ pub struct SmallVector<T> {
 }
 
 extend SmallVector<T> {
-    func =(self: &var SmallVector<T>, other: &SmallVector<T>);
-
     /// An empty vector, holding its first elements inline.
     /// @param allocator where the storage comes from once they outgrow it
     /// @returns the vector
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#new
-    pub func SmallVector(allocator: Allocator) -> SmallVector<T> {
-        return SmallVector<T> {
+    pub func SmallVector(allocator: Allocator) -> Self {
+        return Self {
             inline: [0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64],
             heap: null,
             length: 0,
             heapCapacity: 0,
-            allocator: allocator
+            allocator
         };
     }
 
@@ -52,7 +50,7 @@ extend SmallVector<T> {
     /// than eight.
     /// @returns the inline capacity
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#inline-capacity
-    pub func InlineCapacity(self: &SmallVector<T>) -> uint {
+    pub func InlineCapacity(&self) -> uint {
         if alignof(T) > 8 { return 0; }
         if sizeof(T) == 0 { return 0xFFFFFFFFFFFFFFFFu; }
         return InlineBytes / sizeof(T);
@@ -61,33 +59,33 @@ extend SmallVector<T> {
     /// Whether the elements are still inline, with nothing allocated.
     /// @returns whether it is inline
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#is-inline
-    pub func IsInline(self: &SmallVector<T>) -> bool {
+    pub func IsInline(&self) -> bool {
         return self.heap == null;
     }
 
     /// How many elements it holds.
     /// @returns the count
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#length
-    pub func Length(self: &SmallVector<T>) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
     /// Whether it holds nothing.
     /// @returns whether it is empty
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#is-empty
-    pub func IsEmpty(self: &SmallVector<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.length == 0;
     }
 
     /// How many elements fit before the next allocation.
     /// @returns the capacity
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#capacity
-    pub func Capacity(self: &SmallVector<T>) -> uint {
-        return self.heap == null ? self.InlineCapacity() : self.heapCapacity;
+    pub func Capacity(&self) -> uint {
+        return if self.heap == null { self.InlineCapacity() } else { self.heapCapacity };
     }
 
     // Where the elements are, to read them.
-    func Items(self: &SmallVector<T>) -> *T {
+    func Items(&self) -> *T {
         if self.heap != null { return self.heap; }
         // Safety: the inline room is 64 bytes at an alignment of eight. A `T` aligned to at most eight is placed
         // there, and any other has an inline capacity of zero, so nothing is read through this pointer for it.
@@ -95,7 +93,7 @@ extend SmallVector<T> {
     }
 
     // Where the elements are, to change them.
-    func WritableItems(self: &var SmallVector<T>) -> *var T {
+    func WritableItems(&var self) -> *var T {
         if self.heap != null { return self.heap; }
         // Safety: the inline room is 64 bytes at an alignment of eight. A `T` aligned to at most eight is placed
         // there, and any other has an inline capacity of zero, so nothing is written through this pointer for it.
@@ -103,7 +101,7 @@ extend SmallVector<T> {
     }
 
     // Moves the elements to a block of at least `required` elements.
-    func Grow(self: &var SmallVector<T>, required: uint) {
+    func Grow(&var self, required: uint) {
         if required <= self.Capacity() { return; }
         let capacity = try GrowCapacity(self.Capacity(), required, MinimumVectorCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
         if self.heap != null {
@@ -117,7 +115,7 @@ extend SmallVector<T> {
         while index < self.length {
             // Safety: the small-vector invariant: `index < self.length`, checked by the loop, and the length fits the
             // inline room it is read from and the fresh block, sized above the current capacity, it moves into.
-            unsafe { block[index] <- inline[index]; }
+            unsafe { block[index] = move inline[index]; }
             index++;
         }
         self.heap = block;
@@ -128,35 +126,35 @@ extend SmallVector<T> {
     /// the storage cannot grow.
     /// @param value the element
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#push
-    pub func Push(self: &var SmallVector<T>, value: T) {
+    pub func Push(&var self, value: T) {
         if self.length == self.Capacity() {
             self.Grow(try AddLength(self.length, 1) catch { error => AllocationFailed(error) });
         }
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `length < Capacity()`, checked or grown above, so the slot is room the
         // storage has and holds nothing yet.
-        unsafe { items[self.length] <- value; }
+        unsafe { items[self.length] = move value; }
         self.length = self.length + 1;
     }
 
     /// Takes the last element out, moving it rather than copying it.
     /// @returns the element, or `none` when the vector is empty
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#pop
-    pub func Pop(self: &var SmallVector<T>) -> T? {
+    pub func Pop(&var self) -> T? {
         if self.length == 0 { return none; }
         self.length = self.length - 1;
         let items = self.WritableItems();
         // Safety: the small-vector invariant: the old last element is initialized and now outside `length`, so
         // nothing destroys it again once it is moved out.
-        let removed <- unsafe { <-items[self.length] };
-        return .Some(<-removed);
+        let removed = unsafe { move items[self.length] };
+        return .Some(move removed);
     }
 
     /// A copy of the element at `index`.
     /// @param index which one
     /// @returns the element, or `none` past the end
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#get
-    pub func Get(self: &SmallVector<T>, index: uint) -> T? {
+    pub func Get(&self, index: uint) -> T? {
         if index >= self.length { return none; }
         let items = self.Items();
         // Safety: the small-vector invariant: `index < self.length`, checked above, so the element is initialized.
@@ -166,7 +164,7 @@ extend SmallVector<T> {
     /// The elements, valid until the vector next changes or moves.
     /// @returns a view of them
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#as-slice
-    pub func AsSlice(self: &SmallVector<T>) -> T[..] {
+    pub func AsSlice(&self) -> T[..] {
         let items = self.Items();
         // Safety: the small-vector invariant: `items` addresses `length` initialized elements.
         return unsafe { items[..self.length] };
@@ -175,7 +173,7 @@ extend SmallVector<T> {
     /// The elements, writable, valid until the vector next changes or moves.
     /// @returns a view of them
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#as-mutable-slice
-    pub func AsMutableSlice(self: &var SmallVector<T>) -> var T[..] {
+    pub func AsMutableSlice(&var self) -> var T[..] {
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `items` addresses `length` initialized elements.
         return unsafe { items[..self.length] };
@@ -184,14 +182,14 @@ extend SmallVector<T> {
     /// Destroys the elements past `length`, keeping the storage.
     /// @param length how many to keep
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#truncate
-    pub func Truncate(self: &var SmallVector<T>, length: uint) {
+    pub func Truncate(&var self, length: uint) {
         if length >= self.length { return; }
         let items = self.WritableItems();
         var index = length;
         while index < self.length {
             // Safety: the small-vector invariant: `index < self.length`, checked by the loop, so the element is
             // initialized; each is moved out once, and the length drops below all of them right after.
-            unsafe { let taken <- items[index]; }
+            unsafe { let taken = move items[index]; }
             index++;
         }
         self.length = length;
@@ -199,11 +197,11 @@ extend SmallVector<T> {
 
     /// Destroys every element, keeping the storage.
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#clear
-    pub func Clear(self: &var SmallVector<T>) {
+    pub func Clear(&var self) {
         self.Truncate(0);
     }
 
-    func ~SmallVector(self: &var SmallVector<T>) {
+    func ~SmallVector(&var self) {
         self.Truncate(0);
         if self.heap != null {
             ReleaseBlock<T>(self.allocator, self.heap, self.heapCapacity);

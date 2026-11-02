@@ -37,15 +37,15 @@ extend JsonStyle {
     /// The compact style: no whitespace anywhere. What a document on a wire should be.
     /// @returns a style that writes no whitespace at all
     /// @see https://rux-lang.dev/docs/api/json/write-value#json-style-compact
-    pub func Compact() -> JsonStyle {
-        return JsonStyle { indent: 0, spaceAfterColon: false };
+    pub func Compact() -> Self {
+        return Self { indent: 0, spaceAfterColon: false };
     }
 
     /// The readable style: two spaces per level.
     /// @returns a style that indents and puts each member on its own line
     /// @see https://rux-lang.dev/docs/api/json/write-value#json-style-pretty
-    pub func Pretty() -> JsonStyle {
-        return JsonStyle { indent: 2, spaceAfterColon: true };
+    pub func Pretty() -> Self {
+        return Self { indent: 2, spaceAfterColon: true };
     }
 }
 
@@ -152,7 +152,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
     }
     var remaining = style.indent * level;
     while remaining > 0 {
-        let step = remaining < 64 ? remaining : 64;
+        let step = if remaining < 64 { remaining } else { 64 };
         WriteJsonBytes(writer, spaces[0..step])?;
         remaining = remaining - step;
     }
@@ -186,7 +186,7 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
     if kind == JsonKind::Boolean {
         var flag = false;
         value.AsBoolean(@flag);
-        return WriteJsonBytes(writer, flag ? "true" : "false");
+        return WriteJsonBytes(writer, if flag { "true" } else { "false" });
     }
     if kind == JsonKind::Number {
         let number = value.AsNumber() ?? fail FormatError::ValueOutOfRange;
@@ -203,8 +203,8 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
     if kind == JsonKind::Text { return WriteEscaped(writer, value.AsText().Bytes()); }
 
     let isObject = kind == JsonKind::Object;
-    let opening = isObject ? "{" : "[";
-    let closing = isObject ? "}" : "]";
+    let opening = if isObject { "{" } else { "[" };
+    let closing = if isObject { "}" } else { "]" };
     WriteJsonBytes(writer, opening)?;
     let count = value.Length();
     if count == 0 {

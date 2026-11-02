@@ -43,9 +43,9 @@ pub func RoundTiesToEven(value: float64) -> float64 {
     if fraction < -0.5 { return whole - 1.0; }
     if fraction == 0.5 {
         // `whole` is an integer, so its own halving tells us whether it is even without any bit inspection.
-        return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole + 1.0;
+        return if Trunc(whole * 0.5) * 2.0 == whole { whole } else { whole + 1.0 };
     }
-    if fraction == -0.5 { return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole - 1.0; }
+    if fraction == -0.5 { return if Trunc(whole * 0.5) * 2.0 == whole { whole } else { whole - 1.0 }; }
     // Everything else — including the infinities and NaNs, whose fraction is a NaN and answers false above.
     return whole;
 }
@@ -110,7 +110,7 @@ pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, resu
     // bits. Comparing against the next power of two instead is exact at every width: a rounded value is in range
     // exactly when it is strictly below 2^(bits-1) for a signed type, or below 2^bits for an unsigned one.
     let bits = sizeof(T) * 8;
-    let limit = ScaleByPowerOfTwo(1.0, signed ? (bits as int64) - 1 : bits as int64);
+    let limit = ScaleByPowerOfTwo(1.0, if signed { (bits as int64) - 1 } else { bits as int64 });
     if rounded >= limit { return true; }
     if signed {
         if rounded < 0.0 - limit { return true; }

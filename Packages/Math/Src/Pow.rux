@@ -53,9 +53,9 @@ func PowLog2(ax: float64) -> Log2Pair {
         ixn -= 0x100000;
     }
     a = WithHighWord(a, ixn);
-    let bp = k == 0 ? 1.0 : 1.5;
-    let dpH = k == 0 ? 0.0 : dpH1;
-    let dpL = k == 0 ? 0.0 : dpL1;
+    let bp = if k == 0 { 1.0 } else { 1.5 };
+    let dpH = if k == 0 { 0.0 } else { dpH1 };
+    let dpL = if k == 0 { 0.0 } else { dpL1 };
     // ss = sH + sL = (a - bp) / (a + bp), to twice double precision.
     let u = a - bp;
     let v = 1.0 / (a + bp);

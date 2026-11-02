@@ -104,7 +104,7 @@ func Lines(text: char8[..], lines: &var Vector<Range>) {
         while end < text.length && text[end] != c8'\n' { end = end + 1; }
         var cut = start;
         while cut < end && text[cut] != c8'#' && text[cut] != c8';' { cut = cut + 1; }
-        lines.Push(Range { start: start, end: cut });
+        lines.Push(Range { start, end: cut });
         start = end + 1;
     }
 }
@@ -131,7 +131,7 @@ func FromHostsFile(allocator: Allocator, host: char8[..], port: uint16, found: &
             let name = NextField(line, @at);
             if name.length == 0u { break; }
             if SameName(name, host) {
-                AddOnce(found, SocketAddress { ip: ip, port: port });
+                AddOnce(found, SocketAddress { ip, port });
                 break;
             }
         }
@@ -146,18 +146,16 @@ func AddOnce(found: &var Vector<SocketAddress>, address: SocketAddress) {
 }
 
 extend Resolver {
-    func =(self: &var Resolver, other: &Resolver);
-
     /// A resolver that asks `servers`, waiting five seconds for each answer and going round them twice.
     /// @param allocator what the server list and every lookup's results are kept in
     /// @param servers the name servers, in the order they are asked; port 53 is DNS's own
     /// @returns the resolver
     /// @see https://rux-lang.dev/docs/api/net/resolver#with-servers
-    pub func WithServers(allocator: Allocator, servers: SocketAddress[..]) -> Resolver {
-        var resolver = Resolver { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
+    pub func WithServers(allocator: Allocator, servers: SocketAddress[..]) -> Self {
+        var resolver = Self { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
                                   attempts: 2 };
         resolver.servers.PushSlice(servers);
-        return <-resolver;
+        return move resolver;
     }
 
     /// A resolver configured as the C library's would be: the name servers, and the `timeout` and `attempts`
@@ -165,22 +163,22 @@ extend Resolver {
     /// @param allocator what the server list and every lookup's results are kept in
     /// @returns the resolver
     /// @see https://rux-lang.dev/docs/api/net/resolver#from-system
-    pub func FromSystem(allocator: Allocator) -> Resolver {
+    pub func FromSystem(allocator: Allocator) -> Self {
         return ReadConfiguration(allocator);
     }
 
     /// How long a query waits for its answer.
     /// @param timeout the wait for each answer
     /// @see https://rux-lang.dev/docs/api/net/resolver#set-timeout
-    pub func SetTimeout(self: &var Resolver, timeout: Duration) {
+    pub func SetTimeout(&var self, timeout: Duration) {
         self.timeout = timeout;
     }
 
     /// How many times the servers are gone round before a lookup gives up.
     /// @param attempts the number of rounds, at least one
     /// @see https://rux-lang.dev/docs/api/net/resolver#set-attempts
-    pub func SetAttempts(self: &var Resolver, attempts: uint) {
-        self.attempts = attempts == 0u ? 1u : attempts;
+    pub func SetAttempts(&var self, attempts: uint) {
+        self.attempts = if attempts == 0u { 1u } else { attempts };
     }
 
     /// Asks the servers for `host`'s addresses: its IPv4 addresses first, then its IPv6 ones, each with `port`.
@@ -190,7 +188,7 @@ extend Resolver {
     /// @param port the port every address gets
     /// @returns the addresses; `NotFound` when the name has none or does not exist, `TimedOut` when no server answered
     /// @see https://rux-lang.dev/docs/api/net/resolver#lookup
-    pub func Lookup(self: &Resolver, allocator: Allocator, host: char8[..], port: uint16)
+    pub func Lookup(&self, allocator: Allocator, host: char8[..], port: uint16)
         -> Vector<SocketAddress> ! IoError {
         var found = Vector<SocketAddress>(allocator);
         var attempt: uint = 0;
@@ -199,7 +197,7 @@ extend Resolver {
                 let first = Ask(server, host, TypeA, NextQueryId(), port, self.timeout, found);
                 if first == Outcome::NoSuchName { fail IoError::Of(IoErrorKind::NotFound); }
                 let second = Ask(server, host, TypeAaaa, NextQueryId(), port, self.timeout, found);
-                if found.Length() > 0u { return <-found; }
+                if found.Length() > 0u { return move found; }
                 if first == Outcome::Found || second == Outcome::Found { fail IoError::Of(IoErrorKind::NotFound); }
             }
             attempt = attempt + 1;
@@ -224,7 +222,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
         let keyword = NextField(line, @at);
         if SameName(keyword, "nameserver") && configuration.servers.Length() < MaximumServers {
             match IpAddress::Parse(NextField(line, @at)) {
-                .Some(ip) => configuration.servers.Push(SocketAddress { ip: ip, port: 53 }),
+                .Some(ip) => configuration.servers.Push(SocketAddress { ip, port: 53 }),
                 none => {}
             }
         }
@@ -234,11 +232,15 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
                 if option.length == 0u { break; }
                 if option.length > 8u && SameName(option[..8], "timeout:") {
                     let seconds = Decimal(option[8..]);
-                    if seconds > 0u { configuration.timeout = Duration::FromSeconds((seconds > 30u ? 30u : seconds) as int64); }
+                    if seconds > 0u { configuration.timeout = Duration::FromSeconds((if seconds > 30u {
+                        30u
+                    } else {
+                        seconds
+                    }) as int64); }
                 }
                 else if option.length > 9u && SameName(option[..9], "attempts:") {
                     let count = Decimal(option[9..]);
-                    if count > 0u { configuration.attempts = count > 5u ? 5u : count; }
+                    if count > 0u { configuration.attempts = if count > 5u { 5u } else { count }; }
                 }
             }
         }
@@ -247,7 +249,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
         let local = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port: 53 };
         configuration.servers.Push(local);
     }
-    return <-configuration;
+    return move configuration;
 }
 
 // The number `text` spells in decimal, or zero when it is not one.
@@ -306,7 +308,7 @@ func SkipName(message: uint8[..], at: uint) -> uint? {
     while cursor < message.length {
         let length = message[cursor];
         if length == 0u8 { return cursor + 1; }
-        if (length & 0xC0u8) == 0xC0u8 { return cursor + 2 <= message.length ? cursor + 2 : none; }
+        if (length & 0xC0u8) == 0xC0u8 { return if cursor + 2 <= message.length { cursor + 2 } else { none }; }
         cursor = cursor + 1 + length as uint;
     }
     return none;
@@ -342,7 +344,7 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
         if recordType == kind && kind == TypeA && length == 4u {
             let ip = IpAddress::FromIpv4(Ipv4Address::New(message[data], message[data + 1], message[data + 2],
                                                           message[data + 3]));
-            AddOnce(found, SocketAddress { ip: ip, port: port });
+            AddOnce(found, SocketAddress { ip, port });
         }
         else if recordType == kind && kind == TypeAaaa && length == 16u {
             var octets: uint8[16] = [0u8; 16];
@@ -351,7 +353,7 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
                 octets[octet] = message[data + octet];
                 octet = octet + 1;
             }
-            AddOnce(found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address { octets: octets }), port: port });
+            AddOnce(found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address { octets }), port });
         }
         at = data + length;
         index = index + 1;
@@ -384,15 +386,19 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
     let length = WriteQuery(host, kind, id, query[..]);
     if length == 0u { return Outcome::NoSuchName; }
     let local = SocketAddress {
-        ip: server.ip.IsIpv6() ? IpAddress::FromIpv6(Ipv6Address::Unspecified()) : IpAddress::FromIpv4(Ipv4Address::Unspecified()),
+        ip: if server.ip.IsIpv6() {
+            IpAddress::FromIpv6(Ipv6Address::Unspecified())
+        } else {
+            IpAddress::FromIpv4(Ipv4Address::Unspecified())
+        },
         port: 0
     };
-    let socket = UdpSocket::Bind(local) catch { else => return Outcome::Failed };
-    socket.Connect(server) catch { else => return Outcome::Failed };
-    socket.SetReadTimeout(timeout) catch { else => return Outcome::Failed };
+    let socket = UdpSocket::Bind(local) catch { _ => return Outcome::Failed };
+    socket.Connect(server) catch { _ => return Outcome::Failed };
+    socket.SetReadTimeout(timeout) catch { _ => return Outcome::Failed };
     // Safety: `WriteQuery` wrote `length` bytes, at most the 512 of the local `query`, and `char8` has the layout of
     // `uint8`.
-    socket.Send(unsafe { ((@query[0]) as *char8)[..length] }) catch { else => return Outcome::Failed };
+    socket.Send(unsafe { ((@query[0]) as *char8)[..length] }) catch { _ => return Outcome::Failed };
     var answer: uint8[65535] = [0u8; 65535];
     // An answer to an earlier query, or from somewhere else, is read past until the timeout.
     let started = Instant::Now();
@@ -400,7 +406,7 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         // Safety: `answer` is a local of 65535 bytes, so its first 512 are writable, and `char8` has the layout of
         // `uint8`.
         let datagram = unsafe { ((@answer[0]) as *var char8)[..512] };
-        let received = socket.Receive(datagram) catch { else => return Outcome::Failed };
+        let received = socket.Receive(datagram) catch { _ => return Outcome::Failed };
         let message = answer[..received];
         if received < 12u || Word16(message, 0) != id {
             let spent = Instant::Now().Since(started) ?? Duration::Zero();
@@ -409,7 +415,7 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         }
         // Truncated: the whole answer comes over TCP.
         if (message[2] & 0x02u8) != 0u8 {
-            let whole = AskOverTcp(server, query[..length], timeout, answer[..]) catch { else => return Outcome::Failed };
+            let whole = AskOverTcp(server, query[..length], timeout, answer[..]) catch { _ => return Outcome::Failed };
             return ReadAnswer(answer[..whole], id, kind, port, found);
         }
         return ReadAnswer(message, id, kind, port, found);
@@ -434,12 +440,12 @@ func NextQueryId() -> uint16 {
 func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
     var found = Vector<SocketAddress>(allocator);
     FromHostsFile(allocator, host, port, found);
-    if found.Length() > 0u { return <-found; }
+    if found.Length() > 0u { return move found; }
     // `localhost` and the names under it are this machine, whatever the hosts file says.
     if SameName(host, "localhost") || (host.length > 10u && SameName(host[host.length - 10..], ".localhost")) {
-        AddOnce(found, SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port: port });
-        AddOnce(found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address::Localhost()), port: port });
-        return <-found;
+        AddOnce(found, SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port });
+        AddOnce(found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address::Localhost()), port });
+        return move found;
     }
     let resolver = Resolver::FromSystem(allocator);
     return resolver.Lookup(allocator, host, port)?;

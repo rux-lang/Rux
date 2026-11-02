@@ -24,15 +24,12 @@ pub struct PathBuffer {
 }
 
 extend PathBuffer {
-    /// Copying a buffer would give two mutable owners of one block.
-    func =(self: &var PathBuffer, other: &PathBuffer);
-
     /// An empty buffer that has allocated nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty buffer that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#new
-    pub func PathBuffer(allocator: Allocator) -> PathBuffer {
-        return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
+    pub func PathBuffer(allocator: Allocator) -> Self {
+        return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
     /// A buffer opening with `path`'s units.
@@ -40,23 +37,23 @@ extend PathBuffer {
     /// @param path the path to act on
     /// @returns a copy of `path` this buffer owns
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#from-path
-    pub func FromPath(allocator: Allocator, path: Path) -> PathBuffer {
+    pub func FromPath(allocator: Allocator, path: Path) -> Self {
         var buffer = PathBuffer(allocator);
         buffer.AppendUnits(path.AsView().Units());
-        return <-buffer;
+        return move buffer;
     }
 
     /// How many units the buffer holds.
     /// @returns how many units the buffer holds
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#length
-    pub func Length(self: &PathBuffer) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
     /// Whether the buffer holds nothing.
     /// @returns whether the buffer holds no units
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#is-empty
-    pub func IsEmpty(self: &PathBuffer) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.length == 0;
     }
 
@@ -64,13 +61,13 @@ extend PathBuffer {
     /// The path borrows the buffer and must not outlive it or survive a push.
     /// @returns a borrowed path over the buffer's units
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#as-path
-    pub func AsPath(self: &PathBuffer) -> Path {
+    pub func AsPath(&self) -> Path {
         // Safety: the storage invariant: `data` addresses at least `length` initialized units this buffer owns.
         return Path::FromView(OsStringView::FromUnits(unsafe { (self.data)[..self.length] }));
     }
 
     // Room for `additional` more units, by doubling.
-    func Reserve(self: &var PathBuffer, additional: uint) {
+    func Reserve(&var self, additional: uint) {
         let required = self.length + additional;
         if required <= self.capacity { return; }
         var wanted = self.capacity * 2;
@@ -90,7 +87,7 @@ extend PathBuffer {
             unsafe { Copy(block, self.data as *opaque, self.length * unitSize); }
             let old = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
             borrowed.Deallocate(self.data as *var opaque,
-                                (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { else => {} };
+                                (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         // Safety: `block` is aligned for `OsUnit` and holds `wanted` of them.
         self.data = unsafe { block as *var OsUnit };
@@ -98,7 +95,7 @@ extend PathBuffer {
     }
 
     // Appends raw units, structure unexamined.
-    func AppendUnits(self: &var PathBuffer, units: OsUnit[..]) {
+    func AppendUnits(&var self, units: OsUnit[..]) {
         if units.length == 0 { return; }
         self.Reserve(units.length);
         var index: uint = 0;
@@ -116,7 +113,7 @@ extend PathBuffer {
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
     /// @param segment the component to append
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#push
-    pub func Push(self: &var PathBuffer, segment: OsStringView) {
+    pub func Push(&var self, segment: OsStringView) {
         let units = segment.Units();
         if units.length == 0 { return; }
         // Safety: `units` is not empty, checked above.
@@ -137,13 +134,13 @@ extend PathBuffer {
 
     /// Gives the block back and leaves an empty buffer.
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#release
-    pub func Release(self: &var PathBuffer) {
+    pub func Release(&var self) {
         if self.data != null {
             let unitSize = sizeof(OsUnit) as uint;
             let layout = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
             borrowed.Deallocate(self.data as *var opaque,
-                                (layout ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { else => {} };
+                                (layout ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;
         self.length = 0;
@@ -152,7 +149,7 @@ extend PathBuffer {
 
     /// Gives the block back.
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#destructor
-    func ~PathBuffer(self: &var PathBuffer) {
+    func ~PathBuffer(&var self) {
         self.Release();
     }
 }
@@ -168,7 +165,7 @@ extend PathBuffer {
 pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBuffer {
     var buffer = PathBuffer::FromPath(allocator, base);
     buffer.Push(segment);
-    return <-buffer;
+    return move buffer;
 }
 
 /// A fresh buffer holding `path` lexically simplified: separator runs collapsed to the preferred separator, `.`
@@ -234,7 +231,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
                         // Safety: the read happens only when the buffer is not empty, and the storage invariant covers
                         // its last unit.
                         let ended = empty || IsSeparator(unsafe { buffer.data[buffer.Length() - 1] });
-                        let opening = buffer.Length() + (ended ? 0u : 1u);
+                        let opening = buffer.Length() + (if ended { 0u } else { 1u });
                         starts[depth] = opening;
                         depth = depth + 1;
                     }
@@ -246,7 +243,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
             }
         }
     }
-    return <-buffer;
+    return move buffer;
 }
 
 // Whether a segment is exactly `.` or exactly `..`, in native units.

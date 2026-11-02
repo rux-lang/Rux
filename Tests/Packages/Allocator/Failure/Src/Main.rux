@@ -24,7 +24,7 @@ struct FailingAllocator {
 }
 
 extend FailingAllocator : Allocator {
-    func Allocate(self: &FailingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
         unsafe {
             self.state.attempts = self.state.attempts + 1;
@@ -40,7 +40,7 @@ extend FailingAllocator : Allocator {
         }
     }
 
-    func Deallocate(self: &FailingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
         unsafe {
             self.state.backing.Deallocate(block, layout)?;
@@ -50,7 +50,7 @@ extend FailingAllocator : Allocator {
         }
     }
 
-    func Reallocate(self: &FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
         unsafe {
@@ -65,7 +65,7 @@ extend FailingAllocator : Allocator {
 }
 
 func Failing(state: *var FailureState) -> FailingAllocator {
-    return FailingAllocator { state: state };
+    return FailingAllocator { state };
 }
 
 func Main() -> ! AllocError {
@@ -178,7 +178,7 @@ func Main() -> ! AllocError {
 /// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
 /// refusal cannot pass by accident.
 func Refusal<T>(outcome: T ! AllocError) -> AllocError {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the allocator was expected to refuse")
     };

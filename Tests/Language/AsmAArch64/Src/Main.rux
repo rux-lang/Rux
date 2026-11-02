@@ -275,7 +275,7 @@ when #target.arch {
                     ret
                 }
             },
-            else => {}
+            _ => {}
         }
 
         func Main() -> int {
@@ -378,7 +378,7 @@ when #target.arch {
 
             // System calls, on the targets that have one
             when #target.os {
-                .FreeBSD, .Linux, .macOS => {
+                .FreeBSD | .Linux | .macOS => {
                     // Safety: `RawGetPid` makes the argument-free getpid system call, which only returns the id.
                     if unsafe { RawGetPid() } <= 0i64 {
                         return 22;
@@ -388,13 +388,13 @@ when #target.arch {
                         return 23;
                     }
                 },
-                else => {}
+                _ => {}
             }
 
             return 0;
         }
     },
-    else => {
+    _ => {
         func Main() -> int {
             return 0;
         }

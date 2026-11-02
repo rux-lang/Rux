@@ -11,11 +11,11 @@ pub struct Ranked {
 }
 
 extend Ranked {
-    pub func <(self: &Ranked, other: Ranked) -> bool {
+    pub func <(&self, other: Self) -> bool {
         return self.key < other.key;
     }
 
-    pub func ==(self: &Ranked, other: Ranked) -> bool {
+    pub func ==(&self, other: Self) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }

@@ -24,9 +24,6 @@ pub struct HashSet<T> {
 }
 
 extend HashSet<T> {
-    /// Copying a set would give two owners of its table and elements.
-    func =(self: &var HashSet<T>, other: &HashSet<T>);
-
     /// An empty set that has not allocated anything, with a seed drawn from the operating system.
     /// @param allocator where the storage comes from
     /// @param hash how a key is hashed, taking the key and the two seed words
@@ -34,7 +31,7 @@ extend HashSet<T> {
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#new
     pub func HashSet(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
-                 equals: func(T, T) -> bool) -> HashSet<T> {
+                 equals: func(T, T) -> bool) -> Self {
         return HashSet::WithSeed<T>(allocator, TableSeed::Random(), hash, equals);
     }
 
@@ -46,8 +43,8 @@ extend HashSet<T> {
     /// @returns an empty set keyed with that seed
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#with-seed
     pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(T, uint64, uint64) -> uint64,
-                  equals: func(T, T) -> bool) -> HashSet<T> {
-        return HashSet<T> { table: Table<T, ()>(allocator, seed), hash: hash, equals: equals };
+                  equals: func(T, T) -> bool) -> Self {
+        return Self { table: Table<T, ()>(allocator, seed), hash, equals };
     }
 
     /// An empty set with room for `capacity` elements already taken.
@@ -58,30 +55,30 @@ extend HashSet<T> {
     /// @returns an empty set with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
-                      equals: func(T, T) -> bool) -> HashSet<T> {
+                      equals: func(T, T) -> bool) -> Self {
         var set = HashSet<T>(allocator, hash, equals);
         set.Reserve(capacity);
-        return <-set;
+        return move set;
     }
 
     /// How many elements the set holds.
     /// @returns how many elements it holds
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#length
-    pub func Length(self: &HashSet<T>) -> uint {
+    pub func Length(&self) -> uint {
         return self.table.Length();
     }
 
     /// How many slots the table has.
     /// @returns how many elements fit before the next growth
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#capacity
-    pub func Capacity(self: &HashSet<T>) -> uint {
+    pub func Capacity(&self) -> uint {
         return self.table.Capacity();
     }
 
     /// Whether the set holds no elements.
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#is-empty
-    pub func IsEmpty(self: &HashSet<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.table.IsEmpty();
     }
 
@@ -91,7 +88,7 @@ extend HashSet<T> {
     /// @param value the value to act on
     /// @returns whether the value is present
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#contains
-    pub func Contains(self: &HashSet<T>, value: T) -> bool {
+    pub func Contains(&self, value: T) -> bool {
         return self.table.Find(value, self.hash, self.equals) != none;
     }
 
@@ -102,7 +99,7 @@ extend HashSet<T> {
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#insert
-    pub func Insert(self: &var HashSet<T>, value: T) -> bool {
+    pub func Insert(&var self, value: T) -> bool {
         let hashed = self.hash(value, self.table.seed.low, self.table.seed.high);
         if self.table.FindHashed(value, hashed, self.equals) != none { return false; }
 
@@ -110,7 +107,7 @@ extend HashSet<T> {
         // The table has room and the probe can still run past what a distance byte holds, when the elements collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `EnsureRoom` returned, so the capacity is nonzero.
-        if unsafe { self.table.PlaceHashed(<-value, (), hashed) } == none {
+        if unsafe { self.table.PlaceHashed(move value, (), hashed) } == none {
             AllocationFailed(AllocError::Unsupported);
         }
         return true;
@@ -122,14 +119,14 @@ extend HashSet<T> {
     /// @param value the value to act on
     /// @returns the value that was stored, or `none` when it was absent
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#remove
-    pub func Remove(self: &var HashSet<T>, value: T) -> T? {
+    pub func Remove(&var self, value: T) -> T? {
         let slot = self.table.Find(value, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key is
         // initialized; it is moved out before `Vacate` closes the slot.
         unsafe {
-            let taken <- self.table.keys[slot];
+            let taken = move self.table.keys[slot];
             self.table.Vacate(slot);
-            return .Some(<-taken);
+            return .Some(move taken);
         }
     }
 
@@ -137,20 +134,20 @@ extend HashSet<T> {
     /// Terminates the program when the storage cannot be had.
     /// @param additional how many more elements to make room for
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#reserve
-    pub func Reserve(self: &var HashSet<T>, additional: uint) {
+    pub func Reserve(&var self, additional: uint) {
         self.table.Reserve(additional, self.hash);
     }
 
     /// Releases the capacity the element count does not need.
     /// Terminates the program when the allocator refuses the smaller table.
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#shrink-to-fit
-    pub func ShrinkToFit(self: &var HashSet<T>) {
+    pub func ShrinkToFit(&var self) {
         self.table.ShrinkToFit(self.hash);
     }
 
     /// Destroys every element, keeping the storage.
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#clear
-    pub func Clear(self: &var HashSet<T>) {
+    pub func Clear(&var self) {
         self.table.Clear();
     }
 
@@ -161,7 +158,7 @@ extend HashSet<T> {
     /// @param value receives the element
     /// @returns whether an element was read; false at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#try-next
-    pub func TryNext(self: &HashSet<T>, cursor: *var uint, value: *var T) -> bool {
+    pub func TryNext(&self, cursor: *var uint, value: *var T) -> bool {
         // Safety: the documented contract makes `cursor` a non-null pointer to the caller's writable `uint`.
         var index = unsafe { *cursor };
         while index < self.table.Capacity() {
@@ -188,7 +185,7 @@ extend HashSet<T> {
     /// Nothing may be inserted or removed while the iterator is alive.
     /// @returns a cursor over the elements, in an order the seed decides
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#iterate
-    pub func Iterate(self: &HashSet<T>) -> HashSetIterator<T> {
+    pub func Iterate(&self) -> HashSetIterator<T> {
         return HashSetIterator<T> {
             keys: self.table.keys,
             states: self.table.states,
@@ -202,8 +199,8 @@ extend HashSet<T> {
     /// destroyed when the iterator's life ends.
     /// @returns a cursor that consumes the set as it goes
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#into-iterator
-    pub func IntoIterator(self: HashSet<T>) -> HashSetIntoIterator<T> {
-        var set <- self;
+    pub func IntoIterator(self) -> HashSetIntoIterator<T> {
+        var set = move self;
         let taken = HashSetIntoIterator<T> {
             table: Table<T, ()> {
                 keys: set.table.keys,
@@ -223,7 +220,7 @@ extend HashSet<T> {
         set.table.tags = null;
         set.table.length = 0;
         set.table.capacity = 0;
-        return <-taken;
+        return move taken;
     }
 
     /// Whether every element of this set is also in `other`.
@@ -235,13 +232,13 @@ extend HashSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether every element of this set is in `other`
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#is-subset-of
-    pub func IsSubsetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func IsSubsetOf(&self, other: &Self) -> bool {
         if self.Length() > other.Length() { return false; }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     if !other.Contains(value) { return false; }
                 },
                 none => {
@@ -257,7 +254,7 @@ extend HashSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether every element of `other` is in this set
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#is-superset-of
-    pub func IsSupersetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func IsSupersetOf(&self, other: &Self) -> bool {
         return other.IsSubsetOf(self);
     }
 
@@ -269,14 +266,14 @@ extend HashSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether the two share no element
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#is-disjoint-from
-    pub func IsDisjointFrom(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func IsDisjointFrom(&self, other: &Self) -> bool {
         if self.Length() > other.Length() { return other.IsDisjointFrom(self); }
         if self.Length() == 0 { return true; }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     if other.Contains(value) { return false; }
                 },
                 none => {
@@ -292,7 +289,7 @@ extend HashSet<T> {
     /// @param other the collection to compare or combine with
     /// @returns whether both hold exactly the same elements
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#equals
-    pub func Equals(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func Equals(&self, other: &Self) -> bool {
         return self.Length() == other.Length() && self.IsSubsetOf(other);
     }
 
@@ -305,7 +302,7 @@ extend HashSet<T> {
     /// Runs in time proportional to `other`.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#union-with
-    pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) {
+    pub func UnionWith(&var self, other: &Self) {
         if other.Length() == 0 { return; }
         self.Reserve(other.Length());
 
@@ -313,7 +310,7 @@ extend HashSet<T> {
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     self.Insert(value);
                 },
                 none => {
@@ -330,7 +327,7 @@ extend HashSet<T> {
     /// Allocates nothing, so it cannot fail: a set only ever gets smaller here.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#intersect-with
-    pub func IntersectWith(self: &var HashSet<T>, other: &HashSet<T>) {
+    pub func IntersectWith(&var self, other: &Self) {
         if self.Length() == 0 { return; }
         // Removing shifts the entries that follow a slot back into it, and a chain that runs past the end of the
         // table shifts them past the end too — so no single sweep in either direction can be sure it looked at
@@ -347,7 +344,7 @@ extend HashSet<T> {
                 if self.table.IsOccupied(index) && !unsafe { other.Contains(self.table.keys[index]) } {
                     // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
                     unsafe {
-                        let taken <- self.table.keys[index];
+                        let taken = move self.table.keys[index];
                         self.table.Vacate(index);
                     }
                     sweeping = true;
@@ -364,7 +361,7 @@ extend HashSet<T> {
     /// Allocates nothing, so it cannot fail.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#subtract
-    pub func Subtract(self: &var HashSet<T>, other: &HashSet<T>) {
+    pub func Subtract(&var self, other: &Self) {
         if self.Length() == 0 || other.Length() == 0 { return; }
         // Swept the way `IntersectWith` is, and for the same reason.
         var sweeping = true;
@@ -377,7 +374,7 @@ extend HashSet<T> {
                 if self.table.IsOccupied(index) && unsafe { other.Contains(self.table.keys[index]) } {
                     // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
                     unsafe {
-                        let taken <- self.table.keys[index];
+                        let taken = move self.table.keys[index];
                         self.table.Vacate(index);
                     }
                     sweeping = true;
@@ -396,7 +393,7 @@ extend HashSet<T> {
     /// cannot be had.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#symmetric-difference-with
-    pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) {
+    pub func SymmetricDifferenceWith(&var self, other: &Self) {
         if other.Length() == 0 { return; }
         self.Reserve(other.Length());
 
@@ -404,13 +401,13 @@ extend HashSet<T> {
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     match self.table.Find(value, self.hash, self.equals) {
-                        slot? => {
+                        .Some(slot) => {
                             // Safety: the table invariant: `Find` names only an occupied slot below the capacity; its
                             // key is moved out before `Vacate` closes the slot.
                             unsafe {
-                                let taken <- self.table.keys[slot];
+                                let taken = move self.table.keys[slot];
                                 self.table.Vacate(slot);
                             }
                         },
@@ -436,14 +433,14 @@ extend HashSet<T> {
     /// be had.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#clone
-    pub func Clone(self: &HashSet<T>) -> HashSet<T> {
+    pub func Clone(&self) -> Self {
         var copy = HashSet::WithSeed<T>(self.table.allocator, self.table.seed, self.hash, self.equals);
         copy.Reserve(self.Length());
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
-                value? => {
+                .Some(value) => {
                     copy.Insert(value);
                 },
                 none => {
@@ -451,7 +448,7 @@ extend HashSet<T> {
                 }
             }
         }
-        return <-copy;
+        return move copy;
     }
 }
 
@@ -474,7 +471,7 @@ extend HashSetIterator<T> : Iterator {
     /// with `TryNext` instead.
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#hash-set-iterator-next
-    pub func Next(self: &var HashSetIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         var index = self.cursor;
         while index < self.capacity {
             // Safety: `index < self.capacity`, checked by the loop, and the runs are the set's, which `Iterate`
@@ -503,8 +500,6 @@ pub struct HashSetIntoIterator<T> {
 }
 
 extend HashSetIntoIterator<T> {
-    /// Copying a consuming iterator would give two owners of its table.
-    func =(self: &var HashSetIntoIterator<T>, other: &HashSetIntoIterator<T>);
 }
 
 extend HashSetIntoIterator<T> : Iterator {
@@ -513,18 +508,18 @@ extend HashSetIntoIterator<T> : Iterator {
     /// destructor is exactly what nobody took.
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#hash-set-into-iterator-next
-    pub func Next(self: &var HashSetIntoIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its key
                 // is initialized; it is moved out and the slot is marked empty at once.
                 unsafe {
-                    let taken <- self.table.keys[index];
+                    let taken = move self.table.keys[index];
                     self.table.states[index] = SlotEmpty;
                     self.table.length = self.table.length - 1;
                     self.cursor = index + 1;
-                    return .Some(<-taken);
+                    return .Some(move taken);
                 }
             }
             index++;

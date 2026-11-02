@@ -28,8 +28,8 @@ extend Layout {
     /// @typeParam T the type to describe
     /// @returns `T`'s own size and alignment
     /// @see https://rux-lang.dev/docs/api/allocator/layout#for-value
-    pub func ForValue<T>() -> Layout {
-        return Layout { size: sizeof(T), alignment: alignof(T) };
+    pub func ForValue<T>() -> Self {
+        return Self { size: sizeof(T), alignment: alignof(T) };
     }
 
     /// A layout for `count` consecutive values of `T`, or absent when the size would overflow.
@@ -39,10 +39,10 @@ extend Layout {
     /// @param count how many elements
     /// @returns the array layout, or `none` if its size cannot be represented
     /// @see https://rux-lang.dev/docs/api/allocator/layout#for-array
-    pub func ForArray<T>(count: uint) -> Layout? {
+    pub func ForArray<T>(count: uint) -> Self? {
         let stride = sizeof(T);
         if stride != 0 && count > uint::Max / stride { return none; }
-        return Layout::New(stride * count, alignof(T));
+        return Self::New(stride * count, alignof(T));
     }
 
     /// A layout for `size` bytes at `alignment`, or nothing when the pair cannot be one.
@@ -55,11 +55,11 @@ extend Layout {
     /// @param alignment the boundary the address must be a multiple of
     /// @returns the layout, or `none` when `alignment` is not a usable power of two
     /// @see https://rux-lang.dev/docs/api/allocator/layout#new
-    pub func New(size: uint, alignment: uint) -> Layout? {
+    pub func New(size: uint, alignment: uint) -> Self? {
         if alignment == 0 || (alignment & (alignment - 1)) != 0 { return none; }
         var rounded: uint = 0;
         if AlignUpChecked(size, alignment, @rounded) { return none; }
-        return Layout { size: size, alignment: alignment };
+        return Self { size, alignment };
     }
 
     /// A layout for `size` bytes at the alignment a machine word wants.
@@ -71,8 +71,8 @@ extend Layout {
     /// @param size how many bytes are wanted
     /// @returns a layout of that size at its natural alignment, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/allocator/layout#for-bytes
-    pub func ForBytes(size: uint) -> Layout? {
-        return Layout::New(size, sizeof(uint));
+    pub func ForBytes(size: uint) -> Self? {
+        return Self::New(size, sizeof(uint));
     }
 
 
@@ -82,7 +82,7 @@ extend Layout {
     /// Runs in constant time and allocates nothing.
     /// @returns the size rounded up to a whole number of alignments
     /// @see https://rux-lang.dev/docs/api/allocator/layout#padded-size
-    pub func PaddedSize(self: &Layout) -> uint {
+    pub func PaddedSize(&self) -> uint {
         var rounded: uint = 0;
         if AlignUpChecked(self.size, self.alignment, @rounded) { return self.size; }
         return rounded;
@@ -94,7 +94,7 @@ extend Layout {
     /// @param address the address to test
     /// @returns whether `address` meets this layout's alignment
     /// @see https://rux-lang.dev/docs/api/allocator/layout#is-satisfied-by
-    pub func IsSatisfiedBy(self: &Layout, address: uint) -> bool {
+    pub func IsSatisfiedBy(&self, address: uint) -> bool {
         return address % self.alignment == 0;
     }
 
@@ -103,7 +103,7 @@ extend Layout {
     /// @param other the layout to compare against
     /// @returns whether both the size and the alignment match
     /// @see https://rux-lang.dev/docs/api/allocator/layout#equals
-    pub func ==(self: &Layout, other: Layout) -> bool {
+    pub func ==(&self, other: Self) -> bool {
         return self.size == other.size && self.alignment == other.alignment;
     }
 
@@ -111,7 +111,7 @@ extend Layout {
     /// @param other the layout to compare against
     /// @returns whether either the size or the alignment differs
     /// @see https://rux-lang.dev/docs/api/allocator/layout#not-equals
-    pub func !=(self: &Layout, other: Layout) -> bool {
+    pub func !=(&self, other: Self) -> bool {
         return !(self == other);
     }
 }
@@ -131,5 +131,5 @@ pub func NaturalAlignment(size: uint) -> uint {
     while alignment < word && alignment < size {
         alignment = alignment * 2;
     }
-    return alignment > size ? alignment / 2 : alignment;
+    return if alignment > size { alignment / 2 } else { alignment };
 }

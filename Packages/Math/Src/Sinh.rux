@@ -17,7 +17,7 @@ pub func Sinh(x: float64) -> float64 {
     if ax > overflow {
         if ax == 1.0 / 0.0 { return x; }
         let huge = 1.0e300;
-        return negative ? -huge * huge : huge * huge;
+        return if negative { -huge * huge } else { huge * huge };
     }
     var y = 0.0;
     if ax < 1.0 {
@@ -29,7 +29,7 @@ pub func Sinh(x: float64) -> float64 {
     } else {
         y = Exp(ax - Ln2);
     }
-    return negative ? -y : y;
+    return if negative { -y } else { y };
 }
 
 /// Computes the hyperbolic sine of `x` at `float32` precision.

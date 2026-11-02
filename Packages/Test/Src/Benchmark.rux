@@ -34,7 +34,7 @@ extend BenchmarkResult {
     /// The average time one iteration took, in nanoseconds.
     /// @returns the time per iteration, or zero for a run of no iterations
     /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-result-nanoseconds-per-iteration
-    pub func NanosecondsPerIteration(self: &BenchmarkResult) -> float64 {
+    pub func NanosecondsPerIteration(&self) -> float64 {
         if self.iterations == 0u64 { return 0.0; }
         let nanoseconds = self.elapsed.TotalNanoseconds() ?? 0i64;
         return nanoseconds as float64 / self.iterations as float64;
@@ -58,8 +58,8 @@ extend BenchmarkOptions {
     /// Options that measure every benchmark for at least 200 milliseconds and at most a billion iterations.
     /// @returns the options
     /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-options-new
-    pub func BenchmarkOptions() -> BenchmarkOptions {
-        return BenchmarkOptions { filter: "", filters: [], minimumTime: Duration::FromMilliseconds(200),
+    pub func BenchmarkOptions() -> Self {
+        return Self { filter: "", filters: [], minimumTime: Duration::FromMilliseconds(200),
                                   maximumIterations: 1000000000u64 };
     }
 }
@@ -88,7 +88,7 @@ pub func Consume<T>(value: *T) {
 /// @see https://rux-lang.dev/docs/api/test/benchmark#measure
 pub func Measure(run: func(uint64), options: BenchmarkOptions) -> BenchmarkResult {
     let target = options.minimumTime.TotalNanoseconds() ?? 0i64;
-    let limit = options.maximumIterations == 0u64 ? 1u64 : options.maximumIterations;
+    let limit = if options.maximumIterations == 0u64 { 1u64 } else { options.maximumIterations };
     var iterations: uint64 = 1;
     var result = BenchmarkResult { iterations: 0, elapsed: Duration::Zero() };
     var measuring = true;
@@ -96,7 +96,7 @@ pub func Measure(run: func(uint64), options: BenchmarkOptions) -> BenchmarkResul
         let before = Instant::Now();
         run(iterations);
         let elapsed = Instant::Now().Since(before) ?? Duration::Zero();
-        result = BenchmarkResult { iterations: iterations, elapsed: elapsed };
+        result = BenchmarkResult { iterations, elapsed };
         let spent = elapsed.TotalNanoseconds() ?? 0i64;
         if spent >= target || iterations >= limit {
             measuring = false;
@@ -105,9 +105,15 @@ pub func Measure(run: func(uint64), options: BenchmarkOptions) -> BenchmarkResul
             var next = iterations * 100u64;
             if spent > 0i64 {
                 let estimate = (target as float64 * 1.2 / spent as float64 * iterations as float64) as uint64;
-                next = estimate < iterations * 2u64 ? iterations * 2u64 : (estimate < next ? estimate : next);
+                next = if estimate < iterations * 2u64 {
+                    iterations * 2u64
+                } else if estimate < next {
+                    estimate
+                } else {
+                    next
+                };
             }
-            iterations = next < limit ? next : limit;
+            iterations = if next < limit { next } else { limit };
         }
     }
     return result;
@@ -156,8 +162,8 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
     let count = ArgumentCount();
     while index < count {
         let view = Argument(index) ?? break;
-        let text = view.ToText(SystemAllocator()) catch { else => return 2 };
-        texts.Push(<-text);
+        let text = view.ToText(SystemAllocator()) catch { _ => return 2 };
+        texts.Push(move text);
         index = index + 1;
     }
     var filters = Vector<char8[..]>(SystemAllocator());

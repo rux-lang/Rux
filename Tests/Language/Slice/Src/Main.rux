@@ -38,7 +38,7 @@ func IsFull(value: ..) -> bool {
 // Reading a generic field reconstructs the argument from its rendered instantiation name.
 struct Box<T> { value: T; }
 func RoundTrip<T>(value: T) -> T {
-    let boxed = Box<T> { value: value };
+    let boxed = Box<T> { value };
     return boxed.value;
 }
 

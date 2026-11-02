@@ -5,7 +5,7 @@
 
 /// A cursor that yields a sequence of items one at a time.
 /// The compiler drives iteration by shape rather than through this interface: a `for` loop accepts any type with a
-/// `func Next(self: &var Self) -> Item?`, which advances the cursor and reports either the next item or, with `none`,
+/// `func Next(&var self) -> Item?`, which advances the cursor and reports either the next item or, with `none`,
 /// that the sequence has ended. The item type is whatever that optional carries, and it differs per iterator, so the
 /// method is not written here; the generic `Cursor<T>` names it for bounds, which is how the adaptors take an iterator.
 /// What this interface adds is the name. `extend MyCursor : Iterator` records that a type means to be an iterator

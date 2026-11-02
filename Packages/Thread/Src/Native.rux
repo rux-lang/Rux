@@ -27,7 +27,7 @@ when #target.os {
         ALL_PROCESSOR_GROUPS, CloseHandle, CreateThread, GetActiveProcessorCount, GetCurrentThreadId, INFINITE,
         STACK_SIZE_PARAM_IS_A_RESERVATION, SwitchToThread, WaitForSingleObject
     },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // Starts `start(argument)` on a new thread with `stackSize` bytes of stack, or the system's default for zero, and

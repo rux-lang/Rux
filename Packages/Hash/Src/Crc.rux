@@ -56,7 +56,7 @@ func DivisionTable(polynomial: uint32) -> uint32[256] {
         var register = index as uint32;
         var step = 0;
         while step < 8 {
-            register = (register & 1) != 0 ? (register >> 1) ^ polynomial : register >> 1;
+            register = if (register & 1) != 0 { (register >> 1) ^ polynomial } else { register >> 1 };
             step++;
         }
         table[index] = register;
@@ -77,15 +77,15 @@ extend Crc32 {
     /// Constructs a checksum with nothing written into it yet.
     /// @returns a hasher with nothing written to it yet
     /// @see https://rux-lang.dev/docs/api/hash/crc32#new
-    pub func Crc32() -> Crc32 {
-        return Crc32 { register: Crc32Initial };
+    pub func Crc32() -> Self {
+        return Self { register: Crc32Initial };
     }
 
     /// Puts the checksum back to where `Crc32()` leaves one.
     /// `self` is borrowed mutably. Everything written so far is forgotten.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/hash/crc32#reset
-    pub func Reset(self: &var Crc32) {
+    pub func Reset(&var self) {
         self.register = Crc32Initial;
     }
 
@@ -95,7 +95,7 @@ extend Crc32 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the checksum of everything written so far
     /// @see https://rux-lang.dev/docs/api/hash/crc32#value
-    pub func Value(self: &Crc32) -> uint32 {
+    pub func Value(&self) -> uint32 {
         return self.register ^ Crc32Initial;
     }
 }
@@ -109,7 +109,7 @@ extend Crc32 : Hasher {
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
     /// @see https://rux-lang.dev/docs/api/hash/crc32#write
-    pub func Write(self: &var Crc32, bytes: *byte, length: uint) {
+    pub func Write(&var self, bytes: *byte, length: uint) {
         if length == 0 { return; }
         var index: uint = 0;
         while index < length {
@@ -127,7 +127,7 @@ extend Crc32 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/crc32#finish
-    pub func Finish(self: &var Crc32) -> uint64 {
+    pub func Finish(&var self) -> uint64 {
         return self.Value() as uint64;
     }
 }
@@ -147,15 +147,15 @@ extend Crc32c {
     /// Constructs a checksum with nothing written into it yet.
     /// @returns a hasher with nothing written to it yet
     /// @see https://rux-lang.dev/docs/api/hash/crc32c#new
-    pub func Crc32c() -> Crc32c {
-        return Crc32c { register: Crc32Initial };
+    pub func Crc32c() -> Self {
+        return Self { register: Crc32Initial };
     }
 
     /// Puts the checksum back to where `Crc32c()` leaves one.
     /// `self` is borrowed mutably. Everything written so far is forgotten.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/hash/crc32c#reset
-    pub func Reset(self: &var Crc32c) {
+    pub func Reset(&var self) {
         self.register = Crc32Initial;
     }
 
@@ -164,7 +164,7 @@ extend Crc32c {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the checksum of everything written so far
     /// @see https://rux-lang.dev/docs/api/hash/crc32c#value
-    pub func Value(self: &Crc32c) -> uint32 {
+    pub func Value(&self) -> uint32 {
         return self.register ^ Crc32Initial;
     }
 }
@@ -178,7 +178,7 @@ extend Crc32c : Hasher {
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
     /// @see https://rux-lang.dev/docs/api/hash/crc32c#write
-    pub func Write(self: &var Crc32c, bytes: *byte, length: uint) {
+    pub func Write(&var self, bytes: *byte, length: uint) {
         if length == 0 { return; }
         var index: uint = 0;
         while index < length {
@@ -195,7 +195,7 @@ extend Crc32c : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/crc32c#finish
-    pub func Finish(self: &var Crc32c) -> uint64 {
+    pub func Finish(&var self) -> uint64 {
         return self.Value() as uint64;
     }
 }

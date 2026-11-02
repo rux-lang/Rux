@@ -34,7 +34,7 @@ extend EntropyError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether asking again could succeed
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-error#is-transient
-    pub func IsTransient(self: EntropyError) -> bool {
-        return self == EntropyError::Interrupted;
+    pub func IsTransient(self) -> bool {
+        return self == Self::Interrupted;
     }
 }

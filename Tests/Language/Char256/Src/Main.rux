@@ -51,7 +51,7 @@ func Classify(value: char256) -> int {
         c256'λ' => 3,
         c256'\u{1F600}' => 4,
         c256'\u{10FFFF}' => 5,
-        else => 9
+        _ => 9
     };
 }
 
@@ -212,12 +212,12 @@ func Main() -> int {
     Assert(Fifth(face, face, face, face, letter) == letter, "and does not take a neighbour's value");
     Assert(Between(3i32, letter, 4i32) == 72, "a char256 between two int32 arguments keeps all three");
 
-    // Conditional selection: ternary, match and when.
+    // Conditional selection: if, match and when.
     var chooseFirst = false;
-    let selected = chooseFirst ? c256'A' : c256'😀';
+    let selected = if chooseFirst { c256'A' } else { c256'😀' };
     Assert(selected == face, "a char256 ternary keeps its selected code point");
     chooseFirst = true;
-    Assert((chooseFirst ? letter : face) == letter, "and the other arm");
+    Assert((if chooseFirst { letter } else { face }) == letter, "and the other arm");
     Assert(Classify(c256'\0') == 1, "a NUL subject does not match another character");
     Assert(Classify(letter) == 2 && Classify(c256'\u{41}') == 2, "an escape matches plain text");
     Assert(Classify(Narrow('λ')) == 3, "a widened subject matches");

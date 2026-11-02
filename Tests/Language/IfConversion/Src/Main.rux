@@ -68,7 +68,7 @@ func Main() -> int {
     var marked: uint = 0;
     for i in 0u..1000u {
         let isMarked = (i * 7 + i / 13) % 5 == 1;
-        Marks[i] = isMarked ? 1u8 : 0u8;
+        Marks[i] = if isMarked { 1u8 } else { 0u8 };
         if isMarked {
             marked += 1;
         } else {

@@ -154,7 +154,7 @@ pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Varian
     }
     let rest = text.length % 4;
     if rest == 1 { fail DecodeError::InvalidLength(text.length); }
-    return text.length / 4 * 3 + (rest == 0 ? 0 : rest - 1);
+    return text.length / 4 * 3 + (if rest == 0 { 0 } else { rest - 1 });
 }
 
 /// Reads Base64 text in `form` into `into`.
@@ -194,7 +194,7 @@ pub func Base64Decode(text: char8[..], into: var byte[..],
     let rest = digits % 4;
     if rest != 0 {
         let last = Base64Value(CharCode(text[digits - 1]), urlSafe);
-        let unused = rest == 2 ? 15 : 3;
+        let unused = if rest == 2 { 15 } else { 3 };
         if (last & unused) != 0 { fail DecodeError::NonCanonical(digits - 1); }
     }
     if into.length < needed { fail DecodeError::InsufficientCapacity(needed); }
@@ -243,7 +243,7 @@ pub struct Base64View {
 /// @returns a view that renders `bytes` as Base64
 /// @see https://rux-lang.dev/docs/api/encoding/base64#view-base64
 pub func ViewBase64(bytes: byte[..], form: Base64Variant = Base64Variant::Standard) -> Base64View {
-    return Base64View { bytes: bytes, form: form };
+    return Base64View { bytes, form };
 }
 
 extend Base64View : Display {
@@ -254,7 +254,7 @@ extend Base64View : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-view-write-display
-    pub func WriteDisplay(self: &Base64View, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         if spec.HasPrecision() { fail FormatError::UnsupportedRequest; }
         RejectStyle(spec)?;
         var before: uint = 0;
@@ -265,9 +265,9 @@ extend Base64View : Display {
         var block: char8[128];
         var index: uint = 0;
         while index < self.bytes.length {
-            let end = self.bytes.length - index > 96 ? index + 96 : self.bytes.length;
+            let end = if self.bytes.length - index > 96 { index + 96 } else { self.bytes.length };
             let written = Base64Encode(self.bytes[index..end], block[..], self.form) catch {
-                else => fail FormatError::InsufficientCapacity
+                _ => fail FormatError::InsufficientCapacity
             };
             WriteBytes(writer, block[..written])?;
             index = end;

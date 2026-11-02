@@ -15,13 +15,13 @@ struct CountingSink {
 }
 
 extend CountingSink : Writer {
-    pub func Write(self: &var CountingSink, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         // Safety: the one sink is built with `count` at the local `count` of `Main`, which outlives the logger.
         unsafe { self.count.writes = self.count.writes + 1; }
         return bytes.length;
     }
 
-    pub func Flush(self: &var CountingSink) -> ! IoError {}
+    pub func Flush(&var self) -> ! IoError {}
 }
 
 func Main() -> int {

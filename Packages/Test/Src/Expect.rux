@@ -24,7 +24,7 @@ pub func ExpectEqual<T: Display>(actual: T, expected: T) -> ! TestFailure {
     if actual == expected { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{}, but got {}", expected, actual) catch { else => {} };
+    WriteFormat(writer, "{}, but got {}", expected, actual) catch { _ => {} };
     failure.Grow(writer);
     fail failure;
 }
@@ -39,7 +39,7 @@ pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> ! TestFailure {
     if actual != unexpected { return; }
     var failure = TestFailure::Of("expected anything but ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{}", unexpected) catch { else => {} };
+    WriteFormat(writer, "{}", unexpected) catch { _ => {} };
     failure.Grow(writer);
     fail failure;
 }
@@ -51,11 +51,11 @@ pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> ! TestFailure {
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-near
 pub func ExpectNear(actual: float64, expected: float64, tolerance: float64) -> ! TestFailure {
-    let difference = actual > expected ? actual - expected : expected - actual;
+    let difference = if actual > expected { actual - expected } else { expected - actual };
     if difference <= tolerance { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{} within {}, but got {}", expected, tolerance, actual) catch { else => {} };
+    WriteFormat(writer, "{} within {}, but got {}", expected, tolerance, actual) catch { _ => {} };
     failure.Grow(writer);
     fail failure;
 }
@@ -64,7 +64,7 @@ pub func ExpectNear(actual: float64, expected: float64, tolerance: float64) -> !
 func AppendExcerpt(failure: &var TestFailure, text: char8[..], start: uint, count: uint) {
     failure.Append("\"");
     if start > 0u { failure.Append("..."); }
-    let end = start + count < text.length ? start + count : text.length;
+    let end = if start + count < text.length { start + count } else { text.length };
     var at = start;
     while at < end {
         let byte = text[at] as uint8;
@@ -91,9 +91,9 @@ pub func ExpectText(actual: char8[..], expected: char8[..]) -> ! TestFailure {
     if at == actual.length && at == expected.length { return; }
     var failure = TestFailure::Of("texts differ at byte ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { else => {} };
+    WriteFormat(writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { _ => {} };
     failure.Grow(writer);
-    let start = at > 24u ? at - 24u : 0u;
+    let start = if at > 24u { at - 24u } else { 0u };
     failure.Append("\n  expected ");
     AppendExcerpt(failure, expected, start, 48);
     failure.Append("\n  but got  ");

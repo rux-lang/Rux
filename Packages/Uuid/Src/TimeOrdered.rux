@@ -80,15 +80,15 @@ extend MonotonicUuid {
     /// A generator that has produced nothing yet.
     /// @returns the generator, which has produced nothing yet
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#new
-    pub func MonotonicUuid() -> MonotonicUuid {
-        return MonotonicUuid { previous: Uuid::Nil(), started: false };
+    pub func MonotonicUuid() -> Self {
+        return Self { previous: Uuid::Nil(), started: false };
     }
 
     /// The next identifier, strictly greater than the one before it.
     /// @returns the next value, which sorts after every value this generator has produced, or why entropy was
     ///   unavailable
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#next
-    pub func Next(self: &var MonotonicUuid) -> Uuid ! EntropyError {
+    pub func Next(&var self) -> Uuid ! EntropyError {
         let candidate = TimeOrdered()?;
         if !self.started {
             self.previous = candidate;

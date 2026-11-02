@@ -22,17 +22,21 @@ func NewLine() -> Line {
 }
 
 extend Line {
-    func Add(self: &var Line, text: char8[..]) {
+    func Add(&var self, text: char8[..]) {
         let start = self.used;
         for byte in text {
             self.units[self.used] = byte as uint8 as OsUnit;
             self.used = self.used + 1;
         }
-        self.views[self.count] = start == self.used ? OsStringView() : OsStringView::FromUnits(self.units[start..self.used]);
+        self.views[self.count] = if start == self.used {
+            OsStringView()
+        } else {
+            OsStringView::FromUnits(self.units[start..self.used])
+        };
         self.count = self.count + 1;
     }
 
-    func Arguments(self: &Line) -> OsStringView[..] {
+    func Arguments(&self) -> OsStringView[..] {
         return self.views[..self.count];
     }
 }
@@ -77,7 +81,7 @@ func Fails(spec: *CommandSpec, line: &Line, code: int) -> bool {
 }
 
 func Must(spec: *CommandSpec, line: &Line) -> Parsed {
-    return Parse(spec, line.Arguments()) catch { else => Panic("the arguments parse") };
+    return Parse(spec, line.Arguments()) catch { _ => Panic("the arguments parse") };
 }
 
 func Main() -> int {
@@ -110,7 +114,7 @@ func Main() -> int {
     let second = Must(@tool, rich);
     if second.Count("verbose") != 3 || !second.Has("dry-run") { return 3; }
     if !Is(second.Value("output"), "a.txt") || !Is(second.Positional("input"), "in") { return 4; }
-    let jobs = second.Integer("jobs") catch { else => return 5 };
+    let jobs = second.Integer("jobs") catch { _ => return 5 };
     if (jobs ?? 0) != 4 { return 6; }
     var files: uint = 0;
     for file in second.Positionals("files") {
@@ -188,7 +192,7 @@ func Main() -> int {
     var low = NewLine();
     low.Add("--jobs=-9223372036854775808");
     low.Add("in");
-    let lowest = Must(@tool, low).Integer("jobs") catch { else => return 24 };
+    let lowest = Must(@tool, low).Integer("jobs") catch { _ => return 24 };
     if (lowest ?? 0) != -9223372036854775807 - 1 { return 25; }
     var high = NewLine();
     high.Add("--jobs=9223372036854775808");

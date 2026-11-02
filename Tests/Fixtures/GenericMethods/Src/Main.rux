@@ -5,13 +5,13 @@ extend Factory {
     pub func Width<T>() -> uint { return sizeof(T); }
     pub func Echo<T>(value: T) -> T { return value; }
     pub func Echo<T>(value: T, ignored: bool) -> T { return value; }
-    pub func Read<T>(self: &Factory, value: T) -> T { return value; }
-    pub func Score<T: Scored>(self: &Factory, value: &T) -> int { return self.bias + value.Score(); }
-    pub func Forward<T>(value: T) -> T { return Factory::Echo<T>(value); }
+    pub func Read<T>(&self, value: T) -> T { return value; }
+    pub func Score<T: Scored>(&self, value: &T) -> int { return self.bias + value.Score(); }
+    pub func Forward<T>(value: T) -> T { return Self::Echo<T>(value); }
 }
 
 pub struct Holder<T> { pub value: T; }
 extend Holder<T> {
-    pub func Pair<U>(self: &Holder<T>, other: U) -> (T, U) { return (self.value, other); }
+    pub func Pair<U>(&self, other: U) -> (T, U) { return (self.value, other); }
     pub func OtherWidth<U>() -> uint { return sizeof(T) + sizeof(U); }
 }

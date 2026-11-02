@@ -26,8 +26,8 @@ extend SemanticVersion {
     /// @param patch the patch version
     /// @returns the version
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#new
-    pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
-        return SemanticVersion { major: major, minor: minor, patch: patch };
+    pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> Self {
+        return Self { major, minor, patch };
     }
 
     /// Compares precedence with `other`.
@@ -38,7 +38,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns how this value orders against `other`
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#compare
-    pub func Compare(self: &SemanticVersion, other: SemanticVersion) -> int {
+    pub func Compare(&self, other: Self) -> int {
         if self.major < other.major { return -1; }
         if self.major > other.major { return 1; }
         if self.minor < other.minor { return -1; }
@@ -53,7 +53,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether the two versions are the same
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#is-equal-to
-    pub func IsEqualTo(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsEqualTo(&self, other: Self) -> bool {
         return self.Compare(other) == 0;
     }
 
@@ -62,7 +62,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this version is older
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#is-less-than
-    pub func IsLessThan(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsLessThan(&self, other: Self) -> bool {
         return self.Compare(other) < 0;
     }
 
@@ -71,7 +71,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this version is the same or older
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#is-at-most
-    pub func IsAtMost(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsAtMost(&self, other: Self) -> bool {
         return self.Compare(other) <= 0;
     }
 
@@ -80,7 +80,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this version is newer
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#is-greater-than
-    pub func IsGreaterThan(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsGreaterThan(&self, other: Self) -> bool {
         return self.Compare(other) > 0;
     }
 
@@ -89,7 +89,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this version is the same or newer
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#is-at-least
-    pub func IsAtLeast(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsAtLeast(&self, other: Self) -> bool {
         return self.Compare(other) >= 0;
     }
 
@@ -98,7 +98,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether the two are equal
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#equals
-    pub func ==(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func ==(&self, other: Self) -> bool {
         return self.Compare(other) == 0;
     }
 
@@ -107,7 +107,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether the two differ
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#not-equals
-    pub func !=(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func !=(&self, other: Self) -> bool {
         return self.Compare(other) != 0;
     }
 
@@ -116,7 +116,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this one is less
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#less
-    pub func <(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func <(&self, other: Self) -> bool {
         return self.Compare(other) < 0;
     }
 
@@ -125,7 +125,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this one is less or equal
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#less-or-equal
-    pub func <=(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func <=(&self, other: Self) -> bool {
         return self.Compare(other) <= 0;
     }
 
@@ -134,7 +134,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this one is greater
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#greater
-    pub func >(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func >(&self, other: Self) -> bool {
         return self.Compare(other) > 0;
     }
 
@@ -143,7 +143,7 @@ extend SemanticVersion {
     /// @param other the value to compare against
     /// @returns whether this one is greater or equal
     /// @see https://rux-lang.dev/docs/api/core/semantic-version#greater-or-equal
-    pub func >=(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func >=(&self, other: Self) -> bool {
         return self.Compare(other) >= 0;
     }
 }
@@ -165,7 +165,7 @@ extend Compiler {
     /// @param feature the feature's name
     /// @returns whether this compiler reports that feature
     /// @see https://rux-lang.dev/docs/api/core/compiler#has-feature
-    pub intrinsic func HasFeature(self: &Compiler, feature: char8[..]) -> bool;
+    pub intrinsic func HasFeature(&self, feature: char8[..]) -> bool;
 }
 
 /// The compiler performing the build, as a compile-time value.

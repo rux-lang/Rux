@@ -18,9 +18,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test stores the address of a `Counter` local that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -33,7 +31,7 @@ struct Upto {
 }
 
 extend Upto {
-    func Next(self: &var Upto) -> int32? {
+    func Next(&var self) -> int32? {
         if self.next >= self.limit {
             return none;
         }
@@ -43,7 +41,7 @@ extend Upto {
 }
 
 func CountTo(limit: int32) -> Upto {
-    return Upto { next: 0i32, limit: limit };
+    return Upto { next: 0i32, limit };
 }
 
 // Reports items that are themselves optional: an absent item is still an item.
@@ -52,7 +50,7 @@ struct Sparse {
 }
 
 extend Sparse {
-    func Next(self: &var Sparse) -> int32?? {
+    func Next(&var self) -> int32?? {
         self.index = self.index + 1i32;
         if self.index > 4i32 {
             return none;
@@ -70,7 +68,7 @@ struct Checked {
 }
 
 extend Checked {
-    func Next(self: &var Checked) -> (int32 ! Missing)? {
+    func Next(&var self) -> (int32 ! Missing)? {
         self.index = self.index + 1i32;
         if self.index > 3i32 {
             return none;
@@ -88,7 +86,7 @@ struct Ticks {
 }
 
 extend Ticks {
-    func Next(self: &var Ticks) -> ()? {
+    func Next(&var self) -> ()? {
         if self.remaining == 0i32 {
             return none;
         }
@@ -104,7 +102,7 @@ struct Range {
 }
 
 extend Range {
-    func Iterate(self: &Range) -> Upto {
+    func Iterate(&self) -> Upto {
         return Upto { next: self.start, limit: self.end };
     }
 }
@@ -116,7 +114,7 @@ struct Tracker {
 }
 
 extend Tracker {
-    func Next(self: &var Tracker) -> Tracked? {
+    func Next(&var self) -> Tracked? {
         if self.remaining == 0i32 {
             return none;
         }
@@ -136,7 +134,7 @@ func Main() -> int {
     var absent = 0i32;
     for item in (Sparse { index: 0i32 }) {
         match item {
-            value? => {
+            .Some(value) => {
                 present = present + value;
             },
             none => {

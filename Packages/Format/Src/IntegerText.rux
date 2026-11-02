@@ -50,7 +50,13 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
     }
     if spec.IsAlternate() && spec.Base() != FormatBase::Decimal {
         WriteAscii(writer, c8'0')?;
-        let mark = spec.Base() == FormatBase::Binary ? c8'b' : (spec.Base() == FormatBase::Octal ? c8'o' : c8'x');
+        let mark = if spec.Base() == FormatBase::Binary {
+            c8'b'
+        } else if spec.Base() == FormatBase::Octal {
+            c8'o'
+        } else {
+            c8'x'
+        };
         WriteAscii(writer, mark)?;
     }
     var padded: uint = 0;
@@ -90,7 +96,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
         radix = 16;
     }
-    let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
+    let letter = if spec.Base() == FormatBase::UpperHex { 0x37u64 } else { 0x57u64 };
     var rest = magnitude;
     if rest == 0 {
         digits[0] = c8'0';
@@ -98,7 +104,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
     }
     while rest > 0 {
         let digit = rest % radix;
-        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
+        digits[count] = (if digit < 10 { digit + 0x30 } else { digit + letter }) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -118,6 +124,6 @@ pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32)
     var encoded: char8[4];
     var written: uint = 0;
     let sink = encoded[..];
-    written = Encode(scalar, sink) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
+    written = Encode(scalar, sink) catch { _ => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
     return WriteAligned(writer, spec, encoded[..written], false);
 }

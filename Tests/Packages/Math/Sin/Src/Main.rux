@@ -19,7 +19,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 // Every expected value below is what the C library returns for the same double.

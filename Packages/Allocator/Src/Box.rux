@@ -16,7 +16,7 @@
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 
 /// One heap-allocated value of `T`, owned by exactly one holder.
-/// Move-only: its copy operation is prohibited and `~Box` releases its allocation. Transfer one with `<-`; the
+/// Move-only: its copy operation is prohibited and `~Box` releases its allocation. Transfer one with `move`; the
 /// source is then moved-out and reading it is rejected while compiling rather than at run time.
 /// The storage is released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or
 /// overwriting assignment the value's life ends at.
@@ -30,9 +30,6 @@ pub struct Box<T> {
 }
 
 extend Box<T> {
-    /// Copying a box would give two owners of one allocation.
-    func =(self: &var Box<T>, other: &Box<T>);
-
     /// Puts `value` on the heap and hands back the box that owns it.
     /// `allocator` is borrowed for the call and kept in the box. `value` is consumed and the box owns it.
     /// Terminates the program when the allocator refuses; `TryCreate` reports the refusal instead.
@@ -41,7 +38,7 @@ extend Box<T> {
     /// @param value the value to move into it
     /// @returns the box
     /// @see https://rux-lang.dev/docs/api/allocator/box#create
-    pub func Create(allocator: Allocator, value: T) -> Box<T> {
+    pub func Create(allocator: Allocator, value: T) -> Self {
         return try Box::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
     }
 
@@ -53,15 +50,15 @@ extend Box<T> {
     /// @param value the value to move into it
     /// @returns the box, or throws why the allocator refused
     /// @see https://rux-lang.dev/docs/api/allocator/box#try-create
-    pub func TryCreate(allocator: Allocator, value: T) -> Box<T> throws AllocError {
+    pub func TryCreate(allocator: Allocator, value: T) -> Self throws AllocError {
         let layout = Layout::ForValue<T>();
         let block = try allocator.Allocate(layout);
         // Safety: `block` was just allocated with `Layout::ForValue<T>()`, so it is aligned and large enough for a
         // `T`, and nothing else holds it or has written to it.
         let typed = unsafe { block as *var T };
         // Safety: as above, `typed` addresses fresh storage for one `T` with nothing in it to overwrite.
-        unsafe { *typed <- value; }
-        return Box<T> { pointer: typed, allocator: allocator };
+        unsafe { *typed = move value; }
+        return Self { pointer: typed, allocator };
     }
 
     /// The value this box holds, borrowed where it sits, or `none` for a box whose value has been taken out.
@@ -69,7 +66,7 @@ extend Box<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns a reference to the held value, or `none` when the box is empty
     /// @see https://rux-lang.dev/docs/api/allocator/box#get
-    pub func Get(self: &Box<T>) -> &T? {
+    pub func Get(&self) -> &T? {
         if self.pointer == null { return none; }
         // Safety: the box invariant: a non-null `pointer`, checked above, addresses the value this box holds.
         unsafe { return *self.pointer; }
@@ -81,7 +78,7 @@ extend Box<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns a writable reference to the held value, or `none` when the box is empty
     /// @see https://rux-lang.dev/docs/api/allocator/box#get-mutable
-    pub func GetMutable(self: &var Box<T>) -> &var T? {
+    pub func GetMutable(&var self) -> &var T? {
         if self.pointer == null { return none; }
         // Safety: the box invariant: a non-null `pointer`, checked above, addresses the value this box holds.
         unsafe { return *self.pointer; }
@@ -93,7 +90,7 @@ extend Box<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether the box holds nothing
     /// @see https://rux-lang.dev/docs/api/allocator/box#is-empty
-    pub func IsEmpty(self: &Box<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.pointer == null;
     }
 
@@ -104,30 +101,30 @@ extend Box<T> {
     /// Runs in whatever time the allocator takes.
     /// @returns the held value, or `none` when the box is empty
     /// @see https://rux-lang.dev/docs/api/allocator/box#take
-    pub func Take(self: &var Box<T>) -> T? {
+    pub func Take(&var self) -> T? {
         if self.pointer == null { return none; }
         let held = self.pointer;
         // Safety: `held` is this box's live value, which is cleared below so it is moved out only once.
-        let value <- unsafe { <-*held };
+        let value = unsafe { move *held };
         let layout = Layout::ForValue<T>();
         // The storage came from this allocator with this layout, so a refusal would be the allocator's own bug; the
         // value is already out, and nothing the caller holds depends on the release.
-        self.allocator.Deallocate(held as *var opaque, layout) catch { else => {} };
+        self.allocator.Deallocate(held as *var opaque, layout) catch { _ => {} };
         self.pointer = null;
-        return .Some(<-value);
+        return .Some(move value);
     }
 
     /// Destroys the value and releases its storage, if the box still holds any.
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
     /// away is not destroyed where it used to live, so the storage is released exactly once.
     /// @see https://rux-lang.dev/docs/api/allocator/box#destructor
-    func ~Box(self: &var Box<T>) {
+    func ~Box(&var self) {
         if self.pointer != null {
             let held = self.pointer;
             self.pointer = null;
             // Safety: `held` is this box's live value, and the box was cleared above so nothing reaches it again.
             unsafe { DestroyBoxValue<T>(held); }
-            self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { else => {} };
+            self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { _ => {} };
         }
     }
 }
@@ -136,5 +133,5 @@ extend Box<T> {
 // load is the allocator boundary: the compiler's explicit raw-storage move syntax lands in the ownership cutover.
 // Safety: `pointer` must address a live `T` that nothing reads or destroys afterwards.
 unsafe func DestroyBoxValue<T>(pointer: *var T) {
-    let taken <- pointer[0];
+    let taken = move pointer[0];
 }

@@ -50,7 +50,7 @@ pub func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
 pub func AlignUp(value: uint, alignment: uint) -> uint {
     if alignment <= 1 { return value; }
     let remainder = value % alignment;
-    return remainder == 0 ? value : value +% (alignment - remainder);
+    return if remainder == 0 { value } else { value +% (alignment - remainder) };
 }
 
 /// The next multiple of `alignment` at or above `value`, reporting whether it was representable.

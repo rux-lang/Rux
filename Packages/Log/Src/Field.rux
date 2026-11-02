@@ -30,8 +30,8 @@ extend Field {
     /// @param value the text, borrowed until the record is written
     /// @returns the field
     /// @see https://rux-lang.dev/docs/api/log/field#text
-    pub func Text(key: char8[..], value: char8[..]) -> Field {
-        return Field { key: key, value: Value::Text(value) };
+    pub func Text(key: char8[..], value: char8[..]) -> Self {
+        return Self { key, value: Value::Text(value) };
     }
 
     /// A field of a signed integer.
@@ -39,8 +39,8 @@ extend Field {
     /// @param value the number
     /// @returns the field
     /// @see https://rux-lang.dev/docs/api/log/field#integer
-    pub func Integer(key: char8[..], value: int64) -> Field {
-        return Field { key: key, value: Value::Integer(value) };
+    pub func Integer(key: char8[..], value: int64) -> Self {
+        return Self { key, value: Value::Integer(value) };
     }
 
     /// A field of an unsigned integer.
@@ -48,8 +48,8 @@ extend Field {
     /// @param value the number
     /// @returns the field
     /// @see https://rux-lang.dev/docs/api/log/field#unsigned
-    pub func Unsigned(key: char8[..], value: uint64) -> Field {
-        return Field { key: key, value: Value::Unsigned(value) };
+    pub func Unsigned(key: char8[..], value: uint64) -> Self {
+        return Self { key, value: Value::Unsigned(value) };
     }
 
     /// A field of a floating-point number.
@@ -57,8 +57,8 @@ extend Field {
     /// @param value the number
     /// @returns the field
     /// @see https://rux-lang.dev/docs/api/log/field#float
-    pub func Float(key: char8[..], value: float64) -> Field {
-        return Field { key: key, value: Value::Float(value) };
+    pub func Float(key: char8[..], value: float64) -> Self {
+        return Self { key, value: Value::Float(value) };
     }
 
     /// A field of a truth value.
@@ -66,8 +66,8 @@ extend Field {
     /// @param value the value
     /// @returns the field
     /// @see https://rux-lang.dev/docs/api/log/field#boolean
-    pub func Boolean(key: char8[..], value: bool) -> Field {
-        return Field { key: key, value: Value::Boolean(value) };
+    pub func Boolean(key: char8[..], value: bool) -> Self {
+        return Self { key, value: Value::Boolean(value) };
     }
 }
 

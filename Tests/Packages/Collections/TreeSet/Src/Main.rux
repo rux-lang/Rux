@@ -171,7 +171,7 @@ func Main() -> int {
 
     // The consuming walk hands out ownership one element at a time, in the same order, and a walk stopped
     // part-way leaves the rest to the iterator's own destruction.
-    var consuming = (<-joined).IntoIterator();
+    var consuming = (move joined).IntoIterator();
     var consumed: uint = 0;
     var last: int32 = -1;
     var draining = true;
@@ -190,7 +190,7 @@ func Main() -> int {
     Assert(consumed == 20, "and hands out every element the set held");
 
     var partial = odds.Clone();
-    var walkedPartly = (<-partial).IntoIterator();
+    var walkedPartly = (move partial).IntoIterator();
     var takenSoFar: int32 = 0;
     while takenSoFar < 4 {
         match walkedPartly.Next() {

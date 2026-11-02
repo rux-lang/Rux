@@ -44,16 +44,16 @@ func Main() -> int {
 }
 
 func Expect(allocator: Allocator, outcome: String ! FormatError, expected: char8[..], message: char8[..]) {
-    let rendered = Rendered(allocator, <-outcome);
+    let rendered = Rendered(allocator, move outcome);
     Assert(rendered.View().Equals(StringView::FromValidated(expected)), message);
 }
 
 func Expect(allocator: Allocator, outcome: String ! FormatError, expected: String, message: char8[..]) {
-    let rendered = Rendered(allocator, <-outcome);
+    let rendered = Rendered(allocator, move outcome);
     Assert(rendered.View().Equals(expected.View()), message);
 }
 
 // The rendered text, or an empty string when rendering failed, which no expected text matches.
 func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
-    return (<-outcome) catch { else => String(allocator) };
+    return (move outcome) catch { _ => String(allocator) };
 }

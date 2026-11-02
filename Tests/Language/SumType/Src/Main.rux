@@ -18,9 +18,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test stores the address of a `Counter` local that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -47,13 +45,13 @@ struct IoError {
 }
 
 func Make(counter: *var Counter, id: int32) -> Tracked {
-    return Tracked { counter: counter, id: id };
+    return Tracked { counter, id };
 }
 
 // A typed pattern selects a member and binds it at the member's type.
 func Describe(value: Options | Defaults | int32) -> int32 {
     return match value {
-        options: Options => options.verbose ? 1i32 : 2i32,
+        options: Options => if options.verbose { 1i32 } else { 2i32 },
         defaults: Defaults => 3i32,
         number: int32 => number
     };
@@ -98,7 +96,7 @@ func Shift(point: &var (Point | int32)) {
         p: Point => {
             p.x = p.x + 10i32;
         },
-        else => {}
+        _ => {}
     }
 }
 
@@ -106,7 +104,7 @@ func Shift(point: &var (Point | int32)) {
 func Pick<T, U>(value: T | U) -> int32 {
     return match value {
         x: T => 1i32,
-        else => 2i32
+        _ => 2i32
     };
 }
 
@@ -131,12 +129,12 @@ func HoldInactive(counter: *var Counter) {
 
 func HoldWidened(counter: *var Counter) {
     let narrow: Tracked | int32 = Make(counter, 1i32);
-    let wide: Tracked | int32 | bool = <-narrow;
+    let wide: Tracked | int32 | bool = move narrow;
 }
 
 func TakeMember(counter: *var Counter) -> int32 {
     let held: Tracked | int32 = Make(counter, 5i32);
-    return match <-held {
+    return match move held {
         tracked: Tracked => tracked.id,
         number: int32 => number
     };
@@ -144,7 +142,7 @@ func TakeMember(counter: *var Counter) -> int32 {
 
 func DiscardMember(counter: *var Counter) {
     let held: Tracked | int32 | bool = Make(counter, 1i32);
-    match <-held {
+    match move held {
         _: Tracked | bool => {},
         number: int32 => {}
     }
@@ -154,7 +152,7 @@ func Keep(value: Tracked | int32) {}
 
 func Pass(counter: *var Counter) {
     let held: Tracked | int32 = Make(counter, 1i32);
-    Keep(<-held);
+    Keep(move held);
 }
 
 func Replace(counter: *var Counter) {
@@ -229,10 +227,10 @@ func Main() -> int {
 
     // An annotation gives its type to every arm of a match, so each arm is injected into the sum.
     let n: int32 = 3;
-    let injected: int32 | bool = match n { 0 => false, else => n };
+    let injected: int32 | bool = match n { 0 => false, _ => n };
     Assert(injected is int32, "the integer arm becomes the integer member");
     let zero: int32 = 0;
-    let flagged: int32 | bool = match zero { 0 => false, else => zero };
+    let flagged: int32 | bool = match zero { 0 => false, _ => zero };
     Assert(flagged is bool, "the bool arm becomes the bool member");
     return 0;
 }

@@ -135,7 +135,7 @@ pub struct HexView {
 /// @returns a view that renders `bytes` as hexadecimal
 /// @see https://rux-lang.dev/docs/api/encoding/hex#view-hex
 pub func ViewHex(bytes: byte[..], letterCase: HexCase = HexCase::Lower) -> HexView {
-    return HexView { bytes: bytes, letterCase: letterCase };
+    return HexView { bytes, letterCase };
 }
 
 extend HexView : Display {
@@ -147,7 +147,7 @@ extend HexView : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-view-write-display
-    pub func WriteDisplay(self: &HexView, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         if spec.HasPrecision() { fail FormatError::UnsupportedRequest; }
         var upper = self.letterCase == HexCase::Upper;
         if spec.HasStyle() {

@@ -35,7 +35,7 @@ extend ParseError : ParseFailure {
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/format/parse-error#offset
-    pub func Offset(self: &ParseError) -> uint {
+    pub func Offset(&self) -> uint {
         return match self {
             .Empty => 0u,
             .InvalidCharacter(at) => at,
@@ -206,7 +206,7 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
     ScanDecimal(str, @reading)?;
     if reading.special == 1 { return 0.0 / 0.0; }
     if reading.special == 2 {
-        return reading.negative ? -1.0 / 0.0 : 1.0 / 0.0;
+        return if reading.negative { -1.0 / 0.0 } else { 1.0 / 0.0 };
     }
 
     // Anything clearly past the format is answered without building the numbers that would say so exactly: the
@@ -216,7 +216,7 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
         let magnitude = (reading.significant as int) + reading.exponent;
         if magnitude > 310 { fail ParseError::Overflow(str.length); }
         if magnitude < -340 {
-            return reading.negative ? -0.0 : 0.0;
+            return if reading.negative { -0.0 } else { 0.0 };
         }
     }
 
@@ -260,14 +260,14 @@ pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
     ScanDecimal(str, @reading)?;
     if reading.special == 1 { return 0.0f32 / 0.0f32; }
     if reading.special == 2 {
-        return reading.negative ? -1.0f32 / 0.0f32 : 1.0f32 / 0.0f32;
+        return if reading.negative { -1.0f32 / 0.0f32 } else { 1.0f32 / 0.0f32 };
     }
 
     if !reading.digits.IsZero() {
         let magnitude = (reading.significant as int) + reading.exponent;
         if magnitude > 41 { fail ParseError::Overflow(str.length); }
         if magnitude < -50 {
-            return reading.negative ? -0.0f32 : 0.0f32;
+            return if reading.negative { -0.0f32 } else { 0.0f32 };
         }
     }
 

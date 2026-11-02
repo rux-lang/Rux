@@ -84,14 +84,14 @@ func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
     let pio4 = 7.85398163397448278999e-01;
     let pio4Lo = 3.06161699786838301793e-17;
     let negative = x < 0.0;
-    let ax = negative ? -x : x;
+    let ax = if negative { -x } else { x };
     // The polynomial is only fitted on [0, 0.6743]. Past that the argument is folded to Pi/4 - |x|, a subtraction that
     // is exact there, and the tangent is rebuilt from the fold at the end.
     let folded = ax >= 0.6743354797363281;
     var a = x;
     var b = y;
     if folded {
-        let ay = negative ? -y : y;
+        let ay = if negative { -y } else { y };
         a = (pio4 - ax) + (pio4Lo - ay);
         b = 0.0;
     }
@@ -109,9 +109,9 @@ func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
     if folded {
         // With t = tan(Pi/4 - |x|), tan(x) = (1 - t) / (1 + t), rearranged to 1 - 2*(t - t^2/(1 + t)) so that the
         // leading 1 stays exact. The same rearrangement with v = -1 yields -1/tan(x).
-        let v = reciprocal ? -1.0 : 1.0;
+        let v = if reciprocal { -1.0 } else { 1.0 };
         let result = v - 2.0 * (a - (sum * sum / (sum + v) - r));
-        return negative ? -result : result;
+        return if negative { -result } else { result };
     }
     if reciprocal { return NegRecip(a, r, sum); }
     return sum;

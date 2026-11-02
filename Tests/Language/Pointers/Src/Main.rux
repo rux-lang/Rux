@@ -13,7 +13,7 @@ func Main() -> int {
     // `null` initializes the pointer inside an optional or a sum: the optional is present, holding a null pointer.
     let present: (*int)? = null;
     let isPresentNull = match present {
-        p? => p == null,
+        .Some(p) => p == null,
         none => false
     };
     Assert(isPresentNull, "null in an optional pointer is a present null pointer");

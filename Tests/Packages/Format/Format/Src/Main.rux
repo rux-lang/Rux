@@ -30,7 +30,7 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(self: &CountingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
         let block = self.inner.Allocate(layout)?;
         // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
         unsafe {
@@ -40,7 +40,7 @@ extend CountingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(self: &CountingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
         self.inner.Deallocate(block, layout) catch {
             error => {
                 // Safety: `counts` points at the test's local `AllocationCounts`, which outlives this allocator.
@@ -55,7 +55,7 @@ extend CountingAllocator : Allocator {
         }
     }
 
-    func Reallocate(self: &CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         return self.inner.Reallocate(block, oldLayout, newLayout);
     }
@@ -68,7 +68,7 @@ struct Point {
 }
 
 extend Point : Display {
-    func WriteDisplay(self: &Point, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteAscii(writer, c8'(')?;
         let first: Display = self.x;
         first.WriteDisplay(writer, FormatSpec::Plain())?;
@@ -85,7 +85,7 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func WriteDisplay(self: &Filler, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         var remaining = self.count;
         while remaining > 0 {
             WriteBytes(writer, "0123456789abcdef")?;
@@ -99,7 +99,7 @@ extend Filler : Display {
 // check cannot pass by accident on a failed render.
 func Matches(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.View().Equals(wanted),
         .Failure(_) => false
     };
@@ -107,7 +107,7 @@ func Matches(outcome: String ! FormatError, expected: char8[..]) -> bool {
 
 // Consumes the outcome and reports the rendered length, or a length no check expects when it failed.
 func RenderedLength(outcome: String ! FormatError) -> uint {
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.Length(),
         .Failure(_) => 0
     };
@@ -116,16 +116,16 @@ func RenderedLength(outcome: String ! FormatError) -> uint {
 // Consumes the outcome and reports whether it failed with `InvalidSpecification` at exactly `at`. Both halves
 // matter: the reason says what kind of mistake it was, and the offset says which character to point at.
 func InvalidAt(outcome: String ! FormatError, at: uint) -> bool {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .InvalidSpecification(offset) => offset == at,
-            else => false
+            _ => false
         }
     };
 }
 
-// A pattern the compiler cannot see as a literal. A literal passed for a `#Format()` parameter has its placeholders
+// A pattern the compiler cannot see as a literal. A literal passed for a `#Format` parameter has its placeholders
 // counted while compiling, so a mismatch is a compile error; the run-time failure is reached through a pattern known
 // only when the program runs, which is what this stands for.
 func Pattern(text: char8[..]) -> char8[..] {
@@ -134,11 +134,11 @@ func Pattern(text: char8[..]) -> char8[..] {
 
 // Consumes the outcome and reports whether it failed with `ArgumentCountMismatch(expected, supplied)`.
 func MismatchOf(outcome: String ! FormatError, expected: uint, supplied: uint) -> bool {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .ArgumentCountMismatch(wanted, given) => wanted == expected && given == supplied,
-            else => false
+            _ => false
         }
     };
 }
@@ -149,7 +149,7 @@ struct RefusingValue {
 }
 
 extend RefusingValue : Display {
-    func WriteDisplay(self: &RefusingValue, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         // Safety: `calls` points at the test's local counter, which outlives every render of this value.
         unsafe { *self.calls += 1; }
         WriteBytes(writer, "partial")?;
@@ -158,11 +158,11 @@ extend RefusingValue : Display {
 }
 
 func InvalidUtf8(outcome: String ! FormatError) -> bool {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => false,
         .Failure(reason) => match reason {
-            .TextFailure(kind) => match kind { .InvalidUtf8 => true, else => false },
-            else => false
+            .TextFailure(kind) => match kind { .InvalidUtf8 => true, _ => false },
+            _ => false
         }
     };
 }
@@ -262,9 +262,9 @@ func Main() -> int {
 
     // A style the value refuses is a different failure from one the parser refuses: the first parses and is turned
     // down by the value, and it is reported as unsupported rather than as a malformed pattern.
-    let refusedStyle = match <-Render(allocator, "{:q}", 1) {
+    let refusedStyle = match Render(allocator, "{:q}", 1) {
         .Success(_) => false,
-        .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
+        .Failure(reason) => match reason { .UnsupportedRequest => true, _ => false }
     };
     if !refusedStyle { return 63; }
 
@@ -290,7 +290,7 @@ func Main() -> int {
     let overflowed = WriteFormat(sink, "12345{}<end>", Filler { count: 1 });
     let capacity = match overflowed {
         .Success(_) => false,
-        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
     };
     if !capacity { return 90; }
     // The literal before the placeholder went in; the sixteen bytes the value wanted did not fit and so landed not

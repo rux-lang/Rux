@@ -54,7 +54,7 @@ struct Palette {
 }
 
 extend Palette {
-    pub func Add(self: &var Palette, color: Color) {
+    pub func Add(&var self, color: Color) {
         self.total += Weight(color);
     }
 }

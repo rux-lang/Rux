@@ -1,7 +1,7 @@
 import Core::Assert;
 
 interface Writer {
-    func Put(self: &var Self, value: uint) -> uint;
+    func Put(&var self, value: uint) -> uint;
 }
 
 struct Buffer {
@@ -9,7 +9,7 @@ struct Buffer {
 }
 
 extend Buffer : Writer {
-    func Put(self: &var Buffer, value: uint) -> uint {
+    func Put(&var self, value: uint) -> uint {
         // Safety: every `Buffer` in this test holds `@total`, a local that outlives it.
         return unsafe {
             *self.total += value;
@@ -24,7 +24,7 @@ interface Reader {
 
 extend Buffer : Reader {
     // Safety: every `Buffer` in this test holds `@total`, a local that outlives it.
-    func Get(self: &Buffer) -> uint { return unsafe { *self.total }; }
+    func Get(&self) -> uint { return unsafe { *self.total }; }
 }
 
 struct Triple {
@@ -47,26 +47,26 @@ struct Frame {
 }
 
 extend Frame : Render {
-    func Write(self: &Frame, writer: &var Writer, marker: uint) -> uint {
+    func Write(&self, writer: &var Writer, marker: uint) -> uint {
         return writer.Put(self.value) + marker;
     }
 
-    func Read(self: &Frame, reader: &Reader, marker: uint) -> uint {
+    func Read(&self, reader: &Reader, marker: uint) -> uint {
         return reader.Get() + self.value + marker;
     }
 
-    func Mixed(self: &Frame, first: uint, writer: &var Writer, value: Triple, reader: &Reader,
+    func Mixed(&self, first: uint, writer: &var Writer, value: Triple, reader: &Reader,
                second: &var Writer, last: uint) -> uint {
         let left = writer.Put(first + value.first);
         let right = second.Put(value.second + last);
         return left + right + reader.Get() + value.third + self.value;
     }
 
-    func Defaulted(self: &Frame, writer: &var Writer, marker: uint = 7u) -> uint {
+    func Defaulted(&self, writer: &var Writer, marker: uint = 7u) -> uint {
         return writer.Put(self.value) + marker;
     }
 
-    func Sum(self: &Frame, seed: uint, readers: Reader...) -> uint {
+    func Sum(&self, seed: uint, readers: Reader...) -> uint {
         var total = self.value + seed;
         var index = 0u;
         while index < readers.length {
@@ -111,7 +111,7 @@ func InterfaceArguments(frame: Render) {
 }
 
 func Take(value: Reader) -> uint { return value.Get(); }
-func Take(value: bool) -> uint { return value ? 1u : 0u; }
+func Take(value: bool) -> uint { return if value { 1u } else { 0u }; }
 func Borrow(value: &Reader) -> uint { return value.Get(); }
 func TakeMany(seed: uint, values: Reader...) -> uint {
     var total = seed;
@@ -131,7 +131,7 @@ func BoundNested<T: Reader>(value: T) -> uint { return Bound<T>(value); }
 // An explicit primitive conformance is available to interface bounds as well as direct coercion.
 extend uint64 : Reader {
     // Safety: a method call passes the address of the live `uint64` receiver as `self`.
-    func Get(self: *uint64) -> uint { return unsafe { *self } as uint; }
+    func Get(*self) -> uint { return unsafe { *self } as uint; }
 }
 
 func GenericArguments() {

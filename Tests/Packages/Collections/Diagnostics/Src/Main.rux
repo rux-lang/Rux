@@ -31,9 +31,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -42,7 +40,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "T(")?;
         let tag: Debug = self.tag;
         tag.WriteDebug(writer, spec)?;
@@ -86,7 +84,7 @@ func Occurrences(text: char8[..], needle: char8[..]) -> uint {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -292,7 +290,7 @@ func Main() -> int {
     let refused = WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain);
     let overflowed = match refused {
         .Success(_) => false,
-        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
     };
     Assert(overflowed, "an ordered map reports a destination without room");
 
@@ -302,7 +300,7 @@ func Main() -> int {
     let alsoRefused = WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain);
     let alsoOverflowed = match alsoRefused {
         .Success(_) => false,
-        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
     };
     Assert(alsoOverflowed, "and so does a hash map");
     Assert(tighter.Length() <= 6, "having written no more than it had");
@@ -325,7 +323,7 @@ func Main() -> int {
     let truncated = described.WriteDisplay(refusalSink, Spec(".3"));
     let unsupported = match truncated {
         .Success(_) => false,
-        .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
+        .Failure(reason) => match reason { .UnsupportedRequest => true, _ => false }
     };
     Assert(unsupported, "a precision is refused rather than applied");
     Assert(refusalWriter.Length() == 0, "and nothing was written before refusing");

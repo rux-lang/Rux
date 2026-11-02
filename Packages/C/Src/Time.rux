@@ -56,7 +56,7 @@ when #target.os {
         #Allow("naming.type")
         pub type clock_t = uint64;
     }
-    else => {
+    _ => {
         /// C's `clock_t`: processor time as an arithmetic value.
         /// `long` on every supported target, and `long` is not one width: the Universal CRT makes it 32 bits while
         /// every
@@ -112,7 +112,7 @@ when #target.os {
             pub tm_isdst: int32;
         }
     }
-    else => {
+    _ => {
         /// C's `tm`: a calendar time broken into its components.
         /// Two of the fields are traps rather than conveniences, and both are C's rather than this binding's: `tm_year`
         /// counts from 1900, so 2026 is 126, and `tm_mon` counts from zero, so December is 11. `tm_sec` reaches 60 for
@@ -178,7 +178,7 @@ when #target.os {
     .Linux => const TimeLib = "libc.so.6";
     .macOS => const TimeLib = "libSystem.B.dylib";
     .Windows => const TimeLib = "msvcrt.dll";
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 #Link(TimeLib)
@@ -269,7 +269,7 @@ when #target.os {
             func _timespec64_get(ts: &var timespec, base: c_int) -> c_int;
         }
     }
-    else => {
+    _ => {
         #Link(TimeLib)
         extern {
             /// Fills a timespec with the current time on the given base.
@@ -296,7 +296,7 @@ when #target.os {
         #Allow("naming.const")
         pub const CLOCKS_PER_SEC: int64 = 1000;
     }
-    else => {
+    _ => {
         /// `CLOCKS_PER_SEC`: how many `clock` ticks make one second on this target.
         /// @see https://rux-lang.dev/docs/api/c/time#clocks-per-sec
         #Allow("naming.const")
@@ -318,7 +318,7 @@ pub func TimespecGet(ts: &var timespec, base: c_int) -> c_int {
             // Safety: `ts` is a reference, so it addresses a live, writable `timespec` for the whole call.
             return unsafe { _timespec64_get(ts, base) };
         }
-        else => {
+        _ => {
             // Safety: `ts` is a reference, so it addresses a live, writable `timespec` for the whole call.
             return unsafe { timespec_get(ts, base) };
         }

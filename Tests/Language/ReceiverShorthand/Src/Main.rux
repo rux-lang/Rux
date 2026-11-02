@@ -32,7 +32,7 @@ extend Counter {
         return self.count * 10;
     }
 
-    func LongForm(self: &Counter) -> int32 {
+    func LongForm(self: &Self) -> int32 {
         return self.count + 100;
     }
 }
@@ -46,8 +46,6 @@ struct Guard {
 }
 
 extend Guard {
-    func =(&var self, other: &Guard);
-
     func ~Guard(&var self) {
         // Safety: the only `Guard` stores `@log`, a local of `Main` that outlives it.
         unsafe { self.log.drops += 1; }
@@ -103,7 +101,7 @@ func Observe(dial: &Dial) -> int32 {
 }
 
 func DropGuard(log: *var Log) {
-    let guard = Guard { log: log };
+    let guard = Guard { log };
 }
 
 func Main() -> int {

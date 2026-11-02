@@ -18,18 +18,18 @@ import Text::{ FormatError, String, StringView };
 
 func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.View().Equals(wanted),
         .Failure(_) => false
     };
 }
 
 func Refused(outcome: String ! FormatError) -> bool {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .UnsupportedRequest => true,
-            else => false
+            _ => false
         }
     };
 }

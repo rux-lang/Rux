@@ -8,7 +8,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test stores `@drops`, a local of `Main` that outlives it.
         unsafe { *self.drops = *self.drops + self.id; }
     }
@@ -17,9 +17,9 @@ extend Tracked {
 // The inner `guard` hides the outer one when the function returns from inside the block, and each is destroyed once:
 // the inner with id 10, the outer with id 1.
 func ReturnFromInside(drops: *var int, early: bool) -> int {
-    let guard = Tracked { drops: drops, id: 1 };
+    let guard = Tracked { drops, id: 1 };
     if early {
-        let guard = Tracked { drops: drops, id: 10 };
+        let guard = Tracked { drops, id: 10 };
         return guard.id;
     }
     return guard.id;
@@ -47,7 +47,7 @@ func Main() -> int {
             let x = 7;
             y = x;
         },
-        else => {}
+        _ => {}
     }
     Assert(y == 7 && x == 5, "a match arm's binding is the arm's alone");
 

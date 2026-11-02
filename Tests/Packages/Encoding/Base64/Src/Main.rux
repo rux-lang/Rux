@@ -22,14 +22,14 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(text: char8[..], form: Base64Variant, expected: char8[..]) -> bool {
     var room: char8[64];
-    let written = Base64Encode(text, room[..], form) catch { else => return false };
+    let written = Base64Encode(text, room[..], form) catch { _ => return false };
     return written == expected.length && written == Base64EncodedLength(text.length, form) &&
            Same(room[..written], expected);
 }
 
 func Decoded(text: char8[..], form: Base64Variant, expected: char8[..]) -> bool {
     var room: byte[64];
-    let written = Base64Decode(text, room[..], form) catch { else => return false };
+    let written = Base64Decode(text, room[..], form) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {
@@ -56,19 +56,22 @@ func Refusal(text: char8[..], form: Base64Variant, room: uint, at: uint) -> int 
         if value != 0x3F { return -2; }
     }
     return match reported {
-        .InvalidCharacter(offset) => offset == at ? 1 : -3,
-        .InvalidLength(offset) => offset == at ? 2 : -3,
-        .InvalidPadding(offset) => offset == at ? 3 : -3,
-        .NonCanonical(offset) => offset == at ? 4 : -3,
-        .InsufficientCapacity(needed) => needed == at ? 6 : -3,
-        else => 0
+        .InvalidCharacter(offset) => if offset == at { 1 } else { -3 },
+        .InvalidLength(offset) => if offset == at { 2 } else { -3 },
+        .InvalidPadding(offset) => if offset == at { 3 } else { -3 },
+        .NonCanonical(offset) => if offset == at { 4 } else { -3 },
+        .InsufficientCapacity(needed) => if needed == at { 6 } else { -3 },
+        _ => 0
     };
 }
 
 // What a plain table says a character is worth in one alphabet, or -1.
 func Reference(c: uint, urlSafe: bool) -> int {
-    let alphabet = urlSafe ? "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-                           : "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let alphabet = if urlSafe {
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    } else {
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    };
     var index: uint = 0;
     while index < 64 {
         if (alphabet[index] as uint8 as uint) == c { return index as int; }
@@ -99,7 +102,7 @@ func Exhaustive(form: Base64Variant, urlSafe: bool) -> bool {
     while value < 64 {
         let one: byte[3] = [(value << 2) as byte, 0, 0];
         var room: char8[4];
-        Base64Encode(one[..], room[..], form) catch { else => return false };
+        Base64Encode(one[..], room[..], form) catch { _ => return false };
         if Reference(room[0] as uint8 as uint, urlSafe) != value as int { return false; }
         value = value + 1;
     }
@@ -117,10 +120,10 @@ func RoundTrips(form: Base64Variant) -> bool {
     var length: uint = 0;
     while length <= 20 {
         var text: char8[32];
-        let written = Base64Encode(source[..length], text[..], form) catch { else => return false };
+        let written = Base64Encode(source[..length], text[..], form) catch { _ => return false };
         if written != Base64EncodedLength(length, form) { return false; }
         var back: byte[20];
-        let read = Base64Decode(text[..written], back[..], form) catch { else => return false };
+        let read = Base64Decode(text[..written], back[..], form) catch { _ => return false };
         if read != length { return false; }
         var at: uint = 0;
         while at < length {
@@ -134,7 +137,7 @@ func RoundTrips(form: Base64Variant) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -164,9 +167,9 @@ func Main() -> int {
     // The two alphabets differ only in their last two characters.
     let edge: byte[3] = [0xFB, 0xFF, 0xFE];
     var room: char8[4];
-    Base64Encode(edge[..], room[..]) catch { else => return 10 };
+    Base64Encode(edge[..], room[..]) catch { _ => return 10 };
     if !Same(room[..], "+//+") { return 11; }
-    Base64Encode(edge[..], room[..], Base64Variant::Url) catch { else => return 12 };
+    Base64Encode(edge[..], room[..], Base64Variant::Url) catch { _ => return 12 };
     if !Same(room[..], "-__-") { return 13; }
 
     if !Exhaustive(Base64Variant::Standard, false) || !Exhaustive(Base64Variant::UrlUnpadded, true) { return 14; }

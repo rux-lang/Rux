@@ -20,7 +20,7 @@ pub func PowInteger(base: float64, exponent: int64) -> float64 {
     if exponent == 0 { return 1.0; }
     if IsNan(base) { return base; }
     // The magnitude is taken in unsigned form so the most negative exponent has one too.
-    var remaining = exponent < 0 ? 0u64 -% exponent.Truncate<uint64>() : exponent as uint64;
+    var remaining = if exponent < 0 { 0u64 -% exponent.Truncate<uint64>() } else { exponent as uint64 };
     var accumulated = 1.0;
     var factor = base;
     while remaining > 0 {

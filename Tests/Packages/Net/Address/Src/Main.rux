@@ -62,7 +62,7 @@ func Main() -> int {
     let ipv4 = Ipv4Address::New(127u8, 0u8, 0u8, 1u8);
     let ipv6 = Ipv6Address::Localhost();
     let rendered = Render(allocator, "[{}] [{:<12}] [{:>5}] [{}]", socket, ipv4, ipv6, Ip("2001:db8::1"))
-        catch { else => return 1 };
+        catch { _ => return 1 };
     Assert(Same(rendered.View().Bytes(), "[[::ffff:192.0.2.1]:8080] [127.0.0.1   ] [  ::1] [2001:db8::1]"),
            "addresses render through {} and take the width");
     return 0;

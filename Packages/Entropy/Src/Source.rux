@@ -20,7 +20,7 @@ when #target.os {
     .Linux => import Linux::{ EAGAIN, EINTR, ENOSYS, Errno, GetRandom, IsError },
     .macOS => import macOS::GetRandom,
     .Windows => import Windows::GetRandom,
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// How many times a fill will go back to an interrupted source before giving up.
@@ -68,7 +68,7 @@ pub unsafe func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyEr
             GetRandom(buffer, length);
             return;
         },
-        else => {
+        _ => {
             var filled: uint = 0;
             var attempts: uint = 0;
             while filled < length {

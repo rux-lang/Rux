@@ -20,7 +20,7 @@ pub func Sin(x: float64) -> float64 {
     // sin(-0.0) is -0.0.
     if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 { return x; }
     let negative = x < 0.0;
-    let ax = negative ? -x : x;
+    let ax = if negative { -x } else { x };
     var result = 0.0;
     if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
@@ -37,7 +37,7 @@ pub func Sin(x: float64) -> float64 {
             result = -KernelCos(red.hi, red.lo);
         }
     }
-    return negative ? -result : result;
+    return if negative { -result } else { result };
 }
 
 /// Computes the sine of `x` at `float32` precision, where `x` is in radians.

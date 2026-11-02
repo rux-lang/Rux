@@ -104,7 +104,7 @@ pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     joined.Push(path.name);
     var simplified = Normalize(allocator, joined.AsPath());
     joined.Release();
-    return <-simplified;
+    return move simplified;
 }
 
 when #target.os != .Windows {
@@ -132,7 +132,7 @@ when #target.os != .Windows {
         }
         let view = OsStringView::FromUnits(units[0..written as uint]);
         var target = OsString::FromView(allocator, view);
-        return .Some(<-target);
+        return .Some(move target);
     }
 
     // Drops the last segment of `buffer`, leaving the root in place.
@@ -200,7 +200,7 @@ when #target.os != .Windows {
                 else {
                     resolved.Push(segment);
                     match ReadLinkText(allocator, resolved.AsPath())? {
-                        target? => {
+                        .Some(target) => {
                             // Safety: `followed` is the address of `Canonicalize`'s local count, which outlives
                             // the whole walk.
                             let count = unsafe {
@@ -267,6 +267,6 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".
         MetadataOf(allocator, resolved.AsPath(), true)?;
-        return <-resolved;
+        return move resolved;
     }
 }

@@ -37,7 +37,7 @@ pub func IsLeapYear(year: int32) -> bool {
 /// @returns how many days that month has in that year
 /// @see https://rux-lang.dev/docs/api/time/date#days-in-month
 pub func DaysInMonth(year: int32, month: uint8) -> uint8 {
-    if month == 2 { return IsLeapYear(year) ? 29 : 28; }
+    if month == 2 { return if IsLeapYear(year) { 29 } else { 28 }; }
     if month == 4 || month == 6 || month == 9 || month == 11 { return 30; }
     if month >= 1 && month <= 12 { return 31; }
     return 0;
@@ -50,9 +50,9 @@ extend Date {
     /// @param day the day of the month, counting from one
     /// @returns the date, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/date#new
-    pub func New(year: int32, month: uint8, day: uint8) -> Date? {
+    pub func New(year: int32, month: uint8, day: uint8) -> Self? {
         if day < 1 || day > DaysInMonth(year, month) { return none; }
-        return Date { year: year, month: month, day: day };
+        return Self { year, month, day };
     }
 
     /// Days since 1970-01-01, negative before it.
@@ -60,14 +60,14 @@ extend Date {
     /// it cannot disturb the month arithmetic.
     /// @returns days since 1970-01-01, negative before it
     /// @see https://rux-lang.dev/docs/api/time/date#days-from-epoch
-    pub func DaysFromEpoch(self: &Date) -> int64 {
+    pub func DaysFromEpoch(&self) -> int64 {
         var year = self.year as int64;
         if self.month <= 2 {
             year = year - 1;
         }
-        let era = (year >= 0 ? year : year - 399) / 400;
+        let era = (if year >= 0 { year } else { year - 399 }) / 400;
         let yearOfEra = year - era * 400;
-        let shiftedMonth = (self.month as int64) + (self.month > 2 ? -3i64 : 9i64);
+        let shiftedMonth = (self.month as int64) + (if self.month > 2 { -3i64 } else { 9i64 });
         let dayOfYear = (153i64 * shiftedMonth + 2) / 5 + (self.day as int64) - 1;
         let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
         return era * 146097 + dayOfEra - 719468;
@@ -78,24 +78,24 @@ extend Date {
     /// @param days how many days
     /// @returns the date that many days after 1970-01-01
     /// @see https://rux-lang.dev/docs/api/time/date#from-epoch-days
-    pub func FromEpochDays(days: int64) -> Date {
+    pub func FromEpochDays(days: int64) -> Self {
         let shifted = days + 719468;
-        let era = (shifted >= 0 ? shifted : shifted - 146096) / 146097;
+        let era = (if shifted >= 0 { shifted } else { shifted - 146096 }) / 146097;
         let dayOfEra = shifted - era * 146097;
         let yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
         let year = yearOfEra + era * 400;
         let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
         let shiftedMonth = (5 * dayOfYear + 2) / 153;
         let day = dayOfYear - (153 * shiftedMonth + 2) / 5 + 1;
-        let month = shiftedMonth < 10 ? shiftedMonth + 3 : shiftedMonth - 9;
-        let finalYear = month <= 2 ? year + 1 : year;
-        return Date { year: finalYear as int32, month: month as uint8, day: day as uint8 };
+        let month = if shiftedMonth < 10 { shiftedMonth + 3 } else { shiftedMonth - 9 };
+        let finalYear = if month <= 2 { year + 1 } else { year };
+        return Self { year: finalYear as int32, month: month as uint8, day: day as uint8 };
     }
 
     /// The day of the week, 0 for Sunday through 6 for Saturday.
     /// @returns the day of the week, with Monday as one
     /// @see https://rux-lang.dev/docs/api/time/date#day-of-week
-    pub func DayOfWeek(self: &Date) -> uint8 {
+    pub func DayOfWeek(&self) -> uint8 {
         let days = self.DaysFromEpoch();
         // The epoch was a Thursday; the shift keeps the remainder non-negative either side of it.
         let weekday = (days % 7 + 11) % 7;
@@ -105,8 +105,8 @@ extend Date {
     /// The day of the year, 1 through 365 or 366.
     /// @returns the day of the year, counting from one
     /// @see https://rux-lang.dev/docs/api/time/date#day-of-year
-    pub func DayOfYear(self: &Date) -> uint16 {
-        let opening = Date { year: self.year, month: 1, day: 1 };
+    pub func DayOfYear(&self) -> uint16 {
+        let opening = Self { year: self.year, month: 1, day: 1 };
         return (self.DaysFromEpoch() - opening.DaysFromEpoch() + 1) as uint16;
     }
 
@@ -114,7 +114,7 @@ extend Date {
     /// @param other the value to compare against
     /// @returns whether the two are the same
     /// @see https://rux-lang.dev/docs/api/time/date#equals
-    pub func Equals(self: &Date, other: Date) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         return self.year == other.year && self.month == other.month && self.day == other.day;
     }
 
@@ -122,7 +122,7 @@ extend Date {
     /// @param other the value to compare against
     /// @returns how this one orders against `other`
     /// @see https://rux-lang.dev/docs/api/time/date#compare
-    pub func Compare(self: &Date, other: Date) -> Ordering {
+    pub func Compare(&self, other: Self) -> Ordering {
         let mine = self.DaysFromEpoch();
         let theirs = other.DaysFromEpoch();
         if mine < theirs { return Ordering::Less; }
@@ -154,29 +154,29 @@ extend TimeOfDay {
     /// @param nanosecond the nanosecond within the second
     /// @returns the time, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#new
-    pub func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> TimeOfDay? {
+    pub func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> Self? {
         if hour > 23 || minute > 59 || second > 59 || nanosecond > 999999999 {
             return none;
         }
-        return .Some(TimeOfDay {
-            hour: hour,
-            minute: minute,
-            second: second,
-            nanosecond: nanosecond
+        return .Some(Self {
+            hour,
+            minute,
+            second,
+            nanosecond
         });
     }
 
     /// Midnight exactly.
     /// @returns the first instant of a day
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#midnight
-    pub func Midnight() -> TimeOfDay {
-        return TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 };
+    pub func Midnight() -> Self {
+        return Self { hour: 0, minute: 0, second: 0, nanosecond: 0 };
     }
 
     /// The seconds from midnight to this time, ignoring the fraction.
     /// @returns how many whole seconds into the day this is
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#seconds-from-midnight
-    pub func SecondsFromMidnight(self: &TimeOfDay) -> uint32 {
+    pub func SecondsFromMidnight(&self) -> uint32 {
         return (self.hour as uint32) * 3600 + (self.minute as uint32) * 60 + self.second as uint32;
     }
 }
@@ -194,8 +194,8 @@ extend UtcOffset {
     /// UTC itself.
     /// @returns the zero offset
     /// @see https://rux-lang.dev/docs/api/time/utc-offset#utc
-    pub func Utc() -> UtcOffset {
-        return UtcOffset { seconds: 0 };
+    pub func Utc() -> Self {
+        return Self { seconds: 0 };
     }
 
     /// The offset `hours` and `minutes` from UTC, when it is one an offset can be.
@@ -206,17 +206,17 @@ extend UtcOffset {
     /// @param minutes how many minutes
     /// @returns the offset, or `None` when it is outside the range UTC offsets take
     /// @see https://rux-lang.dev/docs/api/time/utc-offset#of
-    pub func Of(hours: int32, minutes: int32) -> UtcOffset? {
+    pub func Of(hours: int32, minutes: int32) -> Self? {
         if hours > 23 || hours < -23i32 || minutes > 59 || minutes < -59i32 { return none; }
         if hours > 0 && minutes < 0 { return none; }
         if hours < 0 && minutes > 0 { return none; }
-        return UtcOffset { seconds: hours * 3600 + minutes * 60 };
+        return Self { seconds: hours * 3600 + minutes * 60 };
     }
 
     /// The whole seconds east of UTC, negative west.
     /// @returns the offset in seconds, negative west of Greenwich
     /// @see https://rux-lang.dev/docs/api/time/utc-offset#total-seconds
-    pub func TotalSeconds(self: &UtcOffset) -> int32 {
+    pub func TotalSeconds(&self) -> int32 {
         return self.seconds;
     }
 }
@@ -239,11 +239,11 @@ extend DateTime {
     /// @param offset the offset from UTC
     /// @returns the moment this local time names at that offset
     /// @see https://rux-lang.dev/docs/api/time/date-time#to-timestamp
-    pub func ToTimestamp(self: &DateTime, offset: UtcOffset) -> Timestamp {
+    pub func ToTimestamp(&self, offset: UtcOffset) -> Timestamp {
         let days = self.date.DaysFromEpoch();
         let seconds = days * 86400 + (self.time.SecondsFromMidnight() as int64) -
                       (offset.TotalSeconds() as int64);
-        return Timestamp { seconds: seconds, nanoseconds: self.time.nanosecond };
+        return Timestamp { seconds, nanoseconds: self.time.nanosecond };
     }
 
     /// The date and time `moment` names, shifted into `offset`.
@@ -251,7 +251,7 @@ extend DateTime {
     /// @param offset the offset from UTC
     /// @returns the local date and time that moment names at that offset
     /// @see https://rux-lang.dev/docs/api/time/date-time#from-timestamp
-    pub func FromTimestamp(moment: Timestamp, offset: UtcOffset) -> DateTime {
+    pub func FromTimestamp(moment: Timestamp, offset: UtcOffset) -> Self {
         let shifted = moment.UnixSeconds() + (offset.TotalSeconds() as int64);
         var days = shifted / 86400;
         var secondOfDay = shifted % 86400;
@@ -259,7 +259,7 @@ extend DateTime {
             days = days - 1;
             secondOfDay = secondOfDay + 86400;
         }
-        return DateTime {
+        return Self {
             date: Date::FromEpochDays(days),
             time: TimeOfDay {
                 hour: (secondOfDay / 3600) as uint8,
@@ -276,7 +276,7 @@ extend DateTime {
     /// @param other the value to compare against
     /// @returns whether the two are the same
     /// @see https://rux-lang.dev/docs/api/time/date-time#equals
-    pub func Equals(self: &DateTime, other: DateTime) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         return self.date.Equals(other.date) && self.time.hour == other.time.hour &&
                self.time.minute == other.time.minute && self.time.second == other.time.second &&
                self.time.nanosecond == other.time.nanosecond;

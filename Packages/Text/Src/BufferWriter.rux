@@ -34,8 +34,8 @@ extend BufferWriter {
     /// @param room the storage to fill, which must outlive the writer
     /// @returns a writer holding no text yet
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#new
-    pub func BufferWriter(room: var char8[..]) -> BufferWriter {
-        return BufferWriter { room: room, length: 0 };
+    pub func BufferWriter(room: var char8[..]) -> Self {
+        return Self { room, length: 0 };
     }
 
     /// The text written so far.
@@ -44,7 +44,7 @@ extend BufferWriter {
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the bytes written, which are valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#written
-    pub func Written(self: &BufferWriter) -> char8[..] {
+    pub func Written(&self) -> char8[..] {
         // Safety: `self.length` never exceeds `self.room.length`: `Write` refuses a run that does not fit.
         return unsafe { (self.room.data)[..self.length] };
     }
@@ -53,7 +53,7 @@ extend BufferWriter {
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the byte count, which is not a character count
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#length
-    pub func Length(self: &BufferWriter) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
@@ -63,7 +63,7 @@ extend BufferWriter {
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the remaining capacity in bytes
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#remaining
-    pub func Remaining(self: &BufferWriter) -> uint {
+    pub func Remaining(&self) -> uint {
         return self.room.length - self.length;
     }
 
@@ -73,7 +73,7 @@ extend BufferWriter {
     /// `Rux/Memory` on the room itself.
     /// Borrows the writer exclusively. Cannot fail; runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#clear
-    pub func Clear(self: &var BufferWriter) {
+    pub func Clear(&var self) {
         self.length = 0;
     }
 }
@@ -90,11 +90,11 @@ extend BufferWriter : TextWriter {
     /// @param bytes the UTF-8 run to append, whole
     /// @returns success when the complete run was appended
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#write
-    pub func Write(self: &var BufferWriter, bytes: char8[..]) -> ! FormatError {
+    pub func Write(&var self, bytes: char8[..]) -> ! FormatError {
         if bytes.length > self.room.length - self.length {
             fail FormatError::InsufficientCapacity;
         }
-        Validate(bytes) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
+        Validate(bytes) catch { _ => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, the loop condition.

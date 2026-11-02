@@ -65,23 +65,23 @@ extend LegacyMd5 {
     /// An MD5 state.
     /// @returns an MD5 hasher, which is broken and is here only to read what already exists
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#new
-    pub func LegacyMd5() -> LegacyMd5 {
+    pub func LegacyMd5() -> Self {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64 {
             buffer[index] = 0u8 as char8;
             index = index + 1;
         }
-        return LegacyMd5 {
+        return Self {
             state: [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476],
-            buffer: buffer,
+            buffer,
             buffered: 0,
             length: 0
         };
     }
 
     // Safety: `block` must address sixty-four readable bytes.
-    unsafe func Compress(self: &var LegacyMd5, block: *char8) {
+    unsafe func Compress(&var self, block: *char8) {
         // MD5 reads its words little-endian, where the SHA family reads big-endian.
         var words: uint32[16];
         var index: uint = 0;
@@ -139,7 +139,7 @@ extend LegacyMd5 {
     /// Adds `bytes` to the message.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#update
-    pub func Update(self: &var LegacyMd5, bytes: char8[..]) {
+    pub func Update(&var self, bytes: char8[..]) {
         self.length = self.length +% (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
@@ -158,7 +158,7 @@ extend LegacyMd5 {
     /// The length is appended little-endian, unlike the SHA family's big-endian count.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#finish
-    pub func Finish(self: &var LegacyMd5, into: var char8[..]) {
+    pub func Finish(&var self, into: var char8[..]) {
         let bitLength = self.length *% 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1;
@@ -221,23 +221,23 @@ extend LegacySha1 {
     /// A SHA-1 state.
     /// @returns a SHA-1 hasher, which is broken and is here only to read what already exists
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#new
-    pub func LegacySha1() -> LegacySha1 {
+    pub func LegacySha1() -> Self {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64 {
             buffer[index] = 0u8 as char8;
             index = index + 1;
         }
-        return LegacySha1 {
+        return Self {
             state: [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0],
-            buffer: buffer,
+            buffer,
             buffered: 0,
             length: 0
         };
     }
 
     // Safety: `block` must address sixty-four readable bytes.
-    unsafe func Compress(self: &var LegacySha1, block: *char8) {
+    unsafe func Compress(&var self, block: *char8) {
         var schedule: uint32[80];
         var index: uint = 0;
         while index < 16 {
@@ -299,7 +299,7 @@ extend LegacySha1 {
     /// Adds `bytes` to the message.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#update
-    pub func Update(self: &var LegacySha1, bytes: char8[..]) {
+    pub func Update(&var self, bytes: char8[..]) {
         self.length = self.length +% (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
@@ -317,7 +317,7 @@ extend LegacySha1 {
     /// Writes the twenty-byte digest into `into`.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#finish
-    pub func Finish(self: &var LegacySha1, into: var char8[..]) {
+    pub func Finish(&var self, into: var char8[..]) {
         let bitLength = self.length *% 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1;

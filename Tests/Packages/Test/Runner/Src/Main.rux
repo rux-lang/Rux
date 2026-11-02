@@ -12,7 +12,7 @@ func MessageOf(outcome: ! TestFailure) -> TestFailure ! TestFailure {
     return ExpectFailure(outcome, "the check should have failed")?;
 }
 
-#Test()
+#Test
 func ChecksThatHold() -> ! TestFailure {
     Expect(1 + 1 == 2, "arithmetic")?;
     ExpectEqual(40 + 2, 42)?;
@@ -25,7 +25,7 @@ func ChecksThatHold() -> ! TestFailure {
     ExpectNone(missing, "absent")?;
 }
 
-#Test()
+#Test
 func FailureMessages() -> ! TestFailure {
     ExpectText(MessageOf(Expect(false, "the flag is set"))?.Message(), "the flag is set")?;
     ExpectText(MessageOf(ExpectEqual(1, 2))?.Message(), "expected 2, but got 1")?;
@@ -35,7 +35,7 @@ func FailureMessages() -> ! TestFailure {
                "texts differ at byte 6 (expected 11 bytes, got 11)\n  expected \"hello there\"\n  but got  \"hello world\"")?;
 }
 
-#Test()
+#Test
 func OutcomeChecks() -> ! TestFailure {
     let good: int32 ! TestFailure = 3;
     ExpectEqual(ExpectSuccess(good, "succeeds")?, 3)?;
@@ -75,7 +75,7 @@ func Fails() -> ! TestFailure {
     fail TestFailure::Of("on purpose");
 }
 
-#Test()
+#Test
 func Filtering() -> ! TestFailure {
     let table = [TestCase { name: "Group::Passes", run: Passes }, TestCase { name: "Group::Fails", run: Fails }];
     var options = TestOptions();

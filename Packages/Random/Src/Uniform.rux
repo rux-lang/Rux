@@ -93,5 +93,5 @@ pub func UniformFloatInRange<G: RandomGenerator>(generator: &var G, low: float64
     }
     let value = low + unit * span;
     // Rounding can carry the result up to the excluded top; the value just below it is the honest answer.
-    return value < high ? value : NextDown(high);
+    return if value < high { value } else { NextDown(high) };
 }

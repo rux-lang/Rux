@@ -44,7 +44,7 @@ func SumExceeds(left: &FixedNat, right: &FixedNat, limit: &FixedNat, orEqual: bo
         return true;
     }
     let order = total.Compare(limit);
-    return orEqual ? order >= 0 : order > 0;
+    return if orEqual { order >= 0 } else { order > 0 };
 }
 
 // Sets up the ratio for `significand * 2^exponent`, with the gaps its neighbours are at.
@@ -59,7 +59,7 @@ func Prepare(state: &var Ratio, significand: uint64, exponent: int, atBinadeBott
 
     // Everything is scaled by two so that the gaps, which are halves, stay integers. The binade-bottom case scales
     // by two again so that the halved lower gap does as well.
-    let scale = atBinadeBottom ? 2u : 1u;
+    let scale = if atBinadeBottom { 2u } else { 1u };
     if exponent >= 0 {
         let shift = exponent as uint;
         if !state.numerator.ShiftLeft(shift + scale) { return false; }
@@ -98,7 +98,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
     reach.Assign(state.numerator);
     if !reach.Add(state.upperGap) { return false; }
     if !reach.MultiplySmall(10) { return false; }
-    var short = inclusive ? reach.Compare(state.denominator) < 0 : reach.Compare(state.denominator) <= 0;
+    var short = if inclusive { reach.Compare(state.denominator) < 0 } else { reach.Compare(state.denominator) <= 0 };
     while short {
         if !state.numerator.MultiplySmall(10) { return false; }
         if !state.upperGap.MultiplySmall(10) { return false; }
@@ -107,7 +107,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
         reach.Assign(state.numerator);
         if !reach.Add(state.upperGap) { return false; }
         if !reach.MultiplySmall(10) { return false; }
-        short = inclusive ? reach.Compare(state.denominator) < 0 : reach.Compare(state.denominator) <= 0;
+        short = if inclusive { reach.Compare(state.denominator) < 0 } else { reach.Compare(state.denominator) <= 0 };
     }
     // Safety: the documented contract makes `exponent10` a non-null pointer to the caller's writable `int`.
     unsafe { *exponent10 = power; }
@@ -179,7 +179,7 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         // Below the lower gap: what is left is nearer this value than the neighbour under it, so stopping here
         // still reads back correctly. Above the upper gap: the same on the other side, and the digit rounds up.
         let order = state.numerator.Compare(state.lowerGap);
-        let low = inclusive ? order <= 0 : order < 0;
+        let low = if inclusive { order <= 0 } else { order < 0 };
         let high = SumExceeds(state.numerator, state.upperGap, state.denominator, inclusive);
         if !low && !high {
             // Safety: `written` is below `MaximumShortestDigits`, the loop condition, which is at most `into.length`,

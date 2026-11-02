@@ -82,7 +82,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
             }
             index = index + 1;
         }
-        decimalExponent = exponentNegative ? decimalExponent - exponent : decimalExponent + exponent;
+        decimalExponent = if exponentNegative { decimalExponent - exponent } else { decimalExponent + exponent };
     }
     if index != str.length { fail ParseError::InvalidCharacter(index); }
     if digits.IsZero() { return PackWide(negative, 0, 0, layout); }

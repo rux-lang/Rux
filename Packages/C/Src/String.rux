@@ -22,7 +22,7 @@ when #target.os {
     .Linux => const StringLib = "libc.so.6";
     .macOS => const StringLib = "libSystem.B.dylib";
     .Windows => const StringLib = "ucrtbase.dll";
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 #Link(StringLib)

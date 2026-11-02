@@ -14,7 +14,7 @@ extend Point {
     const Origin: Self = Self { x: 0, y: 0 };
 
     func Point(x: int32, y: int32) -> Self {
-        return Self { x: x, y: y };
+        return Self { x, y };
     }
 
     func Diagonal(n: int32) -> Self {
@@ -49,7 +49,7 @@ struct Pair<T> {
 
 extend Pair<T> {
     func Pair(first: T, second: T) -> Self {
-        return Self { first: first, second: second };
+        return Self { first, second };
     }
 
     func Of(first: T, second: T) -> Self {

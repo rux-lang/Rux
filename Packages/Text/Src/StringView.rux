@@ -24,8 +24,8 @@ extend StringView {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns an empty view
     /// @see https://rux-lang.dev/docs/api/text/string-view#new
-    pub func StringView() -> StringView {
-        return StringView { bytes: [] };
+    pub func StringView() -> Self {
+        return Self { bytes: [] };
     }
 
     /// A view over `bytes` when they are UTF-8, and `none` when they are not.
@@ -35,9 +35,9 @@ extend StringView {
     /// @param bytes the bytes to act on
     /// @returns a view over those bytes, or `none` when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string-view#from-bytes
-    pub func FromBytes(bytes: char8[..]) -> StringView? {
-        Validate(bytes) catch { else => return none };
-        return StringView { bytes: bytes };
+    pub func FromBytes(bytes: char8[..]) -> Self? {
+        Validate(bytes) catch { _ => return none };
+        return Self { bytes };
     }
 
     /// A view over bytes the caller vouches are UTF-8.
@@ -48,29 +48,29 @@ extend StringView {
     /// @param bytes the bytes to act on
     /// @returns a view over those bytes, taken as valid without checking
     /// @see https://rux-lang.dev/docs/api/text/string-view#from-validated
-    pub func FromValidated(bytes: char8[..]) -> StringView {
-        return StringView { bytes: bytes };
+    pub func FromValidated(bytes: char8[..]) -> Self {
+        return Self { bytes };
     }
 
     /// How many bytes the view spans.
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
     /// @returns how many bytes the text occupies
     /// @see https://rux-lang.dev/docs/api/text/string-view#length
-    pub func Length(self: &StringView) -> uint {
+    pub func Length(&self) -> uint {
         return self.bytes.length;
     }
 
     /// Whether the view spans no bytes.
     /// @returns whether the text has no bytes
     /// @see https://rux-lang.dev/docs/api/text/string-view#is-empty
-    pub func IsEmpty(self: &StringView) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.bytes.length == 0;
     }
 
     /// The bytes themselves, for handing to something that reads bytes.
     /// @returns the text's bytes, borrowed
     /// @see https://rux-lang.dev/docs/api/text/string-view#bytes
-    pub func Bytes(self: &StringView) -> char8[..] {
+    pub func Bytes(&self) -> char8[..] {
         return self.bytes;
     }
 
@@ -79,7 +79,7 @@ extend StringView {
     /// method rather than a field.
     /// @returns how many Unicode scalar values the text holds, which is not its byte length
     /// @see https://rux-lang.dev/docs/api/text/string-view#scalar-count
-    pub func ScalarCount(self: &StringView) -> uint {
+    pub func ScalarCount(&self) -> uint {
         return CountScalars(self.bytes);
     }
 
@@ -87,7 +87,7 @@ extend StringView {
     /// @param index the byte offset
     /// @returns whether `index` falls between two scalar values rather than inside one
     /// @see https://rux-lang.dev/docs/api/text/string-view#is-boundary
-    pub func IsBoundary(self: &StringView, index: uint) -> bool {
+    pub func IsBoundary(&self, index: uint) -> bool {
         return IsBoundary(self.bytes, index);
     }
     /// The part of this view from `start` up to `end`, or `none` when either is not a boundary or they are the
@@ -99,21 +99,21 @@ extend StringView {
     /// @param end the byte offset one past the last, exclusive
     /// @returns the text between the two offsets, or `none` when either is not a boundary
     /// @see https://rux-lang.dev/docs/api/text/string-view#part
-    pub func Part(self: &StringView, start: uint, end: uint) -> StringView? {
+    pub func Part(&self, start: uint, end: uint) -> Self? {
         if start > end || end > self.bytes.length { return none; }
         if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) { return none; }
         // Safety: `start <= end <= self.bytes.length`, checked above, so the part lies inside the view.
         let part = unsafe { (@self.bytes.data[start])[..end - start] };
-        return StringView { bytes: part };
+        return Self { bytes: part };
     }
 
     /// The scalar value starting at `index`, or `none` when `index` is not a boundary inside the view.
     /// @param index the byte offset
     /// @returns the scalar value beginning at `index`, or `none` when it is not a boundary
     /// @see https://rux-lang.dev/docs/api/text/string-view#scalar-at
-    pub func ScalarAt(self: &StringView, index: uint) -> char32? {
+    pub func ScalarAt(&self, index: uint) -> char32? {
         var scalar = 0u32 as char32;
-        let decoded = DecodeAt(self.bytes, index) catch { else => return none };
+        let decoded = DecodeAt(self.bytes, index) catch { _ => return none };
         scalar = decoded.scalar;
         return scalar;
     }
@@ -124,7 +124,7 @@ extend StringView {
     /// @param other the value to compare against
     /// @returns whether both hold the same bytes
     /// @see https://rux-lang.dev/docs/api/text/string-view#equals
-    pub func Equals(self: &StringView, other: &StringView) -> bool {
+    pub func Equals(&self, other: &Self) -> bool {
         if self.bytes.length != other.bytes.length { return false; }
         var index: uint = 0;
         while index < self.bytes.length {
@@ -141,8 +141,8 @@ extend StringView {
     /// @param other the value to compare against
     /// @returns how the two order byte by byte, which is code-point order for UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string-view#compare
-    pub func Compare(self: &StringView, other: &StringView) -> Ordering {
-        let shared = self.bytes.length < other.bytes.length ? self.bytes.length : other.bytes.length;
+    pub func Compare(&self, other: &Self) -> Ordering {
+        let shared = if self.bytes.length < other.bytes.length { self.bytes.length } else { other.bytes.length };
         var index: uint = 0;
         while index < shared {
             // Safety: `index` is below `shared`, the shorter of the two lengths.
@@ -163,8 +163,8 @@ extend StringView {
     /// @param other the value to compare against
     /// @returns whether both hold the same bytes
     /// @see https://rux-lang.dev/docs/api/text/string-view#equals
-    pub func Equals(self: &StringView, other: StringView) -> bool {
-        let borrowed: &StringView = other;
+    pub func Equals(&self, other: Self) -> bool {
+        let borrowed: &Self = other;
         return self.Equals(borrowed);
     }
 
@@ -172,8 +172,8 @@ extend StringView {
     /// @param other the value to compare against
     /// @returns how the two order byte by byte, which is code-point order for UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string-view#compare
-    pub func Compare(self: &StringView, other: StringView) -> Ordering {
-        let borrowed: &StringView = other;
+    pub func Compare(&self, other: Self) -> Ordering {
+        let borrowed: &Self = other;
         return self.Compare(borrowed);
     }
 
@@ -181,7 +181,7 @@ extend StringView {
     /// `self` is borrowed and must outlive the walk.
     /// @returns a cursor over the text's scalar values
     /// @see https://rux-lang.dev/docs/api/text/string-view#scalars
-    pub func Scalars(self: &StringView) -> ScalarIterator {
+    pub func Scalars(&self) -> ScalarIterator {
         return ScalarIterator { bytes: self.bytes, cursor: 0 };
     }
 }
@@ -201,7 +201,7 @@ extend ScalarIterator : Iterator {
     /// so reaching one means the bytes were vouched for and were not.
     /// @returns the next scalar value, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/text/string-view#scalar-iterator-next
-    pub func Next(self: &var ScalarIterator) -> char32? {
+    pub func Next(&var self) -> char32? {
         var scalar = 0u32 as char32;
         var width: uint = 0;
         match DecodeAt(self.bytes, self.cursor) {

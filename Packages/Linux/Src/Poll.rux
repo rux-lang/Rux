@@ -37,7 +37,7 @@ when #target.arch {
         /// @see https://rux-lang.dev/docs/api/linux/poll#epoll-event-word-offset
         pub const EpollEventWordOffset: uint = 8;
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 /// `F_GETFL`: the `fcntl` command that reads a descriptor's status flags.

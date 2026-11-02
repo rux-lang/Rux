@@ -14,10 +14,10 @@ pub func Cotanh(x: float64) -> float64 {
     let ax = Abs(x);
     if ax == 0.0 { return 1.0 / x; }
     if ax < 3.725290298461914e-9 { return 1.0 / x; }
-    if ax >= 22.0 { return negative ? -1.0 : 1.0; }
+    if ax >= 22.0 { return if negative { -1.0 } else { 1.0 }; }
     let t = Expm1(2.0 * ax);
     let y = 1.0 + 2.0 / t;
-    return negative ? -y : y;
+    return if negative { -y } else { y };
 }
 
 /// Computes the hyperbolic cotangent of `x` at `float32` precision.

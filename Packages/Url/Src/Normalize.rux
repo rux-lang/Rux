@@ -18,15 +18,13 @@ struct Bytes {
 }
 
 extend Bytes {
-    func =(self: &var Bytes, other: &Bytes);
-
-    func Bytes(allocator: Allocator) -> Bytes {
-        return Bytes { data: null, length: 0, capacity: 0, allocator: allocator };
+    func Bytes(allocator: Allocator) -> Self {
+        return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
-    func Push(self: &var Bytes, value: char8) {
+    func Push(&var self, value: char8) {
         if self.length == self.capacity {
-            let capacity = self.capacity == 0 ? 64u : self.capacity * 2u;
+            let capacity = if self.capacity == 0 { 64u } else { self.capacity * 2u };
             var allocator = self.allocator;
             let layout = Layout::New(capacity, 1) ?? AllocationFailed(AllocError::Unsupported);
             let block = try allocator.Allocate(layout) catch { error => AllocationFailed(error) };
@@ -35,7 +33,7 @@ extend Bytes {
                 // was just allocated with room for `capacity`, which is larger.
                 unsafe { Copy(block, self.data as *opaque, self.length); }
                 allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? layout)
-                    catch { else => {} };
+                    catch { _ => {} };
             }
             // Safety: `block` was allocated above with room for `capacity` bytes, and `char8` has size and alignment 1.
             self.data = unsafe { block as *var char8 };
@@ -47,7 +45,7 @@ extend Bytes {
         self.length = self.length + 1;
     }
 
-    func PushAll(self: &var Bytes, values: char8[..]) {
+    func PushAll(&var self, values: char8[..]) {
         var index: uint = 0;
         while index < values.length {
             self.Push(values[index]);
@@ -55,21 +53,21 @@ extend Bytes {
         }
     }
 
-    func Truncate(self: &var Bytes, length: uint) {
+    func Truncate(&var self, length: uint) {
         if length < self.length { self.length = length; }
     }
 
-    func View(self: &Bytes) -> char8[..] {
+    func View(&self) -> char8[..] {
         if self.data == null { return ""; }
         // Safety: `self.data`, not null here, is a live block whose first `self.length` bytes were written by `Push`.
         return unsafe { self.data[..self.length] };
     }
 
-    func ~Bytes(self: &var Bytes) {
+    func ~Bytes(&var self) {
         if self.data == null { return; }
         var allocator = self.allocator;
         allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? Layout::ForValue<char8>())
-            catch { else => {} };
+            catch { _ => {} };
     }
 }
 
@@ -116,11 +114,11 @@ func HexValue(c: uint8) -> uint8? {
 }
 
 func HexDigit(value: uint8) -> char8 {
-    return (value < 10u8 ? 0x30u8 + value : 0x37u8 + value) as char8;
+    return (if value < 10u8 { 0x30u8 + value } else { 0x37u8 + value }) as char8;
 }
 
 func Lower(c: uint8) -> char8 {
-    return (c >= 0x41u8 && c <= 0x5Au8 ? c + 0x20u8 : c) as char8;
+    return (if c >= 0x41u8 && c <= 0x5Au8 { c + 0x20u8 } else { c }) as char8;
 }
 
 // Appends `text` to `out` in the normalized form of `component`. A host refuses characters it cannot hold rather than
@@ -136,7 +134,7 @@ func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) ->
             let low = HexValue(text[index + 2] as uint8) ?? fail UrlError::InvalidPercentEncoding;
             let value = (high << 4) | low;
             if IsUnreserved(value) {
-                out.Push(lower ? Lower(value) : value as char8);
+                out.Push(if lower { Lower(value) } else { value as char8 });
             }
             else {
                 out.Push(c8'%');
@@ -147,7 +145,7 @@ func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) ->
             continue;
         }
         if IsAllowed(c, component) {
-            out.Push(lower ? Lower(c) : c as char8);
+            out.Push(if lower { Lower(c) } else { c as char8 });
         }
         else {
             if lower { fail UrlError::InvalidHost; }

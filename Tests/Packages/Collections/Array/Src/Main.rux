@@ -14,7 +14,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             unsafe { *self.counter = *self.counter + 1; }
@@ -25,7 +25,7 @@ extend Tracked {
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
 /// cannot pass by accident.
 func Refusal<T, E>(outcome: T ! E) -> E {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the operation was expected to fail")
     };
@@ -38,10 +38,10 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     var items = Vector<Tracked>(allocator);
     items.Push(Tracked { counter: destroyed, value: 1 });
     items.Push(Tracked { counter: destroyed, value: 2 });
-    var array = (<-items).IntoArray();
+    var array = (move items).IntoArray();
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(unsafe { *destroyed == 0 }, "moving the elements into the array destroys none of them");
-    array.Set(0, Tracked { counter: replacements, value: 10 }) catch { else => Panic("setting an element succeeds") };
+    array.Set(0, Tracked { counter: replacements, value: 10 }) catch { _ => Panic("setting an element succeeds") };
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(unsafe { *destroyed == 1 }, "setting destroys the element it replaces");
     // Safety: `replacements` points at a local of `Main`, which outlives this call.
@@ -51,7 +51,7 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     // Safety: `replacements` points at a local of `Main`, which outlives this call.
     Assert(unsafe { *replacements == 1 }, "destroying the refused value rather than leaking it");
     var previous = array.Replace(1, Tracked { counter: destroyed, value: 20 }) catch {
-        else => Panic("replacing an element succeeds")
+        _ => Panic("replacing an element succeeds")
     };
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(unsafe { previous.value == 2 && *destroyed == 1 }, "replacing hands back the element without destroying it");
@@ -95,7 +95,7 @@ func Main() -> int {
     Assert(filled.At(6) is none, "and nothing to borrow either");
 
     // Setting replaces an element and refuses an index the array does not have.
-    filled.Set(2, 99) catch { else => Panic("setting an element in range succeeds") };
+    filled.Set(2, 99) catch { _ => Panic("setting an element in range succeeds") };
     Assert(filled.Get(2) == .Some(99), "and replaces what was there");
     Assert(Refusal(filled.Set(6, 1)) == CollectionError::IndexOutOfRange, "setting past the end is refused");
     Assert(filled.Get(5) == .Some(7), "changing nothing");

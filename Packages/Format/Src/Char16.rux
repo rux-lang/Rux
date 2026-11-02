@@ -12,7 +12,7 @@ extend char16 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-write-display
-    pub func WriteDisplay(self: &char16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let value = self as uint32;
         if !IsScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
@@ -29,7 +29,7 @@ extend char16 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-write-debug
-    pub func WriteDebug(self: &char16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteCharacterDebug(writer, self as uint64, IsScalarValue(self as uint32));
     }
 }

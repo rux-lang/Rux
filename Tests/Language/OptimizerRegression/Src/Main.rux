@@ -10,7 +10,7 @@ struct StoredValue {
 }
 
 extend StoredValue : ValueSource {
-    func Value(self: &StoredValue) -> int {
+    func Value(&self) -> int {
         return self.value;
     }
 }
@@ -73,12 +73,12 @@ func DynamicRemainder(value: uint64, divisor: uint64) -> uint64 {
 func VerifyWordOperations(limit: uint64) {
     for bit in 0u64..64u64 {
         let value = 1u64 << bit;
-        let expected = bit < 19 ? 1u64 << (bit +% 45) : 1u64 << (bit -% 19);
+        let expected = if bit < 19 { 1u64 << (bit +% 45) } else { 1u64 << (bit -% 19) };
         Assert(Rotate64(value) == expected, "uint64 rotation preserves every bit");
     }
     for bit in 0u32..32u32 {
         let value = 1u32 << bit;
-        let expected = bit < 25 ? 1u32 << (bit +% 7) : 1u32 << (bit -% 25);
+        let expected = if bit < 25 { 1u32 << (bit +% 7) } else { 1u32 << (bit -% 25) };
         Assert(Rotate32(value) == expected, "uint32 rotation wraps at bit 32");
     }
     var state = 0x8000000000000000u64;
@@ -489,7 +489,7 @@ func UnrolledWalk(start: uint, limit: uint, output: *var uint, floating: *var fl
 }
 
 func ReferenceWalk(start: uint, limit: uint, output: *var uint, floating: *var float64) -> uint {
-    var left = limit > start ? limit -% start : 0u;
+    var left = if limit > start { limit -% start } else { 0u };
     var i = start;
     var a = 3u;
     var b = 5u;
@@ -606,15 +606,23 @@ func CheckLoadFacts() {
         for second in [false, true] {
             var value = 17u;
             var other = 21u;
-            let expected = first || second ? 34u : 0u;
+            let expected = if first || second { 34u } else { 0u };
             Assert(branch(@value, @other, first, second) == expected, "load facts stay on their own branch");
-            Assert(value == 17u && other == (first ? 24u : 21u), "branch writes remain observable");
-            Assert(branch(@value, @value, first, second) == (first ? 37u : expected), "aliased writes invalidate inherited loads");
+            Assert(value == 17u && other == (if first { 24u } else { 21u }), "branch writes remain observable");
+            Assert(branch(@value, @value, first, second) == (if first {
+                37u
+            } else {
+                expected
+            }), "aliased writes invalidate inherited loads");
         }
         var separate = 17u;
         var neighbor = 21u;
         Assert(join(@separate, @neighbor, first) == 34u, "join with distinct addresses");
-        Assert(join(@separate, @separate, first) == (first ? 43u : 34u), "join with a conditional aliasing write");
+        Assert(join(@separate, @separate, first) == (if first {
+            43u
+        } else {
+            34u
+        }), "join with a conditional aliasing write");
     }
     for count in 0u..17u {
         var value = 17u;
@@ -639,7 +647,11 @@ func CheckLiteralKeys() {
     let checks: func(uint) -> uint = RepeatedLiteralChecks;
     let values: func(int, bool) -> int = RepeatedLiteralValues;
     for value in 0u..65u {
-        Assert(checks(value) == (value < 15u ? value : value +% 2u), "equal typed literal bounds preserve results");
+        Assert(checks(value) == (if value < 15u {
+            value
+        } else {
+            value +% 2u
+        }), "equal typed literal bounds preserve results");
     }
     for value in -32..33 {
         Assert(values(value, true) == value +% 15, "literal expression branch result");
@@ -660,7 +672,7 @@ func AffinePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, 
     return result;
 }
 func ReferencePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, other: *uint) -> uint {
-    var remaining = limit > start ? limit -% start : 0u;
+    var remaining = if limit > start { limit -% start } else { 0u };
     var index = start;
     var result = 0u;
     while remaining > 0u {
@@ -682,8 +694,8 @@ func CheckPointerInduction() {
             for displacement in 0u..3u {
                 var actual: uint[12] = [7u; 12];
                 var expected: uint[12] = [7u; 12];
-                let writeOffset = displacement == 2u ? 1u : 0u;
-                let readOffset = displacement == 1u ? 1u : 0u;
+                let writeOffset = if displacement == 2u { 1u } else { 0u };
+                let readOffset = if displacement == 1u { 1u } else { 0u };
                 let a = walk(start, limit, 3u, @actual[writeOffset], @actual[readOffset]);
                 let b = ReferencePointerWalk(start, limit, 3u, @expected[writeOffset], @expected[readOffset]);
                 Assert(a == b, "pointer induction preserves aliased load/store order");
@@ -759,8 +771,13 @@ func CheckStridedVersioning() {
                 for stride in [3u, 4u, 6u] {
                     var actual = 7u;
                     var expected = 7u;
-                    let a = stride == 3u ? walk3(limit, row, bound, @actual)
-                        : stride == 4u ? walk4(limit, row, bound, @actual) : walk6(limit, row, bound, @actual);
+                    let a = if stride == 3u {
+                        walk3(limit, row, bound, @actual)
+                    } else if stride == 4u {
+                        walk4(limit, row, bound, @actual)
+                    } else {
+                        walk6(limit, row, bound, @actual)
+                    };
                     let b = reference(limit, row, bound, @expected, stride);
                     Assert(a == b && actual == expected, "strided bounds preserve prefix writes and checked fallback");
                 }
@@ -829,9 +846,9 @@ func CheckAllocatedCasts() {
         expected[0] = value & 255u64;
         expected[1] = value & 65535u64;
         expected[2] = value & 0xFFFFFFFFu64;
-        expected[4] = (value & 128u64) != 0u64 ? expected[0] | 0xFFFFFFFFFFFFFF00u64 : expected[0];
-        expected[5] = (value & 32768u64) != 0u64 ? expected[1] | 0xFFFFFFFFFFFF0000u64 : expected[1];
-        expected[6] = (value & 0x80000000u64) != 0u64 ? expected[2] | 0xFFFFFFFF00000000u64 : expected[2];
+        expected[4] = if (value & 128u64) != 0u64 { expected[0] | 0xFFFFFFFFFFFFFF00u64 } else { expected[0] };
+        expected[5] = if (value & 32768u64) != 0u64 { expected[1] | 0xFFFFFFFFFFFF0000u64 } else { expected[1] };
+        expected[6] = if (value & 0x80000000u64) != 0u64 { expected[2] | 0xFFFFFFFF00000000u64 } else { expected[2] };
         expected[8] = expected[4] & 0xFFFFFFFFu64;
         expected[9] = expected[5] & 0xFFFFFFFFu64;
         expected[10] = value & 127u64;

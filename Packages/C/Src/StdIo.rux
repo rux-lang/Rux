@@ -31,7 +31,7 @@ when #target.os {
     .Linux => const StdIoLib = "libc.so.6";
     .macOS => const StdIoLib = "libSystem.B.dylib";
     .Windows => const StdIoLib = "msvcrt.dll";
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 #Link(StdIoLib)
@@ -410,7 +410,7 @@ when #target.os {
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 238328;
     }
-    else => {
+    _ => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
         /// @see https://rux-lang.dev/docs/api/c/stdio#iofbf
         #Allow("naming.const")

@@ -7,7 +7,7 @@ pub struct Record {
 }
 
 extend Record {
-    pub func ==(self: &Record, other: Record) -> bool {
+    pub func ==(&self, other: Self) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }

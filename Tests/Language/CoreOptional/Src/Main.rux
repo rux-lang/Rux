@@ -1,6 +1,6 @@
 // The name alone does not bind the compiler's view representation.
 struct OrdinaryRecord<T> { pub length: T; }
-extend OrdinaryRecord<T> { func Value(self: &OrdinaryRecord<T>) -> T { return self.length; } }
+extend OrdinaryRecord<T> { func Value(&self) -> T { return self.length; } }
 
 func Main() -> int {
     let text = "hello";

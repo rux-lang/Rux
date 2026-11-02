@@ -50,7 +50,7 @@ when #target.os == OperatingSystem::Windows {
             windowProcedure: Procedure,
             classExtra: 0,
             windowExtra: 0,
-            instance: instance,
+            instance,
             icon: null,
             // Safety: a null instance with a predefined cursor identifier in place of a name is the documented form.
             cursor: unsafe { LoadCursorW(null, IDC_ARROW as *char16) },

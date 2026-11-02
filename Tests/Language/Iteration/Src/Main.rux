@@ -7,7 +7,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(self: &var Counter) -> int32? {
+    func Next(&var self) -> int32? {
         if self.value >= self.limit {
             return none;
         }
@@ -23,13 +23,13 @@ struct Span {
 }
 
 extend Span {
-    func Iterate(self: &Span) -> Counter {
+    func Iterate(&self) -> Counter {
         return Counter { value: 0i32, limit: self.limit };
     }
 }
 
 func SumIterator(limit: int32) -> int32 {
-    var counter = Counter { value: 0i32, limit: limit };
+    var counter = Counter { value: 0i32, limit };
     var total = 0i32;
     for item in counter {
         total = total + item;
@@ -38,7 +38,7 @@ func SumIterator(limit: int32) -> int32 {
 }
 
 func SumContainer(limit: int32) -> int32 {
-    let span = Span { limit: limit };
+    let span = Span { limit };
     var total = 0i32;
     for item in span {
         total = total + item;
@@ -48,7 +48,7 @@ func SumContainer(limit: int32) -> int32 {
 
 // Two loops over one container each get their own iterator, so the second starts from the beginning.
 func SumTwice(limit: int32) -> int32 {
-    let span = Span { limit: limit };
+    let span = Span { limit };
     var total = 0i32;
     for item in span {
         total = total + item;
@@ -60,7 +60,7 @@ func SumTwice(limit: int32) -> int32 {
 }
 
 func Selective(limit: int32) -> int32 {
-    var counter = Counter { value: 0i32, limit: limit };
+    var counter = Counter { value: 0i32, limit };
     var total = 0i32;
     for item in counter {
         if item >= 4i32 {
@@ -76,9 +76,9 @@ func Selective(limit: int32) -> int32 {
 
 func Nested(limit: int32) -> int32 {
     var count = 0i32;
-    var outer = Counter { value: 0i32, limit: limit };
+    var outer = Counter { value: 0i32, limit };
     for first in outer {
-        var inner = Counter { value: 0i32, limit: limit };
+        var inner = Counter { value: 0i32, limit };
         for second in inner {
             count = count + 1i32;
         }

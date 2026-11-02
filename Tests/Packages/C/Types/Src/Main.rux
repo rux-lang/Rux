@@ -37,7 +37,7 @@ func Main() -> int {
             Assert(sizeof(c_ulong) == 4, "unsigned long is four bytes under LLP64");
             Assert(sizeof(wchar_t) == 2, "wchar_t is a UTF-16 code unit under LLP64");
         }
-        else => {
+        _ => {
             Assert(sizeof(c_long) == 8, "long is eight bytes under LP64");
             Assert(sizeof(c_ulong) == 8, "unsigned long is eight bytes under LP64");
             Assert(sizeof(wchar_t) == 4, "wchar_t is a scalar value under LP64");
@@ -85,7 +85,7 @@ func Main() -> int {
         .Windows => {
             Assert(SeparateStreamRuntime, "Windows loads two C runtimes");
         }
-        else => {
+        _ => {
             Assert(!SeparateStreamRuntime, "every other system has one C runtime");
             Assert(ErrnoLocationFor(CRuntimeArea::General) == ErrnoLocationFor(CRuntimeArea::Streams),
                    "so both areas name the same storage");

@@ -24,10 +24,10 @@ struct Counted {
 }
 
 extend Counted {
-    func Clone(&self) -> Counted {
+    func Clone(&self) -> Self {
         // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Counted`.
         unsafe { self.counter.clones = self.counter.clones + 1; }
-        return Counted { counter: self.counter, id: self.id };
+        return Self { counter: self.counter, id: self.id };
     }
 
     func ~Counted(&var self) {
@@ -69,8 +69,8 @@ func LoopOverPlain() {
 
 // Owning elements are visited in place, and a pass that needs its own value clones it.
 func LoopOverOwning(counter: *var Counter) {
-    let items: Counted[3] = [Counted { counter: counter, id: 1 }, Counted { counter: counter, id: 2 },
-                             Counted { counter: counter, id: 3 }];
+    let items: Counted[3] = [Counted { counter, id: 1 }, Counted { counter, id: 2 },
+                             Counted { counter, id: 3 }];
     var sum: int32 = 0;
     for item in ReferenceIterator<Counted>(items[..]) {
         // Safety: the reference iterator yields pointers into `items`, which is live for the whole loop.
@@ -111,8 +111,8 @@ func Main() -> int {
     Assert(counter.drops == 7, "the array destroys its own elements once, after every clone");
 
     // The shape `Test::RunBenchmarks` loops over: text in a vector, visited in place.
-    let a = String::FromBytes(SystemAllocator(), "hello") catch { else => return 1 };
-    let b = String::FromBytes(SystemAllocator(), "world") catch { else => return 2 };
+    let a = String::FromBytes(SystemAllocator(), "hello") catch { _ => return 1 };
+    let b = String::FromBytes(SystemAllocator(), "world") catch { _ => return 2 };
     var texts = Vector<String>(SystemAllocator());
     texts.Push(move a);
     texts.Push(move b);
@@ -122,8 +122,8 @@ func Main() -> int {
         bytes = bytes + unsafe { (*text).Bytes().length };
     }
     Assert(bytes == 10u, "every string is visited");
-    let words: String[2] = [String::FromBytes(SystemAllocator(), "one") catch { else => return 5 },
-                            String::FromBytes(SystemAllocator(), "two") catch { else => return 6 }];
+    let words: String[2] = [String::FromBytes(SystemAllocator(), "one") catch { _ => return 5 },
+                            String::FromBytes(SystemAllocator(), "two") catch { _ => return 6 }];
     for word in ReferenceIterator<String>(words[..]) {
         // Safety: the reference iterator yields pointers into `words`, which is live for the whole loop.
         bytes = bytes + unsafe { (*word).Bytes().length };

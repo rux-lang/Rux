@@ -18,9 +18,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds a pointer to a `Log` local of `Main` that outlives it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -57,7 +55,7 @@ func Mark(log: *var Log) {
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
 }
 
 func MakeParcel(log: *var Log) -> Parcel {
@@ -66,7 +64,7 @@ func MakeParcel(log: *var Log) -> Parcel {
 
 func BindsFields() {
     let point = Point { x: 3i32, y: 4i32 };
-    let Point { x: a, y: b } <- point;
+    let Point { x: a, y: b } = move point;
     Assert(a == 3i32 && b == 4i32, "a moving destructure binds each field");
 }
 
@@ -78,7 +76,7 @@ func BindsInAnyOrder() {
 }
 
 func BindsMutably() {
-    var Point { x: x, y: y } = Point { x: 1i32, y: 2i32 };
+    var Point { x, y } = Point { x: 1i32, y: 2i32 };
     x = x + 10i32;
     y = y * 3i32;
     Assert(x == 11i32 && y == 6i32, "'var' makes every binding of the pattern mutable");
@@ -86,7 +84,7 @@ func BindsMutably() {
 
 func BindsNested() {
     let segment = Segment { start: Point { x: 1i32, y: 2i32 }, end: Point { x: 3i32, y: 4i32 } };
-    let Segment { start: Point { x: x0, y: _ }, end: end } = segment;
+    let Segment { start: Point { x: x0, y: _ }, end } = segment;
     Assert(x0 == 1i32 && end.x == 3i32 && end.y == 4i32, "a field may hold a nested structure pattern");
 
     let pair = (Point { x: 7i32, y: 8i32 }, 9i32);
@@ -96,21 +94,21 @@ func BindsNested() {
 
 func BindsEveryField(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { label: label, contents: contents, extra: extra } <- parcel;
+    let Parcel { label, contents, extra } = move parcel;
     Mark(log);
     Assert(label.id == 1 && contents.id == 2 && extra.id == 3, "every field is bound");
 }
 
 func DiscardsWildcardField(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { label: _, contents: contents, extra: extra } <- parcel;
+    let Parcel { label: _, contents, extra } = move parcel;
     Mark(log);
     Assert(contents.id == 2 && extra.id == 3, "the other fields are bound");
 }
 
 func DiscardsOmittedFields(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { contents: contents } <- parcel;
+    let Parcel { contents } = move parcel;
     Mark(log);
     Assert(contents.id == 2, "the named field is bound");
 }
@@ -118,13 +116,13 @@ func DiscardsOmittedFields(log: *var Log) {
 // The written `_` field goes first, then the omitted one.
 func DiscardsInPatternOrder(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { extra: _, label: label } <- parcel;
+    let Parcel { extra: _, label } = move parcel;
     Mark(log);
     Assert(label.id == 1, "the label is bound");
 }
 
 func DiscardsFromTemporary(log: *var Log) {
-    let Parcel { extra: extra } = MakeParcel(log);
+    let Parcel { extra } = MakeParcel(log);
     Mark(log);
     Assert(extra.id == 3, "a field of a temporary is bound");
 }
@@ -132,20 +130,20 @@ func DiscardsFromTemporary(log: *var Log) {
 // A pattern that binds nothing destroys the value whole, in the structure's own reverse field order.
 func BindsNothing(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { label: _ } <- parcel;
+    let Parcel { label: _ } = move parcel;
     Mark(log);
 }
 
 // A structure that declares its own destructor can still be discarded whole by a pattern that binds none of it.
 func DiscardsWholeTracked(log: *var Log) {
     let tracked = Track(log, 4);
-    let Tracked { id: _ } <- tracked;
+    let Tracked { id: _ } = move tracked;
     Mark(log);
 }
 
 func BindsGeneric(log: *var Log) {
     let boxed = Boxed<Tracked> { value: Track(log, 5), count: 2i32 };
-    let Boxed { value: value, count: count } <- boxed;
+    let Boxed { value, count } = move boxed;
     Mark(log);
     Assert(value.id == 5 && count == 2i32, "a generic structure binds its substituted field types");
 

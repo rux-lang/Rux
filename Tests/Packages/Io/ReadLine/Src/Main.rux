@@ -19,7 +19,7 @@ struct ScriptHandle {
 }
 
 extend ScriptHandle : Reader {
-    func Read(self: &var ScriptHandle, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at a `ScriptState` local of the checking function, which outlives the handle.
         unsafe {
@@ -49,7 +49,7 @@ struct PausingHandle {
 }
 
 extend PausingHandle : Reader {
-    func Read(self: &var PausingHandle, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at a `PausingState` local of `CheckPauses`, which outlives the handle.
         unsafe {

@@ -24,18 +24,18 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     var full = PathBuffer::FromPath(allocator, directory);
     full.Push(name);
 
-    var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing()) catch { else => Panic(what) };
+    var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing()) catch { _ => Panic(what) };
     Assert(made.IsOpen(), what);
-    made.Close() catch { else => Panic("and closes") };
+    made.Close() catch { _ => Panic("and closes") };
 
     // Enumeration must report the name the way it was written.
-    var walk = ReadDirectory(allocator, directory) catch { else => Panic("the directory opens for reading") };
+    var walk = ReadDirectory(allocator, directory) catch { _ => Panic("the directory opens for reading") };
     var found = false;
     var reported = OsString(allocator);
     while true {
-        let next = walk.Next() catch { else => Panic("the enumeration ends rather than fails") };
+        let next = walk.Next() catch { _ => Panic("the enumeration ends rather than fails") };
         match move next {
-            entry? => {
+            .Some(entry) => {
                 let view = entry.View();
                 if view.Equals(name) {
                     found = true;
@@ -54,12 +54,12 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     var reopenPath = PathBuffer::FromPath(allocator, directory);
     reopenPath.Push(reported.View());
     var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading()) catch {
-        else => Panic("and opens the same file")
+        _ => Panic("and opens the same file")
     };
     Assert(reopened.IsOpen(), "and opens the same file");
-    reopened.Close() catch { else => Panic("which closes") };
+    reopened.Close() catch { _ => Panic("which closes") };
 
-    DeleteFile(allocator, full.AsPath()) catch { else => Panic("and deletes under the original name") };
+    DeleteFile(allocator, full.AsPath()) catch { _ => Panic("and deletes under the original name") };
     full.Release();
     reopenPath.Release();
 }
@@ -70,7 +70,7 @@ func Main() -> int ! IoError {
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", dirHolder);
-    DeleteDirectory(allocator, dir) catch { else => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
     MakeDirectory(allocator, dir)?;
 
     // Characters no ANSI code page holds, which is what a lossy conversion loses first.

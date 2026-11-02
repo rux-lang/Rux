@@ -53,8 +53,8 @@ func CaseOf(reason: &FormatError) -> int32 {
 func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
     var outcome = Parse(allocator, text);
     var value = JsonValue::Null(allocator);
-    value = (<-outcome) catch { else => Panic("the document parses") };
-    return <-value;
+    value = (move outcome) catch { _ => Panic("the document parses") };
+    return move value;
 }
 
 func Main() -> int {
@@ -124,7 +124,7 @@ func Main() -> int {
     forged.kind = JsonKind::Number;
     Assert(RefusedAs(allocator, forged, JsonStyle::Compact(), outOfRange),
            "a number with no text is refused as a value the requested form cannot hold");
-    var ordinary = JsonValue::Number(allocator, "1e999") catch { else => Panic("1e999 is stored") };
+    var ordinary = JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), wrote);
     Assert(wrote,
            "while an exponent past what a float holds is still a number JSON can spell, and is written");

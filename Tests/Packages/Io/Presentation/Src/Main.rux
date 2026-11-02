@@ -35,7 +35,7 @@ struct RecordingStream {
 }
 
 extend RecordingStream : Writer {
-    func Write(self: &var RecordingStream, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         // Safety: `state` points at a `StreamState` local of `Main`, which outlives every stream made over it.
         unsafe {
             self.state.calls = self.state.calls + 1;
@@ -53,7 +53,7 @@ extend RecordingStream : Writer {
         return bytes.length;
     }
 
-    func Flush(self: &var RecordingStream) -> ! IoError {
+    func Flush(&var self) -> ! IoError {
         return;
     }
 }
@@ -65,9 +65,7 @@ struct Owned {
 }
 
 extend Owned {
-    func =(self: &var Owned, other: &Owned);
-
-    func ~Owned(self: &var Owned) {
+    func ~Owned(&var self) {
         if self.counter != null {
             // Safety: a non-null `counter` points at a local of `Main` that outlives every `Owned` value.
             unsafe { *self.counter = *self.counter + 1; }
@@ -76,7 +74,7 @@ extend Owned {
 }
 
 extend Owned : Display {
-    func WriteDisplay(self: &Owned, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "owned-")?;
         let tag: Display = self.tag;
         return tag.WriteDisplay(writer, spec);
@@ -89,7 +87,7 @@ struct Refuses {
 }
 
 extend Refuses : Display {
-    func WriteDisplay(self: &Refuses, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         fail FormatError::UnsupportedRequest;
     }
 }
@@ -114,19 +112,19 @@ func IsWriterFailure(outcome: ! FormatError) -> bool {
 func IsUnsupported(outcome: ! FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
+        .Failure(reason) => match reason { .UnsupportedRequest => true, _ => false }
     };
 }
 
 // Whether a failure slot holds a failure of `kind`.
 func Holds(slot: IoError?, kind: IoErrorKind) -> bool {
     return match slot {
-        error? => error.kind == kind,
+        .Some(error) => error.kind == kind,
         none => false
     };
 }
 
-// A pattern the compiler cannot see as a literal. A literal passed for a `#Format()` parameter has its placeholders
+// A pattern the compiler cannot see as a literal. A literal passed for a `#Format` parameter has its placeholders
 // counted while compiling, so a run-time count mismatch is reached through a pattern known only when the program runs.
 func Pattern(text: char8[..]) -> char8[..] {
     return text;

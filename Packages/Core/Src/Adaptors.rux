@@ -14,7 +14,7 @@ pub interface Cursor<T> {
     /// The next item, or `none` once there are no more.
     /// @returns the item
     /// @see https://rux-lang.dev/docs/api/core/adaptors#cursor-next
-    func Next(self: &var Self) -> T?;
+    func Next(&var self) -> T?;
 }
 
 /// A cursor over the elements of a slice, by copy. `Copy`.
@@ -29,7 +29,7 @@ extend SliceCursor<T> {
     /// The next element, or `none` after the last.
     /// @returns the element
     /// @see https://rux-lang.dev/docs/api/core/adaptors#slice-cursor-next
-    pub func Next(self: &var SliceCursor<T>) -> T? {
+    pub func Next(&var self) -> T? {
         if self.at >= self.items.length { return none; }
         self.at = self.at + 1;
         return self.items[self.at - 1];
@@ -42,7 +42,7 @@ extend SliceCursor<T> {
 /// @returns the cursor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#walk
 pub func Walk<T>(items: T[..]) -> SliceCursor<T> {
-    return SliceCursor<T> { items: items, at: 0 };
+    return SliceCursor<T> { items, at: 0 };
 }
 
 /// The items of a cursor, each passed through a function.
@@ -59,7 +59,7 @@ extend Mapped<I, T, U> {
     /// The next item, transformed.
     /// @returns the item
     /// @see https://rux-lang.dev/docs/api/core/adaptors#mapped-next
-    pub func Next(self: &var Mapped<I, T, U>) -> U? {
+    pub func Next(&var self) -> U? {
         let item = self.source.Next() ?? return none;
         return self.transform(item);
     }
@@ -74,7 +74,7 @@ extend Mapped<I, T, U> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#map
 pub func Map<I: Cursor<T>, T, U>(source: I, transform: func(T) -> U) -> Mapped<I, T, U> {
-    return Mapped<I, T, U> { source: source, transform: transform };
+    return Mapped<I, T, U> { source, transform };
 }
 
 /// The items of a cursor that pass a test.
@@ -90,7 +90,7 @@ extend Filtered<I, T> {
     /// The next item that passes the test.
     /// @returns the item
     /// @see https://rux-lang.dev/docs/api/core/adaptors#filtered-next
-    pub func Next(self: &var Filtered<I, T>) -> T? {
+    pub func Next(&var self) -> T? {
         while true {
             let item = self.source.Next() ?? return none;
             if self.keep(item) { return item; }
@@ -107,7 +107,7 @@ extend Filtered<I, T> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#filter
 pub func Filter<I: Cursor<T>, T>(source: I, keep: func(T) -> bool) -> Filtered<I, T> {
-    return Filtered<I, T> { source: source, keep: keep };
+    return Filtered<I, T> { source, keep };
 }
 
 /// At most a number of items from the front of a cursor.
@@ -123,7 +123,7 @@ extend Taken<I, T> {
     /// The next item, or `none` once the count is reached; the wrapped cursor is not asked again after that.
     /// @returns the item
     /// @see https://rux-lang.dev/docs/api/core/adaptors#taken-next
-    pub func Next(self: &var Taken<I, T>) -> T? {
+    pub func Next(&var self) -> T? {
         if self.left == 0 { return none; }
         self.left = self.left - 1;
         return self.source.Next();
@@ -138,7 +138,7 @@ extend Taken<I, T> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#take
 pub func Take<I: Cursor<T>, T>(source: I, count: uint) -> Taken<I, T> {
-    return Taken<I, T> { source: source, left: count };
+    return Taken<I, T> { source, left: count };
 }
 
 /// The items of a cursor after a number of them.
@@ -154,7 +154,7 @@ extend Skipped<I, T> {
     /// The next item, passing over the skipped ones the first time it is asked.
     /// @returns the item
     /// @see https://rux-lang.dev/docs/api/core/adaptors#skipped-next
-    pub func Next(self: &var Skipped<I, T>) -> T? {
+    pub func Next(&var self) -> T? {
         while self.skip > 0 {
             self.skip = self.skip - 1;
             let passed = self.source.Next() ?? return none;
@@ -171,7 +171,7 @@ extend Skipped<I, T> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#skip
 pub func Skip<I: Cursor<T>, T>(source: I, count: uint) -> Skipped<I, T> {
-    return Skipped<I, T> { source: source, skip: count };
+    return Skipped<I, T> { source, skip: count };
 }
 
 /// An item and its position, counting from zero. `Copy` when the item is.
@@ -197,10 +197,10 @@ extend Enumerated<I, T> {
     /// The next item with its position.
     /// @returns the item and its position
     /// @see https://rux-lang.dev/docs/api/core/adaptors#enumerated-next
-    pub func Next(self: &var Enumerated<I, T>) -> Indexed<T>? {
+    pub func Next(&var self) -> Indexed<T>? {
         let item = self.source.Next() ?? return none;
         self.index = self.index + 1;
-        return Indexed<T> { index: self.index - 1, item: item };
+        return Indexed<T> { index: self.index - 1, item };
     }
 }
 
@@ -211,7 +211,7 @@ extend Enumerated<I, T> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#enumerate
 pub func Enumerate<I: Cursor<T>, T>(source: I) -> Enumerated<I, T> {
-    return Enumerated<I, T> { source: source, index: 0 };
+    return Enumerated<I, T> { source, index: 0 };
 }
 
 /// One item from each of two cursors. `Copy` when both are.
@@ -240,7 +240,7 @@ extend Zipped<I, J, A, B> {
     /// The next item of each, or `none` once either runs out.
     /// @returns the pair
     /// @see https://rux-lang.dev/docs/api/core/adaptors#zipped-next
-    pub func Next(self: &var Zipped<I, J, A, B>) -> Pair<A, B>? {
+    pub func Next(&var self) -> Pair<A, B>? {
         let left = self.first.Next() ?? return none;
         let right = self.second.Next() ?? return none;
         return Pair<A, B> { first: left, second: right };
@@ -257,7 +257,7 @@ extend Zipped<I, J, A, B> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#zip
 pub func Zip<I: Cursor<A>, J: Cursor<B>, A, B>(first: I, second: J) -> Zipped<I, J, A, B> {
-    return Zipped<I, J, A, B> { first: first, second: second };
+    return Zipped<I, J, A, B> { first, second };
 }
 
 /// The items of one cursor and then of another.
@@ -275,7 +275,7 @@ extend Chained<I, J, T> {
     /// The next item of the first cursor, then of the second once the first has run out.
     /// @returns the item
     /// @see https://rux-lang.dev/docs/api/core/adaptors#chained-next
-    pub func Next(self: &var Chained<I, J, T>) -> T? {
+    pub func Next(&var self) -> T? {
         if !self.firstDone {
             match self.first.Next() {
                 .Some(item) => return item,
@@ -295,5 +295,5 @@ extend Chained<I, J, T> {
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/core/adaptors#chain
 pub func Chain<I: Cursor<T>, J: Cursor<T>, T>(first: I, second: J) -> Chained<I, J, T> {
-    return Chained<I, J, T> { first: first, second: second, firstDone: false };
+    return Chained<I, J, T> { first, second, firstDone: false };
 }

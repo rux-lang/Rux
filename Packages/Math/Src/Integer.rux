@@ -54,7 +54,7 @@ pub func AbsWrapping<T>(value: T) -> T {
 /// @returns the smaller value
 /// @see https://rux-lang.dev/docs/api/math/integer#minimum
 pub func Minimum<T>(left: T, right: T) -> T {
-    return left < right ? left : right;
+    return if left < right { left } else { right };
 }
 
 /// The larger of two integers.
@@ -64,7 +64,7 @@ pub func Minimum<T>(left: T, right: T) -> T {
 /// @returns the larger value
 /// @see https://rux-lang.dev/docs/api/math/integer#maximum
 pub func Maximum<T>(left: T, right: T) -> T {
-    return left < right ? right : left;
+    return if left < right { right } else { left };
 }
 
 /// `value` brought into `[low, high]`.

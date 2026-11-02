@@ -62,7 +62,7 @@ func Declares(spec: &CommandSpec, name: char8[..]) -> bool {
 
 // How wide a positional is as the usage line writes it.
 func PositionalWidth(positional: &PositionalSpec) -> uint {
-    return positional.name.length + (positional.kind == PositionalKind::Remaining ? 5 : 2);
+    return positional.name.length + (if positional.kind == PositionalKind::Remaining { 5 } else { 2 });
 }
 
 // How a positional is written in the usage line: `<name>`, `[name]` or `[name...]`.
@@ -132,7 +132,7 @@ pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..
     if spec.positionals.length > 0 {
         var width: uint = 0;
         for positional in spec.positionals {
-            width = PositionalWidth(positional) > width ? PositionalWidth(positional) : width;
+            width = if PositionalWidth(positional) > width { PositionalWidth(positional) } else { width };
         }
         WriteBytes(writer, "\nArguments:\n")?;
         for positional in spec.positionals {
@@ -150,7 +150,7 @@ pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..
     let listsVersion = spec.version.length > 0 && !Declares(spec, "version");
     var width: uint = 0;
     for option in spec.options {
-        width = OptionWidth(option) > width ? OptionWidth(option) : width;
+        width = if OptionWidth(option) > width { OptionWidth(option) } else { width };
     }
     if listsHelp && OptionWidth(help) > width {
         width = OptionWidth(help);
@@ -184,7 +184,7 @@ pub func WriteHelp(spec: &CommandSpec, writer: &var TextWriter, parent: char8[..
     if spec.commands.length > 0 {
         var commandWidth: uint = 0;
         for command in spec.commands {
-            commandWidth = command.name.length > commandWidth ? command.name.length : commandWidth;
+            commandWidth = if command.name.length > commandWidth { command.name.length } else { commandWidth };
         }
         WriteBytes(writer, "\nCommands:\n")?;
         for command in spec.commands {
@@ -221,10 +221,10 @@ extend Parsed {
     /// @param writer the destination
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#write-help
-    pub func WriteHelp(self: &Parsed, writer: &var TextWriter) -> ! FormatError {
+    pub func WriteHelp(&self, writer: &var TextWriter) -> ! FormatError {
         // Safety: `self.parent`, tested for null here, is the `CommandSpec` whose `commands` hold this parse's command,
         // and the documented contract of `Parse` keeps it alive for as long as the `Parsed` result.
-        let parent = self.parent == null ? "" : unsafe { self.parent.name };
+        let parent = if self.parent == null { "" } else { unsafe { self.parent.name } };
         let declared = self.Declared();
         return WriteHelp(declared, writer, parent);
     }

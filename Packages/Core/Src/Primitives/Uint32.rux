@@ -26,7 +26,7 @@ extend uint32 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `uint32`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-checked-add
-    pub func CheckedAdd(self: &uint32, other: uint32) -> uint32? {
+    pub func CheckedAdd(&self, other: uint32) -> uint32? {
         var sum: uint32 = 0;
         if AddChecked<uint32>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend uint32 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `uint32`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-checked-sub
-    pub func CheckedSub(self: &uint32, other: uint32) -> uint32? {
+    pub func CheckedSub(&self, other: uint32) -> uint32? {
         var difference: uint32 = 0;
         if SubChecked<uint32>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend uint32 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `uint32`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-checked-mul
-    pub func CheckedMul(self: &uint32, other: uint32) -> uint32? {
+    pub func CheckedMul(&self, other: uint32) -> uint32? {
         var product: uint32 = 0;
         if MulChecked<uint32>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend uint32 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `uint32` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-saturating-add
-    pub func SaturatingAdd(self: &uint32, other: uint32) -> uint32 {
+    pub func SaturatingAdd(&self, other: uint32) -> uint32 {
         return AddSaturating<uint32>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend uint32 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `uint32` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-saturating-sub
-    pub func SaturatingSub(self: &uint32, other: uint32) -> uint32 {
+    pub func SaturatingSub(&self, other: uint32) -> uint32 {
         return SubSaturating<uint32>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend uint32 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `uint32` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-saturating-mul
-    pub func SaturatingMul(self: &uint32, other: uint32) -> uint32 {
+    pub func SaturatingMul(&self, other: uint32) -> uint32 {
         return MulSaturating<uint32>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend uint32 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint32-truncate
-    pub intrinsic func Truncate<T>(self: &uint32) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

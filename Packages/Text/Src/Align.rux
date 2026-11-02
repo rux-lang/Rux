@@ -27,7 +27,7 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
         let missing = spec.Width() - occupied;
         var align = spec.Alignment();
         if align == FormatAlign::Default {
-            align = numeric ? FormatAlign::Right : FormatAlign::Left;
+            align = if numeric { FormatAlign::Right } else { FormatAlign::Left };
         }
         if align == FormatAlign::Right {
             leading = missing;

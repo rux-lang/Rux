@@ -27,7 +27,7 @@ func Main() -> int {
         Assert(Choose(true, @first, input, 7) == (input + 7) * (input + 7), "dominated arithmetic");
         Assert(first == input + 7, "stores are retained");
         Assert(Choose(false, @first, input, 7) == 0, "sibling arithmetic");
-        Assert(Repeated(input, 0) == (input < 0 ? 7 : 17), "repeated branch facts follow each path");
+        Assert(Repeated(input, 0) == (if input < 0 { 7 } else { 17 }), "repeated branch facts follow each path");
     }
     for value in 0u64..256u64 {
         let narrow = value as uint8;
@@ -89,7 +89,7 @@ func CheckGuardedLoops() {
         for limit in [0u, 1u, 2u, maximum] {
             var actual = 7u;
             var expected = 7u;
-            let bound = row == 0u ? 2u : maximum;
+            let bound = if row == 0u { 2u } else { maximum };
             Assert(GuardedWalk(limit, row, bound, @actual) == ReferenceWalk(limit, row, bound, @expected),
                 "maximum endpoints and wrapping offsets retain checked behavior");
             Assert(actual == expected, "extreme guard fallback preserves side effects");

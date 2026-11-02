@@ -33,7 +33,7 @@ func ScientificMark(spec: FormatSpec, mark: *var char8) -> bool ! FormatError {
 func WriteNonFinite(writer: &var TextWriter, spec: FormatSpec, isNan: bool, negative: bool) -> ! FormatError {
     if isNan { return WriteAligned(writer, spec, "NaN", true); }
     if negative { return WriteAligned(writer, spec, "-Inf", true); }
-    return WriteAligned(writer, spec, spec.ShowsSign() ? "+Inf" : "Inf", true);
+    return WriteAligned(writer, spec, if spec.ShowsSign() { "+Inf" } else { "Inf" }, true);
 }
 
 // Exactly `wanted` significant digits of `significand * 2^exponent`, rounded to nearest with ties to even, and the
@@ -135,7 +135,7 @@ func WriteScientificFloat(cursor: &var ByteCursor, parts: FloatParts, hasPrecisi
             cursor.Push(c8'.');
             var index: uint = 1;
             while index <= precision {
-                cursor.Push(index < count ? digits[index] : c8'0');
+                cursor.Push(if index < count { digits[index] } else { c8'0' });
                 index = index + 1;
             }
         }

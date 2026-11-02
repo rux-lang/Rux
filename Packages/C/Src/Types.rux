@@ -110,7 +110,7 @@ when #target.dataModel {
         #Allow("naming.type")
         pub type wchar_t = char32;
     }
-    else => #Error("Unsupported C data model")
+    _ => #Error("Unsupported C data model")
 }
 
 /// C's `size_t`: the type of a size, a count of bytes, and the result of `sizeof`.
@@ -219,7 +219,7 @@ when #target.os {
         const CRuntimeLink = "ucrtbase.dll";
         const StreamRuntimeLink = "msvcrt.dll";
     }
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // `errno` is a macro in C, not a variable: a threaded program needs one per thread, so every C runtime hides the
@@ -269,7 +269,7 @@ when #target.os {
         #Symbol("_errno")
         extern func _stream_errno() -> *var c_int;
     }
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// Which of the package's C runtimes a call belongs to.
@@ -318,9 +318,9 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
         .Windows => {
             // Safety: `_stream_errno` and `_errno` take no arguments and return the calling thread's own `errno`
             // address in their runtime.
-            return unsafe { area == CRuntimeArea::Streams ? _stream_errno() : _errno() };
+            return unsafe { if area == CRuntimeArea::Streams { _stream_errno() } else { _errno() } };
         }
-        else => #Error("Unsupported operating system")
+        _ => #Error("Unsupported operating system")
     }
 }
 
@@ -399,5 +399,5 @@ when #target.os {
         /// @see https://rux-lang.dev/docs/api/c/errno#eilseq
         pub const EILSEQ: c_int = 42;
     }
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }

@@ -98,7 +98,7 @@ func Make(flag: bool) -> int {
     // An owned value made in a branch's own scope is moved out before the scope ends, and destroyed once.
     let token = if flag {
         let made = Token { id: 1 };
-        <-made
+        move made
     } else {
         Token { id: 2 }
     };

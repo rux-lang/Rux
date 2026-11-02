@@ -29,7 +29,7 @@ struct CaptureSink {
 }
 
 extend CaptureSink : Writer {
-    func Write(self: &var CaptureSink, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         let capture = self.capture;
         var index: uint = 0;
         while index < bytes.length {
@@ -43,7 +43,7 @@ extend CaptureSink : Writer {
         return bytes.length;
     }
 
-    func Flush(self: &var CaptureSink) -> ! IoError {}
+    func Flush(&var self) -> ! IoError {}
 }
 
 // Encodes `data` written `chunk` bytes at a time.
@@ -51,11 +51,11 @@ func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Captu
     var writer = EncodingWriter::New(CaptureSink { capture: into }, codec);
     var at: uint = 0;
     while at < data.length {
-        let end = at + chunk < data.length ? at + chunk : data.length;
-        WriteAll(writer, data[at..end]) catch { else => return false };
+        let end = if at + chunk < data.length { at + chunk } else { data.length };
+        WriteAll(writer, data[at..end]) catch { _ => return false };
         at = end;
     }
-    writer.Finish() catch { else => return false };
+    writer.Finish() catch { _ => return false };
     return true;
 }
 
@@ -66,7 +66,7 @@ func Decodes(codec: StreamCodec, text: char8[..], chunk: uint, expected: char8[.
     var length: uint = 0;
     while true {
         let room = out.length - length;
-        let wanted = chunk < room ? chunk : room;
+        let wanted = if chunk < room { chunk } else { room };
         match reader.Read(out[length..length + wanted]) {
             .Success(count) => length = length + count,
             .Failure(error) => {
@@ -100,9 +100,9 @@ func Main() -> int {
         for length in lengths[..] {
             var whole: uint = 0;
             match codec {
-                StreamCodec::Hex(letterCase) => whole = HexEncode(bytes[..length], expected[..], letterCase) catch { else => return 1 },
-                StreamCodec::Base64(form) => whole = Base64Encode(bytes[..length], expected[..], form) catch { else => return 2 },
-                StreamCodec::Base32(form) => whole = Base32Encode(bytes[..length], expected[..], form) catch { else => return 3 }
+                StreamCodec::Hex(letterCase) => whole = HexEncode(bytes[..length], expected[..], letterCase) catch { _ => return 1 },
+                StreamCodec::Base64(form) => whole = Base64Encode(bytes[..length], expected[..], form) catch { _ => return 2 },
+                StreamCodec::Base32(form) => whole = Base32Encode(bytes[..length], expected[..], form) catch { _ => return 3 }
             }
             for chunk in chunks[..] {
                 var capture = Capture { bytes: [c8' '; 512], length: 0 };
@@ -132,7 +132,7 @@ func Main() -> int {
     // Crockford Base32 skips hyphens.
     var crockford = DecodingReader::New(ByteReader::New("91JP-RV3F"), StreamCodec::Base32(Base32Variant::Crockford));
     var hello: char8[5] = [c8' '; 5];
-    ReadExact(crockford, hello[..]) catch { else => return 4 };
+    ReadExact(crockford, hello[..]) catch { _ => return 4 };
     Assert(Same(hello[..], "Hello"), "Crockford with a hyphen");
     return 0;
 }

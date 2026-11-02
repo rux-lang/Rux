@@ -24,16 +24,14 @@ struct Store<T> {
 }
 
 extend Store<T> {
-    func =(self: &var Store<T>, other: &Store<T>);
-
     // A size that only an instantiation can answer, reached from the destructor below.
-    func Footprint(self: &Store<T>) -> uint {
+    func Footprint(&self) -> uint {
         return Width<Cell<T>>();
     }
 }
 
 extend Store<T> {
-    func ~Store(self: &var Store<T>) {
+    func ~Store(&var self) {
         if self.released != null {
             // Safety: a non-null `released` is `@released`, a local of `Main` that outlives every `Store`.
             unsafe { *self.released = *self.released + (self.Footprint() as int32); }
@@ -47,11 +45,11 @@ struct Wide {
 }
 
 func DropNarrow(released: *var int32) {
-    var store = Store<int32> { held: 1, released: released };
+    var store = Store<int32> { held: 1, released };
 }
 
 func DropWide(released: *var int32) {
-    var store = Store<Wide> { held: Wide { a: 1i64, b: 2i64 }, released: released };
+    var store = Store<Wide> { held: Wide { a: 1i64, b: 2i64 }, released };
 }
 
 func Main() -> int {

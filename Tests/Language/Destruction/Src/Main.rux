@@ -20,9 +20,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -42,16 +40,16 @@ struct Holder<T> {
 }
 
 extend Holder<T> {
-    func Put(self: &var Holder<T>, value: T) {
+    func Put(&var self, value: T) {
         // Safety: every `Holder` in this test holds the address of a live local `T` of `Main`.
-        unsafe { *self.slot <- value; }
+        unsafe { *self.slot = move value; }
         self.filled = true;
     }
 }
 
 func PutThroughGeneric<T>(slot: *var T, value: T) {
     // Safety: every caller passes the address of a live local `T` of `Main`.
-    unsafe { *slot <- value; }
+    unsafe { *slot = move value; }
 }
 
 // A payload with something ahead of the part that has to be destroyed, so the destruction of an option's payload has
@@ -83,7 +81,7 @@ func HoldNested(counter: *var Counter) {
 
 // Matching an option by value takes its payload out: the arm's binding owns it and destroys it when the arm ends.
 func MatchAndDiscard(held: Option<Tracked>) {
-    match <-held {
+    match move held {
         .Some(value) => {
         },
         .None => {
@@ -114,7 +112,7 @@ func MatchThroughBorrow(held: &Option<Tracked>) -> bool {
 }
 
 func MakeTracked(counter: *var Counter) -> Tracked {
-    return Tracked { counter: counter };
+    return Tracked { counter };
 }
 
 // A value that reaches the end of its scope is destroyed there.
@@ -125,20 +123,20 @@ func ScopeExit(counter: *var Counter) {
 // A value handed to another binding has one owner, so it is destroyed once.
 func MoveToBinding(counter: *var Counter) {
     let first = MakeTracked(counter);
-    let second <- first;
+    let second = move first;
 }
 
 // A value returned to the caller is not destroyed in the callee.
 func MoveOut(counter: *var Counter) -> Tracked {
     let tracked = MakeTracked(counter);
-    return <-tracked;
+    return move tracked;
 }
 
 // A value moved away on one path only: the flag, not the source text, decides whether the scope destroys it.
 func ConditionalMove(counter: *var Counter, away: bool) {
     let tracked = MakeTracked(counter);
     if away {
-        let taken <- tracked;
+        let taken = move tracked;
         return;
     }
 }
@@ -151,7 +149,7 @@ func NestedFields(counter: *var Counter) {
 // A value left behind by an assignment is destroyed before the new one takes its place.
 func Overwrite(counter: *var Counter) {
     var tracked = MakeTracked(counter);
-    tracked <- MakeTracked(counter);
+    tracked = MakeTracked(counter);
 }
 
 // Every element of an array is destroyed, and the array's own length is what says how many.

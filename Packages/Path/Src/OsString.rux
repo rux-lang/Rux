@@ -35,36 +35,36 @@ extend OsStringView {
     /// A view over nothing.
     /// @returns an empty view
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#new
-    pub func OsStringView() -> OsStringView {
-        return OsStringView { units: [] };
+    pub func OsStringView() -> Self {
+        return Self { units: [] };
     }
 
     /// A view over `units` as they stand: no validation, because there is nothing to validate against.
     /// @param units the borrowed units to view
     /// @returns a view over those units, which it does not copy
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#from-units
-    pub func FromUnits(units: OsUnit[..]) -> OsStringView {
-        return OsStringView { units: units };
+    pub func FromUnits(units: OsUnit[..]) -> Self {
+        return Self { units };
     }
 
     /// How many native units the view spans — bytes or code units, not characters.
     /// @returns how many units the value holds
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#length
-    pub func Length(self: &OsStringView) -> uint {
+    pub func Length(&self) -> uint {
         return self.units.length;
     }
 
     /// Whether the view spans nothing.
     /// @returns whether it holds no units at all
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#is-empty
-    pub func IsEmpty(self: &OsStringView) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.units.length == 0;
     }
 
     /// The units themselves.
     /// @returns the units, borrowed
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#units
-    pub func Units(self: &OsStringView) -> OsUnit[..] {
+    pub func Units(&self) -> OsUnit[..] {
         return self.units;
     }
 
@@ -74,7 +74,7 @@ extend OsStringView {
     /// @param other the value to compare against
     /// @returns whether both hold the same units in the same order
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#equals
-    pub func Equals(self: &OsStringView, other: &OsStringView) -> bool {
+    pub func Equals(&self, other: &Self) -> bool {
         if self.units.length != other.units.length { return false; }
         var index: uint = 0;
         while index < self.units.length {
@@ -93,7 +93,7 @@ extend OsStringView {
     /// @param allocator where the storage comes from
     /// @returns the units converted to text, or a failure when they are not valid in it
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#to-text
-    pub func ToText(self: &OsStringView, allocator: Allocator) -> String ! TextError {
+    pub func ToText(&self, allocator: Allocator) -> String ! TextError {
         when #target.os == .Windows {
             // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
             // checked builder so the promise chain stays intact.
@@ -151,8 +151,8 @@ extend OsString {
     /// @param allocator where the storage comes from
     /// @returns an empty owned string that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/path/os-string#new
-    pub func OsString(allocator: Allocator) -> OsString {
-        return OsString { data: null, length: 0, allocator: allocator };
+    pub func OsString(allocator: Allocator) -> Self {
+        return Self { data: null, length: 0, allocator };
     }
 
     /// An owning copy of what `view` spans, exactly as it stands.
@@ -162,7 +162,7 @@ extend OsString {
     /// @param view the borrowed text to copy
     /// @returns a copy of `view` this string owns
     /// @see https://rux-lang.dev/docs/api/path/os-string#from-view
-    pub func FromView(allocator: Allocator, view: OsStringView) -> OsString {
+    pub func FromView(allocator: Allocator, view: OsStringView) -> Self {
         let units = view.Units();
         if units.length == 0 { return OsString(allocator); }
         let bytes = units.length * (sizeof(OsUnit) as uint);
@@ -175,39 +175,39 @@ extend OsString {
             Copy(block, units.data as *opaque, bytes);
             block as *var OsUnit
         };
-        return OsString { data: data, length: units.length, allocator: allocator };
+        return Self { data, length: units.length, allocator };
     }
 
     /// How many native units the text holds.
     /// @returns how many units the value holds
     /// @see https://rux-lang.dev/docs/api/path/os-string#length
-    pub func Length(self: &OsString) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
     /// Whether the text holds nothing.
     /// @returns whether it holds no units at all
     /// @see https://rux-lang.dev/docs/api/path/os-string#is-empty
-    pub func IsEmpty(self: &OsString) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.length == 0;
     }
 
     /// A view over this text, which is what everything read-only takes.
     /// @returns a borrowed view of the owned units
     /// @see https://rux-lang.dev/docs/api/path/os-string#view
-    pub func View(self: &OsString) -> OsStringView {
+    pub func View(&self) -> OsStringView {
         // Safety: the storage invariant: `data` addresses `length` initialized units this string owns.
         return OsStringView { units: unsafe { (self.data)[..self.length] } };
     }
 
     /// Gives the block back and leaves text of no length.
     /// @see https://rux-lang.dev/docs/api/path/os-string#clear
-    pub func Clear(self: &var OsString) {
+    pub func Clear(&var self) {
         if self.data != null {
             let bytes = self.length * (sizeof(OsUnit) as uint);
             let layout = Layout::New(bytes, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch { else => {} };
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;
         self.length = 0;
@@ -215,7 +215,7 @@ extend OsString {
 
     /// Gives the block back.
     /// @see https://rux-lang.dev/docs/api/path/os-string#destructor
-    func ~OsString(self: &var OsString) {
+    func ~OsString(&var self) {
         self.Clear();
     }
 
@@ -227,7 +227,7 @@ extend OsString {
     /// @param text the text to act on
     /// @returns the text converted to the platform's own units
     /// @see https://rux-lang.dev/docs/api/path/os-string#from-text
-    pub func FromText(allocator: Allocator, text: char8[..]) -> OsString {
+    pub func FromText(allocator: Allocator, text: char8[..]) -> Self {
         when #target.os == .Windows {
             // Two passes: count the units, then fill them. A scalar below U+10000 is one unit and anything above
             // is a surrogate pair, which is the whole of UTF-16.
@@ -241,7 +241,7 @@ extend OsString {
                         scalar = decoded.scalar;
                         width = decoded.width;
 
-                        needed = needed + ((scalar as uint32) >= 0x10000 ? 2u : 1u);
+                        needed = needed + (if (scalar as uint32) >= 0x10000 { 2u } else { 1u });
                         index = index + width;
                     },
                     .Failure(_) => {
@@ -293,11 +293,11 @@ extend OsString {
                     }
                 }
             }
-            return OsString { data: units, length: needed, allocator: allocator };
+            return Self { data: units, length: needed, allocator };
         }
         else {
             // Bytes are bytes: the copy is the conversion.
-            return OsString::FromView(allocator, OsStringView { units: text });
+            return Self::FromView(allocator, OsStringView { units: text });
         }
     }
 }
@@ -309,8 +309,8 @@ extend OsString : Cloneable {
     /// Runs in time proportional to the length.
     /// @returns a copy that owns its own units
     /// @see https://rux-lang.dev/docs/api/path/os-string#clone
-    pub func Clone(self: &OsString) -> OsString {
-        if self.length == 0 { return OsString { data: null, length: 0, allocator: self.allocator }; }
+    pub func Clone(&self) -> Self {
+        if self.length == 0 { return Self { data: null, length: 0, allocator: self.allocator }; }
         let bytes = self.length * (sizeof(OsUnit) as uint);
         let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
         var allocator = self.allocator;
@@ -321,7 +321,7 @@ extend OsString : Cloneable {
             Copy(block, self.data as *opaque, bytes);
             block as *var OsUnit
         };
-        return OsString { data: data, length: self.length, allocator: self.allocator };
+        return Self { data, length: self.length, allocator: self.allocator };
     }
 }
 

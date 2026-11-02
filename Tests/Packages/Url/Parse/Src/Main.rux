@@ -70,7 +70,7 @@ func Main() -> int {
 
     // Components.
     let url = Url::Parse(allocator, "ftp://user:pa%73s@Host.Example:2121/a/b/?x=1&y=two%20words&&z#top")
-        catch { else => return 10 };
+        catch { _ => return 10 };
     Assert(Same(url.Scheme(), "ftp"), "the scheme");
     Assert(url.HasAuthority(), "an authority");
     Assert(Same(url.Username(), "user"), "the user name");
@@ -87,7 +87,7 @@ func Main() -> int {
         segments = segments + 1;
     }
     Assert(segments == 3u, "three segments");
-    let web = Url::Parse(allocator, "http://192.168.0.1/") catch { else => return 11 };
+    let web = Url::Parse(allocator, "http://192.168.0.1/") catch { _ => return 11 };
     Assert(web.HostKind() == HostKind::Ipv4 && web.Port() == none && (web.PortOrDefault() ?? 0u16) == 80u16,
            "an IPv4 host and the default port");
     Assert(Absent(web.Query()) && Absent(web.Fragment()) && Absent(web.Password()), "absent components are none");
@@ -101,21 +101,21 @@ func Main() -> int {
         pairs = pairs + 1;
     }
     Assert(pairs == 3u, "an empty pair is skipped");
-    let decoded = Decode(allocator, "two%20words") catch { else => return 12 };
+    let decoded = Decode(allocator, "two%20words") catch { _ => return 12 };
     Assert(Same(decoded.Bytes(), "two words"), "a value decodes");
-    let form = Decode(allocator, "a+b%2Bc", true) catch { else => return 13 };
+    let form = Decode(allocator, "a+b%2Bc", true) catch { _ => return 13 };
     Assert(Same(form.Bytes(), "a b+c"), "a form value reads plus as a space");
     var query = QueryBuilder(allocator);
     query.Append("q", "rux lang");
     query.Append("lang", "c++");
     Assert(Same(query.Text(), "q=rux+lang&lang=c%2B%2B"), "a query is built with the form encoding");
-    var edited = Url::Parse(allocator, "http://a/b") catch { else => return 15 };
-    edited.SetQuery(query.Text()) catch { else => return 16 };
-    edited.SetFragment("part") catch { else => return 17 };
+    var edited = Url::Parse(allocator, "http://a/b") catch { _ => return 15 };
+    edited.SetQuery(query.Text()) catch { _ => return 16 };
+    edited.SetFragment("part") catch { _ => return 17 };
     Assert(Same(edited.Text(), "http://a/b?q=rux+lang&lang=c%2B%2B#part"), "a query and a fragment are set");
-    edited.SetPath("x/../y z") catch { else => return 18 };
-    edited.SetQuery(none) catch { else => return 19 };
-    edited.SetFragment(none) catch { else => return 20 };
+    edited.SetPath("x/../y z") catch { _ => return 18 };
+    edited.SetQuery(none) catch { _ => return 19 };
+    edited.SetFragment(none) catch { _ => return 20 };
     Assert(Same(edited.Text(), "http://a/y%20z"), "a path is set and normalized, and the rest removed");
 
     // Errors.
@@ -130,7 +130,7 @@ func Main() -> int {
     Assert(Refuses("http://a/%zz", UrlError::InvalidPercentEncoding), "an escape has two hexadecimal digits");
 
     // RFC 3986 section 5.4.1, the normal examples. An empty http path is written `/`, so `//g` gives `http://g/`.
-    let base = Url::Parse(allocator, "http://a/b/c/d;p?q") catch { else => return 21 };
+    let base = Url::Parse(allocator, "http://a/b/c/d;p?q") catch { _ => return 21 };
     Assert(Resolves(base, "g:h", "g:h"), "g:h");
     Assert(Resolves(base, "g", "http://a/b/c/g"), "g");
     Assert(Resolves(base, "./g", "http://a/b/c/g"), "./g");

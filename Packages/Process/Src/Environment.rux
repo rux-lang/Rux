@@ -61,9 +61,9 @@ func SplitEntry(entry: OsStringView) -> EnvironmentVariable {
     while at < units.length && units[at] != (0x3D as OsUnit) {
         at = at + 1;
     }
-    let name = at == 0 ? OsStringView() : OsStringView::FromUnits(units[..at]);
-    let value = at + 1 >= units.length ? OsStringView() : OsStringView::FromUnits(units[at + 1..]);
-    return EnvironmentVariable { name: name, value: value };
+    let name = if at == 0 { OsStringView() } else { OsStringView::FromUnits(units[..at]) };
+    let value = if at + 1 >= units.length { OsStringView() } else { OsStringView::FromUnits(units[at + 1..]) };
+    return EnvironmentVariable { name, value };
 }
 
 // Whether two native names are the same variable, under the system's rule.
@@ -117,8 +117,8 @@ extend EnvironmentIterator {
     /// The walk itself, so that `for variable in Environment()` reads every variable.
     /// @returns a copy of this walk from its current position
     /// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator-iterate
-    pub func Iterate(self: &EnvironmentIterator) -> EnvironmentIterator {
-        return EnvironmentIterator { next: self.next, changes: self.changes };
+    pub func Iterate(&self) -> Self {
+        return Self { next: self.next, changes: self.changes };
     }
 }
 
@@ -126,7 +126,7 @@ extend EnvironmentIterator : Iterator {
     /// The next variable, or none after the last.
     /// @returns the variable's name and value
     /// @see https://rux-lang.dev/docs/api/process/environment#environment-iterator-next
-    pub func Next(self: &var EnvironmentIterator) -> EnvironmentVariable? {
+    pub func Next(&var self) -> EnvironmentVariable? {
         HoldChanges();
         while !self.changes {
             match NativeEnvironmentEntry(self.next) {
@@ -197,7 +197,7 @@ func NextScalar(text: char8[..], at: *var uint) -> uint32? {
 
 // An ASCII letter in upper case, and every other unit as it is.
 func FoldAscii(unit: uint32) -> uint32 {
-    return unit >= 0x61 && unit <= 0x7A ? unit - 32 : unit;
+    return if unit >= 0x61 && unit <= 0x7A { unit - 32 } else { unit };
 }
 
 // Whether a native name is `name`, under the system's rule for comparing names.
@@ -278,7 +278,7 @@ func PermanentText(text: char8[..]) -> OsStringView ! IoError {
             let scalar = NextScalar(text, @at) ?? 0xFFFFFFFFu32;
             if scalar == 0xFFFFFFFFu32 { fail IoError::Of(IoErrorKind::InvalidText); }
             if scalar == 0u32 { fail IoError::Of(IoErrorKind::InvalidInput); }
-            count = count + (scalar > 0xFFFFu32 ? 2u : 1u);
+            count = count + (if scalar > 0xFFFFu32 { 2u } else { 1u });
         }
         else {
             if text[at] as uint8 == 0u8 { fail IoError::Of(IoErrorKind::InvalidInput); }
@@ -344,7 +344,7 @@ func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! I
         return;
     }
     if ChangeCount == ChangeCapacity {
-        let capacity = ChangeCapacity == 0 ? 8u : ChangeCapacity * 2u;
+        let capacity = if ChangeCapacity == 0 { 8u } else { ChangeCapacity * 2u };
         // Safety: `Changes` is null or the table's block from `Alloc`/`Realloc`, which only this holder of the table
         // touches, and the result is retyped to the `capacity` changes it was asked for.
         let grown = unsafe { Realloc(Changes as *opaque, capacity * sizeof(Change)) as *var Change };
@@ -356,7 +356,7 @@ func RecordChange(name: OsStringView, value: OsStringView, removed: bool) -> ! I
         ChangeCapacity = capacity;
     }
     // Safety: this function holds the table, and `ChangeCount` is below `ChangeCapacity`, the room in `Changes`.
-    unsafe { Changes[ChangeCount] = Change { name: name, value: value, removed: removed }; }
+    unsafe { Changes[ChangeCount] = Change { name, value, removed }; }
     ChangeCount = ChangeCount + 1;
     ReleaseChanges();
 }

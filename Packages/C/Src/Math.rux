@@ -26,7 +26,7 @@ when #target.os {
     .Linux => const MathLib = "libm.so.6";
     .macOS => const MathLib = "libSystem.B.dylib";
     .Windows => const MathLib = "ucrtbase.dll";
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 #Link(MathLib)

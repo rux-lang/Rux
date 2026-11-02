@@ -31,7 +31,11 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
                     layout: &FloatLayout) -> ! FormatError {
     let value = UnpackWide(bits, layout);
     if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true); }
-    if value.class == WideClass::Infinity { return WriteAligned(writer, spec, value.negative ? "-Inf" : "Inf", true); }
+    if value.class == WideClass::Infinity { return WriteAligned(writer, spec, if value.negative {
+        "-Inf"
+    } else {
+        "Inf"
+    }, true); }
     if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
@@ -115,7 +119,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
         else {
             var index: uint = 0;
             while index <= exponent10 as uint {
-                cursor.Push(index < count ? digits[index] : c8'0');
+                cursor.Push(if index < count { digits[index] } else { c8'0' });
                 index = index + 1u;
             }
         }
@@ -145,6 +149,6 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             failure = WriteAligned(writer, spec, rendered, true);
         }
     }
-    allocator.Deallocate(block, blockLayout) catch { else => {} };
+    allocator.Deallocate(block, blockLayout) catch { _ => {} };
     return failure;
 }

@@ -13,7 +13,7 @@ struct Naturals {
 }
 
 extend Naturals {
-    func Next(self: &var Naturals) -> int32? {
+    func Next(&var self) -> int32? {
         Asked = Asked + 1;
         self.next = self.next + 1;
         return self.next - 1;

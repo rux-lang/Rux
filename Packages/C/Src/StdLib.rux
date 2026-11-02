@@ -22,7 +22,7 @@ when #target.os {
     .Linux => const StdLib = "libc.so.6";
     .macOS => const StdLib = "libSystem.B.dylib";
     .Windows => const StdLib = "ucrtbase.dll";
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 #Link(StdLib)
@@ -249,7 +249,7 @@ when #target.os {
             func _aligned_free(ptr: *var opaque);
         }
     }
-    else => {
+    _ => {
         #Link(StdLib)
         extern {
             /// Allocates size bytes on the given alignment; release with free.
@@ -284,7 +284,7 @@ when #target.os {
         #Allow("naming.const")
         pub const RAND_MAX: int32 = 32767;
     }
-    else => {
+    _ => {
         /// `RAND_MAX`: the largest value `rand` can return on this target.
         /// @see https://rux-lang.dev/docs/api/c/stdlib#rand-max
         #Allow("naming.const")

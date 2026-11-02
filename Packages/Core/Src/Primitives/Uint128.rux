@@ -26,7 +26,7 @@ extend uint128 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `uint128`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-checked-add
-    pub func CheckedAdd(self: &uint128, other: uint128) -> uint128? {
+    pub func CheckedAdd(&self, other: uint128) -> uint128? {
         var sum: uint128 = 0;
         if AddChecked<uint128>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend uint128 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `uint128`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-checked-sub
-    pub func CheckedSub(self: &uint128, other: uint128) -> uint128? {
+    pub func CheckedSub(&self, other: uint128) -> uint128? {
         var difference: uint128 = 0;
         if SubChecked<uint128>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend uint128 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `uint128`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-checked-mul
-    pub func CheckedMul(self: &uint128, other: uint128) -> uint128? {
+    pub func CheckedMul(&self, other: uint128) -> uint128? {
         var product: uint128 = 0;
         if MulChecked<uint128>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend uint128 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `uint128` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-saturating-add
-    pub func SaturatingAdd(self: &uint128, other: uint128) -> uint128 {
+    pub func SaturatingAdd(&self, other: uint128) -> uint128 {
         return AddSaturating<uint128>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend uint128 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `uint128` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-saturating-sub
-    pub func SaturatingSub(self: &uint128, other: uint128) -> uint128 {
+    pub func SaturatingSub(&self, other: uint128) -> uint128 {
         return SubSaturating<uint128>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend uint128 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `uint128` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-saturating-mul
-    pub func SaturatingMul(self: &uint128, other: uint128) -> uint128 {
+    pub func SaturatingMul(&self, other: uint128) -> uint128 {
         return MulSaturating<uint128>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend uint128 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint128-truncate
-    pub intrinsic func Truncate<T>(self: &uint128) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

@@ -73,14 +73,14 @@ struct Counter {
 }
 
 extend Counter {
-    func Counter() -> Counter { return Counter { total: 0i32, steps: 0i32 }; }
+    func Counter() -> Self { return Self { total: 0i32, steps: 0i32 }; }
 
-    func Add(self: &var Counter, amount: int32) {
+    func Add(&var self, amount: int32) {
         self.total += amount;
         self.steps += 1i32;
     }
 
-    func Mean(self: &Counter) -> int32 { return self.total / self.steps; }
+    func Mean(&self) -> int32 { return self.total / self.steps; }
 }
 
 func Count(limit: int32) -> Counter {

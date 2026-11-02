@@ -90,29 +90,26 @@ pub struct JsonEventReader {
 const JsonStreamChunk: uint = 4096;
 
 extend JsonEventReader {
-    /// The owned stream buffer cannot be duplicated.
-    func =(self: &var JsonEventReader, other: &JsonEventReader);
-
     /// A reader over `source` under `limits`.
     /// @param allocator where the storage comes from
     /// @param source the text to read
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a reader positioned before the first event; `Other` when its buffer could not be allocated
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#new
-    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> JsonEventReader ! IoError {
-        var reader = JsonEventReader {
-            source: source, data: null, capacity: 0, filled: 0, position: 0, consumedBefore: 0, exhausted: false,
-            allocator: allocator, limits: limits, stack: [0; 16],
+    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self ! IoError {
+        var reader = Self {
+            source, data: null, capacity: 0, filled: 0, position: 0, consumedBefore: 0, exhausted: false,
+            allocator, limits, stack: [0; 16],
             depth: 0, tokenStart: 0, tokenEnd: 0, tokenEscaped: false,
             stop: JsonStop::None, lexical: JsonLexError::None, sourceFailure: none, expectingValue: true
         };
         var borrowed = allocator;
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
-        let block = borrowed.Allocate(chunk) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        let block = borrowed.Allocate(chunk) catch { _ => fail IoError::Of(IoErrorKind::Other) };
         // Safety: `block` was just allocated with `JsonStreamChunk` bytes, and `char8` has size and alignment 1.
         reader.data = unsafe { block as *var char8 };
         reader.capacity = JsonStreamChunk;
-        return <-reader;
+        return move reader;
     }
 
     /// Why reading stopped, positioned, or `none` while nothing has gone wrong.
@@ -122,7 +119,7 @@ extend JsonEventReader {
     /// failed is reported as `Source`, and what it reported is on `SourceError`.
     /// @returns the failure, positioned at the byte of the document the reader stopped on, or `none`
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#failure
-    pub func Failure(self: &JsonEventReader) -> JsonParseError? {
+    pub func Failure(&self) -> JsonParseError? {
         return BuildFailure(self.stop, self.lexical, self.consumedBefore + self.position);
     }
 
@@ -132,7 +129,7 @@ extend JsonEventReader {
     /// unchanged, so a caller can tell a document that is malformed from a stream that broke.
     /// @returns the source's failure, or `none`
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#source-error
-    pub func SourceError(self: &JsonEventReader) -> IoError? {
+    pub func SourceError(&self) -> IoError? {
         return self.sourceFailure;
     }
 
@@ -141,7 +138,7 @@ extend JsonEventReader {
     /// and a caller skipping past a field should not pay for its contents.
     /// @returns the current event's text, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#text
-    pub func Text(self: &JsonEventReader) -> char8[..] {
+    pub func Text(&self) -> char8[..] {
         // Safety: `ScanWhile` keeps `tokenStart..tokenEnd` inside the filled part of the live buffer `self.data`, and
         // nothing has refilled it since the event that recorded them.
         return unsafe { (@self.data[self.tokenStart])[..self.tokenEnd - self.tokenStart] };
@@ -150,20 +147,20 @@ extend JsonEventReader {
     /// Whether that text holds escapes a caller must resolve.
     /// @returns whether the text still holds escape sequences a caller must decode
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#text-is-escaped
-    pub func TextIsEscaped(self: &JsonEventReader) -> bool {
+    pub func TextIsEscaped(&self) -> bool {
         return self.tokenEscaped;
     }
 
     /// How deeply nested the reader currently is.
     /// @returns how many arrays and objects are currently open
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#depth
-    pub func Depth(self: &JsonEventReader) -> uint {
+    pub func Depth(&self) -> uint {
         return self.depth;
     }
 
     // Drops what has been consumed and pulls more, growing only if the buffer is genuinely full. This is what
     // keeps memory proportional to the largest token rather than to the document.
-    func Refill(self: &var JsonEventReader) -> bool {
+    func Refill(&var self) -> bool {
         // A reader that has stopped reads nothing more, so the first refusal is the one that stays reported.
         if self.stop != JsonStop::None { return false; }
         if self.position > 0 {
@@ -197,7 +194,7 @@ extend JsonEventReader {
                 copied = copied + 1;
             }
             let previous = Layout { size: self.capacity, alignment: 1 };
-            borrowed.Deallocate(self.data as *var opaque, previous) catch { else => {} };
+            borrowed.Deallocate(self.data as *var opaque, previous) catch { _ => {} };
             self.data = grown;
             self.capacity = wanted;
         }
@@ -221,30 +218,30 @@ extend JsonEventReader {
 
     /// Gives the buffer back.
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#release
-    pub func Release(self: &var JsonEventReader) {
+    pub func Release(&var self) {
         if self.data != null {
             var borrowed = self.allocator;
             let held = Layout { size: self.capacity, alignment: 1 };
-            borrowed.Deallocate(self.data as *var opaque, held) catch { else => {} };
+            borrowed.Deallocate(self.data as *var opaque, held) catch { _ => {} };
             self.data = null;
             self.capacity = 0;
         }
     }
     /// Releases the buffer.
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#destructor
-    func ~JsonEventReader(self: &var JsonEventReader) {
+    func ~JsonEventReader(&var self) {
         self.Release();
     }
 
     // Ensures at least one unread byte is available, pulling more if needed.
-    func Available(self: &var JsonEventReader) -> bool {
+    func Available(&var self) -> bool {
         while self.position >= self.filled {
             if !self.Refill() { return self.position < self.filled; }
         }
         return true;
     }
 
-    func SkipWhitespace(self: &var JsonEventReader) {
+    func SkipWhitespace(&var self) {
         while self.Available() {
             // Safety: `Available` returned true, so `self.position` is below `self.filled` in the live buffer.
             let c = unsafe { self.data[self.position] } as uint8;
@@ -255,7 +252,7 @@ extend JsonEventReader {
 
     // Scans a token that runs to a delimiter, pulling more bytes while it grows. The buffer is only allowed to
     // grow here, which is what bounds memory by the largest token.
-    func ScanWhile(self: &var JsonEventReader, isText: bool) -> bool {
+    func ScanWhile(&var self, isText: bool) -> bool {
         var start = self.position;
         var index = self.position;
         var escaped = false;
@@ -322,7 +319,7 @@ extend JsonEventReader {
         return true;
     }
 
-    func PushContainer(self: &var JsonEventReader, isObject: bool) -> bool {
+    func PushContainer(&var self, isObject: bool) -> bool {
         if self.depth >= self.limits.maximumDepth || self.depth >= 1024 {
             self.stop = JsonStop::TooDeep;
             return false;
@@ -339,13 +336,13 @@ extend JsonEventReader {
         return true;
     }
 
-    func InObject(self: &JsonEventReader) -> bool {
+    func InObject(&self) -> bool {
         if self.depth == 0 { return false; }
         let index = self.depth - 1u;
         return (self.stack[index / 64u] & (1u64 << ((index % 64u) as uint64))) != 0;
     }
 
-    func Matches(self: &var JsonEventReader, word: char8[..]) -> bool {
+    func Matches(&var self, word: char8[..]) -> bool {
         var index: uint = 0;
         while index < word.length {
             while self.position + index >= self.filled {
@@ -365,7 +362,7 @@ extend JsonEventReader {
     /// the level a streaming reader is useful at.
     /// @returns the next event, or the end-of-input event
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#next
-    pub func Next(self: &var JsonEventReader) -> JsonEvent {
+    pub func Next(&var self) -> JsonEvent {
         if self.stop != JsonStop::None { return JsonEvent::Error; }
         self.SkipWhitespace();
         // Skip a separator, whichever kind is due here.
@@ -409,7 +406,7 @@ extend JsonEventReader {
             self.position = self.position + 1;
             self.depth = self.depth - 1;
             self.expectingValue = !self.InObject();
-            return wantsObject ? JsonEvent::ObjectEnd : JsonEvent::ArrayEnd;
+            return if wantsObject { JsonEvent::ObjectEnd } else { JsonEvent::ArrayEnd };
         }
         if c == 0x22 {
             let isName = self.InObject() && !self.expectingValue;

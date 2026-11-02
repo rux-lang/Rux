@@ -22,22 +22,22 @@ extend Reservoir<T> {
     /// @param room how many items the reservoir keeps
     /// @returns an empty reservoir that will keep `room` items
     /// @see https://rux-lang.dev/docs/api/random/reservoir#new
-    pub func Reservoir(room: var T[..]) -> Reservoir<T> {
-        return Reservoir<T> { room: room, seen: 0 };
+    pub func Reservoir(room: var T[..]) -> Self {
+        return Self { room, seen: 0 };
     }
 
     /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
     /// offered.
     /// @returns how many items it currently holds
     /// @see https://rux-lang.dev/docs/api/random/reservoir#length
-    pub func Length(self: &Reservoir<T>) -> uint {
-        return self.seen < self.room.length ? self.seen : self.room.length;
+    pub func Length(&self) -> uint {
+        return if self.seen < self.room.length { self.seen } else { self.room.length };
     }
 
     /// How many items have been offered.
     /// @returns how many items have been offered to it in total
     /// @see https://rux-lang.dev/docs/api/random/reservoir#seen
-    pub func Seen(self: &Reservoir<T>) -> uint {
+    pub func Seen(&self) -> uint {
         return self.seen;
     }
 }

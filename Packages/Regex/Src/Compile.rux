@@ -17,20 +17,20 @@ const MaximumInstructions: uint = 100000;
 const NoPatch: uint32 = 0xFFFFFFFF;
 
 extend Regex {
-    func Emit(self: &var Regex, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 ! RegexError {
+    func Emit(&var self, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 ! RegexError {
         let index = self.instructions.Length();
         if index >= MaximumInstructions { fail RegexError::At(RegexErrorKind::TooLarge, 0); }
-        self.instructions.Push(Instruction { op: op, flags: flags, a: a, b: b, c: 0 });
+        self.instructions.Push(Instruction { op, flags, a, b, c: 0 });
         return index as uint32;
     }
 
-    func Next(self: &Regex) -> uint32 {
+    func Next(&self) -> uint32 {
         return self.instructions.Length() as uint32;
     }
 
     // Points every instruction on the list starting at `pending`, linked through `a`, or through `b` when
     // `throughSecond`, at `target`.
-    func Patch(self: &var Regex, pending: uint32, target: uint32, throughSecond: bool) {
+    func Patch(&var self, pending: uint32, target: uint32, throughSecond: bool) {
         var at = pending;
         let instructions = self.instructions.AsMutableSlice();
         while at != NoPatch {
@@ -48,7 +48,7 @@ extend Regex {
 
     // Emits node `index` and what it holds. With `reverse`, emits what matches the same text read backwards: the
     // parts of a sequence in the other order, the assertions about the start and the end exchanged, and no groups.
-    func CompileNode(self: &var Regex, nodes: Node[..], index: uint32, reverse: bool) -> ! RegexError {
+    func CompileNode(&var self, nodes: Node[..], index: uint32, reverse: bool) -> ! RegexError {
         let node = nodes[index as uint];
         match node.kind {
             NodeKind::Empty => {},
@@ -141,7 +141,7 @@ extend Regex {
         }
     }
 
-    func CompileRepeat(self: &var Regex, nodes: Node[..], node: Node, reverse: bool) -> ! RegexError {
+    func CompileRepeat(&var self, nodes: Node[..], node: Node, reverse: bool) -> ! RegexError {
         let greedy = (node.flags & NodeGreedy) != 0u8;
         let low = node.low;
         let high = node.high;
@@ -153,8 +153,8 @@ extend Regex {
                 self.Emit(Op::Jump, 0, head, 0)?;
                 let end = self.Next();
                 let instructions = self.instructions.AsMutableSlice();
-                instructions[head as uint].a = greedy ? head + 1u32 : end;
-                instructions[head as uint].b = greedy ? end : head + 1u32;
+                instructions[head as uint].a = if greedy { head + 1u32 } else { end };
+                instructions[head as uint].b = if greedy { end } else { head + 1u32 };
                 return;
             }
             var count: uint32 = 1;
@@ -166,7 +166,7 @@ extend Regex {
             let body = self.Next();
             self.CompileNode(nodes, node.child, reverse)?;
             let after = self.Next() + 1u32;
-            self.Emit(Op::Split, 0, greedy ? body : after, greedy ? after : body)?;
+            self.Emit(Op::Split, 0, if greedy { body } else { after }, if greedy { after } else { body })?;
             return;
         }
         var count: uint32 = 0;
@@ -189,7 +189,7 @@ extend Regex {
 
     // Compiles the whole pattern from `root`, with the whole match as group 0, and works out how a search can skip
     // ahead to where a match can start.
-    func CompileProgram(self: &var Regex, nodes: Node[..], root: uint32) -> ! RegexError {
+    func CompileProgram(&var self, nodes: Node[..], root: uint32) -> ! RegexError {
         self.Emit(Op::Save, 0, 0, 0)?;
         self.CompileNode(nodes, root, false)?;
         self.Emit(Op::Save, 0, 1, 0)?;
@@ -215,7 +215,7 @@ extend Regex {
     // Emits the pattern read backwards after the forward program, for the search that finds where a match starts
     // once its end is known. A pattern too large to hold twice keeps only the forward program, and its searches find
     // starts with the Pike matcher instead.
-    func CompileReverse(self: &var Regex, nodes: Node[..], root: uint32) -> ! RegexError {
+    func CompileReverse(&var self, nodes: Node[..], root: uint32) -> ! RegexError {
         let forward = self.instructions.Length();
         self.forwardLength = forward;
         if forward * 2 > MaximumInstructions {
@@ -237,7 +237,7 @@ extend Regex {
 
     // Works out the bytes a match can start with, following every move from the start that reads no character. A
     // match that can be empty, or can start with any character, leaves nothing to skip.
-    func FindFirstBytes(self: &var Regex) {
+    func FindFirstBytes(&var self) {
         let instructions = self.instructions.AsSlice();
         var seen = Vector<bool>(self.allocator);
         var pending = Vector<uint32>(self.allocator);

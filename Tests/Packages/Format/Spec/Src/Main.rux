@@ -20,8 +20,8 @@ func MalformedAt(text: char8[..], offset: uint) -> int {
     return match ParseFormatSpec(text) {
         .Success(_) => 1,
         .Failure(reason) => match reason {
-            .InvalidSpecification(found) => found == offset ? 0 : 2,
-            else => 3
+            .InvalidSpecification(found) => if found == offset { 0 } else { 2 },
+            _ => 3
         }
     };
 }
@@ -36,11 +36,11 @@ func Matches(allocator: Allocator, format: char8[..], expected: char8[..]) -> bo
 // Whether rendering `format` is refused with `InvalidSpecification` at exactly `offset` — an offset into the whole
 // pattern, not into the specification inside it, which is what a caller pointing at a character needs.
 func RefusedAt(allocator: Allocator, format: char8[..], offset: uint) -> bool {
-    return match <-Render(allocator, format, 0) {
+    return match Render(allocator, format, 0) {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .InvalidSpecification(found) => found == offset,
-            else => false
+            _ => false
         }
     };
 }
@@ -244,5 +244,5 @@ func Main() -> int {
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
 func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
-    return (<-outcome) catch { else => String(allocator) };
+    return (move outcome) catch { _ => String(allocator) };
 }

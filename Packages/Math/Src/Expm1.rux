@@ -27,7 +27,7 @@ pub func Expm1(x: float64) -> float64 {
             if hx >= 0x7FF00000 {
                 // A NaN propagates; expm1(+Inf) is +Inf and expm1(-Inf) is -1.
                 if ((hx & 0xFFFFF) | (bits & 0xFFFFFFFF)) != 0 { return x + x; }
-                return negative ? -1.0 : x;
+                return if negative { -1.0 } else { x };
             }
             if x > 709.782712893384 {
                 let huge = 1.0e300;
@@ -56,7 +56,7 @@ pub func Expm1(x: float64) -> float64 {
                 k = 1;
             }
         } else {
-            k = (invln2 * x + (negative ? -0.5 : 0.5)) as int64;
+            k = (invln2 * x + (if negative { -0.5 } else { 0.5 })) as int64;
             let t = k as float64;
             hi = x - t * ln2Hi; // exact, as in Exp
             lo = t * ln2Lo;

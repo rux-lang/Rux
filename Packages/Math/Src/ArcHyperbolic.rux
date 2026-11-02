@@ -33,7 +33,7 @@ pub func ArcSinh(x: float64) -> float64 {
         let squared = magnitude * magnitude;
         result = Log1p(magnitude + squared / (1.0 + Sqrt(1.0 + squared)));
     }
-    return SignBit(x) ? -result : result;
+    return if SignBit(x) { -result } else { result };
 }
 
 /// Computes the inverse hyperbolic sine of `x` at `float32` precision.
@@ -81,7 +81,7 @@ pub func ArcTanh(x: float64) -> float64 {
     if IsNan(x) { return x; }
     let magnitude = Abs(x);
     if magnitude > 1.0 { return QuietNan64(); }
-    if magnitude == 1.0 { return x > 0.0 ? PositiveInfinity64() : -PositiveInfinity64(); }
+    if magnitude == 1.0 { return if x > 0.0 { PositiveInfinity64() } else { -PositiveInfinity64() }; }
     if magnitude < 3.725290298461914e-9 {
         // Below 2^-28, as with the inverse sine, the argument is the answer and its zero keeps its sign.
         return x;
@@ -94,7 +94,7 @@ pub func ArcTanh(x: float64) -> float64 {
     else {
         result = 0.5 * Log1p(2.0 * magnitude / (1.0 - magnitude));
     }
-    return SignBit(x) ? -result : result;
+    return if SignBit(x) { -result } else { result };
 }
 
 /// Computes the inverse hyperbolic tangent of `x` at `float32` precision.

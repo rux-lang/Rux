@@ -4,7 +4,7 @@ import Core::Assert;
 // value was made in ends, as a named local of that scope would be, or, for a value stored in a variable, when the
 // variable's scope ends or a later value of the same type is stored at the same place.
 interface Named {
-    func Id(self: &Self) -> int;
+    func Id(&self) -> int;
 }
 
 struct Tracked {
@@ -13,11 +13,11 @@ struct Tracked {
 }
 
 extend Tracked : Named {
-    func Id(self: &Tracked) -> int {
+    func Id(&self) -> int {
         return self.id;
     }
 
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every value in this test holds `@drops`, a local of `Main` that outlives it.
         unsafe { *self.drops = *self.drops + 1; }
     }
@@ -28,24 +28,24 @@ func Read(value: Named) -> int {
 }
 
 func Local(drops: *var int) -> int {
-    let value: Named = Tracked { drops: drops, id: 7 };
+    let value: Named = Tracked { drops, id: 7 };
     return value.Id();
 }
 
 func Argument(drops: *var int) -> int {
-    return Read(Tracked { drops: drops, id: 3 });
+    return Read(Tracked { drops, id: 3 });
 }
 
 func Moved(drops: *var int) -> int {
-    var tracked = Tracked { drops: drops, id: 5 };
-    let value: Named = <-tracked;
+    var tracked = Tracked { drops, id: 5 };
+    let value: Named = move tracked;
     return value.Id();
 }
 
 func Repeated(drops: *var int) -> int {
     var total = 0;
     for i in 0..3 {
-        let value: Named = Tracked { drops: drops, id: i };
+        let value: Named = Tracked { drops, id: i };
         total += value.Id();
     }
     return total;
@@ -57,11 +57,11 @@ struct Other {
 }
 
 extend Other : Named {
-    func Id(self: &Other) -> int {
+    func Id(&self) -> int {
         return 100;
     }
 
-    func ~Other(self: &var Other) {
+    func ~Other(&var self) {
         // Safety: every value in this test holds `@drops`, a local of `Main` that outlives it.
         unsafe { *self.drops = *self.drops + 1; }
     }
@@ -73,8 +73,8 @@ struct Slot {
 
 // A value stored in a variable's interface value replaces the one it held, which is destroyed there and then.
 func Replaced(drops: *var int) -> int {
-    var value: Named = Tracked { drops: drops, id: 1 };
-    value = Tracked { drops: drops, id: 2 };
+    var value: Named = Tracked { drops, id: 1 };
+    value = Tracked { drops, id: 2 };
     // Safety: `drops` is `@drops`, a live local of `Main`.
     Assert(unsafe { *drops } == 1, "the replaced value is destroyed when it is replaced");
     return value.Id();
@@ -82,10 +82,10 @@ func Replaced(drops: *var int) -> int {
 
 // A value stored in a loop belongs to the variable, not to the pass, so it outlives the loop.
 func StoredInLoop(drops: *var int) -> int {
-    var value: Named = Tracked { drops: drops, id: 0 };
+    var value: Named = Tracked { drops, id: 0 };
     var i = 1;
     while i <= 3 {
-        value = Tracked { drops: drops, id: i };
+        value = Tracked { drops, id: i };
         i += 1;
     }
     // Safety: `drops` is `@drops`, a live local of `Main`.
@@ -95,10 +95,10 @@ func StoredInLoop(drops: *var int) -> int {
 
 // A field of a local is a place of its own, kept the same way.
 func StoredInField(drops: *var int) -> int {
-    var slot = Slot { named: Other { drops: drops } };
+    var slot = Slot { named: Other { drops } };
     var i = 0;
     while i < 2 {
-        slot.named = Tracked { drops: drops, id: 40 + i };
+        slot.named = Tracked { drops, id: 40 + i };
         i += 1;
     }
     return slot.named.Id();
@@ -106,18 +106,18 @@ func StoredInField(drops: *var int) -> int {
 
 // A store that may not run leaves nothing to destroy on the path that skipped it.
 func StoredMaybe(drops: *var int, store: bool) -> int {
-    var value: Named = Other { drops: drops };
+    var value: Named = Other { drops };
     if store {
-        value = Tracked { drops: drops, id: 8 };
+        value = Tracked { drops, id: 8 };
     }
     return value.Id();
 }
 
 // A value moved in is kept the same way, and its old variable is not destroyed again.
 func MovedIn(drops: *var int) -> int {
-    var value: Named = Tracked { drops: drops, id: 1 };
-    var tracked = Tracked { drops: drops, id: 6 };
-    value = <-tracked;
+    var value: Named = Tracked { drops, id: 1 };
+    var tracked = Tracked { drops, id: 6 };
+    value = move tracked;
     return value.Id();
 }
 

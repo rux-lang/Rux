@@ -34,22 +34,20 @@ pub struct Channel<T> {
 }
 
 extend Channel<T> {
-    func =(self: &var Channel<T>, other: &Channel<T>);
-
     /// A channel with room for `capacity` values. Zero capacity is a program error, as is running out of memory.
     /// @param capacity how many values may wait in the channel at once
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/channel#channel-new
-    pub func Channel(capacity: uint) -> Channel<T> {
+    pub func Channel(capacity: uint) -> Self {
         if capacity == 0u { Panic("a channel needs room for at least one value"); }
         // Safety: `Alloc` returns memory aligned for any type, and this retyping only names the `capacity` slots it
         // asked for.
         let slots = unsafe { Alloc(capacity * sizeof(T)) as *var T };
         if slots == null { Panic("out of memory for a channel"); }
-        return Channel<T> {
+        return Self {
             block: AllocateBlock(ChannelBlock<T> {
                 references: 1, word: 0, arrivals: 0, departures: 0, closed: false, head: 0, length: 0,
-                capacity: capacity, slots: slots
+                capacity, slots
             })
         };
     }
@@ -57,18 +55,18 @@ extend Channel<T> {
     /// Another handle to the same channel.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/channel#clone
-    pub func Clone(self: &Channel<T>) -> Channel<T> {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return Channel<T> { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Sends `value`, waiting while the channel is full.
     /// @param value the value to send
     /// @returns nothing, or fails with the value when the channel is closed
     /// @see https://rux-lang.dev/docs/api/sync/channel#send
-    pub func Send(self: &Channel<T>, value: T) -> ! T {
+    pub func Send(&self, value: T) -> ! T {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -91,14 +89,14 @@ extend Channel<T> {
             fail value;
         }
         // Safety: this thread holds the lock on `block`, which `Push` releases, and the ring has room, checked above.
-        unsafe { self.Push(<-value); }
+        unsafe { self.Push(move value); }
     }
 
     /// Sends `value` if there is room, without waiting.
     /// @param value the value to send
     /// @returns nothing, or fails with the value when the channel is full or closed
     /// @see https://rux-lang.dev/docs/api/sync/channel#try-send
-    pub func TrySend(self: &Channel<T>, value: T) -> ! T {
+    pub func TrySend(&self, value: T) -> ! T {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -110,13 +108,13 @@ extend Channel<T> {
             fail value;
         }
         // Safety: this thread holds the lock on `block`, which `Push` releases, and the ring has room, checked above.
-        unsafe { self.Push(<-value); }
+        unsafe { self.Push(move value); }
     }
 
     /// Receives the oldest value, waiting while the channel is empty.
     /// @returns the value, or none once the channel is closed and empty
     /// @see https://rux-lang.dev/docs/api/sync/channel#receive
-    pub func Receive(self: &Channel<T>) -> T? {
+    pub func Receive(&self) -> T? {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -146,7 +144,7 @@ extend Channel<T> {
     /// Receives the oldest value if there is one, without waiting.
     /// @returns the value, or none when the channel is empty
     /// @see https://rux-lang.dev/docs/api/sync/channel#try-receive
-    pub func TryReceive(self: &Channel<T>) -> T? {
+    pub func TryReceive(&self) -> T? {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -165,7 +163,7 @@ extend Channel<T> {
     /// Closes the channel: sends fail from now on, and receivers take what is left and then get none. Closing a
     /// closed channel does nothing.
     /// @see https://rux-lang.dev/docs/api/sync/channel#close
-    pub func Close(self: &Channel<T>) {
+    pub func Close(&self) {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -185,7 +183,7 @@ extend Channel<T> {
     /// Whether the channel was closed.
     /// @returns true once `Close` was called on any handle
     /// @see https://rux-lang.dev/docs/api/sync/channel#is-closed
-    pub func IsClosed(self: &Channel<T>) -> bool {
+    pub func IsClosed(&self) -> bool {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -200,7 +198,7 @@ extend Channel<T> {
     /// How many values wait in the channel right now, which other threads may change at any moment.
     /// @returns the number of values
     /// @see https://rux-lang.dev/docs/api/sync/channel#length
-    pub func Length(self: &Channel<T>) -> uint {
+    pub func Length(&self) -> uint {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -214,9 +212,9 @@ extend Channel<T> {
 
     // Appends a value under the lock, releases it and wakes a receiver.
     // Safety: the calling thread must hold the lock on `self.block`, and the ring must have room for one more value.
-    unsafe func Push(self: &Channel<T>, value: T) {
+    unsafe func Push(&self, value: T) {
         let block = self.block;
-        Slot<T>(block, (block.head + block.length) % block.capacity)[0] <- value;
+        Slot<T>(block, (block.head + block.length) % block.capacity)[0] = move value;
         block.length = block.length + 1u;
         AtomicFetchAdd(@block.arrivals, 1u32, MemoryOrder::Relaxed);
         UnlockWord(@block.word);
@@ -225,18 +223,18 @@ extend Channel<T> {
 
     // Takes the oldest value under the lock, releases it and wakes a sender.
     // Safety: the calling thread must hold the lock on `self.block`, and the ring must hold at least one value.
-    unsafe func Pop(self: &Channel<T>) -> T? {
+    unsafe func Pop(&self) -> T? {
         let block = self.block;
-        let value <- Slot<T>(block, block.head)[0];
+        let value = move Slot<T>(block, block.head)[0];
         block.head = (block.head + 1u) % block.capacity;
         block.length = block.length - 1u;
         AtomicFetchAdd(@block.departures, 1u32, MemoryOrder::Relaxed);
         UnlockWord(@block.word);
         WakeOne(@block.departures);
-        return <-value;
+        return move value;
     }
 
-    func ~Channel(self: &var Channel<T>) {
+    func ~Channel(&var self) {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
         // atomically.

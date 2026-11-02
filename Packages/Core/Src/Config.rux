@@ -20,7 +20,7 @@ extend Config {
     /// @param name the build value's name
     /// @returns its value, or an empty slice when the build defines none
     /// @see https://rux-lang.dev/docs/api/core/config#get
-    pub intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
+    pub intrinsic func Get(&self, name: char8[..]) -> char8[..];
 
     /// Whether `name` was defined at all, whatever its value.
     /// `self` is borrowed and `name` must be a string literal. Answered while compiling.
@@ -28,7 +28,7 @@ extend Config {
     /// @param name the build value's name
     /// @returns whether the build defines it
     /// @see https://rux-lang.dev/docs/api/core/config#has
-    pub intrinsic func Has(self: &Config, name: char8[..]) -> bool;
+    pub intrinsic func Has(&self, name: char8[..]) -> bool;
 }
 
 /// The build's user-defined values, as a compile-time value.

@@ -26,7 +26,7 @@ extend int {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `int`
     /// @see https://rux-lang.dev/docs/api/core/integers#int-checked-add
-    pub func CheckedAdd(self: &int, other: int) -> int? {
+    pub func CheckedAdd(&self, other: int) -> int? {
         var sum: int = 0;
         if AddChecked<int>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend int {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `int`
     /// @see https://rux-lang.dev/docs/api/core/integers#int-checked-sub
-    pub func CheckedSub(self: &int, other: int) -> int? {
+    pub func CheckedSub(&self, other: int) -> int? {
         var difference: int = 0;
         if SubChecked<int>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend int {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `int`
     /// @see https://rux-lang.dev/docs/api/core/integers#int-checked-mul
-    pub func CheckedMul(self: &int, other: int) -> int? {
+    pub func CheckedMul(&self, other: int) -> int? {
         var product: int = 0;
         if MulChecked<int>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend int {
     /// @param other the value to add
     /// @returns the sum, or the limit of `int` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int-saturating-add
-    pub func SaturatingAdd(self: &int, other: int) -> int {
+    pub func SaturatingAdd(&self, other: int) -> int {
         return AddSaturating<int>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend int {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `int` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int-saturating-sub
-    pub func SaturatingSub(self: &int, other: int) -> int {
+    pub func SaturatingSub(&self, other: int) -> int {
         return SubSaturating<int>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend int {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `int` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int-saturating-mul
-    pub func SaturatingMul(self: &int, other: int) -> int {
+    pub func SaturatingMul(&self, other: int) -> int {
         return MulSaturating<int>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend int {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#int-truncate
-    pub intrinsic func Truncate<T>(self: &int) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

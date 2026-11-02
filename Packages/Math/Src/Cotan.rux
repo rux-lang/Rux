@@ -21,7 +21,7 @@ pub func Cotan(x: float64) -> float64 {
     // keeps NegRecip's argument away from overflow.
     if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 { return 1.0 / x; }
     let negative = x < 0.0;
-    let ax = negative ? -x : x;
+    let ax = if negative { -x } else { x };
     var result = 0.0;
     if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
@@ -33,7 +33,7 @@ pub func Cotan(x: float64) -> float64 {
         result = -KernelTan(red.hi, red.lo, (red.quadrant & 1) == 0);
     }
     // The cotangent is odd.
-    return negative ? -result : result;
+    return if negative { -result } else { result };
 }
 
 /// Computes the cotangent of `x` at `float32` precision, where `x` is in radians.

@@ -51,7 +51,7 @@ func Main() -> int {
     if !Contains(program.Units(), "Arguments") { return 8; }
 
     // So does the system's path to the executable, which is absolute and ends in its file name.
-    let executable = CurrentExecutable(SystemAllocator()) catch { else => return 9 };
+    let executable = CurrentExecutable(SystemAllocator()) catch { _ => return 9 };
     let path = executable.AsPath();
     if !IsAbsolute(path) { return 10; }
     let file = path.FileName() ?? OsStringView();

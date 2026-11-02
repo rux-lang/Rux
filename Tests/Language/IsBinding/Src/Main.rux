@@ -1,7 +1,7 @@
 // `subject is pattern`: a test that takes a value apart where it holds.
 // The names a pattern binds are in scope where the test is known to be true: the body of the `if` or `while` it
 // conditions and the right side of `&&`. The subject is evaluated once; a named subject keeps its value and the
-// bindings borrow from it, while a temporary or a subject written with `<-` is taken apart. `x is T` still tests a
+// bindings borrow from it, while a temporary or a subject written with `move` is taken apart. `x is T` still tests a
 // type, and a test that binds nothing is an ordinary `bool`.
 
 import Core::Assert;
@@ -205,9 +205,9 @@ func Main() -> int {
     Assert(drops == 4 && deferred == 4, "every token taken is destroyed once, and every pass runs its defer");
     drops = 0;
 
-    // A subject transferred with `<-` is owned by the test: its payload is destroyed once, by whoever holds it.
+    // A subject transferred with `move` is owned by the test: its payload is destroyed once, by whoever holds it.
     var owned: Token? = Token { id: 5 };
-    if <-owned is .Some(token) {
+    if move owned is .Some(token) {
         Assert(token.id == 5, "the transferred payload is bound");
     }
     Assert(drops == 1, "the bound payload is destroyed once at the end of the body");

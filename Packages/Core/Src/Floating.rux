@@ -106,5 +106,5 @@ pub func IsSignPositive<T>(value: T) -> bool {
 /// @see https://rux-lang.dev/docs/api/core/float-classification#sign-of
 pub func SignOf<T>(value: T) -> T {
     if IsNaN<T>(value) || IsZero<T>(value) { return value; }
-    return value < (0 as T) ? (0 as T) - (1 as T) : 1 as T;
+    return if value < (0 as T) { (0 as T) - (1 as T) } else { 1 as T };
 }

@@ -29,56 +29,56 @@ extend FloatLayout {
     /// The x87 extended format: sixty-four significand bits with the integer bit written out, in eighty bits.
     /// @returns the layout of x87's 80-bit extended format
     /// @see https://rux-lang.dev/docs/api/format/float-layout#extended80
-    pub func Extended80() -> FloatLayout {
-        return FloatLayout { bits: 80, exponentBits: 15, precision: 64, bias: 16383, explicitInteger: true };
+    pub func Extended80() -> Self {
+        return Self { bits: 80, exponentBits: 15, precision: 64, bias: 16383, explicitInteger: true };
     }
 
     /// IEEE binary128: a hundred and thirteen bits of precision.
     /// @returns the layout of IEEE 754 binary128
     /// @see https://rux-lang.dev/docs/api/format/float-layout#binary128
-    pub func Binary128() -> FloatLayout {
-        return FloatLayout { bits: 128, exponentBits: 15, precision: 113, bias: 16383, explicitInteger: false };
+    pub func Binary128() -> Self {
+        return Self { bits: 128, exponentBits: 15, precision: 113, bias: 16383, explicitInteger: false };
     }
 
     /// IEEE binary256: two hundred and thirty-seven bits of precision.
     /// @returns the layout of IEEE 754 binary256
     /// @see https://rux-lang.dev/docs/api/format/float-layout#binary256
-    pub func Binary256() -> FloatLayout {
-        return FloatLayout { bits: 256, exponentBits: 19, precision: 237, bias: 262143, explicitInteger: false };
+    pub func Binary256() -> Self {
+        return Self { bits: 256, exponentBits: 19, precision: 237, bias: 262143, explicitInteger: false };
     }
 
     /// IEEE binary512: four hundred and eighty-nine bits of precision.
     /// @returns the layout of IEEE 754 binary512
     /// @see https://rux-lang.dev/docs/api/format/float-layout#binary512
-    pub func Binary512() -> FloatLayout {
-        return FloatLayout { bits: 512, exponentBits: 23, precision: 489, bias: 4194303, explicitInteger: false };
+    pub func Binary512() -> Self {
+        return Self { bits: 512, exponentBits: 23, precision: 489, bias: 4194303, explicitInteger: false };
     }
 
     /// How many bits the stored significand field has: the precision, less the leading bit unless it is written.
     /// @returns how many bits the stored significand field occupies
     /// @see https://rux-lang.dev/docs/api/format/float-layout#significand-field-bits
-    pub func SignificandFieldBits(self: &FloatLayout) -> uint {
-        return self.explicitInteger ? self.precision : self.precision - 1;
+    pub func SignificandFieldBits(&self) -> uint {
+        return if self.explicitInteger { self.precision } else { self.precision - 1 };
     }
 
     /// The smallest exponent a normal value has, as the power of two its integer significand is scaled by.
     /// @returns the smallest exponent a normal value can have
     /// @see https://rux-lang.dev/docs/api/format/float-layout#minimum-exponent
-    pub func MinimumExponent(self: &FloatLayout) -> int {
+    pub func MinimumExponent(&self) -> int {
         return 1 - self.bias - (self.precision as int - 1);
     }
 
     /// The largest exponent a finite value has, on the same scale.
     /// @returns the largest exponent a finite value can have
     /// @see https://rux-lang.dev/docs/api/format/float-layout#maximum-exponent
-    pub func MaximumExponent(self: &FloatLayout) -> int {
+    pub func MaximumExponent(&self) -> int {
         return self.bias - (self.precision as int - 1);
     }
 
     /// How many decimal digits the shortest exact rendering can need: one more than the precision is worth.
     /// @returns how many decimal digits round-trip through this format
     /// @see https://rux-lang.dev/docs/api/format/float-layout#decimal-digits
-    pub func DecimalDigits(self: &FloatLayout) -> uint {
+    pub func DecimalDigits(&self) -> uint {
         return (self.precision * 30103) / 100000 + 2;
     }
 }
@@ -122,14 +122,14 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
     let exponentField = ((bits >> fieldBits) & ((1u512 << layout.exponentBits) - 1u512)) as uint64;
     let field = bits & ((1u512 << fieldBits) - 1u512);
     let maximumField = (1u64 << (layout.exponentBits as uint64)) - 1u64;
-    var result = UnpackedWide { class: WideClass::Zero, negative: negative, significand: 0u512, exponent: 0 };
+    var result = UnpackedWide { class: WideClass::Zero, negative, significand: 0u512, exponent: 0 };
     if layout.explicitInteger {
         // The integer bit is stored, and the forms where it disagrees with the exponent are the ones the x87
         // never produces: an unnormal is not a number, and a pseudo-denormal is the value its bits say.
         let integerBit = (field >> (layout.precision - 1u)) & 1u512;
         let fraction = field & ((1u512 << (layout.precision - 1u)) - 1u512);
         if exponentField == maximumField {
-            result.class = fraction == 0 && integerBit == 1 ? WideClass::Infinity : WideClass::NaN;
+            result.class = if fraction == 0 && integerBit == 1 { WideClass::Infinity } else { WideClass::NaN };
             return result;
         }
         if exponentField == 0 {
@@ -149,7 +149,7 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
         return result;
     }
     if exponentField == maximumField {
-        result.class = field == 0 ? WideClass::Infinity : WideClass::NaN;
+        result.class = if field == 0 { WideClass::Infinity } else { WideClass::NaN };
         return result;
     }
     if exponentField == 0 {
@@ -185,7 +185,7 @@ pub func PackWide(negative: bool, significand: uint512, exponent: int, layout: &
         return bits | significand;
     }
     let exponentField = (exponent + layout.bias + (layout.precision as int - 1)) as uint64;
-    let field = layout.explicitInteger ? significand : significand & (leading - 1u512);
+    let field = if layout.explicitInteger { significand } else { significand & (leading - 1u512) };
     return bits | ((exponentField as uint512) << fieldBits) | field;
 }
 

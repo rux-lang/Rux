@@ -15,7 +15,7 @@ extend char256 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char256-write-display
-    pub func WriteDisplay(self: &char256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let value = (self as uint256) as uint512;
         if !IsScalarValue512(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
@@ -32,7 +32,7 @@ extend char256 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char256-write-debug
-    pub func WriteDebug(self: &char256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteWideCharacterDebug(writer, (self as uint256) as uint512);
     }
 }

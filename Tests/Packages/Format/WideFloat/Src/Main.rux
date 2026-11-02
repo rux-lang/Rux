@@ -53,7 +53,7 @@ func Precision(places: uint) -> FormatSpec {
     var text: char8[2];
     text[0] = c8'.';
     text[1] = (0x30 + places) as char8;
-    spec = ParseFormatSpec(text[..2]) catch { else => Panic("the precision spec parses") };
+    spec = ParseFormatSpec(text[..2]) catch { _ => Panic("the precision spec parses") };
     return spec;
 }
 
@@ -61,7 +61,7 @@ func Precision(places: uint) -> FormatSpec {
 func Bits(text: char8[..], layout: &FloatLayout) -> uint512 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    return ParseWideFloat(allocator, text, layout) catch { else => Panic("a text that should read") };
+    return ParseWideFloat(allocator, text, layout) catch { _ => Panic("a text that should read") };
 }
 
 func Refused(text: char8[..], layout: &FloatLayout) -> bool {
@@ -117,7 +117,7 @@ func Main() -> int {
     Assert(Same(Render(Bits("0.0006", b128), b128, Precision(3u), room), "0.001"), "and above it is one");
     Assert(Same(Render(0u512, b128, Precision(2u), room), "0.00"), "zero to two places");
     var signed = FormatSpec::Plain();
-    signed = ParseFormatSpec("+") catch { else => Panic("the sign spec parses") };
+    signed = ParseFormatSpec("+") catch { _ => Panic("the sign spec parses") };
     Assert(Same(Render(Bits("1", b128), b128, signed, room), "+1.0"), "an asked-for sign");
 
     // A huge value to a fixed precision is every one of its integer digits: the largest float128 has 4933 of
@@ -219,15 +219,15 @@ func Main() -> int {
 
     // A style is refused by the value, which the removed Display wrapper used to do on its way past.
     var styled = FormatSpec::Plain();
-    styled = ParseFormatSpec("x") catch { else => Panic("a base spec parses") };
+    styled = ParseFormatSpec("x") catch { _ => Panic("a base spec parses") };
     var second = ByteCursor(room);
     let other: &var TextWriter = second;
     Assert(one.FormatWith(allocator, other, styled) is .Failure(_), "and a style is still refused");
-    let value = ParseFloat256(allocator, "2.5") catch { else => Panic("the typed entry point reads") };
+    let value = ParseFloat256(allocator, "2.5") catch { _ => Panic("the typed entry point reads") };
     Assert(value.IsFinite() && !value.IsNegative() && !value.IsNan(), "and answers the questions a caller asks");
-    let tiny = ParseFloat80(allocator, "1e-4940") catch { else => Panic("a float80 subnormal reads") };
+    let tiny = ParseFloat80(allocator, "1e-4940") catch { _ => Panic("a float80 subnormal reads") };
     Assert(tiny.IsFinite() && tiny.Bits() != 0, "a float80 subnormal reads as itself");
-    let widest = ParseFloat512(allocator, "Inf") catch { else => Panic("an infinity reads") };
+    let widest = ParseFloat512(allocator, "Inf") catch { _ => Panic("an infinity reads") };
     Assert(widest.IsInfinite(), "and the widest width reads an infinity");
     let failure = match ParseFloat128(allocator, "1e5000") {
         .Failure(reason) => reason,
@@ -235,7 +235,7 @@ func Main() -> int {
     };
     let named = match failure {
         .Overflow(_) => true,
-        else => false
+        _ => false
     };
     Assert(named, "with overflow named as such rather than as the allocation failure it used to be confused with");
 

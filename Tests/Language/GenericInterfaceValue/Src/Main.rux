@@ -3,7 +3,7 @@
 import Core::Assert;
 
 interface Named {
-    func Id(self: &Self) -> int;
+    func Id(&self) -> int;
 }
 
 struct Box<T> {
@@ -12,7 +12,7 @@ struct Box<T> {
 }
 
 extend Box<T> : Named {
-    func Id(self: &Box<T>) -> int {
+    func Id(&self) -> int {
         return self.id;
     }
 }

@@ -10,7 +10,7 @@ extend uint16 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/integer-text#uint16-write-display
-    pub func WriteDisplay(self: &uint16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteIntegerSpec(writer, spec, self as uint64, false);
     }
 }
@@ -22,7 +22,7 @@ extend uint16 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/integer-text#uint16-write-debug
-    pub func WriteDebug(self: &uint16, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

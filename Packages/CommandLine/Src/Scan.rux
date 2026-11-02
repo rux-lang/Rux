@@ -26,11 +26,11 @@ extend ArgumentSource {
     /// How many arguments there are.
     /// @returns the argument count, not counting the program's name
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#argument-source-count
-    pub func Count(self: &ArgumentSource) -> uint {
+    pub func Count(&self) -> uint {
         let count = ArgumentCount();
         return match self {
             .Given(arguments) => arguments.length,
-            .ProcessArguments => count == 0 ? 0 : count - 1
+            .ProcessArguments => if count == 0 { 0 } else { count - 1 }
         };
     }
 
@@ -38,9 +38,9 @@ extend ArgumentSource {
     /// @param index the argument's position
     /// @returns the argument, or an empty view past the last one
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#argument-source-at
-    pub func At(self: &ArgumentSource, index: uint) -> OsStringView {
+    pub func At(&self, index: uint) -> OsStringView {
         return match self {
-            .Given(arguments) => index < arguments.length ? arguments[index] : OsStringView(),
+            .Given(arguments) => if index < arguments.length { arguments[index] } else { OsStringView() },
             .ProcessArguments => Argument(index + 1) ?? OsStringView()
         };
     }
@@ -74,10 +74,10 @@ struct Scanner {
 
 func Scan(spec: *CommandSpec, source: ArgumentSource, start: uint, end: uint) -> Scanner {
     return Scanner {
-        spec: spec,
-        source: source,
+        spec,
+        source,
         index: start,
-        end: end,
+        end,
         cluster: 0,
         optionsEnded: false,
         positionals: 0
@@ -135,15 +135,15 @@ func FindCommand(spec: &CommandSpec, word: OsStringView) -> uint? {
 
 extend Scanner {
     // The command being walked, read through the stored handle.
-    func Declared(self: &Scanner) -> CommandSpec {
+    func Declared(&self) -> CommandSpec {
         // Safety: `self.spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which
         // the documented contract keeps alive for as long as the parse and every walk made from it.
         return unsafe { *self.spec };
     }
 
     // A walk from the same position, independent of this one.
-    func Copy(self: &Scanner) -> Scanner {
-        return Scanner {
+    func Copy(&self) -> Self {
+        return Self {
             spec: self.spec,
             source: self.source,
             index: self.index,
@@ -155,7 +155,7 @@ extend Scanner {
     }
 
     // The next item, none at the end, or why the arguments do not match.
-    func Next(self: &var Scanner) -> Item? ! CommandLineError {
+    func Next(&var self) -> Item? ! CommandLineError {
         if self.cluster > 0 { return self.NextShort(); }
         if self.index >= self.end { return .Success(none); }
         let at = self.index;
@@ -176,7 +176,7 @@ extend Scanner {
         return self.Positional(argument, at);
     }
 
-    func Long(self: &var Scanner, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+    func Long(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
         let spec = self.Declared();
         let units = argument.Units();
         var equals: uint = 2;
@@ -199,7 +199,7 @@ extend Scanner {
     }
 
     // The next short option in the cluster that started at the argument before `index`.
-    func NextShort(self: &var Scanner) -> Item? ! CommandLineError {
+    func NextShort(&var self) -> Item? ! CommandLineError {
         let at = self.index - 1;
         let argument = self.source.At(at);
         let units = argument.Units();
@@ -211,7 +211,7 @@ extend Scanner {
             fail CommandLineError::UnknownOption(argument);
         }
         if !TakesValue(spec, option) {
-            self.cluster = position + 1 < units.length ? position + 1 : 0;
+            self.cluster = if position + 1 < units.length { position + 1 } else { 0 };
             return .Success(.Some(Item::Option(option, none, at)));
         }
         self.cluster = 0;
@@ -224,7 +224,7 @@ extend Scanner {
         return .Success(.Some(Item::Option(option, .Some(value), at)));
     }
 
-    func Positional(self: &var Scanner, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
+    func Positional(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
         let spec = self.Declared();
         if spec.commands.length > 0 {
             let command = FindCommand(spec, argument) ?? 0xFFFFFFFF;

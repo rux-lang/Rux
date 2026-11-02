@@ -16,7 +16,7 @@ struct MemoryState {
 }
 
 extend MemoryState : Reader {
-    func Read(self: &var MemoryState, into: var char8[..]) -> uint ! IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         var give = self.length - self.offset;
         if give == 0 {
             fail IoError::Of(IoErrorKind::EndOfStream);
@@ -35,7 +35,7 @@ extend MemoryState : Reader {
 }
 
 extend MemoryState : Writer {
-    func Write(self: &var MemoryState, bytes: char8[..]) -> uint ! IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         var index: uint = 0;
         while index < bytes.length {
             self.room[self.length + index] = bytes[index];
@@ -45,7 +45,7 @@ extend MemoryState : Writer {
         return bytes.length;
     }
 
-    func Flush(self: &var MemoryState) -> ! IoError {
+    func Flush(&var self) -> ! IoError {
         return;
     }
 }
@@ -56,7 +56,7 @@ func ByteAt(state: &MemoryState, index: uint) -> uint8 {
 
 // The value an operation expected to succeed produced.
 func Expect<T>(outcome: T ! IoError, message: char8[..]) -> T {
-    return outcome catch { else => Panic(message) };
+    return outcome catch { _ => Panic(message) };
 }
 
 // The failure an operation expected to fail reported.
@@ -71,8 +71,8 @@ func Main() -> int {
     // The two orders write mirrored bytes: the value is the same, only which end comes first differs.
     var goldenStorage: char8[256];
     var golden = MemoryState { room: goldenStorage[..256], length: 0, offset: 0 };
-    WriteUint32(golden, Endian::Big, 0x12345678) catch { else => Panic("big writes") };
-    WriteUint32(golden, Endian::Little, 0x12345678) catch { else => Panic("and little writes") };
+    WriteUint32(golden, Endian::Big, 0x12345678) catch { _ => Panic("big writes") };
+    WriteUint32(golden, Endian::Little, 0x12345678) catch { _ => Panic("and little writes") };
     Assert(ByteAt(golden, 0) == 0x12 && ByteAt(golden, 1) == 0x34 &&
            ByteAt(golden, 2) == 0x56 && ByteAt(golden, 3) == 0x78,
            "big-endian puts the most significant byte first");
@@ -83,7 +83,7 @@ func Main() -> int {
     // The IEEE 754 pattern of 1.0, byte for byte, in network order.
     var floatsStorage: char8[256];
     var floats = MemoryState { room: floatsStorage[..256], length: 0, offset: 0 };
-    WriteFloat64(floats, Endian::Big, 1.0) catch { else => Panic("the float writes") };
+    WriteFloat64(floats, Endian::Big, 1.0) catch { _ => Panic("the float writes") };
     Assert(ByteAt(floats, 0) == 0x3F && ByteAt(floats, 1) == 0xF0 && ByteAt(floats, 2) == 0 &&
            ByteAt(floats, 7) == 0, "as the bit pattern its specification names");
 
@@ -95,18 +95,18 @@ func Main() -> int {
     var order = Endian::Big;
     var pass: uint = 0;
     while pass < 2 {
-        WriteUint8(record, order, 0xAB) catch { else => Panic("u8 writes") };
-        WriteUint16(record, order, 0xBEEF) catch { else => Panic("u16 writes") };
-        WriteUint32(record, order, 0xDEADBEEF) catch { else => Panic("u32 writes") };
-        WriteUint64(record, order, 0x0123456789ABCDEF) catch { else => Panic("u64 writes") };
-        WriteUint128(record, order, wideValue.Truncate<uint128>()) catch { else => Panic("u128 writes") };
-        WriteUint256(record, order, hugeValue.Truncate<uint256>() | 1) catch { else => Panic("u256 writes") };
-        WriteUint512(record, order, hugeValue) catch { else => Panic("u512 writes") };
-        WriteInt8(record, order, -100) catch { else => Panic("i8 writes") };
-        WriteInt16(record, order, -32768) catch { else => Panic("the most negative i16 writes") };
-        WriteInt64(record, order, -1) catch { else => Panic("minus one writes") };
-        WriteFloat32(record, order, -2.5f32) catch { else => Panic("f32 writes") };
-        WriteFloat64(record, order, 6.02214076e23) catch { else => Panic("f64 writes") };
+        WriteUint8(record, order, 0xAB) catch { _ => Panic("u8 writes") };
+        WriteUint16(record, order, 0xBEEF) catch { _ => Panic("u16 writes") };
+        WriteUint32(record, order, 0xDEADBEEF) catch { _ => Panic("u32 writes") };
+        WriteUint64(record, order, 0x0123456789ABCDEF) catch { _ => Panic("u64 writes") };
+        WriteUint128(record, order, wideValue.Truncate<uint128>()) catch { _ => Panic("u128 writes") };
+        WriteUint256(record, order, hugeValue.Truncate<uint256>() | 1) catch { _ => Panic("u256 writes") };
+        WriteUint512(record, order, hugeValue) catch { _ => Panic("u512 writes") };
+        WriteInt8(record, order, -100) catch { _ => Panic("i8 writes") };
+        WriteInt16(record, order, -32768) catch { _ => Panic("the most negative i16 writes") };
+        WriteInt64(record, order, -1) catch { _ => Panic("minus one writes") };
+        WriteFloat32(record, order, -2.5f32) catch { _ => Panic("f32 writes") };
+        WriteFloat64(record, order, 6.02214076e23) catch { _ => Panic("f64 writes") };
 
         Assert(Expect(ReadUint8(record, order), "u8 reads") == 0xAB, "u8 returns");
         Assert(Expect(ReadUint16(record, order), "u16 reads") == 0xBEEF, "u16 returns");

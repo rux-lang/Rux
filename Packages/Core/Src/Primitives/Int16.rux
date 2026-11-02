@@ -26,7 +26,7 @@ extend int16 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `int16`
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-checked-add
-    pub func CheckedAdd(self: &int16, other: int16) -> int16? {
+    pub func CheckedAdd(&self, other: int16) -> int16? {
         var sum: int16 = 0;
         if AddChecked<int16>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend int16 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `int16`
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-checked-sub
-    pub func CheckedSub(self: &int16, other: int16) -> int16? {
+    pub func CheckedSub(&self, other: int16) -> int16? {
         var difference: int16 = 0;
         if SubChecked<int16>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend int16 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `int16`
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-checked-mul
-    pub func CheckedMul(self: &int16, other: int16) -> int16? {
+    pub func CheckedMul(&self, other: int16) -> int16? {
         var product: int16 = 0;
         if MulChecked<int16>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend int16 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `int16` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-saturating-add
-    pub func SaturatingAdd(self: &int16, other: int16) -> int16 {
+    pub func SaturatingAdd(&self, other: int16) -> int16 {
         return AddSaturating<int16>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend int16 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `int16` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-saturating-sub
-    pub func SaturatingSub(self: &int16, other: int16) -> int16 {
+    pub func SaturatingSub(&self, other: int16) -> int16 {
         return SubSaturating<int16>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend int16 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `int16` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-saturating-mul
-    pub func SaturatingMul(self: &int16, other: int16) -> int16 {
+    pub func SaturatingMul(&self, other: int16) -> int16 {
         return MulSaturating<int16>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend int16 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#int16-truncate
-    pub intrinsic func Truncate<T>(self: &int16) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

@@ -96,6 +96,6 @@ pub func ConvertSaturating<From, To>(value: From, result: *var To) {
             *result = 0 as To;
             return;
         }
-        *result = value < (0 as From) ? MinimumOf<To>(*result) : MaximumOf<To>(*result);
+        *result = if value < (0 as From) { MinimumOf<To>(*result) } else { MaximumOf<To>(*result) };
     }
 }

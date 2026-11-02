@@ -16,7 +16,7 @@ when #target.os {
     .macOS => import macOS::{ ClockGetTime, ClockRealtime, Timespec },
     .Windows => import Windows::{ FileTime, FileTimeTicks, FileTimeTicksPerSecond, FileTimeToUnixEpochSeconds,
                                   GetSystemTimePreciseAsFileTime },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// A moment in UTC: seconds since the Unix epoch and a fraction, normalized.
@@ -34,14 +34,14 @@ extend Timestamp {
     /// The epoch itself: 1970-01-01T00:00:00 UTC exactly.
     /// @returns 1970-01-01T00:00:00Z
     /// @see https://rux-lang.dev/docs/api/time/timestamp#epoch
-    pub func Epoch() -> Timestamp {
-        return Timestamp { seconds: 0, nanoseconds: 0 };
+    pub func Epoch() -> Self {
+        return Self { seconds: 0, nanoseconds: 0 };
     }
 
     /// The wall clock, read now.
     /// @returns the wall clock, read now
     /// @see https://rux-lang.dev/docs/api/time/timestamp#now
-    pub func Now() -> Timestamp {
+    pub func Now() -> Self {
         when #target.os == .Windows {
             // The system counts hundred-nanosecond ticks from 1601; the epoch shift and the tick width are the
             // whole conversion.
@@ -51,7 +51,7 @@ extend Timestamp {
             let ticks = FileTimeTicks(time);
             let seconds = ticks / FileTimeTicksPerSecond;
             let rest = ticks % FileTimeTicksPerSecond;
-            return Timestamp {
+            return Self {
                 seconds: (seconds as int64) - (FileTimeToUnixEpochSeconds as int64),
                 nanoseconds: (rest as uint32) * 100
             };
@@ -60,7 +60,7 @@ extend Timestamp {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
             // Safety: `time` is a local `Timespec`, which the call fills.
             unsafe { ClockGetTime(ClockRealtime, @time); }
-            return Timestamp { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
+            return Self { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
         }
     }
 
@@ -68,21 +68,21 @@ extend Timestamp {
     /// @param seconds how many seconds
     /// @returns that many seconds after the epoch
     /// @see https://rux-lang.dev/docs/api/time/timestamp#from-unix-seconds
-    pub func FromUnixSeconds(seconds: int64) -> Timestamp {
-        return Timestamp { seconds: seconds, nanoseconds: 0 };
+    pub func FromUnixSeconds(seconds: int64) -> Self {
+        return Self { seconds, nanoseconds: 0 };
     }
 
     /// The whole seconds since the epoch, rounded toward negative infinity.
     /// @returns whole seconds since the epoch, negative before it
     /// @see https://rux-lang.dev/docs/api/time/timestamp#unix-seconds
-    pub func UnixSeconds(self: &Timestamp) -> int64 {
+    pub func UnixSeconds(&self) -> int64 {
         return self.seconds;
     }
 
     /// The fraction beyond the whole seconds, in nanoseconds.
     /// @returns the nanoseconds within the second, in `[0, 999999999]`
     /// @see https://rux-lang.dev/docs/api/time/timestamp#subsecond-nanoseconds
-    pub func SubsecondNanoseconds(self: &Timestamp) -> uint32 {
+    pub func SubsecondNanoseconds(&self) -> uint32 {
         return self.nanoseconds;
     }
 
@@ -92,7 +92,7 @@ extend Timestamp {
     /// @param earlier the earlier reading
     /// @returns the time between the two moments, or `None` when `earlier` is not earlier
     /// @see https://rux-lang.dev/docs/api/time/timestamp#since
-    pub func Since(self: &Timestamp, earlier: Timestamp) -> Duration? {
+    pub func Since(&self, earlier: Self) -> Duration? {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         return mine.Minus(Duration { seconds: earlier.seconds, nanoseconds: earlier.nanoseconds });
     }
@@ -101,19 +101,19 @@ extend Timestamp {
     /// @param span the duration
     /// @returns the moment that far later, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/timestamp#plus
-    pub func Plus(self: &Timestamp, span: Duration) -> Timestamp? {
+    pub func Plus(&self, span: Duration) -> Self? {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         let shifted = mine.Plus(span);
         if shifted == none { return none; }
         let landed = shifted ?? Duration::Zero();
-        return Timestamp { seconds: landed.seconds, nanoseconds: landed.nanoseconds };
+        return Self { seconds: landed.seconds, nanoseconds: landed.nanoseconds };
     }
 
     /// Whether two timestamps name the same moment.
     /// @param other the value to compare against
     /// @returns whether the two name the same moment
     /// @see https://rux-lang.dev/docs/api/time/timestamp#equals
-    pub func Equals(self: &Timestamp, other: Timestamp) -> bool {
+    pub func Equals(&self, other: Self) -> bool {
         return self.seconds == other.seconds && self.nanoseconds == other.nanoseconds;
     }
 
@@ -121,7 +121,7 @@ extend Timestamp {
     /// @param other the value to compare against
     /// @returns how this moment orders against `other`
     /// @see https://rux-lang.dev/docs/api/time/timestamp#compare
-    pub func Compare(self: &Timestamp, other: Timestamp) -> Ordering {
+    pub func Compare(&self, other: Self) -> Ordering {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         return mine.Compare(Duration { seconds: other.seconds, nanoseconds: other.nanoseconds });
     }

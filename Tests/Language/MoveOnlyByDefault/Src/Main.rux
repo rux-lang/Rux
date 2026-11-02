@@ -36,10 +36,10 @@ extend Resource {
 }
 
 extend Resource : Cloneable {
-    func Clone(&self) -> Resource {
+    func Clone(&self) -> Self {
         // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Resource`.
         unsafe { self.counter.clones = self.counter.clones + 1; }
-        return Resource { counter: self.counter, id: self.id + 100 };
+        return Self { counter: self.counter, id: self.id + 100 };
     }
 }
 
@@ -79,7 +79,7 @@ func PlainCopies() {
 }
 
 func Moves(counter: *var Counter) {
-    let resource = Resource { counter: counter, id: 1 };
+    let resource = Resource { counter, id: 1 };
     let moved = move resource;
     // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
     Assert(unsafe { counter.drops } == 0, "a move runs no destructor for its source");
@@ -87,7 +87,7 @@ func Moves(counter: *var Counter) {
     // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
     Assert(unsafe { counter.drops } == 1, "the last owner destroys it exactly once");
 
-    let holder = Holder { resource: Resource { counter: counter, id: 2 }, tag: 3 };
+    let holder = Holder { resource: Resource { counter, id: 2 }, tag: 3 };
     let other = move holder;
     Assert(other.tag == 3 && other.resource.id == 2, "a value holding an owning field moves whole");
     // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
@@ -95,7 +95,7 @@ func Moves(counter: *var Counter) {
 }
 
 func Clones(counter: *var Counter) {
-    let original = Resource { counter: counter, id: 4 };
+    let original = Resource { counter, id: 4 };
     let clone = original.Clone();
     // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
     Assert(unsafe { counter.clones } == 1, "Clone runs the type's own method exactly once");

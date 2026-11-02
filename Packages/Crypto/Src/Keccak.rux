@@ -117,8 +117,8 @@ pub struct Sha3 {
 }
 
 extend Sha3 {
-    func Start(outputLength: uint, domain: uint8) -> Sha3 {
-        var digest: Sha3;
+    func Start(outputLength: uint, domain: uint8) -> Self {
+        var digest: Self;
         var index: uint = 0;
         while index < 25 {
             digest.lanes[index] = 0;
@@ -136,34 +136,34 @@ extend Sha3 {
     /// A SHA3-224 state.
     /// @returns a hasher producing a 224-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#new-224
-    pub func New224() -> Sha3 {
-        return Sha3::Start(28, 0x06);
+    pub func New224() -> Self {
+        return Self::Start(28, 0x06);
     }
 
     /// A SHA3-256 state.
     /// @returns a hasher producing a 256-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#new-256
-    pub func New256() -> Sha3 {
-        return Sha3::Start(32, 0x06);
+    pub func New256() -> Self {
+        return Self::Start(32, 0x06);
     }
 
     /// A SHA3-384 state.
     /// @returns a hasher producing a 384-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#new-384
-    pub func New384() -> Sha3 {
-        return Sha3::Start(48, 0x06);
+    pub func New384() -> Self {
+        return Self::Start(48, 0x06);
     }
 
     /// A SHA3-512 state.
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#new-512
-    pub func New512() -> Sha3 {
-        return Sha3::Start(64, 0x06);
+    pub func New512() -> Self {
+        return Self::Start(64, 0x06);
     }
 
     // Exclusive-ors one byte into the state at the given position, which is how absorption works: the message
     // is mixed into the state rather than replacing any of it.
-    func AbsorbByte(self: &var Sha3, position: uint, value: uint8) {
+    func AbsorbByte(&var self, position: uint, value: uint8) {
         let lane = position / 8;
         let shift = ((position % 8) * 8) as uint64;
         self.lanes[lane] = self.lanes[lane] ^ ((value as uint64) << shift);
@@ -174,7 +174,7 @@ extend Sha3 : Digest {
     /// Absorbs `bytes` into the state.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#update
-    pub func Update(self: &var Sha3, bytes: char8[..]) {
+    pub func Update(&var self, bytes: char8[..]) {
         var index: uint = 0;
         while index < bytes.length {
             self.AbsorbByte(self.absorbed, bytes[index] as uint8);
@@ -194,7 +194,7 @@ extend Sha3 : Digest {
     /// from one that works at every other length.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#finish
-    pub func Finish(self: &var Sha3, into: var char8[..]) {
+    pub func Finish(&var self, into: var char8[..]) {
         self.AbsorbByte(self.absorbed, self.domain);
         self.AbsorbByte(self.rate - 1, 0x80);
         // Safety: `self.lanes` is the state's array of twenty-five lanes.
@@ -222,14 +222,14 @@ extend Sha3 : Digest {
     /// Twenty-eight, thirty-two, forty-eight or sixty-four bytes.
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#digest-length
-    pub func DigestLength(self: &Sha3) -> uint {
+    pub func DigestLength(&self) -> uint {
         return self.outputLength;
     }
 
     /// The rate, which differs per size — unlike the SHA-2 family, whose block is fixed.
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha3#block-length
-    pub func BlockLength(self: &Sha3) -> uint {
+    pub func BlockLength(&self) -> uint {
         return self.rate;
     }
 }

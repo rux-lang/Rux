@@ -70,7 +70,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 joined[at] = carry[at];
                 at = at + 1;
             }
-            let borrowed = held.length < 4 ? held.length : 4;
+            let borrowed = if held.length < 4 { held.length } else { 4 };
             var extra: uint = 0;
             while extra < borrowed {
                 // Safety: `extra` is below `borrowed`, which is at most `held.length`.
@@ -214,7 +214,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             if heldBackCr {
                 pendingCr = true;
             }
-            reader.Consume(sawFeed ? lineEnd + 1 : held.length);
+            reader.Consume(if sawFeed { lineEnd + 1 } else { held.length });
             if sawFeed {
                 if failure != none {
                     builder.Clear();

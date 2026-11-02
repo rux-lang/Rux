@@ -3,7 +3,7 @@ variant CountedChoice { Items((Counted, Counted)) }
 
 struct Counted { value: int64; visits: *var int32; }
 extend Counted {
-    func ==(self: &Counted, other: Counted) -> bool {
+    func ==(&self, other: Self) -> bool {
         // Safety: every `Counted` in this test holds `@visits`, a live local of `Main`.
         unsafe { *self.visits = *self.visits + 1; }
         return self.value % 10 == other.value % 10;

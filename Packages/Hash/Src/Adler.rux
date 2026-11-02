@@ -20,13 +20,13 @@ extend Adler32 {
     /// Constructs a checksum with nothing written into it yet.
     /// @returns a hasher with nothing written to it yet
     /// @see https://rux-lang.dev/docs/api/hash/adler32#new
-    pub func Adler32() -> Adler32 {
-        return Adler32 { low: 1, high: 0 };
+    pub func Adler32() -> Self {
+        return Self { low: 1, high: 0 };
     }
 
     /// Puts the checksum back to where `Adler32()` leaves one. Everything written so far is forgotten.
     /// @see https://rux-lang.dev/docs/api/hash/adler32#reset
-    pub func Reset(self: &var Adler32) {
+    pub func Reset(&var self) {
         self.low = 1;
         self.high = 0;
     }
@@ -35,7 +35,7 @@ extend Adler32 {
     /// Writing more continues from here rather than starting over.
     /// @returns the checksum
     /// @see https://rux-lang.dev/docs/api/hash/adler32#value
-    pub func Value(self: &Adler32) -> uint32 {
+    pub func Value(&self) -> uint32 {
         return (self.high << 16) | self.low;
     }
 }
@@ -47,7 +47,7 @@ extend Adler32 : Hasher {
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
     /// @see https://rux-lang.dev/docs/api/hash/adler32#write
-    pub func Write(self: &var Adler32, bytes: *byte, length: uint) {
+    pub func Write(&var self, bytes: *byte, length: uint) {
         var low = self.low;
         var high = self.high;
         var index: uint = 0;
@@ -72,7 +72,7 @@ extend Adler32 : Hasher {
     /// The checksum of everything written so far, widened to 64 bits; the upper half is always zero.
     /// @returns the checksum
     /// @see https://rux-lang.dev/docs/api/hash/adler32#finish
-    pub func Finish(self: &var Adler32) -> uint64 {
+    pub func Finish(&var self) -> uint64 {
         return self.Value() as uint64;
     }
 }

@@ -34,31 +34,29 @@ pub struct MutexGuard<T> {
 }
 
 extend Mutex<T> {
-    func =(self: &var Mutex<T>, other: &Mutex<T>);
-
     /// A new lock guarding `value`. Running out of memory for it is a program error.
     /// @param value the value to guard
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/mutex#mutex-new
-    pub func Mutex(value: T) -> Mutex<T> {
-        return Mutex<T> { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: <-value }) };
+    pub func Mutex(value: T) -> Self {
+        return Self { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: move value }) };
     }
 
     /// Another handle to the same value.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/mutex#clone
-    pub func Clone(self: &Mutex<T>) -> Mutex<T> {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return Mutex<T> { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Takes the lock, waiting while another thread holds it, and returns the guard that holds it.
     /// Not reentrant: locking again on the thread that holds the lock waits forever.
     /// @returns the guard
     /// @see https://rux-lang.dev/docs/api/sync/mutex#lock
-    pub func Lock(self: &Mutex<T>) -> MutexGuard<T> {
+    pub func Lock(&self) -> MutexGuard<T> {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its lock and count words are
         // reached only atomically; the guard's count is taken while the lock is held.
         unsafe {
@@ -71,7 +69,7 @@ extend Mutex<T> {
     /// Takes the lock if nobody holds it, without waiting.
     /// @returns the guard, or none when another thread holds the lock
     /// @see https://rux-lang.dev/docs/api/sync/mutex#try-lock
-    pub func TryLock(self: &Mutex<T>) -> MutexGuard<T>? {
+    pub func TryLock(&self) -> MutexGuard<T>? {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its lock word is reached only
         // atomically.
         if !unsafe { TryLockWord(@self.block.word) } { return none; }
@@ -81,7 +79,7 @@ extend Mutex<T> {
         return MutexGuard<T> { block: self.block };
     }
 
-    func ~Mutex(self: &var Mutex<T>) {
+    func ~Mutex(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle or guard is left to reach the block.
         unsafe {
@@ -93,14 +91,12 @@ extend Mutex<T> {
 }
 
 extend MutexGuard<T> {
-    func =(self: &var MutexGuard<T>, other: &MutexGuard<T>);
-
     /// The guarded value, borrowed for reading while the guard holds the lock.
     /// The guard stays borrowed while the reference is in use, so it cannot be unlocked or dropped under it. Calling
     /// this on a guard that was unlocked is a program error.
     /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/mutex#get
-    pub func Get(self: &MutexGuard<T>) -> &T {
+    pub func Get(&self) -> &T {
         if self.block == null { Panic("the value of an unlocked mutex guard was read"); }
         // Safety: a guard that has not been unlocked, checked above, holds a count on `self.block`, so the block is
         // live.
@@ -112,7 +108,7 @@ extend MutexGuard<T> {
     /// is a program error.
     /// @returns a writable reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/mutex#get-mutable
-    pub func GetMutable(self: &var MutexGuard<T>) -> &var T {
+    pub func GetMutable(&var self) -> &var T {
         if self.block == null { Panic("the value of an unlocked mutex guard was written"); }
         // Safety: a guard that has not been unlocked, checked above, holds a count on `self.block`, so the block is
         // live.
@@ -122,13 +118,13 @@ extend MutexGuard<T> {
     /// Whether the guard still holds the lock.
     /// @returns false once `Unlock` was called
     /// @see https://rux-lang.dev/docs/api/sync/mutex#is-locked
-    pub func IsLocked(self: &MutexGuard<T>) -> bool {
+    pub func IsLocked(&self) -> bool {
         return self.block != null;
     }
 
     /// Releases the lock before the guard is dropped. Unlocking a guard twice does nothing.
     /// @see https://rux-lang.dev/docs/api/sync/mutex#unlock
-    pub func Unlock(self: &var MutexGuard<T>) {
+    pub func Unlock(&var self) {
         if self.block == null { return; }
         let block = self.block;
         self.block = null;
@@ -142,7 +138,7 @@ extend MutexGuard<T> {
         }
     }
 
-    func ~MutexGuard(self: &var MutexGuard<T>) {
+    func ~MutexGuard(&var self) {
         self.Unlock();
     }
 }
@@ -162,30 +158,28 @@ pub struct Condition {
 }
 
 extend Condition {
-    func =(self: &var Condition, other: &Condition);
-
     /// A new condition. Running out of memory for it is a program error.
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/mutex#condition-new
-    pub func Condition() -> Condition {
-        return Condition { block: AllocateBlock(ConditionBlock { references: 1, sequence: 0 }) };
+    pub func Condition() -> Self {
+        return Self { block: AllocateBlock(ConditionBlock { references: 1, sequence: 0 }) };
     }
 
     /// Another handle to the same condition.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/mutex#clone-condition
-    pub func Clone(self: &Condition) -> Condition {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return Condition { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Releases the guard's lock, sleeps until notified, and takes the lock again.
     /// @typeParam T the type of the guarded value
     /// @param guard a guard that holds its lock
     /// @see https://rux-lang.dev/docs/api/sync/mutex#wait
-    pub func Wait<T>(self: &Condition, guard: &var MutexGuard<T>) {
+    pub func Wait<T>(&self, guard: &var MutexGuard<T>) {
         self.Sleep<T>(guard, -1);
     }
 
@@ -195,7 +189,7 @@ extend Condition {
     /// @param timeout how long to wait at most; a negative one does not wait
     /// @returns false when the time ran out without a notification
     /// @see https://rux-lang.dev/docs/api/sync/mutex#wait-for
-    pub func WaitFor<T>(self: &Condition, guard: &var MutexGuard<T>, timeout: Duration) -> bool {
+    pub func WaitFor<T>(&self, guard: &var MutexGuard<T>, timeout: Duration) -> bool {
         if timeout.IsNegative() { return false; }
         let nanoseconds = timeout.TotalNanoseconds() ?? 0x7FFFFFFFFFFFFFFFi64;
         return self.Sleep<T>(guard, nanoseconds);
@@ -203,7 +197,7 @@ extend Condition {
 
     /// Wakes one thread waiting on the condition, if any.
     /// @see https://rux-lang.dev/docs/api/sync/mutex#notify-one
-    pub func NotifyOne(self: &Condition) {
+    pub func NotifyOne(&self) {
         // Safety: this handle holds a count on `self.block`, so the block and its `sequence` word are live, and every
         // thread reaches that word only atomically.
         unsafe {
@@ -214,7 +208,7 @@ extend Condition {
 
     /// Wakes every thread waiting on the condition.
     /// @see https://rux-lang.dev/docs/api/sync/mutex#notify-all
-    pub func NotifyAll(self: &Condition) {
+    pub func NotifyAll(&self) {
         // Safety: this handle holds a count on `self.block`, so the block and its `sequence` word are live, and every
         // thread reaches that word only atomically.
         unsafe {
@@ -225,7 +219,7 @@ extend Condition {
 
     // The sequence is read before the lock is released, so a notification made after the release changes it and
     // ends the sleep at once. Taking the lock back as contended keeps a wake owed to another sleeper from being lost.
-    func Sleep<T>(self: &Condition, guard: &var MutexGuard<T>, nanoseconds: int64) -> bool {
+    func Sleep<T>(&self, guard: &var MutexGuard<T>, nanoseconds: int64) -> bool {
         let block = guard.block;
         if block == null { return true; }
         // Safety: this handle holds a count on `self.block`, so its `sequence` word is live, and every thread reaches
@@ -242,7 +236,7 @@ extend Condition {
         return notified;
     }
 
-    func ~Condition(self: &var Condition) {
+    func ~Condition(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         unsafe {

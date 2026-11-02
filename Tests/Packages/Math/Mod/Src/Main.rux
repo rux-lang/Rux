@@ -19,7 +19,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 func Close(actual: float64, expected: float64) -> bool {

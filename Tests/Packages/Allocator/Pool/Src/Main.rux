@@ -167,7 +167,7 @@ func Main() -> ! AllocError {
 /// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
 /// refusal cannot pass by accident.
 func Refusal<T>(outcome: T ! AllocError) -> AllocError {
-    return match <-outcome {
+    return match move outcome {
         .Failure(error) => error,
         .Success(_) => Panic("the allocator was expected to refuse")
     };

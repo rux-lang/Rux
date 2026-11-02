@@ -14,7 +14,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = ParseFormatSpec(text) catch { else => Panic("the regression specification is valid") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the regression specification is valid") };
     return spec;
 }
 

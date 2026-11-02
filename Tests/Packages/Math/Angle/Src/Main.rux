@@ -20,7 +20,7 @@ when #target.arch {
             ret
         }
     },
-    else => #Error("Unsupported architecture")
+    _ => #Error("Unsupported architecture")
 }
 
 // One rounding in the constant and one in the product leave the result within

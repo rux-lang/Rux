@@ -37,11 +37,11 @@ func Exists(allocator: Allocator, path: Path) -> bool {
 // Makes a temporary file, writes to it, and lets it fall out of scope without a Close.
 func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     var scratch = TemporaryFile::Create(allocator, directory, "abandoned-") catch {
-        else => Panic("the abandoned file is created")
+        _ => Panic("the abandoned file is created")
     };
     var remembered = PathBuffer::FromPath(allocator, scratch.AsPath());
     Assert(Exists(allocator, scratch.AsPath()), "and it exists while it is held");
-    return <-remembered;
+    return move remembered;
 }
 
 func Main() -> int ! IoError {
@@ -72,7 +72,7 @@ func Main() -> int ! IoError {
 
     // Close deletes it and says so; the name is free afterwards.
     var firstPathHolder = PathBuffer(allocator);
-    firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath());
+    firstPathHolder = PathBuffer::FromPath(allocator, first.AsPath());
     first.Close(allocator)?;
     Assert(!Exists(allocator, firstPathHolder.AsPath()), "and the file is gone");
 

@@ -5,7 +5,7 @@ import C::{ cbrt, ceil, copysign, cos, exp, fabs, fdim, floor, fmax, fmin, fmod,
 // A tolerance check for the results that are not exact in binary floating point.
 func Close(actual: float64, expected: float64) -> bool {
     let diff = actual - expected;
-    return (diff < 0.0 ? -diff : diff) < 0.000000001;
+    return (if diff < 0.0 { -diff } else { diff }) < 0.000000001;
 }
 
 func Main() -> int {

@@ -26,7 +26,7 @@ import Text::{ FormatError, String, StringView };
 
 func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match <-outcome {
+    return match move outcome {
         .Success(text) => text.View().Equals(wanted),
         .Failure(_) => false
     };
@@ -36,7 +36,7 @@ func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
 // and a NaN compares equal to nothing, and both have to survive this.
 func RoundTrips64(allocator: Allocator, value: float64) -> bool {
     var ok = false;
-    match <-Render(allocator, "{}", value) {
+    match Render(allocator, "{}", value) {
         .Success(text) => {
             match ParseFloat64(text.View().Bytes()) {
                 .Success(read) => { ok = BitsOfFloat64(read) == BitsOfFloat64(value); },
@@ -52,7 +52,7 @@ func RoundTrips64(allocator: Allocator, value: float64) -> bool {
 
 func RoundTrips32(allocator: Allocator, value: float32) -> bool {
     var ok = false;
-    match <-Render(allocator, "{}", value) {
+    match Render(allocator, "{}", value) {
         .Success(text) => {
             match ParseFloat32(text.View().Bytes()) {
                 .Success(read) => { ok = BitsOfFloat32(read) == BitsOfFloat32(value); },
@@ -69,9 +69,9 @@ func RoundTrips32(allocator: Allocator, value: float32) -> bool {
 // Whether two values render differently, which two values one bit apart must.
 func RenderDiffers64(allocator: Allocator, left: float64, right: float64) -> bool {
     var same = true;
-    match <-Render(allocator, "{}", left) {
+    match Render(allocator, "{}", left) {
         .Success(first) => {
-            match <-Render(allocator, "{}", right) {
+            match Render(allocator, "{}", right) {
                 .Success(second) => {
                     let other = second.View();
                     same = first.View().Equals(other);

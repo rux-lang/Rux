@@ -19,9 +19,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test stores the address of a `Counter` local that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -41,7 +39,7 @@ struct Loose {
 }
 
 extend Loose {
-    func ==(self: &Loose, other: &Loose) -> bool {
+    func ==(&self, other: &Self) -> bool {
         return self.value == other.value;
     }
 }
@@ -54,7 +52,7 @@ struct Big {
 }
 
 func Make(counter: *var Counter, id: int32) -> Tracked {
-    return Tracked { counter: counter, id: id };
+    return Tracked { counter, id };
 }
 
 func Parse(text: int32) -> int32 ! ParseError {
@@ -182,7 +180,7 @@ func HoldNested(counter: *var Counter) {
 
 func Discard(counter: *var Counter) {
     let held: Tracked ! IoError = .Success(Make(counter, 1i32));
-    match <-held {
+    match move held {
         .Success(_) => {},
         .Failure(_) => {}
     }

@@ -69,7 +69,7 @@ func ReadOptional(mode: int32) -> Options? ! IoError {
 
 func Describe(value: Options | Defaults) -> int32 {
     return match value {
-        options: Options => options.verbose ? 2i32 : 1i32,
+        options: Options => if options.verbose { 2i32 } else { 1i32 },
         defaults: Defaults => 0i32
     };
 }

@@ -69,7 +69,7 @@ pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: float64[.
     var target = NextFloat64<G>(generator) * total;
     index = 0;
     while index < weights.length {
-        let weight = weights[index] > 0.0 ? weights[index] : 0.0;
+        let weight = if weights[index] > 0.0 { weights[index] } else { 0.0 };
         if target < weight { return index; }
         target = target - weight;
         index = index + 1;

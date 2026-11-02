@@ -15,9 +15,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds a pointer to a drop counter local of `Main` that outlives it.
         unsafe { *self.drops += 1; }
     }
@@ -38,11 +36,11 @@ func CountedFallback(value: int32, calls: *var int32) -> int32 {
 func CountedTracked(value: int32, calls: *var int32, drops: *var int32) -> Tracked {
     // Safety: every caller passes a pointer to an `int32` call counter that is a live local of its caller.
     unsafe { *calls += 1; }
-    return Tracked { value: value, drops: drops };
+    return Tracked { value, drops };
 }
 
 func Generic<T>(option: T?, fallback: T) -> T {
-    return (<-option) ?? <-fallback;
+    return (move option) ?? move fallback;
 }
 
 func Nested(present: bool) -> int32?? {
@@ -58,18 +56,18 @@ func PropagateThenCoalesce(present: bool) -> int32? {
 }
 
 func Held(option: int32?) -> int32 {
-    return (<-option) ?? -1i32;
+    return (move option) ?? -1i32;
 }
 
 func SomeDropCase(drops: *var int32, fallbackCalls: *var int32) {
-    let option: Tracked? = .Some(Tracked { value: 7i32, drops: drops });
-    let selected = (<-option) ?? CountedTracked(9i32, fallbackCalls, drops);
+    let option: Tracked? = .Some(Tracked { value: 7i32, drops });
+    let selected = (move option) ?? CountedTracked(9i32, fallbackCalls, drops);
     Assert(selected.value == 7i32, "a present value should transfer its payload");
 }
 
 func NoneDropCase(drops: *var int32, fallbackCalls: *var int32) {
     let option: Tracked? = none;
-    let selected = (<-option) ?? CountedTracked(9i32, fallbackCalls, drops);
+    let selected = (move option) ?? CountedTracked(9i32, fallbackCalls, drops);
     Assert(selected.value == 9i32, "absence should produce the fallback");
 }
 

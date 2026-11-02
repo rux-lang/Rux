@@ -81,7 +81,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         index = index + 1;
     }
     var url = Url {
-        text: String(allocator), allocator: allocator, schemeEnd: out.length, hasAuthority: pieces.hasAuthority,
+        text: String(allocator), allocator, schemeEnd: out.length, hasAuthority: pieces.hasAuthority,
         hasUserinfo: false, userinfoStart: 0, usernameEnd: 0, userinfoEnd: 0, hostStart: 0, hostEnd: 0,
         hostKind: HostKind::None, hasPort: false, portStart: 0, portEnd: 0, port: 0, pathStart: 0, pathEnd: 0,
         hasQuery: false, queryStart: 0, queryEnd: 0, hasFragment: false, fragmentStart: 0
@@ -123,7 +123,11 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             url.hostStart = out.length;
             AppendNormalized(out, host, Component::Host)?;
             url.hostEnd = out.length;
-            url.hostKind = ParseIpv4(out.View()[url.hostStart..url.hostEnd]) != none ? HostKind::Ipv4 : HostKind::Domain;
+            url.hostKind = if ParseIpv4(out.View()[url.hostStart..url.hostEnd]) != none {
+                HostKind::Ipv4
+            } else {
+                HostKind::Domain
+            };
             if network && url.hostEnd == url.hostStart { fail UrlError::InvalidHost; }
         }
         match pieces.port {
@@ -216,7 +220,7 @@ extend Url {
     /// @param text the URL
     /// @returns the URL, or fails with what is wrong with it; a relative reference fails with `MissingScheme`
     /// @see https://rux-lang.dev/docs/api/url/url#parse
-    pub func Parse(allocator: Allocator, text: char8[..]) -> Url ! UrlError {
+    pub func Parse(allocator: Allocator, text: char8[..]) -> Self ! UrlError {
         let pieces = SplitReference(text)?;
         return Compose(allocator, pieces);
     }
@@ -227,7 +231,7 @@ extend Url {
     /// @param reference an absolute URL or a relative reference
     /// @returns the resolved URL, kept with this URL's allocator
     /// @see https://rux-lang.dev/docs/api/url/url#resolve
-    pub func Resolve(self: &Url, reference: char8[..]) -> Url ! UrlError {
+    pub func Resolve(&self, reference: char8[..]) -> Self ! UrlError {
         var target = SplitReference(reference)?;
         if IsSet(target.scheme) { return Compose(self.allocator, target); }
         var merged = Bytes(self.allocator);
@@ -258,28 +262,28 @@ extend Url {
     /// The whole URL, in normalized form.
     /// @returns the text
     /// @see https://rux-lang.dev/docs/api/url/url#text
-    pub func Text(self: &Url) -> char8[..] {
+    pub func Text(&self) -> char8[..] {
         return self.text.Bytes();
     }
 
     /// The scheme, in lower case, without its `:`.
     /// @returns the scheme
     /// @see https://rux-lang.dev/docs/api/url/url#scheme
-    pub func Scheme(self: &Url) -> char8[..] {
+    pub func Scheme(&self) -> char8[..] {
         return self.text.Bytes()[..self.schemeEnd];
     }
 
     /// Whether the URL has an authority: a `//` with a host, as `http:` URLs do and `mailto:` URLs do not.
     /// @returns true when it has one
     /// @see https://rux-lang.dev/docs/api/url/url#has-authority
-    pub func HasAuthority(self: &Url) -> bool {
+    pub func HasAuthority(&self) -> bool {
         return self.hasAuthority;
     }
 
     /// The user name before `@`, percent-encoded, or the empty text when there is none.
     /// @returns the user name
     /// @see https://rux-lang.dev/docs/api/url/url#username
-    pub func Username(self: &Url) -> char8[..] {
+    pub func Username(&self) -> char8[..] {
         if !self.hasUserinfo { return ""; }
         return self.text.Bytes()[self.userinfoStart..self.usernameEnd];
     }
@@ -287,7 +291,7 @@ extend Url {
     /// The password after the user name's `:`, percent-encoded, or none when there is none.
     /// @returns the password
     /// @see https://rux-lang.dev/docs/api/url/url#password
-    pub func Password(self: &Url) -> char8[..]? {
+    pub func Password(&self) -> char8[..]? {
         if !self.hasUserinfo || self.usernameEnd == self.userinfoEnd { return none; }
         return self.text.Bytes()[self.usernameEnd + 1..self.userinfoEnd];
     }
@@ -296,7 +300,7 @@ extend Url {
     /// has no authority.
     /// @returns the host
     /// @see https://rux-lang.dev/docs/api/url/url#host
-    pub func Host(self: &Url) -> char8[..]? {
+    pub func Host(&self) -> char8[..]? {
         if !self.hasAuthority { return none; }
         return self.text.Bytes()[self.hostStart..self.hostEnd];
     }
@@ -304,7 +308,7 @@ extend Url {
     /// What kind of host the URL has.
     /// @returns the kind
     /// @see https://rux-lang.dev/docs/api/url/url#host-kind-of
-    pub func HostKind(self: &Url) -> HostKind {
+    pub func HostKind(&self) -> HostKind {
         return self.hostKind;
     }
 
@@ -312,7 +316,7 @@ extend Url {
     /// leaves out.
     /// @returns the port
     /// @see https://rux-lang.dev/docs/api/url/url#port
-    pub func Port(self: &Url) -> uint16? {
+    pub func Port(&self) -> uint16? {
         if !self.hasPort { return none; }
         return self.port;
     }
@@ -320,7 +324,7 @@ extend Url {
     /// The port a connection uses: the one written, or the scheme's default, or none for a scheme without one.
     /// @returns the port
     /// @see https://rux-lang.dev/docs/api/url/url#port-or-default
-    pub func PortOrDefault(self: &Url) -> uint16? {
+    pub func PortOrDefault(&self) -> uint16? {
         if self.hasPort { return self.port; }
         return DefaultPort(self.Scheme());
     }
@@ -328,23 +332,23 @@ extend Url {
     /// The path, percent-encoded, without dot segments. A URL with an `http`-like scheme always has at least `/`.
     /// @returns the path
     /// @see https://rux-lang.dev/docs/api/url/url#path
-    pub func Path(self: &Url) -> char8[..] {
+    pub func Path(&self) -> char8[..] {
         return self.text.Bytes()[self.pathStart..self.pathEnd];
     }
 
     /// The path's segments, between its `/`s.
     /// @returns a walk over the segments
     /// @see https://rux-lang.dev/docs/api/url/url#path-segments
-    pub func PathSegments(self: &Url) -> SegmentIterator {
+    pub func PathSegments(&self) -> SegmentIterator {
         let path = self.Path();
-        let start = path.length > 0 && path[0] == '/' ? 1u : 0u;
+        let start = if path.length > 0 && path[0] == '/' { 1u } else { 0u };
         return SegmentIterator { rest: path[start..], done: path.length == 0 };
     }
 
     /// The query after `?`, percent-encoded, or none when there is no `?`.
     /// @returns the query
     /// @see https://rux-lang.dev/docs/api/url/url#query
-    pub func Query(self: &Url) -> char8[..]? {
+    pub func Query(&self) -> char8[..]? {
         if !self.hasQuery { return none; }
         return self.text.Bytes()[self.queryStart..self.queryEnd];
     }
@@ -352,7 +356,7 @@ extend Url {
     /// The fragment after `#`, percent-encoded, or none when there is no `#`.
     /// @returns the fragment
     /// @see https://rux-lang.dev/docs/api/url/url#fragment
-    pub func Fragment(self: &Url) -> char8[..]? {
+    pub func Fragment(&self) -> char8[..]? {
         if !self.hasFragment { return none; }
         return self.text.Bytes()[self.fragmentStart..];
     }
@@ -361,40 +365,40 @@ extend Url {
     /// @param path the new path, percent-encoded or not
     /// @returns nothing, or fails when the path cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-path
-    pub func SetPath(self: &var Url, path: char8[..]) -> ! UrlError {
+    pub func SetPath(&var self, path: char8[..]) -> ! UrlError {
         var pieces = self.Pieces();
         var rooted = Bytes(self.allocator);
         if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/'); }
         rooted.PushAll(path);
         pieces.path = rooted.View();
-        self <- Compose(self.allocator, pieces)?;
+        self = move Compose(self.allocator, pieces)?;
     }
 
     /// Replaces the query, or removes it with none.
     /// @param query the new query without its `?`, percent-encoded or not
     /// @returns nothing, or fails when the query cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-query
-    pub func SetQuery(self: &var Url, query: char8[..]?) -> ! UrlError {
+    pub func SetQuery(&var self, query: char8[..]?) -> ! UrlError {
         var pieces = self.Pieces();
         pieces.query = query;
-        self <- Compose(self.allocator, pieces)?;
+        self = move Compose(self.allocator, pieces)?;
     }
 
     /// Replaces the fragment, or removes it with none.
     /// @param fragment the new fragment without its `#`, percent-encoded or not
     /// @returns nothing, or fails when the fragment cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-fragment
-    pub func SetFragment(self: &var Url, fragment: char8[..]?) -> ! UrlError {
+    pub func SetFragment(&var self, fragment: char8[..]?) -> ! UrlError {
         var pieces = self.Pieces();
         pieces.fragment = fragment;
-        self <- Compose(self.allocator, pieces)?;
+        self = move Compose(self.allocator, pieces)?;
     }
 
     /// Whether two URLs are the same, which after normalization means the same text.
     /// @param other the URL to compare with
     /// @returns true when they are equal
     /// @see https://rux-lang.dev/docs/api/url/url#equals
-    pub func Equals(self: &Url, other: &Url) -> bool {
+    pub func Equals(&self, other: &Self) -> bool {
         return self.text.Equals(other.text);
     }
 
@@ -404,9 +408,9 @@ extend Url {
     /// Terminates the program when its text cannot be stored.
     /// @returns the copy
     /// @see https://rux-lang.dev/docs/api/url/url#clone
-    pub func Clone(self: &Url) -> Url {
+    pub func Clone(&self) -> Self {
         // The copy has the same text, so every offset into it is the same.
-        return Url {
+        return Self {
             text: self.text.Clone(),
             allocator: self.allocator,
             schemeEnd: self.schemeEnd,
@@ -433,7 +437,7 @@ extend Url {
     }
 
     // This URL's components as pieces, to compose a changed copy from.
-    func Pieces(self: &Url) -> Pieces {
+    func Pieces(&self) -> Pieces {
         var pieces = Pieces {
             scheme: self.Scheme(), hasAuthority: false, userinfo: none, host: "", port: none, path: self.Path(),
             query: self.Query(), fragment: self.Fragment()
@@ -443,15 +447,18 @@ extend Url {
     }
 
     // Copies this URL's authority into `pieces`.
-    func CopyAuthority(self: &Url, pieces: *var Pieces) {
+    func CopyAuthority(&self, pieces: *var Pieces) {
         // Safety: both callers pass `@` of their own local `Pieces`, live and writable for the whole call.
         unsafe { pieces.hasAuthority = self.hasAuthority; }
         if !self.hasAuthority { return; }
         let text = self.text.Bytes();
-        let userinfo: char8[..]? = self.hasUserinfo ? text[self.userinfoStart..self.userinfoEnd] : none;
-        let host = self.hostKind == HostKind::Ipv6 ? text[self.hostStart - 1..self.hostEnd + 1]
-                                                   : text[self.hostStart..self.hostEnd];
-        let port: char8[..]? = self.hasPort ? text[self.portStart..self.portEnd] : none;
+        let userinfo: char8[..]? = if self.hasUserinfo { text[self.userinfoStart..self.userinfoEnd] } else { none };
+        let host = if self.hostKind == HostKind::Ipv6 {
+            text[self.hostStart - 1..self.hostEnd + 1]
+        } else {
+            text[self.hostStart..self.hostEnd]
+        };
+        let port: char8[..]? = if self.hasPort { text[self.portStart..self.portEnd] } else { none };
         // Safety: both callers pass `@` of their own local `Pieces`, live and writable for the whole call.
         unsafe {
             pieces.userinfo = userinfo;
@@ -472,8 +479,8 @@ extend SegmentIterator {
     /// The walk itself, so that `for segment in url.PathSegments()` reads every segment.
     /// @returns a copy of this walk
     /// @see https://rux-lang.dev/docs/api/url/url#segment-iterator-iterate
-    pub func Iterate(self: &SegmentIterator) -> SegmentIterator {
-        return SegmentIterator { rest: self.rest, done: self.done };
+    pub func Iterate(&self) -> Self {
+        return Self { rest: self.rest, done: self.done };
     }
 }
 
@@ -481,7 +488,7 @@ extend SegmentIterator : Iterator {
     /// The next segment, still percent-encoded, or none after the last.
     /// @returns the segment
     /// @see https://rux-lang.dev/docs/api/url/url#segment-iterator-next
-    pub func Next(self: &var SegmentIterator) -> char8[..]? {
+    pub func Next(&var self) -> char8[..]? {
         if self.done { return none; }
         var end: uint = 0;
         while end < self.rest.length && self.rest[end] != '/' { end = end + 1; }

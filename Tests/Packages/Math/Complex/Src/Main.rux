@@ -5,8 +5,8 @@ import Math::{ Complex, Complex32, Pi };
 // form, and the principal branches of the logarithm, square root and power, at both widths.
 
 func Near(left: float64, right: float64) -> bool {
-    let difference = left > right ? left - right : right - left;
-    let scale = (left < 0.0 ? -left : left) + 1.0;
+    let difference = if left > right { left - right } else { right - left };
+    let scale = (if left < 0.0 { -left } else { left }) + 1.0;
     return difference <= 1.0e-12 * scale;
 }
 

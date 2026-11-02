@@ -11,7 +11,7 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .macOS => import macOS::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .Windows => {},
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // The meaning of a system's error code: an errno on the Unix systems, a `GetLastError` code on Windows.
@@ -31,7 +31,7 @@ func FailureOf(code: int64) -> IoError {
         else if code == ENOTDIR { kind = IoErrorKind::NotDirectory; }
         else if code == EINTR { kind = IoErrorKind::Interrupted; }
     }
-    return IoError { kind: kind, raw: code as int32 };
+    return IoError { kind, raw: code as int32 };
 }
 
 // Appends UTF-8 `text` as native units: UTF-16 on Windows, the bytes themselves elsewhere. A NUL cannot pass to the

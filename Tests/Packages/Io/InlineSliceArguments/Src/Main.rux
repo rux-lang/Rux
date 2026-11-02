@@ -15,14 +15,34 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 func Check(flag: bool) {
     var storage: char8[128];
     var writer = BufferWriter(storage[..128]);
-    Assert(WriteFormat(writer, "{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "") is .Success(_), "inline variadic formatting succeeds");
-    Assert(Same(writer.Written(), flag ? "alpha//B" : "B/alpha/"), "all selected slice bytes survive");
+    Assert(WriteFormat(writer, "{}/{}/{}", if flag { "alpha" } else { "B" }, if flag { "" } else { "alpha" }, if flag {
+        "B"
+    } else {
+        ""
+    }) is .Success(_), "inline variadic formatting succeeds");
+    Assert(Same(writer.Written(), if flag { "alpha//B" } else { "B/alpha/" }), "all selected slice bytes survive");
     var plainStorage: char8[32];
     var plainWriter = BufferWriter(plainStorage[..32]);
-    Assert(WriteValue(plainWriter, flag ? "alpha" : "B", FormatSpec::Plain()) is .Success(_), "an ordinary interface argument succeeds");
-    Assert(Same(plainWriter.Written(), flag ? "alpha" : "B"), "ordinary interface conversion preserves the text");
-    Assert(!(PrintLine("{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "") is IoError), "inline PrintLine succeeds");
-    Assert(!(PrintLine("{} {}", flag ? "alpha" : "B", flag ? "alpha" : "B") is IoError), "repeated PrintLine arguments succeed");
+    Assert(WriteValue(plainWriter, if flag {
+        "alpha"
+    } else {
+        "B"
+    }, FormatSpec::Plain()) is .Success(_), "an ordinary interface argument succeeds");
+    Assert(Same(plainWriter.Written(), if flag {
+        "alpha"
+    } else {
+        "B"
+    }), "ordinary interface conversion preserves the text");
+    Assert(!(PrintLine("{}/{}/{}", if flag { "alpha" } else { "B" }, if flag { "" } else { "alpha" }, if flag {
+        "B"
+    } else {
+        ""
+    }) is IoError), "inline PrintLine succeeds");
+    Assert(!(PrintLine("{} {}", if flag { "alpha" } else { "B" }, if flag {
+        "alpha"
+    } else {
+        "B"
+    }) is IoError), "repeated PrintLine arguments succeed");
 }
 func Main() -> int {
     var iteration = 0;

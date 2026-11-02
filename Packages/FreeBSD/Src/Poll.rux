@@ -87,8 +87,8 @@ extend Kevent {
     /// @param userData the word to report
     /// @returns the kevent
     /// @see https://rux-lang.dev/docs/api/freebsd/poll#kevent-new
-    pub func Of(ident: uint64, filter: int16, flags: uint16, userData: uint64) -> Kevent {
-        return Kevent { ident: ident, filter: filter, flags: flags, filterFlags: 0, data: 0, userData: userData,
+    pub func Of(ident: uint64, filter: int16, flags: uint16, userData: uint64) -> Self {
+        return Self { ident, filter, flags, filterFlags: 0, data: 0, userData,
                         extension: [0u64; 4] };
     }
 }

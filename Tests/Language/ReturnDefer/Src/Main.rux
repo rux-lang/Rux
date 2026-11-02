@@ -98,9 +98,7 @@ struct Token {
 }
 
 extend Token {
-    func =(self: &var Token, other: &Token);
-
-    func ~Token(self: &var Token) {
+    func ~Token(&var self) {
         // Safety: every token holds `@drops` and `@log`, locals of `Main` that outlive it.
         unsafe {
             *self.drops += 1;
@@ -110,16 +108,16 @@ extend Token {
 }
 
 func Produce(drops: *var int, log: *var int) -> Token {
-    let token = Token { value: 17, drops: drops, log: log };
+    let token = Token { value: 17, drops, log };
     // Safety: every caller passes `@log`, a live local of `Main`.
     defer unsafe { *log = *log * 10 + 1; }
-    return <-token;
+    return move token;
 }
 
 func Forward(token: Token, log: *var int) -> Token {
     // Safety: every caller passes `@log`, a live local of `Main`.
     defer unsafe { *log = *log * 10 + 3; }
-    return <-token;
+    return move token;
 }
 
 func OwnReturnedToken(drops: *var int, log: *var int) {
@@ -131,6 +129,7 @@ func OwnReturnedToken(drops: *var int, log: *var int) {
     Assert(logValue == 13, "each returning function ran its own defer exactly once");
 }
 
+#NoMove
 struct CopyValue {
     value: int;
     copies: *var int;
@@ -139,18 +138,16 @@ struct CopyValue {
 }
 
 extend CopyValue {
-    func Clone(&self) -> CopyValue {
+    func Clone(&self) -> Self {
         // Safety: every value holds `@copies` and `@log`, locals of `Main` that outlive it.
         unsafe {
             *self.copies += 1;
             *self.log = *self.log * 10 + 1;
         }
-        return CopyValue { value: self.value, copies: self.copies, drops: self.drops, log: self.log };
+        return Self { value: self.value, copies: self.copies, drops: self.drops, log: self.log };
     }
 
-    func <-(self: &var CopyValue, other: CopyValue);
-
-    func ~CopyValue(self: &var CopyValue) {
+    func ~CopyValue(&var self) {
         // Safety: every value holds `@drops` and `@log`, locals of `Main` that outlive it.
         unsafe {
             *self.drops += 1;
@@ -160,7 +157,7 @@ extend CopyValue {
 }
 
 func CopiedReturn(copies: *var int, drops: *var int, log: *var int) -> CopyValue {
-    var value = CopyValue { value: 41, copies: copies, drops: drops, log: log };
+    var value = CopyValue { value: 41, copies, drops, log };
     // Safety: every caller passes `@log`, a live local of `Main`.
     defer unsafe { *log = *log * 10 + 2; }
     defer value.value = 99;

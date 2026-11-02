@@ -11,7 +11,7 @@ import GenericSum::Shapes::{ Box, Boxes, Choose, Complete, IoError, Load, LoadEr
 func Left<T, U>(value: T | U) -> bool {
     return match value {
         left: T => true,
-        else => false
+        _ => false
     };
 }
 
@@ -32,7 +32,7 @@ func Describe(error: ReadError) -> int32 {
 func PickInt32<T, U>(value: T | U) -> int32 {
     return match value {
         n: int32 => n,
-        else => -1i32
+        _ => -1i32
     };
 }
 
@@ -46,7 +46,7 @@ func Main() -> int {
     let different = Choose<int32, int64>(false, 1i32, 2i64);
     let right = match different {
         wide: int64 => wide == 2i64,
-        else => false
+        _ => false
     };
     Assert(right, "the right member of a two-member sum");
     Assert(Left<int32, int64>(Choose<int32, int64>(true, 1i32, 2i64)), "the left member");
@@ -58,7 +58,7 @@ func Main() -> int {
     let boxes = Boxes<int32, bool>(false, Box<int32> { value: 1i32 }, Box<bool> { value: true });
     let boxed = match boxes {
         number: Box<int32> => number.value,
-        flag: Box<bool> => flag.value ? 10i32 : 20i32
+        flag: Box<bool> => if flag.value { 10i32 } else { 20i32 }
     };
     Assert(boxed == 10i32, "a member chosen by its instantiation");
     let sameBoxes: Box<int32> = Boxes<int32, int32>(true, Box<int32> { value: 7i32 }, Box<int32> { value: 8i32 });
@@ -110,7 +110,7 @@ func Main() -> int {
     let pointerToOptional: *var int32? = @slot;
     let optionalPointer: (*var int32?)? = .Some(pointerToOptional);
     match optionalPointer {
-        pointer? => {
+        .Some(pointer) => {
             // Safety: `pointer` is `@slot`, a live local.
             unsafe { *pointer = .Some((*pointer ?? 0i32) + 1i32); }
         },

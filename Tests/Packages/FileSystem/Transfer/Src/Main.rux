@@ -20,7 +20,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 
 // The failure an outcome carries, which the test expects to be there.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => Panic("expected a failure"),
         .Failure(error) => error
     };
@@ -28,30 +28,30 @@ func Refusal<T>(outcome: T ! IoError) -> IoError {
 
 func WriteWhole(allocator: Allocator, path: Path, content: char8[..]) {
     var file = File::Open(allocator, path, OpenOptions::Writing()) catch {
-        else => Panic("the file opens for writing")
+        _ => Panic("the file opens for writing")
     };
     Assert(file.IsOpen(), "the file opens for writing");
-    WriteAll(file, content) catch { else => Panic("and takes its content") };
-    file.Close() catch { else => Panic("and closes") };
+    WriteAll(file, content) catch { _ => Panic("and takes its content") };
+    file.Close() catch { _ => Panic("and closes") };
 }
 
 // Reads the whole file and checks it equals `expected`, byte for byte, length included.
 func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     var file = File::Open(allocator, path, OpenOptions::Reading()) catch {
-        else => Panic("the file opens for reading")
+        _ => Panic("the file opens for reading")
     };
     Assert(file.IsOpen(), "the file opens for reading");
     var storage: char8[64];
-    let size = file.Size() catch { else => Panic("the size is known") };
+    let size = file.Size() catch { _ => Panic("the size is known") };
     Assert(size == expected.length as uint64, "it is exactly as long as expected");
     let room = storage[..expected.length];
-    ReadExact(file, room) catch { else => Panic("and reads whole") };
+    ReadExact(file, room) catch { _ => Panic("and reads whole") };
     var index: uint = 0;
     while index < expected.length {
         Assert(storage[index] == expected[index], "byte for byte");
         index = index + 1;
     }
-    file.Close() catch { else => Panic("and closes") };
+    file.Close() catch { _ => Panic("and closes") };
 }
 
 func Main() -> int ! IoError {
@@ -74,13 +74,13 @@ func Main() -> int ! IoError {
     let s = PathOf(allocator, "Bin/FileSystemXfer.tmp/s.txt", sHolder);
 
     // Fresh ground.
-    DeleteFile(allocator, a) catch { else => {} };
-    DeleteFile(allocator, b) catch { else => {} };
-    DeleteFile(allocator, c) catch { else => {} };
-    DeleteFile(allocator, d) catch { else => {} };
-    DeleteFile(allocator, h) catch { else => {} };
-    DeleteFile(allocator, s) catch { else => {} };
-    DeleteDirectory(allocator, dir) catch { else => {} };
+    DeleteFile(allocator, a) catch { _ => {} };
+    DeleteFile(allocator, b) catch { _ => {} };
+    DeleteFile(allocator, c) catch { _ => {} };
+    DeleteFile(allocator, d) catch { _ => {} };
+    DeleteFile(allocator, h) catch { _ => {} };
+    DeleteFile(allocator, s) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
     MakeDirectory(allocator, dir)?;
 
     // A copy is the bytes, not an alias: mutate the original and the copy stands still.

@@ -17,11 +17,11 @@ struct Tracked {
 }
 
 extend Tracked {
-    func Clone(&self) -> Tracked {
-        return Tracked { log: self.log, id: self.id + 5 };
+    func Clone(&self) -> Self {
+        return Self { log: self.log, id: self.id + 5 };
     }
 
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -37,7 +37,7 @@ struct Handle {
 }
 
 extend Handle {
-    func ~Handle(self: &var Handle) {
+    func ~Handle(&var self) {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -52,12 +52,12 @@ func Mark(log: *var Log) {
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
-    return Tracked { log: log, id: id };
+    return Tracked { log, id };
 }
 
 func DiscardsMoved(log: *var Log) {
     let tracked = Track(log, 1);
-    let _ <- tracked;
+    let _ = move tracked;
     Mark(log);
 }
 
@@ -75,8 +75,8 @@ func DiscardsClone(log: *var Log) {
 }
 
 func DiscardsHandle(log: *var Log) {
-    let handle = Handle { log: log, id: 4 };
-    let _ <- handle;
+    let handle = Handle { log, id: 4 };
+    let _ = move handle;
     Mark(log);
 }
 

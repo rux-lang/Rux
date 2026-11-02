@@ -42,7 +42,7 @@ func Main() -> int {
     Assert(present != none, "a present value is not none");
     let matched = match present {
         none => false,
-        else => true
+        _ => true
     };
     Assert(matched, "the none pattern does not match a present value");
     return 0;

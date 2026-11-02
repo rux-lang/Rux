@@ -31,7 +31,7 @@ pub func TargetIsLittleEndian() -> bool {
 /// @returns the value with its bytes in little-endian order
 /// @see https://rux-lang.dev/docs/api/core/byte-order#to-little-endian
 pub func ToLittleEndian<T>(value: T) -> T {
-    return TargetIsLittleEndian() ? value : ReverseBytes<T>(value);
+    return if TargetIsLittleEndian() { value } else { ReverseBytes<T>(value) };
 }
 
 /// The value a little-endian bit pattern stands for on this target.
@@ -56,7 +56,7 @@ pub func FromLittleEndian<T>(value: T) -> T {
 /// @returns the value with its bytes in big-endian order
 /// @see https://rux-lang.dev/docs/api/core/byte-order#to-big-endian
 pub func ToBigEndian<T>(value: T) -> T {
-    return TargetIsLittleEndian() ? ReverseBytes<T>(value) : value;
+    return if TargetIsLittleEndian() { ReverseBytes<T>(value) } else { value };
 }
 
 /// The value a big-endian bit pattern stands for on this target.

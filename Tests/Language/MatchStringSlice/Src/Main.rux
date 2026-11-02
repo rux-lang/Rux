@@ -9,7 +9,7 @@ func Pick(word: char8[..]) -> int {
         "great" => 2,
         "" => 3,
         "a\tb" => 4,
-        else => 0
+        _ => 0
     };
 }
 
@@ -21,7 +21,7 @@ func Classify(word: char8[..], loud: bool) -> int {
         "stop" => {
             return 11;
         },
-        else => {
+        _ => {
             return 12;
         }
     }

@@ -14,6 +14,7 @@ import Memory::{ AlignUp, Copy };
 /// Owns no storage and has no destructor, but prohibits copying because duplicated bump state could hand the same
 /// bytes to two callers. Use `Handle` when a storable `Allocator` adapter is needed.
 /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer
+#NoCopy
 pub struct FixedBuffer {
     /// The first byte of the storage, or null for a buffer with no storage at all.
     start: uint;
@@ -26,9 +27,6 @@ pub struct FixedBuffer {
 }
 
 extend FixedBuffer {
-    /// Copying bump state could hand the same storage out twice.
-    func =(self: &var FixedBuffer, other: &FixedBuffer);
-
     /// An allocator over `capacity` bytes at `storage`.
     /// `storage` is borrowed and kept; nothing is copied and nothing is taken ownership of. A `capacity` of zero, or
     /// a null `storage`, gives an allocator that refuses every request with `OutOfMemory` — which is a usable
@@ -40,11 +38,11 @@ extend FixedBuffer {
     /// @param capacity how many bytes `storage` holds
     /// @returns the buffer, having handed out nothing
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#new
-    pub unsafe func FixedBuffer(storage: *var opaque, capacity: uint) -> FixedBuffer {
-        let base = storage == null ? 0u : storage as uint;
-        return FixedBuffer {
+    pub unsafe func FixedBuffer(storage: *var opaque, capacity: uint) -> Self {
+        let base = if storage == null { 0u } else { storage as uint };
+        return Self {
             start: base,
-            capacity: base == 0 ? 0 : capacity,
+            capacity: if base == 0 { 0 } else { capacity },
             used: 0,
             lastAllocation: 0
         };
@@ -56,7 +54,7 @@ extend FixedBuffer {
     /// Safety: the handle borrows the allocator and must not outlive it or survive it being moved.
     /// @returns a copyable adapter pointing at this buffer
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#handle
-    pub unsafe func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
+    pub unsafe func Handle(*var self) -> FixedBufferHandle {
         return FixedBufferHandle { buffer: self };
     }
 
@@ -65,7 +63,7 @@ extend FixedBuffer {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// Nothing may be read from or written to any earlier allocation afterwards.
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#reset
-    pub func Reset(self: &var FixedBuffer) {
+    pub func Reset(&var self) {
         self.used = 0;
         self.lastAllocation = 0;
     }
@@ -74,7 +72,7 @@ extend FixedBuffer {
     /// `self` is borrowed.
     /// @returns how many bytes have been handed out
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#bytes-used
-    pub func BytesUsed(self: &FixedBuffer) -> uint {
+    pub func BytesUsed(&self) -> uint {
         return self.used;
     }
 
@@ -82,7 +80,7 @@ extend FixedBuffer {
     /// `self` is borrowed. A request of exactly this size succeeds only when it needs no padding.
     /// @returns how many bytes are left to hand out
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#bytes-remaining
-    pub func BytesRemaining(self: &FixedBuffer) -> uint {
+    pub func BytesRemaining(&self) -> uint {
         return self.capacity - self.used;
     }
 
@@ -90,7 +88,7 @@ extend FixedBuffer {
     // the handle dereferences its pointer only once per call.
 
     // Takes storage matching a non-zero-sized `layout`, or reports `OutOfMemory` when what remains cannot hold it.
-    func Take(self: &var FixedBuffer, layout: Layout) -> (*var opaque) ! AllocError {
+    func Take(&var self, layout: Layout) -> (*var opaque) ! AllocError {
         if self.start == 0 { fail AllocError::OutOfMemory; }
 
         let unaligned = self.start + self.used;
@@ -107,7 +105,7 @@ extend FixedBuffer {
     }
 
     // Rewinds the allocation at `address`, `size` bytes long, when it is the most recent one; leaves anything else.
-    func Rewind(self: &var FixedBuffer, address: uint, size: uint) {
+    func Rewind(&var self, address: uint, size: uint) {
         if address == self.lastAllocation {
             let offset = address - self.start;
             if offset + size <= self.used {
@@ -119,7 +117,7 @@ extend FixedBuffer {
 
     // Resizes the allocation at `address` from `oldSize` to `newSize` bytes without moving it, when it is the most
     // recent one and the buffer has room, and reports whether it did.
-    func ResizeInPlace(self: &var FixedBuffer, address: uint, oldSize: uint, newSize: uint) -> bool {
+    func ResizeInPlace(&var self, address: uint, oldSize: uint, newSize: uint) -> bool {
         if address != 0 && address == self.lastAllocation {
             let offset = address - self.start;
             if offset + oldSize == self.used {
@@ -156,7 +154,7 @@ extend FixedBufferHandle : Allocator {
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle-allocate
-    pub func Allocate(self: &FixedBufferHandle, layout: Layout) -> (*var opaque) ! AllocError {
+    pub func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
@@ -173,7 +171,7 @@ extend FixedBufferHandle : Allocator {
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle-deallocate
-    pub func Deallocate(self: &FixedBufferHandle, block: *var opaque, layout: Layout) -> ! AllocError {
+    pub func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null { fail AllocError::InvalidBlock; }
         // Safety: `FixedBuffer::Handle`'s caller promised the handle neither outlives nor survives a move of its
@@ -191,7 +189,7 @@ extend FixedBufferHandle : Allocator {
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#fixed-buffer-handle-reallocate
-    pub func Reallocate(self: &FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    pub func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
@@ -213,7 +211,7 @@ extend FixedBufferHandle : Allocator {
         }
 
         let fresh = self.Allocate(newLayout)?;
-        let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
+        let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
         unsafe { Copy(fresh, block as *opaque, keep); }

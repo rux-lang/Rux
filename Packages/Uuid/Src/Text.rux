@@ -58,7 +58,7 @@ extend UuidParseError : ParseFailure {
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/uuid/text#uuid-parse-error-offset
-    pub func Offset(self: &UuidParseError) -> uint {
+    pub func Offset(&self) -> uint {
         return match self {
             .WrongLength(at) => at,
             .Misplaced(at) => at,
@@ -112,7 +112,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     else if text.length != UuidTextLength {
         // Too short, and the offset is the end of the text, where the character that is missing would go. Too long,
         // and it is the first character past the form, which is the one that has nowhere to be.
-        let at = text.length < UuidTextLength ? text.length : UuidTextLength;
+        let at = if text.length < UuidTextLength { text.length } else { UuidTextLength };
         fail UuidParseError::WrongLength(at);
     }
 
@@ -178,7 +178,7 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
         }
         else {
             let octet = value.bytes[byteIndex / 2];
-            let nibble = (byteIndex % 2) == 0 ? (octet >> 4) : (octet & 0x0F);
+            let nibble = if (byteIndex % 2) == 0 { octet >> 4 } else { octet & 0x0F };
             into[position] = digits[nibble as uint];
             byteIndex = byteIndex + 1;
         }
@@ -263,7 +263,7 @@ extend Uuid : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-display
-    pub func WriteDisplay(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec); }
         AcceptsUuidSpec(spec)?;
         if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")?; }
@@ -280,7 +280,7 @@ extend Uuid : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-debug
-    pub func WriteDebug(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

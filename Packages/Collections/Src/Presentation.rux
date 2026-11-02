@@ -262,7 +262,7 @@ extend CollectionError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-display
-    pub func WriteDisplay(self: &CollectionError, writer: &var TextWriter,
+    pub func WriteDisplay(&self, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -278,7 +278,7 @@ extend CollectionError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-debug
-    pub func WriteDebug(self: &CollectionError, writer: &var TextWriter,
+    pub func WriteDebug(&self, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         WriteBytes(writer, "CollectionError::")?;

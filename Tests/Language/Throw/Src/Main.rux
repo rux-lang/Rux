@@ -33,11 +33,11 @@ func Check(ok: bool) throws DigitError {
 }
 
 func Lookup(key: int32) -> int32 throws NotFound | DigitError {
-    let found: int32? = key > 0i32 ? key * 2i32 : none;
+    let found: int32? = if key > 0i32 { key * 2i32 } else { none };
     if key == 7i32 {
         throw DigitError::NotADigit('7');
     }
-    return found ?? throw NotFound { key: key };
+    return found ?? throw NotFound { key };
 }
 
 func Classify(c: char) -> int32 throws DigitError {

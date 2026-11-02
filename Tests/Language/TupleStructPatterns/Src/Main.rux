@@ -58,10 +58,10 @@ func Quadrant(point: Point) -> int32 {
         Point { x: 0, y: 0 } => {
             return 0;
         },
-        Point { x: 0, y: y } => {
+        Point { x: 0, y } => {
             return y;
         },
-        Point { y: 0, x: x } => {
+        Point { y: 0, x } => {
             return 10 * x;
         },
         Point { x: a, y: b } if a > b => {
@@ -70,7 +70,7 @@ func Quadrant(point: Point) -> int32 {
         Point { y: 7 } => {
             return 77;
         },
-        else => {
+        _ => {
             return -1;
         }
     }
@@ -78,7 +78,7 @@ func Quadrant(point: Point) -> int32 {
 
 func Span(line: Line) -> int32 {
     return match line {
-        Line { from: Point { x: 0, y: 0 }, to: Point { x: x, y: y } } => x + y,
+        Line { from: Point { x: 0, y: 0 }, to: Point { x, y } } => x + y,
         Line { from: Point { x: a, y: _ }, to: Point { x: b, y: _ } } => b - a
     };
 }
@@ -87,15 +87,15 @@ func Span(line: Line) -> int32 {
 func Grade(reading: Reading) -> int32 {
     return match reading {
         Reading { code: 255, level: -2, mark: 'a', scale: _ } => 1,
-        Reading { code: 7, level: level, mark: mark, scale: scale } => (level as int32) + (mark as int32) + (scale as int32),
-        else => 0
+        Reading { code: 7, level, mark, scale } => (level as int32) + (mark as int32) + (scale as int32),
+        _ => 0
     };
 }
 
 func Measure(shape: Shape) -> int32 {
     return match shape {
-        .Dot(Point { x: 0, y: y }) => y,
-        .Dot(Point { x: x, y: _ }) => x,
+        .Dot(Point { x: 0, y }) => y,
+        .Dot(Point { x, y: _ }) => x,
         .Segment(Point { x: a, y: _ }, Point { x: b, y: _ }) => b - a,
         .Labeled(n, (0, w)) => n + w,
         .Labeled(n, (h, w)) => n * h * w
@@ -118,7 +118,7 @@ func Larger(pair: Pair<int64>) -> int64 {
 }
 
 func MakePoint(x: int32, y: int32) -> Point {
-    return Point { x: x, y: y };
+    return Point { x, y };
 }
 
 enum Light {
@@ -147,7 +147,7 @@ func Signal(state: (Light, bool)) -> int32 {
 func Main() -> int {
     // The reproducer: a pair that is neither the origin nor on the x axis, and a sum over both elements.
     let pair: (int32, int32) = (1, 2);
-    let label = match pair { (0, 0) => 0, (x, 0) => x, else => -1 };
+    let label = match pair { (0, 0) => 0, (x, 0) => x, _ => -1 };
     Assert(label == -1, "a tuple pattern with literal elements matched a pair it does not describe");
     let sum = match pair { (a, b) => a + b };
     Assert(sum == 3, "tuple pattern bindings did not hold the elements");
@@ -198,7 +198,7 @@ func Main() -> int {
         (301, k) => {
             taken = k;
         },
-        else => {
+        _ => {
             taken = -1;
         }
     }

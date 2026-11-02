@@ -1039,7 +1039,7 @@ func TreeScalars(value: &TomlValue) -> uint {
 // A document this test knows TOML accepts. A refusal hands back nothing, so there is nothing to fall back on and
 // the assertion is what stops the run.
 func Accepted(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    return TomlParse(allocator, text) catch { else => Panic(note) };
+    return TomlParse(allocator, text) catch { _ => Panic(note) };
 }
 
 // Whether a document was refused, asked without consuming the outcome so the refusal can be inspected after.
@@ -1067,7 +1067,7 @@ func IsStructural(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
             .Lexical(_) => true,
             .Unexpected => true,
             .Truncated => true,
-            else => false
+            _ => false
         }
     };
 }

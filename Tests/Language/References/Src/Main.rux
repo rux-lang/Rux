@@ -3,11 +3,11 @@ struct Counter {
 }
 
 extend Counter {
-    func Read(self: &Counter) -> int32 {
+    func Read(&self) -> int32 {
         return self.value;
     }
 
-    func Add(self: &var Counter, amount: int32) {
+    func Add(&var self, amount: int32) {
         self.value += amount;
     }
 }

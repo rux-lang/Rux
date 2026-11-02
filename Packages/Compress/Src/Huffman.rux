@@ -16,14 +16,14 @@ struct DecodeTable {
 }
 
 extend DecodeTable {
-    func DecodeTable() -> DecodeTable {
-        return DecodeTable { counts: [0u16; 16], symbols: [0u16; 288] };
+    func DecodeTable() -> Self {
+        return Self { counts: [0u16; 16], symbols: [0u16; 288] };
     }
 
     // Builds the table from `count` code lengths. Fails for lengths that describe more codes than fit; a code with
     // fewer is allowed, as a block that uses a single distance has one.
     // Safety: `lengths` must be readable for `count` entries.
-    unsafe func Build(self: &var DecodeTable, lengths: *uint8, count: uint) -> bool {
+    unsafe func Build(&var self, lengths: *uint8, count: uint) -> bool {
         var length: uint = 0;
         while length <= MaximumBits {
             self.counts[length] = 0;
@@ -142,7 +142,7 @@ unsafe func ChooseLengths(frequencies: *uint32, count: uint, limit: uint, length
         depthCounts[bits] = depthCounts[bits] - 1u32;
         depthCounts[bits + 1] = depthCounts[bits + 1] + 2u32;
         depthCounts[limit] = depthCounts[limit] - 1u32;
-        overflow = overflow > 1u32 ? overflow - 2u32 : 0u32;
+        overflow = if overflow > 1u32 { overflow - 2u32 } else { 0u32 };
     }
 
     // Hand the lengths out again, the longest to the least frequent.

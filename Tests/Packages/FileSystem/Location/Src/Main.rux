@@ -15,16 +15,16 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 
 // The failure an outcome carries, which the test expects to be there.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => Panic("expected a failure"),
         .Failure(error) => error
     };
 }
 
 func Touch(allocator: Allocator, path: Path) {
-    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { else => Panic("a file is made") };
+    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
     Assert(made.IsOpen(), "a file is made");
-    made.Close() catch { else => Panic("and closed") };
+    made.Close() catch { _ => Panic("and closed") };
 }
 
 // Whether `buffer` ends with `tail`, which is how a path whose front is the machine's own is checked.
@@ -60,8 +60,8 @@ func Main() -> int ! IoError {
     let dir = PathOf(allocator, "Bin/FileSystemLoc.tmp", dirHolder);
     var fileHolder = OsString(allocator);
     let file = PathOf(allocator, "Bin/FileSystemLoc.tmp/real.txt", fileHolder);
-    DeleteFile(allocator, file) catch { else => {} };
-    DeleteDirectory(allocator, dir) catch { else => {} };
+    DeleteFile(allocator, file) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
     MakeDirectory(allocator, dir)?;
     Touch(allocator, file);
 
@@ -72,7 +72,7 @@ func Main() -> int ! IoError {
 
     var absentHolder = OsString(allocator);
     let absent = PathOf(allocator, "Bin/FileSystemLoc.tmp/never-existed.txt", absentHolder);
-    var imagined = Absolute(allocator, absent) catch { else => Panic("a path that does not exist is still made absolute") };
+    var imagined = Absolute(allocator, absent) catch { _ => Panic("a path that does not exist is still made absolute") };
     Assert(EndsWith(imagined, "never-existed.txt"), "keeping the name it was given");
 
     // The dot segments are simplified lexically, without asking anything.

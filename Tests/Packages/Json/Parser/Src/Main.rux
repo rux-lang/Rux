@@ -61,7 +61,7 @@ func Refuses(allocator: Allocator, text: char8[..], expected: char8[..], what: c
 }
 
 func Accepts(allocator: Allocator, text: char8[..], what: char8[..]) -> JsonValue {
-    return Parse(allocator, text) catch { else => Panic(what) };
+    return Parse(allocator, text) catch { _ => Panic(what) };
 }
 
 // Whether an outcome a caller already holds is the refusal it should be, rendering and all.
@@ -78,7 +78,7 @@ func Refusal(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) -> boo
 
 // A parser used directly, for the cases that need a limit or a policy the one-call form does not take.
 func Built(allocator: Allocator, parser: &var JsonParser, what: char8[..]) -> JsonValue {
-    return parser.Parse() catch { else => Panic(what) };
+    return parser.Parse() catch { _ => Panic(what) };
 }
 
 
@@ -94,7 +94,7 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(self: &CountingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(&self, layout: Layout) -> (*var opaque) ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         let block = (unsafe { self.state.inner.Allocate(layout) })?;
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
@@ -102,14 +102,14 @@ extend CountingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(self: &CountingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         unsafe { self.state.inner.Deallocate(block, layout)?; }
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         unsafe { self.state.live = self.state.live - 1; }
     }
 
-    func Reallocate(self: &CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         return unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
@@ -257,7 +257,7 @@ func Main() -> int {
 
     // The same choices through the one-call form, which is what most callers will reach for.
     let directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
-        catch { else => Panic("the one-call form honours a chosen policy") };
+        catch { _ => Panic("the one-call form honours a chosen policy") };
     Assert(directAll.Length() == 2, "the one-call form honours a chosen policy");
     let directRejectOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
                                         DuplicateKeyPolicy::Reject);

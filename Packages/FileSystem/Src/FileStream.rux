@@ -28,11 +28,11 @@ extend File : Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of the file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#read
-    pub func Read(self: &var File, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if !self.open { fail ClosedFile(); }
         if into.length == 0 { return 0; }
         when #target.os == .Windows {
-            let count = into.length > 0x40000000 ? 0x40000000u32 : into.length as uint32;
+            let count = if into.length > 0x40000000 { 0x40000000u32 } else { into.length as uint32 };
             var read: uint32 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above; `into` is writable for
             // `into.length` bytes and `count` is at most that; `read` is a local `uint32`.
@@ -63,11 +63,11 @@ extend File : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/filesystem/file#write
-    pub func Write(self: &var File, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if !self.open { fail ClosedFile(); }
         if bytes.length == 0 { return 0; }
         when #target.os == .Windows {
-            let count = bytes.length > 0x40000000 ? 0x40000000u32 : bytes.length as uint32;
+            let count = if bytes.length > 0x40000000 { 0x40000000u32 } else { bytes.length as uint32 };
             var written: uint32 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above; `bytes` is readable for
             // `bytes.length` bytes and `count` is at most that; `written` is a local `uint32`.
@@ -90,7 +90,7 @@ extend File : Writer {
     /// Nothing: these writes hold nothing back. Durability is `Sync`, which is a different promise.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/filesystem/file#flush
-    pub func Flush(self: &var File) -> ! IoError {
+    pub func Flush(&var self) -> ! IoError {
         if !self.open { fail ClosedFile(); }
     }
 }
@@ -104,7 +104,7 @@ extend File : Seeker {
     /// @param offset how far to move
     /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/filesystem/file#seek
-    pub func Seek(self: &var File, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
+    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             var landed: int64 = 0;
@@ -137,7 +137,7 @@ extend File {
     /// failure, and the one a caller who just wrote something they cannot lose actually wants.
     /// @returns success when the system reported the data durable
     /// @see https://rux-lang.dev/docs/api/filesystem/file#sync
-    pub func Sync(self: &var File) -> ! IoError {
+    pub func Sync(&var self) -> ! IoError {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             // Safety: `handle` is this file's open handle, `open` was checked above.
@@ -157,7 +157,7 @@ extend File {
     /// arrives with the metadata work.
     /// @returns the file's size in bytes
     /// @see https://rux-lang.dev/docs/api/filesystem/file#size
-    pub func Size(self: &var File) -> uint64 ! IoError {
+    pub func Size(&var self) -> uint64 ! IoError {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             var reported: int64 = 0;
@@ -184,7 +184,7 @@ extend File {
     /// @param length the size the file should have afterwards
     /// @returns success when the file is that size; extending reads back as zeros
     /// @see https://rux-lang.dev/docs/api/filesystem/file#set-length
-    pub func SetLength(self: &var File, length: uint64) -> ! IoError {
+    pub func SetLength(&var self, length: uint64) -> ! IoError {
         if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             // SetEndOfFile cuts at the current position, so the position moves there and back.
@@ -226,7 +226,7 @@ extend File {
     /// The file must outlive the result and must not be moved while it exists. See `FileStream`.
     /// @returns a stream over this file, holding its address, which is what makes it storable
     /// @see https://rux-lang.dev/docs/api/filesystem/file#stream
-    pub func Stream(self: *var File) -> FileStream {
+    pub func Stream(*var self) -> FileStream {
         return FileStream { file: self };
     }
 }
@@ -261,7 +261,7 @@ extend FileStream : Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of the file
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#read
-    pub func Read(self: &var FileStream, into: var char8[..]) -> uint ! IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
         // moved while it exists.
         return unsafe { (*self.file).Read(into) };
@@ -273,7 +273,7 @@ extend FileStream : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#write
-    pub func Write(self: &var FileStream, bytes: char8[..]) -> uint ! IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
         // moved while it exists.
         return unsafe { (*self.file).Write(bytes) };
@@ -282,7 +282,7 @@ extend FileStream : Writer {
     /// Flushes the borrowed file, which holds nothing back.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#flush
-    pub func Flush(self: &var FileStream) -> ! IoError {
+    pub func Flush(&var self) -> ! IoError {
         // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
         // moved while it exists.
         return unsafe { (*self.file).Flush() };
@@ -295,7 +295,7 @@ extend FileStream : Seeker {
     /// @param offset how far to move
     /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream#seek
-    pub func Seek(self: &var FileStream, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
+    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
         // Safety: the `FileStream` contract: the file `File::Stream` was called on outlives the stream and is not
         // moved while it exists.
         return unsafe { (*self.file).Seek(origin, offset) };

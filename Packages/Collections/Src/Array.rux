@@ -29,9 +29,6 @@ pub struct Array<T> {
 }
 
 extend Array<T> {
-    /// Copying an array would give two owners of one allocation and its elements.
-    func =(self: &var Array<T>, other: &Array<T>);
-
     /// An array of `length` elements, every one a copy of `value`.
     /// `allocator` is borrowed for the call and kept; `value` is read by value and copied into every position. A
     /// length of zero gives an empty array that owns a zero-sized block and is released like any other.
@@ -42,7 +39,7 @@ extend Array<T> {
     /// @param value the value to act on
     /// @returns an array of `length` copies of `value`
     /// @see https://rux-lang.dev/docs/api/collections/array#filled
-    pub func Filled(allocator: Allocator, length: uint, value: T) -> Array<T> {
+    pub func Filled(allocator: Allocator, length: uint, value: T) -> Self {
         var data = AllocateBlock<T>(allocator, length);
 
         var index: uint = 0;
@@ -52,7 +49,7 @@ extend Array<T> {
             unsafe { data[index] = value; }
             index++;
         }
-        return Array<T> { data: data, length: length, allocator: allocator };
+        return Self { data, length, allocator };
     }
 
     /// An array holding a copy of every element of `items`, in order.
@@ -63,7 +60,7 @@ extend Array<T> {
     /// @param items the elements to take
     /// @returns an array holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/array#from-slice
-    pub func FromSlice(allocator: Allocator, items: T[..]) -> Array<T> {
+    pub func FromSlice(allocator: Allocator, items: T[..]) -> Self {
         var data = AllocateBlock<T>(allocator, items.length);
 
         var index: uint = 0;
@@ -73,7 +70,7 @@ extend Array<T> {
             unsafe { data[index] = items.data[index]; }
             index++;
         }
-        return Array<T> { data: data, length: items.length, allocator: allocator };
+        return Self { data, length: items.length, allocator };
     }
 
     /// An independent array holding a copy of every element of this one.
@@ -85,7 +82,7 @@ extend Array<T> {
     /// Runs in time proportional to the length.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/array#clone
-    pub func Clone(self: &Array<T>) -> Array<T> {
+    pub func Clone(&self) -> Self {
         return Array::FromSlice<T>(self.allocator, self.AsSlice());
     }
 
@@ -93,7 +90,7 @@ extend Array<T> {
     /// `self` is borrowed. Fixed for the array's whole life.
     /// @returns how many elements it holds
     /// @see https://rux-lang.dev/docs/api/collections/array#length
-    pub func Length(self: &Array<T>) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
@@ -101,7 +98,7 @@ extend Array<T> {
     /// `self` is borrowed.
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/array#is-empty
-    pub func IsEmpty(self: &Array<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.length == 0;
     }
 
@@ -111,7 +108,7 @@ extend Array<T> {
     /// @param index which one, counting from zero
     /// @returns a copy of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/array#get
-    pub func Get(self: &Array<T>, index: uint) -> T? {
+    pub func Get(&self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
         return unsafe { self.data[index] };
@@ -123,7 +120,7 @@ extend Array<T> {
     /// @param index which one, counting from zero
     /// @returns a reference to the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/array#at
-    pub func At(self: &Array<T>, index: uint) -> &T? {
+    pub func At(&self, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
         unsafe { return self.data[index]; }
@@ -134,7 +131,7 @@ extend Array<T> {
     /// @param index which one, counting from zero
     /// @returns a writable reference to the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/array#at-mutable
-    pub func AtMutable(self: &var Array<T>, index: uint) -> &var T? {
+    pub func AtMutable(&var self, index: uint) -> &var T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
         unsafe { return self.data[index]; }
@@ -148,14 +145,14 @@ extend Array<T> {
     /// @param value the element to store
     /// @returns nothing when the element was written, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/array#set
-    pub func Set(self: &var Array<T>, index: uint, value: T) -> ! CollectionError {
+    pub func Set(&var self, index: uint, value: T) -> ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements; the slot
         // emptied by the move is refilled at once.
         unsafe {
-            let previous <- self.data[index];
-            self.data[index] <- value;
+            let previous = move self.data[index];
+            self.data[index] = move value;
         }
         return;
     }
@@ -168,14 +165,14 @@ extend Array<T> {
     /// @param value the element to store
     /// @returns the element that was at `index`, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/array#replace
-    pub func Replace(self: &var Array<T>, index: uint, value: T) -> T ! CollectionError {
+    pub func Replace(&var self, index: uint, value: T) -> T ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements; the slot
         // emptied by the move is refilled at once.
         unsafe {
-            let previous <- self.data[index];
-            self.data[index] <- value;
-            return <-previous;
+            let previous = move self.data[index];
+            self.data[index] = move value;
+            return move previous;
         }
     }
 
@@ -184,7 +181,7 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     /// @returns the elements, borrowed
     /// @see https://rux-lang.dev/docs/api/collections/array#as-slice
-    pub func AsSlice(self: &Array<T>) -> T[..] {
+    pub func AsSlice(&self) -> T[..] {
         // Safety: `data` holds `length` initialized elements for the array's whole life.
         return unsafe { (self.data)[..self.length] };
     }
@@ -195,7 +192,7 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     /// @returns the elements, borrowed for writing
     /// @see https://rux-lang.dev/docs/api/collections/array#as-mutable-slice
-    pub func AsMutableSlice(self: &var Array<T>) -> var T[..] {
+    pub func AsMutableSlice(&var self) -> var T[..] {
         // Safety: `data` holds `length` initialized elements for the array's whole life.
         return unsafe { (self.data)[..self.length] };
     }
@@ -204,7 +201,7 @@ extend Array<T> {
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds.
     /// @returns a cursor yielding copies of the elements
     /// @see https://rux-lang.dev/docs/api/collections/array#iterate
-    pub func Iterate(self: &Array<T>) -> ValueIterator<T> {
+    pub func Iterate(&self) -> ValueIterator<T> {
         return ValueIterator<T>(self.AsSlice());
     }
 
@@ -212,7 +209,7 @@ extend Array<T> {
     /// `self` is borrowed and must outlive the iterator. This is how elements that own something are walked.
     /// @returns a cursor yielding the elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/array#references
-    pub func References(self: &Array<T>) -> ReferenceIterator<T> {
+    pub func References(&self) -> ReferenceIterator<T> {
         return ReferenceIterator<T>(self.AsSlice());
     }
 
@@ -221,7 +218,7 @@ extend Array<T> {
     /// while any of them is in use, and coordinate aliases that access the same elements.
     /// @returns a cursor yielding writable element addresses
     /// @see https://rux-lang.dev/docs/api/collections/array#mutable-references
-    pub func MutableReferences(self: &var Array<T>) -> MutableReferenceIterator<T> {
+    pub func MutableReferences(&var self) -> MutableReferenceIterator<T> {
         return MutableReferenceIterator<T>(self.AsMutableSlice());
     }
 
@@ -230,7 +227,7 @@ extend Array<T> {
     /// an element destroyed after its storage was released would be read from freed memory.
     /// An array that was moved away is not destroyed where it used to live, so this happens exactly once.
     /// @see https://rux-lang.dev/docs/api/collections/array#destructor
-    func ~Array(self: &var Array<T>) {
+    func ~Array(&var self) {
         if self.data == null { return; }
         var index: uint = 0;
         while index < self.length {
@@ -239,7 +236,7 @@ extend Array<T> {
             // not. There is no other way for a container to destroy an element it does not know is droppable.
             // Safety: `index < self.length`, checked by the loop, and `data` holds `length` initialized elements; each
             // is moved out exactly once and the block is released right after.
-            unsafe { let taken <- self.data[index]; }
+            unsafe { let taken = move self.data[index]; }
             index++;
         }
         ReleaseBlock<T>(self.allocator, self.data, self.length);

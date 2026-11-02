@@ -16,7 +16,7 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ AddressInfo, freeaddrinfo, getaddrinfo },
     .macOS => import macOS::{ AddressInfo, freeaddrinfo, getaddrinfo },
     .Windows => import Windows::{ AddressInfo, freeaddrinfo, getaddrinfo },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// The addresses of `host`, each with `port`, in the order the resolver prefers them, without repeats.
@@ -30,8 +30,8 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
     var addresses = Vector<SocketAddress>(allocator);
     match IpAddress::Parse(host) {
         .Some(ip) => {
-            addresses.Push(SocketAddress { ip: ip, port: port });
-            return <-addresses;
+            addresses.Push(SocketAddress { ip, port });
+            return move addresses;
         },
         none => {}
     }
@@ -45,7 +45,7 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
         return ResolveOnLinux(allocator, host, port)?;
     }
     else {
-        return ResolveWithSystem(allocator, host, port, <-addresses)?;
+        return ResolveWithSystem(allocator, host, port, move addresses)?;
     }
 }
 
@@ -53,7 +53,7 @@ when #target.os != .Linux {
     // Asks the system's resolver, `getaddrinfo`, for `host`'s addresses, adding each once to those in `addresses`.
     func ResolveWithSystem(allocator: Allocator, host: char8[..], port: uint16, addresses: Vector<SocketAddress>)
         -> Vector<SocketAddress> ! IoError {
-        var results <- addresses;
+        var results = move addresses;
         StartNetworking();
         var name = Vector<char8>(allocator);
         name.PushSlice(host);
@@ -75,7 +75,7 @@ when #target.os != .Linux {
                 // Safety: a node's non-null address is a `sockaddr` the resolver filled, as long as its family says.
                 match unsafe { Decode(found as *uint8) } {
                     .Some(found) => {
-                        let address = SocketAddress { ip: found.ip, port: port };
+                        let address = SocketAddress { ip: found.ip, port };
                         var seen = false;
                         for earlier in results.AsSlice() {
                             if earlier.Equals(address) { seen = true; }
@@ -93,6 +93,6 @@ when #target.os != .Linux {
         // Safety: `first` is the head `getaddrinfo` returned, freed once, here.
         unsafe { freeaddrinfo(first); }
         if results.Length() == 0u { fail IoError::Of(IoErrorKind::NotFound); }
-        return <-results;
+        return move results;
     }
 }

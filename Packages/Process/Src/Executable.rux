@@ -16,7 +16,7 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ ENOMEM, QueryExecutablePath },
     .macOS => import macOS::_NSGetExecutablePath,
     .Windows => import Windows::{ GetLastError, GetModuleFileNameW },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 // The longest path a system answers with that is still worth growing for; past it the answer is refused.
@@ -69,7 +69,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
             }
             if status < 0 { fail FailureOf(-status); }
             // The length counts the terminator.
-            units.length = length > 0u ? length - 1u : 0u;
+            units.length = if length > 0u { length - 1u } else { 0u };
             return ToPathBuffer(allocator, units.View());
         }
         else {
@@ -86,7 +86,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
                 return ToPathBuffer(allocator, units.View());
             }
             // Too short: the size needed is reported, so the next attempt fits.
-            room = size as uint > room ? size as uint : room * 2u;
+            room = if size as uint > room { size as uint } else { room * 2u };
             continue;
         }
         room = room * 2u;

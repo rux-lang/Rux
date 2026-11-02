@@ -65,7 +65,7 @@ func Main() -> int {
     Assert((-1i8 as Ordering) == Ordering::Less, "Expected signed enum casts to retain negative discriminants");
     let fallback = match 7 {
         0 => 1,
-        else => 2
+        _ => 2
     };
     Assert(fallback == 2, "Expected the else match arm");
 

@@ -13,7 +13,7 @@ when #target.os {
     .Linux => import Linux::{ ClockGetTime, ClockMonotonic, Timespec },
     .macOS => import macOS::{ ClockGetTime, ClockMonotonic, Timespec },
     .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency },
-    else => #Error("Unsupported operating system")
+    _ => #Error("Unsupported operating system")
 }
 
 /// A reading of the monotonic clock.
@@ -30,7 +30,7 @@ extend Instant {
     /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
     /// @returns the monotonic clock, read now
     /// @see https://rux-lang.dev/docs/api/time/instant#now
-    pub func Now() -> Instant {
+    pub func Now() -> Self {
         when #target.os == .Windows {
             // The counter runs in units the machine chooses, so the frequency turns it into nanoseconds. Splitting
             // the division keeps the intermediate product inside a uint64 for centuries of uptime.
@@ -45,13 +45,13 @@ extend Instant {
             let rate = frequency as uint64;
             let whole = ticks / rate;
             let rest = ticks % rate;
-            return Instant { ticks: whole * 1000000000 + rest * 1000000000 / rate };
+            return Self { ticks: whole * 1000000000 + rest * 1000000000 / rate };
         }
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
             // Safety: `time` is a local `Timespec`, which the call fills.
             unsafe { ClockGetTime(ClockMonotonic, @time); }
-            return Instant { ticks: (time.seconds as uint64) * 1000000000 + time.nanoseconds as uint64 };
+            return Self { ticks: (time.seconds as uint64) * 1000000000 + time.nanoseconds as uint64 };
         }
     }
 
@@ -61,7 +61,7 @@ extend Instant {
     /// @param earlier the earlier reading
     /// @returns the time between the two readings, or `None` when `earlier` is not earlier
     /// @see https://rux-lang.dev/docs/api/time/instant#since
-    pub func Since(self: &Instant, earlier: Instant) -> Duration? {
+    pub func Since(&self, earlier: Self) -> Duration? {
         if self.ticks < earlier.ticks { return none; }
         let gap = self.ticks - earlier.ticks;
         var result = Duration::FromSeconds((gap / 1000000000) as int64);
@@ -72,8 +72,8 @@ extend Instant {
     /// The time from this reading to now.
     /// @returns the time from this reading to now
     /// @see https://rux-lang.dev/docs/api/time/instant#elapsed
-    pub func Elapsed(self: &Instant) -> Duration {
-        let now = Instant::Now();
-        return now.Since(Instant { ticks: self.ticks }) ?? Duration::Zero();
+    pub func Elapsed(&self) -> Duration {
+        let now = Self::Now();
+        return now.Since(Self { ticks: self.ticks }) ?? Duration::Zero();
     }
 }

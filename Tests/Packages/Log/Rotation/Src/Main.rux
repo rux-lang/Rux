@@ -26,7 +26,7 @@ func Exists(allocator: Allocator, path: Path) -> bool {
 
 // The file's contents, which a log of short records keeps well under the buffer.
 func Contents(allocator: Allocator, path: Path, buffer: var char8[..]) -> char8[..] {
-    var file = File::Open(allocator, path, OpenOptions::Reading()) catch { else => Panic("the file opens") };
+    var file = File::Open(allocator, path, OpenOptions::Reading()) catch { _ => Panic("the file opens") };
     var length: uint = 0;
     while true {
         match file.Read(buffer[length..]) {
@@ -37,7 +37,7 @@ func Contents(allocator: Allocator, path: Path, buffer: var char8[..]) -> char8[
             }
         }
     }
-    file.Close() catch { else => Panic("the file closes") };
+    file.Close() catch { _ => Panic("the file closes") };
     return buffer[..length];
 }
 
@@ -58,9 +58,9 @@ func WholeRecords(text: char8[..]) -> bool {
 
 func Main() -> int {
     let allocator = SystemAllocator();
-    let temporary = TemporaryDirectory(allocator) catch { else => Panic("a temporary directory exists") };
+    let temporary = TemporaryDirectory(allocator) catch { _ => Panic("a temporary directory exists") };
     var directory = TemporaryDirectoryHandle::Create(allocator, temporary.AsPath(), "rux-log-rotation-")
-        catch { else => Panic("the test directory is made") };
+        catch { _ => Panic("the test directory is made") };
     let current = PathIn(allocator, directory.AsPath(), "app.log");
     let first = PathIn(allocator, directory.AsPath(), "app.log.1");
     let second = PathIn(allocator, directory.AsPath(), "app.log.2");
@@ -71,7 +71,7 @@ func Main() -> int {
         .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "as invalid input")
     }
 
-    var file = RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { else => Panic("the log opens") };
+    var file = RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { _ => Panic("the log opens") };
     var logger = Logger::New(allocator, (@file).Stream(), LogFormat::Text);
     logger.SetTimestamps(false);
 
@@ -118,10 +118,10 @@ func Main() -> int {
     let text = Contents(allocator, current.AsPath(), buffer[..]);
     Assert(text.length > 100 && WholeRecords(text), "an oversized record is kept whole");
 
-    file.Close() catch { else => Panic("the log closes") };
+    file.Close() catch { _ => Panic("the log closes") };
     for path in [current.AsPath(), first.AsPath(), second.AsPath()] {
-        DeleteFile(allocator, path) catch { else => Panic("the log file is deleted") };
+        DeleteFile(allocator, path) catch { _ => Panic("the log file is deleted") };
     }
-    directory.Close(allocator) catch { else => Panic("the test directory is removed") };
+    directory.Close(allocator) catch { _ => Panic("the test directory is removed") };
     return 0;
 }

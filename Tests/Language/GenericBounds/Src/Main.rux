@@ -16,13 +16,13 @@ struct Square {
 }
 
 extend Square : Measured {
-    func Measure(self: &Square) -> int {
+    func Measure(&self) -> int {
         return self.size * self.size;
     }
 }
 
 extend Square : Scaled {
-    func Times(self: &Square, factor: int) -> int {
+    func Times(&self, factor: int) -> int {
         return self.size * factor;
     }
 }
@@ -34,7 +34,7 @@ struct Segment {
 // Conformance by declaring the required method: no `extend Segment : Measured` is written, and the bound below is
 // still satisfied, because the operations a constraint names are the ones a constrained generic can call.
 extend Segment {
-    func Measure(self: &Segment) -> int {
+    func Measure(&self) -> int {
         return self.length;
     }
 }
@@ -66,7 +66,7 @@ struct Cell<T: Measured> {
 
 // A method of a generic extend block calls the bound the extended type declared.
 extend Cell<T> {
-    func Inside(self: &Cell<T>) -> int {
+    func Inside(&self) -> int {
         return self.item.Measure();
     }
 }
@@ -88,18 +88,18 @@ struct Card {
 }
 
 extend Card : Equatable {
-    func Equals(self: &Card, other: &Card) -> bool {
+    func Equals(&self, other: &Self) -> bool {
         return self.value == other.value;
     }
 }
 
 extend Card : Ranked {
-    func Rank(self: &Card) -> int {
+    func Rank(&self) -> int {
         return self.value;
     }
 
-    func Better(self: &Card, other: &Card) -> Card {
-        return Card { value: self.value >= other.value ? self.value : other.value };
+    func Better(&self, other: &Self) -> Self {
+        return Self { value: if self.value >= other.value { self.value } else { other.value } };
     }
 }
 

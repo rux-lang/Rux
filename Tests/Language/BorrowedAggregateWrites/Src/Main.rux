@@ -1,5 +1,5 @@
 // Replacing a whole value through a mutable reference.
-// `=` and `<-` through a parameter, receiver, or `let` alias of type `&var T` store into the caller's value, for a
+// `=` and `= move` through a parameter, receiver, or `let` alias of type `&var T` store into the caller's value, for a
 // struct, tuple, array, or generic referent alike. The assignment follows the rules for `T` that an assignment to a
 // `var` local of type `T` follows: the new value is produced, the old value is destroyed, and the result is installed;
 // a move-only value needs `move` or a `Clone`. Each tracked value appends its id to a log as it is destroyed or cloned,
@@ -13,7 +13,7 @@ struct Pair {
 }
 
 extend Pair {
-    func Clear(self: &var Pair) { self = Pair { a: 0i32, b: 0i32 }; }
+    func Clear(&var self) { self = Self { a: 0i32, b: 0i32 }; }
 }
 
 struct Log {
@@ -28,7 +28,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -44,13 +44,13 @@ struct Copied {
 }
 
 extend Copied {
-    func Clone(&self) -> Copied {
+    func Clone(&self) -> Self {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         unsafe { self.log.order = self.log.order * 10 + 9; }
-        return Copied { log: self.log, id: self.id };
+        return Self { log: self.log, id: self.id };
     }
 
-    func ~Copied(self: &var Copied) {
+    func ~Copied(&var self) {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -59,16 +59,14 @@ extend Copied {
     }
 }
 
-// Move-only: copying is prohibited, so it can only be handed over with `<-`.
+// Move-only: copying is prohibited, so it can only be handed over with `move`.
 struct Token {
     log: *var Log;
     id: int32;
 }
 
 extend Token {
-    func =(self: &var Token, other: &Token);
-
-    func ~Token(self: &var Token) {
+    func ~Token(&var self) {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         unsafe {
             self.log.count = self.log.count + 1;
@@ -92,36 +90,36 @@ func SwapPair(pair: &var (int32, int32)) { pair = (pair.1, pair.0); }
 func ReplaceTuple(tuple: &var (int32, bool)) { tuple = (9i32, true); }
 func ReplaceArray(values: &var int32[3]) { values = [7i32, 8i32, 9i32]; }
 func ReplaceNarrowArray(values: &var int32[2]) { values = [5i32, 6i32]; }
-func ReplaceTracked(slot: &var Tracked, log: *var Log) { slot = Tracked { log: log, id: 2i32 }; }
+func ReplaceTracked(slot: &var Tracked, log: *var Log) { slot = Tracked { log, id: 2i32 }; }
 func CopyInto(slot: &var Copied, source: &Copied) { slot = source.Clone(); }
-func MoveInto(slot: &var Token, token: Token) { slot <- token; }
-func Put<T>(slot: &var T, value: T) { slot <- value; }
+func MoveInto(slot: &var Token, token: Token) { slot = move token; }
+func Put<T>(slot: &var T, value: T) { slot = move value; }
 
 func ReplaceInScope(log: *var Log) {
-    var tracked = Tracked { log: log, id: 1i32 };
+    var tracked = Tracked { log, id: 1i32 };
     ReplaceTracked(tracked, log);
     Mark(log);
     Assert(tracked.id == 2i32, "the new value is installed in the caller's binding");
 }
 
 func CopyInScope(log: *var Log) {
-    var slot = Copied { log: log, id: 1i32 };
-    let source = Copied { log: log, id: 2i32 };
+    var slot = Copied { log, id: 1i32 };
+    let source = Copied { log, id: 2i32 };
     CopyInto(slot, source);
     Mark(log);
     Assert(slot.id == 2i32 && source.id == 2i32, "the clone is installed and its source kept");
 }
 
 func MoveInScope(log: *var Log) {
-    var slot = Token { log: log, id: 1i32 };
-    MoveInto(slot, Token { log: log, id: 2i32 });
+    var slot = Token { log, id: 1i32 };
+    MoveInto(slot, Token { log, id: 2i32 });
     Mark(log);
     Assert(slot.id == 2i32, "the moved value is installed in the caller's binding");
 }
 
 func GenericInScope(log: *var Log) {
-    var slot = Tracked { log: log, id: 1i32 };
-    Put(slot, Tracked { log: log, id: 2i32 });
+    var slot = Tracked { log, id: 1i32 };
+    Put(slot, Tracked { log, id: 2i32 });
     Mark(log);
     Assert(slot.id == 2i32, "a generic write installs the new value");
 }

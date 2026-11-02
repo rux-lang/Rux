@@ -23,10 +23,10 @@ func FailureCode(outcome: ! FormatError) -> int {
             .InsufficientCapacity => 1,
             .TextFailure(kind) => match kind {
                 .InvalidUtf8 => 2,
-                else => 3
+                _ => 3
             },
             .WriterFailure => 4,
-            else => 5
+            _ => 5
         }
     };
 }

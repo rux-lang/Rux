@@ -125,25 +125,25 @@ extend TomlLexer {
     /// @param input the text to read
     /// @returns a lexer positioned at the start of the input
     /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#new
-    pub func TomlLexer(input: char8[..]) -> TomlLexer {
-        return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
+    pub func TomlLexer(input: char8[..]) -> Self {
+        return Self { input, position: 0, line: 1, lineStart: 0 };
     }
 
-    func Make(self: &TomlLexer, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
+    func Make(&self, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
         return TomlToken {
-            kind: kind, form: form, start: start, end: end, line: self.line,
+            kind, form, start, end, line: self.line,
             column: start +% 1 -% self.lineStart, error: TomlLexError::None
         };
     }
 
-    func Fail(self: &TomlLexer, reason: TomlLexError) -> TomlToken {
+    func Fail(&self, reason: TomlLexError) -> TomlToken {
         return TomlToken {
             kind: TomlTokenKind::Error, form: TomlTextForm::NotText, start: self.position, end: self.position,
             line: self.line, column: self.position - self.lineStart + 1, error: reason
         };
     }
 
-    func At(self: &TomlLexer, offset: uint) -> uint8 {
+    func At(&self, offset: uint) -> uint8 {
         if self.position + offset >= self.input.length { return 0; }
         // Safety: `self.position + offset` is below `self.input.length`, checked above.
         return unsafe { self.input.data[self.position + offset] } as uint8;
@@ -151,7 +151,7 @@ extend TomlLexer {
 
     // Comments run to the end of the line and are not tokens: nothing above the lexer ever sees one, which is
     // also why a document read and written back loses them.
-    func SkipSpaceAndComments(self: &var TomlLexer) {
+    func SkipSpaceAndComments(&var self) {
         while self.position < self.input.length {
             // Safety: `self.position` is below `self.input.length`, checked by the loop.
             let c = unsafe { self.input.data[self.position] } as uint8;
@@ -178,7 +178,7 @@ extend TomlLexer {
 
     // A string in whichever of the four forms the quotes announce. The span excludes the delimiters, and the
     // form travels with the token so the parser knows whether escapes are its business.
-    func LexText(self: &var TomlLexer, quote: uint8) -> TomlToken {
+    func LexText(&var self, quote: uint8) -> TomlToken {
         let opening = self.position;
         var multiline = false;
         if self.At(1) == quote && self.At(2) == quote {
@@ -211,15 +211,21 @@ extend TomlLexer {
             let c = unsafe { self.input.data[self.position] } as uint8;
             if c == quote {
                 if !multiline {
-                    let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::Basic
-                                                                       : TomlTextForm::Literal,
+                    let token = self.Make(TomlTokenKind::Text, if escapes {
+                        TomlTextForm::Basic
+                    } else {
+                        TomlTextForm::Literal
+                    },
                                           start, self.position);
                     self.position = self.position + 1;
                     return token;
                 }
                 if self.At(1) == quote && self.At(2) == quote {
-                    let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::MultiLineBasic
-                                                                       : TomlTextForm::MultiLineLiteral,
+                    let token = self.Make(TomlTokenKind::Text, if escapes {
+                        TomlTextForm::MultiLineBasic
+                    } else {
+                        TomlTextForm::MultiLineLiteral
+                    },
                                           start, self.position);
                     self.position = self.position + 3;
                     return token;
@@ -282,7 +288,7 @@ extend TomlLexer {
     // A bare token: a key, a keyword, a number, or a date-time. TOML does not separate these lexically — the
     // run of characters has to be scanned and then classified — because `1979-05-27` is a date and `1979` is
     // an integer and both start the same way.
-    func LexBare(self: &var TomlLexer) -> TomlToken {
+    func LexBare(&var self) -> TomlToken {
         let start = self.position;
         var sawColon = false;
         var sawDash = false;
@@ -372,11 +378,18 @@ extend TomlLexer {
                 kind = TomlTokenKind::DateTime;
             }
             else if digitLike {
-                kind = sawDot || sawExponent || self.HasExponent(start, end) ? TomlTokenKind::Float
-                                                                            : TomlTokenKind::Integer;
+                kind = if sawDot || sawExponent || self.HasExponent(start, end) {
+                    TomlTokenKind::Float
+                } else {
+                    TomlTokenKind::Integer
+                };
             }
         }
-        let token = self.Make(kind, kind == TomlTokenKind::BareKey ? TomlTextForm::Bare : TomlTextForm::NotText,
+        let token = self.Make(kind, if kind == TomlTokenKind::BareKey {
+            TomlTextForm::Bare
+        } else {
+            TomlTextForm::NotText
+        },
                               start, end);
         self.position = end;
         return token;
@@ -385,7 +398,7 @@ extend TomlLexer {
     // A date opens with four digits and a hyphen. Requiring the shape rather than merely the presence of a
     // hyphen is what keeps `6.626e-34` a float: its hyphen belongs to the exponent, not to a month.
     // Safety: `start..end` must lie inside `self.input`; the bytes are read without a bounds check.
-    unsafe func LooksLikeDate(self: &TomlLexer, start: uint, end: uint) -> bool {
+    unsafe func LooksLikeDate(&self, start: uint, end: uint) -> bool {
         if end - start < 5 { return false; }
         var index: uint = 0;
         while index < 4 {
@@ -396,7 +409,7 @@ extend TomlLexer {
         return (self.input.data[start + 4] as uint8) == 0x2D;
     }
 
-    func LooksLikeTime(self: &TomlLexer, at: uint) -> bool {
+    func LooksLikeTime(&self, at: uint) -> bool {
         // `HH:MM`, the shortest thing that can follow a date across a space.
         if at + 4 >= self.input.length { return false; }
         // Safety: `at + 2` is below `self.input.length`, since `at + 4` is, checked above.
@@ -406,7 +419,7 @@ extend TomlLexer {
     // A hexadecimal float is not TOML, so an `e` that could be a hex digit only counts as an exponent when the
     // number is decimal — which is why this looks at the prefix first.
     // Safety: `start..end` must lie inside `self.input`; the bytes are read without a bounds check.
-    unsafe func HasExponent(self: &TomlLexer, start: uint, end: uint) -> bool {
+    unsafe func HasExponent(&self, start: uint, end: uint) -> bool {
         if end - start > 2 && (self.input.data[start] as uint8) == 0x30 {
             let radix = self.input.data[start + 1] as uint8;
             if radix == 0x78 || radix == 0x6F || radix == 0x62 { return false; }
@@ -422,7 +435,7 @@ extend TomlLexer {
 
     // Whether the run `start..end` of the input spells `word`.
     // Safety: `start..end` must lie inside `self.input`; the bytes are read without a bounds check.
-    unsafe func Matches(self: &TomlLexer, start: uint, end: uint, word: char8[..]) -> bool {
+    unsafe func Matches(&self, start: uint, end: uint, word: char8[..]) -> bool {
         if end - start != word.length { return false; }
         var index: uint = 0;
         while index < word.length {
@@ -435,7 +448,7 @@ extend TomlLexer {
     /// The next token, or `End` at the end of the input.
     /// @returns the next token, or the end-of-input token
     /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#next
-    pub func Next(self: &var TomlLexer) -> TomlToken {
+    pub func Next(&var self) -> TomlToken {
         self.SkipSpaceAndComments();
         if self.position >= self.input.length {
             return self.Make(TomlTokenKind::End, TomlTextForm::NotText, self.position, self.position);
@@ -501,7 +514,7 @@ extend TomlLexer {
             self.position = self.position + 1;
             return token;
         }
-        if TomlLexer::IsBareKeyByte(c) || c == 0x2B { return self.LexBare(); }
+        if Self::IsBareKeyByte(c) || c == 0x2B { return self.LexBare(); }
         return self.Fail(TomlLexError::UnexpectedByte);
     }
 
@@ -509,7 +522,7 @@ extend TomlLexer {
     /// @param token the token to read
     /// @returns the token's text, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#text-of
-    pub func TextOf(self: &TomlLexer, token: &TomlToken) -> char8[..] {
+    pub func TextOf(&self, token: &TomlToken) -> char8[..] {
         return self.input[token.start..token.end];
     }
 }

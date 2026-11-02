@@ -34,8 +34,8 @@ extend QueryPairs {
     /// The walk itself, so that `for pair in Pairs(query)` reads every pair.
     /// @returns a copy of this walk
     /// @see https://rux-lang.dev/docs/api/url/query#query-pairs-iterate
-    pub func Iterate(self: &QueryPairs) -> QueryPairs {
-        return QueryPairs { rest: self.rest };
+    pub func Iterate(&self) -> Self {
+        return Self { rest: self.rest };
     }
 }
 
@@ -43,17 +43,17 @@ extend QueryPairs : Iterator {
     /// The next pair, or none after the last.
     /// @returns the pair
     /// @see https://rux-lang.dev/docs/api/url/query#query-pairs-next
-    pub func Next(self: &var QueryPairs) -> QueryPair? {
+    pub func Next(&var self) -> QueryPair? {
         while self.rest.length > 0 {
             var end: uint = 0;
             while end < self.rest.length && self.rest[end] != '&' { end = end + 1; }
             let pair = self.rest[..end];
-            self.rest = end < self.rest.length ? self.rest[end + 1..] : self.rest[end..];
+            self.rest = if end < self.rest.length { self.rest[end + 1..] } else { self.rest[end..] };
             if pair.length == 0 { continue; }
             var equals: uint = 0;
             while equals < pair.length && pair[equals] != '=' { equals = equals + 1; }
-            let value = equals < pair.length ? pair[equals + 1..] : pair[equals..];
-            return QueryPair { name: pair[..equals], value: value };
+            let value = if equals < pair.length { pair[equals + 1..] } else { pair[equals..] };
+            return QueryPair { name: pair[..equals], value };
         }
         return none;
     }
@@ -78,10 +78,10 @@ pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) ->
             index = index + 3;
             continue;
         }
-        out.Push(form && c == '+' ? c8' ' : c);
+        out.Push(if form && c == '+' { c8' ' } else { c });
         index = index + 1;
     }
-    return String::FromBytes(allocator, out.View()) catch { else => fail UrlError::InvalidText };
+    return String::FromBytes(allocator, out.View()) catch { _ => fail UrlError::InvalidText };
 }
 
 /// Builds a query from `name=value` pairs, encoding each the way HTML forms do.
@@ -96,8 +96,8 @@ extend QueryBuilder {
     /// @param allocator what the query is kept in
     /// @returns the builder
     /// @see https://rux-lang.dev/docs/api/url/query#query-builder-new
-    pub func QueryBuilder(allocator: Allocator) -> QueryBuilder {
-        return QueryBuilder { bytes: Bytes(allocator) };
+    pub func QueryBuilder(allocator: Allocator) -> Self {
+        return Self { bytes: Bytes(allocator) };
     }
 
     /// Appends a pair, encoding the name and the value: letters, digits, `*`, `-`, `.` and `_` stay, a space becomes
@@ -105,7 +105,7 @@ extend QueryBuilder {
     /// @param name the name, as text
     /// @param value the value, as text
     /// @see https://rux-lang.dev/docs/api/url/query#append
-    pub func Append(self: &var QueryBuilder, name: char8[..], value: char8[..]) {
+    pub func Append(&var self, name: char8[..], value: char8[..]) {
         if self.bytes.length > 0 { self.bytes.Push(c8'&'); }
         AppendForm(self.bytes, name);
         self.bytes.Push(c8'=');
@@ -115,7 +115,7 @@ extend QueryBuilder {
     /// The query built so far, without a `?`, ready for `Url::SetQuery`.
     /// @returns the query
     /// @see https://rux-lang.dev/docs/api/url/query#query-builder-text
-    pub func Text(self: &QueryBuilder) -> char8[..] {
+    pub func Text(&self) -> char8[..] {
         return self.bytes.View();
     }
 }

@@ -41,32 +41,30 @@ pub struct WriteGuard<T> {
 }
 
 extend RwLock<T> {
-    func =(self: &var RwLock<T>, other: &RwLock<T>);
-
     /// A new lock guarding `value`. Running out of memory for it is a program error.
     /// @param value the value to guard
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#rw-lock-new
-    pub func RwLock(value: T) -> RwLock<T> {
-        return RwLock<T> {
-            block: AllocateBlock(RwLockBlock<T> { references: 1, state: 0, waiters: 0, value: <-value })
+    pub func RwLock(value: T) -> Self {
+        return Self {
+            block: AllocateBlock(RwLockBlock<T> { references: 1, state: 0, waiters: 0, value: move value })
         };
     }
 
     /// Another handle to the same value.
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#clone
-    pub func Clone(self: &RwLock<T>) -> RwLock<T> {
+    pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@self.block.references); }
-        return RwLock<T> { block: self.block };
+        return Self { block: self.block };
     }
 
     /// Takes a shared hold, waiting while a writer holds the lock.
     /// @returns the read guard
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#read
-    pub func Read(self: &RwLock<T>) -> ReadGuard<T> {
+    pub func Read(&self) -> ReadGuard<T> {
         let block = self.block;
         while true {
             // Safety: this handle holds a count on `block`, so its state word is live, and every thread reaches it only
@@ -89,13 +87,13 @@ extend RwLock<T> {
         // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@block.references); }
-        return ReadGuard<T> { block: block };
+        return ReadGuard<T> { block };
     }
 
     /// Takes the exclusive hold, waiting while any reader or writer holds the lock.
     /// @returns the write guard
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write
-    pub func Write(self: &RwLock<T>) -> WriteGuard<T> {
+    pub func Write(&self) -> WriteGuard<T> {
         let block = self.block;
         while true {
             // Safety: this handle holds a count on `block`, so its state word is live, and every thread reaches it only
@@ -115,10 +113,10 @@ extend RwLock<T> {
         // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
         // atomically.
         unsafe { RetainBlock(@block.references); }
-        return WriteGuard<T> { block: block };
+        return WriteGuard<T> { block };
     }
 
-    func ~RwLock(self: &var RwLock<T>) {
+    func ~RwLock(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle or guard is left to reach the block.
         unsafe {
@@ -130,18 +128,16 @@ extend RwLock<T> {
 }
 
 extend ReadGuard<T> {
-    func =(self: &var ReadGuard<T>, other: &ReadGuard<T>);
-
     /// The guarded value, borrowed for reading while the guard holds the lock.
     /// The guard stays borrowed while the reference is in use, so it cannot be dropped under it.
     /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#read-guard-get
-    pub func Get(self: &ReadGuard<T>) -> &T {
+    pub func Get(&self) -> &T {
         // Safety: the guard holds a count on `self.block`, so the block is live.
         unsafe { return self.block.value; }
     }
 
-    func ~ReadGuard(self: &var ReadGuard<T>) {
+    func ~ReadGuard(&var self) {
         let block = self.block;
         // Safety: the guard holds a shared hold and a count on `block`, so the block is live, and its state word is
         // reached only atomically.
@@ -160,13 +156,11 @@ extend ReadGuard<T> {
 }
 
 extend WriteGuard<T> {
-    func =(self: &var WriteGuard<T>, other: &WriteGuard<T>);
-
     /// The guarded value, borrowed for reading while the guard holds the lock.
     /// The guard stays borrowed while the reference is in use, so it cannot be dropped under it.
     /// @returns a reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard-get
-    pub func Get(self: &WriteGuard<T>) -> &T {
+    pub func Get(&self) -> &T {
         // Safety: the guard holds a count on `self.block`, so the block is live.
         unsafe { return self.block.value; }
     }
@@ -175,12 +169,12 @@ extend WriteGuard<T> {
     /// The guard stays borrowed exclusively while the reference is in use.
     /// @returns a writable reference to the value
     /// @see https://rux-lang.dev/docs/api/sync/rw-lock#write-guard-get-mutable
-    pub func GetMutable(self: &var WriteGuard<T>) -> &var T {
+    pub func GetMutable(&var self) -> &var T {
         // Safety: the guard holds a count on `self.block`, so the block is live.
         unsafe { return self.block.value; }
     }
 
-    func ~WriteGuard(self: &var WriteGuard<T>) {
+    func ~WriteGuard(&var self) {
         let block = self.block;
         // Safety: the guard holds the exclusive hold and a count on `block`, so the block is live, and its state word
         // is reached only atomically.

@@ -27,7 +27,7 @@ pub func SinCos(angle: float64) -> (float64, float64) {
     // quadratic term is under half an ulp.
     if angle < 7.450580596923828e-9 && angle > -7.450580596923828e-9 { return (angle, 1.0); }
     let negative = angle < 0.0;
-    let magnitude = negative ? -angle : angle;
+    let magnitude = if negative { -angle } else { angle };
     var sineOfMagnitude = 0.0;
     var cosineValue = 0.0;
     if magnitude <= QuarterPi {
@@ -56,7 +56,7 @@ pub func SinCos(angle: float64) -> (float64, float64) {
         }
     }
     // Sine is odd and cosine is even, so only one of them notices the sign.
-    return (negative ? -sineOfMagnitude : sineOfMagnitude, cosineValue);
+    return (if negative { -sineOfMagnitude } else { sineOfMagnitude }, cosineValue);
 }
 
 /// Computes the sine and cosine of `angle` at `float32` precision.

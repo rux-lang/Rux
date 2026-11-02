@@ -29,9 +29,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -81,7 +79,7 @@ func Mapped(calls: *var int32) -> ConfigError {
 // A move-only error is transferred into the mapped failure.
 func Owned(counter: *var Counter, broken: bool) -> int32 ! Tracked {
     if broken {
-        fail Tracked { counter: counter, id: 4i32 };
+        fail Tracked { counter, id: 4i32 };
     }
     return 1i32;
 }
@@ -97,8 +95,8 @@ func Wrap(owned: Tracked) -> ConfigError {
 
 // A local moved only inside the mapper is still owned after the expression.
 func Context(counter: *var Counter, text: int32) -> int32 ! ConfigError {
-    let context = Tracked { counter: counter, id: 7i32 };
-    let value = Read(text)? else (e => Wrap(<-context));
+    let context = Tracked { counter, id: 7i32 };
+    let value = Read(text)? else (e => Wrap(move context));
     return value + context.id;
 }
 

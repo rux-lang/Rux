@@ -34,7 +34,7 @@ func Overflows(text: char8[..]) -> bool {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .Overflow(_) => true,
-            else => false
+            _ => false
         }
     };
 }
@@ -44,7 +44,7 @@ func Overflows32(text: char8[..]) -> bool {
         .Success(_) => false,
         .Failure(reason) => match reason {
             .Overflow(_) => true,
-            else => false
+            _ => false
         }
     };
 }

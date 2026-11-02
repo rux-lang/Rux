@@ -19,9 +19,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
-
-    func ~Tracked(self: &var Tracked) {
+    func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
         unsafe { self.counter.count = self.counter.count + 1; }
     }
@@ -84,7 +82,7 @@ func Hold(counter: *var Counter) {
 }
 
 func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
-    let tracked = (<-value) ?? Tracked { counter: counter, id: 0i32 };
+    let tracked = (move value) ?? Tracked { counter: counter, id: 0i32 };
     return tracked.id;
 }
 
@@ -144,12 +142,12 @@ func Main() -> int {
 
     var total = 0i32;
     for index in 0i32..4i32 {
-        let value: int32? = index == 2i32 ? none : .Some(index);
+        let value: int32? = if index == 2i32 { none } else { .Some(index) };
         total = total + (value ?? continue);
     }
     Assert(total == 4i32, "'?? continue' skips an absent value");
     for index in 0i32..10i32 {
-        let value: int32? = index == 3i32 ? none : .Some(index);
+        let value: int32? = if index == 3i32 { none } else { .Some(index) };
         total = total + (value ?? break);
     }
     Assert(total == 7i32, "'?? break' leaves the loop");

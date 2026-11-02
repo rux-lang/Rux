@@ -15,7 +15,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 
 // The failure an outcome carries, which the test expects to be there.
 func Refusal<T>(outcome: T ! IoError) -> IoError {
-    return match <-outcome {
+    return match move outcome {
         .Success(_) => Panic("expected a failure"),
         .Failure(error) => error
     };
@@ -41,7 +41,7 @@ func Main() -> int ! IoError {
 
     // Now that it exists: reading finds it, and a creation claim is refused.
     var opened = File::Open(allocator, scratch, OpenOptions::Reading())?;
-    var readable <- opened;
+    var readable = move opened;
     Assert(readable.IsOpen(), "the created file reads");
     readable.Close()?;
     var claimed = OpenOptions();

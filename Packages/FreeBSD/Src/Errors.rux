@@ -163,5 +163,5 @@ pub func IsError(result: int64) -> bool {
 /// @returns the error number, positive, or zero when the result carries none
 /// @see https://rux-lang.dev/docs/api/freebsd/errors#errno
 pub func Errno(result: int64) -> int64 {
-    return IsError(result) ? -result : 0;
+    return if IsError(result) { -result } else { 0 };
 }

@@ -8,7 +8,7 @@ struct Pair {
 }
 
 extend Pair {
-    func ==(self: &Pair, other: &Pair) -> bool {
+    func ==(&self, other: &Self) -> bool {
         return self.a == other.a;
     }
 }

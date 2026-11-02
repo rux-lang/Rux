@@ -26,7 +26,7 @@ extend uint512 {
     /// @param other the value to add
     /// @returns the sum, or none when it lies outside the range of `uint512`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-checked-add
-    pub func CheckedAdd(self: &uint512, other: uint512) -> uint512? {
+    pub func CheckedAdd(&self, other: uint512) -> uint512? {
         var sum: uint512 = 0;
         if AddChecked<uint512>(self, other, @sum) { return none; }
         return sum;
@@ -37,7 +37,7 @@ extend uint512 {
     /// @param other the value to subtract
     /// @returns the difference, or none when it lies outside the range of `uint512`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-checked-sub
-    pub func CheckedSub(self: &uint512, other: uint512) -> uint512? {
+    pub func CheckedSub(&self, other: uint512) -> uint512? {
         var difference: uint512 = 0;
         if SubChecked<uint512>(self, other, @difference) { return none; }
         return difference;
@@ -49,7 +49,7 @@ extend uint512 {
     /// @param other the value to multiply by
     /// @returns the product, or none when it lies outside the range of `uint512`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-checked-mul
-    pub func CheckedMul(self: &uint512, other: uint512) -> uint512? {
+    pub func CheckedMul(&self, other: uint512) -> uint512? {
         var product: uint512 = 0;
         if MulChecked<uint512>(self, other, @product) { return none; }
         return product;
@@ -60,7 +60,7 @@ extend uint512 {
     /// @param other the value to add
     /// @returns the sum, or the limit of `uint512` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-saturating-add
-    pub func SaturatingAdd(self: &uint512, other: uint512) -> uint512 {
+    pub func SaturatingAdd(&self, other: uint512) -> uint512 {
         return AddSaturating<uint512>(self, other);
     }
 
@@ -69,7 +69,7 @@ extend uint512 {
     /// @param other the value to subtract
     /// @returns the difference, or the limit of `uint512` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-saturating-sub
-    pub func SaturatingSub(self: &uint512, other: uint512) -> uint512 {
+    pub func SaturatingSub(&self, other: uint512) -> uint512 {
         return SubSaturating<uint512>(self, other);
     }
 
@@ -78,7 +78,7 @@ extend uint512 {
     /// @param other the value to multiply by
     /// @returns the product, or the limit of `uint512` it ran past
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-saturating-mul
-    pub func SaturatingMul(self: &uint512, other: uint512) -> uint512 {
+    pub func SaturatingMul(&self, other: uint512) -> uint512 {
         return MulSaturating<uint512>(self, other);
     }
 
@@ -88,5 +88,5 @@ extend uint512 {
     /// @typeParam T the integer type to convert to
     /// @returns the low bits of this value as a `T`
     /// @see https://rux-lang.dev/docs/api/core/integers#uint512-truncate
-    pub intrinsic func Truncate<T>(self: &uint512) -> T;
+    pub intrinsic func Truncate<T>(&self) -> T;
 }

@@ -51,7 +51,7 @@ func Main() -> int {
         // sin(count*Pi - tail) is -cos(count*Pi) * sin(tail), and sin(tail) is tail to well within a ulp for
         // something this small. So the answer is -tail for an even multiple and +tail for an odd one.
         let evenMultiple = (multiple % 2) == 0;
-        let expected = evenMultiple ? 0.0 - tail : tail;
+        let expected = if evenMultiple { 0.0 - tail } else { tail };
         let got = Sin(argument);
         // A few ulps, because the reference itself is a double-double product and the sine has its own bound.
         // A reduction that had dropped the low part would be wrong by a relative amount, not by a few ulps.

@@ -30,8 +30,6 @@ pub struct LruCache<K, V> {
 }
 
 extend LruCache<K, V> {
-    func =(self: &var LruCache<K, V>, other: &LruCache<K, V>);
-
     /// An empty cache that holds at most `capacity` entries, at least one.
     /// @param allocator where the storage comes from
     /// @param capacity how many entries it keeps
@@ -40,11 +38,11 @@ extend LruCache<K, V> {
     /// @returns the cache
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#new
     pub func LruCache(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
-                      equals: func(K, K) -> bool) -> LruCache<K, V> {
-        return LruCache<K, V> {
+                      equals: func(K, K) -> bool) -> Self {
+        return Self {
             entries: Vector<CacheEntry<K, V>>(allocator),
             index: HashMap<K, uint>(allocator, hash, equals),
-            capacity: capacity == 0 ? 1u : capacity,
+            capacity: if capacity == 0 { 1u } else { capacity },
             newest: NoEntry,
             oldest: NoEntry
         };
@@ -53,14 +51,14 @@ extend LruCache<K, V> {
     /// How many entries it holds.
     /// @returns the count
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#length
-    pub func Length(self: &LruCache<K, V>) -> uint {
+    pub func Length(&self) -> uint {
         return self.index.Length();
     }
 
     /// How many entries it keeps before evicting.
     /// @returns the capacity
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#capacity
-    pub func Capacity(self: &LruCache<K, V>) -> uint {
+    pub func Capacity(&self) -> uint {
         return self.capacity;
     }
 
@@ -68,12 +66,12 @@ extend LruCache<K, V> {
     /// @param key the key
     /// @returns whether it is cached
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#contains
-    pub func Contains(self: &LruCache<K, V>, key: K) -> bool {
+    pub func Contains(&self, key: K) -> bool {
         return self.index.ContainsKey(key);
     }
 
     // Takes entry `at` out of the recency list.
-    func Unlink(self: &var LruCache<K, V>, at: uint) {
+    func Unlink(&var self, at: uint) {
         let entries = self.entries.AsMutableSlice();
         let newer = entries[at].newer;
         let older = entries[at].older;
@@ -82,7 +80,7 @@ extend LruCache<K, V> {
     }
 
     // Puts entry `at` at the front of the recency list.
-    func LinkNewest(self: &var LruCache<K, V>, at: uint) {
+    func LinkNewest(&var self, at: uint) {
         let entries = self.entries.AsMutableSlice();
         entries[at].newer = NoEntry;
         entries[at].older = self.newest;
@@ -95,7 +93,7 @@ extend LruCache<K, V> {
     /// @param key the key
     /// @returns the value, or `none` when it is not cached
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#get
-    pub func Get(self: &var LruCache<K, V>, key: K) -> V? {
+    pub func Get(&var self, key: K) -> V? {
         let at = self.index.Get(key) ?? return none;
         if at != self.newest {
             self.Unlink(at);
@@ -108,7 +106,7 @@ extend LruCache<K, V> {
     /// @param key the key
     /// @returns the value, or `none` when it is not cached
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#peek
-    pub func Peek(self: &LruCache<K, V>, key: K) -> V? {
+    pub func Peek(&self, key: K) -> V? {
         let at = self.index.Get(key) ?? return none;
         return self.entries.AsSlice()[at].value;
     }
@@ -121,7 +119,7 @@ extend LruCache<K, V> {
     /// @param value the value
     /// @returns the key that was evicted, if one was
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#put
-    pub func Put(self: &var LruCache<K, V>, key: K, value: V) -> K? {
+    pub func Put(&var self, key: K, value: V) -> K? {
         match self.index.Get(key) {
             .Some(at) => {
                 // Moved into a local, the old value is destroyed when the local's life ends rather than leaked.
@@ -129,8 +127,8 @@ extend LruCache<K, V> {
                 // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and
                 // the vector does not change while it is used; the value moved out is refilled at once.
                 unsafe {
-                    let replaced <- entry.value;
-                    entry.value <- value;
+                    let replaced = move entry.value;
+                    entry.value = move value;
                 }
                 if at != self.newest {
                     self.Unlink(at);
@@ -143,7 +141,7 @@ extend LruCache<K, V> {
         if self.entries.Length() < self.capacity {
             let at = self.entries.Length();
             self.index.Insert(key, at);
-            self.entries.Push(CacheEntry<K, V> { key: key, value: <-value, newer: NoEntry, older: NoEntry });
+            self.entries.Push(CacheEntry<K, V> { key, value: move value, newer: NoEntry, older: NoEntry });
             self.LinkNewest(at);
             return none;
         }
@@ -158,8 +156,8 @@ extend LruCache<K, V> {
         // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and the
         // vector does not change while it is used; the value moved out is refilled at once.
         unsafe {
-            let displaced <- entry.value;
-            entry.value <- value;
+            let displaced = move entry.value;
+            entry.value = move value;
         }
         self.LinkNewest(at);
         return evicted;
@@ -169,7 +167,7 @@ extend LruCache<K, V> {
     /// @param key the key
     /// @returns its value, or `none` when it was not cached
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#remove
-    pub func Remove(self: &var LruCache<K, V>, key: K) -> V? {
+    pub func Remove(&var self, key: K) -> V? {
         let at = self.index.Remove(key) ?? return none;
         self.Unlink(at);
         // Move the last entry into the hole so the entries stay contiguous.
@@ -190,7 +188,7 @@ extend LruCache<K, V> {
 
     /// Forgets every entry, keeping the storage.
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#clear
-    pub func Clear(self: &var LruCache<K, V>) {
+    pub func Clear(&var self) {
         self.entries.Clear();
         self.index.Clear();
         self.newest = NoEntry;
@@ -201,7 +199,7 @@ extend LruCache<K, V> {
     /// @param into receives the keys in that order, as many as fit
     /// @returns how many were written
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#keys-by-recency
-    pub func KeysByRecency(self: &LruCache<K, V>, into: var K[..]) -> uint {
+    pub func KeysByRecency(&self, into: var K[..]) -> uint {
         let entries = self.entries.AsSlice();
         var at = self.newest;
         var count: uint = 0;

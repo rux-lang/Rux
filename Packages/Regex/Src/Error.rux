@@ -51,7 +51,7 @@ extend RegexError {
     /// @param offset where in the pattern
     /// @returns the error
     /// @see https://rux-lang.dev/docs/api/regex/error#at
-    pub func At(kind: RegexErrorKind, offset: uint) -> RegexError {
-        return RegexError { kind: kind, offset: offset };
+    pub func At(kind: RegexErrorKind, offset: uint) -> Self {
+        return Self { kind, offset };
     }
 }

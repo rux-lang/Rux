@@ -199,7 +199,7 @@ pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 /// @returns the first index where the two differ, or `none` when neither runs out first
 /// @see https://rux-lang.dev/docs/api/algorithms/comparing#mismatch
 pub func Mismatch<T>(left: T[..], right: T[..]) -> uint? {
-    let shorter = left.length < right.length ? left.length : right.length;
+    let shorter = if left.length < right.length { left.length } else { right.length };
     var index: uint = 0;
     while index < shorter {
         // Safety: `index` is below `shorter`, the smaller of the two lengths.
@@ -237,7 +237,7 @@ pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
 /// @returns how `left` orders against `right`, comparing element by element then by length
 /// @see https://rux-lang.dev/docs/api/algorithms/comparing#compare
 pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
-    let shorter = left.length < right.length ? left.length : right.length;
+    let shorter = if left.length < right.length { left.length } else { right.length };
     var index: uint = 0;
     while index < shorter {
         // Safety: `index` is below `shorter`, the smaller of the two lengths.
@@ -263,7 +263,7 @@ pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
 /// @returns how `left` orders against `right` under `compare`, then by length
 /// @see https://rux-lang.dev/docs/api/algorithms/comparing#compare-by
 pub func CompareBy<T>(left: T[..], right: T[..], compare: func(T, T) -> Ordering) -> Ordering {
-    let shorter = left.length < right.length ? left.length : right.length;
+    let shorter = if left.length < right.length { left.length } else { right.length };
     var index: uint = 0;
     while index < shorter {
         // Safety: `index` is below `shorter`, the smaller of the two lengths.

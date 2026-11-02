@@ -28,7 +28,7 @@ func ComputeResult(x: int) -> int ! int {
 
 func Main() -> int {
     let resSome = ComputeOption(5);
-    Assert(match resSome { v? => v == 20, none => false }, "ComputeOption(5) should be present with 20");
+    Assert(match resSome { .Some(v) => v == 20, none => false }, "ComputeOption(5) should be present with 20");
 
     let resNone = ComputeOption(-1);
     Assert(!(resNone is int), "ComputeOption(-1) should be absent");

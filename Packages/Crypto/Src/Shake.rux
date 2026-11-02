@@ -28,8 +28,8 @@ pub struct Shake {
 }
 
 extend Shake {
-    func Start(rate: uint) -> Shake {
-        var state: Shake;
+    func Start(rate: uint) -> Self {
+        var state: Self;
         var index: uint = 0;
         while index < 25 {
             state.lanes[index] = 0;
@@ -44,15 +44,15 @@ extend Shake {
     /// A SHAKE128 state: 128 bits of security, absorbing 168 bytes at a time.
     /// @returns a SHAKE128 sponge, which produces output of any length
     /// @see https://rux-lang.dev/docs/api/crypto/shake#new-128
-    pub func New128() -> Shake {
-        return Shake::Start(168);
+    pub func New128() -> Self {
+        return Self::Start(168);
     }
 
     /// A SHAKE256 state: 256 bits of security, absorbing 136 bytes at a time.
     /// @returns a SHAKE256 sponge, which produces output of any length
     /// @see https://rux-lang.dev/docs/api/crypto/shake#new-256
-    pub func New256() -> Shake {
-        return Shake::Start(136);
+    pub func New256() -> Self {
+        return Self::Start(136);
     }
 
     /// Absorbs `bytes` into the state.
@@ -61,7 +61,7 @@ extend Shake {
     /// ignores such a call rather than corrupting the stream.
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/shake#update
-    pub func Update(self: &var Shake, bytes: char8[..]) {
+    pub func Update(&var self, bytes: char8[..]) {
         if self.reading { return; }
         var index: uint = 0;
         while index < bytes.length {
@@ -79,7 +79,7 @@ extend Shake {
     }
 
     // Applies the padding and permutes, after which the state is a stream to be read.
-    func BeginReading(self: &var Shake) {
+    func BeginReading(&var self) {
         // 0x1F is the SHAKE domain separator, where SHA-3 uses 0x06 — one byte, and the only thing keeping the
         // two families' outputs apart.
         let lane = self.position / 8u;
@@ -99,7 +99,7 @@ extend Shake {
     /// The first read applies the padding, after which `Update` does nothing.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/shake#read
-    pub func Read(self: &var Shake, into: var char8[..]) {
+    pub func Read(&var self, into: var char8[..]) {
         if !self.reading {
             self.BeginReading();
         }
@@ -122,7 +122,7 @@ extend Shake {
     /// How many bytes the state absorbs or squeezes before permuting.
     /// @returns how many bytes the sponge absorbs or squeezes per permutation
     /// @see https://rux-lang.dev/docs/api/crypto/shake#rate
-    pub func Rate(self: &Shake) -> uint {
+    pub func Rate(&self) -> uint {
         return self.rate;
     }
 }

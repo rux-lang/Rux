@@ -29,7 +29,7 @@ struct Scale {
 }
 
 extend Scale {
-    func Apply(self: &Scale, value: int256) -> int256 {
+    func Apply(&self, value: int256) -> int256 {
         return self.factor * value;
     }
 }

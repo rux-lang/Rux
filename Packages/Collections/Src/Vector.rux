@@ -45,9 +45,6 @@ pub struct Vector<T> {
 }
 
 extend Vector<T> {
-    /// Copying a vector would give two owners of one allocation and its elements.
-    func =(self: &var Vector<T>, other: &Vector<T>);
-
     /// An empty vector that has not allocated anything.
     /// `allocator` is borrowed for the call and kept. Costs nothing: a vector that is never pushed to never
     /// allocates, which is what makes one cheap to have and to return.
@@ -55,8 +52,8 @@ extend Vector<T> {
     /// @param allocator where the storage comes from
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/vector#new
-    pub func Vector(allocator: Allocator) -> Vector<T> {
-        return Vector<T> { data: null, length: 0, capacity: 0, allocator: allocator };
+    pub func Vector(allocator: Allocator) -> Self {
+        return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
     /// An empty vector with room for `capacity` elements already taken.
@@ -66,13 +63,13 @@ extend Vector<T> {
     /// @param capacity how many elements to make room for
     /// @returns an empty vector with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/vector#with-capacity
-    pub func WithCapacity(allocator: Allocator, capacity: uint) -> Vector<T> {
+    pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
         var vector = Vector<T>(allocator);
         if capacity == 0 {
-            return <-vector;
+            return move vector;
         }
         vector.Grow(capacity);
-        return <-vector;
+        return move vector;
     }
 
     /// A vector holding a copy of every element of `items`, in order.
@@ -82,10 +79,10 @@ extend Vector<T> {
     /// @param items the elements to take
     /// @returns a vector holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/vector#from-slice
-    pub func FromSlice(allocator: Allocator, items: T[..]) -> Vector<T> {
+    pub func FromSlice(allocator: Allocator, items: T[..]) -> Self {
         var vector = Vector<T>(allocator);
         if items.length == 0 {
-            return <-vector;
+            return move vector;
         }
 
         vector.Grow(items.length);
@@ -97,7 +94,7 @@ extend Vector<T> {
             index++;
         }
         vector.length = items.length;
-        return <-vector;
+        return move vector;
     }
 
     /// An independent vector holding a copy of every element of this one.
@@ -108,7 +105,7 @@ extend Vector<T> {
     /// be had; `TryClone` reports that instead.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/vector#clone
-    pub func Clone(self: &Vector<T>) -> Vector<T> {
+    pub func Clone(&self) -> Self {
         return Vector::FromSlice<T>(self.allocator, self.AsSlice());
     }
 
@@ -116,7 +113,7 @@ extend Vector<T> {
     /// `self` is borrowed and left alone, whether or not the copy is made. Copies exactly as `Clone` does.
     /// @returns an independent copy, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-clone
-    pub func TryClone(self: &Vector<T>) -> Vector<T> throws AllocError {
+    pub func TryClone(&self) -> Self throws AllocError {
         var vector = Vector<T>(self.allocator);
         try vector.TryReserve(self.length);
         vector.PushSlice(self.AsSlice());
@@ -127,7 +124,7 @@ extend Vector<T> {
     /// `self` is borrowed.
     /// @returns how many elements it holds
     /// @see https://rux-lang.dev/docs/api/collections/vector#length
-    pub func Length(self: &Vector<T>) -> uint {
+    pub func Length(&self) -> uint {
         return self.length;
     }
 
@@ -135,7 +132,7 @@ extend Vector<T> {
     /// `self` is borrowed. Never below the length, and never reduced except by `ShrinkToFit`.
     /// @returns how many elements fit before the next growth
     /// @see https://rux-lang.dev/docs/api/collections/vector#capacity
-    pub func Capacity(self: &Vector<T>) -> uint {
+    pub func Capacity(&self) -> uint {
         return self.capacity;
     }
 
@@ -143,29 +140,32 @@ extend Vector<T> {
     /// `self` is borrowed. A vector with capacity and no elements is empty: capacity is not length.
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/vector#is-empty
-    pub func IsEmpty(self: &Vector<T>) -> bool {
+    pub func IsEmpty(&self) -> bool {
         return self.length == 0;
     }
 
     // Grows the storage to hold at least `required` elements, leaving a vector that is already large enough alone.
     // Internal: `Reserve` is the public way to ask for room, because it counts from the current length rather than
     // from zero, which is what a caller about to append that many actually means.
-    func TryGrow(self: &var Vector<T>, required: uint) throws AllocError {
+    func TryGrow(&var self, required: uint) throws AllocError {
         if required <= self.capacity { return; }
 
         let capacity = try GrowCapacity(self.capacity, required, MinimumVectorCapacity, sizeof(T));
 
         // Into a local first. A failed reallocation leaves the original block valid and the vector's own, so writing
         // the result straight into the field would drop the only pointer to the elements on failure.
-        let resized = try self.data == null ? TryAllocateBlock<T>(self.allocator, capacity)
-                                            : TryReallocateBlock<T>(self.allocator, self.data, self.capacity, capacity);
+        let resized = try if self.data == null {
+            TryAllocateBlock<T>(self.allocator, capacity)
+        } else {
+            TryReallocateBlock<T>(self.allocator, self.data, self.capacity, capacity)
+        };
 
         self.data = resized;
         self.capacity = capacity;
     }
 
     // `TryGrow`, terminating the program when the storage cannot be had.
-    func Grow(self: &var Vector<T>, required: uint) {
+    func Grow(&var self, required: uint) {
         try self.TryGrow(required) catch { error => AllocationFailed(error) };
     }
 
@@ -175,7 +175,7 @@ extend Vector<T> {
     /// `additional` cannot be represented; `TryReserve` reports both instead.
     /// @param additional how many more elements to make room for
     /// @see https://rux-lang.dev/docs/api/collections/vector#reserve
-    pub func Reserve(self: &var Vector<T>, additional: uint) {
+    pub func Reserve(&var self, additional: uint) {
         try self.TryReserve(additional) catch { error => AllocationFailed(error) };
     }
 
@@ -187,7 +187,7 @@ extend Vector<T> {
     /// @param additional how many more elements to make room for
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-reserve
-    pub func TryReserve(self: &var Vector<T>, additional: uint) throws AllocError {
+    pub func TryReserve(&var self, additional: uint) throws AllocError {
         try self.TryGrow(AddLength(self.length, additional));
     }
 
@@ -195,7 +195,7 @@ extend Vector<T> {
     /// `self` is borrowed mutably. A vector with nothing in it gives up its storage entirely and becomes as cheap as
     /// a new one. Terminates the program when the allocator refuses to move the elements into the smaller block.
     /// @see https://rux-lang.dev/docs/api/collections/vector#shrink-to-fit
-    pub func ShrinkToFit(self: &var Vector<T>) {
+    pub func ShrinkToFit(&var self) {
         if self.capacity == self.length { return; }
         if self.length == 0 {
             if self.data != null {
@@ -215,7 +215,7 @@ extend Vector<T> {
     /// `self` is borrowed mutably. The vector is empty afterwards and can be refilled without allocating again.
     /// Runs in time proportional to the length.
     /// @see https://rux-lang.dev/docs/api/collections/vector#clear
-    pub func Clear(self: &var Vector<T>) {
+    pub func Clear(&var self) {
         self.Truncate(0);
     }
 
@@ -227,7 +227,7 @@ extend Vector<T> {
     /// Runs in time proportional to how many elements go.
     /// @param length how many elements
     /// @see https://rux-lang.dev/docs/api/collections/vector#truncate
-    pub func Truncate(self: &var Vector<T>, length: uint) {
+    pub func Truncate(&var self, length: uint) {
         if length >= self.length { return; }
         var index = length;
         while index < self.length {
@@ -235,7 +235,7 @@ extend Vector<T> {
             // uses, and the only one a container has for an element it does not know is droppable.
             // Safety: the vector invariant: `index < self.length`, checked by the loop, so the element is
             // initialized; each is moved out once, and the length drops below all of them right after.
-            unsafe { let taken <- self.data[index]; }
+            unsafe { let taken = move self.data[index]; }
             index++;
         }
         self.length = length;
@@ -246,7 +246,7 @@ extend Vector<T> {
     /// elements go first and the block second, since an element destroyed after its storage was released would be
     /// read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/vector#destructor
-    func ~Vector(self: &var Vector<T>) {
+    func ~Vector(&var self) {
         self.Truncate(0);
         if self.data != null {
             ReleaseBlock<T>(self.allocator, self.data, self.capacity);
@@ -261,7 +261,7 @@ extend Vector<T> {
     /// Amortized constant time: the doubling is what spreads the cost of growing across the appends that caused it.
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/vector#push
-    pub func Push(self: &var Vector<T>, value: T) {
+    pub func Push(&var self, value: T) {
         try self.TryPush(move value) catch { error => AllocationFailed(error) };
     }
 
@@ -272,13 +272,13 @@ extend Vector<T> {
     /// @param value the value to act on
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-push
-    pub func TryPush(self: &var Vector<T>, value: T) throws AllocError {
+    pub func TryPush(&var self, value: T) throws AllocError {
         if self.length == self.capacity {
             try self.TryGrow(AddLength(self.length, 1));
         }
         // Safety: the vector invariant: `length < capacity` now, checked or grown above, so the slot is allocated and
         // holds nothing yet.
-        unsafe { self.data[self.length] <- value; }
+        unsafe { self.data[self.length] = move value; }
         self.length = self.length + 1;
     }
 
@@ -287,7 +287,7 @@ extend Vector<T> {
     /// appends every element or terminates the program before appending any.
     /// @param items the elements to take
     /// @see https://rux-lang.dev/docs/api/collections/vector#push-slice
-    pub func PushSlice(self: &var Vector<T>, items: T[..]) {
+    pub func PushSlice(&var self, items: T[..]) {
         if items.length == 0 { return; }
         self.Reserve(items.length);
         var index: uint = 0;
@@ -306,13 +306,13 @@ extend Vector<T> {
     /// The storage is kept, so a vector emptied this way costs nothing to refill.
     /// @returns the removed element, or `none` when the vector is empty
     /// @see https://rux-lang.dev/docs/api/collections/vector#pop
-    pub func Pop(self: &var Vector<T>) -> T? {
+    pub func Pop(&var self) -> T? {
         if self.length == 0 { return none; }
         self.length = self.length - 1;
         // Safety: the vector invariant: the element at the old last index is initialized, and it is now outside
         // `length`, so nothing destroys it again once it is moved out.
-        let removed <- unsafe { <-self.data[self.length] };
-        return .Some(<-removed);
+        let removed = unsafe { move self.data[self.length] };
+        return .Some(move removed);
     }
 
     /// The element at `index`, or `none` when there is no such index.
@@ -320,7 +320,7 @@ extend Vector<T> {
     /// @param index which one, counting from zero
     /// @returns a copy of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector#get
-    pub func Get(self: &Vector<T>, index: uint) -> T? {
+    pub func Get(&self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
         return .Some(unsafe { self.data[index] });
@@ -332,7 +332,7 @@ extend Vector<T> {
     /// @param index which one, counting from zero
     /// @returns a reference to the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector#at
-    pub func At(self: &Vector<T>, index: uint) -> &T? {
+    pub func At(&self, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
         unsafe { return self.data[index]; }
@@ -343,7 +343,7 @@ extend Vector<T> {
     /// @param index which one, counting from zero
     /// @returns a writable reference to the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector#at-mutable
-    pub func AtMutable(self: &var Vector<T>, index: uint) -> &var T? {
+    pub func AtMutable(&var self, index: uint) -> &var T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
         unsafe { return self.data[index]; }
@@ -357,14 +357,14 @@ extend Vector<T> {
     /// @param value the element to store
     /// @returns nothing when the element was written, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/vector#set
-    pub func Set(self: &var Vector<T>, index: uint, value: T) -> ! CollectionError {
+    pub func Set(&var self, index: uint, value: T) -> ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized; the
         // slot emptied by the move is refilled at once.
         unsafe {
-            let previous <- self.data[index];
-            self.data[index] <- value;
+            let previous = move self.data[index];
+            self.data[index] = move value;
         }
         return;
     }
@@ -377,14 +377,14 @@ extend Vector<T> {
     /// @param value the element to store
     /// @returns the element that was at `index`, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/vector#replace
-    pub func Replace(self: &var Vector<T>, index: uint, value: T) -> T ! CollectionError {
+    pub func Replace(&var self, index: uint, value: T) -> T ! CollectionError {
         if index >= self.length { fail CollectionError::IndexOutOfRange; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized; the
         // slot emptied by the move is refilled at once.
         unsafe {
-            let previous <- self.data[index];
-            self.data[index] <- value;
-            return <-previous;
+            let previous = move self.data[index];
+            self.data[index] = move value;
+            return move previous;
         }
     }
 
@@ -393,7 +393,7 @@ extend Vector<T> {
     /// The view is valid until the vector grows, shrinks, or is destroyed.
     /// @returns the elements, borrowed
     /// @see https://rux-lang.dev/docs/api/collections/vector#as-slice
-    pub func AsSlice(self: &Vector<T>) -> T[..] {
+    pub func AsSlice(&self) -> T[..] {
         // Safety: the vector invariant: the first `length` elements of `data` are initialized.
         return unsafe { (self.data)[..self.length] };
     }
@@ -403,7 +403,7 @@ extend Vector<T> {
     /// The view is valid until the vector grows, shrinks, or is destroyed.
     /// @returns the elements, borrowed for writing
     /// @see https://rux-lang.dev/docs/api/collections/vector#as-mutable-slice
-    pub func AsMutableSlice(self: &var Vector<T>) -> var T[..] {
+    pub func AsMutableSlice(&var self) -> var T[..] {
         // Safety: the vector invariant: the first `length` elements of `data` are initialized.
         return unsafe { (self.data)[..self.length] };
     }
@@ -413,7 +413,7 @@ extend Vector<T> {
     /// The vector must not grow or shrink while the iterator is alive.
     /// @returns a cursor yielding copies of the elements
     /// @see https://rux-lang.dev/docs/api/collections/vector#iterate
-    pub func Iterate(self: &Vector<T>) -> ValueIterator<T> {
+    pub func Iterate(&self) -> ValueIterator<T> {
         return ValueIterator<T>(self.AsSlice());
     }
 
@@ -421,7 +421,7 @@ extend Vector<T> {
     /// `self` is borrowed and must outlive the iterator.
     /// @returns a cursor yielding the elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/vector#references
-    pub func References(self: &Vector<T>) -> ReferenceIterator<T> {
+    pub func References(&self) -> ReferenceIterator<T> {
         return ReferenceIterator<T>(self.AsSlice());
     }
 
@@ -430,7 +430,7 @@ extend Vector<T> {
     /// move the vector while any of them is in use, and coordinate aliases that access the same elements.
     /// @returns a cursor yielding writable element addresses
     /// @see https://rux-lang.dev/docs/api/collections/vector#mutable-references
-    pub func MutableReferences(self: &var Vector<T>) -> MutableReferenceIterator<T> {
+    pub func MutableReferences(&var self) -> MutableReferenceIterator<T> {
         return MutableReferenceIterator<T>(self.AsMutableSlice());
     }
 
@@ -444,10 +444,10 @@ extend Vector<T> {
     /// @param value the value to act on
     /// @returns nothing when the element was inserted, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/vector#insert
-    pub func Insert(self: &var Vector<T>, index: uint, value: T) -> ! CollectionError {
+    pub func Insert(&var self, index: uint, value: T) -> ! CollectionError {
         if index > self.length { fail CollectionError::IndexOutOfRange; }
         if index == self.length {
-            self.Push(<-value);
+            self.Push(move value);
             return;
         }
 
@@ -457,11 +457,11 @@ extend Vector<T> {
         while position > index {
             // Safety: the vector invariant: `position <= self.length < capacity` after `Reserve(1)`, so both slots
             // are allocated and `position - 1` holds an initialized element, moved one place along.
-            unsafe { self.data[position] <- self.data[position - 1]; }
+            unsafe { self.data[position] = move self.data[position - 1]; }
             position = position - 1;
         }
         // Safety: `index < self.length`, checked above, and its element has just moved one place along.
-        unsafe { self.data[index] <- value; }
+        unsafe { self.data[index] = move value; }
         self.length = self.length + 1;
         return;
     }
@@ -474,19 +474,19 @@ extend Vector<T> {
     /// @param index which one, counting from zero
     /// @returns the element removed, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector#remove-at
-    pub func RemoveAt(self: &var Vector<T>, index: uint) -> T? {
+    pub func RemoveAt(&var self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
-        let removed <- unsafe { <-self.data[index] };
+        let removed = unsafe { move self.data[index] };
         var position = index;
         while position + 1 < self.length {
             // Safety: the vector invariant: `position + 1 < self.length`, checked by the loop, so the element there
             // is initialized; it moves back into the slot emptied by the previous move.
-            unsafe { self.data[position] <- self.data[position + 1]; }
+            unsafe { self.data[position] = move self.data[position + 1]; }
             position = position + 1;
         }
         self.length = self.length - 1;
-        return .Some(<-removed);
+        return .Some(move removed);
     }
 
     /// Takes the element at `index` out and moves the last one into its place.
@@ -498,25 +498,25 @@ extend Vector<T> {
     /// @param index which one, counting from zero
     /// @returns the element removed, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector#swap-remove-at
-    pub func SwapRemoveAt(self: &var Vector<T>, index: uint) -> T? {
+    pub func SwapRemoveAt(&var self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
-        let removed <- unsafe { <-self.data[index] };
+        let removed = unsafe { move self.data[index] };
         let last = self.length - 1;
         if index != last {
             // Safety: the vector invariant: `last` is the final initialized element, moved into the slot emptied
             // above.
-            unsafe { self.data[index] <- self.data[last]; }
+            unsafe { self.data[index] = move self.data[last]; }
         }
         self.length = last;
-        return .Some(<-removed);
+        return .Some(move removed);
     }
 
     /// The first element, borrowed where it sits, or `none` for an empty vector.
     /// `self` stays borrowed while the reference is in use.
     /// @returns a reference to the first element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/vector#first
-    pub func First(self: &Vector<T>) -> &T? {
+    pub func First(&self) -> &T? {
         return self.At(0);
     }
 
@@ -524,7 +524,7 @@ extend Vector<T> {
     /// `self` stays borrowed while the reference is in use.
     /// @returns a reference to the last element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/vector#last
-    pub func Last(self: &Vector<T>) -> &T? {
+    pub func Last(&self) -> &T? {
         if self.length == 0 { return none; }
         return self.At(self.length - 1);
     }
@@ -537,7 +537,7 @@ extend Vector<T> {
     /// @param count how many elements
     /// @returns that run of elements, borrowed; empty when the range is out of bounds
     /// @see https://rux-lang.dev/docs/api/collections/vector#slice
-    pub func Slice(self: &Vector<T>, start: uint, count: uint) -> T[..] {
+    pub func Slice(&self, start: uint, count: uint) -> T[..] {
         if start >= self.length || count == 0 { return []; }
         var taken = count;
         let available = self.length - start;
@@ -556,7 +556,7 @@ extend Vector<T> {
     /// @param count how many elements
     /// @returns that run borrowed for writing; empty when the range is out of bounds
     /// @see https://rux-lang.dev/docs/api/collections/vector#mutable-slice-of
-    pub func MutableSliceOf(self: &var Vector<T>, start: uint, count: uint) -> var T[..] {
+    pub func MutableSliceOf(&var self, start: uint, count: uint) -> var T[..] {
         if start >= self.length || count == 0 { return []; }
         var taken = count;
         let available = self.length - start;
@@ -575,11 +575,11 @@ extend Vector<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns a cursor that consumes the vector as it goes
     /// @see https://rux-lang.dev/docs/api/collections/vector#into-iterator
-    pub func IntoIterator(self: Vector<T>) -> VectorIntoIterator<T> {
+    pub func IntoIterator(self) -> VectorIntoIterator<T> {
         // Into a local first, and emptied before it goes out of scope. The receiver is a live binding until the
         // function ends, so a vector left holding the pointer would have its destructor release the very storage the
         // iterator was just handed.
-        var vector <- self;
+        var vector = move self;
         let taken = VectorIntoIterator<T> {
             data: vector.data,
             length: vector.length,
@@ -590,7 +590,7 @@ extend Vector<T> {
         vector.data = null;
         vector.length = 0;
         vector.capacity = 0;
-        return <-taken;
+        return move taken;
     }
 
     /// Copies the elements into a fixed-length array.
@@ -599,7 +599,7 @@ extend Vector<T> {
     /// program when the storage cannot be had.
     /// @returns an array holding a copy of the elements
     /// @see https://rux-lang.dev/docs/api/collections/vector#to-array
-    pub func ToArray(self: &Vector<T>) -> Array<T> {
+    pub func ToArray(&self) -> Array<T> {
         return Array::FromSlice<T>(self.allocator, self.AsSlice());
     }
 
@@ -610,15 +610,15 @@ extend Vector<T> {
     /// to impossible, since it asks for less than the block already holds.
     /// @returns an array taking the vector's storage rather than copying it
     /// @see https://rux-lang.dev/docs/api/collections/vector#into-array
-    pub func IntoArray(self: Vector<T>) -> Array<T> {
-        var vector <- self;
+    pub func IntoArray(self) -> Array<T> {
+        var vector = move self;
         vector.ShrinkToFit();
 
         let taken = Array<T> { data: vector.data, length: vector.length, allocator: vector.allocator };
         vector.data = null;
         vector.length = 0;
         vector.capacity = 0;
-        return <-taken;
+        return move taken;
     }
 }
 
@@ -643,19 +643,16 @@ pub struct VectorIntoIterator<T> {
 }
 
 extend VectorIntoIterator<T> {
-    /// Copying a consuming iterator would give two owners of its storage.
-    func =(self: &var VectorIntoIterator<T>, other: &VectorIntoIterator<T>);
-
     /// Destroys whatever was not yielded and releases the storage.
     /// Runs when the iterator's life ends. Everything already yielded belongs to whoever took it and is not touched
     /// here, which is what makes stopping part-way through safe.
     /// @see https://rux-lang.dev/docs/api/collections/vector#vector-into-iterator-destructor
-    func ~VectorIntoIterator(self: &var VectorIntoIterator<T>) {
+    func ~VectorIntoIterator(&var self) {
         var index = self.position;
         while index < self.length {
             // Safety: the vector invariant carried over from the vector: elements from `position` to `length` are
             // initialized and not yet yielded; each is moved out once, and the block is released right after.
-            unsafe { let taken <- self.data[index]; }
+            unsafe { let taken = move self.data[index]; }
             index++;
         }
         if self.data != null {
@@ -674,14 +671,14 @@ extend VectorIntoIterator<T> : Iterator {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/vector#vector-into-iterator-next
-    pub func Next(self: &var VectorIntoIterator<T>) -> T? {
+    pub func Next(&var self) -> T? {
         if self.position >= self.length { return none; }
         // Safety: the vector invariant carried over from the vector: `position < length`, checked above, so the
         // element is initialized and not yet yielded; `position` moves past it at once.
         unsafe {
-            let taken <- self.data[self.position];
+            let taken = move self.data[self.position];
             self.position = self.position + 1;
-            return .Some(<-taken);
+            return .Some(move taken);
         }
     }
 }

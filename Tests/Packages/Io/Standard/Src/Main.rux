@@ -20,14 +20,14 @@ func Main() -> int {
 
     // A write to standard output takes the bytes and says so.
     let line = TextBytes("standard streams under test\n");
-    WriteAll(out, line) catch { else => Panic("the write is taken in full") };
-    let taken = out.Write(TextBytes("")) catch { else => Panic("an empty write succeeds") };
+    WriteAll(out, line) catch { _ => Panic("the write is taken in full") };
+    let taken = out.Write(TextBytes("")) catch { _ => Panic("an empty write succeeds") };
     Assert(taken == 0, "an empty write is nothing and succeeds");
-    out.Flush() catch { else => Panic("and flush holds nothing back") };
+    out.Flush() catch { _ => Panic("and flush holds nothing back") };
 
     // Standard error is the same contract on the other stream.
     WriteAll(errStream, TextBytes("a report belongs on standard error\n")) catch {
-        else => Panic("stderr takes its bytes")
+        _ => Panic("stderr takes its bytes")
     };
 
     // The handle is a plain byte Writer, so the buffered writer stacks on it unchanged.
@@ -35,13 +35,13 @@ func Main() -> int {
     let allocator: Allocator = system;
     let sink: Writer = out;
     var buffered = BufferedWriter::New(allocator, sink, 64) catch {
-        else => Panic("the buffered writer takes its buffer")
+        _ => Panic("the buffered writer takes its buffer")
     };
-    let piece = buffered.Write(TextBytes("buffered ")) catch { else => Panic("a piece is gathered") };
+    let piece = buffered.Write(TextBytes("buffered ")) catch { _ => Panic("a piece is gathered") };
     Assert(piece == 9, "and taken whole");
-    let another = buffered.Write(TextBytes("through the standard stream\n")) catch { else => Panic("and another") };
+    let another = buffered.Write(TextBytes("through the standard stream\n")) catch { _ => Panic("and another") };
     Assert(another == 28, "also whole");
-    buffered.Flush() catch { else => Panic("and the flush sends them") };
+    buffered.Flush() catch { _ => Panic("and the flush sends them") };
 
     return 0;
 }

@@ -41,7 +41,7 @@ pub func ParseChar(str: char8[..]) -> char32 ! ParseError {
     if str.length == 0 { fail ParseError::Empty; }
     var scalar = 0u32 as char32;
     var width: uint = 0;
-    let decoded = DecodeAt(str, 0) catch { else => return .Failure(ParseError::InvalidCharacter(0)) };
+    let decoded = DecodeAt(str, 0) catch { _ => return .Failure(ParseError::InvalidCharacter(0)) };
     scalar = decoded.scalar;
     width = decoded.width;
     if width != str.length { fail ParseError::InvalidCharacter(width); }

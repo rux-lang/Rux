@@ -13,7 +13,7 @@ func Main() -> int {
     Assert((optNone ?? 100) == 100, "?? should return fallback 100");
 
     let val = match optSome {
-        v? => v,
+        .Some(v) => v,
         none => 0
     };
     Assert(val == 42, "match on optSome should be 42");

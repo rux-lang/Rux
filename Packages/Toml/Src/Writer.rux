@@ -40,7 +40,7 @@ struct TomlPath {
 }
 
 extend TomlPath {
-    func Append(self: &var TomlPath, bytes: char8[..]) -> bool {
+    func Append(&var self, bytes: char8[..]) -> bool {
         if self.length + bytes.length > self.room.length { return false; }
         var index: uint = 0;
         while index < bytes.length {
@@ -53,7 +53,7 @@ extend TomlPath {
         return true;
     }
 
-    func Bytes(self: &TomlPath) -> char8[..] {
+    func Bytes(&self) -> char8[..] {
         // Safety: `self.length` only ever holds a length `Append` accepted or an earlier such length, so it is at
         // most `self.room.length`.
         return unsafe { (self.room.data)[..self.length] };
@@ -129,7 +129,7 @@ func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> ! FormatError 
 }
 
 func HexDigit(value: uint8) -> uint8 {
-    return value < 10 ? 0x30 + value : 0x41 + value - 10;
+    return if value < 10 { 0x30 + value } else { 0x41 + value - 10 };
 }
 
 // A key, bare where TOML allows it and quoted where it does not.
@@ -154,7 +154,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
-        let parsed = ParseFloat64(rendered) catch { else => 0.0 };
+        let parsed = ParseFloat64(rendered) catch { _ => 0.0 };
         if parsed == value {
             significant = 18;
         }
@@ -184,7 +184,7 @@ func EmitInteger(writer: &var TextWriter, value: int64) -> ! FormatError {
     var length: uint = 0;
     var negative = value < 0;
     // The most negative integer has no positive counterpart, so the magnitude is taken unsigned.
-    var rest = negative ? ~value.Truncate<uint64>() + 1 : value as uint64;
+    var rest = if negative { ~value.Truncate<uint64>() + 1 } else { value as uint64 };
     if rest == 0 {
         storage[0] = c8'0';
         length = 1;
@@ -246,8 +246,8 @@ func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
     if kind != TomlKind::OffsetDateTime { return .Success(()); }
     let seconds = value.offset.TotalSeconds();
     if seconds == 0 { return EmitByte(writer, 0x5A); }
-    let magnitude = seconds < 0 ? -seconds : seconds;
-    EmitByte(writer, seconds < 0 ? 0x2D : 0x2B)?;
+    let magnitude = if seconds < 0 { -seconds } else { seconds };
+    EmitByte(writer, if seconds < 0 { 0x2D } else { 0x2B })?;
     EmitPadded(writer, (magnitude / 3600) as uint32, 2)?;
     EmitByte(writer, 0x3A)?;
     return EmitPadded(writer, ((magnitude % 3600) / 60) as uint32, 2);
@@ -257,7 +257,7 @@ func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
 // this way is written inline, because inside an array TOML has no other spelling for one.
 func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
     let kind = value.Kind();
-    if kind == TomlKind::Boolean { return Emit(writer, value.boolean ? "true" : "false"); }
+    if kind == TomlKind::Boolean { return Emit(writer, if value.boolean { "true" } else { "false" }); }
     if kind == TomlKind::Integer { return EmitInteger(writer, value.integer); }
     if kind == TomlKind::Float { return EmitFloat(writer, value.number); }
     if kind == TomlKind::Text { return EmitBasicString(writer, value.AsText().Bytes()); }
@@ -328,9 +328,9 @@ func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bo
         // is also the only whitespace this writer ever produces.
         EmitByte(writer, 0x0A)?;
     }
-    Emit(writer, array ? "[[" : "[")?;
+    Emit(writer, if array { "[[" } else { "[" })?;
     Emit(writer, path.Bytes())?;
-    Emit(writer, array ? "]]" : "]")?;
+    Emit(writer, if array { "]]" } else { "]" })?;
     return EmitByte(writer, 0x0A);
 }
 
@@ -386,13 +386,13 @@ func PathTooLong() -> ! FormatError {
 
 // A key appended to the header path, in the form a header would spell it.
 func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> ! FormatError {
-    if IsBareKey(name) { return path.Append(name) ? .Success(()) : PathTooLong(); }
+    if IsBareKey(name) { return if path.Append(name) { .Success(()) } else { PathTooLong() }; }
     var storage: char8[512];
     // Safety: `storage` is a local array of 512 bytes.
     var cursor = ByteCursor(unsafe { (@storage[0])[..512] });
     let quoted: &var TextWriter = cursor;
     EmitBasicString(quoted, name)?;
-    return path.Append(cursor.Written()) ? .Success(()) : PathTooLong();
+    return if path.Append(cursor.Written()) { .Success(()) } else { PathTooLong() };
 }
 
 /// Writes `table` as a TOML document.

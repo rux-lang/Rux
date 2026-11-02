@@ -30,7 +30,7 @@ func FirstText(text: char8[..]) -> String {
     let token = lexer.Next();
     var bad = false;
     let span = lexer.TextOf(token);
-    return TomlDecodeText(allocator, span, token.form, @bad) catch { else => Panic("the text token decodes") };
+    return TomlDecodeText(allocator, span, token.form, @bad) catch { _ => Panic("the text token decodes") };
 }
 
 func Same(value: &String, expected: char8[..]) -> bool {
@@ -181,7 +181,7 @@ func Main() -> int {
     var surrogateBad = false;
     let surrogateSpan = surrogateLexer.TextOf(surrogate);
     var surrogateText = TomlDecodeText(allocator, surrogateSpan, surrogate.form, @surrogateBad) catch {
-        else => Panic("an undecodable escape is reported through the flag, not as a storage failure")
+        _ => Panic("an undecodable escape is reported through the flag, not as a storage failure")
     };
     Assert(surrogateBad, "an escaped surrogate names no scalar value");
 
