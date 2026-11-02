@@ -275,6 +275,11 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         if (unary->op == TokenKind::At) {
             RejectSubsetViewUse(*unary->operand, unary->location, "have its address taken");
+            // A reference stands for its referent wherever it is used, so its address is the referent's, writable
+            // through a `&var`; the reference itself has no address a program can name.
+            if (operandType->kind == TypeRef::Kind::Reference && !operandType->inner.empty()) {
+                return TypeRef::MakePointer(operandType->inner.front());
+            }
             checkingPlainAssignmentTarget = true;
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);
             checkingPlainAssignmentTarget = savedAssignmentTarget;

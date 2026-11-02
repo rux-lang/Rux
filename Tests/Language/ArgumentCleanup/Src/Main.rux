@@ -1,0 +1,95 @@
+// A call evaluates its arguments left to right and owns none of them until it starts. When a later argument leaves
+// the call's evaluation -- a throw to a handler or to the caller, `?` on a missing value -- the owned arguments already
+// evaluated belong to nobody, so they are destroyed on the way out, last first, exactly once. A value moved into an
+// argument, a consumed receiver and every argument of a nested call count the same way.
+
+import Core::Assert;
+
+var drops: int = 0;
+var order: int = 0;
+
+struct Tracked {
+    value: int;
+}
+
+extend Tracked {
+    func ~Tracked(&var self) {
+        drops += 1;
+        order = order * 10 + self.value;
+    }
+
+    func Consume(self, extra: int) -> int {
+        return self.value + extra;
+    }
+}
+
+func Parse(value: int) -> int throws int {
+    if value < 0 { throw value; }
+    return value;
+}
+
+func Positive(value: int) -> int? {
+    if value < 0 { return none; }
+    return value;
+}
+
+func Take(first: Tracked, value: int) -> int {
+    return first.value + value;
+}
+
+func Both(first: Tracked, second: Tracked, value: int) -> int {
+    return first.value + second.value + value;
+}
+
+func Thrown(value: int) -> int throws int {
+    return Take(Tracked { value: 1 }, try Parse(value));
+}
+
+func Moved(value: int) -> int throws int {
+    let kept = Tracked { value: 1 };
+    return Take(move kept, try Parse(value));
+}
+
+func Receiver(value: int) -> int throws int {
+    return Tracked { value: 1 }.Consume(try Parse(value));
+}
+
+func Handled(value: int) -> int {
+    return try Both(Tracked { value: 1 }, Tracked { value: 2 }, Parse(value)) catch { error => error };
+}
+
+func Nested(value: int) -> int throws int {
+    return Take(Tracked { value: 1 }, Take(Tracked { value: 2 }, try Parse(value)));
+}
+
+func Missing(value: int) -> int? {
+    return Take(Tracked { value: 1 }, Positive(value)?);
+}
+
+func Reset() {
+    drops = 0;
+    order = 0;
+}
+
+func Main() -> int {
+    Assert((try Thrown(-1) catch { error => error }) == -1 && drops == 1, "a temporary argument is destroyed");
+    Reset();
+    Assert((try Thrown(2) catch { error => error }) == 3 && drops == 1, "the callee destroys it otherwise");
+    Reset();
+    Assert((try Moved(-1) catch { error => error }) == -1 && drops == 1, "a value moved into an argument");
+    Reset();
+    Assert((try Moved(2) catch { error => error }) == 3 && drops == 1, "a moved value, once otherwise");
+    Reset();
+    Assert((try Receiver(-1) catch { error => error }) == -1 && drops == 1, "a consumed receiver");
+    Reset();
+    Assert(Handled(-1) == -1 && drops == 2 && order == 21, "two arguments to a handler, last first");
+    Reset();
+    Assert(Handled(1) == 4 && drops == 2, "two arguments, once otherwise");
+    Reset();
+    Assert((try Nested(-1) catch { error => error }) == -1 && drops == 2 && order == 21, "a nested call's arguments");
+    Reset();
+    Assert(Missing(-1) is none && drops == 1, "'?' on a missing value");
+    Reset();
+    Assert(Missing(1) == .Some(2) && drops == 1, "'?' on a present value");
+    return 0;
+}

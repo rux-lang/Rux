@@ -221,7 +221,7 @@ void HirToLirContext::PushPartialCleanupFrame(const std::vector<HirFailureCleanu
             break;
         }
         }
-        frame.push_back({action.glueSymbol, address});
+        frame.push_back({.glueSymbol = action.glueSymbol, .address = address, .value = LirNoReg, .type = {}});
     }
     partialCleanupFrames.push_back(std::move(frame));
 }
@@ -239,7 +239,7 @@ void HirToLirContext::EmitPartialCleanupsInsideLoop(const std::uint32_t target) 
     const std::size_t base = depth == loopPartialDepths.end() ? partialCleanupFrames.size() : depth->second;
     for (std::size_t frame = partialCleanupFrames.size(); frame > base; --frame) {
         for (const PendingPartialCleanup &cleanup : partialCleanupFrames[frame - 1]) {
-            EmitDropGlueCall(cleanup.glueSymbol, cleanup.address);
+            EmitPartialCleanup(cleanup);
         }
     }
 }
@@ -247,9 +247,19 @@ void HirToLirContext::EmitPartialCleanupsInsideLoop(const std::uint32_t target) 
 void HirToLirContext::EmitActivePartialCleanups() {
     for (auto frame = partialCleanupFrames.rbegin(); frame != partialCleanupFrames.rend(); ++frame) {
         for (const PendingPartialCleanup &cleanup : *frame) {
-            EmitDropGlueCall(cleanup.glueSymbol, cleanup.address);
+            EmitPartialCleanup(cleanup);
         }
     }
+}
+
+void HirToLirContext::EmitPartialCleanup(const PendingPartialCleanup &cleanup) {
+    if (cleanup.value == LirNoReg) {
+        EmitDropGlueCall(cleanup.glueSymbol, cleanup.address);
+        return;
+    }
+    const LirReg slot = EmitAlloca(cleanup.type);
+    EmitStore(cleanup.value, slot, cleanup.type);
+    EmitDropGlueCall(cleanup.glueSymbol, slot);
 }
 
 /// The flag slot for one binding, created on first mention.

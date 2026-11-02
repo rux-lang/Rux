@@ -1,0 +1,24 @@
+// A generic body is checked once for its type parameters, and the checks that depend on what a parameter stands for
+// run again for each instantiation. There `sizeof(T)` names the type parameter, never a type the program happens to
+// call `T`: Core's `MinimumOf` shifts by `sizeof(T) * 8 - 1`, which for `int16` is 15, whatever this module's own
+// `T` is.
+
+import Core::{ Assert, MaximumOf, MinimumOf, int16 };
+
+struct T {
+    wide: int;
+}
+
+func Width<U>(sample: U) -> uint {
+    return sizeof(U) * 8;
+}
+
+func Main() -> int {
+    let unused = T { wide: 0 };
+    Assert(unused.wide == 0, "this module's own type named 'T'");
+    Assert(MinimumOf<int16>(0) == -32768i16, "the minimum of int16");
+    Assert(MaximumOf<int16>(0) == 32767i16, "the maximum of int16");
+    Assert(MinimumOf<int8>(0i8) == -128i8, "the minimum of int8");
+    Assert(Width<int16>(0) == 16u && Width(0u8) == 8u, "a type parameter's own size");
+    return 0;
+}

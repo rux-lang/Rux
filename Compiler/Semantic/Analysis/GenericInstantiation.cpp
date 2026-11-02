@@ -281,9 +281,19 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
         }
 
         const PendingGenericInstantiation *savedInstantiation = std::exchange(activeInstantiation, &instantiation);
+        // A deferred check that reads a type written in the body, such as the `sizeof(T)` in a shift count, resolves
+        // it from the declaration's module scope. There a parameter's name is no parameter at all, and found any type
+        // the program happens to call `T`, whose layout then stood in for the type argument's.
+        std::vector<std::string> parameters;
+        parameters.reserve(instantiation.substitutions.size());
+        for (const auto &[name, type] : instantiation.substitutions) {
+            parameters.push_back(name);
+        }
+        std::vector<std::string> savedParameters = std::exchange(currentTypeParams, std::move(parameters));
         ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
         ValidateDeferredAtomicChecks(*instantiation.decl, instantiation.substitutions);
         ValidateDeferredPatternChecks(*instantiation.decl, instantiation.substitutions);
+        currentTypeParams = std::move(savedParameters);
         activeInstantiation = savedInstantiation;
         if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
             for (const DeferredGenericCall &call : it->second) {

@@ -401,6 +401,10 @@ LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
         return EmitLoad(ptr, e.type);
     }
     case TK::At: {
+        // A reference's value is its referent's address, which is the address `@` names.
+        if (e.operand->type->kind == TypeRef::Kind::Reference) {
+            return LowerExpr(*e.operand);
+        }
         return LowerLValue(*e.operand);
     }
     case TK::PlusPlus:
@@ -964,8 +968,25 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
 
     std::vector<LirReg> argRegs;
     argRegs.reserve(e.args.size());
+    // An argument that leaves the call's evaluation early -- a throw to a handler or the caller, `?`, `?? return` --
+    // leaves the owned arguments evaluated before it to nobody, so they are destroyed on the way out, last first.
+    std::vector<PendingPartialCleanup> completed;
     for (const auto &arg : e.args) {
+        const bool framed = !completed.empty();
+        if (framed) {
+            partialCleanupFrames.emplace_back(completed.rbegin(), completed.rend());
+        }
         argRegs.push_back(LowerArgument(*arg));
+        if (framed) {
+            PopPartialCleanupFrame();
+        }
+        if (argRegs.back() == LirNoReg || IsTerminated()) {
+            continue;
+        }
+        if (const auto glue = dropGlueSymbols.find(arg->type.ToString()); glue != dropGlueSymbols.end()) {
+            completed.push_back(
+                {.glueSymbol = glue->second, .address = LirNoReg, .value = argRegs.back(), .type = arg->type});
+        }
     }
     const LirReg dst = e.type.IsOpaque() ? LirNoReg : NewReg();
     LirInstr ci;

@@ -56,6 +56,9 @@ private:
     struct PendingPartialCleanup {
         std::string glueSymbol;
         LirReg address = LirNoReg;
+        /// A call argument already evaluated is a value with no storage: the cleanup spills it to destroy it.
+        LirReg value = LirNoReg;
+        TypeRef type;
     };
 
     /// A binding inside a tuple or structure pattern, set only once every refutable part of the pattern has matched.
@@ -249,6 +252,7 @@ private:
                                  LirReg aggregateSlot);
     void PopPartialCleanupFrame();
     void EmitActivePartialCleanups();
+    void EmitPartialCleanup(const PendingPartialCleanup &cleanup);
     /// Destroys the completed parts of the aggregates a jump to the loop block `target` leaves unfinished.
     void EmitPartialCleanupsInsideLoop(std::uint32_t target);
 

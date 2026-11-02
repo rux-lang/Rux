@@ -1,0 +1,41 @@
+// A reference stands for its referent wherever it is used, so `@` of a reference -- a parameter, a receiver or a local
+// alias -- is the referent's address, typed `*T`, or `*var T` through `&var T`. The reference itself has no address a
+// program can name.
+
+import Core::Assert;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+extend Point {
+    func Where(&self) -> *Point {
+        return @self;
+    }
+}
+
+func AddressOf(point: &Point) -> *Point {
+    return @point;
+}
+
+func Shift(point: &var Point) {
+    let raw: *var Point = @point;
+    // Safety: `raw` is the address of the caller's writable point, which outlives this call.
+    unsafe {
+        raw.x += 10;
+    }
+}
+
+func Main() -> int {
+    var point = Point { x: 1, y: 2 };
+    let direct: *Point = @point;
+    Assert(AddressOf(point) == direct, "a reference parameter");
+    Assert(point.Where() == direct, "a reference receiver");
+    let alias: &Point = point;
+    let local = @alias;
+    Assert(local == direct, "a local alias");
+    Shift(point);
+    Assert(point.x == 11, "a write through the address of a '&var' parameter");
+    return 0;
+}
