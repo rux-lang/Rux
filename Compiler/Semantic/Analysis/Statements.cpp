@@ -825,7 +825,10 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
     bool returnAccepted = false;
     if (value) {
         if (!currentReturnType.IsUnknown() && !currentReturnType.IsOpaque()) {
-            expectedExpressionTypes.insert_or_assign(value, currentReturnType);
+            // A function that throws returns its success, so that is the type a returned case or literal takes.
+            const bool throwsSuccess = currentReturnType.IsFallible() && !currentReturnType.FallibleSuccess().IsUnknown();
+            expectedExpressionTypes.insert_or_assign(value, throwsSuccess ? currentReturnType.FallibleSuccess()
+                                                                          : currentReturnType);
         }
         TypeRef valueType = CheckExpr(*value);
         // A function returning a reference returns one derived from what its signature borrows; a value that is not

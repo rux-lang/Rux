@@ -12,6 +12,13 @@ func Store(value: int) -> Result<int, int> {
     return try .Success(Half(value)) catch { error => .Failure(error) };
 }
 
+// A function that throws returns its success, so a returned case takes the success type as its expected type.
+func Checked(value: int) -> Result<int, int> throws bool {
+    if value < 0 { throw true; }
+    if value % 2 != 0 { return .Failure(value); }
+    return .Success(value / 2);
+}
+
 func Main() -> int {
     let resSuccess: Result<int, int> = .Success(42);
     let resError: Result<int, int> = .Failure(500);
@@ -35,5 +42,8 @@ func Main() -> int {
 
     Assert(Store(8) is .Success(4), "a returned value is stored as a success");
     Assert(Store(7) is .Failure(7), "a thrown error is stored as a failure");
+    Assert((try Checked(8) catch { _ => .Failure(0) }) is .Success(4), "a returned case takes the success type");
+    Assert((try Checked(3) catch { _ => .Failure(0) }) is .Failure(3), "on either path");
+    Assert((try? Checked(-1)) is none, "while the error still leaves through 'throws'");
     return 0;
 }
