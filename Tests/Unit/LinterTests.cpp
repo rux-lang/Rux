@@ -55,6 +55,21 @@ TEST_CASE("linter warns on bad function name") {
     CHECK(result.diagnostics[0].help == "rename it to 'BadName'");
 }
 
+TEST_CASE("linter leaves the hidden variable of a for pattern alone and checks the names it binds") {
+    auto result = Rux::Linting::Lint(R"(
+        func Main() -> int {
+            var total = 0;
+            for (word, Bad_count) in [("one", 1), ("two", 2)] {
+                total += Bad_count;
+            }
+            return total;
+        }
+    )",
+                                     "for_pattern.rux");
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics[0].message == "pattern binding name 'Bad_count' should be camelCase");
+}
+
 TEST_CASE("linter accepts symbolic operator function names") {
     auto result = Rux::Linting::Lint(R"(
         extend Number {

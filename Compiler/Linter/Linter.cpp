@@ -35,6 +35,12 @@ bool IsPascalCase(std::string_view name) {
     return true;
 }
 
+// Every identifier a program can spell starts with a letter or an underscore, so a name starting with anything else
+// is one the compiler made up, such as `<for item 3:5>` for the hidden variable of a `for` over a pattern.
+bool IsCompilerGeneratedName(const std::string_view name) {
+    return !name.empty() && !std::isalpha(static_cast<unsigned char>(name.front())) && name.front() != '_';
+}
+
 bool IsCamelCase(std::string_view name) {
     if (name.empty()) {
         return false;
@@ -392,6 +398,11 @@ private:
 
     void WarnNaming(const SourceLocation loc, const std::string_view description, const std::string_view name,
                     const NamingConvention convention, const std::span<const std::string> names) {
+        // A name the compiler made up, such as the hidden variable `for (key, value) in pairs` binds, is spelled so no
+        // identifier can collide with it; nobody wrote it, so nobody can rename it.
+        if (IsCompilerGeneratedName(name)) {
+            return;
+        }
         auto suggestion = NormalizeName(name, convention);
         if (suggestion && SuggestionCollides(name, *suggestion, convention, names)) {
             suggestion.reset();
