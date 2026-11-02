@@ -26,7 +26,8 @@ func Main() -> int {
     let key = 7;
     let value = 2.5;
     Expect(allocator, try? Render(allocator, "{key} = {value}"), "7 = 2.5", "two bindings");
-    Expect(allocator, try? Render(allocator, "{key} = {value}"), Rendered(allocator, try? Render(allocator, "{} = {}", key, value)),
+    Expect(allocator, try? Render(allocator, "{key} = {value}"),
+           Rendered(allocator, try? Render(allocator, "{} = {}", key, value)),
            "as the positional call");
 
     let point = Point { x: 3, y: -4 };

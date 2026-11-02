@@ -134,7 +134,8 @@ func Main() -> int {
     let stored = RoundTrip(repeated.AsSlice(), Format::Raw, Level::Store);
     let fastest = RoundTrip(repeated.AsSlice(), Format::Raw, Level::Fastest);
     let best = RoundTrip(repeated.AsSlice(), Format::Raw, Level::Best);
-    Assert(stored > repeated.Length() && fastest != 0u && fastest < repeated.Length() / 20u, "repeated text compresses");
+    Assert(stored > repeated.Length() && fastest != 0u && fastest < repeated.Length() / 20u,
+           "repeated text compresses");
     Assert(best <= fastest, "the best level is no larger than the fastest");
     let proseFastest = RoundTrip(prose.AsSlice(), Format::Raw, Level::Fastest);
     let proseBest = RoundTrip(prose.AsSlice(), Format::Raw, Level::Best);

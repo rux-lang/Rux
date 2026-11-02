@@ -184,7 +184,8 @@ func Main() -> int {
     Assert(start.Plus(1i64, 2i32, byte) == 46i64, "a primitive's variadic method widens its elements");
 
     // A parameter with a default value.
-    Assert(total.Scaled(3i128) == 106i128 && total.Scaled(3i128, 3i128) == 109i128, "a default fills an omitted argument");
+    Assert(total.Scaled(3i128) == 106i128 && total.Scaled(3i128, 3i128) == 109i128,
+           "a default fills an omitted argument");
 
     // Through an interface and through a bound.
     Assert(ThroughInterface(total, word) == 102i128, "an interface method collects the arguments after its fixed ones");

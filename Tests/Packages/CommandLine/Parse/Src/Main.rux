@@ -94,7 +94,8 @@ func Main() -> int {
         Flag("dry-run", '\0', "Do nothing")
     ];
     let positionals: PositionalSpec[2] = [Required("input", "What to read"), Remaining("files", "More to read")];
-    let tool = Command("tool", "Does things").WithVersion("1.2.3").WithOptions(options[..]).WithPositionals(positionals[..]);
+    let tool = Command("tool",
+                       "Does things").WithVersion("1.2.3").WithOptions(options[..]).WithPositionals(positionals[..]);
 
     // The plainest call.
     var plain = NewLine();

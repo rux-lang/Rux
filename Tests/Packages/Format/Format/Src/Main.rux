@@ -212,7 +212,8 @@ func PropagationCases(allocator: Allocator) {
     let failed: Result<(), FormatError> = try .Success(WriteFormat(sink, "head {} tail", refusing)) catch {
         error => .Failure(error),
     };
-    Assert(failed is .Failure(_) && calls == 2 && writer.Length() == 12, "writer failure stops after the accepted prefix");
+    Assert(failed is .Failure(_) && calls == 2 && writer.Length() == 12,
+           "writer failure stops after the accepted prefix");
     let written = StringView::FromValidated(writer.Written());
     let wanted = StringView::FromValidated("head partial");
     Assert(written.Equals(wanted), "direct writing retains the exact bytes accepted before the refusal");

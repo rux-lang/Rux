@@ -92,7 +92,8 @@ func Main() -> int {
     Assert(squares == 14, "1 + 4 + 9");
 
     var total = Total { sum: 0 };
-    Assert(Drain(Map(Counter { at: 0, end: 5 }, Square), total) == 5u && total.sum == 30, "a source drained into a sink");
+    Assert(Drain(Map(Counter { at: 0, end: 5 }, Square), total) == 5u && total.sum == 30,
+           "a source drained into a sink");
     Assert(Drain(Map(Letters { at: 0 }, Code), total) == 3u && total.sum == 30 + 97 + 98 + 99,
            "a type conforms by having the method");
 

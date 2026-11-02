@@ -52,7 +52,8 @@ func Main() -> int {
     when #target.os == .Windows {
         broken[1] = 0xD800 as OsUnit;
     }
-    if !Shown(CommandLineError::UnexpectedArgument(OsStringView::FromUnits(broken[..])), "unexpected argument 'a\u{FFFD}'") {
+    if !Shown(CommandLineError::UnexpectedArgument(OsStringView::FromUnits(broken[..])),
+              "unexpected argument 'a\u{FFFD}'") {
         return 9;
     }
     return 0;

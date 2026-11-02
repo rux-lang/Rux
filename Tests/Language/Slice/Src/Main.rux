@@ -87,7 +87,8 @@ func Main() -> int {
            "startless slice should contain [10, 20, 30]");
 
     let toInclusive: ..=int = ..=3;
-    Assert(ToInclusiveEnd(RoundTrip<..=int>(toInclusive)) == 3, "Inclusive ranges with an end should be accepted by typed APIs");
+    Assert(ToInclusiveEnd(RoundTrip<..=int>(toInclusive)) == 3,
+           "Inclusive ranges with an end should be accepted by typed APIs");
     let toInclusiveValues: int[..] = values[toInclusive];
     Assert(toInclusiveValues.length == 4 && toInclusiveValues[0] == 10 && toInclusiveValues[3] == 40,
            "inclusive startless slice should contain [10, 20, 30, 40]");

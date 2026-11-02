@@ -98,7 +98,8 @@ func Make8() -> B8 {
 }
 
 func TakeSix(value: B6) {
-    Assert(!value.f0 && value.f1 && !value.f2 && value.f3 && !value.f4 && value.f5, "a six-byte struct arrives whole by value");
+    Assert(!value.f0 && value.f1 && !value.f2 && value.f3 && !value.f4 && value.f5,
+           "a six-byte struct arrives whole by value");
 }
 
 func Main() -> int {
@@ -122,7 +123,8 @@ func Main() -> int {
     // The assignment overwrites a value initialized to the exact opposite pattern, so a partial copy shows.
     var copied = B6 { f0: true, f1: false, f2: true, f3: false, f4: true, f5: false };
     copied = s6;
-    Assert(!copied.f0 && copied.f1 && !copied.f2 && copied.f3 && !copied.f4 && copied.f5, "a six-byte struct assigns whole");
+    Assert(!copied.f0 && copied.f1 && !copied.f2 && copied.f3 && !copied.f4 && copied.f5,
+           "a six-byte struct assigns whole");
     TakeSix(s6);
     return 0;
 }

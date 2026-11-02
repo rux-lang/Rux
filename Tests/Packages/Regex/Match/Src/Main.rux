@@ -109,8 +109,10 @@ func Main() -> int {
     Assert(Refuses("\\p{Klingon}", RegexErrorKind::UnknownProperty, 0) &&
            Refuses("\\p{Block=Greek}", RegexErrorKind::UnknownProperty, 0), "unknown scripts and properties");
     Assert(Finds("(?i)[\u{212A}]", "k", 0, 1) && Finds("(?i)[\u{17F}]", "S", 0, 1), "classes match every case form");
-    Assert(Finds("(?i)[\u{3C2}]", "\u{3A3}", 0, 2) && Finds("(?i)[\u{1E9E}]", "\u{DF}", 0, 2), "including sigmas and sharp s");
-    Assert(Finds("(?i)[\u{1C5}]", "\u{1C6}", 0, 2) && Finds("(?i)[\u{3B8}]", "\u{3F4}", 0, 2), "titlecase and theta forms");
+    Assert(Finds("(?i)[\u{3C2}]", "\u{3A3}", 0, 2) && Finds("(?i)[\u{1E9E}]", "\u{DF}", 0, 2),
+           "including sigmas and sharp s");
+    Assert(Finds("(?i)[\u{1C5}]", "\u{1C6}", 0, 2) && Finds("(?i)[\u{3B8}]", "\u{3F4}", 0, 2),
+           "titlecase and theta forms");
     Assert(FindsNothing("[\u{212A}]", "k"), "but only when case is ignored");
     Assert(Finds("a(?i:b)c", "aBc", 0, 3) && FindsNothing("a(?i:b)c", "aBC"), "scoped flags");
     Assert(Finds(".", "\u{1F600}", 0, 4), "`.` is one character, not one byte");
@@ -122,7 +124,8 @@ func Main() -> int {
 
     // Captures.
     let date = Compiled("(?<year>\\d{4})-(?P<month>\\d{2})-(\\d{2})");
-    Assert(date.GroupCount() == 3u && (date.GroupIndex("month") ?? 0u) == 2u && date.GroupIndex("day") == none, "groups");
+    Assert(date.GroupCount() == 3u && (date.GroupIndex("month") ?? 0u) == 2u && date.GroupIndex("day") == none,
+           "groups");
     let captured = date.Capture("date: 2026-10-10.");
     match move captured {
         .Some(groups) => {
@@ -219,7 +222,8 @@ func Main() -> int {
     Assert(Finds("\\bab\\b", "................................................................................xab ab", 84, 86),
            "word boundaries on both sides of a long search");
     Assert(Finds("(?m)^b", "................................................................................a\nb", 82, 83) &&
-           Finds("(?m)a$", "................................................................................a\nb", 80, 81),
+           Finds("(?m)a$", "................................................................................a\nb", 80,
+                 81),
            "line anchors through the DFA");
     Assert(FindsNothing("\\Ax", pad) && Finds("\\.\\z", pad, 79, 80), "text anchors through the DFA");
     Assert(Finds("\\w+\\d", "................................................................................ab9 cd", 80, 83) &&

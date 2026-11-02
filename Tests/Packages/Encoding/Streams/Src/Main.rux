@@ -119,8 +119,10 @@ func Main() -> int {
             for chunk in chunks[..] {
                 var capture = Capture { bytes: [c8' '; 512], length: 0 };
                 Assert(Streamed(codec, data[..length], chunk, @capture), "the stream writes");
-                Assert(Same(capture.bytes[..capture.length], expected[..whole]), "streamed text matches the slice encoder");
-                Assert(Decodes(codec, expected[..whole], chunk, data[..length]), "streamed decoding gives the bytes back");
+                Assert(Same(capture.bytes[..capture.length], expected[..whole]),
+                       "streamed text matches the slice encoder");
+                Assert(Decodes(codec, expected[..whole], chunk, data[..length]),
+                       "streamed decoding gives the bytes back");
             }
         }
     }

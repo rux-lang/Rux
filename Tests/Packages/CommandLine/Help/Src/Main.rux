@@ -33,7 +33,8 @@ func Main() -> int {
         Flag("dry-run", '\0', "Do nothing")
     ];
     let positionals: PositionalSpec[2] = [Required("input", "What to read"), Remaining("files", "More to read")];
-    let tool = Command("tool", "Does things").WithVersion("1.2.3").WithOptions(options[..]).WithPositionals(positionals[..]);
+    let tool = Command("tool",
+                       "Does things").WithVersion("1.2.3").WithOptions(options[..]).WithPositionals(positionals[..]);
     let toolHelp = "Does things\n\nUsage: tool [options] <input> [files...]\n\nArguments:\n  <input>     What to read\n  [files...]  More to read\n\nOptions:\n  -v, --verbose        Say more\n  -o, --output <FILE>  Where to write\n      --dry-run        Do nothing\n  -h, --help           Print this help\n  -V, --version        Print the version\n";
     if !HelpIs(tool, toolHelp) { return 1; }
 

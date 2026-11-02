@@ -184,11 +184,15 @@ func Check64(n: uint64) {
     Assert(Quotient64_100000001(n) == n / Divisor64, "a 64-bit quotient by 4294967297 matches division");
     Assert(Remainder64_100000001(n) == n % Divisor64, "a 64-bit remainder by 4294967297 matches division");
     Divisor64 = (9223372036854775809u64);
-    Assert(Quotient64_8000000000000001(n) == n / Divisor64, "a 64-bit quotient by 9223372036854775809 matches division");
-    Assert(Remainder64_8000000000000001(n) == n % Divisor64, "a 64-bit remainder by 9223372036854775809 matches division");
+    Assert(Quotient64_8000000000000001(n) == n / Divisor64,
+           "a 64-bit quotient by 9223372036854775809 matches division");
+    Assert(Remainder64_8000000000000001(n) == n % Divisor64,
+           "a 64-bit remainder by 9223372036854775809 matches division");
     Divisor64 = (18446744073709551615u64);
-    Assert(Quotient64_FFFFFFFFFFFFFFFF(n) == n / Divisor64, "a 64-bit quotient by 18446744073709551615 matches division");
-    Assert(Remainder64_FFFFFFFFFFFFFFFF(n) == n % Divisor64, "a 64-bit remainder by 18446744073709551615 matches division");
+    Assert(Quotient64_FFFFFFFFFFFFFFFF(n) == n / Divisor64,
+           "a 64-bit quotient by 18446744073709551615 matches division");
+    Assert(Remainder64_FFFFFFFFFFFFFFFF(n) == n % Divisor64,
+           "a 64-bit remainder by 18446744073709551615 matches division");
     Divisor64 = (1099511627776u64);
     Assert(Quotient64_10000000000(n) == n / Divisor64, "a 64-bit quotient by 1099511627776 matches division");
     Assert(Remainder64_10000000000(n) == n % Divisor64, "a 64-bit remainder by 1099511627776 matches division");
@@ -253,14 +257,20 @@ func CheckSigned64(n: int64) {
     Assert(SignedQuotient64_281(n) == n / SignedDivisor64, "a signed 64-bit quotient by 641 matches division");
     Assert(SignedRemainder64_281(n) == n % SignedDivisor64, "a signed 64-bit remainder by 641 matches division");
     SignedDivisor64 = (1000000007i64);
-    Assert(SignedQuotient64_3B9ACA07(n) == n / SignedDivisor64, "a signed 64-bit quotient by 1000000007 matches division");
-    Assert(SignedRemainder64_3B9ACA07(n) == n % SignedDivisor64, "a signed 64-bit remainder by 1000000007 matches division");
+    Assert(SignedQuotient64_3B9ACA07(n) == n / SignedDivisor64,
+           "a signed 64-bit quotient by 1000000007 matches division");
+    Assert(SignedRemainder64_3B9ACA07(n) == n % SignedDivisor64,
+           "a signed 64-bit remainder by 1000000007 matches division");
     SignedDivisor64 = (9223372036854775807i64);
-    Assert(SignedQuotient64_7FFFFFFFFFFFFFFF(n) == n / SignedDivisor64, "a signed 64-bit quotient by 9223372036854775807 matches division");
-    Assert(SignedRemainder64_7FFFFFFFFFFFFFFF(n) == n % SignedDivisor64, "a signed 64-bit remainder by 9223372036854775807 matches division");
+    Assert(SignedQuotient64_7FFFFFFFFFFFFFFF(n) == n / SignedDivisor64,
+           "a signed 64-bit quotient by 9223372036854775807 matches division");
+    Assert(SignedRemainder64_7FFFFFFFFFFFFFFF(n) == n % SignedDivisor64,
+           "a signed 64-bit remainder by 9223372036854775807 matches division");
     SignedDivisor64 = (1099511627776i64);
-    Assert(SignedQuotient64_10000000000(n) == n / SignedDivisor64, "a signed 64-bit quotient by 1099511627776 matches division");
-    Assert(SignedRemainder64_10000000000(n) == n % SignedDivisor64, "a signed 64-bit remainder by 1099511627776 matches division");
+    Assert(SignedQuotient64_10000000000(n) == n / SignedDivisor64,
+           "a signed 64-bit quotient by 1099511627776 matches division");
+    Assert(SignedRemainder64_10000000000(n) == n % SignedDivisor64,
+           "a signed 64-bit remainder by 1099511627776 matches division");
     SignedDivisor64 = (1i64);
     Assert(SignedQuotient64_1(n) == n / SignedDivisor64, "a signed 64-bit quotient by 1 matches division");
     Assert(SignedRemainder64_1(n) == n % SignedDivisor64, "a signed 64-bit remainder by 1 matches division");
@@ -280,14 +290,20 @@ func CheckSigned64(n: int64) {
     Assert(SignedQuotient64_M8(n) == n / SignedDivisor64, "a signed 64-bit quotient by -8 matches division");
     Assert(SignedRemainder64_M8(n) == n % SignedDivisor64, "a signed 64-bit remainder by -8 matches division");
     SignedDivisor64 = (-1000000007i64);
-    Assert(SignedQuotient64_M3B9ACA07(n) == n / SignedDivisor64, "a signed 64-bit quotient by -1000000007 matches division");
-    Assert(SignedRemainder64_M3B9ACA07(n) == n % SignedDivisor64, "a signed 64-bit remainder by -1000000007 matches division");
+    Assert(SignedQuotient64_M3B9ACA07(n) == n / SignedDivisor64,
+           "a signed 64-bit quotient by -1000000007 matches division");
+    Assert(SignedRemainder64_M3B9ACA07(n) == n % SignedDivisor64,
+           "a signed 64-bit remainder by -1000000007 matches division");
     SignedDivisor64 = (-9223372036854775807i64);
-    Assert(SignedQuotient64_M7FFFFFFFFFFFFFFF(n) == n / SignedDivisor64, "a signed 64-bit quotient by -9223372036854775807 matches division");
-    Assert(SignedRemainder64_M7FFFFFFFFFFFFFFF(n) == n % SignedDivisor64, "a signed 64-bit remainder by -9223372036854775807 matches division");
+    Assert(SignedQuotient64_M7FFFFFFFFFFFFFFF(n) == n / SignedDivisor64,
+           "a signed 64-bit quotient by -9223372036854775807 matches division");
+    Assert(SignedRemainder64_M7FFFFFFFFFFFFFFF(n) == n % SignedDivisor64,
+           "a signed 64-bit remainder by -9223372036854775807 matches division");
     SignedDivisor64 = (-1099511627776i64);
-    Assert(SignedQuotient64_M10000000000(n) == n / SignedDivisor64, "a signed 64-bit quotient by -1099511627776 matches division");
-    Assert(SignedRemainder64_M10000000000(n) == n % SignedDivisor64, "a signed 64-bit remainder by -1099511627776 matches division");
+    Assert(SignedQuotient64_M10000000000(n) == n / SignedDivisor64,
+           "a signed 64-bit quotient by -1099511627776 matches division");
+    Assert(SignedRemainder64_M10000000000(n) == n % SignedDivisor64,
+           "a signed 64-bit remainder by -1099511627776 matches division");
 }
 
 func CheckSigned32(n: int32) {
@@ -304,8 +320,10 @@ func CheckSigned32(n: int32) {
     Assert(SignedQuotient32_10(n) == n / SignedDivisor32, "a signed 32-bit quotient by 16 matches division");
     Assert(SignedRemainder32_10(n) == n % SignedDivisor32, "a signed 32-bit remainder by 16 matches division");
     SignedDivisor32 = (2147483647i32);
-    Assert(SignedQuotient32_7FFFFFFF(n) == n / SignedDivisor32, "a signed 32-bit quotient by 2147483647 matches division");
-    Assert(SignedRemainder32_7FFFFFFF(n) == n % SignedDivisor32, "a signed 32-bit remainder by 2147483647 matches division");
+    Assert(SignedQuotient32_7FFFFFFF(n) == n / SignedDivisor32,
+           "a signed 32-bit quotient by 2147483647 matches division");
+    Assert(SignedRemainder32_7FFFFFFF(n) == n % SignedDivisor32,
+           "a signed 32-bit remainder by 2147483647 matches division");
     SignedDivisor32 = (-3i32);
     Assert(SignedQuotient32_M3(n) == n / SignedDivisor32, "a signed 32-bit quotient by -3 matches division");
     Assert(SignedRemainder32_M3(n) == n % SignedDivisor32, "a signed 32-bit remainder by -3 matches division");
@@ -313,8 +331,10 @@ func CheckSigned32(n: int32) {
     Assert(SignedQuotient32_M10(n) == n / SignedDivisor32, "a signed 32-bit quotient by -16 matches division");
     Assert(SignedRemainder32_M10(n) == n % SignedDivisor32, "a signed 32-bit remainder by -16 matches division");
     SignedDivisor32 = (-2147483647i32);
-    Assert(SignedQuotient32_M7FFFFFFF(n) == n / SignedDivisor32, "a signed 32-bit quotient by -2147483647 matches division");
-    Assert(SignedRemainder32_M7FFFFFFF(n) == n % SignedDivisor32, "a signed 32-bit remainder by -2147483647 matches division");
+    Assert(SignedQuotient32_M7FFFFFFF(n) == n / SignedDivisor32,
+           "a signed 32-bit quotient by -2147483647 matches division");
+    Assert(SignedRemainder32_M7FFFFFFF(n) == n % SignedDivisor32,
+           "a signed 32-bit remainder by -2147483647 matches division");
 }
 
 func CheckSigned8(n: int8) {

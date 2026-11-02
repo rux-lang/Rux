@@ -76,7 +76,8 @@ func Main() -> int {
     Assert(Holds(memory, "INFO  started user=ann n=-3 u=7 ok=true note=\"two words\" empty=\"\"\n"),
            "a text record with every kind of field");
     text.Warn("line one\nline two", [Field::Text("said", "say \"hi\"\t=")]);
-    Assert(Holds(memory, "WARN  line one\\nline two said=\"say \\\"hi\\\"\\t=\"\n"), "escapes keep a record on one line");
+    Assert(Holds(memory, "WARN  line one\\nline two said=\"say \\\"hi\\\"\\t=\"\n"),
+           "escapes keep a record on one line");
     text.Error("bare");
     Assert(Holds(memory, "ERROR bare\n"), "a record with no fields");
 

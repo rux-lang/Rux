@@ -159,7 +159,8 @@ func Main() -> int {
 
     var log = Log { count: 0i32, order: 0i64 };
     ReplaceInScope(@log);
-    Assert(log.count == 2i32 && log.order == 102i64, "the old value is destroyed at the write, the new one at scope end");
+    Assert(log.count == 2i32 && log.order == 102i64,
+           "the old value is destroyed at the write, the new one at scope end");
 
     log = Log { count: 0i32, order: 0i64 };
     CopyInScope(@log);

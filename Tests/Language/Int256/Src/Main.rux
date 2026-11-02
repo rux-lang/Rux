@@ -44,7 +44,8 @@ func Main() -> int {
     Assert((1i256 << 128) == 340282366920938463463374607431768211456i256, "a left shift moves a whole lane");
     Assert((1i256 << 192) >> 192 == 1i256, "a shift across three lanes and back");
     Assert((1i256 << 255) == int256::Min, "shifting into the sign bit gives the minimum");
-    Assert(negative >> 1 == -61728394506172839450617283945i256, "an arithmetic right shift halves toward negative infinity");
+    Assert(negative >> 1 == -61728394506172839450617283945i256,
+           "an arithmetic right shift halves toward negative infinity");
     Assert((-1i256 >>> 255) == 1i256, "a logical right shift brings in zeros at either signedness");
 
     Assert((int256::Max & 255i256) == 255i256, "bitwise and reaches the low lane");

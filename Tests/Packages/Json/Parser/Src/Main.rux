@@ -176,7 +176,8 @@ func Main() -> int {
     Refuses(allocator, "{\"a\":1,}", "JsonParseError::Unexpected(7)", "and in an object");
     // An unquoted name never reaches the parser: `a` begins no JSON token, so the lexer refuses it first and
     // the failure is reported as lexical. That is the more precise answer, not a weaker one.
-    Refuses(allocator, "{a:1}", "JsonParseError::Lexical(UnexpectedByte, 1)", "an unquoted member name is refused by the lexer");
+    Refuses(allocator, "{a:1}", "JsonParseError::Lexical(UnexpectedByte, 1)",
+            "an unquoted member name is refused by the lexer");
     Refuses(allocator, "[1 2]", "JsonParseError::Unexpected(3)", "a missing comma is refused");
     Refuses(allocator, "{\"a\" 1}", "JsonParseError::Unexpected(5)", "as is a missing colon");
     Refuses(allocator, "1 2", "JsonParseError::TrailingContent(2)", "two values are not one document");

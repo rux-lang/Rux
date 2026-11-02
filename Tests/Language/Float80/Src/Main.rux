@@ -294,7 +294,8 @@ func Main() -> int {
 
     // Integers in. A float80 holds every int64 and uint64 exactly, and rounds wider ones to 64 bits. On x86-64 a
     // signed integer of up to 64 bits is loaded by the x87 unit, and the others convert in software.
-    Assert(Same(FromInt8(-7i8), -7.0f80) && Same(FromInt32(-2147483648i32), -2147483648.0f80), "narrow signed integers");
+    Assert(Same(FromInt8(-7i8), -7.0f80) && Same(FromInt32(-2147483648i32), -2147483648.0f80),
+           "narrow signed integers");
     Assert(Same(FromInt64(-9223372036854775808i64), -9223372036854775808.0f80), "int64::Min is exact");
     Assert(Same(FromInt64(9223372036854775807i64), 9223372036854775807.0f80), "and so is int64::Max");
     Assert(Same(FromInt(-3), -3.0f80), "and an int");

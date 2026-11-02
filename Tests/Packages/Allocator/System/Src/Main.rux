@@ -35,7 +35,8 @@ func Main() throws AllocError {
     let single = Layout::ForValue<uint64>();
     Assert(single.size == 8 && single.alignment == 8, "a value's layout is its own size and alignment");
     let byteLayout = Layout::ForValue<ByteRun>();
-    Assert(byteLayout.size == 9 && byteLayout.alignment == 1, "alignment follows the type rather than a size heuristic");
+    Assert(byteLayout.size == 9 && byteLayout.alignment == 1,
+           "alignment follows the type rather than a size heuristic");
     let manyBytes = Layout::ForArray<ByteRun>(3) ?? odd;
     Assert(manyBytes.size == 27 && manyBytes.alignment == 1, "array storage keeps the element's alignment");
     let noBytes = Layout::ForArray<ByteRun>(0) ?? odd;
