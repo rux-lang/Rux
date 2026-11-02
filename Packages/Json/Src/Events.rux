@@ -116,10 +116,10 @@ const JsonStreamChunk: uint = 4096;
 
 extend JsonEventReader {
     /// A reader over `source` under `limits`.
+    /// Terminates the program when its first buffer cannot be allocated, as every owning buffer does.
     /// @param allocator where the storage comes from
     /// @param source the text to read
     /// @param limits the bounds the parse refuses to exceed
-    /// Terminates the program when its first buffer cannot be allocated, as every owning buffer does.
     /// @returns a reader positioned before the first event
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#constructor
     pub func JsonEventReader(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self {
