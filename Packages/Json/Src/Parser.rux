@@ -346,13 +346,13 @@ extend JsonParser {
                         // text, and the parser reported that as being out of memory — a caller sent to check the
                         // machine over a document that was wrong.
                         self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
-                        return builder.IntoString();
+                        return builder.TakeString();
                     }
                 }
                 else if scalar >= 0xDC00 && scalar <= 0xDFFF {
                     // A low surrogate with nothing before it. The same half a character, from the other end.
                     self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
-                    return builder.IntoString();
+                    return builder.TakeString();
                 }
                 try builder.AppendScalar(scalar as char32);
             }
@@ -380,7 +380,7 @@ extend JsonParser {
                 try builder.AppendAscii(replacement as char8);
             }
         }
-        return builder.IntoString();
+        return builder.TakeString();
     }
 
     // One value, whatever kind the next token opens.

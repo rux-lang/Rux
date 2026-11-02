@@ -5,7 +5,7 @@
 // The allocator is held as an interface value rather than a type parameter, so `Box<T>` has one parameter rather
 // than two and a container of boxes does not have to name which allocator each came from. The cost is one indirect
 // call per allocation and release, which against the cost of allocating is not a cost at all.
-// Construction takes the value by value, which means it is consumed. Running out of memory is fatal: `Create`
+// Construction takes the value by value, which means it is consumed. Running out of memory is fatal: `Box<T>(...)`
 // terminates the program when the allocator refuses, as every owning type here does. `TryCreate` is for the code that
 // can recover; it throws the `AllocError` instead, and the value is then destroyed rather than leaked. Either way
 // nothing half-built exists — there is no state in which a `Box` holds an allocation it cannot release.
@@ -38,7 +38,7 @@ extend Box<T> {
     /// @param value the value to move into it
     /// @returns the box
     /// @see https://rux-lang.dev/docs/api/allocator/box#create
-    pub func Create(allocator: Allocator, value: T) -> Self {
+    pub func Box(allocator: Allocator, value: T) -> Self {
         return try Box::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
     }
 

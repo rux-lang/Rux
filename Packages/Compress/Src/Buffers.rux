@@ -63,11 +63,11 @@ unsafe func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) th
         var capacity = if target.capacity == 0u { 4096u } else { target.capacity * 2u };
         while capacity < target.length + count { capacity = capacity * 2u; }
         var allocator = target.allocator;
-        let block = try allocator.Allocate(Layout::New(capacity, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded))
+        let block = try allocator.Allocate(Layout::Of(capacity, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded))
             catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
         if target.data != null {
             Copy(block, target.data as *opaque, target.length);
-            let layout = Layout::New(target.capacity, 1) ?? Layout::ForValue<uint8>();
+            let layout = Layout::Of(target.capacity, 1) ?? Layout::ForValue<uint8>();
             try allocator.Deallocate(target.data as *var opaque, layout) catch { _ => {} };
         }
         target.data = block as *var uint8;
@@ -93,7 +93,7 @@ unsafe func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byt
 unsafe func Release(gathered: *var Gathered) {
     if gathered.data == null { return; }
     var allocator = gathered.allocator;
-    let layout = Layout::New(gathered.capacity, 1) ?? Layout::ForValue<uint8>();
+    let layout = Layout::Of(gathered.capacity, 1) ?? Layout::ForValue<uint8>();
     try allocator.Deallocate(gathered.data as *var opaque, layout) catch { _ => {} };
     gathered.data = null;
 }
@@ -108,7 +108,7 @@ unsafe func Release(gathered: *var Gathered) {
 pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: Level = Level::Default)
     -> Vector<byte> throws IoError {
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
-    var writer = try CompressWriter::New(allocator, GatherSink { target: @gathered }, format, level);
+    var writer = try CompressWriter(allocator, GatherSink { target: @gathered }, format, level);
     var written: uint = 0;
     // Safety: `data` is readable for its length, and `byte` and `char8` are both single bytes.
     let text = unsafe { (data.data as *char8)[..data.length] };
@@ -144,7 +144,7 @@ pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vec
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
     // Safety: `data` is readable for its length, and `byte` and `char8` are both single bytes.
     let text = unsafe { (data.data as *char8)[..data.length] };
-    var reader = try DecompressReader::New(allocator, SliceSource { data: text, at: 0 }, format);
+    var reader = try DecompressReader(allocator, SliceSource { data: text, at: 0 }, format);
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
         let count = try reader.Read(chunk[..]) catch {

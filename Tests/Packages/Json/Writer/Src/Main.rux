@@ -16,7 +16,7 @@ func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome:
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
     outcome = (try? WriteValue(sink, value, style)) is .Some(_);
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 // Whether writing refused for the named reason. The failures are the ones every writer in this workspace reports
@@ -27,7 +27,7 @@ func RefusedAs(allocator: Allocator, value: &JsonValue, style: JsonStyle, expect
     let outcome: Result<(), FormatError> = try .Success(WriteValue(sink, value, style)) catch {
         error => .Failure(error),
     };
-    var discarded = builder.IntoString();
+    var discarded = builder.TakeString();
     return SameFailure(outcome, expected);
 }
 

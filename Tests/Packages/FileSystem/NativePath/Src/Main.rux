@@ -1,0 +1,74 @@
+// Every call that names a path copies it to the platform's NUL-terminated form, and the copy is owned: it is given
+// back when the call is done, whichever way the call ends. An allocator that counts what is out shows that a call
+// refused after the conversion, one that succeeds, and one refused before anything was converted all leave nothing
+// behind, and that nothing is given back twice.
+
+import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
+import Core::{ Assert, Panic };
+import Path::{ OsString, Path };
+import FileSystem::{ DeleteDirectory, MakeDirectory };
+
+// Everything mutable lives behind a pointer, since an interface adapter is copied.
+struct CountState {
+    inner: Allocator;
+    live: int32;
+    taken: int32;
+}
+
+struct CountingAllocator {
+    state: *var CountState;
+}
+
+extend CountingAllocator : Allocator {
+    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        let block = try (unsafe { self.state.inner.Allocate(layout) });
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        unsafe {
+            self.state.live = self.state.live + 1;
+            self.state.taken = self.state.taken + 1;
+        }
+        return block;
+    }
+
+    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        unsafe { try self.state.inner.Deallocate(block, layout); }
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        unsafe { self.state.live = self.state.live - 1; }
+    }
+
+    func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> *var opaque throws AllocError {
+        // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
+        return try unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
+    }
+}
+
+func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
+    holder = OsString::FromText(allocator, text);
+    return Path::FromView(holder.View());
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let base: Allocator = system;
+    var state = CountState { inner: base, live: 0, taken: 0 };
+    let counted: Allocator = CountingAllocator { state: @state };
+
+    // Refused by the platform after the path was converted: the parent does not exist.
+    var missingHolder = OsString(base);
+    let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", missingHolder);
+    Assert((try? MakeDirectory(counted, missing)) is none, "a directory under a missing parent is refused");
+    Assert(state.taken == 1, "after the path was converted");
+    Assert(state.live == 0, "and the converted path is given back exactly once");
+
+    // A call that succeeds gives its copy back too, and so does the one that undoes it.
+    var madeHolder = OsString(base);
+    let made = PathOf(base, "Bin/FileSystemNativePath.tmp", madeHolder);
+    try MakeDirectory(counted, made) catch { _ => Panic("a directory is made") };
+    Assert(state.live == 0, "a call that succeeds gives its copy back");
+    try DeleteDirectory(counted, made) catch { _ => Panic("and deleted") };
+    Assert(state.taken == 3 && state.live == 0, "and so does the call that undoes it");
+    return 0;
+}

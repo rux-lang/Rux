@@ -19,7 +19,7 @@ extend ByteReader {
     /// @param bytes the bytes to read, which must outlive the reader
     /// @returns the reader
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-reader-new
-    pub func New(bytes: char8[..]) -> Self {
+    pub func ByteReader(bytes: char8[..]) -> Self {
         return Self { bytes, position: 0 };
     }
 
@@ -100,7 +100,7 @@ extend ByteWriter {
     /// @param allocator where the storage comes from
     /// @returns the writer
     /// @see https://rux-lang.dev/docs/api/io/memory-stream#byte-writer-new
-    pub func New(allocator: Allocator) -> Self {
+    pub func ByteWriter(allocator: Allocator) -> Self {
         return Self { allocator, data: null, length: 0, capacity: 0, position: 0 };
     }
 

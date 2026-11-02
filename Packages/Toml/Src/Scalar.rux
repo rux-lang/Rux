@@ -491,7 +491,7 @@ func ReadDate(text: char8[..], at: uint, date: &var Date, stopped: &var uint) ->
         stopped = at + 7;
         return false;
     }
-    let made = Date::New(year as int32, month as uint8, day as uint8);
+    let made = Date::FromParts(year as int32, month as uint8, day as uint8);
     if !(made is Date) {
         // Four correct digit pairs that name no day. The month is where a reader has to look, since that is what
         // decides how many days there are.
@@ -559,7 +559,7 @@ func ReadTime(text: char8[..], at: uint, time: &var TimeOfDay, consumed: &var ui
         second = 59;
         nanosecond = 999999999;
     }
-    let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
+    let made = TimeOfDay::FromParts(hour as uint8, minute as uint8, second as uint8, nanosecond);
     if !(made is TimeOfDay) {
         stopped = at;
         return false;

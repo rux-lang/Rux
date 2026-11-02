@@ -206,14 +206,14 @@ func ParseDate(text: char8[..], at: *var uint) -> RuleDate throws TimeZoneError 
 
 // The day, counted from 1970-01-01, a rule date falls on in `year`.
 func RuleDay(date: &RuleDate, year: int32) -> int64 {
-    let january = (Date::New(year, 1, 1) ?? Date { year: 1970, month: 1, day: 1 }).DaysFromEpoch();
+    let january = (Date::FromParts(year, 1, 1) ?? Date { year: 1970, month: 1, day: 1 }).DaysFromEpoch();
     if date.kind == 0u8 {
         var day = date.day as int64 - 1i64;
         if IsLeapYear(year) && date.day >= 60u16 { day = day + 1i64; }
         return january + day;
     }
     if date.kind == 1u8 { return january + date.day as int64; }
-    let first = (Date::New(year, date.month, 1) ?? Date { year: 1970, month: 1, day: 1 }).DaysFromEpoch();
+    let first = (Date::FromParts(year, date.month, 1) ?? Date { year: 1970, month: 1, day: 1 }).DaysFromEpoch();
     // 1970-01-01 was a Thursday, day four of a week that starts on Sunday.
     let weekdayOfFirst = ((first % 7i64 + 7i64) % 7i64 + 4i64) % 7i64;
     var day = first + (date.weekday as int64 - weekdayOfFirst + 7i64) % 7i64 + (date.week as int64 - 1i64) * 7i64;

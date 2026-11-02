@@ -240,7 +240,7 @@ extend Regex {
     /// @param pattern the pattern, in the syntax `Regex` describes
     /// @returns the compiled pattern, or why it could not be compiled and where
     /// @see https://rux-lang.dev/docs/api/regex/regex#new
-    pub func New(allocator: Allocator, pattern: char8[..]) -> Self throws RegexError {
+    pub func Regex(allocator: Allocator, pattern: char8[..]) -> Self throws RegexError {
         var regex = Self {
             allocator,
             instructions: Vector<Instruction>(allocator),
@@ -454,7 +454,7 @@ extend Regex {
             count = count + 1;
         }
         builder.Append(text[last..text.length]);
-        return builder.IntoString();
+        return builder.TakeString();
     }
 
     // Appends what group `index` matched, if it did.
@@ -550,5 +550,5 @@ pub func Escape(allocator: Allocator, text: char8[..]) -> String {
         at = at + 1;
     }
     builder.Append(text[from..text.length]);
-    return builder.IntoString();
+    return builder.TakeString();
 }

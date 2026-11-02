@@ -22,7 +22,7 @@ extend Tracked {
 
 func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) throws AllocError {
     // A box accepts a move-only value.
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed, value: 91 });
+    var boxed = Box<Tracked>(allocator, Tracked { destroyed, value: 91 });
     let held = (boxed.Get() ?? Panic("the box was just filled")).value;
     // Safety: `destroyed` is the address of the caller's live counter.
     let destroyedCount = unsafe { *destroyed };
@@ -31,7 +31,7 @@ func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) throws AllocErro
 }
 
 func BoxAndTake(allocator: Allocator, destroyed: *var int32) throws AllocError {
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed, value: 27 });
+    var boxed = Box<Tracked>(allocator, Tracked { destroyed, value: 27 });
     let taken = boxed.Take() ?? Panic("a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
     // Safety: `destroyed` is the address of the live counter the caller passed in.
@@ -44,7 +44,7 @@ func Main() throws AllocError {
     let allocator: Allocator = system;
 
     // An ordinary box holds its value and lends it where it sits in the box's own storage.
-    var boxed = Box::Create<int64>(allocator, 42);
+    var boxed = Box<int64>(allocator, 42);
     Assert(!boxed.IsEmpty(), "the box holds a value");
     let given: int64 = boxed.Get() ?? Panic("the box holds a value");
     let slot = boxed.GetMutable() ?? Panic("the box holds a value");
@@ -61,7 +61,7 @@ func Main() throws AllocError {
     Assert(boxed.Take() is none, "and taking again reports that there is nothing");
 
     // A box of a value wider than a machine word, to exercise a layout that is not the default.
-    var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210);
+    var wide = Box<uint64>(allocator, 0xFEDCBA9876543210);
     let wideValue: uint64 = wide.Get() ?? Panic("the box was just filled");
     Assert(wideValue == 0xFEDCBA9876543210u64, "a wide box keeps every bit of its value");
 
@@ -69,14 +69,14 @@ func Main() throws AllocError {
     // before the loop finished, since the system allocator is page-granular.
     var index: int32 = 0;
     while index < 512 {
-        var scoped = Box::Create<int64>(allocator, index as int64);
+        var scoped = Box<int64>(allocator, index as int64);
         let scopedValue: int64 = scoped.Get() ?? Panic("the box was just filled");
         Assert(scopedValue == index as int64, "a scoped box holds what it was given");
         index = index + 1;
     }
 
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
-    var source = Box::Create<int64>(allocator, 7);
+    var source = Box<int64>(allocator, 7);
     var destination = move source;
     let movedValue: int64 = destination.Get() ?? Panic("the destination took over the filled box");
     Assert(movedValue == 7, "the destination holds the value");

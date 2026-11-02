@@ -99,7 +99,7 @@ extend TemporaryFile {
     /// @param prefix the text the generated name starts with
     /// @returns the created file, which is removed when closed unless kept
     /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#create
-    pub func Create(allocator: Allocator, directory: Path, prefix: char8[..]) -> Self throws IoError {
+    pub func TemporaryFile(allocator: Allocator, directory: Path, prefix: char8[..]) -> Self throws IoError {
         var options = OpenOptions();
         options.read = true;
         options.write = true;
@@ -192,7 +192,7 @@ extend TemporaryDirectoryHandle {
     /// @param prefix the text the generated name starts with
     /// @returns the created directory, which is removed when closed unless kept
     /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#create
-    pub func Create(allocator: Allocator, directory: Path, prefix: char8[..]) -> Self throws IoError {
+    pub func TemporaryDirectoryHandle(allocator: Allocator, directory: Path, prefix: char8[..]) -> Self throws IoError {
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
             var candidate = PathBuffer::FromPath(allocator, directory);

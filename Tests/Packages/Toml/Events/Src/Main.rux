@@ -3,19 +3,35 @@
 // It cannot refuse a table defined twice — that needs the tree it is avoiding — and pretending otherwise would
 // be worse than saying so.
 
-import Core::Assert;
+import Core::{ Assert, Panic };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader };
 
-// Whether the events of `text`, written as one letter each, are `expected`.
+// Whether the next event arrives and is `expected`.
+func Arrives(reader: &var TomlEventReader, expected: TomlEvent) -> bool {
+    let event = try reader.Next() catch { _ => return false };
+    return event is .Some(arrived) && arrived == expected;
+}
+
+// Whether the document ends at the next call, with nothing wrong.
+func Ends(reader: &var TomlEventReader) -> bool {
+    let event = try reader.Next() catch { _ => return false };
+    return event is none;
+}
+
+// Reads past one event, which must arrive.
+func Skip(reader: &var TomlEventReader) {
+    let event = try reader.Next() catch { _ => Panic("an event arrives") };
+    Assert(event is .Some(_), "an event arrives");
+}
+
+// How many events `text` produces before it ends or is refused.
 func Shape(text: char8[..]) -> uint {
     var reader = TomlEventReader(text);
     var count: uint = 0;
     while true {
-        let event = reader.Next();
-        if event == TomlEvent::End || event == TomlEvent::Error {
-            return count;
-        }
+        let event = try reader.Next() catch { _ => return count };
+        if event is none { return count; }
         count = count + 1;
     }
     return count;
@@ -27,14 +43,17 @@ func Shape(text: char8[..]) -> uint {
 func FailsWith(text: char8[..], into: var char8[..]) -> uint {
     var reader = TomlEventReader(text);
     while true {
-        let event = reader.Next();
-        if event == TomlEvent::End || event == TomlEvent::Error { break; }
+        let event = try reader.Next() catch {
+            failure => {
+                var writer = BufferWriter(into);
+                let sink: &var TextWriter = writer;
+                Assert((try? failure.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
+                return writer.Length();
+            },
+        };
+        if event is none { return 0; }
     }
-    let failure = reader.Failure() ?? return 0;
-    var writer = BufferWriter(into);
-    let sink: &var TextWriter = writer;
-    Assert((try? failure.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
-    return writer.Length();
+    return 0;
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -56,66 +75,65 @@ func Stops(text: char8[..], expected: char8[..]) -> bool {
 func Main() -> int {
     // A pair arrives as a key and then its value.
     var pair = TomlEventReader("title = \"TOML\"");
-    Assert(pair.Next() == TomlEvent::KeyStart, "a pair begins with its key");
-    Assert(pair.Next() == TomlEvent::KeyPart, "whose one part follows");
+    Assert(Arrives(pair, TomlEvent::KeyStart), "a pair begins with its key");
+    Assert(Arrives(pair, TomlEvent::KeyPart), "whose one part follows");
     Assert(pair.Span().length == 5, "spanning the key as written");
-    Assert(pair.Next() == TomlEvent::Text, "then the value");
+    Assert(Arrives(pair, TomlEvent::Text), "then the value");
     Assert(pair.Span().length == 4, "spanning the string without its quotes");
-    Assert(pair.Next() == TomlEvent::End, "and then the document is finished");
+    Assert(Ends(pair), "and then the document is finished");
 
     // A dotted key arrives as one part per name.
     var dotted = TomlEventReader("a.b.c = 1");
-    dotted.Next();
-    Assert(dotted.Next() == TomlEvent::KeyPart, "the first part");
-    Assert(dotted.Next() == TomlEvent::KeyPart, "the second");
-    Assert(dotted.Next() == TomlEvent::KeyPart, "and the third");
-    Assert(dotted.Next() == TomlEvent::Integer, "before the value");
+    Skip(dotted);
+    Assert(Arrives(dotted, TomlEvent::KeyPart), "the first part");
+    Assert(Arrives(dotted, TomlEvent::KeyPart), "the second");
+    Assert(Arrives(dotted, TomlEvent::KeyPart), "and the third");
+    Assert(Arrives(dotted, TomlEvent::Integer), "before the value");
 
     // A header opens, names its path, and closes.
     var header = TomlEventReader("[[a.b]]\nx = 1");
-    Assert(header.Next() == TomlEvent::HeaderStart, "a header opens");
+    Assert(Arrives(header, TomlEvent::HeaderStart), "a header opens");
     Assert(header.IsTableArray(), "and this one is the array spelling");
-    Assert(header.Next() == TomlEvent::KeyPart, "with its parts");
-    Assert(header.Next() == TomlEvent::KeyPart, "one at a time");
-    Assert(header.Next() == TomlEvent::HeaderEnd, "and then it closes");
-    Assert(header.Next() == TomlEvent::KeyStart, "and the lines after it follow");
+    Assert(Arrives(header, TomlEvent::KeyPart), "with its parts");
+    Assert(Arrives(header, TomlEvent::KeyPart), "one at a time");
+    Assert(Arrives(header, TomlEvent::HeaderEnd), "and then it closes");
+    Assert(Arrives(header, TomlEvent::KeyStart), "and the lines after it follow");
 
     // Containers nest, and the reader says how deep it is.
     var nested = TomlEventReader("a = [1, [2], { b = 3 }]");
-    nested.Next();
-    nested.Next();
-    Assert(nested.Next() == TomlEvent::ArrayStart, "an array opens");
+    Skip(nested);
+    Skip(nested);
+    Assert(Arrives(nested, TomlEvent::ArrayStart), "an array opens");
     Assert(nested.Depth() == 1, "one deep");
-    Assert(nested.Next() == TomlEvent::Integer, "its first element");
-    Assert(nested.Next() == TomlEvent::ArrayStart, "then an array inside it");
+    Assert(Arrives(nested, TomlEvent::Integer), "its first element");
+    Assert(Arrives(nested, TomlEvent::ArrayStart), "then an array inside it");
     Assert(nested.Depth() == 2, "two deep");
-    Assert(nested.Next() == TomlEvent::Integer, "holding one element");
-    Assert(nested.Next() == TomlEvent::ArrayEnd, "which closes");
-    Assert(nested.Next() == TomlEvent::InlineTableStart, "then an inline table");
-    Assert(nested.Next() == TomlEvent::KeyStart, "with a key");
-    Assert(nested.Next() == TomlEvent::KeyPart, "of one part");
-    Assert(nested.Next() == TomlEvent::Integer, "and a value");
-    Assert(nested.Next() == TomlEvent::InlineTableEnd, "before it closes");
-    Assert(nested.Next() == TomlEvent::ArrayEnd, "and then the outer array does");
+    Assert(Arrives(nested, TomlEvent::Integer), "holding one element");
+    Assert(Arrives(nested, TomlEvent::ArrayEnd), "which closes");
+    Assert(Arrives(nested, TomlEvent::InlineTableStart), "then an inline table");
+    Assert(Arrives(nested, TomlEvent::KeyStart), "with a key");
+    Assert(Arrives(nested, TomlEvent::KeyPart), "of one part");
+    Assert(Arrives(nested, TomlEvent::Integer), "and a value");
+    Assert(Arrives(nested, TomlEvent::InlineTableEnd), "before it closes");
+    Assert(Arrives(nested, TomlEvent::ArrayEnd), "and then the outer array does");
     Assert(nested.Depth() == 0, "leaving nothing open");
-    Assert(nested.Next() == TomlEvent::End, "at the end of the document");
+    Assert(Ends(nested), "at the end of the document");
 
     // Locations, because a streaming reader that could not point at a line would leave the caller counting
     // bytes.
     var located = TomlEventReader("a = 1\n\nb = 2");
-    located.Next();
-    located.Next();
-    located.Next();
-    let second = located.Next();
-    Assert(second == TomlEvent::KeyStart, "the second pair begins");
+    Skip(located);
+    Skip(located);
+    Skip(located);
+    Assert(Arrives(located, TomlEvent::KeyStart), "the second pair begins");
     Assert(located.Line() == 3, "on the third line, blank lines counted");
     Assert(located.Column() == 1, "at the first column");
 
     // Text arrives as written, so a caller skipping a field pays nothing for its escapes.
     var raw = TomlEventReader("a = \"x\\ty\"");
-    raw.Next();
-    raw.Next();
-    Assert(raw.Next() == TomlEvent::Text, "a string with an escape in it");
+    Skip(raw);
+    Skip(raw);
+    Assert(Arrives(raw, TomlEvent::Text), "a string with an escape in it");
     Assert(raw.Span().length == 4, "spans the four bytes it was written with, unresolved");
 
     // A whole document streams in order, and the count is what the shape says.

@@ -68,7 +68,7 @@ Neither error type can hold the other's failures, so the crossing is made explic
 
 `WriteValueLine` and `WriteFormatLine` write a value or a pattern followed by a newline, and write the newline **only if** what came before it went out whole. A line is a value and its terminator together, so a value that could not be written must not be followed by one. Every `PrintLine` overload follows the same rule. `WriteValueLine` takes its value by bound rather than as an interface value, so the value is borrowed rather than given up: binding a move-only value to a `Display` transfers ownership of it, which would let such a value be written exactly once.
 
-Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views, and a named stream passed straight into one of them borrows without any binding: `WriteAll(file, contents)?`. The borrow neither copies nor consumes the stream, and it ends at the call. `BufferedReader` and `BufferedWriter` must keep their streams after construction, so they store ordinary interface handles; a stream that cannot be stored that way — because binding it would move it — supplies a stored adapter of its own, such as `FileSystem::FileStream`, whose representation is private and whose lifetime contract is documented where it lives. `BufferedReader::New` and `BufferedWriter::New` fail with `Other` when their buffer cannot be allocated. Both buffered types prohibit copying, move with `<-`, and release their owned buffers through `~BufferedReader` and `~BufferedWriter`.
+Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views, and a named stream passed straight into one of them borrows without any binding: `WriteAll(file, contents)?`. The borrow neither copies nor consumes the stream, and it ends at the call. `BufferedReader` and `BufferedWriter` must keep their streams after construction, so they store ordinary interface handles; a stream that cannot be stored that way — because binding it would move it — supplies a stored adapter of its own, such as `FileSystem::FileStream`, whose representation is private and whose lifetime contract is documented where it lives. `BufferedReader` and `BufferedWriter` fail with `Other` when their buffer cannot be allocated. Both buffered types prohibit copying, move with `<-`, and release their owned buffers through `~BufferedReader` and `~BufferedWriter`.
 
 ## Example
 
@@ -83,7 +83,7 @@ func Main() -> int {
     var name = StringBuilder(allocator);
     PrintLine("What is your name?");
     try ReadLine(name) catch { _ => return 1 };
-    let text = name.IntoString();
+    let text = name.TakeString();
     PrintLine(text);
     return 0;
 }

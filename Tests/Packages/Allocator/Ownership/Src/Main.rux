@@ -46,7 +46,7 @@ unsafe func Holds(block: *var opaque, size: uint) -> bool {
 }
 
 func LayoutOr(size: uint, alignment: uint) -> Layout {
-    return Layout::New(size, alignment) ?? Layout { size, alignment };
+    return Layout::Of(size, alignment) ?? Layout { size, alignment };
 }
 
 /// The first promise: an address handed back satisfies the layout it was asked for.

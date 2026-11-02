@@ -64,7 +64,7 @@ extend String {
     func TryFromValidated(allocator: Allocator, bytes: char8[..]) -> Self throws AllocError {
         if bytes.length == 0 { return String(allocator); }
 
-        let layout = Layout::New(bytes.length, 1) ?? throw .Unsupported;
+        let layout = Layout::Of(bytes.length, 1) ?? throw .Unsupported;
 
         var borrowed = allocator;
         let block = try borrowed.Allocate(layout);
@@ -211,7 +211,7 @@ extend String {
     /// @see https://rux-lang.dev/docs/api/text/string#clear
     pub func Clear(&var self) {
         if self.data != null {
-            let layout = Layout::New(self.capacity, 1);
+            let layout = Layout::Of(self.capacity, 1);
             var borrowed = self.allocator;
             try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { _ => {} };

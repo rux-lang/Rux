@@ -46,17 +46,27 @@ pub struct TomlEntry {
     pub value: TomlValue;
 }
 
+/// Why a TOML value could not be changed.
+/// Running out of memory is not one of the reasons: a value whose storage cannot be had terminates the program.
+/// @see https://rux-lang.dev/docs/api/toml/toml-value#toml-error
+pub enum TomlError: int32 {
+    /// An operation for one kind of value asked of another, such as pushing onto a table.
+    WrongKind = 1
+}
+
 /// A TOML value: one of the ten kinds, owning whatever it holds.
 /// Move-only, because it owns strings and nested values. The allocator it was built with travels with it, so a
 /// subtree can be released without the caller having to remember where it came from.
+/// The kind is private: it is read with `Kind` and set only together with its payload, so the two never disagree,
+/// and the accessor for another kind returns `none` rather than reinterpreting the bytes.
 /// @see https://rux-lang.dev/docs/api/toml/toml-value
 pub struct TomlValue {
     /// Which of the ten kinds this is.
-    pub kind: TomlKind;
+    kind: TomlKind;
     /// The payload of a `Boolean`.
     boolean: bool;
     /// The payload of an `Integer`.
-    pub integer: int64;
+    integer: int64;
     /// The payload of a `Float`.
     number: float64;
     /// The payload of a `Text`.
@@ -242,125 +252,104 @@ extend TomlValue {
         return self.kind;
     }
 
-    /// The boolean payload, or `false` when this is not a boolean — which `Kind` distinguishes from a genuine
-    /// `false`.
-    /// @param result receives the value when this reports true
-    /// @returns whether this is a boolean
+    /// The boolean payload, or `none` when this is not a boolean.
+    /// @returns the boolean, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-boolean
-    pub func AsBoolean(&self, result: *var bool) -> bool {
-        if self.kind != TomlKind::Boolean { return false; }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `bool`.
-        unsafe { *result = self.boolean; }
-        return true;
+    pub func AsBoolean(&self) -> bool? {
+        if self.kind != TomlKind::Boolean { return none; }
+        return self.boolean;
     }
 
-    /// The integer payload, or `false` when this is not an integer.
+    /// The integer payload, or `none` when this is not an integer.
     /// A float is not converted, even when its value happens to be whole: TOML distinguishes `1` from `1.0` and
     /// collapsing them here would throw away a distinction the document was making.
-    /// @param result receives the value when this reports true
-    /// @returns whether this is an integer
+    /// @returns the integer, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-integer
-    pub func AsInteger(&self, result: *var int64) -> bool {
-        if self.kind != TomlKind::Integer { return false; }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `int64`.
-        unsafe { *result = self.integer; }
-        return true;
+    pub func AsInteger(&self) -> int64? {
+        if self.kind != TomlKind::Integer { return none; }
+        return self.integer;
     }
 
-    /// The float payload, or `false` when this is not a float.
-    /// @param result receives the value when this reports true
-    /// @returns whether this is a float
+    /// The float payload, or `none` when this is not a float.
+    /// @returns the float, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-float
-    pub func AsFloat(&self, result: *var float64) -> bool {
-        if self.kind != TomlKind::Float { return false; }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `float64`.
-        unsafe { *result = self.number; }
-        return true;
+    pub func AsFloat(&self) -> float64? {
+        if self.kind != TomlKind::Float { return none; }
+        return self.number;
     }
 
-    /// The string payload, or an empty view when this is not a string.
-    /// @returns the string, or an empty view when this is not one
+    /// The string payload, or `none` when this is not a string.
+    /// @returns the string, or `none` when this is not one
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-text
-    pub func AsText(&self) -> StringView {
-        if self.kind != TomlKind::Text { return StringView(); }
+    pub func AsText(&self) -> StringView? {
+        if self.kind != TomlKind::Text { return none; }
         return self.text.View();
     }
 
-    /// The date part, or `false` when this kind has none.
-    /// @param result receives the value when this reports true
-    /// @returns whether this carries a date
+    /// The date part, or `none` when this kind has none.
+    /// @returns the date, or `none` when this value carries none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-date
-    pub func AsDate(&self, result: *var Date) -> bool {
+    pub func AsDate(&self) -> Date? {
         if self.kind != TomlKind::OffsetDateTime && self.kind != TomlKind::LocalDateTime &&
             self.kind != TomlKind::LocalDate {
-            return false;
+            return none;
         }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `Date`.
-        unsafe { *result = self.date; }
-        return true;
+        return self.date;
     }
 
-    /// The time part, or `false` when this kind has none.
-    /// @param result receives the value when this reports true
-    /// @returns whether this carries a time
+    /// The time part, or `none` when this kind has none.
+    /// @returns the time of day, or `none` when this value carries none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-time
-    pub func AsTime(&self, result: *var TimeOfDay) -> bool {
+    pub func AsTime(&self) -> TimeOfDay? {
         if self.kind != TomlKind::OffsetDateTime && self.kind != TomlKind::LocalDateTime &&
             self.kind != TomlKind::LocalTime {
-            return false;
+            return none;
         }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `TimeOfDay`.
-        unsafe { *result = self.time; }
-        return true;
+        return self.time;
     }
 
-    /// The offset, or `false` when this is not an offset date-time.
+    /// The offset, or `none` when this is not an offset date-time.
     /// A local date-time deliberately has none: it names a wall clock reading, and inventing an offset for it is
     /// how a meeting ends up an hour out.
-    /// @param result receives the value when this reports true
-    /// @returns whether this carries an offset from UTC
+    /// @returns the offset from UTC, or `none` when this value carries none
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#as-offset
-    pub func AsOffset(&self, result: *var UtcOffset) -> bool {
-        if self.kind != TomlKind::OffsetDateTime { return false; }
-        // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `UtcOffset`.
-        unsafe { *result = self.offset; }
-        return true;
+    pub func AsOffset(&self) -> UtcOffset? {
+        if self.kind != TomlKind::OffsetDateTime { return none; }
+        return self.offset;
     }
 
-    /// How many elements an array holds, or entries a table holds; zero for anything else.
-    /// @returns how many elements or entries this holds; zero for anything else
+    /// How many elements an array holds, or entries a table holds; `none` for any other kind.
+    /// @returns how many elements or entries this holds, or `none` when it is neither an array nor a table
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#length
-    pub func Length(&self) -> uint {
+    pub func Length(&self) -> uint? {
         if self.kind == TomlKind::Array { return self.elements.Length(); }
         if self.kind == TomlKind::Table { return self.entries.Length(); }
-        return 0;
+        return none;
     }
 
     /// Appends `value` to an array, taking ownership of it.
-    /// Reports `false` when this is not an array; `value` is consumed either way, so a
-    /// caller does not have to decide who owns it on failure.
+    /// Throws `WrongKind` when this is not an array; `value` is consumed either way, so a caller does not have to
+    /// decide who owns it on failure. Terminates the program when the array cannot grow.
     /// @param value the value to act on
-    /// @returns whether the element was appended
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#push
-    pub func Push(&var self, value: Self) -> bool {
-        if self.kind != TomlKind::Array { return false; }
+    pub func Push(&var self, value: Self) throws TomlError {
+        if self.kind != TomlKind::Array { throw .WrongKind; }
         self.elements.Push(move value);
-        return true;
     }
 
     /// Appends an entry to a table, copying the key and taking ownership of the value.
     /// The order entries are added in is the order they are kept and written, which is what makes a document
     /// round-trip recognisably. Nothing here rejects a repeated key — that is the parser's business, where the
     /// three different ways of repeating one can be told apart.
+    /// Throws `WrongKind` when this is not a table; `key` and `value` are consumed either way. Terminates the program
+    /// when the table cannot grow.
     /// @param key the key to look up
     /// @param value the value to act on
-    /// @returns whether the entry was added
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#insert
-    pub func Insert(&var self, key: String, value: Self) -> bool {
-        if self.kind != TomlKind::Table { return false; }
+    pub func Insert(&var self, key: String, value: Self) throws TomlError {
+        if self.kind != TomlKind::Table { throw .WrongKind; }
         var entry = TomlEntry { key: move key, value: move value };
         self.entries.Push(move entry);
-        return true;
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.

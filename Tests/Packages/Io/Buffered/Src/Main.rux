@@ -105,7 +105,7 @@ func Main() -> int {
     // Sixty-four one-byte reads out of a 16-byte buffer cost the source four calls, not sixty-four.
     var source = CountingSource { served: 0, calls: 0, limit: 64 };
     let sourceHandle: Reader = SourceHandle { state: @source };
-    var reader = try BufferedReader::New(allocator, sourceHandle, 16) catch {
+    var reader = try BufferedReader(allocator, sourceHandle, 16) catch {
         _ => Panic("the reader takes its buffer")
     };
     var one: char8[1];
@@ -128,7 +128,7 @@ func Main() -> int {
     // A read larger than the whole buffer bypasses it.
     var bigSource = CountingSource { served: 0, calls: 0, limit: 64 };
     let bigHandle: Reader = SourceHandle { state: @bigSource };
-    var bypassReader = try BufferedReader::New(allocator, bigHandle, 8) catch {
+    var bypassReader = try BufferedReader(allocator, bigHandle, 8) catch {
         _ => Panic("the reader takes its buffer")
     };
     var bigStorage: char8[32];
@@ -140,7 +140,7 @@ func Main() -> int {
     // Buffered() and Consume() expose the lookahead line reading is built from.
     var peekSource = CountingSource { served: 0, calls: 0, limit: 10 };
     let peekHandle: Reader = SourceHandle { state: @peekSource };
-    var peekReader = try BufferedReader::New(allocator, peekHandle, 16) catch {
+    var peekReader = try BufferedReader(allocator, peekHandle, 16) catch {
         _ => Panic("the reader takes its buffer")
     };
     try peekReader.Fill() catch { _ => Panic("the buffer fills on request") };
@@ -159,7 +159,7 @@ func Main() -> int {
         flushes: 0
     };
     let sinkHandle: Writer = SinkHandle { state: @sink };
-    var writer = try BufferedWriter::New(allocator, sinkHandle, 32) catch { _ => Panic("the writer takes its buffer") };
+    var writer = try BufferedWriter(allocator, sinkHandle, 32) catch { _ => Panic("the writer takes its buffer") };
     var piece: uint = 0;
     while piece < 8 {
         let taken = try writer.Write(TextBytes("ab")) catch { _ => Panic("each small write succeeds") };
@@ -188,7 +188,7 @@ func Main() -> int {
     // rather than asked again until it is ready.
     var blockedCalls: uint = 0;
     let blockedHandle: Reader = BlockedHandle { calls: @blockedCalls };
-    var blocked = try BufferedReader::New(allocator, blockedHandle, 8) catch {
+    var blocked = try BufferedReader(allocator, blockedHandle, 8) catch {
         _ => Panic("the reader takes its buffer")
     };
     try {

@@ -85,7 +85,7 @@ extend Ipv4Address {
     /// @param d the fourth octet
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/address#ipv4-new
-    pub func New(a: uint8, b: uint8, c: uint8, d: uint8) -> Self {
+    pub func Ipv4Address(a: uint8, b: uint8, c: uint8, d: uint8) -> Self {
         return Self { octets: [a, b, c, d] };
     }
 
@@ -350,7 +350,7 @@ extend Ipv6Address {
             index = index + 1;
         }
         if self.octets[10] != 0xFFu8 || self.octets[11] != 0xFFu8 { return none; }
-        return Ipv4Address::New(self.octets[12], self.octets[13], self.octets[14], self.octets[15]);
+        return Ipv4Address(self.octets[12], self.octets[13], self.octets[14], self.octets[15]);
     }
 
     /// Writes the address in the canonical form of RFC 5952 into `into`, at most 45 characters. An IPv4-mapped
@@ -544,7 +544,7 @@ extend SocketAddress {
     /// @param port the port
     /// @returns the socket address
     /// @see https://rux-lang.dev/docs/api/net/address#socket-address-new
-    pub func New(ip: IpAddress, port: uint16) -> Self {
+    pub func SocketAddress(ip: IpAddress, port: uint16) -> Self {
         return Self { ip, port };
     }
 

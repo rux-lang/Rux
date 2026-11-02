@@ -125,7 +125,7 @@ func ReadDate(reader: &var Reader) -> Date throws TimeParseError {
     try Literal(reader, c8'-');
     let dayAt = reader.at;
     let day = try Digits(reader, 2);
-    let made = Date::New(year as int32, month as uint8, day as uint8);
+    let made = Date::FromParts(year as int32, month as uint8, day as uint8);
     if made == none {
         // The month was already checked, so what is left is a day the month does not have.
         throw .NonexistentDay(dayAt);
@@ -184,7 +184,7 @@ func ReadTime(reader: &var Reader) -> TimeOfDay throws TimeParseError {
         second = 59;
         nanosecond = 999999999;
     }
-    let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
+    let made = TimeOfDay::FromParts(hour as uint8, minute as uint8, second as uint8, nanosecond);
     if made == none {
         throw .InvalidTime(hourAt);
     }

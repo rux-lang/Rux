@@ -6,7 +6,7 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // handed over at the end instead of copied. Both are ownership questions, so that is what is checked: what happens
 // to the block when the builder is done with it, and whether the builder is still usable afterwards.
 // The other half is the invariant. A builder holds well-formed UTF-8 at every moment, not only at the end, which is
-// what lets `View` cost nothing and `IntoString` skip validation. It is kept by refusing anything that is not a
+// what lets `View` cost nothing and `TakeString` skip validation. It is kept by refusing anything that is not a
 // whole character rather than by checking afterwards.
 
 func Main() -> int {
@@ -86,7 +86,7 @@ func Main() -> int {
 
     // Handing the block over: no copy, and the builder is left owning nothing.
     let handedFrom = builder.Bytes().data;
-    let taken = builder.IntoString();
+    let taken = builder.TakeString();
     Assert(taken.Length() == 5, "the string holds what the builder held");
     Assert(taken.Bytes().data == handedFrom, "in the very block the builder had, uncopied");
     Assert(builder.IsEmpty() && builder.Capacity() == 0, "and the builder owns nothing afterwards");

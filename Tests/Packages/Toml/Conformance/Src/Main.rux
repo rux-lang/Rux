@@ -992,15 +992,19 @@ func StreamedScalars(text: char8[..], clean: &var bool) -> uint {
     var reader = TomlEventReader(text);
     var count: uint = 0;
     while true {
-        let event = reader.Next();
-        if event == TomlEvent::Error {
-            clean = false;
-            return count;
-        }
-        if event == TomlEvent::End {
-            clean = !(reader.Failure() is TomlParseFailure);
-            return count;
-        }
+        let next = try reader.Next() catch {
+            _ => {
+                clean = false;
+                return count;
+            },
+        };
+        let event = match next {
+            .Some(arrived) => arrived,
+            none => {
+                clean = true;
+                return count;
+            },
+        };
         if event == TomlEvent::Text || event == TomlEvent::Integer || event == TomlEvent::Float ||
             event == TomlEvent::Boolean || event == TomlEvent::DateTime {
             count = count + 1;
@@ -1016,7 +1020,7 @@ func TreeScalars(value: &TomlValue) -> uint {
     if kind == TomlKind::Table {
         var total: uint = 0;
         var index: uint = 0;
-        while index < value.Length() {
+        while index < (value.Length() ?? 0) {
             if value.EntryAt(index) is .Some(entry) {
                 total = total + TreeScalars(entry.value);
             }
@@ -1027,7 +1031,7 @@ func TreeScalars(value: &TomlValue) -> uint {
     if kind == TomlKind::Array {
         var total: uint = 0;
         var index: uint = 0;
-        while index < value.Length() {
+        while index < (value.Length() ?? 0) {
             if value.At(index) is .Some(element) {
                 total = total + TreeScalars(element);
             }

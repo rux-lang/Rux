@@ -24,7 +24,7 @@ import Allocator::SystemAllocator;
 import Regex::{ Regex, RegexError };
 
 func Year(text: char8[..]) -> uint throws RegexError {
-    let date = try Regex::New(SystemAllocator(), "(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})");
+    let date = try Regex(SystemAllocator(), "(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})");
     match date.Capture(text) {
         .Some(groups) => return (groups.Named("year") ?? return 0).start,
         none => return 0

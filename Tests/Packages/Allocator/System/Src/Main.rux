@@ -12,21 +12,21 @@ struct Empty {}
 
 func Main() throws AllocError {
     // A layout that exists is valid, so the refusals happen at construction.
-    Assert(!(Layout::New(64, 0) is Layout), "an alignment of zero is not a layout");
-    Assert(!(Layout::New(64, 3) is Layout), "and neither is one that is not a power of two");
-    Assert(Layout::New(64, 8) is Layout, "an ordinary pair is a layout");
-    Assert(Layout::New(0, 8) is Layout, "and so is a zero size");
-    Assert(!(Layout::New(uint::Max, 8) is Layout), "a size whose rounding overflows is refused");
-    Assert(Layout::New(uint::Max, 1) is Layout, "where an alignment of one has nothing to round");
+    Assert(!(Layout::Of(64, 0) is Layout), "an alignment of zero is not a layout");
+    Assert(!(Layout::Of(64, 3) is Layout), "and neither is one that is not a power of two");
+    Assert(Layout::Of(64, 8) is Layout, "an ordinary pair is a layout");
+    Assert(Layout::Of(0, 8) is Layout, "and so is a zero size");
+    Assert(!(Layout::Of(uint::Max, 8) is Layout), "a size whose rounding overflows is refused");
+    Assert(Layout::Of(uint::Max, 1) is Layout, "where an alignment of one has nothing to round");
 
-    var layout = Layout::New(64, 16) ?? Layout { size: 0, alignment: 1 };
+    var layout = Layout::Of(64, 16) ?? Layout { size: 0, alignment: 1 };
     Assert(layout.size == 64 && layout.alignment == 16, "the layout holds what it was built with");
     Assert(layout.PaddedSize() == 64, "an aligned size needs no padding");
-    let odd = Layout::New(60, 16) ?? Layout { size: 0, alignment: 1 };
+    let odd = Layout::Of(60, 16) ?? Layout { size: 0, alignment: 1 };
     Assert(odd.PaddedSize() == 64, "and an unaligned one rounds up to its own alignment");
     Assert(layout.IsSatisfiedBy(32), "an aligned address satisfies the layout");
     Assert(!layout.IsSatisfiedBy(33), "and an unaligned one does not");
-    Assert(layout == (Layout::New(64, 16) ?? odd), "two layouts asking the same thing are equal");
+    Assert(layout == (Layout::Of(64, 16) ?? odd), "two layouts asking the same thing are equal");
     Assert(layout != odd, "and two asking different things are not");
 
     // An array layout has to check the multiplication, which is where a huge count turns into a small allocation.
@@ -60,7 +60,7 @@ func Main() throws AllocError {
 
     // A zero-sized layout gives the shared empty block rather than null, so no caller has to branch.
     var empty: *var opaque = null;
-    let zero = Layout::New(0, 16) ?? layout;
+    let zero = Layout::Of(0, 16) ?? layout;
     empty = try allocator.Allocate(zero);
     Assert(empty != null && IsEmptyBlock(empty), "and reports the shared empty block");
     Assert(empty == EmptyBlockAddress(), "which is the same address every time");
@@ -80,7 +80,7 @@ func Main() throws AllocError {
 
     // A stricter alignment than a page still works, because the allocator pads for it.
     var aligned: *var opaque = null;
-    let strict = Layout::New(32, 4096) ?? layout;
+    let strict = Layout::Of(32, 4096) ?? layout;
     aligned = try allocator.Allocate(strict);
     Assert(IsPointerAligned(aligned as *opaque, 4096), "and really is page-aligned");
     try allocator.Deallocate(aligned, strict);
@@ -108,7 +108,7 @@ func Main() throws AllocError {
 
     // Reallocation keeps what fits and reports the address to use.
     var grown: *var opaque = null;
-    let larger = Layout::New(256, 16) ?? layout;
+    let larger = Layout::Of(256, 16) ?? layout;
     grown = try allocator.Reallocate(block, layout, larger);
     Assert(grown != null, "and reports where the block now is");
     // Safety: `grown` is the live 256-byte block the reallocation returned, so offsets 0 and 63 are inside it.
@@ -119,14 +119,14 @@ func Main() throws AllocError {
     Assert(grownFront == 0xC3 as byte && grownBack == 0xC3 as byte, "the old contents survived");
 
     var shrunk: *var opaque = null;
-    let smaller = Layout::New(16, 16) ?? layout;
+    let smaller = Layout::Of(16, 16) ?? layout;
     shrunk = try allocator.Reallocate(grown, larger, smaller);
     // Safety: `shrunk` is the live 16-byte block the reallocation returned, so its first byte is readable.
     let shrunkFront = unsafe { *(shrunk as *var byte) };
     Assert(shrunkFront == 0xC3 as byte, "and keeps what still fits");
 
     // The two layouts must share an alignment; anything else is refused rather than silently moved.
-    let realigned = Layout::New(16, 32) ?? layout;
+    let realigned = Layout::Of(16, 32) ?? layout;
     try {
         allocator.Reallocate(shrunk, smaller, realigned);
         Panic("the allocator was expected to refuse");

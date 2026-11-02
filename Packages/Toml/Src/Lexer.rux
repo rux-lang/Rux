@@ -635,7 +635,7 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
             break;
         }
     }
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 // A run of hexadecimal digits at `at`, as a value. The lexer has already established they are digits.

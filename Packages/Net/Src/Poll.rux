@@ -129,7 +129,7 @@ extend Poller {
     /// @param allocator where Windows' registrations and the room for events come from
     /// @returns the poller, or why the system would not make one
     /// @see https://rux-lang.dev/docs/api/net/poller#new
-    pub func New(allocator: Allocator) -> Self throws IoError {
+    pub func Poller(allocator: Allocator) -> Self throws IoError {
         var poller = Self { handle: NoSocket, registrations: Vector<Registration>(allocator),
                               buffer: Vector<uint64>(allocator) };
         when #target.os == .Linux {

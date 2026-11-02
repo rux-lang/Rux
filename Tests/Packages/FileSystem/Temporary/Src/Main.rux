@@ -36,7 +36,7 @@ func Exists(allocator: Allocator, path: Path) -> bool {
 
 // Makes a temporary file, writes to it, and lets it fall out of scope without a Close.
 func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
-    var scratch = try TemporaryFile::Create(allocator, directory, "abandoned-") catch {
+    var scratch = try TemporaryFile(allocator, directory, "abandoned-") catch {
         _ => Panic("the abandoned file is created")
     };
     var remembered = PathBuffer::FromPath(allocator, scratch.AsPath());
@@ -53,12 +53,12 @@ func Main() -> int throws IoError {
     Assert(Exists(allocator, root.AsPath()), "and exists");
 
     // A temporary directory of our own, to keep the rest out of everyone else's way.
-    var home = try TemporaryDirectoryHandle::Create(allocator, root.AsPath(), "rux-storage-");
+    var home = try TemporaryDirectoryHandle(allocator, root.AsPath(), "rux-storage-");
     Assert(Exists(allocator, home.AsPath()), "and exists");
 
     // Two files in a row get different names: the entropy is doing its job.
-    var first = try TemporaryFile::Create(allocator, home.AsPath(), "t-");
-    var second = try TemporaryFile::Create(allocator, home.AsPath(), "t-");
+    var first = try TemporaryFile(allocator, home.AsPath(), "t-");
+    var second = try TemporaryFile(allocator, home.AsPath(), "t-");
     Assert(!SamePath(first.AsPath(), second.AsPath()), "and their names differ");
     Assert(Exists(allocator, first.AsPath()) && Exists(allocator, second.AsPath()), "both exist");
 
@@ -81,7 +81,7 @@ func Main() -> int throws IoError {
     Assert(!Exists(allocator, abandonedPath.AsPath()), "an abandoned temporary file is deleted on the way out");
 
     // Keep gives up ownership: the file stays, and cleaning it up becomes the caller's business.
-    var kept = try TemporaryFile::Create(allocator, home.AsPath(), "kept-");
+    var kept = try TemporaryFile(allocator, home.AsPath(), "kept-");
     var keptPath = PathBuffer::FromPath(allocator, kept.AsPath());
     try kept.Keep();
     Assert(Exists(allocator, keptPath.AsPath()), "and leaves it behind");

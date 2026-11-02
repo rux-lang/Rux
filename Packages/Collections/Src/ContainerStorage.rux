@@ -31,7 +31,7 @@ func ElementLayout<T>(count: uint) -> Layout throws AllocError {
     let alignment = if alignof(T) == 0 { 1u } else { alignof(T) };
     // A layout the allocator's own rules reject has a rounded size past the end of the address space. The element's
     // alignment is whatever the compiler gave it, so it is a power of two by construction.
-    return Layout::New(bytes, alignment) ?? throw .Unsupported;
+    return Layout::Of(bytes, alignment) ?? throw .Unsupported;
 }
 
 // Storage for `count` elements, uninitialized, or why there is none. Nothing is written to it: a container fills

@@ -20,13 +20,13 @@ func Main() throws AllocError {
     let allocator: Allocator = handle;
 
     // A zero-sized layout costs the arena nothing.
-    let zero = Layout::New(0, 8) ?? Layout { size: 0, alignment: 1 };
+    let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
     let empty = try allocator.Allocate(zero);
     Assert(IsEmptyBlock(empty), "and gives the shared empty block");
     Assert(arena.BlockCount() == 0, "without taking a block");
 
     // The first real request takes the first block.
-    let small = Layout::New(32, 8) ?? zero;
+    let small = Layout::Of(32, 8) ?? zero;
     let first = try allocator.Allocate(small);
     Assert(first != null, "and reports an address");
     Assert(arena.BlockCount() == 1, "which took one block");
@@ -39,7 +39,7 @@ func Main() throws AllocError {
     Assert((second as uint) == (first as uint) + 32, "and landing immediately after the first");
 
     // Alignment is honoured, with the padding counted as used.
-    let aligned = Layout::New(8, 16) ?? zero;
+    let aligned = Layout::Of(8, 16) ?? zero;
     let third = try allocator.Allocate(aligned);
     Assert(IsPointerAligned(third as *opaque, 16), "and satisfies its alignment");
 
@@ -71,7 +71,7 @@ func Main() throws AllocError {
     Assert(arena.BytesUsed() == usedBeforeFiller + 32, "and the bytes handed out of both blocks are counted");
 
     // A request larger than a whole block gets a block of its own rather than failing.
-    let huge = Layout::New(8192, 8) ?? zero;
+    let huge = Layout::Of(8192, 8) ?? zero;
     var large: *var opaque = null;
     let blocksBeforeHuge = arena.BlockCount();
     large = try allocator.Allocate(huge);
@@ -94,7 +94,7 @@ func Main() throws AllocError {
 
     // Growing the most recent allocation extends it in place rather than copying.
     let growing = try allocator.Allocate(small);
-    let larger = Layout::New(64, 8) ?? zero;
+    let larger = Layout::Of(64, 8) ?? zero;
     let grown = try allocator.Reallocate(growing, small, larger);
     Assert(grown == growing, "and the most recent allocation grows where it stands");
 

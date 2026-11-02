@@ -43,7 +43,7 @@ extend Date {
         if year < 0 || year > 9999 { return none; }
         let cap = DaysInMonth(year as int32, (month + 1) as uint8);
         let day = if self.day <= cap { self.day } else { cap };
-        return Self::New(year as int32, (month + 1) as uint8, day);
+        return Self::FromParts(year as int32, (month + 1) as uint8, day);
     }
 
     /// The date `years` later, with February 29th clamping to the 28th where the year is not leap.
@@ -56,7 +56,7 @@ extend Date {
         if target < 0 || target > 9999 { return none; }
         let cap = DaysInMonth(target as int32, self.month);
         let day = if self.day <= cap { self.day } else { cap };
-        return Self::New(target as int32, self.month, day);
+        return Self::FromParts(target as int32, self.month, day);
     }
 
     /// The whole days from `earlier` to this date, negative when it is the later one.

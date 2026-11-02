@@ -71,7 +71,7 @@ func Failing(state: *var FailureState) -> FailingAllocator {
 func Main() throws AllocError {
     var system = SystemAllocator();
     let real: Allocator = system;
-    let small = Layout::New(64, 8) ?? Layout { size: 64, alignment: 8 };
+    let small = Layout::Of(64, 8) ?? Layout { size: 64, alignment: 8 };
 
     // The harness itself: it must refuse when told to and count what it hands out.
     var state = FailureState { backing: real, allowed: 0, attempts: 0, live: 0 };
@@ -99,7 +99,7 @@ func Main() throws AllocError {
     var unboxed = try Box::TryCreate<int64>(starved, 7) catch {
         error => {
             refused = error;
-            Box::Create<int64>(SystemAllocator(), 0)
+            Box<int64>(SystemAllocator(), 0)
         },
     };
     Assert(refused == AllocError::OutOfMemory, "a box refused by the allocator reports why");
@@ -108,7 +108,7 @@ func Main() throws AllocError {
 
     // The same box succeeds with a budget, and gives its storage back when its life ends.
     state.allowed = 1;
-    var kept = Box::Create<int64>(starved, 9);
+    var kept = Box<int64>(starved, 9);
     Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
     let taken = kept.Take();
@@ -122,7 +122,7 @@ func Main() throws AllocError {
     Assert((try? Arc::TryCreate<int64>(starved, 4)) is none, "and so does an atomically counted one");
     Assert(state.live == 0, "leaving nothing allocated");
     state.allowed = 1;
-    var shared = try Rc::TryCreate<int64>(starved, 5) catch { _ => Rc::Create<int64>(SystemAllocator(), 0) };
+    var shared = try Rc::TryCreate<int64>(starved, 5) catch { _ => Rc<int64>(SystemAllocator(), 0) };
     let sharedValue: int64 = shared.Get();
     Assert(sharedValue == 5 && state.live == 1, "with a budget the handle is made from it");
 
@@ -147,7 +147,7 @@ func Main() throws AllocError {
     state.allowed = 1;
     fromArena = try arenaAllocator.Allocate(small);
     Assert(arena.BlockCount() == 1, "having taken one block");
-    let large = Layout::New(4096, 8) ?? small;
+    let large = Layout::Of(4096, 8) ?? small;
     try {
         arenaAllocator.Allocate(large);
         Panic("the allocator was expected to refuse");
@@ -180,7 +180,7 @@ func Main() throws AllocError {
     state.allowed = 1;
     fromPool = try poolAllocator.Allocate(small);
     Assert(pool.ChunkCount() == 1, "having taken one chunk");
-    let otherClass = Layout::New(16, 8) ?? small;
+    let otherClass = Layout::Of(16, 8) ?? small;
     try {
         poolAllocator.Allocate(otherClass);
         Panic("the allocator was expected to refuse");

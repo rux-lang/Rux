@@ -63,7 +63,7 @@ func WholeRecords(text: char8[..]) -> bool {
 func Main() -> int {
     let allocator = SystemAllocator();
     let temporary = try TemporaryDirectory(allocator) catch { _ => Panic("a temporary directory exists") };
-    var directory = try TemporaryDirectoryHandle::Create(allocator, temporary.AsPath(), "rux-log-rotation-")
+    var directory = try TemporaryDirectoryHandle(allocator, temporary.AsPath(), "rux-log-rotation-")
         catch { _ => Panic("the test directory is made") };
     let current = PathIn(allocator, directory.AsPath(), "app.log");
     let first = PathIn(allocator, directory.AsPath(), "app.log.1");
@@ -78,7 +78,7 @@ func Main() -> int {
     }
 
     var file = try RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { _ => Panic("the log opens") };
-    var logger = Logger::New(allocator, (@file).Stream(), LogFormat::Text);
+    var logger = Logger(allocator, (@file).Stream(), LogFormat::Text);
     logger.SetTimestamps(false);
 
     // Every record is the same length, so the file holds as many whole records as fit under the limit, and the

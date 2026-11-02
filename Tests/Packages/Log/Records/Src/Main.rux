@@ -65,7 +65,7 @@ func Main() -> int {
     var memory = Memory { bytes: [c8' '; 1024], length: 0 };
 
     // Text records.
-    var text = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::Text);
+    var text = Logger(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::Text);
     text.SetTimestamps(false);
     text.Info("started", [
         Field::Text("user", "ann"), Field::Integer("n", -3), Field::Unsigned("u", 7), Field::Boolean("ok", true),
@@ -96,7 +96,7 @@ func Main() -> int {
     Assert(Holds(memory, "INFO  handled request=r1 status=200\n"), "context fields");
 
     // JSON lines.
-    var json = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::JsonLines);
+    var json = Logger(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::JsonLines);
     json.SetTimestamps(false);
     var zero = 0.0;
     json.Warn("disk \"full\"", [
@@ -107,7 +107,7 @@ func Main() -> int {
            "a JSON record, with a number that is not finite as null");
 
     // Times.
-    var timed = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::Text);
+    var timed = Logger(SystemAllocator(), MemorySink { memory: @memory, broken: false }, LogFormat::Text);
     timed.Info("now");
     let line = memory.bytes[..memory.length];
     Assert(line.length == 35u && IsDigit(line[0]) && IsDigit(line[3]) && line[4] == c8'-' && line[7] == c8'-' &&
@@ -116,7 +116,7 @@ func Main() -> int {
     memory.length = 0;
 
     // A destination that fails.
-    var broken = Logger::New(SystemAllocator(), MemorySink { memory: @memory, broken: true }, LogFormat::Text);
+    var broken = Logger(SystemAllocator(), MemorySink { memory: @memory, broken: true }, LogFormat::Text);
     broken.Info("lost");
     broken.Info("lost too");
     match broken.Failure() {

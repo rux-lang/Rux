@@ -62,7 +62,7 @@ extend CString {
         if bytes.length >= 0xFFFFFFFFFFFFFFFFu {
             AllocationFailed(AllocError::Unsupported);
         }
-        let layout = Layout::New(bytes.length + 1, 1) ?? AllocationFailed(AllocError::Unsupported);
+        let layout = Layout::Of(bytes.length + 1, 1) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = allocator;
         let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
 
@@ -150,7 +150,7 @@ extend CString {
     /// @see https://rux-lang.dev/docs/api/text/c-string#clear
     pub func Clear(&var self) {
         if self.data != null {
-            let layout = Layout::New(self.length + 1, 1);
+            let layout = Layout::Of(self.length + 1, 1);
             var borrowed = self.allocator;
             try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.length + 1, alignment: 1 })) catch { _ => {} };

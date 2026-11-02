@@ -62,11 +62,11 @@ extend DecompressReader {
     /// @param format the container the stream is in
     /// @returns the reader, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/inflate#new
-    pub func New(allocator: Allocator, source: Reader, format: Format) -> Self throws IoError {
+    pub func DecompressReader(allocator: Allocator, source: Reader, format: Format) -> Self throws IoError {
         var borrowed = allocator;
-        let inputLayout = Layout::New(InputCapacity, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
+        let inputLayout = Layout::Of(InputCapacity, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
         let input = try borrowed.Allocate(inputLayout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
-        let windowLayout = Layout::New(WindowSize, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
+        let windowLayout = Layout::Of(WindowSize, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
         let window = try borrowed.Allocate(windowLayout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
         // Safety: `input` was just allocated as `InputCapacity` bytes, so viewing it as `char8` reinterprets nothing.
         let inputBytes = unsafe { input as *var char8 };
@@ -419,11 +419,11 @@ extend DecompressReader {
     func ~DecompressReader(&var self) {
         var allocator = self.allocator;
         if self.input != null {
-            let layout = Layout::New(InputCapacity, 1) ?? Layout::ForValue<char8>();
+            let layout = Layout::Of(InputCapacity, 1) ?? Layout::ForValue<char8>();
             try allocator.Deallocate(self.input as *var opaque, layout) catch { _ => {} };
         }
         if self.window != null {
-            let layout = Layout::New(WindowSize, 1) ?? Layout::ForValue<char8>();
+            let layout = Layout::Of(WindowSize, 1) ?? Layout::ForValue<char8>();
             try allocator.Deallocate(self.window as *var opaque, layout) catch { _ => {} };
         }
     }

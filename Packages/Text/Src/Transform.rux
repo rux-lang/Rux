@@ -31,7 +31,7 @@ pub func Join(allocator: Allocator, parts: StringView[..], separator: StringView
         builder.Append(parts[index]);
         index = index + 1;
     }
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 // Which full case mapping `MapCase` applies.
@@ -66,7 +66,7 @@ func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> St
             index = index + 1;
         }
     }
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 /// The text of `view` in upper case by Unicode's full, unconditional mappings, so `ß` becomes `SS` and `ŉ` becomes
@@ -110,7 +110,7 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> St
     builder.Reserve(left.bytes.length + right.bytes.length);
     builder.Append(left);
     builder.Append(right);
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 /// The text of `view` written `count` times.
@@ -134,7 +134,7 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String {
         builder.Append(view);
         done = done + 1;
     }
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 /// The text of `view` with every occurrence of `needle` replaced by `replacement`.
@@ -151,7 +151,7 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
     var builder = StringBuilder(allocator);
     if needle.bytes.length == 0 {
         builder.Append(view);
-        return builder.IntoString();
+        return builder.TakeString();
     }
 
     var rest = view;
@@ -170,7 +170,7 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
         }
     }
     builder.Append(rest);
-    return builder.IntoString();
+    return builder.TakeString();
 }
 
 /// Whether `byte` is an ASCII letter.
@@ -228,5 +228,5 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
         };
         index = index + 1;
     }
-    return builder.IntoString();
+    return builder.TakeString();
 }

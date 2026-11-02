@@ -260,11 +260,11 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) throws FormatError {
     if kind == TomlKind::Boolean { return try Emit(writer, if value.boolean { "true" } else { "false" }); }
     if kind == TomlKind::Integer { return try EmitInteger(writer, value.integer); }
     if kind == TomlKind::Float { return try EmitFloat(writer, value.number); }
-    if kind == TomlKind::Text { return try EmitBasicString(writer, value.AsText().Bytes()); }
+    if kind == TomlKind::Text { return try EmitBasicString(writer, value.text.View().Bytes()); }
     if kind == TomlKind::Array {
                 try EmitByte(writer, 0x5B);
         var index: uint = 0;
-        while index < value.Length() {
+        while index < (value.Length() ?? 0) {
             if index > 0 {
                 try Emit(writer, ", ");
             }
@@ -278,10 +278,10 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) throws FormatError {
     if kind == TomlKind::Table {
         // An empty inline table is `{}` rather than `{ }`: the space belongs between entries, and there are
         // none.
-        if value.Length() == 0 { return try Emit(writer, "{}"); }
+        if (value.Length() ?? 0) == 0 { return try Emit(writer, "{}"); }
                 try Emit(writer, "{ ");
         var index: uint = 0;
-        while index < value.Length() {
+        while index < (value.Length() ?? 0) {
             if index > 0 {
                 try Emit(writer, ", ");
             }
@@ -309,7 +309,7 @@ func IsBodyEntry(value: &TomlValue) -> bool {
 // The entries of a table that are written as `key = value` lines, in the order the table holds them.
 func EmitBody(writer: &var TextWriter, table: &TomlValue) throws FormatError {
     var index: uint = 0;
-    while index < table.Length() {
+    while index < (table.Length() ?? 0) {
         if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
             try EmitKey(writer, entry.key.View().Bytes());
             try Emit(writer, " = ");
@@ -339,7 +339,7 @@ func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bo
 func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPath, written: &var uint,
                   root: bool) throws FormatError {
     var index: uint = 0;
-    while index < table.Length() {
+    while index < (table.Length() ?? 0) {
         if table.EntryAt(index) is .Some(entry) {
             try EmitSection(writer, entry, path, written, root);
         }
@@ -365,7 +365,7 @@ func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath
     }
     else {
         var element: uint = 0;
-        while element < entry.value.Length() {
+        while element < (entry.value.Length() ?? 0) {
             let held = entry.value.At(element) ?? break;
             try EmitHeader(writer, path, true, written == 0);
             written = written + 1;
@@ -429,7 +429,7 @@ pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) throws Fo
 func CountBodyEntries(table: &TomlValue) -> uint {
     var count: uint = 0;
     var index: uint = 0;
-    while index < table.Length() {
+    while index < (table.Length() ?? 0) {
         if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
             count = count + 1;
         }

@@ -57,7 +57,7 @@ extend AtomicWrite {
         };
         var directory = PathBuffer::FromPath(allocator, parentPath);
         var held = PathBuffer::FromPath(allocator, target);
-        var scratch = try TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-");
+        var scratch = try TemporaryFile(allocator, directory.AsPath(), ".rux-atomic-");
         directory.Release();
         return Self { scratch: move scratch, target: move held, pending: true };
     }

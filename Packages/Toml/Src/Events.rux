@@ -10,13 +10,9 @@
 // field should not pay for the field it is skipping; `TomlDecodeText` is there for the ones it keeps.
 
 
-/// What just happened in the document.
+/// What just happened in the document. The end of the document is `none` from `Next`, and a refusal is thrown.
 /// @see https://rux-lang.dev/docs/api/toml/toml-event-reader#toml-event
 pub enum TomlEvent: int32 {
-    /// The document is finished.
-    End = 0,
-    /// Something went wrong; the reason is on the reader.
-    Error = 1,
     /// A `[name]` or `[[name]]` header opened; `IsTableArray` says which, and the key parts follow.
     HeaderStart = 2,
     /// The header's key path is complete.
@@ -108,15 +104,9 @@ extend TomlEventReader {
         };
     }
 
-    /// Why reading stopped, positioned, or `none` while nothing has gone wrong.
-    /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
-    /// inside it rather than in a second call, so a caller holding the failure is holding all of it — and it is
-    /// the same `TomlParseFailure` the tree parser answers, so the two ways of reading a document report a
-    /// refusal in one vocabulary rather than two.
-    /// @returns the failure, positioned at the token the reader stopped on, or `none`
-    /// @see https://rux-lang.dev/docs/api/toml/toml-event-reader#failure
-    pub func Failure(&self) -> TomlParseFailure? {
-        if self.stop == TomlStop::None { return none; }
+    // Why reading stopped, positioned at the token the reader stopped on. A lexical refusal carries the lexer's own
+    // reason inside it rather than in a second call, so a caller holding the failure is holding all of it.
+    func Stopped(&self) -> TomlParseFailure {
         let stopped = TomlStopped {
             stop: self.stop,
             lexical: self.lexical,
@@ -181,7 +171,7 @@ extend TomlEventReader {
         return token;
     }
 
-    func Fail(&var self, reason: TomlStop) -> TomlEvent {
+    func Fail(&var self, reason: TomlStop) -> TomlEvent? {
         if self.stop == TomlStop::None {
             self.stop = reason;
             self.current = self.ahead;
@@ -190,7 +180,7 @@ extend TomlEventReader {
             }
         }
         self.state = TomlEventState::Finished;
-        return TomlEvent::Error;
+        return none;
     }
 
     func SkipNewlines(&var self) {
@@ -246,13 +236,21 @@ extend TomlEventReader {
         return true;
     }
 
-    /// The next event, or `End` when the document is finished.
-    /// After an `Error` every later call returns `End`: everything past a refusal would be read from a position
-    /// the document never meant.
-    /// @returns the next event, or the end-of-input event
+    /// The next event, or `none` when the document is finished.
+    /// A refusal is thrown as the same positioned `TomlParseFailure` the tree parser answers, so the two ways of
+    /// reading a document report a refusal in one vocabulary; every later call throws it again, because everything
+    /// past a refusal would be read from a position the document never meant.
+    /// @returns the next event, or `none` at the end of the document
     /// @see https://rux-lang.dev/docs/api/toml/toml-event-reader#next
-    pub func Next(&var self) -> TomlEvent {
-        if self.state == TomlEventState::Finished { return TomlEvent::End; }
+    pub func Next(&var self) -> TomlEvent? throws TomlParseFailure {
+        let event = self.Step();
+        if self.stop != TomlStop::None { throw self.Stopped(); }
+        return event;
+    }
+
+    // One step of the grammar: the next event, or `none` at the end or when reading stopped.
+    func Step(&var self) -> TomlEvent? {
+        if self.state == TomlEventState::Finished { return none; }
         if self.state == TomlEventState::Document { return self.NextAtDocument(); }
         if self.state == TomlEventState::HeaderKey { return self.NextHeaderKey(); }
         if self.state == TomlEventState::PairKey { return self.NextPairKey(); }
@@ -261,13 +259,13 @@ extend TomlEventReader {
         return self.NextAfterValue();
     }
 
-    func NextAtDocument(&var self) -> TomlEvent {
+    func NextAtDocument(&var self) -> TomlEvent? {
         self.SkipNewlines();
         if self.ahead.kind == TomlTokenKind::Error { return self.Fail(TomlStop::Lexical); }
         if self.ahead.kind == TomlTokenKind::End {
             self.current = self.ahead;
             self.state = TomlEventState::Finished;
-            return TomlEvent::End;
+            return none;
         }
         if self.ahead.kind == TomlTokenKind::LeftBracket {
             self.current = self.Advance();
@@ -285,7 +283,7 @@ extend TomlEventReader {
         return TomlEvent::KeyStart;
     }
 
-    func NextHeaderKey(&var self) -> TomlEvent {
+    func NextHeaderKey(&var self) -> TomlEvent? {
         if self.ahead.kind == TomlTokenKind::RightBracket {
             // `[]` names no table, and a header that names nothing is not a header.
             if !self.namedSomething { return self.Fail(TomlStop::Unexpected); }
@@ -300,7 +298,7 @@ extend TomlEventReader {
             self.state = TomlEventState::Document;
             return TomlEvent::HeaderEnd;
         }
-        if !self.TakeKeyPart() { return TomlEvent::Error; }
+        if !self.TakeKeyPart() { return none; }
         self.namedSomething = true;
         if self.ahead.kind == TomlTokenKind::Dot {
             self.Advance();
@@ -311,8 +309,8 @@ extend TomlEventReader {
         return TomlEvent::KeyPart;
     }
 
-    func NextPairKey(&var self) -> TomlEvent {
-        if !self.TakeKeyPart() { return TomlEvent::Error; }
+    func NextPairKey(&var self) -> TomlEvent? {
+        if !self.TakeKeyPart() { return none; }
         if self.ahead.kind == TomlTokenKind::Dot {
             self.Advance();
             return TomlEvent::KeyPart;
@@ -323,7 +321,7 @@ extend TomlEventReader {
         return TomlEvent::KeyPart;
     }
 
-    func NextValue(&var self) -> TomlEvent {
+    func NextValue(&var self) -> TomlEvent? {
         if self.depth > 0 {
             self.SkipNewlines();
         }
@@ -362,7 +360,7 @@ extend TomlEventReader {
         return self.Fail(TomlStop::Unexpected);
     }
 
-    func NextInlineKey(&var self) -> TomlEvent {
+    func NextInlineKey(&var self) -> TomlEvent? {
         self.SkipNewlines();
         if self.ahead.kind == TomlTokenKind::RightBrace {
             self.current = self.Advance();
@@ -376,7 +374,7 @@ extend TomlEventReader {
         return TomlEvent::KeyStart;
     }
 
-    func NextAfterValue(&var self) -> TomlEvent {
+    func NextAfterValue(&var self) -> TomlEvent? {
         // At the top level a value ends its line, and nothing else may share it.
         if self.depth == 0 {
             if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
@@ -390,7 +388,7 @@ extend TomlEventReader {
         if self.ahead.kind == TomlTokenKind::Comma {
             self.Advance();
             self.state = if inlineTable { TomlEventState::InlineKey } else { TomlEventState::Value };
-            return self.Next();
+            return self.Step();
         }
         if inlineTable {
             if self.ahead.kind != TomlTokenKind::RightBrace {

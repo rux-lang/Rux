@@ -82,7 +82,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let digitRoom = integerRoom + fraction + 4u;
     let textRoom = digitRoom + fraction + 8u;
     let empty = Layout { size: 0, alignment: 1 };
-    let blockLayout = Layout::New(digitRoom + textRoom, 1u) ?? (empty);
+    let blockLayout = Layout::Of(digitRoom + textRoom, 1u) ?? (empty);
     if blockLayout.size == 0 { AllocationFailed(AllocError::Unsupported); }
     let block = try allocator.Allocate(blockLayout) catch { error => AllocationFailed(error) };
     // Safety: `block` came from `Allocate` above with `digitRoom + textRoom` bytes at alignment one, every bit

@@ -28,8 +28,8 @@ func Check(zone: &TimeZone, seconds: int64, offset: int32, daylight: bool, abbre
 
 func Local(year: int32, month: uint8, day: uint8, hour: uint8, minute: uint8) -> DateTime {
     return DateTime {
-        date: Date::New(year, month, day) ?? Date { year: 1970, month: 1, day: 1 },
-        time: TimeOfDay::New(hour, minute, 0, 0) ?? TimeOfDay::Midnight()
+        date: Date::FromParts(year, month, day) ?? Date { year: 1970, month: 1, day: 1 },
+        time: TimeOfDay::FromParts(hour, minute, 0, 0) ?? TimeOfDay::Midnight()
     };
 }
 

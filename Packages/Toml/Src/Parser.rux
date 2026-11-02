@@ -460,7 +460,7 @@ extend TomlParser {
             }
             var element = self.ParseValue();
             if self.Failed() { break; }
-            array.Push(move element);
+            array.elements.Push(move element);
             self.SkipNewlines();
             if self.ahead.kind == TomlTokenKind::Comma {
                 self.Advance();
@@ -613,7 +613,7 @@ extend TomlParser {
             return;
         }
         var owned = String::FromView(self.allocator, finalName);
-        (*target).Insert(move owned, move value);
+        (*target).entries.Push(TomlEntry { key: move owned, value: move value });
         parts.Clear();
     }
 
@@ -627,7 +627,7 @@ extend TomlParser {
             var fresh = TomlValue::Table(self.allocator);
             fresh.dotted = true;
             var owned = String::FromView(self.allocator, copy);
-            (*target).Insert(move owned, move fresh);
+            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
             return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
@@ -715,11 +715,11 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             var owned = String::FromView(self.allocator, name);
-            (*target).Insert(move owned, move fresh);
+            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
             return (*target).FindAddress(name);
         }
         if existing.kind == TomlKind::Array {
-            if !existing.tableArray || (*existing).Length() == 0 {
+            if !existing.tableArray || (*existing).elements.Length() == 0 {
                 self.Stop(TomlStop::NotATableArray);
                 return null;
             }
@@ -751,7 +751,7 @@ extend TomlParser {
             var fresh = TomlValue::Table(self.allocator);
             fresh.defined = true;
             var owned = String::FromView(self.allocator, name);
-            (*target).Insert(move owned, move fresh);
+            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
             return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
@@ -785,7 +785,7 @@ extend TomlParser {
             var fresh = TomlValue::Array(self.allocator);
             fresh.tableArray = true;
             var owned = String::FromView(self.allocator, name);
-            (*target).Insert(move owned, move fresh);
+            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
             existing = (*target).FindAddress(name);
         }
         else if existing.kind != TomlKind::Array || !existing.tableArray {
@@ -796,7 +796,7 @@ extend TomlParser {
         }
         var element = TomlValue::Table(self.allocator);
         element.defined = true;
-        (*existing).Push(move element);
+        (*existing).elements.Push(move element);
         return (*existing).LastAddress();
     }
 

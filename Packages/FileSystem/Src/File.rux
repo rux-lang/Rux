@@ -114,45 +114,64 @@ pub struct File {
     open: bool;
 }
 
-// The path, copied to the NUL-terminated form the platform calls take. The block is `(length + 1)` units and
-// must go back to the same allocator, through `ReleaseNativePath`.
-func NativePath(allocator: Allocator, path: Path) -> *var OsUnit throws IoError {
-    let units = path.name.units;
-    var index: uint = 0;
-    while index < units.length {
-        // An embedded NUL would silently truncate the name at the platform boundary: the file acted on would
-        // not be the file named. Refused here on every platform.
-        // Safety: `index` is below `units.length`, the loop condition.
-        if (unsafe { units.data[index] } as uint32) == 0 { throw IoError::Of(IoErrorKind::InvalidInput); }
-        index = index + 1;
-    }
-    let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
-                 ?? throw IoError::Of(IoErrorKind::InvalidInput);
-    var borrowed = allocator;
-    let raw = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
-    // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
-    let copied = unsafe { raw as *var OsUnit };
-    index = 0;
-    while index < units.length {
-        // Safety: `index` is below `units.length`, so it is inside `units` and inside the block `copied` addresses.
-        unsafe { copied[index] = units.data[index]; }
-        index = index + 1;
-    }
-    when #target.os == .Windows {
-        // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
-        unsafe { copied[units.length] = 0; }
-    }
-    else {
-        // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
-        unsafe { copied[units.length] = 0u8 as char8; }
-    }
-    return copied;
+// The path, copied to the NUL-terminated form the platform calls take, owning that copy. The destructor gives the
+// block back to the allocator it came from with the layout it was made with, so a caller holds the value for as long
+// as a platform call needs the units and never repeats the arguments that must match the allocation; a value with a
+// destructor is move-only, so the block cannot be given back twice.
+struct NativePath {
+    // The units, followed by one terminating zero unit.
+    units: *var OsUnit;
+    // How many units come before the terminator.
+    length: uint;
+    // Where the block came from, and where it goes back to.
+    allocator: Allocator;
 }
 
-func ReleaseNativePath(allocator: Allocator, block: *var OsUnit, length: uint) {
-    let layout = Layout { size: (length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
-    var borrowed = allocator;
-    try borrowed.Deallocate(block as *var opaque, layout) catch { _ => {} };
+extend NativePath {
+    // A copy of `path` with a terminator. A name holding a NUL is refused with `InvalidInput`, because the platform
+    // would silently truncate it there and act on another file; a block that cannot be allocated is `Other`.
+    func NativePath(allocator: Allocator, path: Path) -> Self throws IoError {
+        let units = path.name.units;
+        var index: uint = 0;
+        while index < units.length {
+            // Safety: `index` is below `units.length`, the loop condition.
+            if (unsafe { units.data[index] } as uint32) == 0 { throw IoError::Of(IoErrorKind::InvalidInput); }
+            index = index + 1;
+        }
+        let layout = Layout::Of((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
+                     ?? throw IoError::Of(IoErrorKind::InvalidInput);
+        var borrowed = allocator;
+        let raw = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
+        // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
+        let copied = unsafe { raw as *var OsUnit };
+        index = 0;
+        while index < units.length {
+            // Safety: `index` is below `units.length`, so it is inside `units` and inside the block `copied`
+            // addresses.
+            unsafe { copied[index] = units.data[index]; }
+            index = index + 1;
+        }
+        when #target.os == .Windows {
+            // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
+            unsafe { copied[units.length] = 0; }
+        }
+        else {
+            // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
+            unsafe { copied[units.length] = 0u8 as char8; }
+        }
+        return Self { units: copied, length: units.length, allocator };
+    }
+
+    // The NUL-terminated units, valid while this value lives.
+    func Pointer(&self) -> *var OsUnit {
+        return self.units;
+    }
+
+    func ~NativePath(&var self) {
+        let layout = Layout { size: (self.length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
+        var borrowed = self.allocator;
+        try borrowed.Deallocate(self.units as *var opaque, layout) catch { _ => {} };
+    }
 }
 
 extend File {
@@ -167,7 +186,6 @@ extend File {
     pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self throws IoError {
         try options.Validate();
         let native = try NativePath(allocator, path);
-        defer ReleaseNativePath(allocator, native, path.name.units.length);
         when #target.os == .Windows {
             var access: uint32 = 0;
             if options.read {
@@ -197,10 +215,10 @@ extend File {
             // Sharing is granted broadly on purpose: denying it is Windows' default and no other system's, and a
             // portable program should see one behavior.
             let share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-            // release, and a `uint16` unit is a `char16`.
+            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+            // in scope, and a `uint16` unit is a `char16`.
             let handle = unsafe {
-                CreateFileW(native as *char16, access, share, null, disposition as uint32, FILE_ATTRIBUTE_NORMAL, null)
+                CreateFileW(native.Pointer() as *char16, access, share, null, disposition as uint32, FILE_ATTRIBUTE_NORMAL, null)
             };
             if (handle as uint64) == InvalidHandleValue {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
@@ -230,8 +248,8 @@ extend File {
             }
             // Read and write for everyone, cut down by the process umask — the ordinary permissions an
             // ordinary file is born with.
-            // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
-            let opened = unsafe { OpenAt(AtFdCwd, native as *char8, flags, 438) };
+            // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
+            let opened = unsafe { OpenAt(AtFdCwd, native.Pointer() as *char8, flags, 438) };
             if opened < 0 { throw TranslateNative((0 - opened) as int32); }
             return Self { handle: opened as int32, open: true };
         }

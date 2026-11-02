@@ -31,7 +31,7 @@ pub func IsLeapYear(year: int32) -> bool {
 }
 
 /// How many days `month` holds in `year`.
-/// Zero for a month that does not exist, which is what lets `Date::New` use it as the validator.
+/// Zero for a month that does not exist, which is what lets `Date::FromParts` use it as the validator.
 /// @param year the year, as a signed count from year zero
 /// @param month the month, 1 through 12
 /// @returns how many days that month has in that year
@@ -50,7 +50,7 @@ extend Date {
     /// @param day the day of the month, counting from one
     /// @returns the date, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/date#new
-    pub func New(year: int32, month: uint8, day: uint8) -> Self? {
+    pub func FromParts(year: int32, month: uint8, day: uint8) -> Self? {
         if day < 1 || day > DaysInMonth(year, month) { return none; }
         return Self { year, month, day };
     }
@@ -154,7 +154,7 @@ extend TimeOfDay {
     /// @param nanosecond the nanosecond within the second
     /// @returns the time, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#new
-    pub func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> Self? {
+    pub func FromParts(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> Self? {
         if hour > 23 || minute > 59 || second > 59 || nanosecond > 999999999 {
             return none;
         }
@@ -235,7 +235,7 @@ pub struct DateTime {
 extend DateTime {
     /// The moment this date and time name in UTC, shifted by `offset`.
     /// The shift subtracts: half past nine at plus two is half past seven in UTC. The range of a timestamp dwarfs
-    /// the calendar's, so the conversion cannot overflow for any date `Date::New` accepts.
+    /// the calendar's, so the conversion cannot overflow for any date `Date::FromParts` accepts.
     /// @param offset the offset from UTC
     /// @returns the moment this local time names at that offset
     /// @see https://rux-lang.dev/docs/api/time/date-time#to-timestamp

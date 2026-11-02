@@ -23,7 +23,7 @@ extend Complex {
     /// @param imaginary the imaginary part
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/math/complex#new
-    pub func New(real: float64, imaginary: float64) -> Self {
+    pub func Complex(real: float64, imaginary: float64) -> Self {
         return Self { real, imaginary };
     }
 
@@ -181,7 +181,7 @@ extend Complex32 {
     /// @param imaginary the imaginary part
     /// @returns the number
     /// @see https://rux-lang.dev/docs/api/math/complex#new
-    pub func New(real: float32, imaginary: float32) -> Self {
+    pub func Complex32(real: float32, imaginary: float32) -> Self {
         return Self { real, imaginary };
     }
 

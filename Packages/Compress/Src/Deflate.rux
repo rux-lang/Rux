@@ -60,7 +60,7 @@ pub struct CompressWriter {
 // Allocates `size` bytes or fails.
 func Take(allocator: Allocator, size: uint) -> *var opaque throws IoError {
     var borrowed = allocator;
-    let layout = Layout::New(size, 8) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
+    let layout = Layout::Of(size, 8) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
     return try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
 }
 
@@ -69,7 +69,7 @@ func Take(allocator: Allocator, size: uint) -> *var opaque throws IoError {
 unsafe func Give(allocator: Allocator, block: *var opaque, size: uint) {
     if block == null { return; }
     var borrowed = allocator;
-    try borrowed.Deallocate(block, Layout::New(size, 8) ?? Layout::ForValue<uint64>()) catch { _ => {} };
+    try borrowed.Deallocate(block, Layout::Of(size, 8) ?? Layout::ForValue<uint64>()) catch { _ => {} };
 }
 
 extend CompressWriter {
@@ -80,7 +80,7 @@ extend CompressWriter {
     /// @param level how hard to compress
     /// @returns the writer, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/deflate#new
-    pub func New(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
+    pub func CompressWriter(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
         -> Self throws IoError {
         // Safety: `Take` returns a fresh block of the bytes asked for, eight-byte aligned, which holds exactly
         // `DataCapacity` bytes.

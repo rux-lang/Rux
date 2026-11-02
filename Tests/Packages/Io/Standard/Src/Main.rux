@@ -34,7 +34,7 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     let sink: Writer = out;
-    var buffered = try BufferedWriter::New(allocator, sink, 64) catch {
+    var buffered = try BufferedWriter(allocator, sink, 64) catch {
         _ => Panic("the buffered writer takes its buffer")
     };
     let piece = try buffered.Write(TextBytes("buffered ")) catch { _ => Panic("a piece is gathered") };

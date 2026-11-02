@@ -69,7 +69,7 @@ func Main() -> int {
     Assert(builder.Capacity() >= 5 + 4096, "taking the room");
 
     // A string whose copy cannot be stored reports why, and the source is untouched.
-    let source = builder.IntoString();
+    let source = builder.TakeString();
     state.refusing = true;
     var refusal = AllocError::InvalidBlock;
     var copy = try source.TryClone() catch {

@@ -9,7 +9,7 @@ import Thread::Spawn;
 import Time::Duration;
 
 func Loopback(port: uint16) -> SocketAddress {
-    return SocketAddress::New(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
+    return SocketAddress(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
 }
 
 // Whether the question name starting at byte 12 of `query` is `name`, written as DNS writes it.

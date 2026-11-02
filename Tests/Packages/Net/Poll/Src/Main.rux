@@ -12,7 +12,7 @@ import Net::{
 import Time::Duration;
 
 func Loopback(port: uint16) -> SocketAddress {
-    return SocketAddress::New(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
+    return SocketAddress(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
 }
 
 // Waits up to a second for an event with `token`, and returns it.
@@ -45,7 +45,7 @@ func Main() -> int {
         error => Assert(error.kind == IoErrorKind::WouldBlock, "accept would block"),
     }
 
-    var poller = try Poller::New(SystemAllocator()) catch { _ => Panic("a poller is made") };
+    var poller = try Poller(SystemAllocator()) catch { _ => Panic("a poller is made") };
     try poller.Register(listener.PollSource(), 1, Interest::Readable()) catch { _ => Panic("the listener registers") };
     try {
         poller.Register(listener.PollSource(), 9, Interest::Readable());

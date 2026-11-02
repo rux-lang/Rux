@@ -90,12 +90,10 @@ func Main() -> int {
     let written = Render(values, storage[..4096]);
     var reread = Parsed(allocator, written, "and its output parses");
 
-    var readInteger: int64 = 0;
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { Member(reread, View("i")).AsInteger(@readInteger) } && readInteger == 42, "the integer survives");
-    var readFloat = 0.0;
+    Assert(unsafe { Member(reread, View("i")).AsInteger() } is .Some(42), "the integer survives");
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { Member(reread, View("tiny")).AsFloat(@readFloat) } && readFloat == 0.1,
+    Assert(unsafe { Member(reread, View("tiny")).AsFloat() } is .Some(0.1),
            "and a float comes back as exactly the same float, not merely a close one");
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
     Assert(unsafe { Member(reread, View("whole")).Kind() } == TomlKind::Float,
@@ -107,9 +105,9 @@ func Main() -> int {
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
     Assert(unsafe { Member(restamped, View("m")).Kind() } == TomlKind::OffsetDateTime,
            "an offset date-time keeps its offset");
-    var readOffset = UtcOffset::Utc();
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(unsafe { Member(restamped, View("m")).AsOffset(@readOffset) } && readOffset.TotalSeconds() == -28800i32,
+    let restampedOffset = unsafe { Member(restamped, View("m")).AsOffset() };
+    Assert(restampedOffset is .Some(readOffset) && readOffset.TotalSeconds() == -28800i32,
            "and the offset is the one it was written with");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
     Assert(unsafe { Member(restamped, View("w")).Kind() } == TomlKind::LocalDateTime,

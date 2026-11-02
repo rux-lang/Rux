@@ -39,11 +39,11 @@ func Refused(value: Display, spec: FormatSpec) -> bool {
 }
 
 func DateOf(year: int32, month: uint8, day: uint8) -> Date {
-    return (Date::New(year, month, day) ?? Date::FromEpochDays(0));
+    return (Date::FromParts(year, month, day) ?? Date::FromEpochDays(0));
 }
 
 func TimeOf(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> TimeOfDay {
-    return (TimeOfDay::New(hour, minute, second, nanosecond) ?? TimeOfDay::Midnight());
+    return (TimeOfDay::FromParts(hour, minute, second, nanosecond) ?? TimeOfDay::Midnight());
 }
 
 func OffsetOf(hours: int32, minutes: int32) -> UtcOffset {

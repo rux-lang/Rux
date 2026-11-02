@@ -342,7 +342,7 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
         let data = at + 10;
         if data + length > message.length { return Outcome::Failed; }
         if recordType == kind && kind == TypeA && length == 4u {
-            let ip = IpAddress::FromIpv4(Ipv4Address::New(message[data], message[data + 1], message[data + 2],
+            let ip = IpAddress::FromIpv4(Ipv4Address(message[data], message[data + 1], message[data + 2],
                                                           message[data + 3]));
             AddOnce(found, SocketAddress { ip, port });
         }

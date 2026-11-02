@@ -49,7 +49,7 @@ extend BigNat {
             wanted = count;
         }
         let empty = Layout { size: 0, alignment: 1 };
-        let layout = Layout::New(wanted * 8, 8) ?? (empty);
+        let layout = Layout::Of(wanted * 8, 8) ?? (empty);
         if layout.size == 0 { return false; }
         let block = try self.allocator.Allocate(layout) catch { _ => return false };
         // Safety: `block` came from `Allocate` with `wanted * 8` bytes at alignment eight, room for `wanted` limbs,
@@ -65,7 +65,7 @@ extend BigNat {
         // The old block goes back by hand rather than through Release, which also forgets the length — and the
         // whole point of growing is to keep the value.
         if self.limbs != null {
-            let old = Layout::New(self.capacity * 8, 8) ?? (empty);
+            let old = Layout::Of(self.capacity * 8, 8) ?? (empty);
             try self.allocator.Deallocate(self.limbs as *var opaque, old) catch { _ => {} };
         }
         self.limbs = fresh;
@@ -76,7 +76,7 @@ extend BigNat {
     func Release(&var self) {
         if self.limbs != null {
             let empty = Layout { size: 0, alignment: 1 };
-            let layout = Layout::New(self.capacity * 8, 8) ?? (empty);
+            let layout = Layout::Of(self.capacity * 8, 8) ?? (empty);
             try self.allocator.Deallocate(self.limbs as *var opaque, layout) catch { _ => {} };
             self.limbs = null;
             self.capacity = 0;

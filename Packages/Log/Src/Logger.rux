@@ -27,7 +27,7 @@ extend Logger {
     /// @param format how they are written
     /// @returns the logger
     /// @see https://rux-lang.dev/docs/api/log/logger#new
-    pub func New(allocator: Allocator, sink: Writer, format: LogFormat) -> Self {
+    pub func Logger(allocator: Allocator, sink: Writer, format: LogFormat) -> Self {
         return Self {
             sink,
             format,

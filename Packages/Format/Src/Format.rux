@@ -183,5 +183,5 @@ pub func Render(allocator: Allocator, #Format format: char8[..], args: Display..
     builder.Reserve(format.length + args.length * 8);
     let sink: &var TextWriter = builder;
     try WriteFormat(sink, format, args...);
-    return builder.IntoString();
+    return builder.TakeString();
 }

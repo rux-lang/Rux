@@ -27,19 +27,18 @@ when #target.os {
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#make-directory
 pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
     let native = try NativePath(allocator, path);
-    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-        // release, and a `uint16` unit is a `char16`.
-        if unsafe { CreateDirectoryW(native as *char16, null) } == 0 {
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+        // in scope, and a `uint16` unit is a `char16`.
+        if unsafe { CreateDirectoryW(native.Pointer() as *char16, null) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
         // Read, write and search for everyone, cut down by the process umask.
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
-        let result = unsafe { MkdirAt(AtFdCwd, native as *char8, 511) };
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
+        let result = unsafe { MkdirAt(AtFdCwd, native.Pointer() as *char8, 511) };
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -53,18 +52,17 @@ pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#delete-directory
 pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
     let native = try NativePath(allocator, path);
-    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-        // release, and a `uint16` unit is a `char16`.
-        if unsafe { RemoveDirectoryW(native as *char16) } == 0 {
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+        // in scope, and a `uint16` unit is a `char16`.
+        if unsafe { RemoveDirectoryW(native.Pointer() as *char16) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
-        let result = unsafe { UnlinkAt(AtFdCwd, native as *char8, RemoveDirectory) };
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
+        let result = unsafe { UnlinkAt(AtFdCwd, native.Pointer() as *char8, RemoveDirectory) };
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -78,18 +76,17 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#delete-file
 pub func DeleteFile(allocator: Allocator, path: Path) throws IoError {
     let native = try NativePath(allocator, path);
-    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-        // release, and a `uint16` unit is a `char16`.
-        if unsafe { DeleteFileW(native as *char16) } == 0 {
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+        // in scope, and a `uint16` unit is a `char16`.
+        if unsafe { DeleteFileW(native.Pointer() as *char16) } == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(unsafe { GetLastError() } as int32);
         }
     }
     else {
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
-        let result = unsafe { UnlinkAt(AtFdCwd, native as *char8, 0) };
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
+        let result = unsafe { UnlinkAt(AtFdCwd, native.Pointer() as *char8, 0) };
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -199,9 +196,8 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator th
     }
     else {
         let native = try NativePath(allocator, path);
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, released only after this call.
-        let opened = unsafe { OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0) };
-        ReleaseNativePath(allocator, native, path.name.units.length);
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
+        let opened = unsafe { OpenAt(AtFdCwd, native.Pointer() as *char8, OpenReadOnly | OpenDirectory, 0) };
         if opened < 0 { throw TranslateNative((0 - opened) as int32); }
         iterator.handle = opened as int32;
         iterator.open = true;

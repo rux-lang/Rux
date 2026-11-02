@@ -41,7 +41,7 @@ func Churn(handle: Arc<Tracked>) -> int32 {
 }
 
 func Counted() -> int {
-    var first = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 7 });
+    var first = Rc<Tracked>(SystemAllocator(), Tracked { value: 7 });
     Assert(first.Count() == 1u && first.Get().value == 7, "one handle");
     match first.GetMutable() {
         .Some(value) => {
@@ -54,7 +54,7 @@ func Counted() -> int {
     Assert(first.Count() == 2u && second.SameAs(first) && secondValue == 8, "a clone shares the value");
     Assert(first.GetMutable() is none, "a shared value cannot be written");
     Assert(Keep(second.Clone()) == 3u && first.Count() == 2u, "a clone passed by value counts while it lives");
-    second = Rc::Create<Tracked>(SystemAllocator(), Tracked { value: 9 });
+    second = Rc<Tracked>(SystemAllocator(), Tracked { value: 9 });
     Assert(first.Count() == 1u && !second.SameAs(first) && Destroys() == 0, "reassigning releases one count");
     let moved = move first;
     Assert(moved.Count() == 1u && Destroys() == 0, "moving a handle does not count");
@@ -62,7 +62,7 @@ func Counted() -> int {
 }
 
 func Threaded() -> int {
-    var shared = Arc::Create<Tracked>(SystemAllocator(), Tracked { value: 1 });
+    var shared = Arc<Tracked>(SystemAllocator(), Tracked { value: 1 });
     var one = try Spawn(Churn, shared.Clone()) catch { _ => return 4 };
     var two = try Spawn(Churn, shared.Clone()) catch { _ => return 5 };
     var three = try Spawn(Churn, shared.Clone()) catch { _ => return 6 };

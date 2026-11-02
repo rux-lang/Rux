@@ -4,8 +4,8 @@
 // appends costs each byte a constant amount on average, and hands the block over at the end without copying it.
 // The builder holds well-formed UTF-8 at every moment, not only at the end. That is why it accepts whole characters
 // and checked runs of bytes rather than arbitrary ones: a builder that could hold half a character would make
-// `View` a lie and `IntoString` a validation pass. Appending an incomplete sequence is refused rather than deferred.
-// It prohibits copying and `~StringBuilder` gives its block back. `IntoString` transfers the block without copying;
+// `View` a lie and `TakeString` a validation pass. Appending an incomplete sequence is refused rather than deferred.
+// It prohibits copying and `~StringBuilder` gives its block back. `TakeString` transfers the block without copying;
 // after it the builder owns nothing and is ready to be used again.
 // A builder that cannot grow terminates the program. `TryReserve` is for the code that can recover: it throws the
 // allocator's `AllocError` and leaves the builder as it was, and once it has succeeded the appends that fit in the
@@ -199,7 +199,7 @@ extend StringBuilder {
     /// @see https://rux-lang.dev/docs/api/text/string-builder#release
     pub func Release(&var self) {
         if self.data != null {
-            let layout = Layout::New(self.capacity, 1);
+            let layout = Layout::Of(self.capacity, 1);
             var borrowed = self.allocator;
             try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { _ => {} };
@@ -210,7 +210,7 @@ extend StringBuilder {
     }
 
     /// A copy of what has been appended, as a string of its own.
-    /// The builder is untouched and may be appended to again. `IntoString` is what hands the block over instead of
+    /// The builder is untouched and may be appended to again. `TakeString` is what hands the block over instead of
     /// copying it, and is what to use when the builder is finished with. Terminates the program when the copy cannot
     /// be made.
     /// @returns a copy of what has been appended, leaving the builder as it was
@@ -226,7 +226,7 @@ extend StringBuilder {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns what has been appended, taking the builder's storage rather than copying
     /// @see https://rux-lang.dev/docs/api/text/string-builder#into-string
-    pub func IntoString(&var self) -> String {
+    pub func TakeString(&var self) -> String {
         let taken = String {
             data: self.data,
             length: self.length,
@@ -240,7 +240,7 @@ extend StringBuilder {
     }
 
     /// Gives the block back.
-    /// Runs when the builder dies. A builder whose block was handed over by `IntoString` owns nothing, so this is
+    /// Runs when the builder dies. A builder whose block was handed over by `TakeString` owns nothing, so this is
     /// then a no-op rather than a second release.
     /// @see https://rux-lang.dev/docs/api/text/string-builder#destructor
     func ~StringBuilder(&var self) {
@@ -271,10 +271,10 @@ unsafe func TryReserveBuilderStorage(data: *var *var char8, length: uint, capaci
             wanted = MinimumBuilderCapacity;
         }
 
-        let layout = Layout::New(wanted, 1) ?? throw .Unsupported;
+        let layout = Layout::Of(wanted, 1) ?? throw .Unsupported;
         let want = layout;
         var borrowed = allocator;
-        let have = Layout::New(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
+        let have = Layout::Of(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
         let block = try if *data == null {
             borrowed.Allocate(want)
         } else {

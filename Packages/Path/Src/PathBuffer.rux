@@ -78,14 +78,14 @@ extend PathBuffer {
             wanted = 16;
         }
         let unitSize = sizeof(OsUnit) as uint;
-        let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
+        let layout = Layout::Of(wanted * unitSize, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = self.allocator;
         let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
         if self.data != null {
             // Safety: `block` is a fresh allocation of `wanted >= length` units, and the storage invariant makes
             // `self.data` readable for `self.length` units.
             unsafe { Copy(block, self.data as *opaque, self.length * unitSize); }
-            let old = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
+            let old = Layout::Of(self.capacity * unitSize, alignof(OsUnit) as uint);
             try borrowed.Deallocate(self.data as *var opaque,
                                 (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
@@ -132,12 +132,30 @@ extend PathBuffer {
             return;
     }
 
+    /// Drops the last component, leaving a root separator in place.
+    /// `Pop` on `/usr/bin` leaves `/usr`, on `/usr` leaves `/`, and on `/` leaves `/`. Nothing is allocated.
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#pop
+    pub func Pop(&var self) {
+        var length = self.length;
+        // Safety: the read runs only when `length` is positive, and `length` starts at `self.length`, the count of
+        // units the buffer holds at `data`.
+        while length > 0 && !IsSeparator(unsafe { self.data[length - 1] }) {
+            length = length - 1;
+        }
+        // Keep the root separator itself; anything else loses its trailing one too.
+        // Safety: the read runs only when `length` is above one, and `length` is at most `self.length`.
+        while length > 1 && IsSeparator(unsafe { self.data[length - 1] }) {
+            length = length - 1;
+        }
+        self.length = length;
+    }
+
     /// Gives the block back and leaves an empty buffer.
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#release
     pub func Release(&var self) {
         if self.data != null {
             let unitSize = sizeof(OsUnit) as uint;
-            let layout = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
+            let layout = Layout::Of(self.capacity * unitSize, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
             try borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };

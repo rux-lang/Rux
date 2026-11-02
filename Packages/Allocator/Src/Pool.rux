@@ -202,7 +202,7 @@ extend Pool {
         if payload > uint::Max - header { throw .Unsupported; }
         let total = header + payload;
 
-        let layout = Layout::New(total, PoolAlignment) ?? throw .Unsupported;
+        let layout = Layout::Of(total, PoolAlignment) ?? throw .Unsupported;
 
         let storage = try self.backing.Allocate(layout);
 
@@ -229,7 +229,7 @@ extend Pool {
             let earlier = unsafe { chunk.previous };
             // Safety: as above, by the chunk invariant `chunk` is live until the release below.
             let total = unsafe { chunk.total };
-            let layout = Layout::New(total, PoolAlignment) ?? Layout { size: total, alignment: PoolAlignment };
+            let layout = Layout::Of(total, PoolAlignment) ?? Layout { size: total, alignment: PoolAlignment };
             try self.backing.Deallocate(chunk as *var opaque, layout) catch { _ => {} };
             chunk = earlier;
         }

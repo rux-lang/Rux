@@ -10,13 +10,13 @@ import Memory::IsPointerAligned;
 
 func Main() throws AllocError {
     // The class a layout lands in depends only on the layout, which is what makes a release match its allocation.
-    let zero = Layout::New(0, 8) ?? Layout { size: 0, alignment: 1 };
-    Assert(ClassIndexFor(Layout::New(1, 1) ?? zero) == 0, "one byte lands in the smallest class");
-    Assert(ClassIndexFor(Layout::New(16, 8) ?? zero) == 0, "and so does exactly the smallest class");
-    Assert(ClassIndexFor(Layout::New(17, 8) ?? zero) == 1, "one byte past it rounds up to the next");
-    Assert(ClassIndexFor(Layout::New(256, 8) ?? zero) == PoolClassCount - 1, "the largest class holds its size");
-    Assert(ClassIndexFor(Layout::New(257, 8) ?? zero) == PoolClassCount, "and one byte past it has no class");
-    Assert(ClassIndexFor(Layout::New(16, 32) ?? zero) == PoolClassCount,
+    let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
+    Assert(ClassIndexFor(Layout::Of(1, 1) ?? zero) == 0, "one byte lands in the smallest class");
+    Assert(ClassIndexFor(Layout::Of(16, 8) ?? zero) == 0, "and so does exactly the smallest class");
+    Assert(ClassIndexFor(Layout::Of(17, 8) ?? zero) == 1, "one byte past it rounds up to the next");
+    Assert(ClassIndexFor(Layout::Of(256, 8) ?? zero) == PoolClassCount - 1, "the largest class holds its size");
+    Assert(ClassIndexFor(Layout::Of(257, 8) ?? zero) == PoolClassCount, "and one byte past it has no class");
+    Assert(ClassIndexFor(Layout::Of(16, 32) ?? zero) == PoolClassCount,
            "an alignment stricter than a chunk is taken at has no class either");
 
     var system = SystemAllocator();
@@ -41,7 +41,7 @@ func Main() throws AllocError {
     try allocator.Deallocate(empty, zero);
 
     // The first real request takes one chunk and carves it.
-    let small = Layout::New(12, 8) ?? zero;
+    let small = Layout::Of(12, 8) ?? zero;
     let first = try allocator.Allocate(small);
     Assert(first != null, "and reports an address");
     Assert(pool.ChunkCount() == 1, "which took exactly one chunk");
@@ -88,7 +88,7 @@ func Main() throws AllocError {
     Assert(pool.ChunkCount() == 2, "without taking another chunk");
 
     // Classes are independent: a bigger request does not touch the smaller class's free list.
-    let medium = Layout::New(100, 8) ?? zero;
+    let medium = Layout::Of(100, 8) ?? zero;
     Assert(ClassIndexFor(medium) == 3, "a hundred bytes rounds up to the 128-byte class");
     let big = try allocator.Allocate(medium);
     Assert(pool.ChunkCount() == 3, "taking a chunk for its own class");
@@ -98,7 +98,7 @@ func Main() throws AllocError {
     var classIndex: uint = 0;
     while classIndex < PoolClassCount {
         let size = pool.ClassSize(classIndex);
-        let layout = Layout::New(size, PoolAlignment) ?? zero;
+        let layout = Layout::Of(size, PoolAlignment) ?? zero;
         let block = try allocator.Allocate(layout);
         Assert(IsPointerAligned(block as *opaque, PoolAlignment), "and every class is chunk-aligned");
         Assert(ClassIndexFor(layout) == classIndex, "a class's own size lands back in that class");
@@ -108,7 +108,7 @@ func Main() throws AllocError {
 
     // Growing inside a class costs nothing, because the block already holds the new size.
     var grown: *var opaque = null;
-    let sameClass = Layout::New(15, 8) ?? zero;
+    let sameClass = Layout::Of(15, 8) ?? zero;
     grown = try allocator.Reallocate(first, small, sameClass);
     Assert((grown as uint) == (first as uint), "without moving the block");
 
@@ -119,7 +119,7 @@ func Main() throws AllocError {
     Assert(movedValue == 0x1111111111111111, "carrying the contents to the new block");
 
     // A request no class can serve goes to the backing allocator, and comes back from it.
-    let huge = Layout::New(4096, 8) ?? zero;
+    let huge = Layout::Of(4096, 8) ?? zero;
     Assert(ClassIndexFor(huge) == PoolClassCount, "a large request has no class");
     var direct: *var opaque = null;
     let chunksBefore = pool.ChunkCount();

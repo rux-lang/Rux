@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "NativePath"
+Version = "0.1.0"
+Type = "Executable"
+Description = "A path converted for a platform call is given back exactly once, however the call ends."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+FileSystem = { Path = "../../../../Packages/FileSystem" }
+Io = { Path = "../../../../Packages/Io" }
+Path = { Path = "../../../../Packages/Path" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/FileSystem"

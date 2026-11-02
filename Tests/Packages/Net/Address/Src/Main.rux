@@ -36,7 +36,7 @@ func Main() -> int {
     Assert(Text(Ip("64:ff9b::c000:201"), "64:ff9b::c000:201"), "and so does a translated one");
     let mapped = Ip("::ffff:10.1.2.3").AsIpv6() ?? Ipv6Address::Unspecified();
     let tail = mapped.AsMappedIpv4() ?? Ipv4Address::Unspecified();
-    Assert(tail.Equals(Ipv4Address::New(10u8, 1u8, 2u8, 3u8)), "the mapped IPv4 address is read back");
+    Assert(tail.Equals(Ipv4Address(10u8, 1u8, 2u8, 3u8)), "the mapped IPv4 address is read back");
     Assert(Ipv6Address::Localhost().AsMappedIpv4() == none, "::1 maps nothing");
 
     // Classification.
@@ -58,8 +58,8 @@ func Main() -> int {
     // Display, with the placeholder's width applied.
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let socket = SocketAddress::New(Ip("::ffff:192.0.2.1"), 8080u16);
-    let ipv4 = Ipv4Address::New(127u8, 0u8, 0u8, 1u8);
+    let socket = SocketAddress(Ip("::ffff:192.0.2.1"), 8080u16);
+    let ipv4 = Ipv4Address(127u8, 0u8, 0u8, 1u8);
     let ipv6 = Ipv6Address::Localhost();
     let rendered = try Render(allocator, "[{}] [{:<12}] [{:>5}] [{}]", socket, ipv4, ipv6, Ip("2001:db8::1"))
         catch { _ => return 1 };

@@ -3,7 +3,7 @@
 // loose arguments is how an allocator ends up asked for an alignment that is not a power of two, or a size whose
 // rounding overflows — neither of which most allocators check, and both of which produce an allocation that is
 // smaller or less aligned than the caller believes.
-// A `Layout` that exists is valid. `New` is the only way to build one and refuses what it cannot represent, so
+// A `Layout` that exists is valid. `Of` is the only way to build one and refuses what it cannot represent, so
 // nothing downstream has to check again.
 // `ForValue<T>` and `ForArray<T>` describe storage without constructing a value and use the type's actual alignment.
 
@@ -11,7 +11,7 @@ import Core::uint;
 import Memory::AlignUpChecked;
 
 /// A validated allocation request: a size, and the alignment its address must satisfy.
-/// Copy and owns nothing. Every instance is valid, because `New` refuses to build an invalid one: the alignment is a
+/// Copy and owns nothing. Every instance is valid, because `Of` refuses to build an invalid one: the alignment is a
 /// power of two, and the size rounded up to that alignment does not pass the end of the address space.
 /// A size of zero is valid and is not an allocation of nothing — see `Allocate` for what an allocator does with it.
 /// @see https://rux-lang.dev/docs/api/allocator/layout
@@ -42,7 +42,7 @@ extend Layout {
     pub func ForArray<T>(count: uint) -> Self? {
         let stride = sizeof(T);
         if stride != 0 && count > uint::Max / stride { return none; }
-        return Self::New(stride * count, alignof(T));
+        return Self::Of(stride * count, alignof(T));
     }
 
     /// A layout for `size` bytes at `alignment`, or nothing when the pair cannot be one.
@@ -55,7 +55,7 @@ extend Layout {
     /// @param alignment the boundary the address must be a multiple of
     /// @returns the layout, or `none` when `alignment` is not a usable power of two
     /// @see https://rux-lang.dev/docs/api/allocator/layout#new
-    pub func New(size: uint, alignment: uint) -> Self? {
+    pub func Of(size: uint, alignment: uint) -> Self? {
         if alignment == 0 || (alignment & (alignment - 1)) != 0 { return none; }
         var rounded: uint = 0;
         if AlignUpChecked(size, alignment, @rounded) { return none; }
@@ -72,13 +72,13 @@ extend Layout {
     /// @returns a layout of that size at its natural alignment, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/allocator/layout#for-bytes
     pub func ForBytes(size: uint) -> Self? {
-        return Self::New(size, sizeof(uint));
+        return Self::Of(size, sizeof(uint));
     }
 
 
     /// The size this layout occupies once rounded up to its own alignment.
     /// `self` is borrowed. This is the stride between two of these laid out one after another, and is what an arena
-    /// advances by. Cannot overflow, because `New` refused every size for which it would.
+    /// advances by. Cannot overflow, because `Of` refused every size for which it would.
     /// Runs in constant time and allocates nothing.
     /// @returns the size rounded up to a whole number of alignments
     /// @see https://rux-lang.dev/docs/api/allocator/layout#padded-size

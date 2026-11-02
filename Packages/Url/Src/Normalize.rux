@@ -26,13 +26,13 @@ extend Bytes {
         if self.length == self.capacity {
             let capacity = if self.capacity == 0 { 64u } else { self.capacity * 2u };
             var allocator = self.allocator;
-            let layout = Layout::New(capacity, 1) ?? AllocationFailed(AllocError::Unsupported);
+            let layout = Layout::Of(capacity, 1) ?? AllocationFailed(AllocError::Unsupported);
             let block = try allocator.Allocate(layout) catch { error => AllocationFailed(error) };
             if self.data != null {
                 // Safety: `self.data` holds `self.length` bytes of a live block of `self.capacity` bytes, and `block`
                 // was just allocated with room for `capacity`, which is larger.
                 unsafe { Copy(block, self.data as *opaque, self.length); }
-                try allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? layout)
+                try allocator.Deallocate(self.data as *var opaque, Layout::Of(self.capacity, 1) ?? layout)
                     catch { _ => {} };
             }
             // Safety: `block` was allocated above with room for `capacity` bytes, and `char8` has size and alignment 1.
@@ -66,7 +66,7 @@ extend Bytes {
     func ~Bytes(&var self) {
         if self.data == null { return; }
         var allocator = self.allocator;
-        try allocator.Deallocate(self.data as *var opaque, Layout::New(self.capacity, 1) ?? Layout::ForValue<char8>())
+        try allocator.Deallocate(self.data as *var opaque, Layout::Of(self.capacity, 1) ?? Layout::ForValue<char8>())
             catch { _ => {} };
     }
 }

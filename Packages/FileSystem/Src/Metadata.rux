@@ -341,15 +341,14 @@ when #target.os == .Windows {
     // A handle good for asking questions: no access rights at all, which is enough for metadata and works on a
     // file whose contents this process may not read. Backup semantics is what lets a directory be opened;
     // the reparse-point flag is what stops the open from following a symbolic link.
-    func OpenForQuery(native: *var OsUnit, followLinks: bool) -> *var opaque {
+    func OpenForQuery(native: &NativePath, followLinks: bool) -> *var opaque {
         var flags = FILE_FLAG_BACKUP_SEMANTICS;
         if !followLinks {
             flags = flags | FILE_FLAG_OPEN_REPARSE_POINT;
         }
-        // Safety: every caller passes the NUL-terminated UTF-16 copy `NativePath` made, still live, and a `uint16`
-        // unit is a `char16`.
+        // Safety: `native` is a live NUL-terminated UTF-16 copy of a path, and a `uint16` unit is a `char16`.
         return unsafe {
-            CreateFileW(native as *char16, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
+            CreateFileW(native.Pointer() as *char16, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
                         CreationDisposition::OpenExisting as uint32, flags, null)
         } as *var opaque;
     }
@@ -365,7 +364,6 @@ when #target.os == .Windows {
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata#metadata-of
 pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Metadata throws IoError {
     let native = try NativePath(allocator, path);
-    defer ReleaseNativePath(allocator, native, path.name.units.length);
     var buffer: char8[256];
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
@@ -388,9 +386,9 @@ pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Meta
     }
     else {
         let flags = if followLinks { 0i32 } else { SymlinkNoFollow };
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
         // `buffer` is a local `char8[256]`, larger than any supported system's `struct stat`.
-        let outcome = unsafe { FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags) };
+        let outcome = unsafe { FstatAt(AtFdCwd, native.Pointer() as *char8, @buffer[0] as *var opaque, flags) };
         if outcome < 0 { throw TranslateNative((0i64 - outcome) as int32); }
         return MetadataFromStat(buffer[0..256]);
     }
@@ -435,11 +433,10 @@ extend File {
 /// @see https://rux-lang.dev/docs/api/filesystem/permissions#set-permissions
 pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) throws IoError {
     let native = try NativePath(allocator, path);
-    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
-        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-        // release, and a `uint16` unit is a `char16`.
-        let attributes = unsafe { GetFileAttributesW(native as *char16) };
+        // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+        // in scope, and a `uint16` unit is a `char16`.
+        let attributes = unsafe { GetFileAttributesW(native.Pointer() as *char16) };
         if attributes == INVALID_FILE_ATTRIBUTES {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(unsafe { GetLastError() } as int32);
@@ -452,17 +449,17 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
             if wanted == 0 {
                 wanted = FILE_ATTRIBUTE_NORMAL;
             }
-            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-            // release, and a `uint16` unit is a `char16`.
-            if unsafe { SetFileAttributesW(native as *char16, wanted) } == 0 {
+            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+            // in scope, and a `uint16` unit is a `char16`.
+            if unsafe { SetFileAttributesW(native.Pointer() as *char16, wanted) } == 0 {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
                 throw TranslateNative(unsafe { GetLastError() } as int32);
             }
         }
     }
     else {
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
-        let result = unsafe { FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFF) as uint16, 0) };
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
+        let result = unsafe { FchmodAt(AtFdCwd, native.Pointer() as *char8, (permissions.mode & 0xFFF) as uint16, 0) };
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -482,7 +479,6 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
               followLinks: bool) throws IoError {
     let native = try NativePath(allocator, path);
-    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
         if (handle as uint64) == InvalidHandleValue {
@@ -498,10 +494,10 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
             if !followLinks {
                 flags = flags | FILE_FLAG_OPEN_REPARSE_POINT;
             }
-            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live until the deferred
-            // release, and a `uint16` unit is a `char16`.
+            // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
+            // in scope, and a `uint16` unit is a `char16`.
             let writable = unsafe {
-                CreateFileW(native as *char16, 0x0100, // FILE_WRITE_ATTRIBUTES
+                CreateFileW(native.Pointer() as *char16, 0x0100, // FILE_WRITE_ATTRIBUTES
                             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
                             CreationDisposition::OpenExisting as uint32, flags, null)
             };
@@ -532,9 +528,9 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
         WriteTimespec(times[0..32], 0, accessed);
         WriteTimespec(times[0..32], 16, modified);
         let flags = if followLinks { 0i32 } else { SymlinkNoFollow };
-        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live until the deferred release.
+        // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
         // `times` is the local pair of timespecs just written.
-        let result = unsafe { UtimensAt(AtFdCwd, native as *char8, @times[0] as *opaque, flags) };
+        let result = unsafe { UtimensAt(AtFdCwd, native.Pointer() as *char8, @times[0] as *opaque, flags) };
         if result < 0 {
             throw TranslateNative((0i64 - result) as int32);
         }

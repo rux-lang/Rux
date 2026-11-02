@@ -231,13 +231,13 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
     let sink: &var TextWriter = builder;
     wrote = (try? WriteValue(sink, value, JsonStyle::Compact())) is .Some(_);
     Assert(wrote, "and writes");
-    var once = builder.IntoString();
+    var once = builder.TakeString();
 
     let again = try Parse(allocator, once.View().Bytes()) catch { _ => Panic("and the written form parses") };
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
     wrote = (try? WriteValue(secondSink, again, JsonStyle::Compact())) is .Some(_);
-    var twice = secondBuilder.IntoString();
+    var twice = secondBuilder.TakeString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
 

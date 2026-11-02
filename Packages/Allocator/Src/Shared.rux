@@ -40,7 +40,7 @@ extend Rc<T> {
     /// @param value the value to share
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-create
-    pub func Create(allocator: Allocator, value: T) -> Self {
+    pub func Rc(allocator: Allocator, value: T) -> Self {
         return try Rc::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
     }
 
@@ -143,7 +143,7 @@ extend Arc<T> {
     /// @param value the value to share
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-create
-    pub func Create(allocator: Allocator, value: T) -> Self {
+    pub func Arc(allocator: Allocator, value: T) -> Self {
         return try Arc::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
     }
 

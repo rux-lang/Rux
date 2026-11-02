@@ -16,7 +16,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    var reader = ByteReader::New("hello, world");
+    var reader = ByteReader("hello, world");
     var five: char8[5] = [c8' '; 5];
     try ReadExact(reader, five[..]) catch { _ => return 1 };
     Assert(Same(five[..], "hello") && reader.Position() == 5u && Same(reader.Remaining(), ", world"), "reads in order");
@@ -40,7 +40,7 @@ func Main() -> int {
         error => Assert(error.kind == IoErrorKind::InvalidInput, "a seek past the end is refused"),
     }
 
-    var writer = ByteWriter::New(SystemAllocator());
+    var writer = ByteWriter(SystemAllocator());
     Assert(writer.Length() == 0u && writer.Bytes().length == 0u, "an empty writer");
     try WriteAll(writer, "abc") catch { _ => return 4 };
     var index: uint = 0;
@@ -56,7 +56,7 @@ func Main() -> int {
     try WriteUint32(writer, Endian::Big, 0x01020304u32) catch { _ => return 9 };
     Assert(writer.Length() == 1007u, "binary writes append");
 
-    var back = ByteReader::New(writer.Bytes());
+    var back = ByteReader(writer.Bytes());
     try back.Seek(SeekFrom::End, -4) catch { _ => return 10 };
     Assert(((try ReadUint32(back, Endian::Big) catch { _ => 0u32 })) == 0x01020304u32, "what was written reads back");
 

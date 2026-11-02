@@ -151,7 +151,7 @@ extend Arena {
     // Safety: `block` must be a live block this arena took from `backing`, and nothing may reach it afterwards.
     unsafe func ReleaseBlock(&var self, block: *var ArenaBlock) {
         let total = sizeof(ArenaBlock) + block.capacity;
-        let layout = Layout::New(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
+        let layout = Layout::Of(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
         // The block came from the backing allocator with this layout, and the arena is giving it up either way.
         try self.backing.Deallocate(block as *var opaque, layout) catch { _ => {} };
     }
@@ -166,7 +166,7 @@ extend Arena {
         let header = sizeof(ArenaBlock);
         if capacity > uint::Max - header { throw .Unsupported; }
         let total = header + capacity;
-        let layout = Layout::New(total, ArenaBlockAlignment) ?? throw .Unsupported;
+        let layout = Layout::Of(total, ArenaBlockAlignment) ?? throw .Unsupported;
 
         let storage = try self.backing.Allocate(layout);
         let block = storage as *var ArenaBlock;

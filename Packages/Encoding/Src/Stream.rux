@@ -87,7 +87,7 @@ extend EncodingWriter {
     /// @param codec the encoding and its form
     /// @returns the writer
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-new
-    pub func New(sink: Writer, codec: StreamCodec) -> Self {
+    pub func EncodingWriter(sink: Writer, codec: StreamCodec) -> Self {
         return Self { sink, codec, pending: [0u8; 8], pendingLength: 0, finished: false };
     }
 
@@ -187,7 +187,7 @@ extend DecodingReader {
     /// @param codec the encoding and its form
     /// @returns the reader
     /// @see https://rux-lang.dev/docs/api/encoding/stream#decoding-reader-new
-    pub func New(source: Reader, codec: StreamCodec) -> Self {
+    pub func DecodingReader(source: Reader, codec: StreamCodec) -> Self {
         return Self {
             source,
             codec,
