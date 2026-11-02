@@ -108,10 +108,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 if appended + width > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
-                else if builder.AppendValidated(joined[0..width]) is .Failure(_) {
-                    failure = IoErrorKind::Other;
-                }
                 else {
+                    builder.AppendValidated(joined[0..width]);
                     appended = appended + width;
                 }
                 reader.Consume(width - carryLength);
@@ -206,10 +204,8 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                     if appended + settled > limit {
                         failure = IoErrorKind::LimitExceeded;
                     }
-                    else if builder.AppendValidated(settledPiece) is .Failure(_) {
-                        failure = IoErrorKind::Other;
-                    }
                     else {
+                        builder.AppendValidated(settledPiece);
                         appended = appended + settled;
                     }
                 }

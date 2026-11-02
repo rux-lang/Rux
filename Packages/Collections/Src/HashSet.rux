@@ -4,8 +4,10 @@
 // the displacement or the deletion is a fix to both.
 // The hash and equality are supplied for the same reason they are there, and the seed is drawn the same way.
 // A set owns its elements, so it prohibits copying and is move-only.
+// Running out of memory terminates the program, as everywhere in this package, and so does a run of elements
+// colliding so badly that no table could place them.
 
-import Allocator::Allocator;
+import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Core::Iterator;
 
 /// A hash table of distinct values.
@@ -56,9 +58,9 @@ extend HashSet<T> {
     /// @returns an empty set with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
-                      equals: func(T, T) -> bool) -> HashSet<T> ! CollectionError {
+                      equals: func(T, T) -> bool) -> HashSet<T> {
         var set = HashSet<T>(allocator, hash, equals);
-        set.Reserve(capacity)?;
+        set.Reserve(capacity);
         return <-set;
     }
 
@@ -96,17 +98,21 @@ extend HashSet<T> {
     /// Adds `value` to the set, reporting whether it was not already there.
     /// `self` is borrowed mutably; `value` is moved in when it is added and destroyed when it was already present --
     /// a set holds one of each, and the one it already had is the one it keeps.
-    /// A failure leaves the set exactly as it was.
+    /// Terminates the program when the table cannot grow.
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#insert
-    pub func Insert(self: &var HashSet<T>, value: T) -> bool ! CollectionError {
+    pub func Insert(self: &var HashSet<T>, value: T) -> bool {
         let hashed = self.hash(value, self.table.seed.low, self.table.seed.high);
         if self.table.FindHashed(value, hashed, self.equals) != none { return false; }
 
-        self.table.EnsureRoom(self.hash)?;
-        // Safety: `EnsureRoom` succeeded, so the capacity is nonzero.
-        if unsafe { self.table.PlaceHashed(<-value, (), hashed) } == none { fail CollectionError::Unsupported; }
+        self.table.EnsureRoom(self.hash);
+        // The table has room and the probe can still run past what a distance byte holds, when the elements collide
+        // badly enough that a larger table would spread the same collisions over more slots.
+        // Safety: `EnsureRoom` returned, so the capacity is nonzero.
+        if unsafe { self.table.PlaceHashed(<-value, (), hashed) } == none {
+            AllocationFailed(AllocError::Unsupported);
+        }
         return true;
     }
 
@@ -128,18 +134,18 @@ extend HashSet<T> {
     }
 
     /// Makes room for `additional` more elements on top of those already present.
+    /// Terminates the program when the storage cannot be had.
     /// @param additional how many more elements to make room for
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#reserve
-    pub func Reserve(self: &var HashSet<T>, additional: uint) -> ! CollectionError {
-        return self.table.Reserve(additional, self.hash);
+    pub func Reserve(self: &var HashSet<T>, additional: uint) {
+        self.table.Reserve(additional, self.hash);
     }
 
     /// Releases the capacity the element count does not need.
-    /// @returns nothing when the operation succeeded, or why it did not
+    /// Terminates the program when the allocator refuses the smaller table.
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#shrink-to-fit
-    pub func ShrinkToFit(self: &var HashSet<T>) -> ! CollectionError {
-        return self.table.ShrinkToFit(self.hash);
+    pub func ShrinkToFit(self: &var HashSet<T>) {
+        self.table.ShrinkToFit(self.hash);
     }
 
     /// Destroys every element, keeping the storage.
@@ -293,23 +299,22 @@ extend HashSet<T> {
     /// Adds every element of `other` that this set does not already have.
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements are copied out of `other`, which is
     /// what makes this usable only where copying an element means what it says.
-    /// Room for the worst case is taken first, so this either adds every element or none: a failure part-way would
-    /// leave a set that is neither what it was nor the union, and there is nothing useful a caller could do with
-    /// that. Reserving more than it needs is the price, and it is given back by `ShrinkToFit`.
+    /// Room for the worst case is taken first, so the elements are added without growing part-way. Reserving more
+    /// than it needs is the price, and it is given back by `ShrinkToFit`. Terminates the program when that room
+    /// cannot be had.
     /// Runs in time proportional to `other`.
     /// @param other the collection to compare or combine with
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#union-with
-    pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) -> ! CollectionError {
+    pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) {
         if other.Length() == 0 { return; }
-        self.Reserve(other.Length())?;
+        self.Reserve(other.Length());
 
         var walker = other.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 value? => {
-                    self.Insert(value)?;
+                    self.Insert(value);
                 },
                 none => {
                     walking = false;
@@ -387,14 +392,13 @@ extend HashSet<T> {
     /// Keeps the elements that are in exactly one of the two sets.
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements shared by both leave and are
     /// destroyed; elements only `other` has are copied in.
-    /// Room for the worst case is taken first, for the same reason `UnionWith` takes it: a failure part-way would
-    /// leave a set that is neither operand nor the answer.
+    /// Room for the worst case is taken first, as `UnionWith` takes it, and the program terminates when that room
+    /// cannot be had.
     /// @param other the collection to compare or combine with
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#symmetric-difference-with
-    pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) -> ! CollectionError {
+    pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) {
         if other.Length() == 0 { return; }
-        self.Reserve(other.Length())?;
+        self.Reserve(other.Length());
 
         var walker = other.Iterate();
         var walking = true;
@@ -411,7 +415,7 @@ extend HashSet<T> {
                             }
                         },
                         none => {
-                            self.Insert(value)?;
+                            self.Insert(value);
 
                         }
                     }
@@ -428,18 +432,19 @@ extend HashSet<T> {
     /// `self` is borrowed and left alone. The copy has its own storage from the same allocator and the same seed, so
     /// the two lay their elements out alike.
     /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
-    /// owning element type is rejected while compiling, at the copy.
+    /// owning element type is rejected while compiling, at the copy. Terminates the program when the storage cannot
+    /// be had.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#clone
-    pub func Clone(self: &HashSet<T>) -> HashSet<T> ! CollectionError {
+    pub func Clone(self: &HashSet<T>) -> HashSet<T> {
         var copy = HashSet::WithSeed<T>(self.table.allocator, self.table.seed, self.hash, self.equals);
-        copy.Reserve(self.Length())?;
+        copy.Reserve(self.Length());
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 value? => {
-                    copy.Insert(value)?;
+                    copy.Insert(value);
                 },
                 none => {
                     walking = false;

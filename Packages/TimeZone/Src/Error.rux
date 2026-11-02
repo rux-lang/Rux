@@ -12,7 +12,5 @@ pub enum TimeZoneError: uint8 {
     /// A POSIX `TZ` rule is malformed.
     InvalidRule = 4,
     /// The zone's file could not be read for a reason other than its absence.
-    Unreadable = 5,
-    /// The allocator could not supply the storage.
-    OutOfMemory = 6
+    Unreadable = 5
 }

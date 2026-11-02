@@ -3,9 +3,8 @@
 // missing. Everything else — parent, filename, joins that produce fresh paths — reads structure and lives with
 // it; the buffer is where segments accumulate on the way to a system call.
 
-import Allocator::{ AllocError, Allocator, Layout };
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Memory::Copy;
-import Text::{ FromAllocError, TextError };
 
 /// An owning, growable path.
 /// Move-only: it prohibits copying and gives its block back with `~PathBuffer`.
@@ -39,11 +38,11 @@ extend PathBuffer {
     /// A buffer opening with `path`'s units.
     /// @param allocator where the storage comes from
     /// @param path the path to act on
-    /// @returns a copy of `path` this buffer owns, or an empty one when the allocator refused
+    /// @returns a copy of `path` this buffer owns
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#from-path
-    pub func FromPath(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
+    pub func FromPath(allocator: Allocator, path: Path) -> PathBuffer {
         var buffer = PathBuffer(allocator);
-        buffer.AppendUnits(path.AsView().Units())?;
+        buffer.AppendUnits(path.AsView().Units());
         return <-buffer;
     }
 
@@ -71,7 +70,7 @@ extend PathBuffer {
     }
 
     // Room for `additional` more units, by doubling.
-    func Reserve(self: &var PathBuffer, additional: uint) -> ! TextError {
+    func Reserve(self: &var PathBuffer, additional: uint) {
         let required = self.length + additional;
         if required <= self.capacity { return; }
         var wanted = self.capacity * 2;
@@ -82,9 +81,9 @@ extend PathBuffer {
             wanted = 16;
         }
         let unitSize = sizeof(OsUnit) as uint;
-        let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint) ?? fail TextError::LengthOverflow;
+        let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = self.allocator;
-        let block = borrowed.Allocate(layout) catch { allocated => fail FromAllocError(allocated) };
+        let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
         if self.data != null {
             // Safety: `block` is a fresh allocation of `wanted >= length` units, and the storage invariant makes
             // `self.data` readable for `self.length` units.
@@ -99,9 +98,9 @@ extend PathBuffer {
     }
 
     // Appends raw units, structure unexamined.
-    func AppendUnits(self: &var PathBuffer, units: OsUnit[..]) -> ! TextError {
+    func AppendUnits(self: &var PathBuffer, units: OsUnit[..]) {
         if units.length == 0 { return; }
-        self.Reserve(units.length)?;
+        self.Reserve(units.length);
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, and `Reserve` above made room for `length + units.length`
@@ -116,23 +115,24 @@ extend PathBuffer {
     /// A segment that is itself absolute — opening with a separator — replaces the buffer instead of extending
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
     /// @param segment the component to append
-    /// @returns nothing when the component was appended, or why not
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#push
-    pub func Push(self: &var PathBuffer, segment: OsStringView) -> ! TextError {
+    pub func Push(self: &var PathBuffer, segment: OsStringView) {
         let units = segment.Units();
         if units.length == 0 { return; }
         // Safety: `units` is not empty, checked above.
         if IsSeparator(unsafe { units.data[0] }) {
             self.length = 0;
-            return self.AppendUnits(units);
+            self.AppendUnits(units);
+            return;
         }
         // Safety: `self.length` is positive, checked first, and the storage invariant keeps it within the block.
         if self.length > 0 && !IsSeparator(unsafe { self.data[self.length - 1] }) {
             var one: OsUnit[1];
             one[0] = PreferredSeparator();
-            self.AppendUnits(one[0..1])?;
+            self.AppendUnits(one[0..1]);
         }
-        return self.AppendUnits(units);
+        self.AppendUnits(units);
+            return;
     }
 
     /// Gives the block back and leaves an empty buffer.
@@ -163,11 +163,11 @@ extend PathBuffer {
 /// @param allocator where the storage comes from
 /// @param base the path to extend
 /// @param segment the component to append
-/// @returns `base` with `segment` appended, or why it could not be
+/// @returns `base` with `segment` appended
 /// @see https://rux-lang.dev/docs/api/path/path-buffer#join
-pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBuffer ! TextError {
-    var buffer = PathBuffer::FromPath(allocator, base)?;
-    buffer.Push(segment)?;
+pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBuffer {
+    var buffer = PathBuffer::FromPath(allocator, base);
+    buffer.Push(segment);
     return <-buffer;
 }
 
@@ -179,9 +179,9 @@ pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBu
 /// before it survives in a relative path and vanishes at the root, where there is nowhere further up.
 /// @param allocator where the storage comes from
 /// @param path the path to act on
-/// @returns the path with its redundant components resolved, or why it could not be
+/// @returns the path with its redundant components resolved
 /// @see https://rux-lang.dev/docs/api/path/path-buffer#normalize
-pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
+pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
     var buffer = PathBuffer(allocator);
 
     let units = path.AsView().Units();
@@ -190,7 +190,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
     if absolute {
         var one: OsUnit[1];
         one[0] = PreferredSeparator();
-        buffer.AppendUnits(one[0..1])?;
+        buffer.AppendUnits(one[0..1]);
     }
 
     // How many real segments the buffer holds, and where each begins, tracked so `..` can drop the last one
@@ -224,7 +224,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
                     }
                     else if !absolute {
                         // Nothing to climb out of: the `..` is the path's meaning and stays.
-                        buffer.Push(piece)?;
+                        buffer.Push(piece);
                     }
                     // At the root, `..` goes nowhere and vanishes.
                 }
@@ -238,7 +238,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
                         starts[depth] = opening;
                         depth = depth + 1;
                     }
-                    buffer.Push(piece)?;
+                    buffer.Push(piece);
                 }
             },
             none => {

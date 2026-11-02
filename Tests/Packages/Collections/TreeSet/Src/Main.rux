@@ -44,7 +44,7 @@ func Main() -> int {
     var set = TreeSet<int32>(allocator, CompareInt32);
     var step: int32 = 0;
     while step < 50 {
-        let added = set.Insert((step * 23) % 50) catch { else => Panic("there is room for every element") };
+        let added = set.Insert((step * 23) % 50);
         Assert(added, "and every one of them is new");
         step = step + 1;
     }
@@ -59,7 +59,7 @@ func Main() -> int {
     Assert(!set.Contains(50), "an element that was never put in is not");
     Assert(!set.Contains(-1), "on either side of the range");
 
-    let again = set.Insert(21) catch { else => Panic("an element already there is accepted") };
+    let again = set.Insert(21);
     Assert(!again, "and reports that it added nothing");
     Assert(set.Length() == 50, "leaving the set the length it was");
 
@@ -115,13 +115,13 @@ func Main() -> int {
     value = 0;
     while value < 20 {
         if value % 2 == 0 {
-            evens.Insert(value) catch { else => Panic("there is room for every even number") };
+            evens.Insert(value);
         }
         else {
-            odds.Insert(value) catch { else => Panic("there is room for every odd number") };
+            odds.Insert(value);
         }
         if value < 6 {
-            small.Insert(value) catch { else => Panic("there is room for every small number") };
+            small.Insert(value);
         }
         value = value + 1;
     }
@@ -140,33 +140,33 @@ func Main() -> int {
     Assert(!evens.Equals(odds), "and not one of the same size holding different elements");
 
     // Intersection allocates nothing and can only make a set smaller.
-    var intersection = evens.Clone() catch { else => Panic("a set can be copied") };
+    var intersection = evens.Clone();
     Assert(intersection.Equals(evens), "and the copy holds what the original does");
     intersection.IntersectWith(small);
     Assert(intersection.Length() == 3, "the intersection is the even numbers below six");
     Assert(intersection.Contains(0) && intersection.Contains(2) && intersection.Contains(4), "which are 0, 2 and 4");
     Assert(intersection.First() == .Some(0) && intersection.Last() == .Some(4), "and still in order");
 
-    var difference = evens.Clone() catch { else => Panic("a set can be copied for a difference") };
+    var difference = evens.Clone();
     difference.Subtract(small);
     Assert(difference.Length() == 7, "subtracting the small numbers leaves the evens from six up");
     Assert(!difference.Contains(4) && difference.Contains(6), "with six the smallest of them");
 
     // Union and symmetric difference can grow, so they report.
-    var joined = evens.Clone() catch { else => Panic("a set can be copied for a union") };
-    joined.UnionWith(odds) catch { else => Panic("a union of two sets that fit is made") };
+    var joined = evens.Clone();
+    joined.UnionWith(odds);
     Assert(joined.Length() == 20, "and holds every element of both");
     Assert(joined.First() == .Some(0) && joined.Last() == .Some(19), "in order across both");
 
-    var symmetric = evens.Clone() catch { else => Panic("a set can be copied for a symmetric difference") };
-    symmetric.SymmetricDifferenceWith(small) catch { else => Panic("a symmetric difference is made") };
+    var symmetric = evens.Clone();
+    symmetric.SymmetricDifferenceWith(small);
     Assert(symmetric.Length() == 10, "holding what is in exactly one of the two");
     Assert(!symmetric.Contains(0) && !symmetric.Contains(2) && !symmetric.Contains(4), "not what they share");
     Assert(symmetric.Contains(1) && symmetric.Contains(3) && symmetric.Contains(5), "the odd small numbers");
     Assert(symmetric.Contains(6) && symmetric.Contains(18), "and the evens above them");
 
-    var mirror = evens.Clone() catch { else => Panic("a set can be copied to mirror") };
-    mirror.SymmetricDifferenceWith(evens) catch { else => Panic("a set against its own copy is made") };
+    var mirror = evens.Clone();
+    mirror.SymmetricDifferenceWith(evens);
     Assert(mirror.IsEmpty(), "and comes out empty");
 
     // The consuming walk hands out ownership one element at a time, in the same order, and a walk stopped
@@ -189,7 +189,7 @@ func Main() -> int {
     }
     Assert(consumed == 20, "and hands out every element the set held");
 
-    var partial = odds.Clone() catch { else => Panic("a set can be copied for a partial walk") };
+    var partial = odds.Clone();
     var walkedPartly = (<-partial).IntoIterator();
     var takenSoFar: int32 = 0;
     while takenSoFar < 4 {

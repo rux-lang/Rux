@@ -245,9 +245,7 @@ extend DirectoryIterator {
                 let entry = unsafe { (start)[..length] };
                 if !IsDotEntry16(entry) {
                     let view = OsStringView::FromUnits(entry);
-                    var name = OsString::FromView(self.allocator, view) catch {
-                        else => fail IoError::Of(IoErrorKind::Other)
-                    };
+                    var name = OsString::FromView(self.allocator, view);
                     return .Some(<-name);
                 }
             }
@@ -324,9 +322,7 @@ extend DirectoryIterator {
                 let entry = unsafe { ((record as uint + nameStart) as *var char8)[..nameLength] };
                 if !IsDotEntry8(entry) {
                     let view = OsStringView::FromUnits(entry);
-                    var name = OsString::FromView(self.allocator, view) catch {
-                        else => fail IoError::Of(IoErrorKind::Other)
-                    };
+                    var name = OsString::FromView(self.allocator, view);
                     return .Some(<-name);
                 }
             }

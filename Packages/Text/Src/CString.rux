@@ -10,7 +10,7 @@
 // Nothing here weakens what `String` promises. A `CString` is its own type owning its own copy, so the NUL it
 // appends is never visible through anything else, and a `String` never holds one.
 
-import Allocator::{ AllocError, Allocator, Layout };
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Memory::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.
@@ -45,7 +45,7 @@ extend CString {
     /// A terminated copy of `view`, or why the text cannot cross the boundary.
     /// Fails with `InvalidUtf8` when the text contains a zero byte — refused rather than truncated,
     /// because text that ends early on the C side of the boundary is the classic way a checked name and a used name
-    /// part company. Reports `OutOfMemory` when the copy cannot be made.
+    /// part company. Terminates the program when the copy cannot be made.
     /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to act on
@@ -63,11 +63,11 @@ extend CString {
         }
 
         if bytes.length >= 0xFFFFFFFFFFFFFFFFu {
-            fail TextError::LengthOverflow;
+            AllocationFailed(AllocError::Unsupported);
         }
-        let layout = Layout::New(bytes.length + 1, 1) ?? fail TextError::LengthOverflow;
+        let layout = Layout::New(bytes.length + 1, 1) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch { allocated => fail FromAllocError(allocated) };
+        let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
 
         // Safety: `block` is a fresh allocation of bytes, so viewing it as `char8` reinterprets nothing.
         let data = unsafe { block as *var char8 };

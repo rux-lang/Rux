@@ -20,7 +20,7 @@ pub enum LogFormat: uint8 {
 
 // Appends `bytes`, reporting whether the builder took them.
 func Put(builder: &var StringBuilder, bytes: char8[..]) -> bool {
-    builder.Append(bytes) catch { else => return false };
+    builder.Append(bytes);
     return true;
 }
 

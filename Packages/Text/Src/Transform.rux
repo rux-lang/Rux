@@ -1,14 +1,15 @@
 // Making new text out of old.
 // Everything here allocates, because everything here produces text that did not exist before: joining two runs,
 // repeating one, replacing part of one, changing the case of one. That is what separates these from `Search`, whose
-// answers are all borrows of what was already there.
+// answers are all borrows of what was already there. Running out of memory terminates the program, as it does for
+// every string and builder.
 // Case comes in two kinds. The ASCII operations say so in their names and never change a byte above 0x7F. The
 // Unicode operations apply the full, unconditional mappings from `Rux/Unicode`, so the German sharp s becomes two
 // letters and the length may change. What they leave out is what depends on the locale (the Turkish dotless i) or
 // on neighbouring characters (the Greek final sigma): those mappings are conditional, and applying them silently is
 // how text stops round-tripping.
 
-import Allocator::Allocator;
+import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Unicode::{ Fold, ToLowerFull, ToUpperFull };
 
 /// The text of every part of `parts` in order, with `separator` between each two.
@@ -16,18 +17,18 @@ import Unicode::{ Fold, ToLowerFull, ToUpperFull };
 /// @param allocator where the storage comes from
 /// @param parts the pieces to join
 /// @param separator what goes between them
-/// @returns the joined text, or why it could not be made
+/// @returns the joined text
 /// @see https://rux-lang.dev/docs/api/text/transform#join
-pub func Join(allocator: Allocator, parts: StringView[..], separator: StringView) -> String ! TextError {
+pub func Join(allocator: Allocator, parts: StringView[..], separator: StringView) -> String {
     var builder = StringBuilder(allocator);
     var total: uint = 0;
     for part in parts { total = total + part.bytes.length; }
     if parts.length > 1u { total = total + separator.bytes.length * (parts.length - 1); }
-    builder.Reserve(total)?;
+    builder.Reserve(total);
     var index: uint = 0;
     while index < parts.length {
-        if index > 0 { builder.Append(separator)?; }
-        builder.Append(parts[index])?;
+        if index > 0 { builder.Append(separator); }
+        builder.Append(parts[index]);
         index = index + 1;
     }
     return builder.IntoString();
@@ -43,7 +44,7 @@ enum CaseMapping: uint8 {
 // Copies `view`, replacing every scalar value by its full mapping of the given kind.
 func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> String ! TextError {
     var builder = StringBuilder(allocator);
-    builder.Reserve(view.bytes.length)?;
+    builder.Reserve(view.bytes.length);
     var scalars = view.Scalars();
     var mapped: char32[3] = [0u32 as char32; 3];
     while true {
@@ -99,17 +100,16 @@ pub func FoldCase(allocator: Allocator, view: StringView) -> String ! TextError 
 }
 
 /// The text of `left` followed by the text of `right`.
-/// Fails with what went wrong; no partial text comes back.
 /// @param allocator where the storage comes from
 /// @param left the first piece
 /// @param right the second
-/// @returns the two joined, or why they could not be
+/// @returns the two joined
 /// @see https://rux-lang.dev/docs/api/text/transform#concat
-pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> String ! TextError {
+pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> String {
     var builder = StringBuilder(allocator);
-    builder.Reserve(left.bytes.length + right.bytes.length)?;
-    builder.Append(left)?;
-    builder.Append(right)?;
+    builder.Reserve(left.bytes.length + right.bytes.length);
+    builder.Append(left);
+    builder.Append(right);
     return builder.IntoString();
 }
 
@@ -119,19 +119,19 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> St
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @param count how many times
-/// @returns the text repeated that many times, or why it could not be
+/// @returns the text repeated that many times
 /// @see https://rux-lang.dev/docs/api/text/transform#repeat
-pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String ! TextError {
+pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String {
     var builder = StringBuilder(allocator);
     if count != 0 && view.bytes.length != 0 {
         if count > 0xFFFFFFFFFFFFFFFFu / view.bytes.length {
-            fail TextError::LengthOverflow;
+            AllocationFailed(AllocError::Unsupported);
         }
-        builder.Reserve(view.bytes.length * count)?;
+        builder.Reserve(view.bytes.length * count);
     }
     var done: uint = 0;
     while done < count {
-        builder.Append(view)?;
+        builder.Append(view);
         done = done + 1;
     }
     return builder.IntoString();
@@ -145,12 +145,12 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String !
 /// @param view the borrowed text to act on
 /// @param needle the text to look for
 /// @param replacement the text to put in its place
-/// @returns the text with every occurrence replaced, or why it could not be
+/// @returns the text with every occurrence replaced
 /// @see https://rux-lang.dev/docs/api/text/transform#replace
-pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView) -> String ! TextError {
+pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView) -> String {
     var builder = StringBuilder(allocator);
     if needle.bytes.length == 0 {
-        builder.Append(view)?;
+        builder.Append(view);
         return builder.IntoString();
     }
 
@@ -160,8 +160,8 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
         match rest.IndexOf(needle) {
             .Some(at) => {
                 let before = rest.Part(0, at) ?? StringView();
-                builder.Append(before)?;
-                builder.Append(replacement)?;
+                builder.Append(before);
+                builder.Append(replacement);
                 rest = rest.Part(at + needle.bytes.length, rest.bytes.length) ?? StringView();
             },
             none => {
@@ -169,7 +169,7 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
             }
         }
     }
-    builder.Append(rest)?;
+    builder.Append(rest);
     return builder.IntoString();
 }
 
@@ -189,7 +189,7 @@ pub func IsAsciiLetter(byte: char8) -> bool {
 /// @param view the borrowed text to act on
 /// @returns the text with its ASCII letters uppercased and everything else untouched
 /// @see https://rux-lang.dev/docs/api/text/transform#to-ascii-upper
-pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String ! TextError {
+pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String {
     return MapAscii(allocator, view, 0x61, 0x7A, 0x20);
 }
 
@@ -198,15 +198,15 @@ pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String ! TextEr
 /// @param view the borrowed text to act on
 /// @returns the text with its ASCII letters lowercased and everything else untouched
 /// @see https://rux-lang.dev/docs/api/text/transform#to-ascii-lower
-pub func ToAsciiLower(allocator: Allocator, view: StringView) -> String ! TextError {
+pub func ToAsciiLower(allocator: Allocator, view: StringView) -> String {
     return MapAscii(allocator, view, 0x41, 0x5A, 0x20);
 }
 
 // Copies `view`, shifting every byte in [low, high] by `delta`. The two case operations differ only in which range
 // moves and in which direction, so the copy loop is written once.
-func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32, delta: uint32) -> String ! TextError {
+func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32, delta: uint32) -> String {
     var builder = StringBuilder(allocator);
-    builder.Reserve(view.bytes.length)?;
+    builder.Reserve(view.bytes.length);
     var index: uint = 0;
     while index < view.bytes.length {
         // Safety: `index` is below `view.bytes.length`, the loop condition.
@@ -219,7 +219,7 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
                 // belongs to. `AppendAscii` refuses it, so it goes in as a byte of a sequence instead.
                 var one: char8[1];
                 one[0] = byte;
-                builder.AppendValidated(one[..])?;
+                builder.AppendValidated(one[..]);
             }
         };
         index = index + 1;

@@ -28,7 +28,7 @@ func Compiled(pattern: char8[..]) -> Regex {
 
 func Finds(pattern: char8[..], text: char8[..], start: uint, end: uint) -> bool {
     let regex = Compiled(pattern);
-    let found = regex.Find(text) catch { else => return false };
+    let found = regex.Find(text);
     match found {
         .Some(span) => return span.start == start && span.end == end,
         none => return false
@@ -37,7 +37,7 @@ func Finds(pattern: char8[..], text: char8[..], start: uint, end: uint) -> bool 
 
 func FindsNothing(pattern: char8[..], text: char8[..]) -> bool {
     let regex = Compiled(pattern);
-    let found = regex.Find(text) catch { else => return false };
+    let found = regex.Find(text);
     match found {
         .Some(_) => return false,
         none => return true
@@ -67,7 +67,7 @@ func GroupIs(span: Match?, start: uint, end: uint) -> bool {
 
 func Replaced(pattern: char8[..], text: char8[..], replacement: char8[..], expected: char8[..]) -> bool {
     let regex = Compiled(pattern);
-    let result = regex.Replace(SystemAllocator(), text, replacement) catch { else => return false };
+    let result = regex.Replace(SystemAllocator(), text, replacement);
     return Same(result.Bytes(), expected);
 }
 
@@ -119,7 +119,7 @@ func Main() -> int {
     // Captures.
     let date = Compiled("(?<year>\\d{4})-(?P<month>\\d{2})-(\\d{2})");
     Assert(date.GroupCount() == 3u && (date.GroupIndex("month") ?? 0u) == 2u && date.GroupIndex("day") == none, "groups");
-    let captured = date.Capture("date: 2026-10-10.") catch { else => return 10 };
+    let captured = date.Capture("date: 2026-10-10.");
     match <-captured {
         .Some(groups) => {
             Assert(groups.Count() == 4u && GroupIs(groups.Group(0), 6, 16), "the whole match is group 0");
@@ -130,12 +130,12 @@ func Main() -> int {
         none => Assert(false, "the date matches")
     }
     let either = Compiled("(a)|(b)");
-    match either.Capture("b") catch { else => return 11 } {
+    match either.Capture("b") {
         .Some(groups) => Assert(groups.Group(1) == none && GroupIs(groups.Group(2), 0, 1), "a group not taken"),
         none => Assert(false, "b matches")
     }
     let three = Compiled("(a|ab)(c|bcd)(d*)");
-    match three.Capture("abcd") catch { else => return 12 } {
+    match three.Capture("abcd") {
         .Some(groups) => Assert(GroupIs(groups.Group(1), 0, 1) && GroupIs(groups.Group(2), 1, 4) &&
                                 GroupIs(groups.Group(3), 4, 4), "groups as Python gives them"),
         none => Assert(false, "abcd matches")
@@ -143,23 +143,23 @@ func Main() -> int {
 
     // Every match, and the parts between them.
     let digits = Compiled("\\d+");
-    var all = digits.FindAll("a1b22c333") catch { else => return 13 };
+    var all = digits.FindAll("a1b22c333");
     Assert(GroupIs(all.Next(), 1, 2) && GroupIs(all.Next(), 3, 5) && GroupIs(all.Next(), 6, 9) && all.Next() == none,
            "every match in turn");
     let stars = Compiled("a*");
-    var empty = stars.FindAll("baaab") catch { else => return 14 };
+    var empty = stars.FindAll("baaab");
     Assert(GroupIs(empty.Next(), 0, 0) && GroupIs(empty.Next(), 1, 4) && GroupIs(empty.Next(), 5, 5) &&
            empty.Next() == none, "no empty match right after a match");
     let nothing = Compiled("");
-    var boundaries = nothing.FindAll("\u{E9}") catch { else => return 15 };
+    var boundaries = nothing.FindAll("\u{E9}");
     Assert(GroupIs(boundaries.Next(), 0, 0) && GroupIs(boundaries.Next(), 2, 2) && boundaries.Next() == none,
            "empty matches fall between characters");
     let commas = Compiled("\\s*,\\s*");
-    var parts = commas.Split("a , b,c ,d") catch { else => return 16 };
+    var parts = commas.Split("a , b,c ,d");
     Assert(Same(parts.Next() ?? "", "a") && Same(parts.Next() ?? "", "b") && Same(parts.Next() ?? "", "c") &&
            Same(parts.Next() ?? "", "d") && Ended(parts.Next()), "splitting");
     let comma = Compiled(",");
-    var ends = comma.Split(",a,,") catch { else => return 17 };
+    var ends = comma.Split(",a,,");
     Assert(Same(ends.Next() ?? "x", "") && Same(ends.Next() ?? "", "a") && Same(ends.Next() ?? "x", "") &&
            Same(ends.Next() ?? "x", "") && Ended(ends.Next()), "separators at the ends give empty parts");
 
@@ -170,11 +170,11 @@ func Main() -> int {
     Assert(Replaced("a", "banana", "$$", "b$n$n$") && Replaced("x*", "abc", "-", "-a-b-c-"), "`$$` and empty matches");
     Assert(Replaced("(a)", "a", "[$0|$2|$9]", "[a||]"), "missing groups stand for nothing");
     let first = Compiled("a");
-    let once = first.ReplaceFirst(SystemAllocator(), "banana", "o") catch { else => return 18 };
+    let once = first.ReplaceFirst(SystemAllocator(), "banana", "o");
     Assert(Same(once.Bytes(), "bonana"), "only the first match");
 
     // Escaping.
-    let escaped = Escape(SystemAllocator(), "1+1=2? (a.b)*[c]") catch { else => return 19 };
+    let escaped = Escape(SystemAllocator(), "1+1=2? (a.b)*[c]");
     Assert(Same(escaped.Bytes(), "1\\+1=2\\? \\(a\\.b\\)\\*\\[c\\]"), "metacharacters are escaped");
     Assert(Finds(escaped.Bytes(), "is 1+1=2? (a.b)*[c]", 3, 19), "an escaped pattern matches its text");
 
@@ -200,7 +200,7 @@ func Main() -> int {
     Assert(FindsNothing("(a*)*b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") &&
            FindsNothing("(x+x+)+y", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), "no catastrophic backtracking");
     let quick = Compiled("foo");
-    Assert(quick.IsMatch("xxfooxx") catch { else => false }, "IsMatch");
+    Assert(quick.IsMatch("xxfooxx"), "IsMatch");
 
     // A text of 64 bytes or more is searched by the DFAs: forwards for where the match ends, backwards for where it
     // starts, and the Pike matcher only over the match when groups are wanted. The answers are the same.
@@ -221,20 +221,16 @@ func Main() -> int {
            "case orbits through the DFA");
     Assert(Finds("x*", pad, 0, 0) && Finds("\\.*?", pad, 0, 0), "empty matches through the DFA");
     let long = Compiled("(?<word>[a-z]+)(?<digits>[0-9]+)");
-    let groups = long.Capture("................................................................................abc123.") catch {
-        else => none
-    };
+    let groups = long.Capture("................................................................................abc123.");
     let found = (<-groups) ?? return 1;
     let wordMatch = found.Named("word") ?? return 2;
     let digitMatch = found.Named("digits") ?? return 3;
     Assert(wordMatch.start == 80u && wordMatch.end == 83u && digitMatch.start == 83u && digitMatch.end == 86u,
            "found by the Pike matcher over just the match");
-    var every = long.FindAll("................................................................................a1 b22 c333") catch {
-        else => return 4
-    };
+    var every = long.FindAll("................................................................................a1 b22 c333");
     var count: uint = 0;
     while every.Next() != none { count = count + 1; }
     Assert(count == 3u, "every match of a long text");
-    Assert(!(Compiled("zz").IsMatch(pad) catch { else => true }), "IsMatch through the DFA");
+    Assert(!(Compiled("zz").IsMatch(pad)), "IsMatch through the DFA");
     return 0;
 }

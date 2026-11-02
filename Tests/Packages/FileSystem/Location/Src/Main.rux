@@ -9,7 +9,7 @@ import FileSystem::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, 
                      OpenOptions };
 
 func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
-    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    holder = OsString::FromText(allocator, text);
     return Path::FromView(holder.View());
 }
 

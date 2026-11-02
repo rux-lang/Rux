@@ -6,6 +6,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
+import Core::Panic;
 import Time::{ DateTime, OffsetDateTime, Timestamp, UtcOffset };
 import TimeZone::{ NoRule, ParseRule, Rule, RuleTypeAt, TimeZoneError, ZoneType };
 
@@ -57,8 +58,8 @@ pub struct TimeZone {
     rule: Rule;
 }
 
-func Grow<T>(vector: &var Vector<T>, value: T) -> ! TimeZoneError {
-    vector.Push(value) catch { else => fail TimeZoneError::OutOfMemory };
+func Grow<T>(vector: &var Vector<T>, value: T) {
+    vector.Push(value);
 }
 
 func BigEndian(bytes: byte[..], at: uint, width: uint) -> int64 {
@@ -76,21 +77,24 @@ extend TimeZone {
     func =(self: &var TimeZone, other: &TimeZone);
 
     // An empty zone named `name`, ready to be filled.
-    func Empty(allocator: Allocator, name: char8[..]) -> TimeZone ! TimeZoneError {
+    func Empty(allocator: Allocator, name: char8[..]) -> TimeZone {
         var zone = TimeZone {
             name: Vector<char8>(allocator), names: Vector<char8>(allocator), transitions: Vector<int64>(allocator),
             transitionTypes: Vector<uint8>(allocator), types: Vector<ZoneType>(allocator), rule: NoRule()
         };
-        zone.name.PushSlice(name) catch { else => fail TimeZoneError::OutOfMemory };
+        zone.name.PushSlice(name);
         return <-zone;
     }
 
     /// UTC, which has no offset and never changes.
+    /// Cannot fail: its rule is a constant every reader accepts, and running out of memory terminates the program.
     /// @param allocator what the zone is kept in
-    /// @returns the zone, or fails when the allocator refused
+    /// @returns the zone
     /// @see https://rux-lang.dev/docs/api/timezone/zone#utc
-    pub func Utc(allocator: Allocator) -> TimeZone ! TimeZoneError {
-        return TimeZone::FromRule(allocator, "UTC", "UTC0")?;
+    pub func Utc(allocator: Allocator) -> TimeZone {
+        var zone = TimeZone::Empty(allocator, "UTC");
+        zone.rule = ParseRule("UTC0", zone.names) catch { else => Panic("the UTC rule is refused") };
+        return <-zone;
     }
 
     /// A zone kept by the POSIX `TZ` rule `rule`, such as `EST5EDT,M3.2.0,M11.1.0`.
@@ -100,7 +104,7 @@ extend TimeZone {
     /// @returns the zone, or fails with `InvalidRule`
     /// @see https://rux-lang.dev/docs/api/timezone/zone#from-rule
     pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> TimeZone ! TimeZoneError {
-        var zone = TimeZone::Empty(allocator, name)?;
+        var zone = TimeZone::Empty(allocator, name);
         zone.rule = ParseRule(rule, zone.names)?;
         return <-zone;
     }
@@ -133,11 +137,11 @@ extend TimeZone {
         let characters = BigEndian(data, at + 40u, 4) as uint;
         if typeCount == 0u || typeCount > 256u { fail TimeZoneError::InvalidData; }
         let size = SectionSize(data, at, width)?;
-        var zone = TimeZone::Empty(allocator, name)?;
+        var zone = TimeZone::Empty(allocator, name);
         var cursor = at + 44u;
         var index: uint = 0;
         while index < transitionCount {
-            Grow(zone.transitions, BigEndian(data, cursor + index * width, width))?;
+            Grow(zone.transitions, BigEndian(data, cursor + index * width, width));
             index = index + 1;
         }
         cursor = cursor + transitionCount * width;
@@ -145,7 +149,7 @@ extend TimeZone {
         while index < transitionCount {
             let kind = data[cursor + index];
             if kind as uint >= typeCount { fail TimeZoneError::InvalidData; }
-            Grow(zone.transitionTypes, kind)?;
+            Grow(zone.transitionTypes, kind);
             index = index + 1;
         }
         cursor = cursor + transitionCount;
@@ -154,10 +158,10 @@ extend TimeZone {
         let charactersAt = cursor;
         index = 0;
         while index < characters {
-            Grow(zone.names, data[charactersAt + index] as char8)?;
+            Grow(zone.names, data[charactersAt + index] as char8);
             index = index + 1;
         }
-        Grow(zone.names, c8'\0')?;
+        Grow(zone.names, c8'\0');
         index = 0;
         while index < typeCount {
             let record = typesAt + index * 6u;
@@ -168,7 +172,7 @@ extend TimeZone {
             Grow(zone.types, ZoneType {
                 offset: BigEndian(data, record, 4) as int32, daylight: data[record + 4u] != 0u8,
                 abbreviation: abbreviation, abbreviationLength: end - abbreviation
-            })?;
+            });
             index = index + 1;
         }
         let end = at + 44u + size;

@@ -5,15 +5,15 @@
 // The allocator is held as an interface value rather than a type parameter, so `Box<T>` has one parameter rather
 // than two and a container of boxes does not have to name which allocator each came from. The cost is one indirect
 // call per allocation and release, which against the cost of allocating is not a cost at all.
-// Construction takes the value by value, which means it is consumed. If the allocation fails the value is destroyed
-// rather than leaked, and nothing half-built exists — there is no state in which a `Box` holds an allocation it
-// cannot release.
+// Construction takes the value by value, which means it is consumed. Running out of memory is fatal: `Create`
+// terminates the program when the allocator refuses, as every owning type here does. `TryCreate` is for the code that
+// can recover; it throws the `AllocError` instead, and the value is then destroyed rather than leaked. Either way
+// nothing half-built exists — there is no state in which a `Box` holds an allocation it cannot release.
 // A box is *returned* rather than written through an out-parameter. Ownership is what forces it: the compiler
 // tracks a binding's initialization, and a write through a pointer is invisible to that tracking, so a box delivered
-// that way would be owned by a binding the compiler believes owns nothing. Returning it makes the transfer visible,
-// and a failure comes back through the same return: `Create` returns `Box<T> ! AllocError`.
+// that way would be owned by a binding the compiler believes owns nothing. Returning it makes the transfer visible.
 
-import Allocator::{ AllocError, Allocator, Layout };
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 
 /// One heap-allocated value of `T`, owned by exactly one holder.
 /// Move-only: its copy operation is prohibited and `~Box` releases its allocation. Transfer one with `<-`; the
@@ -34,16 +34,28 @@ extend Box<T> {
     func =(self: &var Box<T>, other: &Box<T>);
 
     /// Puts `value` on the heap and hands back the box that owns it.
+    /// `allocator` is borrowed for the call and kept in the box. `value` is consumed and the box owns it.
+    /// Terminates the program when the allocator refuses; `TryCreate` reports the refusal instead.
+    /// Runs in whatever time the allocator takes, and allocates exactly one block.
+    /// @param allocator where the storage comes from
+    /// @param value the value to move into it
+    /// @returns the box
+    /// @see https://rux-lang.dev/docs/api/allocator/box#create
+    pub func Create(allocator: Allocator, value: T) -> Box<T> {
+        return try Box::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
+    }
+
+    /// Puts `value` on the heap and hands back the box that owns it, or throws why the allocator refused.
     /// `allocator` is borrowed for the call and kept in the box. `value` is consumed: on success the box owns it,
     /// and on failure it is destroyed rather than leaked.
     /// Runs in whatever time the allocator takes, and allocates exactly one block.
     /// @param allocator where the storage comes from
     /// @param value the value to move into it
-    /// @returns the box, or why the allocator refused
-    /// @see https://rux-lang.dev/docs/api/allocator/box#create
-    pub func Create(allocator: Allocator, value: T) -> Box<T> ! AllocError {
+    /// @returns the box, or throws why the allocator refused
+    /// @see https://rux-lang.dev/docs/api/allocator/box#try-create
+    pub func TryCreate(allocator: Allocator, value: T) -> Box<T> throws AllocError {
         let layout = Layout::ForValue<T>();
-        let block = allocator.Allocate(layout)?;
+        let block = try allocator.Allocate(layout);
         // Safety: `block` was just allocated with `Layout::ForValue<T>()`, so it is aligned and large enough for a
         // `T`, and nothing else holds it or has written to it.
         let typed = unsafe { block as *var T };

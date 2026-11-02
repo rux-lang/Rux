@@ -116,12 +116,12 @@ extend LruCache<K, V> {
     /// Caches `value` for `key` as the most recently used, replacing its value if it has one, and evicting the least
     /// recently used entry when the cache is full.
     /// `value` is moved in. A value it replaces, and the value of an evicted entry, are destroyed once the new one is
-    /// in place.
+    /// in place. Terminates the program when the storage for a new entry cannot be had.
     /// @param key the key
     /// @param value the value
-    /// @returns the key that was evicted, if one was, or why there was no room
+    /// @returns the key that was evicted, if one was
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#put
-    pub func Put(self: &var LruCache<K, V>, key: K, value: V) -> K? ! CollectionError {
+    pub func Put(self: &var LruCache<K, V>, key: K, value: V) -> K? {
         match self.index.Get(key) {
             .Some(at) => {
                 // Moved into a local, the old value is destroyed when the local's life ends rather than leaked.
@@ -142,20 +142,15 @@ extend LruCache<K, V> {
         }
         if self.entries.Length() < self.capacity {
             let at = self.entries.Length();
-            self.index.Insert(key, at)?;
-            self.entries.Push(CacheEntry<K, V> { key: key, value: <-value, newer: NoEntry, older: NoEntry }) catch {
-                else => {
-                    self.index.Remove(key);
-                    fail CollectionError::OutOfMemory;
-                }
-            };
+            self.index.Insert(key, at);
+            self.entries.Push(CacheEntry<K, V> { key: key, value: <-value, newer: NoEntry, older: NoEntry });
             self.LinkNewest(at);
             return none;
         }
         let at = self.oldest;
         let evicted = self.entries.AsSlice()[at].key;
         self.index.Remove(evicted);
-        self.index.Insert(key, at)?;
+        self.index.Insert(key, at);
         self.Unlink(at);
         let entries = self.entries.AsMutableSlice();
         entries[at].key = key;
@@ -182,7 +177,7 @@ extend LruCache<K, V> {
         if at != last {
             let moved = self.entries.AsSlice()[last].key;
             self.index.Remove(moved);
-            self.index.Insert(moved, at) catch { else => {} };
+            self.index.Insert(moved, at);
             let entries = self.entries.AsMutableSlice();
             let newer = entries[last].newer;
             let older = entries[last].older;

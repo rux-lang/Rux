@@ -14,13 +14,12 @@ import Text::ParseFailure;
 // it, because the number itself is unreadable from there on; a number that merely does not fit the width asked for
 // points at its end, because the whole of it is what does not fit and no single digit is at fault.
 
-// Which failure a result carries, as a small code: 1 Empty, 2 InvalidCharacter, 3 Overflow, 4 OutOfMemory.
+// Which failure a result carries, as a small code: 1 Empty, 2 InvalidCharacter, 3 Overflow.
 func CodeOf(error: &ParseError) -> int {
     return match error {
         .Empty => 1,
         .InvalidCharacter(_) => 2,
-        .Overflow(_) => 3,
-        .OutOfMemory(_) => 4
+        .Overflow(_) => 3
     };
 }
 

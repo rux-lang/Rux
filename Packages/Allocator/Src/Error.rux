@@ -4,6 +4,11 @@
 // the four answers, and every allocator in this package gives one of them.
 // Every case is a failure. An allocator returns its address or completion through a native fallible, `T ! AllocError`,
 // so success is the other channel rather than a member of this enum, and a result nobody handles is diagnosed.
+// The owning types built on an allocator treat a refusal as fatal: a `Box`, an `Rc`, a collection or a string that
+// cannot get storage terminates the program through `AllocationFailed`, and its `Try*` operations hand the
+// `AllocError` back instead to the code that can recover.
+
+import Core::Panic;
 
 /// Why an allocation, reallocation or release did not do what was asked.
 /// @see https://rux-lang.dev/docs/api/allocator/alloc-error
@@ -26,5 +31,22 @@ extend AllocError {
     /// @see https://rux-lang.dev/docs/api/allocator/alloc-error#is-transient
     pub func IsTransient(self: AllocError) -> bool {
         return self == AllocError::OutOfMemory;
+    }
+}
+
+/// Terminates the program, reporting that an allocation was refused and why.
+/// This is what an owning type does when the storage it needs cannot be had: running out of memory is not an error
+/// its caller is expected to handle, and code that can recover calls the type's `Try*` operation instead. Does not
+/// unwind, so no destructor runs.
+/// A size that cannot be represented at all, such as a capacity whose byte count overflows, is reported as
+/// `Unsupported`: no allocator could serve it.
+/// @param error why the allocator refused
+/// @see https://rux-lang.dev/docs/api/allocator/alloc-error#allocation-failed
+#NoReturn
+pub func AllocationFailed(error: AllocError) {
+    match error {
+        .OutOfMemory => Panic("out of memory"),
+        .Unsupported => Panic("allocation size or alignment cannot be served"),
+        .InvalidBlock => Panic("allocator refused a block it did not hand out")
     }
 }

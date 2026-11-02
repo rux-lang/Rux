@@ -16,19 +16,19 @@ func Main() -> int {
 
     // Ordinary text converts, and its unit count is the platform's business: an accented word is six UTF-8 bytes
     // and five UTF-16 units, and a supplementary character four bytes or one surrogate pair.
-    let plain = OsString::FromText(allocator, "hi") catch { else => Panic("ordinary text converts") };
+    let plain = OsString::FromText(allocator, "hi");
     Assert(plain.Length() == 2, "ASCII is two units either way");
     var copied = plain.Clone();
     copied.Clear();
     Assert(copied.IsEmpty() && plain.Length() == 2, "cloning native text produces independent storage");
-    let accented = OsString::FromText(allocator, "héllo") catch { else => Panic("ordinary text converts") };
+    let accented = OsString::FromText(allocator, "héllo");
     when #target.os == .Windows {
         Assert(accented.Length() == 5, "five UTF-16 units on Windows");
     }
     else {
         Assert(accented.Length() == 6, "six UTF-8 bytes on the Unix systems");
     }
-    let emoji = OsString::FromText(allocator, "😀") catch { else => Panic("ordinary text converts") };
+    let emoji = OsString::FromText(allocator, "😀");
     when #target.os == .Windows {
         Assert(emoji.Length() == 2, "a supplementary character is a surrogate pair");
         let pair = emoji.View();
@@ -57,7 +57,7 @@ func Main() -> int {
     }
     let view = OsStringView::FromUnits(hostile[0..4]);
     Assert(view.Length() == 4, "hostile units make a view without complaint");
-    let kept = OsString::FromView(allocator, view) catch { else => Panic("and an owning copy without complaint") };
+    let kept = OsString::FromView(allocator, view);
     Assert(kept.Length() == 4, "of all four units");
     let keptView = kept.View();
     Assert(keptView.Equals(view), "which holds exactly the units that went in");
@@ -68,16 +68,16 @@ func Main() -> int {
     }
 
     // Equality is unit equality and nothing smarter.
-    let alsoPlain = OsString::FromText(allocator, "hi") catch { else => Panic("ordinary text converts") };
+    let alsoPlain = OsString::FromText(allocator, "hi");
     let plainView = plain.View();
     let alsoView = alsoPlain.View();
     Assert(plainView.Equals(alsoView), "the same text is the same units");
-    let upper = OsString::FromText(allocator, "HI") catch { else => Panic("ordinary text converts") };
+    let upper = OsString::FromText(allocator, "HI");
     let upperView = upper.View();
     Assert(!plainView.Equals(upperView), "and case is not folded, deliberately");
 
     // Releasing early leaves something usable, and twice is not a second release.
-    var released = OsString::FromText(allocator, "gone") catch { else => Panic("ordinary text converts") };
+    var released = OsString::FromText(allocator, "gone");
     released.Clear();
     Assert(released.IsEmpty(), "clearing empties");
     released.Clear();

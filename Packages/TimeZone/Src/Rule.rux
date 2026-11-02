@@ -112,8 +112,8 @@ func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: 
     if end - start < 3u { fail TimeZoneError::InvalidRule; }
     into.abbreviation = names.Length();
     into.abbreviationLength = end - start;
-    names.PushSlice(text[start..end]) catch { else => fail TimeZoneError::OutOfMemory };
-    names.Push(c8'\0') catch { else => fail TimeZoneError::OutOfMemory };
+    names.PushSlice(text[start..end]);
+    names.Push(c8'\0');
 }
 
 // Reads `[+-]h[h][:mm[:ss]]` as seconds, its hours at most `maximumHours`.

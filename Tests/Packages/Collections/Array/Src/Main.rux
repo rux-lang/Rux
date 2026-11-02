@@ -36,9 +36,9 @@ func Refusal<T, E>(outcome: T ! E) -> E {
 // destructor is move-only.
 func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *var int32) {
     var items = Vector<Tracked>(allocator);
-    items.Push(Tracked { counter: destroyed, value: 1 }) catch { else => Panic("a tracked element is pushed") };
-    items.Push(Tracked { counter: destroyed, value: 2 }) catch { else => Panic("a tracked element is pushed") };
-    var array = (<-items).IntoArray() catch { else => Panic("the vector hands its elements to an array") };
+    items.Push(Tracked { counter: destroyed, value: 1 });
+    items.Push(Tracked { counter: destroyed, value: 2 });
+    var array = (<-items).IntoArray();
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(unsafe { *destroyed == 0 }, "moving the elements into the array destroys none of them");
     array.Set(0, Tracked { counter: replacements, value: 10 }) catch { else => Panic("setting an element succeeds") };
@@ -65,9 +65,7 @@ func SumOf(allocator: Allocator) -> int32 {
     values[2] = 3;
     values[3] = 4;
     // Safety: `values` is a local array of four elements.
-    var array = Array::FromSlice<int32>(allocator, unsafe { (@values[0])[..4] }) catch {
-        else => Panic("an array of numbers is made")
-    };
+    var array = Array::FromSlice<int32>(allocator, unsafe { (@values[0])[..4] });
 
     var total: int32 = 0;
     for value in array {
@@ -84,7 +82,7 @@ func Main() -> int {
     Assert(SumOf(allocator) == 10, "an array holds what was copied into it and iterates over it");
 
     // Filling with a value copies it into every position.
-    var filled = Array::Filled<int32>(allocator, 6, 7) catch { else => Panic("a filled array is made") };
+    var filled = Array::Filled<int32>(allocator, 6, 7);
     Assert(filled.Length() == 6, "with the length asked for");
     Assert(!filled.IsEmpty(), "and is not empty");
     var index: uint = 0;
@@ -108,14 +106,10 @@ func Main() -> int {
     Assert(view.data == filled.AsSlice().data, "over the array's own storage");
 
     // An empty array owns a block it still releases, and is not a special shape anywhere.
-    var empty = Array::Filled<int32>(allocator, 0, 0) catch { else => Panic("an empty array is made") };
+    var empty = Array::Filled<int32>(allocator, 0, 0);
     Assert(empty.IsEmpty(), "and is empty");
     Assert(empty.Length() == 0, "with no elements");
     Assert(empty.Get(0) == none, "and nothing at any index");
-
-    // A length that cannot be sized is refused as arithmetic.
-    Assert(Refusal(Array::Filled<int32>(allocator, uint::Max, 0)) == CollectionError::CapacityOverflow,
-        "a length that cannot be sized is refused");
 
     // Every constructor copies its elements, so an element type must be plain data: one with a destructor is
     // move-only, and filling an array with it is rejected while compiling rather than leaving several elements

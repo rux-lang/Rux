@@ -1,4 +1,6 @@
-// Why a pattern could not be compiled, or a search could not run.
+// Why a pattern could not be compiled.
+// Running out of memory is not one of the reasons: a regex or a search that cannot get its storage terminates the
+// program.
 
 /// What went wrong. `Copy`.
 /// @see https://rux-lang.dev/docs/api/regex/error#regex-error-kind
@@ -31,9 +33,7 @@ pub enum RegexErrorKind: uint8 {
     InvalidText = 13,
     /// The compiled pattern would be too large, usually from counted repetitions inside each other, or its groups
     /// are nested too deeply.
-    TooLarge = 14,
-    /// The allocator could not supply the storage.
-    OutOfMemory = 15
+    TooLarge = 14
 }
 
 /// Why a pattern could not be compiled, and where. `Copy`.
@@ -41,8 +41,7 @@ pub enum RegexErrorKind: uint8 {
 pub struct RegexError {
     /// What went wrong.
     pub kind: RegexErrorKind;
-    /// The byte offset in the pattern where it went wrong; zero for failures that have no place, such as running out
-    /// of memory.
+    /// The byte offset in the pattern where it went wrong.
     pub offset: uint;
 }
 
@@ -54,12 +53,5 @@ extend RegexError {
     /// @see https://rux-lang.dev/docs/api/regex/error#at
     pub func At(kind: RegexErrorKind, offset: uint) -> RegexError {
         return RegexError { kind: kind, offset: offset };
-    }
-
-    /// The error for storage the allocator could not supply.
-    /// @returns the error
-    /// @see https://rux-lang.dev/docs/api/regex/error#out-of-memory
-    pub func OutOfMemory() -> RegexError {
-        return RegexError { kind: RegexErrorKind::OutOfMemory, offset: 0 };
     }
 }

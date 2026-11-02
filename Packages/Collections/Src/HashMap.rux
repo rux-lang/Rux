@@ -11,8 +11,11 @@
 // A map owns its keys and values, so it prohibits copying and is move-only. Entries are destroyed when the map is,
 // when they are cleared, and when they are replaced — but not when they are removed, which hands the value back
 // instead.
+// Running out of memory terminates the program, as everywhere in this package; `TryInsert` and `TryReserve` throw
+// the allocator's `AllocError` instead and leave the map exactly as it was. So does a run of keys colliding so badly
+// that no table could place them, which only a broken hash produces; that is reported as `Unsupported`.
 
-import Allocator::Allocator;
+import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Core::Iterator;
 
 /// A hash table from keys to values.
@@ -63,7 +66,7 @@ extend HashMap<K, V> {
 
     /// An empty map with room for `capacity` entries already taken.
     /// The capacity actually taken is rounded up to a power of two above the load factor, so it is larger than asked
-    /// for.
+    /// for. Terminates the program when the storage cannot be had.
     /// @param allocator where the storage comes from
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
@@ -71,9 +74,9 @@ extend HashMap<K, V> {
     /// @returns an empty map with room for that many entries already taken
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
-                      equals: func(K, K) -> bool) -> HashMap<K, V> ! CollectionError {
+                      equals: func(K, K) -> bool) -> HashMap<K, V> {
         var map = HashMap<K, V>(allocator, hash, equals);
-        map.Reserve(capacity)?;
+        map.Reserve(capacity);
         return <-map;
     }
 
@@ -151,13 +154,24 @@ extend HashMap<K, V> {
     /// Stores `value` under `key`, replacing whatever was there.
     /// `self` is borrowed mutably; both are moved in. A key already present keeps its stored key and takes the new
     /// value, and the value it had is destroyed — use `Remove` first where the old one is wanted.
-    /// A failure leaves the map exactly as it was and both arguments with the caller.
+    /// Terminates the program when the table cannot grow; `TryInsert` reports that instead.
     /// Runs in constant expected time.
     /// @param key the key to look up
     /// @param value the value to act on
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#insert
-    pub func Insert(self: &var HashMap<K, V>, key: K, value: V) -> ! CollectionError {
+    pub func Insert(self: &var HashMap<K, V>, key: K, value: V) {
+        try self.TryInsert(move key, move value) catch { error => AllocationFailed(error) };
+    }
+
+    /// Stores `value` under `key`, replacing whatever was there, or throws why the table could not grow.
+    /// `self` is borrowed mutably; both are moved in, and stored exactly as `Insert` stores them. A failure leaves
+    /// the map exactly as it was, and both arguments are then destroyed here.
+    /// Runs in constant expected time.
+    /// @param key the key to look up
+    /// @param value the value to act on
+    /// @returns nothing, or throws the allocator's refusal
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-insert
+    pub func TryInsert(self: &var HashMap<K, V>, key: K, value: V) throws AllocError {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
@@ -173,15 +187,17 @@ extend HashMap<K, V> {
             },
             none => {}
         }
+        try self.Place(move key, move value, hashed);
+    }
 
-        self.table.EnsureRoom(self.hash)?;
-        // Safety: `EnsureRoom` succeeded, so the capacity is nonzero.
-        if unsafe { self.table.PlaceHashed(<-key, <-value, hashed) } == none {
-            // The table has room and the probe still ran past what a distance byte holds, so these keys collide
-            // badly enough that a larger table would spread the same collisions over more slots.
-            fail CollectionError::Unsupported;
-        }
-        return;
+    // Places an entry whose key is absent, growing the table first when it is full, and reports the slot it took.
+    // A failure leaves the table as it was; `key` and `value` are then destroyed here.
+    func Place(self: &var HashMap<K, V>, key: K, value: V, hashed: uint64) -> uint throws AllocError {
+        try self.table.TryEnsureRoom(self.hash);
+        // The table has room and the probe can still run past what a distance byte holds, when the keys collide
+        // badly enough that a larger table would spread the same collisions over more slots.
+        // Safety: `TryEnsureRoom` succeeded, so the capacity is nonzero.
+        return unsafe { self.table.PlaceHashed(move key, move value, hashed) } ?? throw AllocError::Unsupported;
     }
 
     /// Takes the entry for `key` out and hands back its value.
@@ -205,20 +221,29 @@ extend HashMap<K, V> {
     }
 
     /// Makes room for `additional` more entries on top of those already present.
+    /// `self` is borrowed mutably; the length does not change. Terminates the program when the storage cannot be
+    /// had; `TryReserve` reports that instead.
+    /// @param additional how many more elements to make room for
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#reserve
+    pub func Reserve(self: &var HashMap<K, V>, additional: uint) {
+        self.table.Reserve(additional, self.hash);
+    }
+
+    /// Makes room for `additional` more entries on top of those already present, or throws why it could not.
     /// `self` is borrowed mutably; the length does not change. A failure leaves the map exactly as it was.
     /// @param additional how many more elements to make room for
-    /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map#reserve
-    pub func Reserve(self: &var HashMap<K, V>, additional: uint) -> ! CollectionError {
-        return self.table.Reserve(additional, self.hash);
+    /// @returns nothing, or throws the allocator's refusal
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-reserve
+    pub func TryReserve(self: &var HashMap<K, V>, additional: uint) throws AllocError {
+        try self.table.TryReserve(additional, self.hash);
     }
 
     /// Releases the capacity the entry count does not need.
-    /// `self` is borrowed mutably. An empty map gives up its storage entirely.
-    /// @returns nothing when the operation succeeded, or why it did not
+    /// `self` is borrowed mutably. An empty map gives up its storage entirely. Terminates the program when the
+    /// allocator refuses the smaller table.
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#shrink-to-fit
-    pub func ShrinkToFit(self: &var HashMap<K, V>) -> ! CollectionError {
-        return self.table.ShrinkToFit(self.hash);
+    pub func ShrinkToFit(self: &var HashMap<K, V>) {
+        self.table.ShrinkToFit(self.hash);
     }
 
     /// Destroys every entry, keeping the storage.
@@ -271,16 +296,15 @@ extend HashMap<K, V> {
     /// This is what an entry API is for, without pretending Rux has closures: a caller that wants to read a value or
     /// put one there gets one operation instead of a lookup followed by an insertion, and does not have to name the
     /// key twice.
-    /// A failure leaves the map exactly as it was.
+    /// Terminates the program when the table cannot grow.
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
     /// @param key the key to look up
     /// @param value the value to act on
     /// @param existing receives the value already stored under that key
     /// @param inserted receives whether the value given was the one stored
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#get-or-insert
     pub func GetOrInsert(self: &var HashMap<K, V>, key: K, value: V, existing: *var *var V,
-                     inserted: *var bool) -> ! CollectionError {
+                     inserted: *var bool) {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
@@ -298,9 +322,7 @@ extend HashMap<K, V> {
             none => {}
         }
 
-        self.table.EnsureRoom(self.hash)?;
-        // Safety: `EnsureRoom` succeeded, so the capacity is nonzero.
-        let placed = unsafe { self.table.PlaceHashed(<-key, <-value, hashed) } ?? fail CollectionError::Unsupported;
+        let placed = try self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
         if existing != null {
             // Safety: the documented contract makes a non-null `existing` a pointer to the caller's writable
             // `*var V`, and `PlaceHashed` names the occupied slot the entry landed in.
@@ -310,19 +332,18 @@ extend HashMap<K, V> {
             // Safety: the documented contract makes a non-null `inserted` a pointer to the caller's `bool`.
             unsafe { *inserted = true; }
         }
-        return;
     }
 
     /// Stores `value` under `key` and hands back the value that was there.
     /// `self` is borrowed mutably; both are moved in. The old value is moved out rather than destroyed, which is the
     /// difference between this and `Insert`: one hands the previous value back and the other throws it away.
     /// Reports `none` when there was no entry, having inserted this one.
-    /// A failure leaves the map exactly as it was, and is reported apart from the absence.
+    /// Terminates the program when the table cannot grow.
     /// @param key the key to look up
     /// @param value the value to act on
     /// @returns the value that was there, or `none` when the key was absent
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#replace
-    pub func Replace(self: &var HashMap<K, V>, key: K, value: V) -> V? ! CollectionError {
+    pub func Replace(self: &var HashMap<K, V>, key: K, value: V) -> V? {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         match self.table.FindHashed(key, hashed, self.equals) {
             slot? => {
@@ -337,11 +358,7 @@ extend HashMap<K, V> {
             none => {}
         }
 
-        self.table.EnsureRoom(self.hash)?;
-        // Safety: `EnsureRoom` succeeded, so the capacity is nonzero.
-        if unsafe { self.table.PlaceHashed(<-key, <-value, hashed) } == none {
-            fail CollectionError::Unsupported;
-        }
+        try self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
         return none;
     }
 

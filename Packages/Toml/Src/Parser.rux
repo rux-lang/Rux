@@ -52,9 +52,7 @@ pub variant TomlParseError {
     /// A string whose escapes name no scalar value.
     BadText,
     /// Values nested deeper than the limit allowed.
-    TooDeep,
-    /// The allocator refused.
-    OutOfMemory
+    TooDeep
 }
 
 /// Why a document was refused, and where in it.
@@ -122,8 +120,7 @@ extend TomlParseFailure : Display {
             .NotATableArray => WriteBytes(writer, "header naming something that is not an array of tables"),
             .BadValue(reason) => reason.WriteDisplay(writer, spec),
             .BadText => WriteBytes(writer, "string whose escapes name no scalar value"),
-            .TooDeep => WriteBytes(writer, "values nested deeper than the limit allows"),
-            .OutOfMemory => WriteBytes(writer, "out of memory")
+            .TooDeep => WriteBytes(writer, "values nested deeper than the limit allows")
         };
     }
 }
@@ -143,8 +140,7 @@ func WriteReasonName(writer: &var TextWriter, reason: &TomlParseError,
         .NotATableArray => WriteBytes(writer, "NotATableArray"),
         .BadValue(cause) => WriteScalarCase(writer, cause, spec),
         .BadText => WriteBytes(writer, "BadText"),
-        .TooDeep => WriteBytes(writer, "TooDeep"),
-        .OutOfMemory => WriteBytes(writer, "OutOfMemory")
+        .TooDeep => WriteBytes(writer, "TooDeep")
     };
 }
 
@@ -217,8 +213,7 @@ enum TomlStop: int32 {
     NotATableArray = 9,
     BadValue = 10,
     BadText = 11,
-    TooDeep = 12,
-    OutOfMemory = 13
+    TooDeep = 12
 }
 
 /// What a parse will accept.
@@ -271,9 +266,8 @@ func BuiltFailure(stopped: &TomlStopped) -> TomlParseFailure {
         .BadValue => TomlParseError::BadValue(stopped.scalar),
         .BadText => TomlParseError::BadText,
         .TooDeep => TomlParseError::TooDeep,
-        .OutOfMemory => TomlParseError::OutOfMemory,
         // A parser that has not stopped has no failure; callers reach this only after asking whether it did.
-        .None => TomlParseError::OutOfMemory
+        .None => TomlParseError::Unexpected
     };
     return TomlParseFailure {
         reason: reason, offset: stopped.offset, line: stopped.line, column: stopped.column
@@ -470,10 +464,7 @@ extend TomlParser {
             }
             var element = self.ParseValue();
             if self.Failed() { break; }
-            if !array.Push(<-element) {
-                self.Stop(TomlStop::OutOfMemory);
-                break;
-            }
+            array.Push(<-element);
             self.SkipNewlines();
             if self.ahead.kind == TomlTokenKind::Comma {
                 self.Advance();
@@ -579,10 +570,7 @@ extend TomlParser {
                 part.Clear();
                 return false;
             }
-            if parts.Push(move part) is .Failure(_) {
-                self.Stop(TomlStop::OutOfMemory);
-                return false;
-            }
+            parts.Push(move part);
             if self.ahead.kind != TomlTokenKind::Dot { return true; }
             self.Advance();
         }
@@ -628,10 +616,8 @@ extend TomlParser {
             parts.Clear();
             return;
         }
-        var owned = String::FromView(self.allocator, finalName) catch { else => String(self.allocator) };
-        if !(*target).Insert(move owned, <-value) {
-            self.Stop(TomlStop::OutOfMemory);
-        }
+        var owned = String::FromView(self.allocator, finalName);
+        (*target).Insert(move owned, <-value);
         parts.Clear();
     }
 
@@ -644,11 +630,8 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             fresh.dotted = true;
-            var owned = String::FromView(self.allocator, copy) catch { else => String(self.allocator) };
-            if !(*target).Insert(move owned, <-fresh) {
-                self.Stop(TomlStop::OutOfMemory);
-                return null;
-            }
+            var owned = String::FromView(self.allocator, copy);
+            (*target).Insert(move owned, <-fresh);
             return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
@@ -732,11 +715,8 @@ extend TomlParser {
         var existing = (*target).FindAddress(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
-            var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
-            if !(*target).Insert(move owned, <-fresh) {
-                self.Stop(TomlStop::OutOfMemory);
-                return null;
-            }
+            var owned = String::FromView(self.allocator, name);
+            (*target).Insert(move owned, <-fresh);
             return (*target).FindAddress(name);
         }
         if existing.kind == TomlKind::Array {
@@ -771,11 +751,8 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             fresh.defined = true;
-            var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
-            if !(*target).Insert(move owned, <-fresh) {
-                self.Stop(TomlStop::OutOfMemory);
-                return null;
-            }
+            var owned = String::FromView(self.allocator, name);
+            (*target).Insert(move owned, <-fresh);
             return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
@@ -808,11 +785,8 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Array(self.allocator);
             fresh.tableArray = true;
-            var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
-            if !(*target).Insert(move owned, <-fresh) {
-                self.Stop(TomlStop::OutOfMemory);
-                return null;
-            }
+            var owned = String::FromView(self.allocator, name);
+            (*target).Insert(move owned, <-fresh);
             existing = (*target).FindAddress(name);
         }
         else if existing.kind != TomlKind::Array || !existing.tableArray {
@@ -823,10 +797,7 @@ extend TomlParser {
         }
         var element = TomlValue::Table(self.allocator);
         element.defined = true;
-        if !(*existing).Push(<-element) {
-            self.Stop(TomlStop::OutOfMemory);
-            return null;
-        }
+        (*existing).Push(<-element);
         return (*existing).LastAddress();
     }
 

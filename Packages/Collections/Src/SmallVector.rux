@@ -10,7 +10,7 @@
 // the allocator with room for `heapCapacity >= length` elements. Either way `Items()` and `WritableItems()` address
 // them.
 
-import Allocator::Allocator;
+import Allocator::{ AllocationFailed, Allocator };
 
 // How many bytes of elements a small vector holds inline.
 const InlineBytes: uint = 64;
@@ -103,15 +103,15 @@ extend SmallVector<T> {
     }
 
     // Moves the elements to a block of at least `required` elements.
-    func Grow(self: &var SmallVector<T>, required: uint) -> ! CollectionError {
+    func Grow(self: &var SmallVector<T>, required: uint) {
         if required <= self.Capacity() { return; }
-        let capacity = GrowCapacity(self.Capacity(), required, MinimumVectorCapacity, sizeof(T))?;
+        let capacity = try GrowCapacity(self.Capacity(), required, MinimumVectorCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
         if self.heap != null {
-            self.heap = ReallocateBlock<T>(self.allocator, self.heap, self.heapCapacity, capacity)?;
+            self.heap = ReallocateBlock<T>(self.allocator, self.heap, self.heapCapacity, capacity);
             self.heapCapacity = capacity;
             return;
         }
-        let block = AllocateBlock<T>(self.allocator, capacity)?;
+        let block = AllocateBlock<T>(self.allocator, capacity);
         let inline = self.WritableItems();
         var index: uint = 0;
         while index < self.length {
@@ -124,12 +124,14 @@ extend SmallVector<T> {
         self.heapCapacity = capacity;
     }
 
-    /// Appends `value`, moving it in, and allocating only once the inline room is full.
+    /// Appends `value`, moving it in, and allocating only once the inline room is full. Terminates the program when
+    /// the storage cannot grow.
     /// @param value the element
-    /// @returns nothing, or why there was no room; the vector is unchanged on failure
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#push
-    pub func Push(self: &var SmallVector<T>, value: T) -> ! CollectionError {
-        if self.length == self.Capacity() { self.Grow(AddLength(self.length, 1)?)?; }
+    pub func Push(self: &var SmallVector<T>, value: T) {
+        if self.length == self.Capacity() {
+            self.Grow(try AddLength(self.length, 1) catch { error => AllocationFailed(error) });
+        }
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `length < Capacity()`, checked or grown above, so the slot is room the
         // storage has and holds nothing yet.

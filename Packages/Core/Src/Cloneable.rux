@@ -1,7 +1,8 @@
 // Cloneable: a type that can make an independent duplicate of a value it owns.
 // An owning type does not copy with `=`; duplicating one is an ordinary method call that may allocate, so the cost
-// is visible where it is paid. A type whose duplication can fail keeps a fallible `Clone` of its own until typed
-// errors arrive, and does not satisfy this bound.
+// is visible where it is paid. A `Clone` that allocates terminates the program when the allocation fails, as every
+// owning type does when it runs out of memory; a type whose callers may need to recover also offers
+// `TryClone() -> Self throws AllocError`, which is not part of this bound.
 
 /// A type whose values can be duplicated by calling `Clone`: the bound generic code writes before it duplicates an
 /// owning value of its type parameter.

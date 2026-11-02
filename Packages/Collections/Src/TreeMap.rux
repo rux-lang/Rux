@@ -99,27 +99,25 @@ extend TreeMap<K, V> {
     }
 
     /// Stores `value` under `key`, replacing and destroying whatever was there.
-    /// Takes ownership of both. Reports `OutOfMemory` when the node cannot be allocated, in which case the map is
-    /// unchanged — but the key and the value are destroyed rather than handed back, since there is nowhere to put
-    /// them. `Replace` is the one to use when the displaced value is wanted.
+    /// Takes ownership of both. Terminates the program when the node cannot be allocated. `Replace` is the one to use
+    /// when the displaced value is wanted.
     /// Runs in time proportional to the height, with at most two rotations, and allocates one node for a key that is
     /// new and nothing at all for one already there.
     /// @param key the key to look up
     /// @param value the value to act on
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#insert
-    pub func Insert(self: &var TreeMap<K, V>, key: K, value: V) -> ! CollectionError {
+    pub func Insert(self: &var TreeMap<K, V>, key: K, value: V) {
         // The displaced value, if any, is destroyed when the discarded optional's life ends.
-        let replaced = self.tree.Attach(<-key, <-value, self.compare)?;
+        let replaced = self.tree.Attach(<-key, <-value, self.compare);
     }
 
     /// Stores `value` under `key` and hands back the value it displaced, or `none` for a key that was not there.
-    /// A failure is reported apart from the absence, so "nothing was there" and "nothing was stored" never meet.
+    /// Terminates the program when the node for a new key cannot be allocated.
     /// @param key the key to look up
     /// @param value the value to act on
     /// @returns the value that was there, or `none` when the key was absent
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#replace
-    pub func Replace(self: &var TreeMap<K, V>, key: K, value: V) -> V? ! CollectionError {
+    pub func Replace(self: &var TreeMap<K, V>, key: K, value: V) -> V? {
         return self.tree.Attach(<-key, <-value, self.compare);
     }
 

@@ -327,9 +327,7 @@ extend Poller {
             let found = self.Find(source.handle);
             if adding {
                 if found != none { fail IoError::Of(IoErrorKind::AlreadyExists); }
-                self.registrations.Push(Registration { handle: source.handle, token: token, interest: interest }) catch {
-                    else => fail IoError::Of(IoErrorKind::LimitExceeded)
-                };
+                self.registrations.Push(Registration { handle: source.handle, token: token, interest: interest });
             }
             else {
                 let index = found ?? fail IoError::Of(IoErrorKind::NotFound);
@@ -345,7 +343,7 @@ extend Poller {
             let registration = Registration { handle: source.handle, token: token, interest: interest };
             match found {
                 .Some(index) => self.registrations.AsMutableSlice()[index] = registration,
-                none => self.registrations.Push(registration) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) }
+                none => self.registrations.Push(registration)
             }
         }
     }
@@ -388,7 +386,7 @@ extend Poller {
     func Reserve(self: &var Poller, bytes: uint) -> ! IoError {
         let words = (bytes + 7) / 8;
         while self.buffer.Length() < words {
-            self.buffer.Push(0) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+            self.buffer.Push(0);
         }
     }
 

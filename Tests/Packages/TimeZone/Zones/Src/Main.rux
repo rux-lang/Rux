@@ -82,7 +82,7 @@ func Main() -> int {
     let quoted = TimeZone::FromRule(allocator, "Plus", "<+0330>-3:30") catch { else => return 14 };
     Assert(quoted.OffsetAt(winter).seconds == 12600 && Same(quoted.StateAt(winter).abbreviation, "+0330"),
            "a quoted abbreviation and a minute offset");
-    let utc = TimeZone::Utc(allocator) catch { else => return 15 };
+    let utc = TimeZone::Utc(allocator);
     Assert(utc.OffsetAt(summer).seconds == 0, "UTC has no offset");
 
     // Resolving local times around the 2024 changes in Berlin.

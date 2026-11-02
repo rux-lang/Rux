@@ -54,10 +54,8 @@ extend AtomicWrite {
         var here: OsUnit[1];
         here[0] = DotSegmentUnit();
         let parentPath = (parent is Path) ? (parent ?? Path()) : Path::FromView(OsStringView::FromUnits(here[0..1]));
-        var directory = PathBuffer::FromPath(allocator, parentPath) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
-        };
-        var held = PathBuffer::FromPath(allocator, target) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        var directory = PathBuffer::FromPath(allocator, parentPath);
+        var held = PathBuffer::FromPath(allocator, target);
         var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-")?;
         directory.Release();
         return AtomicWrite { scratch: <-scratch, target: <-held, pending: true };

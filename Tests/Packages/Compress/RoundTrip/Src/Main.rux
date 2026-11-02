@@ -26,15 +26,15 @@ func Fox() -> Vector<byte> {
     let sentence = "The quick brown fox jumps over the lazy dog. ";
     var round: uint = 0;
     while round < 20u {
-        text.PushSlice(AsBytes(sentence)) catch { else => {} };
+        text.PushSlice(AsBytes(sentence));
         round = round + 1;
     }
     var value: uint = 0;
     while value < 256u {
-        text.Push(value as byte) catch { else => {} };
+        text.Push(value as byte);
         value = value + 1;
     }
-    text.PushSlice(AsBytes("end")) catch { else => {} };
+    text.PushSlice(AsBytes("end"));
     return <-text;
 }
 
@@ -72,7 +72,7 @@ func Noise(count: uint) -> Vector<byte> {
     var index: uint = 0;
     while index < count {
         state = state * 1103515245u32 + 12345u32;
-        bytes.Push((state >> 16) as byte) catch { else => {} };
+        bytes.Push((state >> 16) as byte);
         index = index + 1;
     }
     return <-bytes;
@@ -87,8 +87,8 @@ func Prose(count: uint) -> Vector<byte> {
     while index < count {
         state = state * 1664525u32 + 1013904223u32;
         let start = ((state >> 8) % 60u32) as uint;
-        bytes.Push(words[start] as byte) catch { else => {} };
-        if index % 1000u < 500u { bytes.Push(words[index % words.length] as byte) catch { else => {} }; }
+        bytes.Push(words[start] as byte);
+        if index % 1000u < 500u { bytes.Push(words[index % words.length] as byte); }
         index = index + 1;
     }
     return <-bytes;
@@ -126,7 +126,7 @@ func Main() -> int {
     var repeated = Vector<byte>(SystemAllocator());
     var copy: uint = 0;
     while copy < 200u {
-        repeated.PushSlice(fox.AsSlice()) catch { else => return 13 };
+        repeated.PushSlice(fox.AsSlice());
         copy = copy + 1;
     }
     let stored = RoundTrip(repeated.AsSlice(), Format::Raw, Level::Store);
@@ -143,7 +143,7 @@ func Main() -> int {
     // Damage and truncation are caught.
     let packed = Compress(SystemAllocator(), fox.AsSlice(), Format::Gzip) catch { else => return 11 };
     var damaged = Vector<byte>(SystemAllocator());
-    damaged.PushSlice(packed.AsSlice()) catch { else => return 12 };
+    damaged.PushSlice(packed.AsSlice());
     damaged.AsMutableSlice()[damaged.Length() - 6u] = damaged.AsSlice()[damaged.Length() - 6u] ^ 0x01u8;
     match Decompress(SystemAllocator(), damaged.AsSlice(), Format::Gzip) {
         .Success(_) => Assert(false, "a damaged checksum is caught"),

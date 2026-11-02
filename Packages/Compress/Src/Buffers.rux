@@ -82,9 +82,7 @@ unsafe func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) ->
 unsafe func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byte> ! IoError {
     var result = Vector<byte>(allocator);
     if gathered.length > 0u {
-        result.PushSlice((gathered.data as *byte)[..gathered.length]) catch {
-            else => fail IoError::Of(IoErrorKind::LimitExceeded)
-        };
+        result.PushSlice((gathered.data as *byte)[..gathered.length]);
     }
     Release(gathered);
     return <-result;

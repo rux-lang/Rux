@@ -9,7 +9,7 @@ import Text::{ StringView, TextError };
 
 // Native units for `text`. Ordinary text always converts, so a failure here is a broken conversion.
 func PathText(allocator: Allocator, text: char8[..]) -> OsString {
-    return OsString::FromText(allocator, text) catch { else => Panic("ordinary text converts") };
+    return OsString::FromText(allocator, text);
 }
 
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure

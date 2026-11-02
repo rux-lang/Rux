@@ -1,4 +1,4 @@
-import Allocator::{ AllocError, Allocator, Arena, Box, IsEmptyBlock, Layout, Pool, SystemAllocator };
+import Allocator::{ AllocError, Allocator, Arc, Arena, Box, IsEmptyBlock, Layout, Pool, Rc, SystemAllocator };
 import Core::{ Assert, Panic };
 
 // The phase gate for allocation: every site that can ask for storage is made to fail, and what happens next is
@@ -87,22 +87,39 @@ func Main() -> ! AllocError {
     starved.Deallocate(block, small)?;
     Assert(state.live == 0, "leaving nothing out");
 
-    // A box that cannot be created reports why, and leaks nothing.
+    // A box that cannot be created reports why through `TryCreate`, and leaks nothing.
     state.allowed = 0;
     state.attempts = 0;
-    Assert(Refusal(Box::Create<int64>(starved, 7)) == AllocError::OutOfMemory, "a box refused by the allocator reports why");
+    var refused = AllocError::InvalidBlock;
+    var unboxed = try Box::TryCreate<int64>(starved, 7) catch {
+        error => {
+            refused = error;
+            Box::Create<int64>(SystemAllocator(), 0)
+        }
+    };
+    Assert(refused == AllocError::OutOfMemory, "a box refused by the allocator reports why");
     Assert(state.attempts == 1, "having asked exactly once");
     Assert(state.live == 0, "and left nothing allocated");
 
     // The same box succeeds with a budget, and gives its storage back when its life ends.
     state.allowed = 1;
-    var kept = Box::Create<int64>(starved, 9)?;
+    var kept = Box::Create<int64>(starved, 9);
     Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
     let taken = kept.Take();
     Assert(taken is .Some(_), "taking the value out succeeds");
     Assert(taken is .Some(value) && value == 9, "and gives back what went in");
     Assert(state.live == 0, "releasing the storage there and then");
+
+    // Shared handles report a refusal the same way through `TryCreate`, and leak nothing.
+    state.allowed = 0;
+    Assert((try? Rc::TryCreate<int64>(starved, 3)) is none, "a counted handle refused by the allocator reports it");
+    Assert((try? Arc::TryCreate<int64>(starved, 4)) is none, "and so does an atomically counted one");
+    Assert(state.live == 0, "leaving nothing allocated");
+    state.allowed = 1;
+    var shared = try Rc::TryCreate<int64>(starved, 5) catch { _ => Rc::Create<int64>(SystemAllocator(), 0) };
+    let sharedValue: int64 = shared.Get();
+    Assert(sharedValue == 5 && state.live == 1, "with a budget the handle is made from it");
 
     // An arena that cannot take its first block fails at the first request and takes nothing.
     state.allowed = 0;

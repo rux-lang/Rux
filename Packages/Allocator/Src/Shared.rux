@@ -7,7 +7,7 @@
 // There are no weak handles: a cycle of shared handles is never freed, so a structure that needs back-pointers keeps
 // them as raw pointers or indices.
 
-import Allocator::{ AllocError, Allocator, Layout };
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Core::{ AtomicFetchAdd, AtomicFetchSub, AtomicLoad, Cloneable, Fence, MemoryOrder };
 
 // The count of handles and the value they share, in one allocation.
@@ -35,12 +35,22 @@ pub struct Rc<T> {
 
 extend Rc<T> {
     /// The first handle to `value`, moved onto the heap.
+    /// Terminates the program when the allocator refuses; `TryCreate` reports the refusal instead.
     /// @param allocator where the storage comes from
     /// @param value the value to share
-    /// @returns the handle, or why there was no storage; the value is destroyed then
+    /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-create
-    pub func Create(allocator: Allocator, value: T) -> Rc<T> ! AllocError {
-        let storage = allocator.Allocate(Layout::ForValue<SharedBlock<T>>())?;
+    pub func Create(allocator: Allocator, value: T) -> Rc<T> {
+        return try Rc::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
+    }
+
+    /// The first handle to `value`, moved onto the heap, or why there was no storage.
+    /// @param allocator where the storage comes from
+    /// @param value the value to share
+    /// @returns the handle, or throws why there was no storage; the value is destroyed then
+    /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-try-create
+    pub func TryCreate(allocator: Allocator, value: T) -> Rc<T> throws AllocError {
+        let storage = try allocator.Allocate(Layout::ForValue<SharedBlock<T>>());
         // Safety: `storage` was just allocated with the layout of a `SharedBlock<T>`, so it is aligned and large enough
         // for one, and nothing else holds it or has written to it.
         let block = unsafe { storage as *var SharedBlock<T> };
@@ -128,12 +138,22 @@ pub struct Arc<T> {
 
 extend Arc<T> {
     /// The first handle to `value`, moved onto the heap.
+    /// Terminates the program when the allocator refuses; `TryCreate` reports the refusal instead.
     /// @param allocator where the storage comes from, which must be usable from every thread a handle reaches
     /// @param value the value to share
-    /// @returns the handle, or why there was no storage; the value is destroyed then
+    /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-create
-    pub func Create(allocator: Allocator, value: T) -> Arc<T> ! AllocError {
-        let storage = allocator.Allocate(Layout::ForValue<SharedBlock<T>>())?;
+    pub func Create(allocator: Allocator, value: T) -> Arc<T> {
+        return try Arc::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
+    }
+
+    /// The first handle to `value`, moved onto the heap, or why there was no storage.
+    /// @param allocator where the storage comes from, which must be usable from every thread a handle reaches
+    /// @param value the value to share
+    /// @returns the handle, or throws why there was no storage; the value is destroyed then
+    /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-try-create
+    pub func TryCreate(allocator: Allocator, value: T) -> Arc<T> throws AllocError {
+        let storage = try allocator.Allocate(Layout::ForValue<SharedBlock<T>>());
         // Safety: `storage` was just allocated with the layout of a `SharedBlock<T>`, so it is aligned and large enough
         // for one, and nothing else holds it or has written to it.
         let block = unsafe { storage as *var SharedBlock<T> };

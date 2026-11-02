@@ -10,8 +10,8 @@ import Log::{ LogFormat, Logger, RotatingFile };
 import Path::{ Join, OsString, Path, PathBuffer };
 
 func PathIn(allocator: Allocator, directory: Path, name: char8[..]) -> PathBuffer {
-    let segment = OsString::FromText(allocator, name) catch { else => Panic("the name converts") };
-    return Join(allocator, directory, segment.View()) catch { else => Panic("the path joins") };
+    let segment = OsString::FromText(allocator, name);
+    return Join(allocator, directory, segment.View());
 }
 
 func Exists(allocator: Allocator, path: Path) -> bool {

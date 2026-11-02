@@ -8,7 +8,7 @@ import Path::{ OsString, OsStringView, Path };
 import FileSystem::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };
 
 func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
-    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    holder = OsString::FromText(allocator, text);
     return Path::FromView(holder.View());
 }
 
@@ -27,7 +27,7 @@ func Touch(allocator: Allocator, path: Path) {
 }
 
 func NameOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> OsStringView {
-    holder = OsString::FromText(allocator, text) catch { else => Panic("the expected name converts") };
+    holder = OsString::FromText(allocator, text);
     return holder.View();
 }
 

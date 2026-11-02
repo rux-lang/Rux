@@ -5,13 +5,13 @@
 // from "invalid character at byte 7", and only the second lets anything underline what is wrong. The offsets are
 // into the text as given, so a parser embedded in a larger grammar adds the offset of the token it was handed and
 // the positions compose.
-// `OutOfMemory` is a correction rather than an addition. The wide float parser builds exact big integers to round
-// with, and every allocation those need used to be reported as `Overflow` — which told a caller their number was
-// too large when the machine had simply run out of room. The two want different responses from a caller, so they
-// are different cases.
+// Running out of room is not a parse failure. The wide float parser builds exact big integers to round with, and an
+// allocation those cannot get terminates the program, as every allocation in the text packages does; so does a
+// narrow reading whose retained digits would not fit its fixed workspace, which the retained bound rules out.
 // The grammar this file accepts is `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special
 // spellings `NaN` and `Inf` exactly as formatting writes them, so what one side prints the other reads.
 
+import Allocator::{ AllocError, AllocationFailed };
 import Text::{ ParseFailure, StringView };
 
 /// Why text could not be read as a value.
@@ -27,11 +27,7 @@ pub variant ParseError {
     InvalidCharacter(uint),
     /// The value is well formed and does not fit the width asked for. The offset is the digit that passed the
     /// widest representable magnitude, or the end of the number when the number itself is what does not fit.
-    Overflow(uint),
-    /// The exact arithmetic a wide float needs could not get the storage for it. This is the machine rather than
-    /// the text: the same input on a less busy machine reads fine, which is what tells it apart from `Overflow`.
-    /// The offset is where the parser had reached, which is the end of the number.
-    OutOfMemory(uint)
+    Overflow(uint)
 }
 
 extend ParseError : ParseFailure {
@@ -43,8 +39,7 @@ extend ParseError : ParseFailure {
         return match self {
             .Empty => 0u,
             .InvalidCharacter(at) => at,
-            .Overflow(at) => at,
-            .OutOfMemory(at) => at
+            .Overflow(at) => at
         };
     }
 }
@@ -72,8 +67,7 @@ pub struct DecimalReading {
 /// `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special spellings `NaN` and `Inf` exactly as
 /// formatting writes them. The digits are kept exactly up to `RetainedDecimalDigits`, past which a nonzero one
 /// sets `truncated` and moves the exponent instead.
-/// Reports `Empty` for no bytes, `InvalidCharacter` at the byte where the shape stopped matching, and
-/// `OutOfMemory` where the retained digits would not fit the workspace.
+/// Reports `Empty` for no bytes and `InvalidCharacter` at the byte where the shape stopped matching.
 /// `reading` must be non-null and writable; after a failure it holds an empty reading.
 /// @param str the text to read
 /// @param reading receives what the decimal spells
@@ -134,7 +128,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
                 significant = true;
                 if scanned.significant < RetainedDecimalDigits {
                     if !scanned.digits.MultiplyAddSmall(10, digit) {
-                        fail ParseError::OutOfMemory(index);
+                        AllocationFailed(AllocError::OutOfMemory);
                     }
                     scanned.significant = scanned.significant + 1;
                 }
@@ -193,7 +187,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
 /// Exact: the value is formed as a ratio of integers and the quotient is taken with a sticky bit, so what comes
 /// back is the nearest `float64` and never one step off it. `NaN`, `Inf` and `-Inf` are read exactly as formatting
 /// writes them.
-/// Reports `Empty`, `InvalidCharacter` and `OutOfMemory` as `ScanDecimal` does, and `Overflow` at the text's
+/// Reports `Empty` and `InvalidCharacter` as `ScanDecimal` does, and `Overflow` at the text's
 /// length for a value past the largest finite `float64` — refused rather than rounded to an infinity, since that
 /// would turn a number the caller wrote into one they did not. A value below the smallest subnormal is the signed
 /// zero it rounds to.
@@ -230,7 +224,7 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
     var overflowed = false;
     if !ExactFloat64(reading.digits, reading.exponent, reading.truncated, reading.negative, @value, @overflowed) {
         if overflowed { fail ParseError::Overflow(str.length); }
-        fail ParseError::OutOfMemory(str.length);
+        AllocationFailed(AllocError::OutOfMemory);
     }
     return value;
 }
@@ -281,7 +275,7 @@ pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
     var overflowed = false;
     if !ExactFloat32(reading.digits, reading.exponent, reading.truncated, reading.negative, @value, @overflowed) {
         if overflowed { fail ParseError::Overflow(str.length); }
-        fail ParseError::OutOfMemory(str.length);
+        AllocationFailed(AllocError::OutOfMemory);
     }
     return value;
 }

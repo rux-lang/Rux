@@ -1,17 +1,16 @@
-import Core::{ Panic, uint };
-import Allocator::{ Allocator, SystemAllocator };
+import Core::uint;
+import Allocator::{ AllocError, Allocator, SystemAllocator };
 import Collections::CollectionError;
-import Collections::Deque;
 import Collections::HashMap;
-import Collections::HashSet;
 import Collections::Vector;
 import Collections::{ EqualsInt32, HashInt32 };
 
 // The cross-cutting axis: what every container does when an operation cannot
 // be completed. Two things are checked here that the per-type tests do not.
-// First, that the failure modes stay distinguishable. An exhausted allocator,
-// an unaddressable capacity and a rejected index are three different answers,
-// and a caller has to be able to tell them apart.
+// First, that the failure modes stay distinguishable. Running out of memory
+// terminates the program, so what a caller can see is a `Try*` operation's
+// `AllocError` for a capacity that cannot be named, and a collection's
+// `IndexOutOfRange` for an index that is not there.
 // Second, that a failed operation changes nothing. Every check below reads the
 // whole container back afterwards, because the defect this package was
 // rewritten to fix was exactly a failure that left a container claiming
@@ -23,37 +22,33 @@ import Collections::{ EqualsInt32, HashInt32 };
 // against a real allocation rather than a rejected layout.
 // See Tests/Packages/Collections/Array for the numbered exit-code convention.
 
-/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
-/// cannot pass by accident.
-func Refusal<T, E>(outcome: T ! E) -> E {
-    return match <-outcome {
-        .Failure(error) => error,
-        .Success(_) => Panic("the operation was expected to fail")
-    };
+// What a reservation the test expects to be refused was refused with, or `none` when it was granted.
+func VectorRefusal(vector: &var Vector<int64>, additional: uint) -> AllocError? {
+    try vector.TryReserve(additional) catch { error => return error };
+    return none;
+}
+
+// The same, for a map.
+func MapRefusal(map: &var HashMap<int32, int32>, additional: uint) -> AllocError? {
+    try map.TryReserve(additional) catch { error => return error };
+    return none;
 }
 
 func Main() -> int {
-    // The error cases are distinct values, so no two failures can be confused.
-    if CollectionError::OutOfMemory == CollectionError::CapacityOverflow { return 13; }
-    if CollectionError::OutOfMemory == CollectionError::IndexOutOfRange { return 14; }
-    if CollectionError::CapacityOverflow == CollectionError::IndexOutOfRange { return 15; }
-    if !(CollectionError::OutOfMemory == CollectionError::OutOfMemory) { return 16; }
-
-    // A count whose byte size cannot be addressed is rejected before anything is allocated. Array now takes an
-    // allocator and is covered by its own test; what stays here is the Vector side.
-
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    if Refusal(Vector::WithCapacity<int64>(allocator, uint::Max)) != CollectionError::CapacityOverflow { return 22; }
-    if Refusal(Deque::WithCapacity<int64>(allocator, uint::Max)) != CollectionError::CapacityOverflow { return 24; }
+    // A count whose byte size cannot be addressed is rejected before anything is allocated.
+    var empty = Vector<int64>(allocator);
+    if VectorRefusal(empty, uint::Max) != .Some(AllocError::Unsupported) { return 22; }
+    if empty.Capacity() != 0 || empty.Length() != 0 { return 23; }
 
     // A populated Vector survives a rejected reservation untouched: the same
     // block, the same length, the same capacity, the same elements.
     var populated = Vector<int64>(allocator);
     var element: int64 = 0;
     while element < 8 {
-        populated.Push(element) catch { else => return 30 };
+        populated.Push(element);
         element++;
     }
 
@@ -62,13 +57,13 @@ func Main() -> int {
     let capacity = populated.Capacity();
 
     // The length plus the request wraps.
-    if Refusal(populated.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 31; }
+    if VectorRefusal(populated, uint::Max) != .Some(AllocError::Unsupported) { return 31; }
     if populated.AsSlice().data != block || populated.Length() != length { return 32; }
     if populated.Capacity() != capacity { return 33; }
 
     // The sum fits but its byte size does not, which is the other way the same
     // request fails.
-    if Refusal(populated.Reserve(uint::Max / 4)) != CollectionError::CapacityOverflow { return 34; }
+    if VectorRefusal(populated, uint::Max / 4) != .Some(AllocError::Unsupported) { return 34; }
     if populated.AsSlice().data != block || populated.Length() != length { return 35; }
     if populated.Capacity() != capacity { return 36; }
 
@@ -78,17 +73,12 @@ func Main() -> int {
         element++;
     }
 
-    // A bulk append is checked the same way, and a rejected one appends
-    // nothing rather than part of its input.
-    let borrowed = populated.AsSlice();
-    // Safety: a deliberately false length; `PushSlice` must refuse it from the length alone, before reading an element.
-    let hostile = unsafe { (borrowed.data)[..uint::Max] };
-    if Refusal(populated.PushSlice(hostile)) != CollectionError::CapacityOverflow { return 40; }
-    if populated.AsSlice().data != block || populated.Length() != length { return 41; }
-    if populated.Capacity() != capacity { return 42; }
-
-    // A rejected index is reported as itself, not as an exhausted allocator, and the container is left alone.
-    if Refusal(populated.Set(populated.Length(), 99)) != CollectionError::IndexOutOfRange { return 50; }
+    // A rejected index is reported as itself, and the container is left alone.
+    var rejected = false;
+    populated.Set(populated.Length(), 99) catch {
+        error => { rejected = error == CollectionError::IndexOutOfRange; }
+    };
+    if !rejected { return 50; }
     if populated.Length() != length || populated.AsSlice().data != block { return 51; }
     if populated.Get(0) != .Some(0) { return 52; }
 
@@ -96,37 +86,14 @@ func Main() -> int {
     if populated.Get(populated.Length()) is int64 { return 53; }
     if populated.At(populated.Length()) is .Some(_) { return 54; }
 
-    // Insert, RemoveAt and SwapRemoveAt return with C04; the rejections they report are covered there.
-
-    // A Deque rejects the same requests and stays usable afterwards.
-    var ring = Deque<int64>(allocator);
-    ring.PushBack(1) catch { else => return 60 };
-    let ringCapacity = ring.Capacity();
-    if Refusal(ring.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 61; }
-    if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 62; }
-    if ring.Get(0) != .Some(1) { return 67; }
-    if Refusal(ring.Reserve(uint::Max / 4)) != CollectionError::CapacityOverflow { return 63; }
-    if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 64; }
-    ring.PushFront(0) catch { else => return 65 };
-    if ring.Get(0) != .Some(0) || ring.Get(1) != .Some(1) { return 66; }
-
     // A hash table rejects an unsizeable reservation and keeps every entry.
     var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
-    map.Insert(1, 10) catch { else => return 70 };
-    map.Insert(2, 20) catch { else => return 71 };
+    map.Insert(1, 10);
+    map.Insert(2, 20);
     let mapCapacity = map.Capacity();
-    if Refusal(map.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 72; }
+    if MapRefusal(map, uint::Max) != .Some(AllocError::Unsupported) { return 72; }
     if map.Length() != 2 || map.Capacity() != mapCapacity { return 73; }
     if map.Get(1) != .Some(10) { return 74; }
-
-    // A set rejects it the same way.
-    var set = HashSet<int32>(allocator, HashInt32, EqualsInt32);
-    let added = set.Insert(1) catch { else => return 80 };
-    if !added { return 80; }
-    let setCapacity = set.Capacity();
-    if Refusal(set.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 81; }
-    if set.Length() != 1 || set.Capacity() != setCapacity { return 82; }
-    if !set.Contains(1) { return 83; }
 
     // Every container releases what it owns when its life ends; nothing here has a Free to call twice.
     return 0;

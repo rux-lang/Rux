@@ -147,7 +147,7 @@ func Main() -> int {
     let miscounted = FormatError::ArgumentCountMismatch(2u, 1u);
     let outOfRange = FormatError::ValueOutOfRange;
     let notText = FormatError::TextFailure(TextFailureKind::InvalidUtf8);
-    let noMemory = FormatError::TextFailure(TextFailureKind::OutOfMemory);
+    let cut = FormatError::TextFailure(TextFailureKind::NotABoundary);
     let tooSmall = FormatError::InsufficientCapacity;
 
     Assert(ToIoError(unsupported).kind == IoErrorKind::InvalidInput,
@@ -157,7 +157,7 @@ func Main() -> int {
            "and an argument count that does not match");
     Assert(ToIoError(outOfRange).kind == IoErrorKind::InvalidInput, "and a value outside the form asked for");
     Assert(ToIoError(notText).kind == IoErrorKind::InvalidText, "bytes that are not text are a fact about the bytes");
-    Assert(ToIoError(noMemory).kind == IoErrorKind::Other, "a shortage of memory has no I/O meaning of its own");
+    Assert(ToIoError(cut).kind == IoErrorKind::Other, "an offset that cuts a character has no I/O meaning of its own");
     Assert(ToIoError(tooSmall).kind == IoErrorKind::LimitExceeded,
            "and a bounded destination that filled met its bound");
 

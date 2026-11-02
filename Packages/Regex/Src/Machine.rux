@@ -40,12 +40,12 @@ struct Scratch {
 }
 
 // A vector of `count` copies of `value`.
-func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> ! RegexError {
+func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> {
     var items = Vector<T>(allocator);
-    items.Reserve(count) catch { else => fail RegexError::OutOfMemory() };
+    items.Reserve(count);
     var index: uint = 0;
     while index < count {
-        items.Push(value) catch { else => fail RegexError::OutOfMemory() };
+        items.Push(value);
         index = index + 1;
     }
     return <-items;
@@ -55,14 +55,14 @@ extend Scratch {
     func =(self: &var Scratch, other: &Scratch);
 
     // Storage for searching `program` with `slotCount` capture slots.
-    func New(allocator: Allocator, program: Program, slotCount: uint) -> Scratch ! RegexError {
+    func New(allocator: Allocator, program: Program, slotCount: uint) -> Scratch {
         let size = program.instructions.length;
         return Scratch {
-            sparse: Filled(allocator, size * 2, 0u32)?,
-            dense: Filled(allocator, size * 2, 0u32)?,
-            slots: Filled(allocator, size * 2 * slotCount, NoPosition)?,
-            stack: Filled(allocator, size + 1, StackEntry { restore: false, index: 0, value: 0 })?,
-            working: Filled(allocator, slotCount, NoPosition)?,
+            sparse: Filled(allocator, size * 2, 0u32),
+            dense: Filled(allocator, size * 2, 0u32),
+            slots: Filled(allocator, size * 2 * slotCount, NoPosition),
+            stack: Filled(allocator, size + 1, StackEntry { restore: false, index: 0, value: 0 }),
+            working: Filled(allocator, slotCount, NoPosition),
             counts: [0u, 0u],
             slotCount: slotCount
         };

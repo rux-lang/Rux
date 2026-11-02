@@ -7,10 +7,10 @@
 // and the conversions are asymmetric on purpose: UTF-8 in always succeeds, since valid text encodes into either
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
 
-import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, Cloneable, Panic };
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
+import Core::{ #target, Cloneable };
 import Memory::Copy;
-import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
+import Text::{ DecodeAt, String, StringBuilder, TextError };
 
 when #target.os == .Windows {
     /// The unit a native string is made of: a UTF-16 code unit on Windows, and a byte on the Unix systems.
@@ -111,7 +111,7 @@ extend OsStringView {
                 index = index + width;
             }
 
-            var builder = StringBuilder::WithCapacity(allocator, needed)?;
+            var builder = StringBuilder::WithCapacity(allocator, needed);
             index = 0;
             while index < units.length {
                 var scalar: uint32 = 0;
@@ -156,28 +156,19 @@ extend OsString {
     }
 
     /// An owning copy of what `view` spans, exactly as it stands.
-    /// This is the lossless direction: whatever the system handed over survives, valid text or not. It fails with
-    /// `OutOfMemory` when the copy cannot be made.
+    /// This is the lossless direction: whatever the system handed over survives, valid text or not. Terminates the
+    /// program when the copy cannot be made.
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to copy
-    /// @returns a copy of `view` this string owns, or an empty one when the allocator refused
+    /// @returns a copy of `view` this string owns
     /// @see https://rux-lang.dev/docs/api/path/os-string#from-view
-    pub func FromView(allocator: Allocator, view: OsStringView) -> OsString ! TextError {
+    pub func FromView(allocator: Allocator, view: OsStringView) -> OsString {
         let units = view.Units();
         if units.length == 0 { return OsString(allocator); }
         let bytes = units.length * (sizeof(OsUnit) as uint);
-        let layout = match Layout::New(bytes, alignof(OsUnit) as uint) {
-            value? => value,
-            none => {
-                fail TextError::LengthOverflow;
-            }
-        };
+        let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch {
-            allocated => {
-                fail FromAllocError(allocated);
-            }
-        };
+        let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
         // Safety: `block` is a fresh allocation of `bytes` bytes aligned for `OsUnit`, so it has room for the copy,
         // does not overlap `units`, which is readable for its length, and may hold `OsUnit` values.
         let data = unsafe {
@@ -230,13 +221,13 @@ extend OsString {
 
     /// An owning native copy of UTF-8 text.
     /// The direction that always succeeds: valid text encodes into either representation, byte for byte on the
-    /// Unix systems and through UTF-16 on Windows. It fails only when the allocation does.
+    /// Unix systems and through UTF-16 on Windows. It terminates the program when the allocation fails.
     /// The bytes must be well-formed UTF-8, which everything in `Rux/Text` produces and vouches for.
     /// @param allocator where the storage comes from
     /// @param text the text to act on
-    /// @returns the text converted to the platform's own units, or why it could not be
+    /// @returns the text converted to the platform's own units
     /// @see https://rux-lang.dev/docs/api/path/os-string#from-text
-    pub func FromText(allocator: Allocator, text: char8[..]) -> OsString ! TextError {
+    pub func FromText(allocator: Allocator, text: char8[..]) -> OsString {
         when #target.os == .Windows {
             // Two passes: count the units, then fill them. A scalar below U+10000 is one unit and anything above
             // is a surrogate pair, which is the whole of UTF-16.
@@ -263,10 +254,8 @@ extend OsString {
             let bytes = needed * 2;
             let layout = Layout::New(bytes, 2);
             var borrowed = allocator;
-            let block = borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
-                allocated => {
-                    fail FromAllocError(allocated);
-                }
+            let block = try borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
+                error => AllocationFailed(error)
             };
             // Safety: `block` is a fresh allocation of `needed` two-byte units, aligned to two.
             let units = unsafe { block as *var uint16 };
@@ -325,7 +314,7 @@ extend OsString : Cloneable {
         let bytes = self.length * (sizeof(OsUnit) as uint);
         let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
         var allocator = self.allocator;
-        let block = allocator.Allocate(layout) catch { else => Panic("copying an OsString requires an allocation") };
+        let block = try allocator.Allocate(layout) catch { error => AllocationFailed(error) };
         // Safety: `block` is a fresh allocation of `bytes` bytes aligned for `OsUnit`, and the storage invariant
         // makes `self.data` readable for the `self.length` units those bytes hold.
         let data = unsafe {

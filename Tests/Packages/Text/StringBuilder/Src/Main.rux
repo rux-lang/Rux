@@ -64,9 +64,9 @@ func Main() -> int {
 
     // A full builder doubles its room rather than taking only what the append needs.
     var doubling = StringBuilder(allocator);
-    doubling.Append("0123456789abcdef") catch { else => Panic("sixteen bytes are appended") };
+    doubling.Append("0123456789abcdef");
     Assert(doubling.Capacity() == 16, "filling the first block exactly");
-    doubling.Append("xyz") catch { else => Panic("and three more") };
+    doubling.Append("xyz");
     Assert(doubling.Capacity() == 32, "the next append doubles the room");
 
     // Clearing keeps the room, which is what makes a builder used in a loop allocate once.
@@ -74,8 +74,8 @@ func Main() -> int {
     builder.Clear();
     Assert(builder.IsEmpty() && builder.Capacity() == kept, "clearing forgets the bytes and keeps the room");
 
-    builder.Append("hello") catch { else => Panic("and the builder is usable again") };
-    let copied = builder.ToString() catch { else => Panic("a copy of what it holds is made") };
+    builder.Append("hello");
+    let copied = builder.ToString();
     Assert(copied.Length() == 5, "a copy of what it holds is made");
     Assert(builder.Length() == 5, "leaving the builder as it was");
 
@@ -86,11 +86,11 @@ func Main() -> int {
     Assert(taken.Bytes().data == handedFrom, "in the very block the builder had, uncopied");
     Assert(builder.IsEmpty() && builder.Capacity() == 0, "and the builder owns nothing afterwards");
 
-    builder.Append("again") catch { else => Panic("a builder that gave its block away still works") };
+    builder.Append("again");
     Assert(builder.Length() == 5, "and holds what it is given");
 
     // Room asked for up front is room the appends do not have to find.
-    var sized = StringBuilder::WithCapacity(allocator, 64) catch { else => Panic("a builder can be sized up front") };
+    var sized = StringBuilder::WithCapacity(allocator, 64);
     Assert(sized.Capacity() >= 64, "a builder can be sized up front");
     let sizedCapacity = sized.Capacity();
     index = 0;

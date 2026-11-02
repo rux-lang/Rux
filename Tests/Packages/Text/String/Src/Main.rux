@@ -48,7 +48,7 @@ func Main() -> int {
            "a surrogate half is refused, and nothing is built from it");
 
     // Copying is explicit: `Clone` makes an independent block and reports a failed allocation instead of hiding it.
-    var copy = text.Clone() catch { else => Panic("a string can be copied") };
+    var copy = text.Clone();
     Assert(copy.Equals(text), "and the copy holds what the original holds");
     Assert(copy.Bytes().data != text.Bytes().data, "in a block of its own");
     copy.Clear();
@@ -72,16 +72,14 @@ func Main() -> int {
     let view = text.View();
     Assert(view.Length() == text.Length(), "a view spans the same bytes");
     Assert(view.Bytes().data == text.Bytes().data, "without copying any of them");
-    let rebuilt = String::FromView(allocator, view)
-        catch { else => Panic("and a string built from it holds the same text") };
+    let rebuilt = String::FromView(allocator, view);
     Assert(rebuilt.Equals(text), "and a string built from it holds the same text");
 
     // Text needs no checking on the way in, so a string built from text is built from the same overloads under
     // the same names.
     let fromText = String::FromBytes(allocator, "hié€😀") catch { else => Panic("text makes a string") };
     Assert(fromText.Equals(text), "holding what the same bytes hold");
-    let vouched = String::FromValidated(allocator, "hié€😀")
-        catch { else => Panic("and so does the unchecked spelling") };
+    let vouched = String::FromValidated(allocator, "hié€😀");
     Assert(vouched.Equals(text), "and so does the unchecked spelling");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.

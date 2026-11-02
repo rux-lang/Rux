@@ -174,8 +174,8 @@ pub func WriteFormat(writer: &var TextWriter, #Format() format: char8[..], args:
 /// argument — so a short call fills in without a reallocation and a long one grows through the builder as usual.
 /// It is named for what it does rather than for the package, because `Format(allocator, ...)` read as a noun and a
 /// namespace at once and said nothing about producing a value.
-/// Reports `TextFailure(OutOfMemory)` when the initial reservation fails, and otherwise whatever `WriteFormat`
-/// reported. On failure the partially built string is released rather than returned, so a caller never receives
+/// Reports whatever `WriteFormat` reported, and terminates the program when the string cannot get its storage. On
+/// failure the partially built string is released rather than returned, so a caller never receives
 /// half a rendering that looks whole and the allocator gets its block back either way.
 /// @param allocator what the returned string is built with and will give its block back to
 /// @param format the pattern to render
@@ -183,7 +183,7 @@ pub func WriteFormat(writer: &var TextWriter, #Format() format: char8[..], args:
 /// @see https://rux-lang.dev/docs/api/format/render
 pub func Render(allocator: Allocator, #Format() format: char8[..], args: Display...) -> String ! FormatError {
     var builder = StringBuilder(allocator);
-    builder.Reserve(format.length + args.length * 8)? else (e => FromTextError(e));
+    builder.Reserve(format.length + args.length * 8);
     let sink: &var TextWriter = builder;
     WriteFormat(sink, format, args...)?;
     return builder.IntoString();

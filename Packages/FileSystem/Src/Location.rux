@@ -45,7 +45,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
         if written == 0 { fail TranslateNative(unsafe { GetLastError() } as int32); }
         if written > 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits(units[0..written as uint]);
-        return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        return OsString::FromView(allocator, view);
     }
     else {
         // Safety: `units` is a local array of 4096 units, and 4096 is the length passed.
@@ -56,7 +56,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
             length = length + 1;
         }
         let view = OsStringView::FromUnits(units[0..length]);
-        return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        return OsString::FromView(allocator, view);
     }
 }
 
@@ -97,14 +97,12 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @see https://rux-lang.dev/docs/api/filesystem/location#absolute
 pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     if IsAbsolute(path) {
-        return Normalize(allocator, path) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        return Normalize(allocator, path);
     }
     var here = CurrentDirectory(allocator)?;
-    var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View())) catch {
-        else => fail IoError::Of(IoErrorKind::Other)
-    };
-    joined.Push(path.name) catch { else => fail IoError::Of(IoErrorKind::Other) };
-    var simplified = Normalize(allocator, joined.AsPath()) catch { else => fail IoError::Of(IoErrorKind::Other) };
+    var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()));
+    joined.Push(path.name);
+    var simplified = Normalize(allocator, joined.AsPath());
     joined.Release();
     return <-simplified;
 }
@@ -133,7 +131,7 @@ when #target.os != .Windows {
             fail IoError::Of(IoErrorKind::LimitExceeded);
         }
         let view = OsStringView::FromUnits(units[0..written as uint]);
-        var target = OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        var target = OsString::FromView(allocator, view);
         return .Some(<-target);
     }
 
@@ -180,7 +178,7 @@ when #target.os != .Windows {
             var root: OsUnit[1];
             root[0] = PreferredSeparator();
             resolved.length = 0;
-            resolved.Push(OsStringView::FromUnits(root[0..1])) catch { else => fail IoError::Of(IoErrorKind::Other) };
+            resolved.Push(OsStringView::FromUnits(root[0..1]));
         }
         var walk = path.Components();
         var stepping = true;
@@ -200,7 +198,7 @@ when #target.os != .Windows {
                     PopSegment(resolved);
                 }
                 else {
-                    resolved.Push(segment) catch { else => fail IoError::Of(IoErrorKind::Other) };
+                    resolved.Push(segment);
                     match ReadLinkText(allocator, resolved.AsPath())? {
                         target? => {
                             // Safety: `followed` is the address of `Canonicalize`'s local count, which outlives
@@ -256,9 +254,7 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         if written == 0 { fail TranslateNative(raw); }
         if written >= 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits(units[0..written as uint]);
-        return PathBuffer::FromPath(allocator, Path::FromView(view)) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
-        };
+        return PathBuffer::FromPath(allocator, Path::FromView(view));
     }
     else {
         // No Unix kernel resolves a whole path for a caller — `realpath` is library code over `readlink` — so

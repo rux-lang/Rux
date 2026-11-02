@@ -17,10 +17,9 @@ import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
 /// Why a JSON value could not be built.
+/// Running out of memory is not one of the reasons: a value whose storage cannot be had terminates the program.
 /// @see https://rux-lang.dev/docs/api/json/json-value#json-error
 pub enum JsonError: int32 {
-    /// The allocator could not supply the storage.
-    OutOfMemory = 1,
     /// Text that JSON's number grammar does not allow, such as `01`, `+1`, `.5`, `1e` or `NaN`.
     MalformedNumber = 2
 }
@@ -111,21 +110,20 @@ extend JsonNumber {
     /// The text must be the whole number as RFC 8259 spells it: an optional minus, an integer part with no leading
     /// zero, and an optional fraction and exponent, each with at least one digit. Anything else, such as `01`, `+1`,
     /// `.5`, `5.`, `1e`, `NaN` or an empty text, is refused with `MalformedNumber` before anything is allocated, so a
-    /// number that exists is one every JSON reader accepts. Reports `OutOfMemory` when the allocator refused.
+    /// number that exists is one every JSON reader accepts. Terminates the program when the copy cannot be made.
     /// @param allocator where the storage comes from
     /// @param text the number's text, borrowed for the call
-    /// @returns the number, holding a copy of the text; `MalformedNumber` or `OutOfMemory` when it could not be made
+    /// @returns the number, holding a copy of the text; `MalformedNumber` when the text is not a JSON number
     /// @see https://rux-lang.dev/docs/api/json/json-number#new
     pub func New(allocator: Allocator, text: char8[..]) -> JsonNumber ! JsonError {
         if !IsJsonNumberText(text) { fail JsonError::MalformedNumber; }
-        return JsonNumber::Lexed(allocator, text) catch { else => fail JsonError::OutOfMemory };
+        return JsonNumber::Lexed(allocator, text);
     }
 
     // A number from text the lexer has already held to the grammar, so it is not checked a second time. The bytes
-    // of such a text are ASCII, so the only refusal left is the allocator's.
-    func Lexed(allocator: Allocator, text: char8[..]) -> JsonNumber ! TextError {
-        var held = String::FromBytes(allocator, text)?;
-        return JsonNumber { text: move held };
+    // of such a text are ASCII, and so already UTF-8.
+    func Lexed(allocator: Allocator, text: char8[..]) -> JsonNumber {
+        return JsonNumber { text: String::FromValidated(allocator, text) };
     }
 
     /// The number exactly as written.
@@ -260,11 +258,10 @@ extend JsonValue {
     }
 
     /// A number, from the text it is written with, checked against JSON's number grammar as `JsonNumber::New` does.
-    /// Text the grammar refuses, such as `01`, `1e` or `NaN`, is `MalformedNumber`, and a refusal of the allocator is
-    /// `OutOfMemory`; either way no value is made.
+    /// Text the grammar refuses, such as `01`, `1e` or `NaN`, is `MalformedNumber`, and no value is made.
     /// @param allocator where the storage comes from
     /// @param text the number's text, borrowed for the call
-    /// @returns that text as a number value; `MalformedNumber` or `OutOfMemory` when it could not be made
+    /// @returns that text as a number value; `MalformedNumber` when the text is not a JSON number
     /// @see https://rux-lang.dev/docs/api/json/json-value#number
     pub func Number(allocator: Allocator, text: char8[..]) -> JsonValue ! JsonError {
         var held = JsonValue::Null(allocator);
@@ -275,17 +272,17 @@ extend JsonValue {
 
     // A number value from a token the lexer has already held to the grammar, which the parser builds its numbers
     // with so that each is checked once.
-    func LexedNumber(allocator: Allocator, text: char8[..]) -> JsonValue ! TextError {
+    func LexedNumber(allocator: Allocator, text: char8[..]) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Number;
-        held.number = JsonNumber::Lexed(allocator, text)?;
+        held.number = JsonNumber::Lexed(allocator, text);
         return <-held;
     }
 
     /// A string value.
     /// @param allocator where the storage comes from
     /// @param value the value to act on
-    /// @returns that text as a string value, or the null value when the allocator refused
+    /// @returns that text as a string value, or `InvalidUtf8` when it is not text
     /// @see https://rux-lang.dev/docs/api/json/json-value#text
     pub func Text(allocator: Allocator, value: char8[..]) -> JsonValue ! TextError {
         var held = JsonValue::Null(allocator);
@@ -366,14 +363,15 @@ extend JsonValue {
     }
 
     /// Appends `value` to an array, taking ownership of it.
-    /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so
+    /// Reports `false` when this is not an array; `value` is consumed either way, so
     /// a caller does not have to decide who owns it on failure.
     /// @param value the value to act on
     /// @returns whether the element was appended
     /// @see https://rux-lang.dev/docs/api/json/json-value#push
     pub func Push(self: &var JsonValue, value: JsonValue) -> bool {
         if self.kind != JsonKind::Array { return false; }
-        return self.elements.Push(<-value) is .Success(_);
+        self.elements.Push(<-value);
+        return true;
     }
 
     /// Appends a member to an object, taking ownership of both name and value.
@@ -387,7 +385,8 @@ extend JsonValue {
     pub func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
         if self.kind != JsonKind::Object { return false; }
         var member = JsonMember { name: move name, value: <-value };
-        return self.members.Push(<-member) is .Success(_);
+        self.members.Push(<-member);
+        return true;
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.

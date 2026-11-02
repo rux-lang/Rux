@@ -20,9 +20,7 @@ extend Regex {
     func Emit(self: &var Regex, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 ! RegexError {
         let index = self.instructions.Length();
         if index >= MaximumInstructions { fail RegexError::At(RegexErrorKind::TooLarge, 0); }
-        self.instructions.Push(Instruction { op: op, flags: flags, a: a, b: b, c: 0 }) catch {
-            else => fail RegexError::OutOfMemory()
-        };
+        self.instructions.Push(Instruction { op: op, flags: flags, a: a, b: b, c: 0 });
         return index as uint32;
     }
 
@@ -75,8 +73,8 @@ extend Regex {
                     c = c + 1u32;
                 }
                 let pair = self.ascii.Length() / 2;
-                self.ascii.Push(low) catch { else => fail RegexError::OutOfMemory() };
-                self.ascii.Push(high) catch { else => fail RegexError::OutOfMemory() };
+                self.ascii.Push(low);
+                self.ascii.Push(high);
                 let pc = self.Emit(Op::Class, flags, node.value, node.low)?;
                 self.instructions.AsMutableSlice()[pc as uint].c = pair as uint32;
             },
@@ -109,7 +107,7 @@ extend Regex {
                     var children = Vector<uint32>(self.allocator);
                     var child = node.child;
                     while child != NoNode {
-                        children.Push(child) catch { else => fail RegexError::OutOfMemory() };
+                        children.Push(child);
                         child = nodes[child as uint].next;
                     }
                     var remaining = children.Length();
@@ -207,11 +205,11 @@ extend Regex {
             if instructions[at].op == Op::Char {
                 var encoded: char8[4] = [c8'\0'; 4];
                 let length = Encode(instructions[at].a, encoded[..]);
-                self.literal.PushSlice(encoded[..length]) catch { else => fail RegexError::OutOfMemory() };
+                self.literal.PushSlice(encoded[..length]);
             }
             at = at + 1;
         }
-        self.FindFirstBytes()?;
+        self.FindFirstBytes();
     }
 
     // Emits the pattern read backwards after the forward program, for the search that finds where a match starts
@@ -239,16 +237,16 @@ extend Regex {
 
     // Works out the bytes a match can start with, following every move from the start that reads no character. A
     // match that can be empty, or can start with any character, leaves nothing to skip.
-    func FindFirstBytes(self: &var Regex) -> ! RegexError {
+    func FindFirstBytes(self: &var Regex) {
         let instructions = self.instructions.AsSlice();
         var seen = Vector<bool>(self.allocator);
         var pending = Vector<uint32>(self.allocator);
         var index: uint = 0;
         while index < instructions.length {
-            seen.Push(false) catch { else => fail RegexError::OutOfMemory() };
+            seen.Push(false);
             index = index + 1;
         }
-        pending.Push(0) catch { else => fail RegexError::OutOfMemory() };
+        pending.Push(0);
         var bytes: uint64[4] = [0u64, 0u64, 0u64, 0u64];
         var nonAscii = false;
         while pending.Pop() is .Some(popped) {
@@ -257,14 +255,14 @@ extend Regex {
             seen.AsMutableSlice()[pc] = true;
             let instruction = instructions[pc];
             if instruction.op == Op::Jump {
-                pending.Push(instruction.a) catch { else => fail RegexError::OutOfMemory() };
+                pending.Push(instruction.a);
             }
             else if instruction.op == Op::Split {
-                pending.Push(instruction.a) catch { else => fail RegexError::OutOfMemory() };
-                pending.Push(instruction.b) catch { else => fail RegexError::OutOfMemory() };
+                pending.Push(instruction.a);
+                pending.Push(instruction.b);
             }
             else if instruction.op == Op::Save || instruction.op == Op::Assert {
-                pending.Push(pc as uint32 + 1u32) catch { else => fail RegexError::OutOfMemory() };
+                pending.Push(pc as uint32 + 1u32);
             }
             else if instruction.op == Op::Char {
                 let scalar = instruction.a;

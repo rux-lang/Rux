@@ -256,9 +256,6 @@ func AcceptsErrorSpec(spec: FormatSpec) -> ! FormatError {
 
 extend CollectionError : Display {
     /// Writes the description of why an operation did not happen, or `no error` for success.
-    /// The five cases stay distinguishable in words as they are in the type: a shortage of memory is not a size that
-    /// cannot be named, and neither is a layout the allocator refuses outright. Those distinctions decide whether a
-    /// caller retries, so a description that blurred them would send somebody to fix the wrong thing.
     /// The descriptions are stable. They are not a parsing contract: a program branches on the case.
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
@@ -269,16 +266,13 @@ extend CollectionError : Display {
                           spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .OutOfMemory => WriteBytes(writer, "out of memory"),
-            .CapacityOverflow => WriteBytes(writer, "size that cannot be represented"),
-            .IndexOutOfRange => WriteBytes(writer, "index the collection does not have"),
-            .Unsupported => WriteBytes(writer, "layout this allocator cannot serve")
+            .IndexOutOfRange => WriteBytes(writer, "index the collection does not have")
         };
     }
 }
 
 extend CollectionError : Debug {
-    /// Names the case, qualified by its type: `CollectionError::OutOfMemory`.
+    /// Names the case, qualified by its type: `CollectionError::IndexOutOfRange`.
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -289,10 +283,7 @@ extend CollectionError : Debug {
         AcceptsErrorSpec(spec)?;
         WriteBytes(writer, "CollectionError::")?;
         return match self {
-            .OutOfMemory => WriteBytes(writer, "OutOfMemory"),
-            .CapacityOverflow => WriteBytes(writer, "CapacityOverflow"),
-            .IndexOutOfRange => WriteBytes(writer, "IndexOutOfRange"),
-            .Unsupported => WriteBytes(writer, "Unsupported")
+            .IndexOutOfRange => WriteBytes(writer, "IndexOutOfRange")
         };
     }
 }

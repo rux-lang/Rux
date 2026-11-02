@@ -82,7 +82,7 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoE
                 }
             }
             if complete {
-                builder.AppendValidated(carry[0..carryLength]) catch { else => fail IoError::Of(IoErrorKind::Other) };
+                builder.AppendValidated(carry[0..carryLength]);
                 carryLength = 0;
             }
             else if reason != Utf8Error::Truncated {

@@ -14,15 +14,15 @@ import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import FileSystem::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
 
 func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
-    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    holder = OsString::FromText(allocator, text);
     return Path::FromView(holder.View());
 }
 
 // Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
 // and deletes it. Anything lossy in that circle breaks one of the steps.
 func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: char8[..]) {
-    var full = PathBuffer::FromPath(allocator, directory) catch { else => Panic("the directory copies") };
-    full.Push(name) catch { else => Panic("and the name appends") };
+    var full = PathBuffer::FromPath(allocator, directory);
+    full.Push(name);
 
     var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing()) catch { else => Panic(what) };
     Assert(made.IsOpen(), what);
@@ -39,9 +39,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
                 let view = entry.View();
                 if view.Equals(name) {
                     found = true;
-                    reported = OsString::FromView(allocator, view) catch {
-                        else => Panic("and the reported name copies")
-                    };
+                    reported = OsString::FromView(allocator, view);
                 }
             },
             none => {
@@ -53,8 +51,8 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     walk.Release();
 
     // Reopening under the reported name proves the round trip is usable, not merely equal.
-    var reopenPath = PathBuffer::FromPath(allocator, directory) catch { else => Panic("the directory copies again") };
-    reopenPath.Push(reported.View()) catch { else => Panic("the reported name appends") };
+    var reopenPath = PathBuffer::FromPath(allocator, directory);
+    reopenPath.Push(reported.View());
     var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading()) catch {
         else => Panic("and opens the same file")
     };

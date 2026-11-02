@@ -55,7 +55,7 @@ unsafe func ReadSmallFile(path: char8[..], into: &var Vector<char8>) {
             let count = Read(fd, (@chunk[0]) as *var opaque, 4096);
             if count == -4i64 { continue; }
             if count <= 0i64 { break; }
-            into.PushSlice(chunk[..count as uint]) catch { else => break };
+            into.PushSlice(chunk[..count as uint]);
         }
         Close(fd);
     }
@@ -104,7 +104,7 @@ func Lines(text: char8[..], lines: &var Vector<Range>) {
         while end < text.length && text[end] != c8'\n' { end = end + 1; }
         var cut = start;
         while cut < end && text[cut] != c8'#' && text[cut] != c8';' { cut = cut + 1; }
-        lines.Push(Range { start: start, end: cut }) catch { else => return };
+        lines.Push(Range { start: start, end: cut });
         start = end + 1;
     }
 }
@@ -142,7 +142,7 @@ func AddOnce(found: &var Vector<SocketAddress>, address: SocketAddress) {
     for earlier in found.AsSlice() {
         if earlier.Equals(address) { return; }
     }
-    found.Push(address) catch { else => return };
+    found.Push(address);
 }
 
 extend Resolver {
@@ -156,7 +156,7 @@ extend Resolver {
     pub func WithServers(allocator: Allocator, servers: SocketAddress[..]) -> Resolver {
         var resolver = Resolver { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
                                   attempts: 2 };
-        resolver.servers.PushSlice(servers) catch { else => {} };
+        resolver.servers.PushSlice(servers);
         return <-resolver;
     }
 
@@ -224,7 +224,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
         let keyword = NextField(line, @at);
         if SameName(keyword, "nameserver") && configuration.servers.Length() < MaximumServers {
             match IpAddress::Parse(NextField(line, @at)) {
-                .Some(ip) => configuration.servers.Push(SocketAddress { ip: ip, port: 53 }) catch { else => {} },
+                .Some(ip) => configuration.servers.Push(SocketAddress { ip: ip, port: 53 }),
                 none => {}
             }
         }
@@ -245,7 +245,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
     }
     if configuration.servers.Length() == 0u {
         let local = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port: 53 };
-        configuration.servers.Push(local) catch { else => {} };
+        configuration.servers.Push(local);
     }
     return <-configuration;
 }

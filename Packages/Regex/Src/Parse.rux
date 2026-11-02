@@ -314,15 +314,15 @@ extend Parser {
         }
     }
 
-    func Add(self: &var Parser, node: Node) -> uint32 ! RegexError {
+    func Add(self: &var Parser, node: Node) -> uint32 {
         let index = self.nodes.Length();
-        self.nodes.Push(node) catch { else => fail RegexError::OutOfMemory() };
+        self.nodes.Push(node);
         return index as uint32;
     }
 
     func AddNode(self: &var Parser, kind: NodeKind, flags: uint8, value: uint32, low: uint32, high: uint32,
-                 child: uint32) -> uint32 ! RegexError {
-        return self.Add(Node { kind: kind, flags: flags, value: value, low: low, high: high, child: child, next: NoNode })?;
+                 child: uint32) -> uint32 {
+        return self.Add(Node { kind: kind, flags: flags, value: value, low: low, high: high, child: child, next: NoNode });
     }
 
     func Link(self: &var Parser, from: uint32, to: uint32) {
@@ -333,7 +333,7 @@ extend Parser {
     func ParseAlternation(self: &var Parser, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let first = self.ParseConcat(regex, depth)?;
         if self.Peek() != 0x7Cu32 { return first; }
-        let alternation = self.AddNode(NodeKind::Alternate, 0, 0, 0, 0, first)?;
+        let alternation = self.AddNode(NodeKind::Alternate, 0, 0, 0, 0, first);
         var last = first;
         while self.Peek() == 0x7Cu32 {
             self.at = self.at + 1;
@@ -360,9 +360,9 @@ extend Parser {
             last = item;
             count = count + 1;
         }
-        if count == 0u { return self.AddNode(NodeKind::Empty, 0, 0, 0, 0, NoNode)?; }
+        if count == 0u { return self.AddNode(NodeKind::Empty, 0, 0, 0, 0, NoNode); }
         if count == 1u { return first; }
-        return self.AddNode(NodeKind::Concat, 0, 0, 0, 0, first)?;
+        return self.AddNode(NodeKind::Concat, 0, 0, 0, 0, first);
     }
 
     // Whether a `{` at the cursor starts a count: `{n}`, `{n,}` or `{n,m}`.
@@ -438,15 +438,15 @@ extend Parser {
                 flags = 0;
                 self.at = self.at + 1;
             }
-            atom = self.AddNode(NodeKind::Repeat, flags, 0, low, high, atom)?;
+            atom = self.AddNode(NodeKind::Repeat, flags, 0, low, high, atom);
         }
         return atom;
     }
 
     // A literal character, folded when `(?i)` is on and it has another case.
-    func Literal(self: &var Parser, scalar: uint32) -> uint32 ! RegexError {
+    func Literal(self: &var Parser, scalar: uint32) -> uint32 {
         let fold = (self.flags & FlagCase) != 0u8 && HasCase(scalar);
-        return self.AddNode(NodeKind::Literal, fold ? NodeFold : 0u8, scalar, 0, 0, NoNode)?;
+        return self.AddNode(NodeKind::Literal, fold ? NodeFold : 0u8, scalar, 0, 0, NoNode);
     }
 
     // One character, class, group, assertion or escape.
@@ -458,17 +458,17 @@ extend Parser {
         if byte == 0x2Eu32 {
             self.at = self.at + 1;
             let dotAll = (self.flags & FlagDotAll) != 0u8;
-            return self.AddNode(NodeKind::Any, dotAll ? NodeDotAll : 0u8, 0, 0, 0, NoNode)?;
+            return self.AddNode(NodeKind::Any, dotAll ? NodeDotAll : 0u8, 0, 0, 0, NoNode);
         }
         if byte == 0x5Eu32 {
             self.at = self.at + 1;
             let kind = (self.flags & FlagMultiLine) != 0u8 ? StartLine : StartText;
-            return self.AddNode(NodeKind::Assertion, 0, kind, 0, 0, NoNode)?;
+            return self.AddNode(NodeKind::Assertion, 0, kind, 0, 0, NoNode);
         }
         if byte == 0x24u32 {
             self.at = self.at + 1;
             let kind = (self.flags & FlagMultiLine) != 0u8 ? EndLine : EndText;
-            return self.AddNode(NodeKind::Assertion, 0, kind, 0, 0, NoNode)?;
+            return self.AddNode(NodeKind::Assertion, 0, kind, 0, 0, NoNode);
         }
         if byte == 0x2Au32 || byte == 0x2Bu32 || byte == 0x3Fu32 || (byte == 0x7Bu32 && self.AtCount()) {
             fail self.Fail(RegexErrorKind::NothingToRepeat, start);
@@ -477,18 +477,18 @@ extend Parser {
             let first = regex.items.Length();
             let escape = self.ParseEscape(regex, false)?;
             match escape.kind {
-                EscapeKind::Scalar => return self.Literal(escape.value)?,
-                EscapeKind::Assertion => return self.AddNode(NodeKind::Assertion, 0, escape.value, 0, 0, NoNode)?,
+                EscapeKind::Scalar => return self.Literal(escape.value),
+                EscapeKind::Assertion => return self.AddNode(NodeKind::Assertion, 0, escape.value, 0, 0, NoNode),
                 EscapeKind::Class => {
                     let fold = (self.flags & FlagCase) != 0u8 ? NodeFold : 0u8;
-                    return self.AddNode(NodeKind::Class, fold, first as uint32, 1, 0, NoNode)?;
+                    return self.AddNode(NodeKind::Class, fold, first as uint32, 1, 0, NoNode);
                 }
             }
         }
         let decoded = DecodeAt(self.pattern, self.at);
         if !decoded.valid { fail self.Fail(RegexErrorKind::InvalidText, start); }
         self.at = self.at + decoded.length;
-        return self.Literal(decoded.scalar)?;
+        return self.Literal(decoded.scalar);
     }
 
     // A `(...)` group, or a `(?flags)` that sets flags for the rest of the enclosing group.
@@ -558,7 +558,7 @@ extend Parser {
         if self.Peek() != 0x29u32 { fail self.Fail(RegexErrorKind::UnclosedGroup, start); }
         self.at = self.at + 1;
         self.flags = saved;
-        return self.AddNode(NodeKind::Group, 0, capture, 0, 0, child)?;
+        return self.AddNode(NodeKind::Group, 0, capture, 0, 0, child);
     }
 
     // A group's name up to its `>`, recorded as the name of group `index`.
@@ -576,14 +576,14 @@ extend Parser {
         let name = self.pattern[start..self.at];
         if regex.IndexOfName(name) != none { fail self.Fail(RegexErrorKind::DuplicateGroupName, start); }
         let offset = regex.nameBytes.Length();
-        regex.nameBytes.PushSlice(name) catch { else => fail RegexError::OutOfMemory() };
+        regex.nameBytes.PushSlice(name);
         let entry = GroupName { index: index, start: offset as uint32, length: name.length as uint32 };
-        regex.names.Push(entry) catch { else => fail RegexError::OutOfMemory() };
+        regex.names.Push(entry);
         self.at = self.at + 1;
     }
 
-    func PushItem(self: &var Parser, regex: &var Regex, item: ClassItem) -> ! RegexError {
-        regex.items.Push(item) catch { else => fail RegexError::OutOfMemory() };
+    func PushItem(self: &var Parser, regex: &var Regex, item: ClassItem) {
+        regex.items.Push(item);
     }
 
     // The name of a `\p` property: one letter, or the text between braces. A `^` after the brace negates it.
@@ -611,7 +611,7 @@ extend Parser {
             .Some(item) => {
                 var found = item;
                 found.negated = negate;
-                self.PushItem(regex, found)?;
+                self.PushItem(regex, found);
             },
             none => fail self.Fail(RegexErrorKind::UnknownProperty, start)
         }
@@ -674,7 +674,7 @@ extend Parser {
             isClass = false;
         }
         if isClass {
-            self.PushItem(regex, item)?;
+            self.PushItem(regex, item);
             return Escaped { kind: EscapeKind::Class, value: 0 };
         }
         var assertion = 0xFFFFFFFFu32;
@@ -759,7 +759,7 @@ extend Parser {
                 let property = PosixProperty(self.pattern[from..self.at]) ??
                                fail self.Fail(RegexErrorKind::UnknownProperty, open);
                 self.at = self.at + 2;
-                self.PushItem(regex, ClassItem { kind: ItemKind::Property, negated: negate, low: property, high: 0 })?;
+                self.PushItem(regex, ClassItem { kind: ItemKind::Property, negated: negate, low: property, high: 0 });
                 continue;
             }
             let at = self.at;
@@ -771,7 +771,7 @@ extend Parser {
                         high = self.ParseClassCharacter(regex)? ?? fail self.Fail(RegexErrorKind::InvalidRange, at);
                         if high < low { fail self.Fail(RegexErrorKind::InvalidRange, at); }
                     }
-                    self.PushItem(regex, ClassItem { kind: ItemKind::Range, negated: false, low: low, high: high })?;
+                    self.PushItem(regex, ClassItem { kind: ItemKind::Range, negated: false, low: low, high: high });
                 },
                 none => {
                     if self.Peek() == 0x2Du32 && self.PeekAt(1) != 0x5Du32 {
@@ -781,6 +781,6 @@ extend Parser {
             }
         }
         let count = regex.items.Length() - first;
-        return self.AddNode(NodeKind::Class, flags, first as uint32, count as uint32, 0, NoNode)?;
+        return self.AddNode(NodeKind::Class, flags, first as uint32, count as uint32, 0, NoNode);
     }
 }

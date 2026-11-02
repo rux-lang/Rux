@@ -151,12 +151,12 @@ extend Dfa {
         };
     }
 
-    func Prepare(self: &var Dfa) -> ! RegexError {
+    func Prepare(self: &var Dfa) {
         if self.ready { return; }
-        self.buckets = Filled(self.allocator, BucketCount, 0u32)?;
-        self.wideKeys = Filled(self.allocator, WideSlots, 0u64)?;
-        self.wideValues = Filled(self.allocator, WideSlots, 0u32)?;
-        self.stamps = Filled(self.allocator, self.program.all.length, 0u32)?;
+        self.buckets = Filled(self.allocator, BucketCount, 0u32);
+        self.wideKeys = Filled(self.allocator, WideSlots, 0u64);
+        self.wideValues = Filled(self.allocator, WideSlots, 0u32);
+        self.stamps = Filled(self.allocator, self.program.all.length, 0u32);
         self.ready = true;
     }
 
@@ -199,7 +199,7 @@ extend Dfa {
     }
 
     // The state with `roots` and `flags`, made if it is new; `NoState` when the states are full.
-    func Find(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 ! RegexError {
+    func Find(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 {
         var hash: uint64 = 0xCBF29CE484222325u64 ^ flags as uint64;
         for root in roots {
             hash = (hash ^ root as uint64) * 0x100000001B3u64;
@@ -221,17 +221,17 @@ extend Dfa {
         }
         let count = self.flags.Length();
         if count >= MaximumStates || self.roots.Length() + roots.length > MaximumRoots { return NoState; }
-        self.firstRoot.Push(self.roots.Length()) catch { else => fail RegexError::OutOfMemory() };
-        self.roots.PushSlice(roots) catch { else => fail RegexError::OutOfMemory() };
-        self.rootCount.Push(roots.length as uint32) catch { else => fail RegexError::OutOfMemory() };
-        self.flags.Push(flags) catch { else => fail RegexError::OutOfMemory() };
+        self.firstRoot.Push(self.roots.Length());
+        self.roots.PushSlice(roots);
+        self.rootCount.Push(roots.length as uint32);
+        self.flags.Push(flags);
         var info: uint8 = 0;
         if roots.length == 0u && (flags & FlagSeeking) == 0u8 { info = info | InfoDead; }
         if roots.length == 1u && roots[0] == self.start && (flags & FlagSeeking) != 0u8 { info = info | InfoAtStart; }
-        self.info.Push(info) catch { else => fail RegexError::OutOfMemory() };
+        self.info.Push(info);
         var slot: uint = 0;
         while slot < DirectSlots {
-            self.direct.Push(0) catch { else => fail RegexError::OutOfMemory() };
+            self.direct.Push(0);
             slot = slot + 1;
         }
         self.buckets.AsMutableSlice()[bucket] = count as uint32 + 1u32;
@@ -239,29 +239,29 @@ extend Dfa {
     }
 
     // The state for `roots` and `flags`, dropping every state first when there is no room for another.
-    func Add(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 ! RegexError {
-        let state = self.Find(roots, flags)?;
+    func Add(self: &var Dfa, roots: uint32[..], flags: uint8) -> uint32 {
+        let state = self.Find(roots, flags);
         if state != NoState { return state; }
         self.Drop();
-        return self.Find(roots, flags)?;
+        return self.Find(roots, flags);
     }
 
     // The state a search starts in, after `before`, the character it starts after.
-    func Initial(self: &var Dfa, before: uint32) -> uint32 ! RegexError {
-        self.Prepare()?;
+    func Initial(self: &var Dfa, before: uint32) -> uint32 {
+        self.Prepare();
         var flags = FlagsAfter(before) & self.context;
         if self.seeking { flags = flags | FlagSeeking; }
         var roots: uint32[1] = [self.start];
-        return self.Add(roots[..], flags)?;
+        return self.Add(roots[..], flags);
     }
 
     // Follows the moves from `root` that read nothing, in order of preference, appending to `ordered` every
     // instruction they reach that reads a character or matches. Returns whether a match was reached; in
     // leftmost-first mode nothing after it is followed.
-    func Close(self: &var Dfa, root: uint32, flags: uint8, after: uint32, mark: uint32) -> bool ! RegexError {
+    func Close(self: &var Dfa, root: uint32, flags: uint8, after: uint32, mark: uint32) -> bool {
         let instructions = self.program.all;
         self.stack.Clear();
-        self.stack.Push(root) catch { else => fail RegexError::OutOfMemory() };
+        self.stack.Push(root);
         while self.stack.Pop() is .Some(popped) {
             var pc = popped as uint;
             while true {
@@ -272,7 +272,7 @@ extend Dfa {
                 let op = instruction.op;
                 if op == Op::Jump { pc = instruction.a as uint; }
                 else if op == Op::Split {
-                    self.stack.Push(instruction.b) catch { else => fail RegexError::OutOfMemory() };
+                    self.stack.Push(instruction.b);
                     pc = instruction.a as uint;
                 }
                 else if op == Op::Save { pc = pc + 1; }
@@ -281,7 +281,7 @@ extend Dfa {
                     pc = pc + 1;
                 }
                 else {
-                    self.ordered.Push(pc as uint32) catch { else => fail RegexError::OutOfMemory() };
+                    self.ordered.Push(pc as uint32);
                     if op == Op::Match && self.leftmostFirst { return true; }
                     break;
                 }
@@ -293,7 +293,7 @@ extend Dfa {
     // Computes where `state` goes on `character`: the next state, and whether a match ends before the character.
     // Encoded as the next state plus one, doubled, plus one when a match ends; the next state is absent at the end of
     // the text.
-    func Compute(self: &var Dfa, state: uint32, character: uint32) -> uint32 ! RegexError {
+    func Compute(self: &var Dfa, state: uint32, character: uint32) -> uint32 {
         let index = state as uint;
         let flags = self.flags.AsSlice()[index];
         let first = self.firstRoot.AsSlice()[index];
@@ -303,7 +303,7 @@ extend Dfa {
         var cut = false;
         var root: uint = 0;
         while root < count && !cut {
-            cut = self.Close(self.roots.AsSlice()[first + root], flags, character, mark)?;
+            cut = self.Close(self.roots.AsSlice()[first + root], flags, character, mark);
             root = root + 1;
         }
         var matched = cut;
@@ -325,7 +325,7 @@ extend Dfa {
                 let stamps = self.stamps.AsMutableSlice();
                 if stamps[target as uint] != stepped {
                     stamps[target as uint] = stepped;
-                    self.following.Push(target) catch { else => fail RegexError::OutOfMemory() };
+                    self.following.Push(target);
                 }
             }
         }
@@ -335,30 +335,30 @@ extend Dfa {
             let stamps = self.stamps.AsMutableSlice();
             if stamps[self.start as uint] != stepped {
                 stamps[self.start as uint] = stepped;
-                self.following.Push(self.start) catch { else => fail RegexError::OutOfMemory() };
+                self.following.Push(self.start);
             }
         }
         var roots = Vector<uint32>(self.allocator);
-        roots.PushSlice(self.following.AsSlice()) catch { else => fail RegexError::OutOfMemory() };
-        let next = self.Add(roots.AsSlice(), nextFlags)?;
+        roots.PushSlice(self.following.AsSlice());
+        let next = self.Add(roots.AsSlice(), nextFlags);
         return (next + 1u32) * 2u32 + found;
     }
 
     // Where `state` goes on `character`, remembered after the first time it is asked.
-    func Transition(self: &var Dfa, state: uint32, character: uint32) -> uint32 ! RegexError {
+    func Transition(self: &var Dfa, state: uint32, character: uint32) -> uint32 {
         let drops = self.drops;
         if character < 0x80u32 || character == EndOfText {
             let slot = state as uint * DirectSlots + (character == EndOfText ? 128u : character as uint);
             let known = self.direct.AsSlice()[slot];
             if known != 0u32 { return known - 1u32; }
-            let value = self.Compute(state, character)?;
+            let value = self.Compute(state, character);
             if self.drops == drops { self.direct.AsMutableSlice()[slot] = value + 1u32; }
             return value;
         }
         let key = ((state as uint64) << 32) | character as uint64;
         let slot = ((key * 0x9E3779B97F4A7C15u64) >> 52) as uint & (WideSlots - 1);
         if self.wideKeys.AsSlice()[slot] == key + 1u64 { return self.wideValues.AsSlice()[slot]; }
-        let value = self.Compute(state, character)?;
+        let value = self.Compute(state, character);
         if self.drops == drops {
             self.wideKeys.AsMutableSlice()[slot] = key + 1u64;
             self.wideValues.AsMutableSlice()[slot] = value;
@@ -370,8 +370,8 @@ extend Dfa {
     // any match ends. `NoEnd` when there is no match.
     // The loop reads remembered transitions straight from the table, and asks `Transition` only for one not yet
     // known; the views of the tables are taken again after that, since computing a transition can grow them.
-    func FindEnd(self: &var Dfa, text: char8[..], from: uint, earliest: bool) -> uint ! RegexError {
-        var state = self.Initial(from > 0u ? DecodeBefore(text, from).scalar : EndOfText)?;
+    func FindEnd(self: &var Dfa, text: char8[..], from: uint, earliest: bool) -> uint {
+        var state = self.Initial(from > 0u ? DecodeBefore(text, from).scalar : EndOfText);
         var direct = self.direct.AsSlice();
         var info = self.info.AsSlice();
         var found = NoEnd;
@@ -395,7 +395,7 @@ extend Dfa {
                 if skipped != at {
                     if skipped >= text.length { return NoEnd; }
                     at = skipped;
-                    state = self.Initial(DecodeBefore(text, at).scalar)?;
+                    state = self.Initial(DecodeBefore(text, at).scalar);
                     direct = self.direct.AsSlice();
                     info = self.info.AsSlice();
                 }
@@ -407,7 +407,7 @@ extend Dfa {
                 let known = direct[state as uint * DirectSlots + text[at] as uint];
                 if known != 0u32 { value = known - 1u32; }
                 else {
-                    value = self.Transition(state, text[at] as uint32)?;
+                    value = self.Transition(state, text[at] as uint32);
                     direct = self.direct.AsSlice();
                     info = self.info.AsSlice();
                 }
@@ -422,7 +422,7 @@ extend Dfa {
                 else {
                     ended = true;
                 }
-                value = self.Transition(state, character)?;
+                value = self.Transition(state, character);
                 direct = self.direct.AsSlice();
                 info = self.info.AsSlice();
             }
@@ -441,8 +441,8 @@ extend Dfa {
 
     // Reads backwards from `end`, over the reversed pattern, for where the longest match ending there starts, never
     // before `from`. The search before has found that a match ends at `end`.
-    func FindStart(self: &var Dfa, text: char8[..], end: uint, from: uint) -> uint ! RegexError {
-        var state = self.Initial(end < text.length ? DecodeAt(text, end).scalar : EndOfText)?;
+    func FindStart(self: &var Dfa, text: char8[..], end: uint, from: uint) -> uint {
+        var state = self.Initial(end < text.length ? DecodeAt(text, end).scalar : EndOfText);
         var found = NoEnd;
         var at = end;
         while true {
@@ -460,7 +460,7 @@ extend Dfa {
                     width = decoded.length;
                 }
             }
-            let value = self.Transition(state, character)?;
+            let value = self.Transition(state, character);
             if (value & 1u32) != 0u32 { found = at; }
             // The character before `from` settles assertions, but a match never reaches back over it.
             if character == EndOfText || at <= from { break; }

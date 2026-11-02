@@ -73,12 +73,12 @@ extend TreeSet<T> {
     /// Takes ownership. An element equal to one already present is destroyed rather than stored, since the one in
     /// the set is equal to it and is what everything is already ordered against — so a set never grows past the
     /// number of distinct elements put into it.
-    /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing.
+    /// Terminates the program when the node cannot be allocated.
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#insert
-    pub func Insert(self: &var TreeSet<T>, value: T) -> bool ! CollectionError {
-        let replaced = self.tree.Attach(<-value, (), self.compare)?;
+    pub func Insert(self: &var TreeSet<T>, value: T) -> bool {
+        let replaced = self.tree.Attach(<-value, (), self.compare);
         return !(replaced is ());
     }
 
@@ -256,21 +256,17 @@ extend TreeSet<T> {
     }
 
     /// Adds every element of `other` that is not already here.
-    /// Reports `OutOfMemory` if a node cannot be allocated, having added what it managed to before that — unlike
-    /// the hash set's, which reserves the worst case first and is all-or-nothing. A tree has no capacity to reserve:
-    /// every element is a separate allocation, so there is no point at which the whole operation can be paid for in
-    /// advance. What it gives back instead is that a partial union is still a set with every invariant intact, and
-    /// running the same call again finishes it.
+    /// A tree has no capacity to reserve: every element is a separate allocation, so the program terminates at the
+    /// first node that cannot be allocated.
     /// @param other the collection to compare or combine with
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#union-with
-    pub func UnionWith(self: &var TreeSet<T>, other: &TreeSet<T>) -> ! CollectionError {
+    pub func UnionWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
         var walker = other.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 value? => {
-                    self.Insert(value)?;
+                    self.Insert(value);
                 },
                 none => {
                     walking = false;
@@ -324,14 +320,13 @@ extend TreeSet<T> {
     }
 
     /// Keeps the elements that are in exactly one of the two sets.
-    /// Reports `OutOfMemory` if a node cannot be allocated, having done what it managed to first.
+    /// Terminates the program when a node cannot be allocated.
     /// The removals and the additions cannot be interleaved: an element removed from this set would then look
     /// absent when `other`'s copy of it arrived, and be added straight back. So what is shared is taken out first,
     /// and only then is what is left of `other` put in.
     /// @param other the collection to compare or combine with
-    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#symmetric-difference-with
-    pub func SymmetricDifferenceWith(self: &var TreeSet<T>, other: &TreeSet<T>) -> ! CollectionError {
+    pub func SymmetricDifferenceWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
         var shared = TreeSet<T>(self.tree.allocator, self.compare);
         var walker = other.Iterate();
         var walking = true;
@@ -339,7 +334,7 @@ extend TreeSet<T> {
             match walker.Next() {
                 value? => {
                     if self.Contains(value) {
-                        shared.Insert(value)?;
+                        shared.Insert(value);
                     }
                 },
                 none => {
@@ -355,7 +350,7 @@ extend TreeSet<T> {
             match adding.Next() {
                 value? => {
                     if !shared.Contains(value) {
-                        self.Insert(value)?;
+                        self.Insert(value);
                     }
                 },
                 none => {
@@ -367,14 +362,14 @@ extend TreeSet<T> {
     }
 
     /// A set holding what this one holds, ordered the same way and allocating from the same allocator.
-    /// A failed clone hands back nothing rather than half of a set.
+    /// Terminates the program when a node cannot be allocated.
     /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
     /// owning element type is rejected while compiling, at the copy.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#clone
-    pub func Clone(self: &TreeSet<T>) -> TreeSet<T> ! CollectionError {
+    pub func Clone(self: &TreeSet<T>) -> TreeSet<T> {
         var copy = TreeSet<T>(self.tree.allocator, self.compare);
-        copy.UnionWith(self)?;
+        copy.UnionWith(self);
         return <-copy;
     }
 }

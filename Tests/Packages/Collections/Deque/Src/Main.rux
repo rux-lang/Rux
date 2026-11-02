@@ -28,9 +28,7 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
     var deque = Deque<Tracked>(allocator);
     var index: uint = 0;
     while index < count {
-        deque.PushBack(Tracked { counter: counter, value: index as int32 }) catch {
-            else => Panic("a tracked element goes in")
-        };
+        deque.PushBack(Tracked { counter: counter, value: index as int32 });
         index++;
     }
     Assert(deque.Length() == count, "the deque holds what was pushed into it");
@@ -61,13 +59,13 @@ func Main() -> int {
     Assert(queue.Back() is none, "at either end");
 
     // The first push takes the minimum capacity.
-    queue.PushBack(1) catch { else => Panic("the first push succeeds") };
+    queue.PushBack(1);
     Assert(queue.Capacity() == MinimumDequeCapacity, "taking the minimum capacity");
     Assert(queue.Length() == 1, "and holding one element");
 
     // Both ends, and the order they produce.
-    queue.PushBack(2) catch { else => Panic("pushing at the back succeeds") };
-    queue.PushFront(0) catch { else => Panic("and pushing at the front") };
+    queue.PushBack(2);
+    queue.PushFront(0);
     Assert(queue.Length() == 3, "the deque holds all three");
     Assert(queue.Get(0) == .Some(0), "with the front-pushed element first");
     Assert(queue.Get(1) == .Some(1), "and the rest in order");
@@ -86,7 +84,7 @@ func Main() -> int {
     var pushed: int32 = 0;
     var round: uint = 0;
     while round < 40 {
-        queue.PushBack(pushed) catch { else => Panic("every push during wrapping succeeds") };
+        queue.PushBack(pushed);
         pushed = pushed + 1;
         if queue.Length() > 3 {
             Assert(queue.PopFront() == .Some(expected), "and every element comes back in the order it went in");
@@ -101,7 +99,7 @@ func Main() -> int {
     queue.Clear();
     round = 0;
     while round < 40 {
-        queue.PushFront(round as int32) catch { else => Panic("every front push succeeds") };
+        queue.PushFront(round as int32);
         if queue.Length() > 3 {
             Assert(queue.PopBack() == .Some((round - 3) as int32), "and the back gives them back in order");
         }
@@ -111,9 +109,9 @@ func Main() -> int {
 
     // A deliberately wrapped deque, so the two-slice view has both runs to give.
     queue.Clear();
-    queue.PushBack(10) catch { else => Panic("filling a wrapped deque") };
-    queue.PushBack(20) catch { else => Panic("with a few elements") };
-    queue.PushFront(5) catch { else => Panic("one of them at the front, which wraps the head") };
+    queue.PushBack(10);
+    queue.PushBack(20);
+    queue.PushFront(5);
     Assert(!queue.IsContiguous(), "so the elements are in two runs");
 
     let (front, back) = queue.AsSlices();
@@ -140,26 +138,20 @@ func Main() -> int {
     Assert(queue.IsContiguous(), "and is contiguous for want of anything to wrap");
 
     // Reserving takes room without changing the length; shrinking gives back what rounding leaves spare.
-    queue.Reserve(100) catch { else => Panic("reserving succeeds") };
+    queue.Reserve(100);
     Assert(queue.Capacity() >= 100, "taking the room asked for");
     Assert(queue.IsEmpty(), "without adding elements");
-    queue.ShrinkToFit() catch { else => Panic("shrinking an empty deque succeeds") };
+    queue.ShrinkToFit();
     Assert(queue.Capacity() == 0, "and hands back everything");
 
-    queue.PushBack(7) catch { else => Panic("a push after shrinking succeeds") };
-    queue.Reserve(200) catch { else => Panic("and reserving again") };
+    queue.PushBack(7);
+    queue.Reserve(200);
     let roomy = queue.Capacity();
-    queue.ShrinkToFit() catch { else => Panic("shrinking a non-empty deque succeeds") };
+    queue.ShrinkToFit();
     Assert(queue.Capacity() < roomy, "giving back what the length does not need");
     Assert(queue.Capacity() == MinimumDequeCapacity, "down to the smallest power of two that holds it");
     Assert(queue.Get(0) == .Some(7), "and keeping the element");
 
-    // A reservation that cannot be represented is refused as arithmetic, and changes nothing.
-    let survived = queue.Capacity();
-    Assert(Refusal(queue.Reserve(uint::Max)) == CollectionError::CapacityOverflow,
-           "an impossible reservation is refused");
-    Assert(queue.Capacity() == survived, "leaving the capacity where it was");
-    Assert(queue.Length() == 1, "and the length");
     Assert(queue.Get(0) == .Some(7), "and the elements");
 
     // Construction from a slice, and cloning a wrapped deque.
@@ -169,13 +161,13 @@ func Main() -> int {
     source[2] = 3;
     // Safety: `source` is a local array of three elements.
     let items = unsafe { (@source[0])[..3] };
-    var built = Deque::FromSlice<int32>(allocator, items) catch { else => Panic("a deque is made from a slice") };
+    var built = Deque::FromSlice<int32>(allocator, items);
     Assert(built.Length() == 3, "holding every element");
     Assert(built.Get(2) == .Some(3), "in order");
 
-    built.PushFront(0) catch { else => Panic("pushing at the front wraps it") };
+    built.PushFront(0);
     Assert(!built.IsContiguous(), "so the clone has a wrapped source to copy");
-    var copy = built.Clone() catch { else => Panic("cloning succeeds") };
+    var copy = built.Clone();
     Assert(copy.Length() == 4, "with every element");
     Assert(copy.Get(0) == .Some(0), "in order");
     Assert(copy.Get(3) == .Some(3), "front to back");
@@ -198,9 +190,7 @@ func Main() -> int {
     var owning = Deque<Tracked>(allocator);
     var index: uint = 0;
     while index < 20 {
-        owning.PushFront(Tracked { counter: @destroyed, value: index as int32 }) catch {
-            else => Panic("a tracked element goes in at the front")
-        };
+        owning.PushFront(Tracked { counter: @destroyed, value: index as int32 });
         index++;
     }
     Assert(destroyed == 0, "growing a deque past several capacities destroys nothing");
@@ -211,8 +201,8 @@ func Main() -> int {
     // Setting destroys the element it replaces, wherever the ring has put it; replacing hands it back instead.
     destroyed = 0;
     var replacements: int32 = 0;
-    owning.PushBack(Tracked { counter: @destroyed, value: 1 }) catch { else => Panic("an element goes in at the back") };
-    owning.PushFront(Tracked { counter: @destroyed, value: 0 }) catch { else => Panic("and one at the front") };
+    owning.PushBack(Tracked { counter: @destroyed, value: 1 });
+    owning.PushFront(Tracked { counter: @destroyed, value: 0 });
     owning.Set(0, Tracked { counter: @replacements, value: 10 }) catch { else => Panic("setting an element succeeds") };
     Assert(destroyed == 1, "setting destroys the element it replaces");
     Assert(replacements == 0, "and not the one it stores");

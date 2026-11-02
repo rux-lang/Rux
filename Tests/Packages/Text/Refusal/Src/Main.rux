@@ -1,0 +1,91 @@
+// What a string and a builder do when their allocator refuses.
+// Running out of memory terminates the program for `Clone`, `Append` and `Reserve`, so the refusal is met through
+// the two operations that hand it back: `String::TryClone` and `StringBuilder::TryReserve`. Each throws the
+// allocator's `AllocError` and leaves its receiver exactly as it was, and each works as its panicking twin does once
+// the allocator is willing again.
+
+import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
+import Core::{ Assert, uint };
+import Text::{ String, StringBuilder, StringView };
+
+// Everything mutable lives behind a pointer, so the copies an interface adapter makes all observe the same refusal.
+struct RefusalState {
+    backing: Allocator;
+    // Whether the next request is refused.
+    refusing: bool;
+}
+
+struct RefusingAllocator {
+    state: *var RefusalState;
+}
+
+extend RefusingAllocator : Allocator {
+    func Allocate(self: &RefusingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+        // Safety: `state` points at a `RefusalState` the test keeps alive for as long as this allocator is used.
+        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        // Safety: `state` points at the test's live `RefusalState`.
+        return unsafe { self.state.backing.Allocate(layout) };
+    }
+
+    func Deallocate(self: &RefusingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+        // Safety: `state` points at the test's live `RefusalState`.
+        return unsafe { self.state.backing.Deallocate(block, layout) };
+    }
+
+    func Reallocate(self: &RefusingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
+        // Safety: `state` points at the test's live `RefusalState`.
+        if unsafe { self.state.refusing } { fail AllocError::OutOfMemory; }
+        // Safety: `state` points at the test's live `RefusalState`.
+        return unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
+    }
+}
+
+// What a reservation the test expects to be refused was refused with, or `none` when it was granted.
+func ReserveRefused(builder: &var StringBuilder, additional: uint) -> AllocError? {
+    try builder.TryReserve(additional) catch { error => return error };
+    return none;
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let plain: Allocator = system;
+    var state = RefusalState { backing: plain, refusing: false };
+    var refusing = RefusingAllocator { state: @state };
+    let hostile: Allocator = refusing;
+
+    // A builder holding text keeps it when a growth is refused.
+    var builder = StringBuilder(hostile);
+    builder.Append("hello");
+    let capacity = builder.Capacity();
+    state.refusing = true;
+    Assert(ReserveRefused(builder, 4096) == .Some(AllocError::OutOfMemory), "a refused reservation is reported");
+    Assert(builder.View().Equals(StringView::FromValidated("hello")), "leaving the text as it was");
+    Assert(builder.Capacity() == capacity, "and the room");
+    Assert(ReserveRefused(builder, uint::Max) == .Some(AllocError::Unsupported),
+           "and a size that cannot be expressed is refused as unsupported");
+    state.refusing = false;
+    Assert(ReserveRefused(builder, 4096) == none, "the same request succeeds once the allocator is willing");
+    Assert(builder.Capacity() >= 5 + 4096, "taking the room");
+
+    // A string whose copy cannot be stored reports why, and the source is untouched.
+    let source = builder.IntoString();
+    state.refusing = true;
+    var refusal = AllocError::InvalidBlock;
+    var copy = try source.TryClone() catch {
+        error => {
+            refusal = error;
+            String(plain)
+        }
+    };
+    Assert(refusal == AllocError::OutOfMemory, "a refused copy is reported");
+    Assert(copy.IsEmpty(), "and makes nothing");
+    Assert(source.View().Equals(StringView::FromValidated("hello")), "leaving the source as it was");
+    state.refusing = false;
+    copy = try source.TryClone() catch { _ => String(plain) };
+    Assert(copy.View().Equals(source.View()), "a willing allocator makes an equal copy");
+    Assert(copy.Bytes().data != source.Bytes().data, "in a block of its own");
+    let cloned = source.Clone();
+    Assert(cloned.Equals(source), "and so does Clone");
+    return 0;
+}

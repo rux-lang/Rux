@@ -5,7 +5,7 @@
 // host keeps its dotted form, an IPv6 host is written in the canonical form of RFC 5952, and dot segments are removed
 // from the path.
 
-import Allocator::{ Allocator, Layout };
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Memory::Copy;
 import Url::UrlError;
 
@@ -24,12 +24,12 @@ extend Bytes {
         return Bytes { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    func Push(self: &var Bytes, value: char8) -> ! UrlError {
+    func Push(self: &var Bytes, value: char8) {
         if self.length == self.capacity {
             let capacity = self.capacity == 0 ? 64u : self.capacity * 2u;
             var allocator = self.allocator;
-            let layout = Layout::New(capacity, 1) ?? fail UrlError::OutOfMemory;
-            let block = allocator.Allocate(layout) catch { else => fail UrlError::OutOfMemory };
+            let layout = Layout::New(capacity, 1) ?? AllocationFailed(AllocError::Unsupported);
+            let block = try allocator.Allocate(layout) catch { error => AllocationFailed(error) };
             if self.data != null {
                 // Safety: `self.data` holds `self.length` bytes of a live block of `self.capacity` bytes, and `block`
                 // was just allocated with room for `capacity`, which is larger.
@@ -47,10 +47,10 @@ extend Bytes {
         self.length = self.length + 1;
     }
 
-    func PushAll(self: &var Bytes, values: char8[..]) -> ! UrlError {
+    func PushAll(self: &var Bytes, values: char8[..]) {
         var index: uint = 0;
         while index < values.length {
-            self.Push(values[index])?;
+            self.Push(values[index]);
             index = index + 1;
         }
     }
@@ -136,24 +136,24 @@ func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) ->
             let low = HexValue(text[index + 2] as uint8) ?? fail UrlError::InvalidPercentEncoding;
             let value = (high << 4) | low;
             if IsUnreserved(value) {
-                out.Push(lower ? Lower(value) : value as char8)?;
+                out.Push(lower ? Lower(value) : value as char8);
             }
             else {
-                out.Push(c8'%')?;
-                out.Push(HexDigit(value >> 4))?;
-                out.Push(HexDigit(value & 0x0Fu8))?;
+                out.Push(c8'%');
+                out.Push(HexDigit(value >> 4));
+                out.Push(HexDigit(value & 0x0Fu8));
             }
             index = index + 3;
             continue;
         }
         if IsAllowed(c, component) {
-            out.Push(lower ? Lower(c) : c as char8)?;
+            out.Push(lower ? Lower(c) : c as char8);
         }
         else {
             if lower { fail UrlError::InvalidHost; }
-            out.Push(c8'%')?;
-            out.Push(HexDigit(c >> 4))?;
-            out.Push(HexDigit(c & 0x0Fu8))?;
+            out.Push(c8'%');
+            out.Push(HexDigit(c >> 4));
+            out.Push(HexDigit(c & 0x0Fu8));
         }
         index = index + 1;
     }
@@ -263,7 +263,7 @@ func ParseIpv6(text: char8[..]) -> uint16[8]? {
 
 // Writes an IPv6 address the way RFC 5952 says: lower-case hexadecimal without leading zeros, and the longest run of
 // two or more zero groups, the first if two are as long, replaced by `::`.
-func AppendIpv6(out: &var Bytes, groups: uint16[8]) -> ! UrlError {
+func AppendIpv6(out: &var Bytes, groups: uint16[8]) {
     var bestStart: uint = 8;
     var bestLength: uint = 0;
     var index: uint = 0;
@@ -284,18 +284,18 @@ func AppendIpv6(out: &var Bytes, groups: uint16[8]) -> ! UrlError {
     index = 0;
     while index < 8u {
         if index == bestStart {
-            out.PushAll("::")?;
+            out.PushAll("::");
             index = index + bestLength;
             continue;
         }
-        if index != 0u && index != bestStart + bestLength { out.Push(c8':')?; }
+        if index != 0u && index != bestStart + bestLength { out.Push(c8':'); }
         let group = groups[index];
         var shift: int32 = 12;
         var started = false;
         while shift >= 0 {
             let nibble = ((group >> (shift as uint16)) & 0xFu16) as uint8;
             if nibble != 0u8 || started || shift == 0 {
-                out.Push(Lower(HexDigit(nibble) as uint8))?;
+                out.Push(Lower(HexDigit(nibble) as uint8));
                 started = true;
             }
             shift = shift - 4;
@@ -305,7 +305,7 @@ func AppendIpv6(out: &var Bytes, groups: uint16[8]) -> ! UrlError {
 }
 
 // Removes `.` and `..` segments from a path, following section 5.2.4 of RFC 3986.
-func RemoveDotSegments(out: &var Bytes, path: char8[..]) -> ! UrlError {
+func RemoveDotSegments(out: &var Bytes, path: char8[..]) {
     let start = out.length;
     var index: uint = 0;
     while index < path.length {
@@ -313,7 +313,7 @@ func RemoveDotSegments(out: &var Bytes, path: char8[..]) -> ! UrlError {
         if StartsWith(rest, "../") { index = index + 3; continue; }
         if StartsWith(rest, "./") { index = index + 2; continue; }
         if StartsWith(rest, "/./") { index = index + 2; continue; }
-        if Same(rest, "/.") { out.Push(c8'/')?; break; }
+        if Same(rest, "/.") { out.Push(c8'/'); break; }
         if StartsWith(rest, "/../") {
             index = index + 3;
             DropLastSegment(out, start);
@@ -321,17 +321,17 @@ func RemoveDotSegments(out: &var Bytes, path: char8[..]) -> ! UrlError {
         }
         if Same(rest, "/..") {
             DropLastSegment(out, start);
-            out.Push(c8'/')?;
+            out.Push(c8'/');
             break;
         }
         if Same(rest, ".") || Same(rest, "..") { break; }
         // Move the first segment, with its leading `/`, to the output.
         if path[index] == '/' {
-            out.Push(c8'/')?;
+            out.Push(c8'/');
             index = index + 1;
         }
         while index < path.length && path[index] != '/' {
-            out.Push(path[index])?;
+            out.Push(path[index]);
             index = index + 1;
         }
     }

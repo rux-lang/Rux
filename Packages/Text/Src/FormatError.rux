@@ -11,16 +11,11 @@
 
 
 /// The ways text handling fails, with no case for success.
-/// A deliberate narrowing of `TextError`: the same four failures, minus its `None`. That absence is the point, since
-/// this is what a `FormatError::TextFailure` carries and a failure payload must not be able to say "nothing went
-/// wrong".
+/// The same failures as `TextError`, carried by a `FormatError::TextFailure`. Running out of memory is not one of
+/// them: a builder that cannot grow terminates the program.
 /// Copy, carrying no payload and owning nothing.
 /// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-kind
 pub variant TextFailureKind {
-    /// The allocator could not supply the storage a write needed.
-    OutOfMemory,
-    /// A length or offset computation passed what a `uint` can hold.
-    LengthOverflow,
     /// The bytes offered were not well-formed UTF-8.
     InvalidUtf8,
     /// A byte offset that is not where a character starts, and so not a place text may be cut.
@@ -48,7 +43,7 @@ pub variant FormatError {
     /// The value is valid but cannot be represented in the form requested, such as a timestamp outside the
     /// calendar range a format covers.
     ValueOutOfRange,
-    /// Text handling failed, for the reason carried. This is where an allocation failure or rejected UTF-8 arrives.
+    /// Text handling failed, for the reason carried. This is where rejected UTF-8 arrives.
     TextFailure(TextFailureKind),
     /// The destination failed on its own terms. Its details stay with the adapter that produced it, which is the
     /// only thing that knows what a failure of that destination means.
@@ -75,8 +70,6 @@ extend FormatError {
 /// @returns the matching failure kind
 /// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-of
 pub func TextFailureOf(error: TextError) -> TextFailureKind {
-    if error == TextError::OutOfMemory { return TextFailureKind::OutOfMemory; }
-    if error == TextError::LengthOverflow { return TextFailureKind::LengthOverflow; }
     if error == TextError::NotABoundary { return TextFailureKind::NotABoundary; }
     return TextFailureKind::InvalidUtf8;
 }

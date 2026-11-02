@@ -49,8 +49,6 @@ pub variant JsonParseError {
     TooDeep(uint),
     /// A container held more entries than the limit allowed.
     TooManyEntries(uint),
-    /// The allocator refused.
-    OutOfMemory(uint),
     /// A `\u` escape naming half of a surrogate pair with no valid partner. JSON's escapes are UTF-16, and a lone
     /// surrogate is not a character; the offset is the escape that has no partner.
     BadSurrogate(uint),
@@ -73,7 +71,6 @@ extend JsonParseError : ParseFailure {
             .DuplicateName(at) => at,
             .TooDeep(at) => at,
             .TooManyEntries(at) => at,
-            .OutOfMemory(at) => at,
             .BadSurrogate(at) => at,
             .Source(at) => at
         };
@@ -119,7 +116,6 @@ extend JsonParseError : Display {
             .DuplicateName(_) => WriteBytes(writer, "object with the same name twice"),
             .TooDeep(_) => WriteBytes(writer, "containers nested deeper than the limit allows"),
             .TooManyEntries(_) => WriteBytes(writer, "container holding more entries than the limit allows"),
-            .OutOfMemory(_) => WriteBytes(writer, "out of memory"),
             .BadSurrogate(_) => WriteBytes(writer, "escape naming half of a surrogate pair with no partner"),
             .Source(_) => WriteBytes(writer, "source the document was read from failed")
         };
@@ -175,7 +171,6 @@ extend JsonParseError : Debug {
             .DuplicateName(at) => WriteCase(writer, "DuplicateName", at),
             .TooDeep(at) => WriteCase(writer, "TooDeep", at),
             .TooManyEntries(at) => WriteCase(writer, "TooManyEntries", at),
-            .OutOfMemory(at) => WriteCase(writer, "OutOfMemory", at),
             .BadSurrogate(at) => WriteCase(writer, "BadSurrogate", at),
             .Source(at) => WriteCase(writer, "Source", at)
         };
@@ -203,9 +198,8 @@ enum JsonStop: int32 {
     DuplicateName = 5,
     TooDeep = 6,
     TooManyEntries = 7,
-    OutOfMemory = 8,
-    BadSurrogate = 9,
-    Source = 10
+    BadSurrogate = 8,
+    Source = 9
 }
 
 /// A parser over a document.
@@ -409,14 +403,15 @@ extend JsonParser {
     func ParseNumber(self: &var JsonParser, token: JsonToken) -> JsonValue {
         // Safety: the lexer produced `token` from `self.input`, so `token.start..token.end` lies inside it.
         let span = unsafe { (@self.input.data[token.start])[..token.end - token.start] };
-        return JsonValue::LexedNumber(self.allocator, span) catch { else => self.Stop(JsonStop::OutOfMemory) };
+        return JsonValue::LexedNumber(self.allocator, span);
     }
 
     func ParseText(self: &var JsonParser, token: JsonToken) -> JsonValue {
+        // The lexer has already refused text that is not UTF-8, so a failure here is a stop the unescaping recorded.
         var held = self.TakeText(token) catch {
             else => {
                 if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
-                return self.Stop(JsonStop::OutOfMemory);
+                return self.Stop(JsonStop::Unexpected);
             }
         };
         if self.stop != JsonStop::None {
@@ -446,7 +441,7 @@ extend JsonParser {
             if self.stop != JsonStop::None { return <-array; }
             entries = entries + 1;
             if entries > self.limits.maximumEntries { return self.Stop(JsonStop::TooManyEntries); }
-            if !array.Push(<-element) { return self.Stop(JsonStop::OutOfMemory); }
+            array.Push(<-element);
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
                 self.depth = self.depth - 1;
@@ -482,7 +477,7 @@ extend JsonParser {
             var name = self.TakeText(token) catch {
                 else => {
                     if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
-                    return self.Stop(JsonStop::OutOfMemory);
+                    return self.Stop(JsonStop::Unexpected);
                 }
             };
             if self.stop != JsonStop::None {
@@ -532,7 +527,7 @@ extend JsonParser {
                 name.Clear();
                 return self.Stop(JsonStop::TooManyEntries);
             }
-            if !object.Insert(move name, <-value) { return self.Stop(JsonStop::OutOfMemory); }
+            object.Insert(move name, <-value);
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
@@ -609,12 +604,11 @@ func BuiltFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
         .DuplicateName => JsonParseError::DuplicateName(position),
         .TooDeep => JsonParseError::TooDeep(position),
         .TooManyEntries => JsonParseError::TooManyEntries(position),
-        .OutOfMemory => JsonParseError::OutOfMemory(position),
         .BadSurrogate => JsonParseError::BadSurrogate(position),
         .Source => JsonParseError::Source(position),
         // A parser that has not stopped has no failure; callers reach this only through `Failure`, which asks
         // first, so naming a case here is naming one that cannot arrive.
-        .None => JsonParseError::OutOfMemory(position)
+        .None => JsonParseError::Unexpected(position)
     };
 }
 

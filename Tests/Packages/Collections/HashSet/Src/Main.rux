@@ -42,20 +42,20 @@ func Main() -> int {
     Assert(!set.Contains(1), "with nothing in it");
     Assert(set.Remove(1) == none, "and nothing to take out");
 
-    var added = set.Insert(1) catch { else => Panic("the first insertion succeeds") };
+    var added = set.Insert(1);
     Assert(added, "and reports that the set grew");
     Assert(set.Length() == 1, "which it did");
     Assert(set.Contains(1), "holding what was put in");
 
     // A set holds one of each.
-    added = set.Insert(1) catch { else => Panic("inserting a duplicate succeeds") };
+    added = set.Insert(1);
     Assert(!added, "and reports that the set did not grow");
     Assert(set.Length() == 1, "which it did not");
 
     // Enough elements to grow several times, with duplicates mixed in.
     var value: int32 = 0;
     while value < 300 {
-        set.Insert(value % 200) catch { else => Panic("every insertion succeeds") };
+        set.Insert(value % 200);
         value = value + 1;
     }
     Assert(set.Length() == 200, "and the set holds one of each distinct value");
@@ -90,7 +90,7 @@ func Main() -> int {
     let settled = set.Capacity();
     var round: int32 = 0;
     while round < 500 {
-        set.Insert(1000 + round) catch { else => Panic("every churn insertion succeeds") };
+        set.Insert(1000 + round);
         Assert(set.Remove(1000 + round) is int32, "every churn removal finds what it just added");
         round = round + 1;
     }
@@ -111,26 +111,24 @@ func Main() -> int {
     Assert(total == 10000, "each exactly once, since the odd numbers below two hundred sum to what they should");
 
     // Capacity behaviour.
-    set.Reserve(1000) catch { else => Panic("reserving succeeds") };
+    set.Reserve(1000);
     Assert(set.Capacity() >= 1000, "taking the room asked for");
-    set.ShrinkToFit() catch { else => Panic("shrinking succeeds") };
+    set.ShrinkToFit();
     Assert(set.Capacity() < 1000, "giving back what the elements do not need");
     Assert(set.Contains(3), "and keeping every element");
-    Assert(Refusal(set.Reserve(uint::Max)) == CollectionError::CapacityOverflow,
-           "an impossible reservation is refused");
     Assert(set.Length() == 100, "leaving the set as it was");
 
     set.Clear();
     Assert(set.IsEmpty(), "clearing empties the set");
-    set.Insert(1) catch { else => Panic("and the set is usable afterwards") };
+    set.Insert(1);
 
     // Two seeds lay the same elements out differently.
     var first = HashSet::WithSeed<int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
     var second = HashSet::WithSeed<int32>(allocator, TableSeed::Of(99, 100), HashInt32, EqualsInt32);
     value = 0;
     while value < 32 {
-        first.Insert(value) catch { else => Panic("the first seeded insertion succeeds") };
-        second.Insert(value) catch { else => Panic("the second seeded insertion succeeds") };
+        first.Insert(value);
+        second.Insert(value);
         value = value + 1;
     }
     var firstCursor: uint = 0;
@@ -153,7 +151,7 @@ func Main() -> int {
     var loops = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     value = 0;
     while value < 40 {
-        loops.Insert(value) catch { else => Panic("every loop insertion succeeds") };
+        loops.Insert(value);
         value = value + 1;
     }
     var iterated: uint = 0;
@@ -169,7 +167,7 @@ func Main() -> int {
     var drained = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     value = 0;
     while value < 10 {
-        drained.Insert(value) catch { else => Panic("every insertion before draining succeeds") };
+        drained.Insert(value);
         value = value + 1;
     }
     var moving = (<-drained).IntoIterator();
@@ -194,13 +192,13 @@ func Main() -> int {
     value = 0;
     while value < 20 {
         if value % 2 == 0 {
-            evens.Insert(value) catch { else => Panic("building the evens set succeeds") };
+            evens.Insert(value);
         }
         else {
-            odds.Insert(value) catch { else => Panic("building the odds set succeeds") };
+            odds.Insert(value);
         }
         if value < 6 {
-            small.Insert(value) catch { else => Panic("building the small set succeeds") };
+            small.Insert(value);
         }
         value = value + 1;
     }
@@ -221,20 +219,20 @@ func Main() -> int {
     Assert(!evens.Equals(odds), "and not one with different elements");
 
     // Union takes what the other has and keeps what it had.
-    var everything = evens.Clone() catch { else => Panic("cloning a set succeeds") };
+    var everything = evens.Clone();
     Assert(everything.Equals(evens), "and the clone holds the same elements");
-    everything.UnionWith(odds) catch { else => Panic("a union succeeds") };
+    everything.UnionWith(odds);
     Assert(everything.Length() == 20, "and holds both sides");
     value = 0;
     while value < 20 {
         Assert(everything.Contains(value), "every element of either side is in the union");
         value = value + 1;
     }
-    everything.UnionWith(evens) catch { else => Panic("a union with a subset succeeds") };
+    everything.UnionWith(evens);
     Assert(everything.Length() == 20, "and adds nothing");
 
     // Intersection keeps only what both have, and cannot fail.
-    var shared = evens.Clone() catch { else => Panic("cloning a set succeeds") };
+    var shared = evens.Clone();
     shared.IntersectWith(small);
     Assert(shared.Length() == 3, "the intersection is the even numbers below six");
     Assert(shared.Contains(0) && shared.Contains(2) && shared.Contains(4), "which are exactly those three");
@@ -243,7 +241,7 @@ func Main() -> int {
     Assert(shared.IsEmpty(), "intersecting with a disjoint set leaves nothing");
 
     // Difference removes what the other has.
-    var without = evens.Clone() catch { else => Panic("cloning a set succeeds") };
+    var without = evens.Clone();
     without.Subtract(small);
     Assert(without.Length() == 7, "the difference drops the even numbers below six");
     Assert(!without.Contains(0) && !without.Contains(4), "which are gone");
@@ -252,17 +250,17 @@ func Main() -> int {
     Assert(without.Length() == 7, "and subtracting a disjoint set changes nothing");
 
     // The symmetric difference keeps what exactly one side has.
-    var exclusive = small.Clone() catch { else => Panic("cloning a set succeeds") };
-    exclusive.SymmetricDifferenceWith(evens) catch { else => Panic("a symmetric difference succeeds") };
+    var exclusive = small.Clone();
+    exclusive.SymmetricDifferenceWith(evens);
     Assert(!exclusive.Contains(0) && !exclusive.Contains(2) && !exclusive.Contains(4), "shared elements leave");
     Assert(exclusive.Contains(1) && exclusive.Contains(3) && exclusive.Contains(5), "the small set keeps its own");
     Assert(exclusive.Contains(6) && exclusive.Contains(18), "and takes the ones only the other side had");
     Assert(exclusive.Length() == 10, "which is three plus seven");
 
     // A symmetric difference with itself leaves nothing, which is the identity worth checking.
-    var mirrored = evens.Clone() catch { else => Panic("cloning a set succeeds") };
-    var alsoEvens = evens.Clone() catch { else => Panic("cloning a set succeeds") };
-    mirrored.SymmetricDifferenceWith(alsoEvens) catch { else => Panic("a set against its own copy runs") };
+    var mirrored = evens.Clone();
+    var alsoEvens = evens.Clone();
+    mirrored.SymmetricDifferenceWith(alsoEvens);
     Assert(mirrored.IsEmpty(), "and leaves nothing at all");
 
     // Ownership: elements are destroyed with the set, and a removed one is handed back.
@@ -270,7 +268,7 @@ func Main() -> int {
     var owning = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     var counted: int32 = 0;
     while counted < 20 {
-        owning.Insert(counted) catch { else => Panic("every owning insertion succeeds") };
+        owning.Insert(counted);
         counted = counted + 1;
     }
     Assert(owning.Length() == 20, "the set holds every distinct element");

@@ -1,7 +1,8 @@
 // A set of small non-negative integers, one bit each.
 // The bits live in 64-bit words, so membership is a shift and a mask, counting is a population count per word, and
 // the set operations work a word at a time. The set grows when a bit past its length is set; reading a bit past the
-// length answers false rather than failing, since an absent bit is an unset one.
+// length answers false rather than failing, since an absent bit is an unset one. Running out of memory while growing
+// terminates the program, as everywhere in this package.
 
 import Allocator::Allocator;
 import Core::CountOnes;
@@ -35,11 +36,10 @@ extend BitSet {
 
     /// Spans `length` bits: new bits are unset, and bits past a shorter length are dropped.
     /// @param length the length in bits
-    /// @returns nothing, or why there was no room
     /// @see https://rux-lang.dev/docs/api/collections/bit-set#resize
-    pub func Resize(self: &var BitSet, length: uint) -> ! CollectionError {
+    pub func Resize(self: &var BitSet, length: uint) {
         let wordsNeeded = (length + 63) / 64;
-        while self.words.Length() < wordsNeeded { self.words.Push(0u64)?; }
+        while self.words.Length() < wordsNeeded { self.words.Push(0u64); }
         self.words.Truncate(wordsNeeded);
         // Clear the bits past the new length in its last word, so a later growth finds them unset.
         if length % 64 != 0 {
@@ -60,10 +60,9 @@ extend BitSet {
 
     /// Sets bit `index`, growing the set to span it.
     /// @param index the bit
-    /// @returns nothing, or why there was no room to grow
     /// @see https://rux-lang.dev/docs/api/collections/bit-set#set
-    pub func Set(self: &var BitSet, index: uint) -> ! CollectionError {
-        if index >= self.length { self.Resize(index + 1)?; }
+    pub func Set(self: &var BitSet, index: uint) {
+        if index >= self.length { self.Resize(index + 1); }
         let words = self.words.AsMutableSlice();
         words[index / 64] = words[index / 64] | (1u64 << (index % 64) as uint64);
     }
@@ -79,10 +78,9 @@ extend BitSet {
 
     /// Flips bit `index`, growing the set to span it.
     /// @param index the bit
-    /// @returns nothing, or why there was no room to grow
     /// @see https://rux-lang.dev/docs/api/collections/bit-set#toggle
-    pub func Toggle(self: &var BitSet, index: uint) -> ! CollectionError {
-        if index >= self.length { self.Resize(index + 1)?; }
+    pub func Toggle(self: &var BitSet, index: uint) {
+        if index >= self.length { self.Resize(index + 1); }
         let words = self.words.AsMutableSlice();
         words[index / 64] = words[index / 64] ^ (1u64 << (index % 64) as uint64);
     }
@@ -141,10 +139,9 @@ extend BitSet {
 
     /// Sets every bit that is set in `other`, growing to span it.
     /// @param other the other set
-    /// @returns nothing, or why there was no room to grow
     /// @see https://rux-lang.dev/docs/api/collections/bit-set#union-with
-    pub func UnionWith(self: &var BitSet, other: &BitSet) -> ! CollectionError {
-        if other.length > self.length { self.Resize(other.length)?; }
+    pub func UnionWith(self: &var BitSet, other: &BitSet) {
+        if other.length > self.length { self.Resize(other.length); }
         let words = self.words.AsMutableSlice();
         let others = other.words.AsSlice();
         var index: uint = 0;

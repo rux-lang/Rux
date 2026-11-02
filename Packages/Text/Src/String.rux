@@ -11,8 +11,8 @@
 // Every `String` this package produces holds well-formed UTF-8, checked once where the bytes enter. Everything
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 
-import Allocator::{ AllocError, Allocator, Layout };
-import Core::Ordering;
+import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
+import Core::{ Cloneable, Ordering };
 import Memory::Copy;
 
 /// Text that owns its bytes.
@@ -48,20 +48,25 @@ extend String {
     /// A copy of bytes the caller vouches are UTF-8.
     /// Skips the pass `FromBytes` makes, which is what to use when the bytes came from something that already
     /// guarantees it — another string, a view, this package's own output.
-    /// Fails with `OutOfMemory` when the copy cannot be made.
+    /// Terminates the program when the copy cannot be made.
     /// The bytes must be well-formed UTF-8. Everything downstream assumes it, so bytes that are not produce wrong
     /// answers rather than errors.
     /// @param allocator where the storage comes from
     /// @param bytes the bytes to act on
     /// @returns a string over those bytes, taken as valid without checking
     /// @see https://rux-lang.dev/docs/api/text/string#from-validated
-    pub func FromValidated(allocator: Allocator, bytes: char8[..]) -> String ! TextError {
+    pub func FromValidated(allocator: Allocator, bytes: char8[..]) -> String {
+        return try String::TryFromValidated(allocator, bytes) catch { error => AllocationFailed(error) };
+    }
+
+    // `FromValidated`, throwing the allocator's refusal instead of terminating the program.
+    func TryFromValidated(allocator: Allocator, bytes: char8[..]) -> String throws AllocError {
         if bytes.length == 0 { return String(allocator); }
 
-        let layout = Layout::New(bytes.length, 1) ?? fail TextError::LengthOverflow;
+        let layout = Layout::New(bytes.length, 1) ?? throw AllocError::Unsupported;
 
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch { allocated => fail FromAllocError(allocated) };
+        let block = try borrowed.Allocate(layout);
 
         // Safety: `block` is a fresh allocation of `bytes.length` bytes, so it has room for the copy and does not
         // overlap `bytes`, which is readable for its length; it holds bytes, so viewing it as `char8` reinterprets
@@ -80,7 +85,7 @@ extend String {
 
     /// A copy of `bytes` as text, or why it could not be made.
     /// `bytes` is borrowed and copied, so what it names stays the caller's. It fails with `InvalidUtf8` when the
-    /// bytes are not text and `OutOfMemory` when the copy cannot be made.
+    /// bytes are not text, and terminates the program when the copy cannot be made.
     /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     /// @param allocator where the storage comes from
     /// @param bytes the bytes to act on
@@ -92,12 +97,13 @@ extend String {
     }
 
     /// A copy of what `view` spans.
-    /// The view was checked when it was made, so this copies without checking again.
+    /// The view was checked when it was made, so this copies without checking again. Terminates the program when
+    /// the copy cannot be made.
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to act on
     /// @returns a copy of that text this string owns
     /// @see https://rux-lang.dev/docs/api/text/string#from-view
-    pub func FromView(allocator: Allocator, view: StringView) -> String ! TextError {
+    pub func FromView(allocator: Allocator, view: StringView) -> String {
         return String::FromValidated(allocator, view.bytes);
     }
 
@@ -170,11 +176,12 @@ extend String {
         return String::FromView(self.allocator, part);
     }
 
-    /// An independent copy, with a block of its own from the same allocator.
-    /// @returns an independent copy
-    /// @see https://rux-lang.dev/docs/api/text/string#clone
-    pub func Clone(self: &String) -> String ! TextError {
-        return String::FromValidated(self.allocator, self.Bytes());
+    /// An independent copy, with a block of its own from the same allocator, or why the block could not be had.
+    /// `self` is borrowed and left alone, whether or not the copy is made.
+    /// @returns an independent copy, or throws the allocator's refusal
+    /// @see https://rux-lang.dev/docs/api/text/string#try-clone
+    pub func TryClone(self: &String) -> String throws AllocError {
+        return try String::TryFromValidated(self.allocator, self.Bytes());
     }
 
     /// Whether two strings hold the same bytes.
@@ -235,5 +242,15 @@ extend String {
     /// @see https://rux-lang.dev/docs/api/text/string#destructor
     func ~String(self: &var String) {
         self.Clear();
+    }
+}
+
+extend String : Cloneable {
+    /// An independent copy, with a block of its own from the same allocator.
+    /// Terminates the program when the copy cannot be made; `TryClone` reports that instead.
+    /// @returns an independent copy
+    /// @see https://rux-lang.dev/docs/api/text/string#clone
+    pub func Clone(self: &String) -> String {
+        return String::FromValidated(self.allocator, self.Bytes());
     }
 }

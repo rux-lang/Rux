@@ -47,15 +47,11 @@ pub func TemporaryDirectory(allocator: Allocator) -> PathBuffer ! IoError {
             length = length - 1;
         }
         let view = OsStringView::FromUnits(units[0..length]);
-        return PathBuffer::FromPath(allocator, Path::FromView(view)) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
-        };
+        return PathBuffer::FromPath(allocator, Path::FromView(view));
     }
     else {
-        var name = OsString::FromText(allocator, "/tmp") catch { else => fail IoError::Of(IoErrorKind::Other) };
-        return PathBuffer::FromPath(allocator, Path::FromView(name.View())) catch {
-            else => fail IoError::Of(IoErrorKind::Other)
-        };
+        var name = OsString::FromText(allocator, "/tmp");
+        return PathBuffer::FromPath(allocator, Path::FromView(name.View()));
     }
 }
 
@@ -77,7 +73,7 @@ func RandomName(allocator: Allocator, prefix: char8[..]) -> OsString ! IoError {
         length = length + 1;
         digit = digit + 1;
     }
-    return OsString::FromText(allocator, text[0..length]) catch { else => fail IoError::Of(IoErrorKind::Other) };
+    return OsString::FromText(allocator, text[0..length]);
 }
 
 /// A temporary file that owns both its contents and its name.
@@ -114,11 +110,9 @@ extend TemporaryFile {
 
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
-            var candidate = PathBuffer::FromPath(allocator, directory) catch {
-                else => fail IoError::Of(IoErrorKind::Other)
-            };
+            var candidate = PathBuffer::FromPath(allocator, directory);
             var name = RandomName(allocator, prefix)?;
-            candidate.Push(name.View()) catch { else => fail IoError::Of(IoErrorKind::Other) };
+            candidate.Push(name.View());
             match File::Open(allocator, candidate.AsPath(), options) {
                 .Success(opened) => {
                     return TemporaryFile { file: <-opened, path: <-candidate, owned: true };
@@ -206,11 +200,9 @@ extend TemporaryDirectoryHandle {
     pub func Create(allocator: Allocator, directory: Path, prefix: char8[..]) -> TemporaryDirectoryHandle ! IoError {
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
-            var candidate = PathBuffer::FromPath(allocator, directory) catch {
-                else => fail IoError::Of(IoErrorKind::Other)
-            };
+            var candidate = PathBuffer::FromPath(allocator, directory);
             var name = RandomName(allocator, prefix)?;
-            candidate.Push(name.View()) catch { else => fail IoError::Of(IoErrorKind::Other) };
+            candidate.Push(name.View());
             // MakeDirectory already refuses a name that is taken, which is the claim this needs.
             match MakeDirectory(allocator, candidate.AsPath()) {
                 .Success(_) => {

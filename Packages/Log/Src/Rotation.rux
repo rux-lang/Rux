@@ -49,7 +49,7 @@ extend RotatingFile {
         if limit == 0 || path.Length() + MaxSuffixUnits > MaxRotatedUnits {
             fail IoError::Of(IoErrorKind::InvalidInput);
         }
-        var owned = PathBuffer::FromPath(allocator, path) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        var owned = PathBuffer::FromPath(allocator, path);
         var file = File::Open(allocator, owned.AsPath(), OpenOptions::Appending())?;
         let size = file.Size()?;
         return RotatingFile { file: <-file, path: <-owned, limit: limit, keep: keep, size: size, allocator: allocator };

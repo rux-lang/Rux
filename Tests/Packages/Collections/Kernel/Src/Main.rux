@@ -24,7 +24,7 @@ func Main() -> int {
     var map = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < 96 {
-        map.Insert(key, key * 7) catch { else => Panic("every insertion up to the load factor succeeds") };
+        map.Insert(key, key * 7);
         key = key + 1;
     }
     Assert(map.Length() == 96, "the table holds every key");
@@ -70,7 +70,7 @@ func Main() -> int {
     var crowded = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(3, 4), CrowdedHash, EqualsInt32);
     key = 0;
     while key < 60 {
-        crowded.Insert(key, key + 1000) catch { else => Panic("every crowded insertion succeeds") };
+        crowded.Insert(key, key + 1000);
         key = key + 1;
     }
     Assert(crowded.Length() == 60, "the crowded table holds every key");
@@ -105,7 +105,7 @@ func Main() -> int {
     var set = HashSet::WithSeed<int32>(allocator, TableSeed::Of(3, 4), CrowdedHash, EqualsInt32);
     key = 0;
     while key < 60 {
-        let added = set.Insert(key) catch { else => Panic("every crowded set insertion succeeds") };
+        let added = set.Insert(key);
         Assert(added, "and each one adds a distinct element");
         key = key + 1;
     }

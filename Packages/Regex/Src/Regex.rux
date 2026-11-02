@@ -18,10 +18,10 @@ const DfaMinimumLength: uint = 64;
 // Finds the leftmost-first match from `start` with the DFAs, filling the whole-match slots of `found` and, when it has
 // more, the groups with the Pike matcher run over just that match. Returns whether there is a match.
 func FindWithDfa(forward: &var Dfa, backward: &var Dfa, scratch: &var Scratch, program: Program, text: char8[..],
-                 start: uint, found: var uint[..]) -> bool ! RegexError {
-    let end = forward.FindEnd(text, start, false)?;
+                 start: uint, found: var uint[..]) -> bool {
+    let end = forward.FindEnd(text, start, false);
     if end == NoEnd { return false; }
-    let begin = backward.FindStart(text, end, start)?;
+    let begin = backward.FindStart(text, end, start);
     if begin == NoEnd { return scratch.Run(program, text, start, false, false, found); }
     if found.length <= 2u {
         found[0] = begin;
@@ -128,10 +128,7 @@ extend Searcher {
             }
             var matched = false;
             if self.useDfa && self.text.length - self.at >= DfaMinimumLength {
-                match FindWithDfa(self.forward, self.backward, self.scratch, self.program, self.text, self.at, slots) {
-                    .Success(result) => matched = result,
-                    .Failure(_) => matched = self.scratch.Run(self.program, self.text, self.at, false, false, slots)
-                }
+                matched = FindWithDfa(self.forward, self.backward, self.scratch, self.program, self.text, self.at, slots);
             }
             else {
                 matched = self.scratch.Run(self.program, self.text, self.at, false, false, slots);
@@ -302,15 +299,15 @@ extend Regex {
         return Dfa::New(self.allocator, program, start, false, false);
     }
 
-    func Search(self: &Regex, text: char8[..], start: uint, slotCount: uint) -> Searcher ! RegexError {
+    func Search(self: &Regex, text: char8[..], start: uint, slotCount: uint) -> Searcher {
         let program = self.Program();
         return Searcher {
             program: program,
-            scratch: Scratch::New(self.allocator, program, slotCount)?,
+            scratch: Scratch::New(self.allocator, program, slotCount),
             forward: self.ForwardDfa(program),
             backward: self.BackwardDfa(program),
             useDfa: program.reverseStart != NoReverse,
-            slots: Filled(self.allocator, slotCount, NoPosition)?,
+            slots: Filled(self.allocator, slotCount, NoPosition),
             text: text,
             at: start,
             lastEnd: NoPosition,
@@ -336,15 +333,15 @@ extend Regex {
 
     /// Whether the pattern matches anywhere in `text`. Stops at the first match it sees.
     /// @param text the text to search
-    /// @returns whether there is a match, or fails when the search's storage could not be allocated
+    /// @returns whether there is a match
     /// @see https://rux-lang.dev/docs/api/regex/regex#is-match
-    pub func IsMatch(self: &Regex, text: char8[..]) -> bool ! RegexError {
+    pub func IsMatch(self: &Regex, text: char8[..]) -> bool {
         let program = self.Program();
         if text.length >= DfaMinimumLength {
             var forward = self.ForwardDfa(program);
-            return forward.FindEnd(text, 0, true)? != NoEnd;
+            return forward.FindEnd(text, 0, true) != NoEnd;
         }
-        var scratch = Scratch::New(self.allocator, program, 2)?;
+        var scratch = Scratch::New(self.allocator, program, 2);
         var found: uint[2] = [NoPosition, NoPosition];
         return scratch.Run(program, text, 0, true, false, found[..]);
     }
@@ -353,7 +350,7 @@ extend Regex {
     /// @param text the text to search
     /// @returns the match, or `none`
     /// @see https://rux-lang.dev/docs/api/regex/regex#find
-    pub func Find(self: &Regex, text: char8[..]) -> Match? ! RegexError {
+    pub func Find(self: &Regex, text: char8[..]) -> Match? {
         return self.FindAt(text, 0)?;
     }
 
@@ -363,9 +360,9 @@ extend Regex {
     /// @param start the byte offset to search from, at a character boundary
     /// @returns the match, or `none`
     /// @see https://rux-lang.dev/docs/api/regex/regex#find-at
-    pub func FindAt(self: &Regex, text: char8[..], start: uint) -> Match? ! RegexError {
+    pub func FindAt(self: &Regex, text: char8[..], start: uint) -> Match? {
         if start > text.length { return none; }
-        var searcher = self.Search(text, start, 2)?;
+        var searcher = self.Search(text, start, 2);
         if !searcher.Advance() { return none; }
         let slots = searcher.slots.AsSlice();
         return Match { start: slots[0], end: slots[1] };
@@ -375,7 +372,7 @@ extend Regex {
     /// @param text the text to search
     /// @returns the groups, or `none` when there is no match
     /// @see https://rux-lang.dev/docs/api/regex/regex#capture
-    pub func Capture(self: &Regex, text: char8[..]) -> Captures? ! RegexError {
+    pub func Capture(self: &Regex, text: char8[..]) -> Captures? {
         return self.CaptureAt(text, 0)?;
     }
 
@@ -384,16 +381,16 @@ extend Regex {
     /// @param start the byte offset to search from, at a character boundary
     /// @returns the groups, or `none` when there is no match
     /// @see https://rux-lang.dev/docs/api/regex/regex#capture-at
-    pub func CaptureAt(self: &Regex, text: char8[..], start: uint) -> Captures? ! RegexError {
+    pub func CaptureAt(self: &Regex, text: char8[..], start: uint) -> Captures? {
         if start > text.length { return none; }
         let program = self.Program();
-        var scratch = Scratch::New(self.allocator, program, program.slotCount)?;
-        var slots = Filled(self.allocator, program.slotCount, NoPosition)?;
+        var scratch = Scratch::New(self.allocator, program, program.slotCount);
+        var slots = Filled(self.allocator, program.slotCount, NoPosition);
         var matched = false;
         if program.reverseStart != NoReverse && text.length - start >= DfaMinimumLength {
             var forward = self.ForwardDfa(program);
             var backward = self.BackwardDfa(program);
-            matched = FindWithDfa(forward, backward, scratch, program, text, start, slots.AsMutableSlice())?;
+            matched = FindWithDfa(forward, backward, scratch, program, text, start, slots.AsMutableSlice());
         }
         else {
             matched = scratch.Run(program, text, start, false, false, slots.AsMutableSlice());
@@ -407,16 +404,16 @@ extend Regex {
     /// @param text the text to search, which must outlive the iterator
     /// @returns the matches in turn
     /// @see https://rux-lang.dev/docs/api/regex/regex#find-all
-    pub func FindAll(self: &Regex, text: char8[..]) -> MatchIterator ! RegexError {
-        return MatchIterator { searcher: self.Search(text, 0, 2)? };
+    pub func FindAll(self: &Regex, text: char8[..]) -> MatchIterator {
+        return MatchIterator { searcher: self.Search(text, 0, 2) };
     }
 
     /// The parts of `text` between the matches.
     /// @param text the text to split, which must outlive the iterator
     /// @returns the parts in turn
     /// @see https://rux-lang.dev/docs/api/regex/regex#split
-    pub func Split(self: &Regex, text: char8[..]) -> SplitIterator ! RegexError {
-        return SplitIterator { searcher: self.Search(text, 0, 2)?, last: 0, finished: false };
+    pub func Split(self: &Regex, text: char8[..]) -> SplitIterator {
+        return SplitIterator { searcher: self.Search(text, 0, 2), last: 0, finished: false };
     }
 
     /// `text` with every match replaced by `replacement`, in which `$1` or `${1}` stands for what group 1 matched,
@@ -428,8 +425,8 @@ extend Regex {
     /// @returns the new text
     /// @see https://rux-lang.dev/docs/api/regex/regex#replace
     pub func Replace(self: &Regex, allocator: Allocator, text: char8[..], replacement: char8[..])
-        -> String ! RegexError {
-        return self.ReplaceUpTo(allocator, text, replacement, 0)?;
+        -> String {
+        return self.ReplaceUpTo(allocator, text, replacement, 0);
     }
 
     /// `text` with its first match replaced by `replacement`, which is read as `Replace` reads it.
@@ -439,58 +436,58 @@ extend Regex {
     /// @returns the new text
     /// @see https://rux-lang.dev/docs/api/regex/regex#replace-first
     pub func ReplaceFirst(self: &Regex, allocator: Allocator, text: char8[..], replacement: char8[..])
-        -> String ! RegexError {
-        return self.ReplaceUpTo(allocator, text, replacement, 1)?;
+        -> String {
+        return self.ReplaceUpTo(allocator, text, replacement, 1);
     }
 
     func ReplaceUpTo(self: &Regex, allocator: Allocator, text: char8[..], replacement: char8[..], limit: uint)
-        -> String ! RegexError {
+        -> String {
         var expands = false;
         for byte in replacement {
             if byte == c8'$' { expands = true; }
         }
         let slotCount = expands ? (self.groupCount as uint + 1) * 2 : 2u;
-        var searcher = self.Search(text, 0, slotCount)?;
+        var searcher = self.Search(text, 0, slotCount);
         var builder = StringBuilder(allocator);
         var last: uint = 0;
         var count: uint = 0;
         while (limit == 0u || count < limit) && searcher.Advance() {
             let slots = searcher.slots.AsSlice();
-            builder.Append(text[last..slots[0]]) catch { else => fail RegexError::OutOfMemory() };
-            if expands { self.Expand(builder, replacement, text, slots)?; }
-            else { builder.Append(replacement) catch { else => fail RegexError::OutOfMemory() }; }
+            builder.Append(text[last..slots[0]]);
+            if expands { self.Expand(builder, replacement, text, slots); }
+            else { builder.Append(replacement); }
             last = slots[1];
             count = count + 1;
         }
-        builder.Append(text[last..text.length]) catch { else => fail RegexError::OutOfMemory() };
+        builder.Append(text[last..text.length]);
         return builder.IntoString();
     }
 
     // Appends what group `index` matched, if it did.
     func AppendGroup(self: &Regex, builder: &var StringBuilder, text: char8[..], slots: uint[..], index: uint)
-        -> ! RegexError {
+ {
         if index > self.groupCount as uint || index * 2 + 1 >= slots.length { return; }
         let start = slots[index * 2];
         let end = slots[index * 2 + 1];
         if start == NoPosition || end == NoPosition { return; }
-        builder.Append(text[start..end]) catch { else => fail RegexError::OutOfMemory() };
+        builder.Append(text[start..end]);
     }
 
     // Appends `replacement` with its `$` references filled in from `slots`.
     func Expand(self: &Regex, builder: &var StringBuilder, replacement: char8[..], text: char8[..], slots: uint[..])
-        -> ! RegexError {
+ {
         var at: uint = 0;
         while at < replacement.length {
             if replacement[at] != c8'$' {
                 let from = at;
                 while at < replacement.length && replacement[at] != c8'$' { at = at + 1; }
-                builder.Append(replacement[from..at]) catch { else => fail RegexError::OutOfMemory() };
+                builder.Append(replacement[from..at]);
                 continue;
             }
             var name = replacement[at..at];
             var next = at + 1;
             if next < replacement.length && replacement[next] == c8'$' {
-                builder.Append("$") catch { else => fail RegexError::OutOfMemory() };
+                builder.Append("$");
                 at = next + 1;
                 continue;
             }
@@ -509,7 +506,7 @@ extend Regex {
                 next = end;
             }
             if name.length == 0u {
-                builder.Append("$") catch { else => fail RegexError::OutOfMemory() };
+                builder.Append("$");
                 at = at + 1;
                 continue;
             }
@@ -519,10 +516,10 @@ extend Regex {
                 if byte < c8'0' || byte > c8'9' || number > 0xFFFFFFFFu { numeric = false; }
                 else { number = number * 10 + (byte as uint - 0x30u); }
             }
-            if numeric { self.AppendGroup(builder, text, slots, number)?; }
+            if numeric { self.AppendGroup(builder, text, slots, number); }
             else {
                 match self.IndexOfName(name) {
-                    .Some(index) => self.AppendGroup(builder, text, slots, index as uint)?,
+                    .Some(index) => self.AppendGroup(builder, text, slots, index as uint),
                     none => {}
                 }
             }
@@ -543,7 +540,7 @@ func IsNameByte(byte: uint8) -> bool {
 /// @param text the text to escape
 /// @returns the pattern
 /// @see https://rux-lang.dev/docs/api/regex/regex#escape
-pub func Escape(allocator: Allocator, text: char8[..]) -> String ! RegexError {
+pub func Escape(allocator: Allocator, text: char8[..]) -> String {
     var builder = StringBuilder(allocator);
     var from: uint = 0;
     var at: uint = 0;
@@ -552,12 +549,12 @@ pub func Escape(allocator: Allocator, text: char8[..]) -> String ! RegexError {
         if byte == c8'\\' || byte == c8'.' || byte == c8'+' || byte == c8'*' || byte == c8'?' || byte == c8'(' ||
            byte == c8')' || byte == c8'|' || byte == c8'[' || byte == c8']' || byte == c8'{' || byte == c8'}' ||
            byte == c8'^' || byte == c8'$' || byte == c8'#' || byte == c8'-' {
-            builder.Append(text[from..at]) catch { else => fail RegexError::OutOfMemory() };
-            builder.Append("\\") catch { else => fail RegexError::OutOfMemory() };
+            builder.Append(text[from..at]);
+            builder.Append("\\");
             from = at;
         }
         at = at + 1;
     }
-    builder.Append(text[from..text.length]) catch { else => fail RegexError::OutOfMemory() };
+    builder.Append(text[from..text.length]);
     return builder.IntoString();
 }

@@ -25,7 +25,7 @@ import Regex::{ Regex, RegexError };
 
 func Year(text: char8[..]) -> uint ! RegexError {
     let date = Regex::New(SystemAllocator(), "(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})")?;
-    match date.Capture(text)? {
+    match date.Capture(text) {
         .Some(groups) => return (groups.Named("year") ?? return 0).start,
         none => return 0
     }
@@ -40,7 +40,7 @@ Backreferences and lookaround are refused, because without them a search never n
 
 A text of 64 bytes or more is searched by two lazy DFAs instead. Each set of threads the matcher can be in becomes one state the first time a search meets it, and the state each character leads to is remembered, so a character costs one table lookup once a text's states are built. The forward DFA finds where the leftmost-first match ends, or that there is none; a second DFA, over the pattern reversed, reads backwards from there to where the match starts; and the Pike matcher runs over just that match when its groups are wanted. A pattern heavy with classes, such as `\w+\d\w+`, is searched about ten times as fast this way. The states are kept per search, or per iterator across its matches, and are dropped and rebuilt if a pattern makes too many, so memory stays bounded. A pattern too large to compile twice is searched by the Pike matcher alone.
 
-Positions are byte offsets into the UTF-8 text searched, always at character boundaries. Each search allocates its working storage from the regex's allocator, which is why searches can fail with `OutOfMemory`. A compiled `Regex` never changes, so one can be searched from several threads at once. A counted repetition is written out in full when compiled, so a pattern whose compiled form would exceed 100,000 instructions is refused as `TooLarge`.
+Positions are byte offsets into the UTF-8 text searched, always at character boundaries. Each search allocates its working storage from the regex's allocator, and terminates the program when that storage cannot be had, as every collection does; so a search cannot fail, and only `New` reports a `RegexError`. A compiled `Regex` never changes, so one can be searched from several threads at once. A counted repetition is written out in full when compiled, so a pattern whose compiled form would exceed 100,000 instructions is refused as `TooLarge`.
 
 ## Documentation
 

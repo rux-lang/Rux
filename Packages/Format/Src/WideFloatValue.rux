@@ -115,7 +115,7 @@ extend Float80 {
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// Reports whatever the writer reported and `UnsupportedRequest` for any style, and terminates the program
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
     /// @param writer the destination
@@ -223,7 +223,7 @@ extend Float128 {
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// Reports whatever the writer reported and `UnsupportedRequest` for any style, and terminates the program
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
     /// @param writer the destination
@@ -331,7 +331,7 @@ extend Float256 {
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// Reports whatever the writer reported and `UnsupportedRequest` for any style, and terminates the program
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
     /// @param writer the destination
@@ -439,7 +439,7 @@ extend Float512 {
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// Reports whatever the writer reported and `UnsupportedRequest` for any style, and terminates the program
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
     /// @param writer the destination

@@ -18,10 +18,8 @@ extend Tracked {
 
 func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
     var vector = Vector<Tracked>(allocator);
-    vector.Push(Tracked { destroyed: destroyed, value: 10, tail: 100 })
-        catch { else => Panic("the first move-only element is stored") };
-    vector.Push(Tracked { destroyed: destroyed, value: 20, tail: 200 })
-        catch { else => Panic("the second move-only element is stored") };
+    vector.Push(Tracked { destroyed: destroyed, value: 10, tail: 100 });
+    vector.Push(Tracked { destroyed: destroyed, value: 20, tail: 200 });
     for element in vector.MutableReferences() {
         // Safety: the cursor yields addresses of the vector's elements, and the vector is untouched during the loop.
         unsafe { element.value = element.value + 7; }
@@ -39,7 +37,7 @@ func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
     }
     Assert(total == 44 && tails == 300, "only the selected fields changed in the vector");
 
-    var array = (<-vector).IntoArray() catch { else => Panic("the array receives move-only elements without copies") };
+    var array = (<-vector).IntoArray();
     for element in array.MutableReferences() {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
         unsafe { element.value = element.value * 2; }
@@ -88,20 +86,20 @@ func Main() -> int {
 
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var array = Array::Filled<int32>(allocator, 3, 5) catch { else => Panic("the array is allocated") };
+    var array = Array::Filled<int32>(allocator, 3, 5);
     for element in array.MutableReferences() {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
         unsafe { *element = *element + 1; }
     }
     Assert(array.Get(0) == .Some(6) && array.Get(2) == .Some(6), "array elements are updated");
-    var emptyArray = Array::Filled<int32>(allocator, 0, 0) catch { else => Panic("an empty array is allocated") };
+    var emptyArray = Array::Filled<int32>(allocator, 0, 0);
     var arrayCursor = emptyArray.MutableReferences();
     Assert(arrayCursor.Next() == none, "an empty array yields nothing");
     var vector = Vector<int32>(allocator);
     var vectorCursor = vector.MutableReferences();
     Assert(vectorCursor.Next() == none, "an empty vector yields nothing");
-    vector.Reserve(20) catch { else => Panic("reserve supplies spare storage") };
-    vector.Push(7) catch { else => Panic("one element is initialized") };
+    vector.Reserve(20);
+    vector.Push(7);
     seen = 0;
     for element in vector.MutableReferences() {
         // Safety: the cursor yields addresses of the vector's elements, and the vector is untouched during the loop.

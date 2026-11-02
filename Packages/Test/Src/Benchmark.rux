@@ -157,7 +157,7 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
     while index < count {
         let view = Argument(index) ?? break;
         let text = view.ToText(SystemAllocator()) catch { else => return 2 };
-        texts.Push(<-text) catch { else => return 2 };
+        texts.Push(<-text);
         index = index + 1;
     }
     var filters = Vector<char8[..]>(SystemAllocator());
@@ -172,7 +172,7 @@ pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
             PrintLine("unknown option '{}'; the option is --quick", argument);
             return 2;
         }
-        else { filters.Push(argument) catch { else => return 2 }; }
+        else { filters.Push(argument); }
         index = index + 1;
     }
     options.filters = filters.AsSlice();

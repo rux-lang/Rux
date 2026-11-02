@@ -81,16 +81,16 @@ extend StringBuilder : TextWriter {
     /// checked and takes their validity as a precondition. A writer cannot, because what reaches it came from a
     /// value that may have produced anything, and the builder's promise to hold text at every moment is what
     /// everything reading from it relies on.
-    /// Reports `TextFailure(InvalidUtf8)` for bytes that are not well-formed UTF-8, and
-    /// `TextFailure(OutOfMemory)` when the builder cannot make room. In both cases nothing was appended: validity
-    /// is decided before any byte moves, so the builder is exactly as it was and a caller may retry elsewhere
-    /// without first undoing a partial write. A `WriterFailure` is impossible here, since there is no destination
-    /// beyond the allocator, and `InsufficientCapacity` cannot arise because a builder grows.
+    /// Reports `TextFailure(InvalidUtf8)` for bytes that are not well-formed UTF-8, and then nothing was appended:
+    /// validity is decided before any byte moves, so the builder is exactly as it was and a caller may retry
+    /// elsewhere without first undoing a partial write. Terminates the program when the builder cannot make room. A
+    /// `WriterFailure` is impossible here, since there is no destination beyond the allocator, and
+    /// `InsufficientCapacity` cannot arise because a builder grows.
     /// @param bytes the UTF-8 run to append, whole
     /// @returns success when the complete run was appended
     /// @see https://rux-lang.dev/docs/api/text/string-builder#write
     pub func Write(self: &var StringBuilder, bytes: char8[..]) -> ! FormatError {
         Validate(bytes) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
-        self.AppendValidated(bytes)? else (e => FromTextError(e));
+        self.AppendValidated(bytes);
     }
 }

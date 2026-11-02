@@ -58,14 +58,6 @@ func Refused(shown: Display, inspected: Debug, spec: FormatSpec) -> bool {
 func Main() -> int {
     // TextError: every case, in both registers. Each case is a failure, since success travels in the other channel
     // of the fallible an operation returns.
-    let outOfMemory: Display = TextError::OutOfMemory;
-    Assert(Shown(outOfMemory, "out of memory"), "an allocation failure");
-    let outOfMemoryDebug: Debug = TextError::OutOfMemory;
-    Assert(Inspected(outOfMemoryDebug, "TextError::OutOfMemory"), "named");
-    let overflow: Display = TextError::LengthOverflow;
-    Assert(Shown(overflow, "length overflow"), "a length that does not fit");
-    let overflowDebug: Debug = TextError::LengthOverflow;
-    Assert(Inspected(overflowDebug, "TextError::LengthOverflow"), "named");
     let badUtf8: Display = TextError::InvalidUtf8;
     Assert(Shown(badUtf8, "invalid UTF-8"), "bytes that are not text");
     let badUtf8Debug: Debug = TextError::InvalidUtf8;
@@ -75,13 +67,9 @@ func Main() -> int {
     let boundaryDebug: Debug = TextError::NotABoundary;
     Assert(Inspected(boundaryDebug, "TextError::NotABoundary"), "named");
 
-    // TextFailureKind describes the same four failures, and must describe them with the same words.
-    let kindMemory: Display = TextFailureKind::OutOfMemory;
-    Assert(Shown(kindMemory, "out of memory"), "the failure-only kind agrees with TextError");
+    // TextFailureKind describes the same failures, and must describe them with the same words.
     let kindUtf8: Display = TextFailureKind::InvalidUtf8;
-    Assert(Shown(kindUtf8, "invalid UTF-8"), "on every case they share");
-    let kindOverflow: Display = TextFailureKind::LengthOverflow;
-    Assert(Shown(kindOverflow, "length overflow"), "including this one");
+    Assert(Shown(kindUtf8, "invalid UTF-8"), "the failure-only kind agrees with TextError");
     let kindBoundary: Display = TextFailureKind::NotABoundary;
     Assert(Shown(kindBoundary, "not a character boundary"), "and this one");
     let kindUtf8Debug: Debug = TextFailureKind::InvalidUtf8;
@@ -121,8 +109,8 @@ func Main() -> int {
     let wrappedDebug: Debug = FormatError::TextFailure(TextFailureKind::InvalidUtf8);
     Assert(Inspected(wrappedDebug, "FormatError::TextFailure(TextFailureKind::InvalidUtf8)"),
            "while Debug shows both names");
-    let wrappedMemory: Display = FormatError::TextFailure(TextFailureKind::OutOfMemory);
-    Assert(Shown(wrappedMemory, "out of memory"), "which holds for every kind it can wrap");
+    let wrappedBoundary: Display = FormatError::TextFailure(TextFailureKind::NotABoundary);
+    Assert(Shown(wrappedBoundary, "not a character boundary"), "which holds for every kind it can wrap");
 
     // Utf8Error, every case of which names what was wrong with the bytes.
     let truncated: Display = Utf8Error::Truncated;

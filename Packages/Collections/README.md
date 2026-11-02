@@ -46,22 +46,24 @@ Both read-only and writable slices support `values[i]` and `values[1..3]` direct
 
 ## Failure model
 
-Two return shapes, and which one an operation uses says what can go wrong.
+Running out of memory terminates the program. `Push`, `Insert`, `Reserve`, `Clone` and every other operation that allocates either gets its storage or does not return, so a caller writes `numbers.Push(1);` and nothing more, and a capacity whose byte size cannot be represented terminates the same way. Code that can recover calls a `Try*` operation instead, which throws the allocator's own `AllocError` and leaves the container exactly as it was:
 
-An operation that has to **allocate** returns a native fallible, `T ! CollectionError` or `! CollectionError`, whose failure channel is:
+| Container   | Recoverable forms                         |
+| ----------- | ----------------------------------------- |
+| `Vector<T>` | `TryPush`, `TryReserve`, `TryClone`       |
+| `HashMap<K, V>` | `TryInsert`, `TryReserve`             |
+
+A `Try*` operation throws `Unsupported` for a size no allocator could serve, and otherwise what the allocator refused with; `AllocError::IsTransient` says whether trying again could help.
+
+What is left for a caller to handle is an index the collection does not have. `Set`, `Replace` and a vector's `Insert` report it through `! CollectionError`, whose one case is `IndexOutOfRange`:
 
 ```rux
 enum CollectionError: uint8 {
-    OutOfMemory = 1,
-    CapacityOverflow = 2,
-    IndexOutOfRange = 3,
-    Unsupported = 4
+    IndexOutOfRange = 1
 }
 ```
 
-The five are not interchangeable. `OutOfMemory` is the only one worth retrying — `IsTransient` says so — because the allocator having nothing to give is a state that changes. A capacity that cannot be represented will not start being representable, an index the collection does not have will not appear, and a layout the allocator refuses will be refused the same way next time. `FromAllocError` is what maps an allocator's own answer onto these.
-
-An operation that **cannot** allocate reports an ordinary miss with an optional — `Get`, `Remove`, `Pop`, and `PopFront` return `T?`, and the accessors that lend an element in place, `At`, `Find`, `First`, `Front` and their kin, return a reference `&T?` — or, for the iteration cursors `HashMap::TryNextEntry` and `HashSet::TryNext`, with a `bool` and out-parameters. So an exhausted allocator is never confused with an empty container, a missing key, or a rejected index — the distinction is in the type, not in the documentation. An operation that both allocates and can find nothing, such as a map's `Replace`, returns `V? ! CollectionError`.
+An operation that reports an ordinary miss does it with an optional — `Get`, `Remove`, `Pop`, and `PopFront` return `T?`, and the accessors that lend an element in place, `At`, `Find`, `First`, `Front` and their kin, return a reference `&T?` — or, for the iteration cursors `HashMap::TryNextEntry` and `HashSet::TryNext`, with a `bool` and out-parameters. So a missing key is never confused with a rejected index — the distinction is in the type, not in the documentation.
 
 ```rux
 import Allocator::{ Allocator, SystemAllocator };
@@ -70,24 +72,25 @@ import Collections::Vector;
 var system = SystemAllocator();
 let allocator: Allocator = system;
 var numbers = Vector<int32>(allocator);
-numbers.Push(1) catch { else => return 1 };
+numbers.Push(1);
+try numbers.TryReserve(1024) catch { _ => return 1 };
 
 if numbers.Pop() is .Some(last) {
     // ...
 }
 ```
 
-**A failed operation changes nothing.** Capacity arithmetic is checked before anything is allocated, and a reallocated block lands in a local before it replaces the owned pointer — so a failure leaves the original allocation valid and owned, rather than leaking it and nulling the container.
+**A failed operation changes nothing.** Capacity arithmetic is checked before anything is allocated, and a reallocated block lands in a local before it replaces the owned pointer — so a refused `Try*` operation leaves the original allocation valid and owned, rather than leaking it and nulling the container.
 
 Every count is checked for overflow. `count * sizeof(T)` is the most dangerous expression a container writes: a product that wraps asks for a small block and then writes far past it.
 
-Containers talk to the allocator in elements rather than bytes, through three helpers in `ContainerStorage.rux` that compute the layout from `sizeof(T)` and `alignof(T)` once. Those helpers are package-private, and there is nothing to import: they are how a container is built, not something a caller composes with. What they promise is visible through any container — an element occupying no bytes still gets a run with a real address rather than the shared empty one, a growth the allocator refuses leaves the container exactly as it was, and everything held is destroyed exactly once.
+Containers talk to the allocator in elements rather than bytes, through three helpers in `ContainerStorage.rux` that compute the layout from `sizeof(T)` and `alignof(T)` once. Those helpers are package-private, and there is nothing to import: they are how a container is built, not something a caller composes with. What they promise is visible through any container — an element occupying no bytes still gets a run with a real address rather than the shared empty one, a `Try*` growth the allocator refuses leaves the container exactly as it was, and everything held is destroyed exactly once.
 
 ## Ownership
 
 Every owning container prohibits copying. Hand one to a consuming function with `<-`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
 
-Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`, `HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive or fallible factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
+Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`, `HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
 The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one built from a pool comes back to the pool.
 
@@ -170,13 +173,13 @@ Its elements are the keys of a tree whose values are the unit `()`, which occupi
 
 An element must be copyable, exactly as a `HashSet`'s must: the comparison takes its two elements by value and every descent compares against elements the set holds, so an element that owned something would be destroyed by the first comparison it took part in. Owning values belong in a `TreeMap` under copyable keys.
 
-`IntersectWith` and `Subtract` allocate nothing, and ask for the next element by key rather than by following a pointer: removal relinks the nodes around what was removed, including the very node a pointer walk would visit next. `UnionWith` and `SymmetricDifferenceWith` can grow and report a `CollectionError`; unlike the hash set's, they are not all-or-nothing, because a tree has no capacity to reserve in advance — a partial union is still a set with every invariant intact, and running the call again finishes it.
+`IntersectWith` and `Subtract` allocate nothing, and ask for the next element by key rather than by following a pointer: removal relinks the nodes around what was removed, including the very node a pointer walk would visit next. `UnionWith` and `SymmetricDifferenceWith` can grow, one node at a time, because a tree has no capacity to reserve in advance.
 
 ## Set algebra
 
 The predicates — `IsSubsetOf`, `IsSupersetOf`, `IsDisjointFrom`, `Equals` — allocate nothing and cannot fail. So do `IntersectWith` and `Subtract`, which only ever make a set smaller.
 
-`UnionWith` and `SymmetricDifferenceWith` can grow, so they report a `CollectionError`. Both take room for the worst case first, which makes them all-or-nothing: a failure part-way would leave a set that is neither what it was nor the answer, and there is nothing useful a caller could do with that. Reserving more than needed is the price, and `ShrinkToFit` gives it back.
+`UnionWith` and `SymmetricDifferenceWith` can grow. Both take room for the worst case first, so the table grows at most once; reserving more than needed is the price, and `ShrinkToFit` gives it back.
 
 `IntersectWith` and `Subtract` sweep the slots until a whole sweep removes nothing. Removing shifts the entries that follow a slot back into it, and a chain running past the end of the table shifts them past the end too, so no single sweep in either direction can be sure it looked at everything — and which entries move at all depends on where the table's random seed happened to put them, which is what makes getting this wrong show up in one run out of several rather than every time. That is the one place the absence of tombstones costs something.
 
@@ -225,8 +228,8 @@ func Show() -> ! FormatError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var numbers = Vector<int32>(allocator);
-    numbers.Push(1) catch { else => {} };
-    numbers.Push(2) catch { else => {} };
+    numbers.Push(1);
+    numbers.Push(2);
 
     var failure: IoError? = none;
     var console = ConsoleWriter(@failure);
@@ -241,7 +244,7 @@ Everything is borrowed. A container owns its elements and hands out no copy of a
 
 `WriteHashMapDebug`, `WriteHashSetDebug`, `WriteTreeMapDebug` and `WriteTreeSetDebug` write a map as `{key: value, key: value}` and a set as `{element, element}` — braces rather than brackets, because what they hold is not a run of things. An ordered map or set is written in key order, so its rendering is a fact about its contents: two maps holding the same entries agree, and one map renders the same way every time. A hash map or set is written in the order of its table, which follows from the seed drawn when it was made and from the displacement every insertion caused, so it is not the insertion order, it does not hold between two maps with the same entries, and it changes between runs. Nothing sorts, since that would need an ordering on the key a hash container does not have and was built not to need; `TreeMap` is the container whose rendering is stable.
 
-`CollectionError` implements `Display` and `Debug` itself. `Display` is the stable description a reader is shown — `out of memory`, `size that cannot be represented` — and the five cases stay as distinguishable in words as they are in the type, since which one it is decides whether retrying makes sense. `Debug` names the case: `CollectionError::OutOfMemory`. Neither accepts a style or a precision, because a description has one form and truncating it produces a sentence that says something else.
+`CollectionError` implements `Display` and `Debug` itself. `Display` is the stable description a reader is shown — `index the collection does not have`. `Debug` names the case: `CollectionError::IndexOutOfRange`. Neither accepts a style or a precision, because a description has one form and truncating it produces a sentence that says something else.
 
 ## Guarantees and limitations
 

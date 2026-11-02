@@ -39,9 +39,7 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     var scratch = TemporaryFile::Create(allocator, directory, "abandoned-") catch {
         else => Panic("the abandoned file is created")
     };
-    var remembered = PathBuffer::FromPath(allocator, scratch.AsPath()) catch {
-        else => Panic("and its name is remembered")
-    };
+    var remembered = PathBuffer::FromPath(allocator, scratch.AsPath());
     Assert(Exists(allocator, scratch.AsPath()), "and it exists while it is held");
     return <-remembered;
 }
@@ -74,9 +72,7 @@ func Main() -> int ! IoError {
 
     // Close deletes it and says so; the name is free afterwards.
     var firstPathHolder = PathBuffer(allocator);
-    firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath()) catch {
-        else => Panic("the first name is remembered")
-    };
+    firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath());
     first.Close(allocator)?;
     Assert(!Exists(allocator, firstPathHolder.AsPath()), "and the file is gone");
 
@@ -86,18 +82,14 @@ func Main() -> int ! IoError {
 
     // Keep gives up ownership: the file stays, and cleaning it up becomes the caller's business.
     var kept = TemporaryFile::Create(allocator, home.AsPath(), "kept-")?;
-    var keptPath = PathBuffer::FromPath(allocator, kept.AsPath()) catch {
-        else => Panic("the kept name is remembered")
-    };
+    var keptPath = PathBuffer::FromPath(allocator, kept.AsPath());
     kept.Keep()?;
     Assert(Exists(allocator, keptPath.AsPath()), "and leaves it behind");
 
     second.Close(allocator)?;
     DeleteFile(allocator, keptPath.AsPath())?;
 
-    var homePath = PathBuffer::FromPath(allocator, home.AsPath()) catch {
-        else => Panic("the directory name is remembered")
-    };
+    var homePath = PathBuffer::FromPath(allocator, home.AsPath());
     home.Close(allocator)?;
     Assert(!Exists(allocator, homePath.AsPath()), "and is gone");
 

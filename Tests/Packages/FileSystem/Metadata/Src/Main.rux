@@ -16,7 +16,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Path {
-    holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
+    holder = OsString::FromText(allocator, text);
     return Path::FromView(holder.View());
 }
 

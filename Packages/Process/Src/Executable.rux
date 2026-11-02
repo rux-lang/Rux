@@ -97,6 +97,5 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
 // Keeps the native units as a path through `allocator`.
 func ToPathBuffer(allocator: Allocator, units: OsUnit[..]) -> PathBuffer ! IoError {
     if units.length == 0u { fail IoError::Of(IoErrorKind::NotFound); }
-    return PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(units)))
-        catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+    return PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(units)));
 }

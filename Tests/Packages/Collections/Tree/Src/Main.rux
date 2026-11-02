@@ -122,7 +122,7 @@ func Fill(tree: &var Tree<int32, int32>, count: int32, stride: int32) -> uint {
     var step: int32 = 0;
     while step < count {
         let key = (step * stride) % count;
-        let replaced = tree.Attach(key, key * 3, CompareInt32) catch { else => Panic("there is room for every key") };
+        let replaced = tree.Attach(key, key * 3, CompareInt32);
         Assert(replaced == none, "and none of them was already there");
         Assert(Sound(tree), "the rules hold after every insertion");
         step = step + 1;
@@ -177,8 +177,7 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     var tree = Tree<int32, Tracked>(allocator);
     var key: int32 = 0;
     while key < count {
-        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32)
-            catch { else => Panic("there is room for every tracked value") };
+        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32);
         key = key + 1;
     }
     Assert(tree.Length() == count as uint, "the tree holds what was put into it");
@@ -190,12 +189,10 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 // has to be destroyed exactly once when the caller is done with it.
 func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *var int32) {
     var tree = Tree<int32, Tracked>(allocator);
-    let first = tree.Attach(7, Tracked { counter: counter, value: 1 }, CompareInt32)
-        catch { else => Panic("there is room for a fresh key") };
+    let first = tree.Attach(7, Tracked { counter: counter, value: 1 }, CompareInt32);
     Assert(!(first is Tracked), "nothing was displaced by a fresh key");
 
-    let second = tree.Attach(7, Tracked { counter: counter, value: 2 }, CompareInt32)
-        catch { else => Panic("an equal key needs no room") };
+    let second = tree.Attach(7, Tracked { counter: counter, value: 2 }, CompareInt32);
     Assert(second is Tracked, "an equal key hands the old value back");
     Assert(tree.Length() == 1, "and does not make the tree longer");
     // Safety: both point at locals of `Main`, which outlive this call.
@@ -208,8 +205,7 @@ func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take
     var tree = Tree<int32, Tracked>(allocator);
     var key: int32 = 0;
     while key < count {
-        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32)
-            catch { else => Panic("there is room for every tracked value") };
+        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32);
         key = key + 1;
     }
 
@@ -244,7 +240,7 @@ func Main() -> int {
     var descending = Tree<int32, int32>(allocator);
     var key: int32 = 63;
     while key >= 0 {
-        descending.Attach(key, key * 3, CompareInt32) catch { else => Panic("there is room for every key") };
+        descending.Attach(key, key * 3, CompareInt32);
         Assert(Sound(descending), "the rules hold after every descending insertion");
         key = key - 1;
     }
@@ -280,7 +276,7 @@ func Main() -> int {
            "and nothing after the last");
 
     // A key already present is replaced rather than added, and hands back what it displaced.
-    let displaced = ascending.Attach(19, 1900, CompareInt32) catch { else => Panic("an equal key is accepted") };
+    let displaced = ascending.Attach(19, 1900, CompareInt32);
     Assert(displaced == .Some(57), "and gives back the value it displaced");
     Assert(ascending.Length() == 64, "without making the tree longer");
     // Safety: key 19 was just replaced, so `Find` hands back its live node.

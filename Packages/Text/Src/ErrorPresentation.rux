@@ -49,11 +49,9 @@ func WriteCount(writer: &var TextWriter, value: uint) -> ! FormatError {
 }
 
 // The description of one text-handling failure, shared by `TextError` and `TextFailureKind`, which name the same
-// four things and must not describe them differently.
+// things and must not describe them differently.
 func WriteTextFailureDescription(writer: &var TextWriter, kind: &TextFailureKind) -> ! FormatError {
     return match kind {
-        .OutOfMemory => WriteBytes(writer, "out of memory"),
-        .LengthOverflow => WriteBytes(writer, "length overflow"),
         .InvalidUtf8 => WriteBytes(writer, "invalid UTF-8"),
         .NotABoundary => WriteBytes(writer, "not a character boundary")
     };
@@ -61,8 +59,6 @@ func WriteTextFailureDescription(writer: &var TextWriter, kind: &TextFailureKind
 
 func WriteTextFailureName(writer: &var TextWriter, kind: &TextFailureKind) -> ! FormatError {
     return match kind {
-        .OutOfMemory => WriteBytes(writer, "TextFailureKind::OutOfMemory"),
-        .LengthOverflow => WriteBytes(writer, "TextFailureKind::LengthOverflow"),
         .InvalidUtf8 => WriteBytes(writer, "TextFailureKind::InvalidUtf8"),
         .NotABoundary => WriteBytes(writer, "TextFailureKind::NotABoundary")
     };
@@ -80,8 +76,6 @@ extend TextError : Display {
     pub func WriteDisplay(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .OutOfMemory => WriteBytes(writer, "out of memory"),
-            .LengthOverflow => WriteBytes(writer, "length overflow"),
             .InvalidUtf8 => WriteBytes(writer, "invalid UTF-8"),
             .NotABoundary => WriteBytes(writer, "not a character boundary")
         };
@@ -98,8 +92,6 @@ extend TextError : Debug {
     pub func WriteDebug(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .OutOfMemory => WriteBytes(writer, "TextError::OutOfMemory"),
-            .LengthOverflow => WriteBytes(writer, "TextError::LengthOverflow"),
             .InvalidUtf8 => WriteBytes(writer, "TextError::InvalidUtf8"),
             .NotABoundary => WriteBytes(writer, "TextError::NotABoundary")
         };

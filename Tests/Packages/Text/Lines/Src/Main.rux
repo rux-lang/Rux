@@ -23,12 +23,12 @@ func Same(view: StringView, expected: char8[..]) -> bool {
 
 func Main() -> int {
     let parts = [View("a"), View("bc"), View(""), View("d")];
-    let joined = Join(SystemAllocator(), parts[..], View(", ")) catch { else => Panic("joins") };
+    let joined = Join(SystemAllocator(), parts[..], View(", "));
     Assert(Same(joined.View(), "a, bc, , d"), "a separator between each two parts");
     let one = [View("alone")];
-    let single = Join(SystemAllocator(), one[..], View("-")) catch { else => Panic("joins one") };
+    let single = Join(SystemAllocator(), one[..], View("-"));
     Assert(Same(single.View(), "alone"), "one part needs no separator");
-    let nothing = Join(SystemAllocator(), parts[0..0], View("-")) catch { else => Panic("joins none") };
+    let nothing = Join(SystemAllocator(), parts[0..0], View("-"));
     Assert(nothing.IsEmpty(), "no parts give empty text");
 
     let text = View("first\nsecond\r\n\nfourth\r\n");

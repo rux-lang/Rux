@@ -35,15 +35,15 @@ extend Array<T> {
     /// An array of `length` elements, every one a copy of `value`.
     /// `allocator` is borrowed for the call and kept; `value` is read by value and copied into every position. A
     /// length of zero gives an empty array that owns a zero-sized block and is released like any other.
-    /// A failure hands back no array at all, so there is nothing half-built to destroy.
+    /// Terminates the program when the storage cannot be had.
     /// Runs in time proportional to `length`.
     /// @param allocator where the storage comes from
     /// @param length how many elements
     /// @param value the value to act on
     /// @returns an array of `length` copies of `value`
     /// @see https://rux-lang.dev/docs/api/collections/array#filled
-    pub func Filled(allocator: Allocator, length: uint, value: T) -> Array<T> ! CollectionError {
-        var data = AllocateBlock<T>(allocator, length)?;
+    pub func Filled(allocator: Allocator, length: uint, value: T) -> Array<T> {
+        var data = AllocateBlock<T>(allocator, length);
 
         var index: uint = 0;
         while index < length {
@@ -57,14 +57,14 @@ extend Array<T> {
 
     /// An array holding a copy of every element of `items`, in order.
     /// `allocator` is borrowed for the call and kept; `items` is borrowed and read. An empty slice gives an empty
-    /// array.
+    /// array. Terminates the program when the storage cannot be had.
     /// Runs in time proportional to the slice's length.
     /// @param allocator where the storage comes from
     /// @param items the elements to take
     /// @returns an array holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/array#from-slice
-    pub func FromSlice(allocator: Allocator, items: T[..]) -> Array<T> ! CollectionError {
-        var data = AllocateBlock<T>(allocator, items.length)?;
+    pub func FromSlice(allocator: Allocator, items: T[..]) -> Array<T> {
+        var data = AllocateBlock<T>(allocator, items.length);
 
         var index: uint = 0;
         while index < items.length {
@@ -80,11 +80,12 @@ extend Array<T> {
     /// `self` is borrowed and left alone. The copy has its own storage from the same allocator, so both are released
     /// independently.
     /// Elements are copied with `=`, so the element type must be plain data that `Core::Copyable` describes; an
-    /// owning element type is rejected while compiling, at the copy.
+    /// owning element type is rejected while compiling, at the copy. Terminates the program when the storage cannot
+    /// be had.
     /// Runs in time proportional to the length.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/array#clone
-    pub func Clone(self: &Array<T>) -> Array<T> ! CollectionError {
+    pub func Clone(self: &Array<T>) -> Array<T> {
         return Array::FromSlice<T>(self.allocator, self.AsSlice());
     }
 

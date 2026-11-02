@@ -49,7 +49,7 @@ func IsZoneName(name: char8[..]) -> bool {
 
 // The whole file at `path`, or fails with `NotFound` when it is not there.
 func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneError {
-    let native = OsString::FromText(allocator, path) catch { else => fail TimeZoneError::InvalidName };
+    let native = OsString::FromText(allocator, path);
     var file = File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
         error => {
             if error.kind == IoErrorKind::NotFound || error.kind == IoErrorKind::NotDirectory {
@@ -65,7 +65,7 @@ func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneE
             .Success(count) => {
                 // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
                 let read = unsafe { (chunk[..count].data as *byte)[..count] };
-                bytes.PushSlice(read) catch { else => fail TimeZoneError::OutOfMemory };
+                bytes.PushSlice(read);
             },
             .Failure(error) => {
                 if error.kind == IoErrorKind::EndOfStream { break; }
@@ -85,7 +85,7 @@ func AsciiText(view: OsStringView, into: &var Vector<char8>) -> bool {
         when #target.os == .Windows {
             if unit > 0x7Fu32 { return false; }
         }
-        into.Push(unit as uint8 as char8) catch { else => return false };
+        into.Push(unit as uint8 as char8);
         index = index + 1;
     }
     return true;
@@ -104,7 +104,7 @@ extend TimeZone {
         match Variable("TZDIR") {
             .Some(value) => {
                 if AsciiText(value, directory) && directory.Length() > 0u {
-                    return TimeZone::LoadFrom(allocator, directory.AsSlice(), name)?;
+                    return TimeZone::LoadFrom(allocator, directory.AsSlice(), name);
                 }
             },
             none => {}
@@ -130,9 +130,9 @@ extend TimeZone {
     // Loads `name` from `directory`.
     func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> TimeZone ! TimeZoneError {
         var path = Vector<char8>(allocator);
-        path.PushSlice(directory) catch { else => fail TimeZoneError::OutOfMemory };
-        path.Push(c8'/') catch { else => fail TimeZoneError::OutOfMemory };
-        path.PushSlice(name) catch { else => fail TimeZoneError::OutOfMemory };
+        path.PushSlice(directory);
+        path.Push(c8'/');
+        path.PushSlice(name);
         let data = ReadFile(allocator, path.AsSlice())?;
         return TimeZone::FromTzif(allocator, name, data.AsSlice())?;
     }
@@ -184,7 +184,7 @@ extend TimeZone {
             // Safety: `information` is a local `TimeZoneInformation`, which the call fills.
             let status = unsafe { GetTimeZoneInformation(@information) };
             if status == 0xFFFFFFFFu32 { fail TimeZoneError::Unreadable; }
-            var zone = TimeZone::Empty(allocator, "Local")?;
+            var zone = TimeZone::Empty(allocator, "Local");
             var rule = NoRule();
             rule.present = true;
             rule.standard = ZoneType {
@@ -232,12 +232,12 @@ when #target.os == .Windows {
         var index: uint = 0;
         while index < 32u && name[index] != 0u16 {
             if name[index] < 0x80u16 {
-                names.Push(name[index] as uint8 as char8) catch { else => return length };
+                names.Push(name[index] as uint8 as char8);
                 length = length + 1;
             }
             index = index + 1;
         }
-        names.Push(c8'\0') catch { else => {} };
+        names.Push(c8'\0');
         return length;
     }
 }

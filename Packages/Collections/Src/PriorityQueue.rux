@@ -40,12 +40,12 @@ extend PriorityQueue<T> {
         return self.items.IsEmpty();
     }
 
-    /// Adds `value`, moving it in. Logarithmic time, amortized over the vector's growth.
+    /// Adds `value`, moving it in. Logarithmic time, amortized over the vector's growth. Terminates the program when
+    /// the storage cannot grow.
     /// @param value the element
-    /// @returns nothing, or why there was no room; the queue is unchanged on failure
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#push
-    pub func Push(self: &var PriorityQueue<T>, value: T) -> ! CollectionError {
-        self.items.Push(<-value)?;
+    pub func Push(self: &var PriorityQueue<T>, value: T) {
+        self.items.Push(<-value);
         let items = self.items.AsMutableSlice();
         var index = items.length - 1;
         while index > 0 {

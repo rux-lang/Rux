@@ -126,7 +126,7 @@ extend TomlValue {
     /// A string value, whose bytes are copied and validated as UTF-8.
     /// @param allocator where the storage comes from
     /// @param value the value to act on
-    /// @returns that text as a string value, or an empty table when the allocator refused
+    /// @returns that text as a string value, or `InvalidUtf8` when it is not text
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#text
     pub func Text(allocator: Allocator, value: char8[..]) -> TomlValue ! TextError {
         var held = TomlValue::Table(allocator);
@@ -340,14 +340,15 @@ extend TomlValue {
     }
 
     /// Appends `value` to an array, taking ownership of it.
-    /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so a
+    /// Reports `false` when this is not an array; `value` is consumed either way, so a
     /// caller does not have to decide who owns it on failure.
     /// @param value the value to act on
     /// @returns whether the element was appended
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#push
     pub func Push(self: &var TomlValue, value: TomlValue) -> bool {
         if self.kind != TomlKind::Array { return false; }
-        return self.elements.Push(<-value) is .Success(_);
+        self.elements.Push(<-value);
+        return true;
     }
 
     /// Appends an entry to a table, copying the key and taking ownership of the value.
@@ -361,7 +362,8 @@ extend TomlValue {
     pub func Insert(self: &var TomlValue, key: String, value: TomlValue) -> bool {
         if self.kind != TomlKind::Table { return false; }
         var entry = TomlEntry { key: move key, value: <-value };
-        return self.entries.Push(<-entry) is .Success(_);
+        self.entries.Push(<-entry);
+        return true;
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.

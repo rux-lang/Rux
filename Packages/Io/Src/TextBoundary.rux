@@ -59,8 +59,8 @@ pub func ToIoError(error: &FormatError) -> IoError {
     };
 }
 
-// What a text-handling failure means to a stream's caller. Only one of the three is a fact about bytes; the other
-// two are the machine, and neither has an I/O meaning of its own.
+// What a text-handling failure means to a stream's caller. Bytes that are not text are a fact about the bytes; an
+// offset that cuts a character has no I/O meaning of its own.
 func KindOf(kind: &TextFailureKind) -> IoError {
     return match kind {
         .InvalidUtf8 => IoError::Of(IoErrorKind::InvalidText),

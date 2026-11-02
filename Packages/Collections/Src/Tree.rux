@@ -354,8 +354,7 @@ extend Tree<K, V> {
     /// caller learns whether anything was displaced without a lookup first, and gets the displaced value rather than
     /// having it quietly destroyed. When the key is already present the new key is destroyed rather than stored, since
     /// the one in the tree is equal to it and is what everything already hanging below it was ordered against.
-    /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing — but `key` and `value` are
-    /// destroyed rather than handed back, because there is nowhere left to put them.
+    /// Terminates the program when the node cannot be allocated.
     /// Runs in time proportional to the height, with at most two rotations. Allocates one node for a new key and
     /// nothing at all for one already present.
     /// @param key the key to look up
@@ -363,7 +362,7 @@ extend Tree<K, V> {
     /// @param compare how two keys order against each other
     /// @returns the value an equal key already held, or `none` when the key is new
     /// @see https://rux-lang.dev/docs/api/collections/tree#attach
-    pub func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering) -> V? ! CollectionError {
+    pub func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering) -> V? {
         var above: *var TreeNode<K, V> = null;
         var walk = self.root;
         var descendedLeft = false;
@@ -392,7 +391,7 @@ extend Tree<K, V> {
             }
         }
 
-        var fresh = AllocateBlock<TreeNode<K, V>>(self.allocator, 1)?;
+        let fresh = AllocateBlock<TreeNode<K, V>>(self.allocator, 1);
 
         // Red is what a fresh node is coloured, because red is the colour that cannot break the black-count rule.
         // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.

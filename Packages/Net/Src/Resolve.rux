@@ -30,9 +30,7 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
     var addresses = Vector<SocketAddress>(allocator);
     match IpAddress::Parse(host) {
         .Some(ip) => {
-            addresses.Push(SocketAddress { ip: ip, port: port }) catch {
-                else => fail IoError::Of(IoErrorKind::LimitExceeded)
-            };
+            addresses.Push(SocketAddress { ip: ip, port: port });
             return <-addresses;
         },
         none => {}
@@ -58,8 +56,8 @@ when #target.os != .Linux {
         var results <- addresses;
         StartNetworking();
         var name = Vector<char8>(allocator);
-        name.PushSlice(host) catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
-        name.Push(c8'\0') catch { else => fail IoError::Of(IoErrorKind::LimitExceeded) };
+        name.PushSlice(host);
+        name.Push(c8'\0');
         let hints = AddressInfo {
             flags: 0, family: 0, socketType: 1, protocol: 0, addressLength: 0, canonicalName: null, address: null,
             next: null
@@ -83,14 +81,7 @@ when #target.os != .Linux {
                             if earlier.Equals(address) { seen = true; }
                         }
                         if !seen {
-                            results.Push(address) catch {
-                                else => {
-                                    // Safety: `first` is the head `getaddrinfo` returned, freed once, here, before
-                                    // the function leaves.
-                                    unsafe { freeaddrinfo(first); }
-                                    fail IoError::Of(IoErrorKind::LimitExceeded);
-                                }
-                            };
+                            results.Push(address);
                         }
                     },
                     none => {}

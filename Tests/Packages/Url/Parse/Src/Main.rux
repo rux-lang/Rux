@@ -106,8 +106,8 @@ func Main() -> int {
     let form = Decode(allocator, "a+b%2Bc", true) catch { else => return 13 };
     Assert(Same(form.Bytes(), "a b+c"), "a form value reads plus as a space");
     var query = QueryBuilder(allocator);
-    query.Append("q", "rux lang") catch { else => return 14 };
-    query.Append("lang", "c++") catch { else => return 14 };
+    query.Append("q", "rux lang");
+    query.Append("lang", "c++");
     Assert(Same(query.Text(), "q=rux+lang&lang=c%2B%2B"), "a query is built with the form encoding");
     var edited = Url::Parse(allocator, "http://a/b") catch { else => return 15 };
     edited.SetQuery(query.Text()) catch { else => return 16 };
@@ -176,7 +176,7 @@ func Main() -> int {
     Assert(Resolves(base, "g#s/../x", "http://a/b/c/g#s/../x"), "g#s/../x");
     Assert(Resolves(base, "http:g", "http:g"), "http:g");
 
-    let copy = base.Clone() catch { else => Panic("a URL can be cloned") };
+    let copy = base.Clone();
     Assert(copy.Equals(base) && copy.Text().data != base.Text().data, "a clone is equal, in text of its own");
     return 0;
 }

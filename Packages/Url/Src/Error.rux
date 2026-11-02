@@ -1,4 +1,5 @@
 // Why text is not a URL, or why a URL could not be built.
+// Running out of memory is not one of the reasons: a URL whose text cannot be stored terminates the program.
 
 /// Why text could not be read or resolved as a URL. `Copy`.
 /// @see https://rux-lang.dev/docs/api/url/error#url-error
@@ -13,8 +14,6 @@ pub enum UrlError: uint8 {
     InvalidPort = 4,
     /// A `%` is not followed by two hexadecimal digits.
     InvalidPercentEncoding = 5,
-    /// The allocator could not supply the storage.
-    OutOfMemory = 6,
     /// Decoded bytes are not UTF-8 text.
     InvalidText = 7
 }

@@ -36,7 +36,7 @@ func View(bytes: char8[..]) -> StringView {
 func Main() -> int ! IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp") catch { else => Panic("the name converts") };
+    var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp");
     let scratch = Path::FromView(holder.View());
 
     // Write a known body and make it durable.

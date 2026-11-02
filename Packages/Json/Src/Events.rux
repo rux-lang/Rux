@@ -10,7 +10,7 @@
 // refused here exactly as it would be by the tree parser, because a streaming reader that accepted malformed
 // structure would push the problem onto every caller.
 
-import Allocator::{ AllocError, Allocator, Layout };
+import Allocator::{ AllocationFailed, Allocator, Layout };
 
 import Io::{ IoError, IoErrorKind, Reader };
 
@@ -186,12 +186,7 @@ extend JsonEventReader {
             }
             var borrowed = self.allocator;
             let bigger = Layout { size: wanted, alignment: 1 };
-            let block = borrowed.Allocate(bigger) catch {
-                else => {
-                    self.stop = JsonStop::OutOfMemory;
-                    return false;
-                }
-            };
+            let block = try borrowed.Allocate(bigger) catch { error => AllocationFailed(error) };
             // Safety: `block` was just allocated with `wanted` bytes, and `char8` has size and alignment 1.
             let grown = unsafe { block as *var char8 };
             var copied: uint = 0;

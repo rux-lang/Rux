@@ -35,8 +35,7 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key })
-            catch { else => Panic("there is room for every value") };
+        map.Insert(key, Tracked { counter: counter, value: key });
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
@@ -50,8 +49,7 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
     var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key })
-            catch { else => Panic("there is room for every value") };
+        map.Insert(key, Tracked { counter: counter, value: key });
         key = key + 1;
     }
 
@@ -106,7 +104,7 @@ func Main() -> int {
     var step: int32 = 0;
     while step < 50 {
         let key = (step * 23) % 50;
-        map.Insert(key, key * 3) catch { else => Panic("there is room for every key") };
+        map.Insert(key, key * 3);
         step = step + 1;
     }
     Assert(map.Length() == 50, "the map holds every key");
@@ -129,10 +127,10 @@ func Main() -> int {
     Assert(map.FindMutable(77) is none, "a key that is not there cannot be borrowed");
 
     // Replacing hands back what it displaced; inserting over a key destroys it silently.
-    let displaced = map.Replace(21, 63) catch { else => Panic("replacing a key is accepted") };
+    let displaced = map.Replace(21, 63);
     Assert(displaced == .Some(999), "a replaced value comes back");
     Assert(map.Length() == 50, "and the map is no longer than it was");
-    map.Insert(21, 63) catch { else => Panic("inserting over a key is accepted") };
+    map.Insert(21, 63);
     Assert(map.Get(21) == .Some(63), "and leaves the new value there");
 
     // The ordered questions, at the edges as well as in the middle.
@@ -189,11 +187,11 @@ func Main() -> int {
 
     // Cleared and used again. A tree keeps no capacity back, so an emptied map is exactly a fresh one.
     var reused = TreeMap<int32, int32>(allocator, CompareInt32);
-    reused.Insert(1, 10) catch { else => Panic("there is room for a first key") };
-    reused.Insert(2, 20) catch { else => Panic("and for a second") };
+    reused.Insert(1, 10);
+    reused.Insert(2, 20);
     reused.Clear();
     Assert(reused.IsEmpty() && reused.Get(1) == none, "clearing empties the map");
-    reused.Insert(3, 30) catch { else => Panic("and it is usable again afterwards") };
+    reused.Insert(3, 30);
     Assert(reused.Length() == 1 && (reused.First() ?? missing).key == 3, "holding only what came after");
 
     // The consuming walk hands out ownership one entry at a time, in the same order.

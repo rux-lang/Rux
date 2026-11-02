@@ -35,7 +35,7 @@ func PathOf(text: &OsString) -> Path {
 
 // Native text spelling `text`. Ordinary text always converts, so a failure here is a broken conversion.
 func Native(allocator: Allocator, text: char8[..]) -> OsString {
-    return OsString::FromText(allocator, text) catch { else => Panic("ordinary text converts") };
+    return OsString::FromText(allocator, text);
 }
 
 func Main() -> int {
@@ -97,24 +97,24 @@ func Main() -> int {
     // Joining.
     let baseOwned = Native(allocator, "/a/b");
     let segOwned = Native(allocator, "c");
-    let joined = Join(allocator, PathOf(baseOwned), segOwned.View()) catch { else => Panic("the join succeeds") };
+    let joined = Join(allocator, PathOf(baseOwned), segOwned.View());
     Assert(Spells(joined.AsPath(), "/a/b/c"), "a join supplies the separator");
     let absOwned = Native(allocator, "/x");
-    let replaced = Join(allocator, PathOf(baseOwned), absOwned.View()) catch { else => Panic("the join succeeds") };
+    let replaced = Join(allocator, PathOf(baseOwned), absOwned.View());
     Assert(Spells(replaced.AsPath(), "/x"), "and an absolute segment replaces");
 
     // Normalization: the simplifications, and the honesty line.
     let messyOwned = Native(allocator, "/a/./b//c/../d");
-    let cleaned = Normalize(allocator, PathOf(messyOwned)) catch { else => Panic("normalizing succeeds") };
+    let cleaned = Normalize(allocator, PathOf(messyOwned));
     Assert(Spells(cleaned.AsPath(), "/a/b/d"), "dots and climbs simplify");
     let relativeOwned = Native(allocator, "../a/../b");
-    let relative = Normalize(allocator, PathOf(relativeOwned)) catch { else => Panic("normalizing succeeds") };
+    let relative = Normalize(allocator, PathOf(relativeOwned));
     Assert(Spells(relative.AsPath(), "../b"), "a climb past a relative start survives");
     let overOwned = Native(allocator, "/../a");
-    let over = Normalize(allocator, PathOf(overOwned)) catch { else => Panic("normalizing succeeds") };
+    let over = Normalize(allocator, PathOf(overOwned));
     Assert(Spells(over.AsPath(), "/a"), "and a climb past the root vanishes");
     let dotOwned = Native(allocator, "./a/");
-    let dotted = Normalize(allocator, PathOf(dotOwned)) catch { else => Panic("normalizing succeeds") };
+    let dotted = Normalize(allocator, PathOf(dotOwned));
     Assert(Spells(dotted.AsPath(), "a"), "a lone dot and a trailing slash both go");
 
     return 0;

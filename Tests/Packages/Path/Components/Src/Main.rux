@@ -47,24 +47,24 @@ func Main() -> int {
     Assert(IsSeparator(PreferredSeparator()), "the preferred separator separates");
 
     // The segment names, built once.
-    let aOwned = OsString::FromText(allocator, "a") catch { else => Panic("the segment names are built") };
-    let bOwned = OsString::FromText(allocator, "b") catch { else => Panic("the segment names are built") };
-    let cOwned = OsString::FromText(allocator, "c") catch { else => Panic("the segment names are built") };
+    let aOwned = OsString::FromText(allocator, "a");
+    let bOwned = OsString::FromText(allocator, "b");
+    let cOwned = OsString::FromText(allocator, "c");
     let a = aOwned.View();
     let b = bOwned.View();
     let c = cOwned.View();
     let root = OsStringView();
 
     // A relative path walks its segments; runs of separators count once; a trailing one adds nothing.
-    let plainOwned = OsString::FromText(allocator, "a/b/c") catch { else => Panic("the path text converts") };
+    let plainOwned = OsString::FromText(allocator, "a/b/c");
     Assert(Walk(Path::FromView(plainOwned.View()), a, b, c, 3), "a/b/c walks as its three segments");
-    let doubledOwned = OsString::FromText(allocator, "a//b/") catch { else => Panic("the path text converts") };
+    let doubledOwned = OsString::FromText(allocator, "a//b/");
     Assert(Walk(Path::FromView(doubledOwned.View()), a, b, root, 2), "a//b/ walks as a then b");
 
     // An absolute path opens with the empty root component, which is what tells it from a relative one.
-    let absoluteOwned = OsString::FromText(allocator, "/a/b") catch { else => Panic("the path text converts") };
+    let absoluteOwned = OsString::FromText(allocator, "/a/b");
     Assert(Walk(Path::FromView(absoluteOwned.View()), root, a, b, 3), "/a/b opens with the root");
-    let slashOwned = OsString::FromText(allocator, "/") catch { else => Panic("the path text converts") };
+    let slashOwned = OsString::FromText(allocator, "/");
     Assert(Walk(Path::FromView(slashOwned.View()), root, a, b, 1), "and the root alone is one component");
 
     let empty = Path();
@@ -73,9 +73,9 @@ func Main() -> int {
 
     // The buffer: pushes separate, an absolute push replaces, and the result reads back as a path.
     var buffer = PathBuffer(allocator);
-    buffer.Push(a) catch { else => Panic("the first segment goes in") };
-    buffer.Push(b) catch { else => Panic("and the second") };
-    buffer.Push(c) catch { else => Panic("and the third") };
+    buffer.Push(a);
+    buffer.Push(b);
+    buffer.Push(c);
     Assert(buffer.Length() == 5, "with separators supplied between them");
     Assert(Walk(buffer.AsPath(), a, b, c, 3), "and the buffer walks as what was pushed");
 
@@ -83,13 +83,13 @@ func Main() -> int {
     Assert(IsSeparator(separatorAt), "the supplied separator is the platform's");
 
     let absolute = absoluteOwned.View();
-    buffer.Push(absolute) catch { else => Panic("an absolute segment is accepted") };
+    buffer.Push(absolute);
     Assert(Walk(buffer.AsPath(), root, a, b, 3), "and replaces everything before it");
 
     // Pushing the empty segment changes nothing.
     var settled = PathBuffer(allocator);
-    settled.Push(a) catch { else => Panic("one segment") };
-    settled.Push(OsStringView()) catch { else => Panic("then the empty one") };
+    settled.Push(a);
+    settled.Push(OsStringView());
     Assert(settled.Length() == 1, "which adds nothing, not even a separator");
 
     return 0;
