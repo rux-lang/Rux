@@ -246,6 +246,40 @@ bool Version(LirFunc &function) {
         };
         if (signedInduction ? !invariantLimit(limit) : !invariant(limit))
             continue;
+        // A value the loop computes from invariant values alone, such as a row's start `i * n`: the guard computes it
+        // again in the preheader and requires each overflow-checked step to fit there, so the fast copy computes it
+        // without the check and later passes can hoist it.
+        std::vector<LirReg> derivedChecked;
+        const std::function<bool(LirReg, std::size_t, std::vector<LirReg> &)> derivedInvariant =
+            [&](const LirReg reg, const std::size_t depth, std::vector<LirReg> &checked) {
+                if (invariant(reg))
+                    return true;
+                const auto found = definitions.Find(reg);
+                if (depth > 4 || found == nullptr || found->instruction == nullptr || !members.contains(found->block) ||
+                    !Word(found->type))
+                    return false;
+                const auto &instruction = *found->instruction;
+                if (instruction.isVolatile || instruction.srcs.size() != 2 ||
+                    (instruction.op != LirOpcode::Add && instruction.op != LirOpcode::Mul &&
+                     instruction.op != LirOpcode::CheckedAdd && instruction.op != LirOpcode::CheckedMul))
+                    return false;
+                if (!derivedInvariant(instruction.srcs[0], depth + 1, checked) ||
+                    !derivedInvariant(instruction.srcs[1], depth + 1, checked))
+                    return false;
+                if (IsOverflowCheckedOpcode(instruction.op) && !std::ranges::contains(checked, reg))
+                    checked.push_back(reg);
+                return true;
+            };
+        // An offset the check adds to the induction value, recording the checked steps that compute it.
+        const auto offsetInvariant = [&](const LirReg reg) {
+            std::vector<LirReg> checked;
+            if (!derivedInvariant(reg, 0, checked))
+                return false;
+            for (const auto step : checked)
+                if (!std::ranges::contains(derivedChecked, step))
+                    derivedChecked.push_back(step);
+            return true;
+        };
         const auto constantOf = [&](const LirReg reg) -> std::optional<std::uint64_t> {
             const auto *instruction = get(reg);
             if (!instruction || instruction->op != LirOpcode::Const || instruction->isVolatile ||
@@ -430,9 +464,9 @@ bool Version(LirFunc &function) {
                 const auto *add = get(index);
                 if (!add || !IsAddition(*add) || add->isVolatile || !Word(add->type) || add->srcs.size() != 2)
                     continue;
-                if (strip(add->srcs[0]) == induction && invariant(add->srcs[1]))
+                if (strip(add->srcs[0]) == induction && offsetInvariant(add->srcs[1]))
                     offset = add->srcs[1];
-                else if (strip(add->srcs[1]) == induction && invariant(add->srcs[0]))
+                else if (strip(add->srcs[1]) == induction && offsetInvariant(add->srcs[0]))
                     offset = add->srcs[0];
                 else
                     continue;
@@ -442,6 +476,7 @@ bool Version(LirFunc &function) {
         }
         if (!eligible || cost > 320 || checks.empty() || checks.size() > 16)
             continue;
+        proven.insert(proven.end(), derivedChecked.begin(), derivedChecked.end());
         // Values the loop defines and code after it reads, directly or through a phi on an edge that leaves a block
         // outside the loop. Once the fast copy exists, both copies reach those readers.
         const auto local = [&](const LirReg reg) {
@@ -543,12 +578,40 @@ bool Version(LirFunc &function) {
         // The value as the preheader sees it: a constant defined inside the loop is recreated there. Only a definition
         // in the loop is read: the loop's blocks stay where they are while the preheader grows, the preheader's
         // own instructions may not.
-        const auto outside = [&](const LirReg value) {
+        // A value derived in the loop from invariant ones is computed again from its recomputed operands, without its
+        // check; whether each checked step fits is collected for the guard.
+        std::unordered_map<LirReg, LirReg> recomputed;
+        std::vector<LirReg> stepsFit;
+        const std::function<LirReg(LirReg)> outside = [&](const LirReg value) -> LirReg {
             const auto &definition = definitions.At(value);
-            if (members.contains(definition.block) && definition.instruction &&
-                definition.instruction->op == LirOpcode::Const)
-                return emit(LirOpcode::Const, definition.type, {}, definition.instruction->strArg);
-            return value;
+            if (!members.contains(definition.block) || !definition.instruction)
+                return value;
+            const LirInstr &instruction = *definition.instruction;
+            if (instruction.op == LirOpcode::Const)
+                return emit(LirOpcode::Const, definition.type, {}, instruction.strArg);
+            if (const auto found = recomputed.find(value); found != recomputed.end())
+                return found->second;
+            // Read before emitting: emitting appends to the preheader, which may hold the instruction read here.
+            const LirOpcode op = instruction.op;
+            const LirReg leftSource = instruction.srcs.at(0);
+            const LirReg rightSource = instruction.srcs.at(1);
+            const TypeRef type = definition.type;
+            const auto left = outside(leftSource);
+            const auto right = outside(rightSource);
+            const auto result = emit(UncheckedOpcode(op), type, {left, right});
+            if (op == LirOpcode::CheckedAdd) {
+                stepsFit.push_back(emit(LirOpcode::CmpGe, TypeRef::MakeBool(), {result, left}));
+            }
+            else if (op == LirOpcode::CheckedMul) {
+                // Factors below 2^32 cannot overflow the word. A larger pair that would still fit only takes the
+                // checked copy, which a wider multiplication to tell them apart would cost more than it saves.
+                const auto either = emit(LirOpcode::Or, type, {left, right});
+                const auto high = emit(LirOpcode::Shr, type, {either, emit(LirOpcode::Const, type, {}, "32")});
+                stepsFit.push_back(
+                    emit(LirOpcode::CmpEq, TypeRef::MakeBool(), {high, emit(LirOpcode::Const, type, {}, "0")}));
+            }
+            recomputed.emplace(value, result);
+            return result;
         };
         const auto widen = [&](const LirReg value) { return widenFrom(outside(value), definitions.At(value).type); };
         const auto limit64 = widen(limit);
@@ -660,6 +723,9 @@ bool Version(LirFunc &function) {
                 }
                 safeLimit = minimum(safeLimit, below);
             }
+            // An offset whose computation would overflow leaves the fast copy no iteration at all.
+            for (const auto fits : stepsFit)
+                safeLimit = minimum(safeLimit, emit(LirOpcode::Sub, TypeRef::MakeUInt64(), {constant(0), bit(fits)}));
             // Below that and within the loop's own test: `count < limit`, or `count <= limit` as `count < limit + 1`
             // where the addition cannot wrap. A count stepping by more than one stays far enough below the maximum
             // that its next step cannot wrap either, as the original might do on its way to a failing check.
@@ -750,6 +816,9 @@ bool Version(LirFunc &function) {
             }
             conjoin(guard, safe);
         }
+        if (!split)
+            for (const auto fits : stepsFit)
+                conjoin(guard, fits);
         if (!split) {
             auto &entry = *function.blocks[preheader].term;
             entry.kind = LirTermKind::Branch;
@@ -757,8 +826,22 @@ bool Version(LirFunc &function) {
             entry.trueTarget = blocks.at(header);
             entry.falseTarget = header;
         }
-        for (auto &clone : clones)
+        // The fast copy reads the values the guard computed again rather than its own copies, so they are invariant
+        // there at once and the pointer and unrolling passes see a loop with nothing left to hoist.
+        std::unordered_map<LirReg, LirReg> precomputed;
+        for (const auto &[original, again] : recomputed)
+            precomputed.emplace(mappedReg(original), again);
+        for (auto &clone : clones) {
+            for (auto &instruction : clone.instrs) {
+                for (auto &source : instruction.srcs)
+                    if (const auto found = precomputed.find(source); found != precomputed.end())
+                        source = found->second;
+                for (auto &[source, predecessor] : instruction.phiPreds)
+                    if (const auto found = precomputed.find(source); found != precomputed.end())
+                        source = found->second;
+            }
             function.blocks.push_back(std::move(clone));
+        }
         // Update only real outgoing edges of the clone (eliminated check-failure edges get no phi operands).
         const LirControlFlow updated(function);
         for (const auto block : ordered) {

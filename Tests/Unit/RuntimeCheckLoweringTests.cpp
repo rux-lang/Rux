@@ -1022,6 +1022,83 @@ func Kept(a: uint32, b: uint32) -> uint32 {
     CHECK_EQ(Instructions(package, "Kept", LirOpcode::CheckedMul).size(), 1);
 }
 
+TEST_CASE("release removes overflow checks that dominating tests and indexes settle") {
+    const LirPackage package = CompileChecks(R"(func Scan(values: int32[..], start: int64, pivot: int32) -> int64 {
+    var i = start;
+    while values[i] < pivot { i += 1; }
+    return i - 1;
+}
+
+func Tail(length: uint) -> uint {
+    if length >= 8 { return length - 8; }
+    return 0;
+}
+
+func Distance(state: uint8) -> uint {
+    if state == 0 { return 0; }
+    return (state as uint) - 1;
+}
+
+func Spread(value: uint64) -> uint64 {
+    var total: uint64 = 0;
+    for b in 0u..8u {
+        total = total ^ (value >> ((8 * b) as uint64));
+    }
+    return total;
+}
+
+func Rotate(value: uint64, amount: uint64) -> uint64 {
+    let shift = amount & 63;
+    return 64 - shift;
+}
+
+func Kept(length: uint, value: int64) -> uint {
+    return length - 8 + (value + 1) as uint;
+}
+)",
+                                             BuildProfile::Release);
+    for (const char *function : {"Scan", "Tail", "Distance", "Spread", "Rotate"}) {
+        CAPTURE(function);
+        CHECK(Instructions(package, function, LirOpcode::CheckedAdd).empty());
+        CHECK(Instructions(package, function, LirOpcode::CheckedSub).empty());
+        CHECK(Instructions(package, function, LirOpcode::CheckedMul).empty());
+    }
+    // An unguarded difference and a step from a value nothing bounds keep their checks.
+    CHECK_EQ(Instructions(package, "Kept", LirOpcode::CheckedSub).size(), 1);
+    CHECK_EQ(Instructions(package, "Kept", LirOpcode::CheckedAdd).size(), 2);
+}
+
+TEST_CASE("loop versioning computes a checked row offset once and keeps the fast copy unchecked") {
+    const LirPackage package =
+        CompileChecks(R"(func Accumulate(c: var float64[..], b: float64[..], n: uint, i: uint, k: uint) {
+    for j in 0u..n {
+        c[i * n + j] += b[k * n + j];
+    }
+}
+)",
+                      BuildProfile::Release);
+    bool versioned = false;
+    for (const auto &module : package.modules) {
+        for (const auto &function : module.funcs) {
+            if (function.name != "Accumulate") {
+                continue;
+            }
+            for (const auto &block : function.blocks) {
+                if (!block.label.contains(".range.fast")) {
+                    continue;
+                }
+                versioned = true;
+                for (const auto &instruction : block.instrs) {
+                    CHECK_FALSE(IsOverflowCheckedOpcode(instruction.op));
+                }
+            }
+        }
+    }
+    CHECK(versioned);
+    // The checked loop still stops on an offset that overflows.
+    CHECK_FALSE(Instructions(package, "Accumulate", LirOpcode::CheckedMul).empty());
+}
+
 TEST_CASE("AArch64 emits overflow checks on every system") {
     for (const Target::OS os : {Target::OS::Linux, Target::OS::MacOS, Target::OS::Windows}) {
         for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {

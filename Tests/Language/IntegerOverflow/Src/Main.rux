@@ -92,6 +92,17 @@ func Overflow(mode: OsStringView) -> int {
     if Is(mode, "cast-narrow") { return ((one * 300) as uint8) as int; }
     if Is(mode, "cast-sign") { return ((0 - one) as uint64) as int; }
     if Is(mode, "cast-top") { return (uint64::Max * (one as uint64)) as int64 as int; }
+    if Is(mode, "mul-row") {
+        // A row offset computed once for a whole loop still stops the loop that would read through it.
+        let cells: uint8[4] = [1u8; 4];
+        let view = cells[..];
+        let n = (one as uint) * 4u;
+        let row = uint::Max / 2u * (one as uint);
+        var sum: uint = 0;
+        for j in 0u..n { sum += view[row * n + j] as uint; }
+        return sum as int;
+    }
+    if Is(mode, "cast-below") { return ((one * -129) as int8) as int; }
     if Is(mode, "cast-wide") { return ((uint128::Max * (one as uint128)) as uint64) as int; }
     return NotAChild;
 }
@@ -249,6 +260,10 @@ func CheckConversions() {
     Assert(minus as int8 == -5 && minus as int64 == -5, "a negative value that fits");
     let top: uint64 = 255;
     Assert(top as uint8 == 255 && top as int16 == 255, "the top of the target");
+    let low: int64 = -128 * One;
+    let high: int64 = 127 * One;
+    Assert(low as int8 == int8::Min && high as int8 == int8::Max, "both ends of a narrower signed type");
+    Assert((-1 * One) as int32 == -1 && (255 * One) as uint8 == 255, "a signed value at the edge of either target");
     let edge: uint32 = 0x7FFFFFFF;
     Assert(edge as int32 == int32::Max, "the signed maximum");
 }
@@ -317,6 +332,8 @@ func Main() -> int {
     Expect(program, "cast-narrow", "integer cast out of range");
     Expect(program, "cast-sign", "integer cast out of range");
     Expect(program, "cast-top", "integer cast out of range");
+    Expect(program, "mul-row", "integer overflow in '*'");
+    Expect(program, "cast-below", "integer cast out of range");
     Expect(program, "cast-wide", "integer cast out of range");
     return 0;
 }

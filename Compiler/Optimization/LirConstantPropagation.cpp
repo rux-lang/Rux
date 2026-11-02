@@ -563,11 +563,11 @@ bool RewriteFunction(LirFunc &function, const Values &values) {
     return changed;
 }
 
-/// What is known of an integer register's value: it is not negative and fits in `bits` bits.
-std::optional<std::uint32_t> NonNegativeBits(const LirReg reg,
-                                             const std::unordered_map<LirReg, const LirInstr *> &definitions,
-                                             const std::unordered_map<LirReg, TypeRef> &types,
-                                             const std::uint32_t depth = 0) {
+/// The largest value an integer register of at most 64 bits can hold, when it is also known never to be negative.
+std::optional<std::uint64_t> KnownMaximum(const LirReg reg,
+                                          const std::unordered_map<LirReg, const LirInstr *> &definitions,
+                                          const std::unordered_map<LirReg, TypeRef> &types,
+                                          const std::uint32_t depth = 0) {
     const auto found = definitions.find(reg);
     if (found == definitions.end() || depth > 8) {
         return std::nullopt;
@@ -577,6 +577,9 @@ std::optional<std::uint32_t> NonNegativeBits(const LirReg reg,
     if (!instruction.type.IsInteger() || width == 0 || width > 64) {
         return std::nullopt;
     }
+    const bool isSigned = instruction.type.IsSigned();
+    const std::uint32_t room = isSigned ? width - 1 : width;
+    const std::uint64_t typeMaximum = room == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << room) - 1;
     const auto constant = [&](const LirReg source) -> std::optional<std::uint64_t> {
         const auto definition = definitions.find(source);
         if (definition == definitions.end() || definition->second->op != LirOpcode::Const) {
@@ -589,64 +592,117 @@ std::optional<std::uint32_t> NonNegativeBits(const LirReg reg,
         }
         return value->RawBits();
     };
+    const auto operand = [&](const std::size_t index) -> std::optional<std::uint64_t> {
+        return index < instruction.srcs.size() ? KnownMaximum(instruction.srcs[index], definitions, types, depth + 1)
+                                               : std::nullopt;
+    };
+    // An unsigned value bounded by nothing else is bounded by its type.
+    const auto orType = [&](const std::optional<std::uint64_t> bound) -> std::optional<std::uint64_t> {
+        if (bound) {
+            return bound;
+        }
+        return isSigned ? std::nullopt : std::optional{typeMaximum};
+    };
+    // All ones up to the highest bit `value` sets, which bounds an or or an exclusive-or of values up to it.
+    const auto filled = [](const std::uint64_t value) -> std::uint64_t {
+        return value == 0 ? 0 : ~std::uint64_t{0} >> std::countl_zero(value);
+    };
     switch (instruction.op) {
     case LirOpcode::Const:
-        if (const auto value = constant(instruction.dst)) {
-            return static_cast<std::uint32_t>(std::bit_width(*value));
-        }
-        return std::nullopt;
+        return constant(instruction.dst);
     case LirOpcode::Cast: {
-        // A zero extension holds no more bits than its unsigned source.
+        // A widening holds no more than its source when the source is never negative.
         const auto source = types.find(instruction.srcs.empty() ? LirNoReg : instruction.srcs[0]);
         if (source == types.end()) {
-            return std::nullopt;
+            return orType(std::nullopt);
         }
         const TypeRef &from = source->second;
         const auto fromBytes = from.SizeInBytes();
-        if (from.IsInteger() && !from.IsSigned() && fromBytes && *fromBytes * 8 < width) {
-            return static_cast<std::uint32_t>(*fromBytes * 8);
+        if (!(from.IsInteger() || from.IsChar()) || !fromBytes || *fromBytes * 8 > width) {
+            return orType(std::nullopt);
         }
-        if ((from.IsInteger() || from.IsChar()) && fromBytes && *fromBytes * 8 <= width) {
-            return NonNegativeBits(instruction.srcs[0], definitions, types, depth + 1);
+        if (const auto bound = KnownMaximum(instruction.srcs[0], definitions, types, depth + 1)) {
+            return bound;
         }
-        return std::nullopt;
+        if (from.IsInteger() && !from.IsSigned() && *fromBytes * 8 < width) {
+            return (std::uint64_t{1} << (*fromBytes * 8)) - 1;
+        }
+        return orType(std::nullopt);
     }
     case LirOpcode::And: {
         // Either operand known not negative bounds the result.
-        std::optional<std::uint32_t> bound;
-        for (const LirReg source : instruction.srcs) {
-            if (const auto bits = NonNegativeBits(source, definitions, types, depth + 1)) {
-                bound = bound ? std::min(*bound, *bits) : *bits;
-            }
+        const auto left = operand(0);
+        const auto right = operand(1);
+        if (left && right) {
+            return std::min(*left, *right);
         }
-        return bound;
+        return orType(left ? left : right);
     }
     case LirOpcode::Add:
+    case LirOpcode::CheckedAdd:
     case LirOpcode::Mul:
+    case LirOpcode::CheckedMul:
     case LirOpcode::Or:
     case LirOpcode::Xor: {
-        // An operation that wraps holds the exact result while the operands' bits leave it room.
-        const auto left = NonNegativeBits(instruction.srcs.at(0), definitions, types, depth + 1);
-        const auto right = NonNegativeBits(instruction.srcs.at(1), definitions, types, depth + 1);
+        const auto left = operand(0);
+        const auto right = operand(1);
         if (!left || !right) {
+            return orType(std::nullopt);
+        }
+        const bool sum = instruction.op == LirOpcode::Add || instruction.op == LirOpcode::CheckedAdd;
+        const bool product = instruction.op == LirOpcode::Mul || instruction.op == LirOpcode::CheckedMul;
+        const unsigned __int128 exact = sum     ? static_cast<unsigned __int128>(*left) + *right
+                                      : product ? static_cast<unsigned __int128>(*left) * *right
+                                                : filled(std::max(*left, *right));
+        if (exact <= typeMaximum) {
+            return static_cast<std::uint64_t>(exact);
+        }
+        // A checked result past the maximum stops the program; a wrapping one can be anything.
+        return IsOverflowCheckedOpcode(instruction.op) && !isSigned ? std::optional{typeMaximum} : orType(std::nullopt);
+    }
+    case LirOpcode::Sub:
+    case LirOpcode::CheckedSub: {
+        // An unsigned difference that did not wrap is at most its left operand. A checked one never wraps, and a plain
+        // one does not when its left operand is a constant no smaller than the right one can be.
+        if (isSigned) {
             return std::nullopt;
         }
-        const std::uint32_t bits = instruction.op == LirOpcode::Add ? std::max(*left, *right) + 1
-                                 : instruction.op == LirOpcode::Mul ? *left + *right
-                                                                    : std::max(*left, *right);
-        return bits < width ? std::optional{bits} : std::nullopt;
+        if (instruction.op == LirOpcode::CheckedSub) {
+            return orType(operand(0));
+        }
+        const auto minuend = constant(instruction.srcs.at(0));
+        const auto right = operand(1);
+        return minuend && right && *right <= *minuend ? minuend : orType(std::nullopt);
+    }
+    case LirOpcode::Mod: {
+        // An unsigned remainder is below its divisor and at most its dividend.
+        if (isSigned) {
+            return std::nullopt;
+        }
+        std::optional<std::uint64_t> bound = operand(0);
+        if (const auto right = operand(1); right && *right > 0) {
+            bound = bound ? std::min(*bound, *right - 1) : *right - 1;
+        }
+        return orType(bound);
     }
     case LirOpcode::Lshr:
-    case LirOpcode::Shr:
-        if (!instruction.type.IsSigned() || instruction.op == LirOpcode::Lshr) {
-            if (const auto count = instruction.srcs.size() == 2 ? constant(instruction.srcs[1]) : std::nullopt;
-                count && *count < width) {
-                return width - static_cast<std::uint32_t>(*count);
+    case LirOpcode::Shr: {
+        const auto count = instruction.srcs.size() == 2 ? constant(instruction.srcs[1]) : std::nullopt;
+        if (isSigned) {
+            // Only a logical shift by at least one clears a signed value's top bit.
+            if (instruction.op != LirOpcode::Lshr || !count || *count == 0 || *count >= width) {
+                return std::nullopt;
             }
+            return (~std::uint64_t{0} >> (64 - width)) >> *count;
         }
-        return std::nullopt;
+        const auto shifted = orType(operand(0));
+        if (shifted && count && *count < width) {
+            return *shifted >> *count;
+        }
+        return shifted;
+    }
     default:
-        return std::nullopt;
+        return orType(std::nullopt);
     }
 }
 
@@ -688,6 +744,203 @@ bool KnownLess(const LirFunc &function, const LirControlFlow &cfg, const LirDomi
         block = immediate[block];
     }
     return false;
+}
+
+/// Whether control reaching `block` has seen `value` differ from zero, through a branch that dominates it on a
+/// comparison of `value`, or of the unsigned value it zero-extends, with zero.
+bool KnownNonZero(const LirFunc &function, const LirControlFlow &cfg, const LirDominance &dominance,
+                  const std::unordered_map<LirReg, const LirInstr *> &definitions,
+                  const std::unordered_map<LirReg, TypeRef> &types, std::uint32_t block, const LirReg value) {
+    std::vector<LirReg> names{value};
+    if (const auto found = definitions.find(value);
+        found != definitions.end() && found->second->op == LirOpcode::Cast && found->second->srcs.size() == 1) {
+        const auto source = types.find(found->second->srcs[0]);
+        const auto from = source == types.end() ? std::nullopt : source->second.SizeInBytes();
+        const auto to = found->second->type.SizeInBytes();
+        if (source != types.end() && source->second.IsInteger() && !source->second.IsSigned() && from && to &&
+            *from <= *to)
+            names.push_back(found->second->srcs[0]);
+    }
+    const auto zero = [&](const LirReg reg) {
+        const auto found = definitions.find(reg);
+        return found != definitions.end() && found->second->op == LirOpcode::Const &&
+               (found->second->strArg == "0" || found->second->strArg == "0x0");
+    };
+    const auto immediate = dominance.ImmediateDominators();
+    for (std::uint32_t depth = 0; depth < 64 && block < immediate.size(); ++depth) {
+        const auto predecessors = cfg.predecessors[block];
+        if (predecessors.size() == 1) {
+            const auto &term = function.blocks[predecessors[0]].term;
+            if (term && term->kind == LirTermKind::Branch && term->trueTarget != term->falseTarget) {
+                const auto condition = definitions.find(term->cond);
+                if (condition != definitions.end() && condition->second->srcs.size() == 2) {
+                    const LirInstr &comparison = *condition->second;
+                    const bool taken = term->trueTarget == block;
+                    const LirReg left = comparison.srcs[0];
+                    const LirReg right = comparison.srcs[1];
+                    const auto named = [&](const LirReg reg) { return std::ranges::contains(names, reg); };
+                    const bool against = (named(left) && zero(right)) || (named(right) && zero(left));
+                    if (against && ((comparison.op == LirOpcode::CmpEq && !taken) ||
+                                    (comparison.op == LirOpcode::CmpNe && taken))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if (block == 0 || immediate[block] == LirDominance::Invalid || immediate[block] == block) {
+            return false;
+        }
+        block = immediate[block];
+    }
+    return false;
+}
+
+/// The bound on an unsigned `value` that control reaching `block` has seen it compare against a constant, through a
+/// branch that dominates it: the largest value it can hold when `upper`, the smallest otherwise.
+std::optional<std::uint64_t> BranchBound(const LirFunc &function, const LirControlFlow &cfg,
+                                         const LirDominance &dominance,
+                                         const std::unordered_map<LirReg, const LirInstr *> &definitions,
+                                         std::uint32_t block, const LirReg value, const bool upper) {
+    const auto constant = [&](const LirReg reg) -> std::optional<std::uint64_t> {
+        const auto definition = definitions.find(reg);
+        if (definition == definitions.end() || definition->second->op != LirOpcode::Const) {
+            return std::nullopt;
+        }
+        const auto parsed = ParseConstant(definition->second->strArg, definition->second->type);
+        if (!parsed || parsed->Width() > 64 || parsed->GetKind() != TypedConstant::Kind::UnsignedInteger) {
+            return std::nullopt;
+        }
+        return parsed->RawBits();
+    };
+    const auto immediate = dominance.ImmediateDominators();
+    for (std::uint32_t depth = 0; depth < 64 && block < immediate.size(); ++depth) {
+        const auto predecessors = cfg.predecessors[block];
+        if (predecessors.size() == 1) {
+            const auto &term = function.blocks[predecessors[0]].term;
+            if (term && term->kind == LirTermKind::Branch && term->trueTarget != term->falseTarget) {
+                const auto condition = definitions.find(term->cond);
+                if (condition != definitions.end() && condition->second->srcs.size() == 2) {
+                    const LirInstr &comparison = *condition->second;
+                    const bool taken = term->trueTarget == block;
+                    // What held on this edge, as `value` against a constant: the comparison, negated on the false
+                    // edge, and mirrored when the value is on the right.
+                    LirOpcode op = comparison.op;
+                    std::optional<std::uint64_t> limit;
+                    if (comparison.srcs[0] == value) {
+                        limit = constant(comparison.srcs[1]);
+                    }
+                    else if (comparison.srcs[1] == value) {
+                        limit = constant(comparison.srcs[0]);
+                        op = op == LirOpcode::CmpLt ? LirOpcode::CmpGt
+                           : op == LirOpcode::CmpLe ? LirOpcode::CmpGe
+                           : op == LirOpcode::CmpGt ? LirOpcode::CmpLt
+                           : op == LirOpcode::CmpGe ? LirOpcode::CmpLe
+                                                    : op;
+                    }
+                    if (limit && !taken) {
+                        op = op == LirOpcode::CmpLt ? LirOpcode::CmpGe
+                           : op == LirOpcode::CmpLe ? LirOpcode::CmpGt
+                           : op == LirOpcode::CmpGt ? LirOpcode::CmpLe
+                           : op == LirOpcode::CmpGe ? LirOpcode::CmpLt
+                                                    : LirOpcode::CmpEq;
+                    }
+                    if (limit) {
+                        if (upper && op == LirOpcode::CmpLt && *limit > 0) {
+                            return *limit - 1;
+                        }
+                        if (upper && op == LirOpcode::CmpLe) {
+                            return *limit;
+                        }
+                        if (!upper && op == LirOpcode::CmpGe) {
+                            return *limit;
+                        }
+                        if (!upper && op == LirOpcode::CmpGt && *limit < ~std::uint64_t{0}) {
+                            return *limit + 1;
+                        }
+                    }
+                }
+            }
+        }
+        if (block == 0 || immediate[block] == LirDominance::Invalid || immediate[block] == block) {
+            return std::nullopt;
+        }
+        block = immediate[block];
+    }
+    return std::nullopt;
+}
+
+/// The largest constant a step from a known index may add: a slice length stays this far below the signed limit,
+/// since no slice in an address space of at most 2^63 bytes holds that many elements of even one byte.
+constexpr std::uint64_t MaximumIndexStep = std::uint64_t{1} << 16;
+
+/// What a dominating comparison shows about a value: nothing, that it is not negative and below some unsigned bound,
+/// or that it is below the length of a slice.
+enum class IndexFact {
+    None,
+    BelowBound,
+    BelowLength
+};
+
+/// Whether control reaching `block` has seen `value`, read as unsigned at its own width, compare below a bound, as a
+/// bounds check does just before an index is used.
+IndexFact KnownIndex(const LirFunc &function, const LirControlFlow &cfg, const LirDominance &dominance,
+                     const std::unordered_map<LirReg, const LirInstr *> &definitions,
+                     const std::unordered_map<LirReg, TypeRef> &types, std::uint32_t block, const LirReg value) {
+    const auto self = types.find(value);
+    if (self == types.end() || !self->second.IsInteger()) {
+        return IndexFact::None;
+    }
+    // The value itself when it is unsigned, and every unsigned reading of it at the same width.
+    const auto reads = [&](const LirReg reg) {
+        if (reg == value) {
+            return !self->second.IsSigned();
+        }
+        const auto found = definitions.find(reg);
+        return found != definitions.end() && found->second->op == LirOpcode::Cast && found->second->srcs.size() == 1 &&
+               found->second->srcs[0] == value && found->second->type.IsInteger() && !found->second->type.IsSigned() &&
+               found->second->type.SizeInBytes() == self->second.SizeInBytes();
+    };
+    const auto length = [&](const LirReg reg) {
+        const auto load = definitions.find(reg);
+        if (load == definitions.end() || load->second->op != LirOpcode::Load || load->second->srcs.size() != 1) {
+            return false;
+        }
+        const auto field = definitions.find(load->second->srcs[0]);
+        return field != definitions.end() && field->second->op == LirOpcode::FieldPtr &&
+               field->second->strArg == "length" && load->second->type.SizeInBytes() == self->second.SizeInBytes();
+    };
+    const auto immediate = dominance.ImmediateDominators();
+    for (std::uint32_t depth = 0; depth < 64 && block < immediate.size(); ++depth) {
+        const auto predecessors = cfg.predecessors[block];
+        if (predecessors.size() == 1) {
+            const auto &term = function.blocks[predecessors[0]].term;
+            if (term && term->kind == LirTermKind::Branch && term->trueTarget != term->falseTarget) {
+                const auto condition = definitions.find(term->cond);
+                if (condition != definitions.end() && condition->second->srcs.size() == 2) {
+                    const LirInstr &comparison = *condition->second;
+                    const bool taken = term->trueTarget == block;
+                    LirReg bound = LirNoReg;
+                    if ((taken && comparison.op == LirOpcode::CmpLt) || (!taken && comparison.op == LirOpcode::CmpGe)) {
+                        bound = reads(comparison.srcs[0]) ? comparison.srcs[1] : LirNoReg;
+                    }
+                    else if ((taken && comparison.op == LirOpcode::CmpGt) ||
+                             (!taken && comparison.op == LirOpcode::CmpLe)) {
+                        bound = reads(comparison.srcs[1]) ? comparison.srcs[0] : LirNoReg;
+                    }
+                    const auto boundType = types.find(bound);
+                    if (bound != LirNoReg && boundType != types.end() && boundType->second.IsInteger() &&
+                        !boundType->second.IsSigned()) {
+                        return length(bound) ? IndexFact::BelowLength : IndexFact::BelowBound;
+                    }
+                }
+            }
+        }
+        if (block == 0 || immediate[block] == LirDominance::Invalid || immediate[block] == block) {
+            return IndexFact::None;
+        }
+        block = immediate[block];
+    }
+    return IndexFact::None;
 }
 
 /// Turns each overflow check that cannot fire into the plain operation, so dead-code elimination and the loop passes
@@ -780,21 +1033,47 @@ bool DemoteProvenChecks(LirFunc &function) {
             }
             const auto width = static_cast<std::uint32_t>(instruction.type.SizeInBytes().value_or(0) * 8);
             const std::uint32_t room = instruction.type.IsSigned() ? width - 1 : width;
-            const auto left = NonNegativeBits(instruction.srcs[0], definitions, types);
-            const auto right = NonNegativeBits(instruction.srcs[1], definitions, types);
+            const std::uint64_t typeMaximum = room == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << room) - 1;
+            // The tighter of what an operand's definition and a dominating comparison with a constant show.
+            const auto bounded = [&](const LirReg reg) -> std::optional<std::uint64_t> {
+                auto bound = KnownMaximum(reg, definitions, types);
+                const auto type = types.find(reg);
+                if (type == types.end() || type->second.IsSigned() || (bound && *bound < typeMaximum)) {
+                    return bound;
+                }
+                analyze();
+                if (const auto below = BranchBound(function, *cfg, *dominance, definitions, blockIndex, reg, true)) {
+                    bound = bound ? std::min(*bound, *below) : *below;
+                }
+                return bound;
+            };
+            const auto left = bounded(instruction.srcs[0]);
+            const auto right = bounded(instruction.srcs[1]);
             bool safe = false;
             if (left && right) {
-                // Two values that are not negative cannot carry past the room their bits leave, and their difference
-                // always fits a signed type.
-                safe = instruction.op == LirOpcode::CheckedAdd ? std::max(*left, *right) + 1 <= room
-                     : instruction.op == LirOpcode::CheckedMul ? *left + *right <= room
-                                                               : instruction.type.IsSigned();
+                // Two values that are not negative cannot pass the maximum their bounds stay below, and their
+                // difference always fits a signed type.
+                safe = instruction.op == LirOpcode::CheckedAdd
+                         ? static_cast<unsigned __int128>(*left) + *right <= typeMaximum
+                     : instruction.op == LirOpcode::CheckedMul
+                         ? static_cast<unsigned __int128>(*left) * *right <= typeMaximum
+                         : instruction.type.IsSigned();
             }
-            if (!safe && instruction.op == LirOpcode::CheckedSub) {
-                // A counter that never falls below the amount taken from it.
-                const auto taken = constant(instruction.srcs[1]);
-                const auto least = taken ? lowerBound(instruction.srcs[0]) : std::nullopt;
-                safe = least && *least >= *taken;
+            if (!safe && instruction.op == LirOpcode::CheckedSub && right) {
+                // A value, or a counter, that never falls below the most that is taken from it.
+                auto least = lowerBound(instruction.srcs[0]);
+                if (!instruction.type.IsSigned() && (!least || *least < *right)) {
+                    analyze();
+                    least =
+                        BranchBound(function, *cfg, *dominance, definitions, blockIndex, instruction.srcs[0], false);
+                }
+                safe = least && *least >= *right;
+                if (!safe && *right <= 1 && !instruction.type.IsSigned()) {
+                    // Taking one from a value a dominating test showed is not zero.
+                    analyze();
+                    safe =
+                        KnownNonZero(function, *cfg, *dominance, definitions, types, blockIndex, instruction.srcs[0]);
+                }
             }
             if (!safe && instruction.op == LirOpcode::CheckedAdd) {
                 const auto one = [&](const LirReg reg) {
@@ -808,6 +1087,21 @@ bool DemoteProvenChecks(LirFunc &function) {
                 if (counter != LirNoReg) {
                     analyze();
                     safe = KnownLess(function, *cfg, *dominance, definitions, types, blockIndex, counter);
+                }
+            }
+            if (!safe && (instruction.op == LirOpcode::CheckedAdd || instruction.op == LirOpcode::CheckedSub)) {
+                // A step from a value that just passed a bounds check, which shows it is a valid index: not negative
+                // and below a length, which no slice in memory brings near the signed limit.
+                const auto amount = constant(instruction.srcs[1]);
+                if (amount && *amount <= MaximumIndexStep) {
+                    analyze();
+                    const auto index =
+                        KnownIndex(function, *cfg, *dominance, definitions, types, blockIndex, instruction.srcs[0]);
+                    const bool isSigned = instruction.type.IsSigned();
+                    safe = instruction.op == LirOpcode::CheckedSub
+                             ? isSigned && index != IndexFact::None
+                             : index == IndexFact::BelowLength ||
+                                   (index == IndexFact::BelowBound && !isSigned && *amount == 1);
                 }
             }
             if (safe) {

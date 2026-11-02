@@ -25,6 +25,26 @@ std::string IntegerMaximumLiteral(const std::uint64_t bits, const bool isSigned)
     return (isSigned ? "0x7" : "0xF") + std::string(static_cast<std::size_t>(bits / 4 - 1), 'F');
 }
 
+/// The unsigned integer type `bits` wide.
+[[nodiscard]] TypeRef UnsignedOfWidth(const std::uint64_t bits) {
+    switch (bits) {
+    case 8:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt8);
+    case 16:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt16);
+    case 32:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt32);
+    case 64:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt64);
+    case 128:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt128);
+    case 256:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt256);
+    default:
+        return TypeRef::MakePrimitive(TypeRef::Kind::UInt512);
+    }
+}
+
 constexpr std::uint32_t BoundBits = WideInteger::MaxBits;
 
 [[nodiscard]] std::uint32_t BitsOf(const TypeRef &type) {
@@ -375,20 +395,26 @@ void HirToLirContext::EmitIntegerCastCheck(const LirReg value, const TypeRef &fr
     }
     const TypeRef flag = TypeRef::MakeBool();
     LirReg fits = LirNoReg;
-    const auto require = [&](const LirReg condition) {
-        fits = fits == LirNoReg ? condition : EmitBinary(LirOpcode::And, fits, condition, flag);
-    };
-    if (fromSigned && !toSigned) {
-        require(EmitBinary(LirOpcode::CmpGe, value, EmitConst("0", from), flag));
+    if (!fromSigned) {
+        // An unsigned value only has a top to pass.
+        fits = EmitBinary(LirOpcode::CmpLe, value, EmitConst(IntegerMaximumLiteral(toBits, toSigned), from), flag);
     }
-    if (fromSigned && toSigned) {
-        require(EmitBinary(LirOpcode::CmpGe, value, EmitConst(SignedMinimumLiteral(to), from), flag));
+    else if (toBits >= fromBits) {
+        // A signed value into an unsigned type at least as wide only has to be non-negative.
+        fits = EmitBinary(LirOpcode::CmpGe, value, EmitConst("0", from), flag);
     }
-    if (toBits < fromBits || (!fromSigned && toSigned)) {
-        require(EmitBinary(LirOpcode::CmpLe, value, EmitConst(IntegerMaximumLiteral(toBits, toSigned), from), flag));
+    else {
+        // A range on both sides is one unsigned comparison: a negative value read as unsigned is above any maximum, and
+        // a signed target's range is first shifted to start at zero.
+        const TypeRef unsignedFrom = UnsignedOfWidth(fromBits);
+        LirReg shifted = value;
+        if (toSigned) {
+            // Adding the magnitude of the target's minimum, which the wider source holds.
+            shifted = EmitBinary(LirOpcode::Add, value, EmitConst(SignedMinimumLiteral(to).substr(1), from), from);
+        }
+        fits = EmitBinary(LirOpcode::CmpLe, EmitConversion(shifted, from, unsignedFrom),
+                          EmitConst(IntegerMaximumLiteral(toBits, false), unsignedFrom), flag);
     }
-    if (fits != LirNoReg) {
-        EmitTrapUnless(fits, "integer cast out of range", location);
-    }
+    EmitTrapUnless(fits, "integer cast out of range", location);
 }
 } // namespace Rux::HirToLirDetail
