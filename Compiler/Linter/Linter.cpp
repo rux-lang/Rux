@@ -307,10 +307,9 @@ bool IsSymbolicOperatorName(const std::string_view name) {
     });
 }
 
-/// A destructor is named after its type, prefixed with `~`; applying ordinary function-name casing to the complete
-/// spelling would incorrectly reject every canonical destructor.
+/// A destructor is declared `func ~(&var self)`, so its name is `~`, to which no casing rule applies.
 bool IsDestructorName(const std::string_view name) {
-    return name.size() > 1 && name.front() == '~';
+    return name == "~";
 }
 
 class LinterVisitor {
@@ -467,7 +466,10 @@ private:
                     Warn(tag.range.start, std::format("@returns is not valid on '{}'", name));
                 }
                 else if (!returnsValue) {
-                    Warn(tag.range.start, std::format("@returns is not valid because '{}' returns no value", name));
+                    Warn(tag.range.start,
+                         IsDestructorName(name)
+                             ? std::string("@returns is not valid because a destructor returns no value")
+                             : std::format("@returns is not valid because '{}' returns no value", name));
                 }
             }
         }

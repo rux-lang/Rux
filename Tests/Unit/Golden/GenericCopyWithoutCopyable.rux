@@ -8,7 +8,7 @@ struct Owner {
 }
 
 extend Owner {
-    func ~Owner(&var self) {}
+    func ~(&var self) {}
 }
 
 func Duplicate<T>(value: T) -> (T, T) {

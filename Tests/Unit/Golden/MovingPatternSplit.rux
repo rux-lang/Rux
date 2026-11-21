@@ -1,7 +1,7 @@
 struct Handle { code: int32; }
 
 extend Handle {
-    func ~Handle(&var self) {}
+    func ~(&var self) {}
 }
 
 struct Holder { handle: Handle; extra: int32; }
@@ -46,7 +46,7 @@ struct Counter { count: int32; }
 
 extend Counter {
     func Clone(&self) -> Counter { return Counter { count: self.count }; }
-    func ~Counter(&var self) {}
+    func ~(&var self) {}
 }
 
 func SplitCloned(counter: Counter) -> int32 {

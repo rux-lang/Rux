@@ -322,7 +322,7 @@ extend Buffer {
     func Clear(&var self)            // borrows the Buffer exclusively for writing
     func Consume(self)               // takes the Buffer by value
     func Handle(*var self)           // takes a raw *var Buffer; `*self` takes a *Buffer
-    func ~Buffer(&var self)          // a destructor takes its receiver the same way
+    func ~(&var self)          // a destructor takes its receiver the same way
 }
 ```
 
@@ -940,23 +940,23 @@ Only the assignment's own target is written. In `v[keys[j]] = x`, the subscript 
 
 ## Destruction
 
-A destructor is a body-bearing special function named after its type with a leading `~`:
+A destructor is a body-bearing special function written `func ~(&var self)` in an `extend` block of its type's own package; the compiler calls it, so it carries no name of its own:
 
 ```rux
 extend String {
-    func ~String(&var self) {
+    func ~(&var self) {
         Free(self.data);
     }
 }
 ```
 
-The compiler invokes it exactly once for each initialized value that still owns its state, then destroys contained fields, elements, and payloads in reverse construction order. Destruction runs at ordinary scope exit, replacement, `return`, `break`, `continue`, the propagation of an absence through `?`, and an error leaving a scope for its handler or the caller. A moved-from or never-initialized value is not destroyed. Panic and process termination do not unwind.
+A type has at most one (`'Cell' already has a destructor`). The older spelling that repeated the type's name, `func ~Cell(&var self)`, is `a destructor is written without the type's name` with `help: write 'func ~(&var self)'`, and `pub` before one is `a destructor takes no visibility modifier`: it runs wherever a value of the type ends, in any package, whoever may name the type. The compiler invokes it exactly once for each initialized value that still owns its state, then destroys contained fields, elements, and payloads in reverse construction order. Destruction runs at ordinary scope exit, replacement, `return`, `break`, `continue`, the propagation of an absence through `?`, and an error leaving a scope for its handler or the caller. A moved-from or never-initialized value is not destroyed. Panic and process termination do not unwind.
 
 A destructor makes its type move-only, as [Copy and Move](#copy-and-move) describes, so a value with one is never copied implicitly and each one is destroyed by its last owner. A destructure that takes its value over owns every part of it: a destructuring `let`, which owns its whole initializer, and a match arm whose subject was handed over with `move`, is a temporary such as a `Clone` result, or is the copy a by-value match makes of plain data, as well as a `catch` arm, which owns the error. A part the pattern binds to a name belongs to that binding and is destroyed with it. A part bound to `_`, and a structure field the pattern leaves out, has no owner left, so it is destroyed on the spot — at the `let`, or at the top of the arm before its body runs — like a temporary nobody kept, in the order the parts appear in the pattern. `let (_, second) = move pair;` therefore destroys the first element immediately and the second when `second` goes out of scope, and `let Parcel { contents: kept } = move parcel;` destroys every other field of `parcel` at the `let`, in declaration order. A structure pattern in `let` that binds nothing destroys the value whole, as an arm does. `_` on its own is the same wildcard: `let _ = move value;` and `let _ = value.Clone();` bind no name, so `_` cannot be read afterwards and the value is destroyed at the statement, before the next one runs. An arm that binds nothing from a consumed subject destroys the subject whole, a consumed subject that no arm takes — every arm refuted it, by a guard or a test — is destroyed as the match ends, and a match that takes nothing from a named subject leaves it with its owner. A match that binds from a named plain-data value without `move` matches a copy of it: the original stays with its owner and the arms own the copy exactly as they would own a subject handed over. A named owning subject is matched with `match move value`, or as a clone with `match value.Clone()`, whose arms own the clone and destroy it once.
 
-A moving pattern may split a tuple, or a structure that declares no destructor of its own, even when the parts are droppable. A structure whose type declares `~T` cannot be split by a moving pattern, whether it is the subject, a member of a tuple or payload, or part of a clone a match takes apart: its destructor runs on the whole value, so a pattern that binds any of its fields in an arm that owns them is an error, `cannot split 'T' with a moving pattern, because it declares destructor '~T'`. A destructuring `let` always owns what it takes apart, a clone included, so `let T { field: name } = value.Clone();` is refused for such a type as well. Such a value can still be tested with a pattern that binds none of its fields, bound whole, or matched through a borrow, which takes nothing from it. The rule matches the one that rejects moving a single field out of a droppable value with `move`.
+A moving pattern may split a tuple, or a structure that declares no destructor of its own, even when the parts are droppable. A structure whose type declares a destructor cannot be split by a moving pattern, whether it is the subject, a member of a tuple or payload, or part of a clone a match takes apart: its destructor runs on the whole value, so a pattern that binds any of its fields in an arm that owns them is an error, `cannot split 'T' with a moving pattern, because it declares a destructor`. A destructuring `let` always owns what it takes apart, a clone included, so `let T { field: name } = value.Clone();` is refused for such a type as well. Such a value can still be tested with a pattern that binds none of its fields, bound whole, or matched through a borrow, which takes nothing from it. The rule matches the one that rejects moving a single field out of a droppable value with `move`.
 
-`Core::Drop` is not part of the language or Core package. Lifecycle cleanup is expressed only by `~Type`, and an ordinary interface or method named `Drop` has no compiler-defined ownership meaning.
+`Core::Drop` is not part of the language or Core package. Lifecycle cleanup is expressed only by a destructor, `func ~(&var self)`, and an ordinary interface or method named `Drop` has no compiler-defined ownership meaning.
 
 ## Final Ownership Boundary
 

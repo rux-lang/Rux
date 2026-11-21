@@ -22,7 +22,7 @@ struct Named {
 }
 
 extend Named {
-    func ~Named(&var self) {
+    func ~(&var self) {
         // Safety: every `Named` in this test points `drops` at a local of `Main` that outlives it.
         *self.drops += 1;
     }

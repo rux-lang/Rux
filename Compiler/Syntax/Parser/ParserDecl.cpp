@@ -373,7 +373,9 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             continue;
         }
         ParsedAttrs attrs = ParseAttrs();
-        bool pub = Match(TokenKind::PubKeyword);
+        const std::optional<SourceLocation> pubLocation =
+            Check(TokenKind::PubKeyword) ? std::optional{Advance().location} : std::nullopt;
+        bool pub = pubLocation.has_value();
         const bool isIntrinsic = Match(TokenKind::IntrinsicKeyword);
         const auto intrinsicLoc = Previous().location;
         if (Check(TokenKind::ConstKeyword)) {
@@ -403,6 +405,12 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         }
         if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
             method->documentation = std::move(documentation);
+            if (pub && method->name == "~") {
+                // The compiler runs a destructor wherever a value of the type ends, in any package, so nothing about
+                // it depends on who may name it.
+                EmitError(*pubLocation, "a destructor takes no visibility modifier",
+                          "remove 'pub': it runs wherever a value of the type ends, in any package");
+            }
             if (isIntrinsic) {
                 // A method's intrinsic is namespaced by the type it extends, so
                 // `extend Target { intrinsic func HasFeature }` is

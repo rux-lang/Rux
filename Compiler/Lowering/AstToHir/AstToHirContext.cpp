@@ -226,7 +226,7 @@ std::string AstToHirContext::DestructorSymbol(const TypeRef &type) {
     if (byType == methodsByType.end()) {
         return {};
     }
-    const auto destructor = byType->second.find("~" + UnqualifiedNominalName(typeName));
+    const auto destructor = byType->second.find("~");
     return destructor == byType->second.end() || destructor->second.empty()
              ? std::string{}
              : ConcreteMethodCalleeName(typeName, type, *destructor->second.front());

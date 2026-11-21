@@ -559,7 +559,7 @@ extend CompressWriter {
         self.blockStart = WindowSize;
     }
 
-    func ~CompressWriter(&var self) {
+    func ~(&var self) {
         // Safety: the buffer invariant: each block came from `Take` in `New` with this allocator and this size.
         Give(self.allocator, self.data as *var opaque, DataCapacity);
         Give(self.allocator, self.head as *var opaque, HashSize * 4u);

@@ -17,7 +17,7 @@ extend MoveOnly {
         return Self { value };
     }
 
-    func ~MoveOnly(&var self) {}
+    func ~(&var self) {}
 }
 
 #NoMove

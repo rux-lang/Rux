@@ -37,7 +37,7 @@ bool AnalysisContext::TypeHasDirectDestructor(const std::string &baseName) const
     if (methods == methodsByType.end()) {
         return false;
     }
-    const auto destructors = methods->second.find("~" + UnqualifiedNominalName(baseName));
+    const auto destructors = methods->second.find("~");
     return destructors != methods->second.end() &&
            std::ranges::any_of(destructors->second, [](const FuncDecl *method) { return method->body != nullptr; });
 }

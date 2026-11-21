@@ -30,7 +30,7 @@ extend Tracked {
         return Self { log: self.log, id: self.id + 10 };
     }
 
-    func ~Tracked(&var self) {
+    func ~(&var self) {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
         self.log.drops = self.log.drops + 1;
         self.log.order = self.log.order * 100 + (self.id as int64);
@@ -48,7 +48,7 @@ struct Plain {
 }
 
 extend Plain {
-    func ~Plain(&var self) {
+    func ~(&var self) {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
         self.log.drops = self.log.drops + 1;
         self.log.order = self.log.order * 100 + (self.id as int64);

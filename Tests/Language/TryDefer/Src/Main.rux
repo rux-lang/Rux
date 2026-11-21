@@ -29,7 +29,7 @@ struct Guard {
 }
 
 extend Guard {
-    func ~Guard(&var self) {
+    func ~(&var self) {
         // Safety: every `Guard` in this test stores `@journal`, a local that outlives the guard.
         (*self.journal).Note(self.id);
     }

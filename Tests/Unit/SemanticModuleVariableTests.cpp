@@ -141,7 +141,7 @@ TEST_CASE("a module variable cannot hold a value that needs destruction or a bor
     const auto diagnostics = AnalyzeSource(R"(
         struct Handle { value: int; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         var Open: Handle = Handle { value: 1 };
         var Name: char8[..] = "name";
@@ -224,7 +224,7 @@ TEST_CASE("a thread-local variable follows the rules of a module variable") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Handle { value: int; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Seed() -> int { return 1; }
         thread var Open: Handle = Handle { value: 1 };

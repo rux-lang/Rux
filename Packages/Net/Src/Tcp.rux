@@ -80,7 +80,7 @@ extend TcpListener {
         return PollSource { handle: self.handle };
     }
 
-    func ~TcpListener(&var self) {
+    func ~(&var self) {
         CloseSocket(self.handle);
         self.handle = NoSocket;
     }
@@ -160,7 +160,7 @@ extend TcpStream {
         return PollSource { handle: self.handle };
     }
 
-    func ~TcpStream(&var self) {
+    func ~(&var self) {
         CloseSocket(self.handle);
         self.handle = NoSocket;
     }

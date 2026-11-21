@@ -11,7 +11,7 @@ rux add Rux/FileSystem
 ## What it provides
 
 - **`File` and `OpenOptions`** — a move-only owned handle the type system closes exactly once and copyable options created with `OpenOptions()`. Safe operations borrow the handle through `&File` or `&var File`; only stored platform handles and explicit output slots remain raw pointers.
-- **Deterministic owners** — directory iterators, temporary files and directories, and atomic writes prohibit copying, transfer with `move`, and clean up through `~Type` destructors. Operations that can fail, such as `Open`, `Create`, and `Begin`, keep their descriptive names and throw `IoError`.
+- **Deterministic owners** — directory iterators, temporary files and directories, and atomic writes prohibit copying, transfer with `move`, and clean up through their destructors. Operations that can fail, such as `Open`, `Create`, and `Begin`, keep their descriptive names and throw `IoError`.
 - **A file is a stream, and a stream is usually a borrow** — `File` implements `Reader`, `Writer` and `Seeker`, so anything wanting a stream for the length of a call takes the file:
 
   ```rux

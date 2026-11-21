@@ -7,7 +7,7 @@ struct Buffer {
 
 extend Buffer {
 
-    func ~Buffer(&var self) {}
+    func ~(&var self) {}
 }
 
 struct Holder {

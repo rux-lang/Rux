@@ -108,7 +108,7 @@ TEST_CASE("a propagated failure destroys every local that was live when it left"
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Guarded(ok: bool) -> int32 throws ParseError {
             let handle = Handle { value: 1i32 };
@@ -129,7 +129,7 @@ TEST_CASE("a local declared after the propagation is not destroyed by it") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Later(ok: bool) -> int32 throws ParseError {
             let value = try Read(ok);
@@ -195,7 +195,7 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Guard { count: *var int32; }
         extend Guard {
-            func ~Guard(&var self) {
+            func ~(&var self) {
                 // Safety: `Guarded` points `count` at its caller's `int32`, which outlives the guard
                 *self.count += 1i32;
             }

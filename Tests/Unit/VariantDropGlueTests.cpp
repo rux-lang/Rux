@@ -90,7 +90,7 @@ std::size_t Blocks(const LirFunc &function, const std::string_view prefix) {
 const std::string kOwner = R"(
     struct Handle { value: int32; }
     extend Handle {
-        func ~Handle(&var self) { self.value = 0i32; }
+        func ~(&var self) { self.value = 0i32; }
     }
 )";
 } // namespace
@@ -188,7 +188,7 @@ TEST_CASE("drop lowering branches on each droppable case before reading payloads
     const LirFunc &glue = LirFunction(package, symbol);
     CHECK_EQ(Blocks(glue, "drop.variant"), 4);
     CHECK_EQ(Blocks(glue, "drop.variant.after"), 2);
-    CHECK_EQ(Calls(glue, "Handle::~Handle"), 3);
+    CHECK_EQ(Calls(glue, "Handle::~"), 3);
     for (const LirBlock &block : glue.blocks) {
         if (block.label.starts_with("drop.variant") && !block.label.starts_with("drop.variant.after")) {
             CHECK(std::ranges::any_of(
@@ -262,7 +262,7 @@ TEST_CASE("variant values in returns and loops keep one flag-guarded glue call p
     const LirFunc &run = LirFunction(package, "Run");
     CHECK_EQ(Calls(make, plan->symbol), 0);
     CHECK_GE(Calls(run, plan->symbol), 1);
-    CHECK_EQ(Calls(make, "Handle::~Handle"), 0);
+    CHECK_EQ(Calls(make, "Handle::~"), 0);
     CHECK(std::ranges::any_of(
         run.blocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
 }
@@ -271,29 +271,29 @@ TEST_CASE("variant direct destructors run before active payload destruction") {
     const HirPackage hir = DropHir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
         extend Held {
-            func ~Held(&var self) {}
+            func ~(&var self) {}
         }
         func Use(value: Held) {}
     )");
     const DropGluePlan &plan = DropPlan(hir, "Held");
     REQUIRE_EQ(plan.steps.size(), 2);
     CHECK_EQ(plan.steps[0].kind, DropGlueStep::Kind::InvokeDrop);
-    CHECK_EQ(plan.steps[0].dropSymbol, "Held::~Held");
+    CHECK_EQ(plan.steps[0].dropSymbol, "Held::~");
     CHECK_EQ(plan.steps[1].kind, DropGlueStep::Kind::EnumVariant);
     CHECK_EQ(plan.steps[1].form, CaseTypeForm::Variant);
 
     const LirPackage lir = DropLir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
         extend Held {
-            func ~Held(&var self) {}
+            func ~(&var self) {}
         }
         func Use(value: Held) {}
     )");
     const auto lirPlan = std::ranges::find(lir.dropGlues, TypeRef::MakeNamed("Held"), &DropGluePlan::type);
     REQUIRE(lirPlan != lir.dropGlues.end());
     const LirFunc &glue = LirFunction(lir, lirPlan->symbol);
-    CHECK_EQ(Calls(glue, "Held::~Held"), 1);
-    CHECK_EQ(Calls(glue, "Handle::~Handle"), 1);
+    CHECK_EQ(Calls(glue, "Held::~"), 1);
+    CHECK_EQ(Calls(glue, "Handle::~"), 1);
     CHECK_EQ(Blocks(glue, "drop.variant"), 2);
 }
 
@@ -301,7 +301,7 @@ TEST_CASE("scalar enum destruction never enters variant payload dispatch") {
     const LirPackage package = DropLir(R"(
         enum Status: uint8 { Ready = 1, Busy = 2 }
         extend Status {
-            func ~Status(&var self) {}
+            func ~(&var self) {}
         }
         func Use(value: Status) {}
     )");
@@ -311,7 +311,7 @@ TEST_CASE("scalar enum destruction never enters variant payload dispatch") {
     CHECK_EQ(plan->steps.front().kind, DropGlueStep::Kind::InvokeDrop);
     CHECK_EQ(plan->steps.front().form, CaseTypeForm::Enumeration);
     const LirFunc &glue = LirFunction(package, plan->symbol);
-    CHECK_EQ(Calls(glue, "Status::~Status"), 1);
+    CHECK_EQ(Calls(glue, "Status::~"), 1);
     CHECK_EQ(Blocks(glue, "drop.variant"), 0);
     CHECK(std::ranges::none_of(glue.blocks, [](const LirBlock &block) {
         return std::ranges::any_of(block.instrs,
@@ -339,7 +339,7 @@ TEST_CASE("propagation rolls back every completed variant payload in reverse ord
     CHECK_EQ(handle->steps.size(), 1);
     const LirFunc &build = LirFunction(package, "Build");
     CHECK_EQ(Calls(build, handle->symbol), 2);
-    CHECK_EQ(Calls(build, "Handle::~Handle"), 0);
+    CHECK_EQ(Calls(build, "Handle::~"), 0);
     CHECK_GE(build.blocks.size(), 4);
     CHECK(std::ranges::any_of(
         build.blocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
@@ -362,5 +362,5 @@ TEST_CASE("AArch64 receives the same active-case drop dispatch") {
     REQUIRE(plan != package.dropGlues.end());
     const LirFunc &glue = LirFunction(package, plan->symbol);
     CHECK_EQ(Blocks(glue, "drop.variant"), 2);
-    CHECK_EQ(Calls(glue, "Handle::~Handle"), 1);
+    CHECK_EQ(Calls(glue, "Handle::~"), 1);
 }

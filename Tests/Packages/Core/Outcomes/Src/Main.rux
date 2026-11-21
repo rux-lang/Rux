@@ -5,7 +5,7 @@ struct Handle {
 }
 
 extend Handle {
-    func ~Handle(&var self) {}
+    func ~(&var self) {}
 }
 
 enum Failure: int8 {

@@ -1,0 +1,13 @@
+// The compiler runs a destructor wherever a value of the type ends, in any package, so it takes no visibility
+// modifier.
+struct Handle { slot: int32; }
+
+extend Handle {
+    pub func ~(&var self) {
+        self.slot = 0i32;
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

@@ -167,7 +167,7 @@ extend NativePath {
         return self.units;
     }
 
-    func ~NativePath(&var self) {
+    func ~(&var self) {
         let layout = Layout { size: (self.length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
         var borrowed = self.allocator;
         try borrowed.Deallocate(self.units as *var opaque, layout) catch { _ => {} };
@@ -283,7 +283,7 @@ extend File {
     }
     /// Closes with the outcome discarded: the safety net, not the contract.
     /// @see https://rux-lang.dev/docs/api/filesystem/file#destructor
-    func ~File(&var self) {
+    func ~(&var self) {
         try self.Close() catch { _ => {} };
     }
 }

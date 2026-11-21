@@ -441,7 +441,7 @@ extend TomlValue {
     /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
     /// tree something a reader can check.
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#destructor
-    func ~TomlValue(&var self) {
+    func ~(&var self) {
         self.text.Clear();
         // Each element taken out dies at the end of its test, taking its own children with it.
         while self.elements.Pop() is .Some(_) {}
@@ -452,7 +452,7 @@ extend TomlValue {
 extend TomlEntry {
     /// Releases the key and the value.
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#toml-entry-destructor
-    func ~TomlEntry(&var self) {
+    func ~(&var self) {
         self.key.Clear();
     }
 }

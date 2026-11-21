@@ -64,7 +64,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
                       std::format("special operation '{}' may only be declared in an extend block", d.name));
         }
         else if (IsDestructorName(d.name)) {
-            EmitError(d.location, std::format("destructor '{}' may only be declared in an extend block", d.name));
+            EmitError(d.location, "a destructor may only be declared in an extend block");
         }
     }
     AppendTypeParameterNames(currentTypeParams, d.typeParams);

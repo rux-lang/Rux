@@ -116,7 +116,7 @@ extend RwLock<T> {
         return WriteGuard<T> { block };
     }
 
-    func ~RwLock(&var self) {
+    func ~(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle or guard is left to reach the block.
         if ReleaseBlock(@self.block.references) {
@@ -135,7 +135,7 @@ extend ReadGuard<T> {
         return self.block.value;
     }
 
-    func ~ReadGuard(&var self) {
+    func ~(&var self) {
         let block = self.block;
         // Safety: the guard holds a shared hold and a count on `block`, so the block is live, and its state word is
         // reached only atomically.
@@ -170,7 +170,7 @@ extend WriteGuard<T> {
         return self.block.value;
     }
 
-    func ~WriteGuard(&var self) {
+    func ~(&var self) {
         let block = self.block;
         // Safety: the guard holds the exclusive hold and a count on `block`, so the block is live, and its state word
         // is reached only atomically.

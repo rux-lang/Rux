@@ -95,7 +95,7 @@ extend Rc<T> {
         return self.block == other.block;
     }
 
-    func ~Rc(&var self) {
+    func ~(&var self) {
         let block = self.block;
         if block == null { return; }
         self.block = null;
@@ -200,7 +200,7 @@ extend Arc<T> {
         return self.block == other.block;
     }
 
-    func ~Arc(&var self) {
+    func ~(&var self) {
         let block = self.block;
         if block == null { return; }
         self.block = null;

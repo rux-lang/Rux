@@ -16,10 +16,10 @@
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 
 /// One heap-allocated value of `T`, owned by exactly one holder.
-/// Move-only: its copy operation is prohibited and `~Box` releases its allocation. Transfer one with `move`; the
-/// source is then moved-out and reading it is rejected while compiling rather than at run time.
-/// The storage is released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or
-/// overwriting assignment the value's life ends at.
+/// Move-only: its copy operation is prohibited and its destructor releases its allocation. Transfer one with `move`;
+/// the source is then moved-out and reading it is rejected while compiling rather than at run time. The storage is
+/// released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or overwriting assignment
+/// the value's life ends at.
 /// @typeParam T the type the box owns one of
 /// @see https://rux-lang.dev/docs/api/allocator/box
 pub struct Box<T> {
@@ -118,7 +118,7 @@ extend Box<T> {
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
     /// away is not destroyed where it used to live, so the storage is released exactly once.
     /// @see https://rux-lang.dev/docs/api/allocator/box#destructor
-    func ~Box(&var self) {
+    func ~(&var self) {
         if self.pointer != null {
             let held = self.pointer;
             self.pointer = null;

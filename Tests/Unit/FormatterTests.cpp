@@ -15,7 +15,7 @@ TEST_CASE("formatter leaves canonical source unchanged") {
 
 TEST_CASE("formatter preserves ownership and lifecycle syntax") {
     constexpr std::string_view source = R"(extend Cell {
-    func ~Cell(&var self) {}
+    func ~(&var self) {}
 }
 func Transfer(source: Cell) -> Cell {
     let destination = move source;

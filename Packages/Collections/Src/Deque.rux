@@ -25,7 +25,7 @@ import Memory::Copy;
 pub const MinimumDequeCapacity: uint = 4;
 
 /// A double-ended queue over a circular buffer.
-/// Move-only: it owns its elements and storage, prohibits copying, and destroys both with `~Deque`.
+/// Move-only: it owns its elements and storage, prohibits copying, and destroys both in its destructor.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/deque
 pub struct Deque<T> {
@@ -245,7 +245,7 @@ extend Deque<T> {
     /// Runs when the deque's life ends. The elements go first and the block second, since an element destroyed after
     /// its storage was released would be read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/deque#destructor
-    func ~Deque(&var self) {
+    func ~(&var self) {
         self.Clear();
         if self.data != null {
             ReleaseBlock<T>(self.allocator, self.data, self.capacity);

@@ -138,7 +138,7 @@ TEST_CASE("coalescing moves a move-only payload out as a plain read of its bindi
     const HirPackage package = LowerCoalescingSource(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Fallback() -> Handle { return Handle { value: 9i32 }; }
         func Pick(option: Handle?) -> int32 {

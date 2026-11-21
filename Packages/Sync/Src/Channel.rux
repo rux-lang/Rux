@@ -232,7 +232,7 @@ extend Channel<T> {
         return move value;
     }
 
-    func ~Channel(&var self) {
+    func ~(&var self) {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
         // atomically.

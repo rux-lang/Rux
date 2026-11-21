@@ -60,7 +60,7 @@ Output = "Artifacts"
 #NoMove
 struct Cell { value: int32; }
 extend Cell {
-    func ~Cell(&var self) {}
+    func ~(&var self) {}
 }
 func Borrow(shared: &Cell, exclusive: &var Cell) -> int { return shared.value; }
 enum State: uint8 { Idle = 1, Ready = 2 }
@@ -123,7 +123,7 @@ func ReadResult(value: Result<int32, State>) -> int32 {
     const auto rcu = ReadTextFile(root / "Temp" / "Rcu" / "Main.rcu.txt");
     CHECK(tokens.starts_with("   1:1     FuncKeyword"));
     CHECK(ast.starts_with("Module \""));
-    CHECK(ast.contains("FuncDecl '~Cell' (self: &var Cell)"));
+    CHECK(ast.contains("FuncDecl '~' (self: &var Cell)"));
     CHECK(ast.contains("EnumDecl 'State' : uint8"));
     CHECK(ast.contains("Member 'Idle' = 1"));
     CHECK(ast.contains("VariantDecl 'Result'<T, E>"));

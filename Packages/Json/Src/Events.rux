@@ -251,7 +251,7 @@ extend JsonEventReader {
     }
     /// Releases the buffer.
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#destructor
-    func ~JsonEventReader(&var self) {
+    func ~(&var self) {
         self.Release();
     }
 

@@ -15,7 +15,7 @@ struct Token {
 }
 
 extend Token {
-    func ~Token(&var self) {
+    func ~(&var self) {
         drops += 1;
         order = order * 10 + self.id;
     }

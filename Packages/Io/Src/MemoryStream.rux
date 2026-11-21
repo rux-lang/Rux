@@ -166,7 +166,7 @@ extend ByteWriter {
         self.capacity = wanted;
     }
 
-    func ~ByteWriter(&var self) {
+    func ~(&var self) {
         self.Release();
     }
 }

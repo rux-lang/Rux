@@ -32,7 +32,7 @@ pub func CheckProvider() -> bool {
 }
 extend Tracked {
     // Safety: `DropInProvider` is the only maker of a `Tracked`, and its callers pass a live `int`.
-    func ~Tracked(&var self) { *self.counter += self.tail as int; }
+    func ~(&var self) { *self.counter += self.tail as int; }
 }
 pub func DropInProvider(counter: *var int) { let owned = Tracked { counter, tail: 1i64 }; }
 extend Record : Reader { pub func Forward(&self, value: Self) -> Self { return value; } pub func Read(&self) -> int64 { return self.first + self.second; } }

@@ -399,7 +399,7 @@ TEST_CASE("generated lifecycle operations and private destructors remain compile
                                              {{"api.rux", R"(
         pub struct Plain { pub value: int; }
         pub struct Tracked { pub value: int; }
-        extend Tracked { func ~Tracked(&var self) {} }
+        extend Tracked { func ~(&var self) {} }
         pub func MakePlain() -> Plain { return Plain { value: 2 }; }
         pub func MakeTracked() -> Tracked { return Tracked { value: 3 }; }
     )"}});
@@ -409,7 +409,7 @@ TEST_CASE("generated lifecycle operations and private destructors remain compile
 TEST_CASE("private capability prohibitions apply across packages") {
     const std::string dependency = R"(
         pub struct Owning { pub value: int; }
-        extend Owning { func ~Owning(&var self) {} }
+        extend Owning { func ~(&var self) {} }
         #NoCopy
         pub struct NoCopy { pub value: int; }
         extend NoCopy { }

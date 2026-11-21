@@ -7,7 +7,7 @@
 // allocation. A request larger than a whole block gets a block of its own.
 // `Reset` is what makes an arena worth reusing: it rewinds every allocation while keeping the largest block, so the
 // next round of work runs without asking the system for anything at all.
-// The arena owns its blocks, so it moves rather than copies, and `~Arena` releases them. `Handle` gives the
+// The arena owns its blocks, so it moves rather than copies, and its destructor releases them. `Handle` gives the
 // `Allocator` handle a container keeps: it addresses the arena, so its caller promises
 // that the arena outlives every copy, stays where it is, and is not reset while an allocation made through it is in
 // use.
@@ -198,7 +198,7 @@ extend Arena {
     /// Gives every block back to the backing allocator.
     /// Runs when the arena's life ends. Every pointer the arena handed out becomes invalid.
     /// @see https://rux-lang.dev/docs/api/allocator/arena#destructor
-    func ~Arena(&var self) {
+    func ~(&var self) {
         var block = self.current;
         while block != null {
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took

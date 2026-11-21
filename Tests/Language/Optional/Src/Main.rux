@@ -19,7 +19,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(&var self) {
+    func ~(&var self) {
         // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
         self.counter.count = self.counter.count + 1;
     }

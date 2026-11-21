@@ -11,7 +11,7 @@ TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration ord
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
 
         func Take(value: Handle) {}
@@ -74,7 +74,7 @@ TEST_CASE("returns evaluate their value before conditionally destroying every li
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
 
         func Choose(parameter: Handle, selectNested: bool) -> Handle {
@@ -124,7 +124,7 @@ TEST_CASE("loop exits carry every cleanup between the statement and its selected
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
 
         func Run(flag: bool) {
@@ -170,7 +170,7 @@ TEST_CASE("move assignment schedules conditional destruction before replacing dr
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         struct Owner { handle: Handle; }
 
@@ -236,7 +236,7 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         struct Owner { first: Handle; copy: int32; last: Handle; }
         variant Choice { Both(Handle, Handle) }
@@ -292,7 +292,7 @@ namespace {
 constexpr const char *kPlaceReplacementSource = R"(
     struct Handle { value: int32; }
     extend Handle {
-        func ~Handle(&var self) {}
+        func ~(&var self) {}
     }
     struct Owner { handle: Handle; pair: (Handle, int32); items: Handle[2]; }
     struct Grid { cell: Handle; }

@@ -156,7 +156,7 @@ extend BufferedReader {
 
     /// Gives the buffer back. Unread buffered bytes are abandoned, which loses nothing anybody asked for.
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#destructor
-    func ~BufferedReader(&var self) {
+    func ~(&var self) {
         self.Release();
     }
 }
@@ -262,7 +262,7 @@ extend BufferedWriter {
     /// Flushes as a safety net — the outcome has nowhere to go, so a caller who cares flushed already — then
     /// gives the buffer back.
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#destructor
-    func ~BufferedWriter(&var self) {
+    func ~(&var self) {
         try self.Flush() catch { _ => {} };
         self.Abandon();
     }

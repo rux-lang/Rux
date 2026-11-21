@@ -30,7 +30,7 @@ extend Counted {
         return Self { counter: self.counter, id: self.id };
     }
 
-    func ~Counted(&var self) {
+    func ~(&var self) {
         // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Counted`.
         self.counter.drops = self.counter.drops + 1;
     }

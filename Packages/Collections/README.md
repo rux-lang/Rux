@@ -95,7 +95,7 @@ The allocator is injected at construction and kept, so an array built from an ar
 
 Every constructor _copies_ its elements into the storage, which means an array of a move-only element type cannot be built this way: copying such an element would give two owners to a value that promises one. `Vector<T>` and its `Push` is the shape that works, since each element is moved in exactly once.
 
-A container destroys an element it does not know is droppable by relocating it from raw backing storage into a local and letting the local's life end. This raw-storage boundary is deliberate: safe references cannot transfer ownership through borrowed storage. It costs nothing for an element type that owns nothing and is what `~Array` does.
+A container destroys an element it does not know is droppable by relocating it from raw backing storage into a local and letting the local's life end. This raw-storage boundary is deliberate: safe references cannot transfer ownership through borrowed storage. It costs nothing for an element type that owns nothing and is what the destructor of `Array` does.
 
 ## Elements that own something
 

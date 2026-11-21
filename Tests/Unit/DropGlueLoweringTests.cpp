@@ -76,7 +76,7 @@ const char *HandleSource = R"(
     }
 
     extend Handle {
-        func ~Handle(&var self) {
+        func ~(&var self) {
             self.slot = 0i32;
         }
     }
@@ -108,7 +108,7 @@ TEST_SUITE("DropGlueLowering") {
         )");
 
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Handle"));
-        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::~"), 1);
         CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Handle")), 2);
     }
 
@@ -116,7 +116,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(R"(
             struct Owner<T> { value: T; }
             extend Owner<T> {
-                func ~Owner(&var self) {}
+                func ~(&var self) {}
             }
 
             func Main() -> int {
@@ -128,7 +128,8 @@ TEST_SUITE("DropGlueLowering") {
         const auto plan = std::ranges::find(package.dropGlues, TypeRef::MakeNamed("Owner<int32>"), &DropGluePlan::type);
         REQUIRE(plan != package.dropGlues.end());
         REQUIRE_EQ(plan->steps.size(), 1);
-        CHECK(plan->steps.front().dropSymbol.contains("~Owner"));
+        CHECK(plan->steps.front().dropSymbol.starts_with("Owner::~"));
+        CHECK(plan->steps.front().dropSymbol.contains("Owner"));
         CHECK_EQ(CallCount(RequireFunction(package, plan->symbol), plan->steps.front().dropSymbol), 1);
         RequireFunction(package, plan->steps.front().dropSymbol);
     }
@@ -146,7 +147,7 @@ TEST_SUITE("DropGlueLowering") {
         CHECK_EQ(glue.params.front().type->kind, TypeRef::Kind::Pointer);
         REQUIRE_FALSE(glue.params.front().type->inner.empty());
         CHECK_EQ(glue.params.front().type->inner.front()->name, "Handle");
-        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::~"), 1);
     }
 
     TEST_CASE("a scope's end calls the glue once, behind the binding's flag") {
@@ -193,7 +194,7 @@ TEST_SUITE("DropGlueLowering") {
         // A plan carries the whole recipe rather than deferring to the field's own glue, so the field's destructor is
         // reached directly and destroying an owner costs one call per droppable part instead of one per level.
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Owner"));
-        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::~"), 1);
         CHECK_EQ(CallCount(glue, GlueSymbol(package, "Handle")), 0);
         CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Owner")), 1);
     }
@@ -219,7 +220,7 @@ TEST_SUITE("DropGlueLowering") {
 
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Outer"));
         // One call is for the nested field and one is the body of the reverse array-destruction loop.
-        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 2);
+        CHECK_EQ(CallCount(glue, "Handle::~"), 2);
         CHECK_EQ(CallCount(glue, GlueSymbol(package, "Inner")), 0);
         CHECK_EQ(CallCount(glue, GlueSymbol(package, "Handle")), 0);
     }
@@ -238,7 +239,7 @@ TEST_SUITE("DropGlueLowering") {
         )");
 
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Tiny"));
-        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::~"), 1);
         CHECK(std::ranges::any_of(
             glue.blocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
     }

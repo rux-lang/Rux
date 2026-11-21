@@ -161,7 +161,7 @@ extend CString {
 
     /// Gives the block back.
     /// @see https://rux-lang.dev/docs/api/text/c-string#destructor
-    func ~CString(&var self) {
+    func ~(&var self) {
         self.Clear();
     }
 }

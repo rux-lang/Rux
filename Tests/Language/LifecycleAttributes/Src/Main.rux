@@ -50,7 +50,7 @@ struct Guard {
 }
 
 extend Guard {
-    func ~Guard(&var self) {
+    func ~(&var self) {
         closed += self.id;
     }
 }

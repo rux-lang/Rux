@@ -7,7 +7,7 @@ import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Memory::Copy;
 
 /// An owning, growable path.
-/// Move-only: it prohibits copying and gives its block back with `~PathBuffer`.
+/// Move-only: it prohibits copying and gives its block back in its destructor.
 /// Storage invariant, which every raw access here relies on: `length <= capacity`; `data` is null exactly when
 /// `capacity` is zero, and otherwise addresses a block of `capacity` units from `allocator` whose first `length` are
 /// initialized.
@@ -167,7 +167,7 @@ extend PathBuffer {
 
     /// Gives the block back.
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#destructor
-    func ~PathBuffer(&var self) {
+    func ~(&var self) {
         self.Release();
     }
 }

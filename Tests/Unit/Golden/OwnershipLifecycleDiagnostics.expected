@@ -1,1 +1,1 @@
-6:5: error: destructor '~Other' must be named '~Cell' for type 'Cell'
+6:11: error: a destructor is written without the type's name

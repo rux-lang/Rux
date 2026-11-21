@@ -16,7 +16,7 @@
 import Allocator::Allocator;
 
 /// A fixed-length run of elements on storage this array owns.
-/// Move-only: it owns its elements and storage, prohibits copying, and destroys both with `~Array`.
+/// Move-only: it owns its elements and storage, prohibits copying, and destroys both in its destructor.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/array
 pub struct Array<T> {
@@ -227,7 +227,7 @@ extend Array<T> {
     /// an element destroyed after its storage was released would be read from freed memory.
     /// An array that was moved away is not destroyed where it used to live, so this happens exactly once.
     /// @see https://rux-lang.dev/docs/api/collections/array#destructor
-    func ~Array(&var self) {
+    func ~(&var self) {
         if self.data == null { return; }
         var index: uint = 0;
         while index < self.length {

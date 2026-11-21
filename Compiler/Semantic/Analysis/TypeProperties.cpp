@@ -11,7 +11,7 @@ bool AnalysisContext::IsSpecialOperationName(const std::string_view name) {
 }
 
 bool AnalysisContext::IsDestructorName(const std::string_view name) {
-    return name.size() > 1 && name.front() == '~';
+    return name == "~";
 }
 
 void AnalysisContext::ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType) {
@@ -244,10 +244,14 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
     }
 
     const std::string typeName = NamedBaseTypeName(extendedType);
-    const std::string expectedName = "~" + UnqualifiedNominalName(typeName);
-    if (method.name != expectedName) {
-        EmitError(method.location,
-                  std::format("destructor '{}' must be named '{}' for type '{}'", method.name, expectedName, typeName));
+    // Every destructor is named `~`, so a second one would read as an overload of the first.
+    if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
+        if (const auto destructors = methods->second.find("~"); destructors != methods->second.end() &&
+                                                                destructors->second.size() > 1 &&
+                                                                destructors->second.front() != &method) {
+            EmitError(method.location, std::format("'{}' already has a destructor", typeName),
+                      {"a type has at most one destructor"}, "merge the two bodies into one 'func ~(&var self)'");
+        }
     }
 
     const bool canonical = [&] {
@@ -265,11 +269,10 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
         return receiver->inner.front() == expected;
     }();
     if (!canonical) {
-        EmitError(method.location, std::format("destructor for type '{}' must have signature 'func {}(&var self)'",
-                                               typeName, expectedName));
+        EmitError(method.location, "a destructor takes '&var self' and nothing else", {}, "write 'func ~(&var self)'");
     }
     if (!method.body) {
-        EmitError(method.location, std::format("destructor '{}' must have a body", expectedName));
+        EmitError(method.location, std::format("the destructor of '{}' must have a body", typeName));
     }
 }
 

@@ -14,7 +14,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(&var self) {
+    func ~(&var self) {
         if self.counter != null {
             // Safety: a non-null `counter` is the address of a counter local that outlives every `Tracked`.
             *self.counter += 1i32;

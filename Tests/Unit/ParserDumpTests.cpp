@@ -139,7 +139,7 @@ TEST_CASE("AST dumps spell references, destructors and moves canonically") {
 #NoMove
 struct Cell { value: int32; }
 extend Cell {
-    func ~Cell(&var self) {}
+    func ~(&var self) {}
 }
 func Transfer(source: Cell) -> Cell {
     let result = move source;
@@ -161,7 +161,7 @@ func Transfer(source: Cell) -> Cell {
     input.close();
     std::filesystem::remove(path);
 
-    CHECK(output.contains("FuncDecl '~Cell' (self: &var Cell)"));
+    CHECK(output.contains("FuncDecl '~' (self: &var Cell)"));
     const std::size_t firstMove = output.find("MoveExpr move");
     REQUIRE_NE(firstMove, std::string::npos);
     CHECK_NE(output.find("MoveExpr move", firstMove + 1), std::string::npos);

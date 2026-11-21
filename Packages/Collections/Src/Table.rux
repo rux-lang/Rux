@@ -93,7 +93,7 @@ extend TableSeed {
 /// The open-addressing table `HashMap` and `HashSet` are both built on.
 /// Holds keys, values, one distance byte and one hash tag per slot in four parallel runs. A set instantiates the value
 /// type with something that occupies nothing worth reading, which is what lets one kernel serve both.
-/// Move-only: it owns its storage and entries, prohibits copying, and destroys both with `~Table`.
+/// Move-only: it owns its storage and entries, prohibits copying, and destroys both in its destructor.
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/table
@@ -524,7 +524,7 @@ extend Table<K, V> {
     /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
     /// storage was released would be read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/table#destructor
-    func ~Table(&var self) {
+    func ~(&var self) {
         self.Clear();
         self.Release();
     }

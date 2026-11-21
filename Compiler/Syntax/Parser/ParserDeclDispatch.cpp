@@ -289,9 +289,15 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
         Advance(); // consume '#'
         decl->name = "#" + Advance().text;
     }
-    else if (Check(TokenKind::Tilde) && Peek(1).Is(TokenKind::Ident)) {
-        const std::string prefix = Advance().text;
-        decl->name = prefix + Advance().text;
+    else if (Check(TokenKind::Tilde)) {
+        // `func ~(&var self)` declares the destructor, which the compiler calls and nothing names. The older spelling
+        // repeated the type's name, `func ~Vector(...)`; it is reported and read as the destructor.
+        Advance(); // consume '~'
+        decl->name = "~";
+        if (Check(TokenKind::Ident)) {
+            EmitError(Advance().location, "a destructor is written without the type's name",
+                      "write 'func ~(&var self)'");
+        }
     }
     else if (Check(TokenKind::LeftBracket) && Peek(1).Is(TokenKind::RightBracket) && !Peek(1).precededBySpace) {
         // The indexer operators: `func [](self: &T, index: uint) -> E` reads and

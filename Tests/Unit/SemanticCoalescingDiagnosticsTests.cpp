@@ -83,7 +83,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     const auto implicitOperand = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Test(option: Handle?, fallback: Handle) {
             let selected = option ?? move fallback;
@@ -94,7 +94,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     const auto implicitFallback = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Test(option: Handle?, fallback: Handle) {
             let selected = (move option) ?? fallback;
@@ -105,7 +105,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
     const auto conditionalMove = AnalyzeCoalescing(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
         func Take(value: Handle) {}
         func Test(option: Handle?, fallback: Handle) {

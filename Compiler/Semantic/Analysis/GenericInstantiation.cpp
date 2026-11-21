@@ -160,8 +160,7 @@ void AnalysisContext::QueueDropMethodInstantiation(const TypeRef &type) {
     if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
         return;
     }
-    const std::string destructorName = "~" + UnqualifiedNominalName(NamedBaseTypeName(type));
-    const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
+    const FuncDecl *destructor = LookupMethod(type, "~", {}, false);
     if (destructor == nullptr) {
         return;
     }

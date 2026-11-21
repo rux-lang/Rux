@@ -65,7 +65,7 @@ struct Owned {
 }
 
 extend Owned {
-    func ~Owned(&var self) {
+    func ~(&var self) {
         if self.counter != null {
             // Safety: a non-null `counter` points at a local of `Main` that outlives every `Owned` value.
             *self.counter = *self.counter + 1;

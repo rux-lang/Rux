@@ -201,7 +201,7 @@ extend SmallVector<T> {
         self.Truncate(0);
     }
 
-    func ~SmallVector(&var self) {
+    func ~(&var self) {
         self.Truncate(0);
         if self.heap != null {
             ReleaseBlock<T>(self.allocator, self.heap, self.heapCapacity);

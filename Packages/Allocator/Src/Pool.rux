@@ -11,7 +11,7 @@
 // A request too large for the largest class, or needing an alignment stricter than a chunk is taken at, is passed
 // straight to the backing allocator. That decision is made from the layout alone, so a release reaches the same
 // conclusion as the allocation it matches without the pool recording anything per block.
-// The pool owns its chunks, so it moves rather than copies, and `~Pool` releases them. `Handle` gives the
+// The pool owns its chunks, so it moves rather than copies, and its destructor releases them. `Handle` gives the
 // `Allocator` handle a container keeps: it addresses the pool, so its caller promises that
 // the pool outlives every copy, stays where it is, and is not reset while a block taken through it is in use.
 
@@ -222,7 +222,7 @@ extend Pool {
     /// Runs when the pool's life ends. Every pooled pointer the pool handed out becomes invalid. Blocks that went to
     /// the backing allocator directly are not released here and are still the caller's.
     /// @see https://rux-lang.dev/docs/api/allocator/pool#destructor
-    func ~Pool(&var self) {
+    func ~(&var self) {
         var chunk = self.chunks;
         while chunk != null {
             // Safety: the chunk invariant: `chunks` and every `previous` link address a live chunk this pool took from

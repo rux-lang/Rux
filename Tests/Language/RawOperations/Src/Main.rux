@@ -37,7 +37,7 @@ struct Counted {
 }
 
 extend Counted {
-    func ~Counted(&var self) {
+    func ~(&var self) {
         Destroyed += 1;
     }
 }

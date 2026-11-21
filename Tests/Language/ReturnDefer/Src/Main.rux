@@ -98,7 +98,7 @@ struct Token {
 }
 
 extend Token {
-    func ~Token(&var self) {
+    func ~(&var self) {
         // Safety: every token holds `@drops` and `@log`, locals of `Main` that outlive it.
         *self.drops += 1;
         *self.log = *self.log * 10 + 2;
@@ -143,7 +143,7 @@ extend CopyValue {
         return Self { value: self.value, copies: self.copies, drops: self.drops, log: self.log };
     }
 
-    func ~CopyValue(&var self) {
+    func ~(&var self) {
         // Safety: every value holds `@drops` and `@log`, locals of `Main` that outlive it.
         *self.drops += 1;
         *self.log = *self.log * 10 + 3;

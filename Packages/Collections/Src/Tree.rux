@@ -43,7 +43,7 @@ pub struct TreeNode<K, V> {
 }
 
 /// An ordered collection of entries, kept balanced by colouring.
-/// Owns every node and everything in them, so it prohibits copying and destroys them with `~Tree`.
+/// Owns every node and everything in them, so it prohibits copying and destroys them in its destructor.
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree
@@ -641,7 +641,7 @@ extend Tree<K, V> {
     /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
     /// tree however many times it was passed along.
     /// @see https://rux-lang.dev/docs/api/collections/tree#destructor
-    func ~Tree(&var self) {
+    func ~(&var self) {
         self.Clear();
     }
 }

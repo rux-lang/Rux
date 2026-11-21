@@ -63,7 +63,7 @@ extend Bytes {
         return self.data[..self.length];
     }
 
-    func ~Bytes(&var self) {
+    func ~(&var self) {
         if self.data == null { return; }
         var allocator = self.allocator;
         try allocator.Deallocate(self.data as *var opaque, Layout::Of(self.capacity, 1) ?? Layout::ForValue<char8>())

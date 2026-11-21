@@ -70,7 +70,7 @@ extend Size {
     }
 
     /// Releases nothing.
-    func ~Size(&var self) {}
+    func ~(&var self) {}
 
     /// Kept to the package.
     func Recompute(&var self) {}
@@ -369,9 +369,9 @@ constexpr std::string_view Expected = R"json({
         },
         {
           "kind": "destructor",
-          "name": "~Size",
+          "name": "~",
           "line": 56,
-          "signature": "func ~Size(&var self)",
+          "signature": "func ~(&var self)",
           "typeParams": [],
           "params": [],
           "receiver": "&var Size",

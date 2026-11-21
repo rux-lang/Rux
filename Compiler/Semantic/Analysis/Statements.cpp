@@ -1020,12 +1020,10 @@ std::vector<TypeRef> AnalysisContext::CheckStructPatternShape(const StructPatter
     }
     else if (takesParts && PatternBindsValue(pattern) && TypeHasDirectDestructor(declaration->first)) {
         // The destructor runs on the whole value, so once a part is taken out there is nothing left to run it on.
-        const std::string destructor = "~" + UnqualifiedNominalName(declaration->first);
         EmitError(
             pattern.location,
-            std::format("cannot split '{}' with a moving pattern, because it declares destructor '{}'",
-                        pattern.typeName, destructor),
-            {std::format("'{}' runs on the whole value, so no part of it can be taken out on its own", destructor)},
+            std::format("cannot split '{}' with a moving pattern, because it declares a destructor", pattern.typeName),
+            {"the destructor runs on the whole value, so no part of it can be taken out on its own"},
             "bind the whole value and read its fields, or match a value that stays with its owner");
     }
     // A field of a generic structure has the type its declaration names with the subject's type arguments in place.

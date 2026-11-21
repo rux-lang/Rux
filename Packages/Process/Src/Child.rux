@@ -114,7 +114,7 @@ extend PipeWriter {
         self.pipe = NoPipe;
     }
 
-    func ~PipeWriter(&var self) {
+    func ~(&var self) {
         self.Close();
     }
 }
@@ -161,7 +161,7 @@ extend PipeReader {
         self.pipe = NoPipe;
     }
 
-    func ~PipeReader(&var self) {
+    func ~(&var self) {
         self.Close();
     }
 }
@@ -336,7 +336,7 @@ extend Child {
         }
     }
 
-    func ~Child(&var self) {
+    func ~(&var self) {
         ClosePipe(self.input);
         ClosePipe(self.output);
         ClosePipe(self.error);

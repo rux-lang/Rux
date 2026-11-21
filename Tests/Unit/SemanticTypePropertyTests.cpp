@@ -14,7 +14,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             value: int32;
         }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Wrapper {
@@ -30,7 +30,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             value: T;
         }
         extend GenericOwner<T> {
-            func ~GenericOwner(&var self) {}
+            func ~(&var self) {}
         }
 
         variant Maybe<T> {
@@ -167,7 +167,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
             value: int32;
         }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Generated {
@@ -182,7 +182,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
             value: int32;
         }
         extend Owning {
-            func ~Owning(&var self) {}
+            func ~(&var self) {}
         }
 
         #NoCopy
@@ -301,7 +301,7 @@ TEST_CASE("only plain data is copyable, and a destructor anywhere inside makes a
     Lexer lexer(R"(
         struct Owner { value: int32; }
         extend Owner {
-            func ~Owner(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Point { x: int32; y: int32; }
@@ -374,7 +374,7 @@ TEST_CASE("Copyable is decided by the compiler and bounds what generic code may 
 
         struct Owner { value: int32; }
         extend Owner {
-            func ~Owner(&var self) {}
+            func ~(&var self) {}
         }
         struct Point { x: int32; y: int32; }
         #NoCopy
@@ -461,14 +461,14 @@ TEST_CASE("bodyless lifecycle operators are replaced by attributes") {
     CHECK(hasMessage("special operation '=' may only be declared in an extend block"));
 }
 
-TEST_CASE("type-named destructors require the canonical owning signature") {
+TEST_CASE("destructors require the canonical owning signature and a type has at most one") {
     Lexer lexer(R"(
         struct Bad { value: int32; }
         extend Bad {
-            func ~Other(&var self) {}
-            func ~Bad(&self);
+            func ~(&var self) {}
+            func ~(&self);
         }
-        func ~Bad(value: &var Bad) {}
+        func ~(value: &var Bad) {}
     )",
                 "invalid_destructors.rux");
     auto lexed = lexer.Tokenize();
@@ -480,8 +480,8 @@ TEST_CASE("type-named destructors require the canonical owning signature") {
     const auto *implementation = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
     REQUIRE(implementation != nullptr);
     REQUIRE_EQ(implementation->methods.size(), 2);
-    CHECK_EQ(implementation->methods[0]->name, "~Other");
-    CHECK_EQ(implementation->methods[1]->name, "~Bad");
+    CHECK_EQ(implementation->methods[0]->name, "~");
+    CHECK_EQ(implementation->methods[1]->name, "~");
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     const SemanticModel model = analyzer.Analyze();
@@ -490,17 +490,17 @@ TEST_CASE("type-named destructors require the canonical owning signature") {
         return std::ranges::any_of(model.diagnostics,
                                    [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
     };
-    CHECK(hasMessage("destructor '~Other' must be named '~Bad' for type 'Bad'"));
-    CHECK(hasMessage("destructor for type 'Bad' must have signature 'func ~Bad(&var self)'"));
-    CHECK(hasMessage("destructor '~Bad' must have a body"));
-    CHECK(hasMessage("destructor '~Bad' may only be declared in an extend block"));
+    CHECK(hasMessage("'Bad' already has a destructor"));
+    CHECK(hasMessage("a destructor takes '&var self' and nothing else"));
+    CHECK(hasMessage("the destructor of 'Bad' must have a body"));
+    CHECK(hasMessage("a destructor may only be declared in an extend block"));
 }
 
 TEST_CASE("drop glue expands concrete aggregates in reverse construction order") {
     Lexer lexer(R"(
         struct Leaf { value: int32; }
         extend Leaf {
-            func ~Leaf(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Pair<T> {
@@ -511,7 +511,7 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
 
         struct Owner { leaf: Leaf; }
         extend Owner {
-            func ~Owner(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Unused { leaf: Leaf; }
@@ -622,7 +622,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
     Lexer lexer(R"(
         struct Leaf { value: int32; }
         extend Leaf {
-            func ~Leaf(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Pair<T> {
@@ -632,7 +632,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
 
         struct Holder<T> { pair: *var Pair<T>; }
         extend Holder<T> {
-            func ~Holder(&var self) {
+            func ~(&var self) {
                 // Safety: `pair` addresses the `Pair<T>` this holder owns
                 Take<T>(self.pair);
             }
@@ -686,12 +686,12 @@ TEST_CASE("scalar enums stay trivial while variants combine every payload owners
 
         struct Handle { value: int32; }
         extend Handle {
-            func ~Handle(&var self) {}
+            func ~(&var self) {}
         }
 
         struct Copier { value: int32; }
         extend Copier {
-            func ~Copier(&var self) {}
+            func ~(&var self) {}
         }
 
         variant Units { Empty, Ready, Busy }

@@ -251,7 +251,7 @@ TEST_CASE("no error leaves a deferred statement or a destructor") {
     CHECK(AnyContains(Errors(WithDeclarations(R"(
         struct File { handle: int32; }
         extend File {
-            func ~File(&var self) { try ReadFile(self.handle); }
+            func ~(&var self) { try ReadFile(self.handle); }
         }
     )")),
                       "an error cannot leave a destructor"));
@@ -285,7 +285,7 @@ TEST_CASE("an arm needs its own try and the arms cover every error") {
 TEST_CASE("an error thrown to a handler carries the state at the throw into the arms") {
     const auto errors = Errors(WithDeclarations(R"(
         struct Resource { id: int32; }
-        extend Resource { func ~Resource(&var self) {} }
+        extend Resource { func ~(&var self) {} }
         func Take(resource: Resource) {}
         func Read(resource: &Resource) -> int32 { return resource.id; }
         func Before() -> int32 {

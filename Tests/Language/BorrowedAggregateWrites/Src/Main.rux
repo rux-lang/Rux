@@ -28,7 +28,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~Tracked(&var self) {
+    func ~(&var self) {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         self.log.count = self.log.count + 1;
         self.log.order = self.log.order * 10 + (self.id as int64);
@@ -48,7 +48,7 @@ extend Copied {
         return Self { log: self.log, id: self.id };
     }
 
-    func ~Copied(&var self) {
+    func ~(&var self) {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         self.log.count = self.log.count + 1;
         self.log.order = self.log.order * 10 + (self.id as int64);
@@ -62,7 +62,7 @@ struct Token {
 }
 
 extend Token {
-    func ~Token(&var self) {
+    func ~(&var self) {
         // Safety: `self.log` points at a `Log` local of `Main`, which outlives every value that records into it.
         self.log.count = self.log.count + 1;
         self.log.order = self.log.order * 10 + (self.id as int64);

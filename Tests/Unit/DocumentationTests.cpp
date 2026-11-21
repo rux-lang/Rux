@@ -118,7 +118,7 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
         struct Cell { value: int32; }
         extend Cell {
             /// Destroy a cell.
-            func ~Cell(&var self) {}
+            func ~(&var self) {}
         }
         /// Observe borrowed cells.
         func Observe(shared: &Cell, exclusive: &var Cell);
@@ -132,7 +132,7 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
         *loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site", .includePrivate = true});
     REQUIRE(generated.ok);
     const std::string html = Read(root / "site" / "index.html");
-    CHECK(html.contains("func ~Cell(&amp;var self)"));
+    CHECK(html.contains("func ~(&amp;var self)"));
     CHECK(html.contains("func Observe(shared: &amp;Cell, exclusive: &amp;var Cell)"));
 
     std::error_code error;

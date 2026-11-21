@@ -188,7 +188,7 @@ bool TypePropertyClassifier::DeclaresDestructor(const TypeRef &type, const std::
     if (typeMethods == methodsByType.end()) {
         return false;
     }
-    const auto destructors = typeMethods->second.find("~" + UnqualifiedNominalName(baseName));
+    const auto destructors = typeMethods->second.find("~");
     if (destructors == typeMethods->second.end()) {
         return false;
     }

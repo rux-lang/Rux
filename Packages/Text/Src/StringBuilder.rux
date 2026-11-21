@@ -5,7 +5,7 @@
 // The builder holds well-formed UTF-8 at every moment, not only at the end. That is why it accepts whole characters
 // and checked runs of bytes rather than arbitrary ones: a builder that could hold half a character would make
 // `View` a lie and `TakeString` a validation pass. Appending an incomplete sequence is refused rather than deferred.
-// It prohibits copying and `~StringBuilder` gives its block back. `TakeString` transfers the block without copying;
+// It prohibits copying and its destructor gives its block back. `TakeString` transfers the block without copying;
 // after it the builder owns nothing and is ready to be used again.
 // A builder that cannot grow terminates the program. `TryReserve` is for the code that can recover: it throws the
 // allocator's `AllocError` and leaves the builder as it was, and once it has succeeded the appends that fit in the
@@ -243,7 +243,7 @@ extend StringBuilder {
     /// Runs when the builder dies. A builder whose block was handed over by `TakeString` owns nothing, so this is
     /// then a no-op rather than a second release.
     /// @see https://rux-lang.dev/docs/api/text/string-builder#destructor
-    func ~StringBuilder(&var self) {
+    func ~(&var self) {
         self.Release();
     }
 }

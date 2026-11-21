@@ -110,7 +110,7 @@ extend UdpSocket {
         return PollSource { handle: self.handle };
     }
 
-    func ~UdpSocket(&var self) {
+    func ~(&var self) {
         CloseSocket(self.handle);
         self.handle = NoSocket;
     }

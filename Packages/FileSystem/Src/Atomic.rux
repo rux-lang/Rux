@@ -112,7 +112,7 @@ extend AtomicWrite {
     /// This is the property that makes the type worth using: an early return or a failure part-way through
     /// writing leaves the old contents exactly where they were, with no partial file left behind.
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#destructor
-    func ~AtomicWrite(&var self) {
+    func ~(&var self) {
         self.pending = false;
         self.target.Release();
     }

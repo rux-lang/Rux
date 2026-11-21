@@ -137,7 +137,7 @@ struct Item {}
 extend Item {
     /// Destroys an item.
     /// @returns Invalid result.
-    func ~Item(&var self) {}
+    func ~(&var self) {}
 }
 
 /// Not callable.
@@ -150,7 +150,7 @@ const Limit = 1;
     REQUIRE_EQ(messages.size(), 4);
     CHECK_EQ(messages[0], "@returns is not valid because 'NoValue' returns no value");
     CHECK_EQ(messages[1], "@returns is not valid because 'Exit' returns no value");
-    CHECK_EQ(messages[2], "@returns is not valid because '~Item' returns no value");
+    CHECK_EQ(messages[2], "@returns is not valid because a destructor returns no value");
     CHECK_EQ(messages[3], "@returns is not valid on 'Limit'");
 }
 

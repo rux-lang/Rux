@@ -88,7 +88,7 @@ TEST_CASE("each receiver shorthand names the extended type with its type argumen
             func Take(self) {}
             func Peek(*self) {}
             func Poke(*var self, value: T) {}
-            func ~Vector(&var self) {}
+            func ~(&var self) {}
         }
     )");
     REQUIRE_FALSE(parsed.HasErrors());
@@ -105,7 +105,7 @@ TEST_CASE("each receiver shorthand names the extended type with its type argumen
 
     const Expected expected[] = {
         {"Read", true, false, false, true}, {"Write", true, false, true, true}, {"Take", false, false, false, true},
-        {"Peek", false, true, false, true}, {"Poke", false, true, true, true},  {"~Vector", true, false, true, true},
+        {"Peek", false, true, false, true}, {"Poke", false, true, true, true},  {"~", true, false, true, true},
     };
     for (std::size_t index = 0; index < extension.methods.size(); ++index) {
         const FuncDecl &method = *extension.methods[index];
@@ -290,7 +290,7 @@ TEST_CASE("field shorthand of a move-only binding asks for the move written out"
     const auto diagnostics = Analyze(R"(
         struct Buffer { size: int32; }
         extend Buffer {
-            func ~Buffer(&var self) {}
+            func ~(&var self) {}
         }
         struct Holder { buffer: Buffer; size: int32; }
         func Hold(buffer: Buffer, size: int32) -> Holder {

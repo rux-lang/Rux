@@ -11,7 +11,7 @@ import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, M
 
 struct Tracked { counter: *var int; }
 // Safety: the only `Tracked` here stores `@drops`, a local that outlives it.
-extend Tracked { func ~Tracked(&var self) { *self.counter += 10; } }
+extend Tracked { func ~(&var self) { *self.counter += 10; } }
 module Left {
     pub struct Record { pub value: uint8; }
     pub func Make() -> Record { return Record { value: 71u8 }; }
