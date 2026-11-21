@@ -10,7 +10,7 @@ import C::{ fclose, fgetc, fopen, fseek, ftell, fwrite, memcmp, remove, strlen }
 
 func CompareInt32(left: *opaque, right: *opaque) -> int32 {
     // Safety: `qsort` and `bsearch` hand this comparator pointers to elements of the `int32` array they were given.
-    let (first, second) = unsafe { (*(left as *int32), *(right as *int32)) };
+    let (first, second) = (*(left as *int32), *(right as *int32));
     if first < second { return -1; }
     if first > second { return 1; }
     return 0;
@@ -23,61 +23,51 @@ func Main() -> int {
     let text = "42abc";
     // Safety: every string is a null-terminated literal, `end` is a local pointer the call stores into, and
     // `text.data + 2` stays inside "42abc".
-    unsafe {
-        Assert(strtol(text.data, @end, 10i32) == 42, "strtol converts the digits");
-        Assert(end == text.data + 2, "and reports where it stopped");
-        Assert(strtoul("42abc".data, @end, 10i32) == 42, "strtoul converts the digits");
-        Assert(strtoll("-9000000000".data, @end, 10i32) == -9000000000, "strtoll reaches past 32 bits");
-        Assert(strtoull("18446744073709551615".data, @end, 10i32) == 18446744073709551615u64,
-               "strtoull reaches the whole unsigned range");
-    }
+    Assert(strtol(text.data, @end, 10i32) == 42, "strtol converts the digits");
+    Assert(end == text.data + 2, "and reports where it stopped");
+    Assert(strtoul("42abc".data, @end, 10i32) == 42, "strtoul converts the digits");
+    Assert(strtoll("-9000000000".data, @end, 10i32) == -9000000000, "strtoll reaches past 32 bits");
+    Assert(strtoull("18446744073709551615".data, @end, 10i32) == 18446744073709551615u64,
+           "strtoull reaches the whole unsigned range");
 
     // A base other than ten is what the third argument is for.
     // Safety: every string is a null-terminated literal, and `end` is a local pointer the call stores into.
-    unsafe {
-        Assert(strtol("ff".data, @end, 16i32) == 255, "base sixteen");
-        Assert(strtol("777".data, @end, 8i32) == 511, "base eight");
-        Assert(strtol("1010".data, @end, 2i32) == 10, "base two");
-        Assert(strtol("0x1f".data, @end, 0i32) == 31, "base zero reads the prefix");
-    }
+    Assert(strtol("ff".data, @end, 16i32) == 255, "base sixteen");
+    Assert(strtol("777".data, @end, 8i32) == 511, "base eight");
+    Assert(strtol("1010".data, @end, 2i32) == 10, "base two");
+    Assert(strtol("0x1f".data, @end, 0i32) == 31, "base zero reads the prefix");
 
     // A string that is not a number converts nothing and says so by not advancing.
     let refused = "zzz";
     // Safety: `refused` is a null-terminated literal, and `end` is a local pointer the call stores into.
-    unsafe {
-        Assert(strtol(refused.data, @end, 10i32) == 0, "a string that is not a number converts to zero");
-        Assert(end == refused.data, "and the end pointer never moved, which is how the caller can tell");
-    }
+    Assert(strtol(refused.data, @end, 10i32) == 0, "a string that is not a number converts to zero");
+    Assert(end == refused.data, "and the end pointer never moved, which is how the caller can tell");
 
     // Safety: every string is a null-terminated literal, `end` is a local pointer the call stores into and then
     // points inside "1.5rest", and the `+ 3` stays inside that literal.
-    unsafe {
-        Assert(strtod("1.5rest".data, @end) == 1.5, "strtod converts a double");
-        Assert(end == "1.5rest".data + 3 || strlen(end) == 4, "and stops at the first byte it cannot use");
-        Assert(strtof("2.5".data, @end) == 2.5f32, "strtof converts a float");
-    }
+    Assert(strtod("1.5rest".data, @end) == 1.5, "strtod converts a double");
+    Assert(end == "1.5rest".data + 3 || strlen(end) == 4, "and stops at the first byte it cannot use");
+    Assert(strtof("2.5".data, @end) == 2.5f32, "strtof converts a float");
 
     // qsort orders an array by the comparison it is given, and bsearch finds within the result.
     // Safety: `malloc` takes only a byte count; 20 bytes hold the five `int32` values below.
-    let values = unsafe { malloc(20u64) as *var int32 };
+    let values = malloc(20u64) as *var int32;
     Assert(values != null as *int32, "the array allocation succeeds");
     // Safety: `values` is a non-null 20-byte block, so offsets 0 through 4 are `int32` slots inside it, and
     // `CompareInt32` reads only the elements `qsort` passes it.
-    unsafe {
-        *values = 5i32;
-        *(values + 1) = 1i32;
-        *(values + 2) = 4i32;
-        *(values + 3) = 2i32;
-        *(values + 4) = 3i32;
-        qsort(values as *var opaque, 5u64, 4u64, CompareInt32);
-        Assert(*values == 1 && *(values + 4) == 5, "qsort ordered the whole array");
-        Assert(*(values + 1) == 2 && *(values + 2) == 3 && *(values + 3) == 4, "including the middle");
-    }
+    *values = 5i32;
+    *(values + 1) = 1i32;
+    *(values + 2) = 4i32;
+    *(values + 3) = 2i32;
+    *(values + 4) = 3i32;
+    qsort(values as *var opaque, 5u64, 4u64, CompareInt32);
+    Assert(*values == 1 && *(values + 4) == 5, "qsort ordered the whole array");
+    Assert(*(values + 1) == 2 && *(values + 2) == 3 && *(values + 3) == 4, "including the middle");
 
     var needle: int32 = 4;
     // Safety: `needle` and `missing` are locals, `values` holds five sorted `int32` values, `values + 3` stays
     // inside it, and the block is freed once, after its last use.
-    unsafe {
+    {
         let hit = bsearch(@needle as *opaque, values as *opaque, 5u64, 4u64, CompareInt32);
         Assert(hit == (values + 3) as *opaque, "bsearch finds the element by the same ordering");
         var missing: int32 = 9;
@@ -88,7 +78,7 @@ func Main() -> int {
 
     // rand stays inside the range its constant names, whichever platform's value that is.
     // Safety: `srand` and `rand` take and return plain integers, and this test runs on one thread.
-    unsafe {
+    {
         srand(1u32);
         var index = 0;
         while index < 64 {
@@ -108,7 +98,7 @@ func Main() -> int {
     let path = "c-curated-seek-test.tmp";
     // Safety: every string is a null-terminated literal, "abcd" has the four bytes `fwrite` reads, and each stream
     // is used only between a successful `fopen` and its `fclose`.
-    unsafe {
+    {
         let sink = fopen(path.data, "wb".data);
         Assert(sink != null, "the temporary file opens for writing");
         Assert(fwrite("abcd".data as *opaque, 1u64, 4u64, sink) == 4, "four bytes are written");
@@ -135,7 +125,7 @@ func Main() -> int {
     Assert(BUFSIZ > 0 && FOPEN_MAX > 0 && FILENAME_MAX > 0, "the stream limits are positive");
     Assert(L_tmpnam > 0 && TMP_MAX > 0, "the temporary-name limits are positive");
     // Safety: both literals hold at least the one byte compared.
-    Assert(unsafe { memcmp("x".data as *opaque, "x".data as *opaque, 1u64) } == 0,
+    Assert(memcmp("x".data as *opaque, "x".data as *opaque, 1u64) == 0,
            "the string module is reachable from here");
     return 0;
 }

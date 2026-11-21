@@ -1,7 +1,7 @@
 // An interface is used three ways: as a bound, resolved for each concrete type; as a borrowed view, `&I` or `&var I`,
 // for the length of a call; and as a value, which is a copyable handle that addresses an implementation stored
 // elsewhere and owns nothing. A stateless value converts to a handle anywhere; any other handle is made from a pointer
-// inside `unsafe`, whose caller promises the implementation outlives every copy. A container keeps its allocator as
+// whose maker promises the implementation outlives every copy. A container keeps its allocator as
 // such a handle, so it can be returned from the function that made it, and what it owns is destroyed exactly once.
 
 import Allocator::{ AllocError, Allocator, Arena, Layout, SystemAllocator };
@@ -70,7 +70,7 @@ struct Tracked {
 extend Tracked {
     func ~Tracked(&var self) {
         // Safety: every value in this test holds `@drops`, a local of `Main` that outlives it.
-        unsafe { *self.drops = *self.drops + 1; }
+        *self.drops = *self.drops + 1;
     }
 }
 
@@ -114,7 +114,7 @@ func Build(allocator: Allocator, drops: *var int, count: int) -> Vector<Tracked>
 // Containers made from copies of one handle all allocate through the counting allocator it addresses.
 func ShareCounting(counting: &var Counting, drops: *var int) {
     // Safety: `counting` is borrowed for the whole call, so it outlives every container here, which all end with it.
-    let handle = unsafe { @counting as Allocator };
+    let handle = @counting as Allocator;
     var kept = Build(handle, drops, 4);
     let copied = handle;
     var other = Build(copied, drops, 1);
@@ -127,7 +127,7 @@ func ShareCounting(counting: &var Counting, drops: *var int) {
 // A container that allocates out of an arena ends before the call does, so before the arena can be reset.
 func FillArena(arena: &var Arena, drops: *var int) {
     // Safety: `arena` is borrowed for the whole call, so it outlives `pooled` and is not moved or reset meanwhile.
-    var pooled = Build(unsafe { (@arena).Handle() }, drops, 8);
+    var pooled = Build((@arena).Handle(), drops, 8);
     Assert(pooled.Length() == 8 && arena.BlockCount() >= 1, "a container allocates out of the arena");
 }
 
@@ -146,7 +146,7 @@ func Main() -> int {
 
     // A handle to a value with state is made from its address, and every copy writes through to that one value.
     // Safety: `tally` is a local of `Main` that outlives both handles and is never moved.
-    let first = unsafe { @tally as Counter };
+    let first = @tally as Counter;
     let second = first;
     first.Bump();
     second.Bump();
@@ -170,7 +170,7 @@ func Main() -> int {
     Assert(counting.live == 0, "every block is given back exactly once");
     Assert(drops == 5 + 4 + 1 + 2, "and every element destroyed exactly once");
 
-    // An arena's handle is made in `unsafe`: its caller promises the arena outlives the containers that use it and
+    // An arena's handle is made from a pointer: its caller promises the arena outlives the containers that use it and
     // is neither moved nor reset while they hold its allocations, so the containers end first.
     var arena = Arena(SystemAllocator(), 256);
     FillArena(arena, @drops);

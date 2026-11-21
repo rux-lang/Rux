@@ -34,19 +34,19 @@ extend Buffer<T> {
         if self.data != null {
             // Safety: `block` has room for `capacity` values, more than `length`, and `self.data` holds `length`
             // values in a separate allocation.
-            unsafe { Copy(block, self.data as *opaque, self.length * sizeof(T)); }
+            Copy(block, self.data as *opaque, self.length * sizeof(T));
             let layout = Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>();
             try allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
         }
         // Safety: `block` comes from the allocator with the layout of `capacity` values of `T`.
-        self.data = unsafe { block as *var T };
+        self.data = block as *var T;
         self.capacity = capacity;
     }
 
     func Push(&var self, value: T) throws IoError {
         try self.Reserve(1);
         // Safety: `Reserve` made room for one value past `length` in `self.data`.
-        unsafe { self.data[self.length] = value; }
+        self.data[self.length] = value;
         self.length = self.length + 1;
     }
 
@@ -55,7 +55,7 @@ extend Buffer<T> {
         var index: uint = 0;
         while index < values.length {
             // Safety: `Reserve` made room for `values.length` values past `length`, and `index` is below that.
-            unsafe { self.data[self.length + index] = values[index]; }
+            self.data[self.length + index] = values[index];
             index = index + 1;
         }
         self.length = self.length + values.length;
@@ -63,9 +63,9 @@ extend Buffer<T> {
 
     func View(&self) -> T[..] {
         // Safety: an empty range reads nothing, even from a null `data`.
-        if self.length == 0 { return unsafe { self.data[..0] }; }
+        if self.length == 0 { return self.data[..0]; }
         // Safety: `self.data` holds `length` values written by `Push` and `PushAll`.
-        return unsafe { self.data[..self.length] };
+        return self.data[..self.length];
     }
 
     func Clear(&var self) {

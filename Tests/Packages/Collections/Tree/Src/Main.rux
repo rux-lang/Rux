@@ -25,7 +25,7 @@ func CompareInt32(left: int32, right: int32) -> Ordering {
 // The number of black nodes on every path below `node`, or -1 when the paths disagree or a red node has a red child.
 // Counting and checking together is what makes a single walk enough.
 // Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
-unsafe func BlackHeight(node: *var TreeNode<int32, int32>) -> int {
+func BlackHeight(node: *var TreeNode<int32, int32>) -> int {
     if node == null {
         return 1;
     }
@@ -51,7 +51,7 @@ unsafe func BlackHeight(node: *var TreeNode<int32, int32>) -> int {
 // Whether every child points back at its parent, and every key sits on the correct side of it. A tree can satisfy
 // every colour rule and still have lost a link, which shows up as a lookup that walks off the tree it is in.
 // Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
-unsafe func LinksSound(node: *var TreeNode<int32, int32>, parent: *var TreeNode<int32, int32>) -> bool {
+func LinksSound(node: *var TreeNode<int32, int32>, parent: *var TreeNode<int32, int32>) -> bool {
     if node == null {
         return true;
     }
@@ -72,11 +72,11 @@ func Sound(tree: &Tree<int32, int32>) -> bool {
         return tree.Length() == 0;
     }
     // Safety: the root is non-null, checked above, and the tree links only live nodes it allocated.
-    if unsafe { tree.Root().red || tree.Root().parent != null } {
+    if (tree.Root().red || tree.Root().parent != null) {
         return false;
     }
     // Safety: the root is a live node of the tree, as above.
-    return unsafe { BlackHeight(tree.Root()) > 0 && LinksSound(tree.Root(), null) };
+    return BlackHeight(tree.Root()) > 0 && LinksSound(tree.Root(), null);
 }
 
 // Walks by successor from the smallest, checking that the keys come out strictly increasing, and reports how many
@@ -84,18 +84,18 @@ func Sound(tree: &Tree<int32, int32>) -> bool {
 func WalkedInOrder(tree: &Tree<int32, int32>) -> uint {
     var counted: uint = 0;
     // Safety: the root is null or a live node of the tree.
-    var walk = unsafe { Tree::Minimum<int32, int32>(tree.Root()) };
+    var walk = Tree::Minimum<int32, int32>(tree.Root());
     var previous: int32 = 0;
     while walk != null {
         // Safety: `walk` is non-null, checked by the loop, and came from `Minimum` or `Successor` of a live node.
-        let current = unsafe { walk.key };
+        let current = walk.key;
         if counted > 0 && current <= previous {
             return 0;
         }
         previous = current;
         counted = counted + 1;
         // Safety: `walk` is still that live node; the tree is borrowed and unchanged through the walk.
-        walk = unsafe { Tree::Successor<int32, int32>(walk) };
+        walk = Tree::Successor<int32, int32>(walk);
     }
     return counted;
 }
@@ -103,7 +103,7 @@ func WalkedInOrder(tree: &Tree<int32, int32>) -> uint {
 // The longest path from the root down. A tree that has lost its balancing still answers every lookup, so this is
 // what separates a red-black tree from the linked list an uncoloured one becomes under ascending insertion.
 // Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
-unsafe func Depth(node: *var TreeNode<int32, int32>) -> uint {
+func Depth(node: *var TreeNode<int32, int32>) -> uint {
     if node == null {
         return 0;
     }
@@ -128,7 +128,7 @@ func Fill(tree: &var Tree<int32, int32>, count: int32, stride: int32) -> uint {
         step = step + 1;
     }
     // Safety: the root is null or a live node of the tree.
-    return unsafe { Depth(tree.Root()) };
+    return Depth(tree.Root());
 }
 
 // Takes every key back out in a stride of its own, checking the rules after each and that what remains is still
@@ -142,7 +142,7 @@ func Drain(tree: &var Tree<int32, int32>, count: int32, stride: int32) {
         let node = tree.Find(key, CompareInt32);
         Assert(node != null, "a key that was put in is found again");
         // Safety: `node` is non-null, asserted above, and `Find` hands back only live nodes of this tree.
-        let entry = unsafe { tree.Detach(node) };
+        let entry = tree.Detach(node);
         Assert(entry.key == key && entry.value == key * 3, "and comes back out with what it went in with");
         removed = removed + 1;
         Assert(tree.Length() == (count - removed) as uint, "the tree is one shorter");
@@ -164,7 +164,7 @@ extend Tracked {
     func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
-            unsafe { *self.counter = *self.counter + 1; }
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -180,7 +180,7 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     }
     Assert(tree.Length() == count as uint, "the tree holds what was put into it");
     // Safety: both point at locals of `Main`, which outlive this call.
-    unsafe { *afterAttaching = *counter; }
+    *afterAttaching = *counter;
 }
 
 // The value a replaced key displaces has to come back rather than be destroyed in place, and the one that comes back
@@ -194,7 +194,7 @@ func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *
     Assert(second is Tracked, "an equal key hands the old value back");
     Assert(tree.Length() == 1, "and does not make the tree longer");
     // Safety: both point at locals of `Main`, which outlive this call.
-    unsafe { *afterReplacing = *counter; }
+    *afterReplacing = *counter;
 }
 
 // Entries leaving through `Detach` rather than through the tree's own destruction, so the kernel's handover of a
@@ -210,15 +210,15 @@ func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take
     var taken: int32 = 0;
     while taken < take {
         // Safety: the root is null or a live node of the tree.
-        let node = unsafe { Tree::Minimum<int32, Tracked>(tree.Root()) };
+        let node = Tree::Minimum<int32, Tracked>(tree.Root());
         Assert(node != null, "the tree has as many entries as went in");
         // Safety: `node` is non-null, asserted above, and the leftmost node of this tree.
-        let entry = unsafe { tree.Detach(node) };
+        let entry = tree.Detach(node);
         Assert(entry.key == taken, "and hands out the smallest key first");
         taken = taken + 1;
     }
     // Safety: both point at locals of `Main`, which outlive this call.
-    unsafe { *afterTaking = *counter; }
+    *afterTaking = *counter;
 }
 
 func Main() -> int {
@@ -243,33 +243,33 @@ func Main() -> int {
     }
     Assert(WalkedInOrder(descending) == 64, "reversed input comes back out in order");
     // Safety: the root is null or a live node of the tree.
-    Assert(unsafe { Depth(descending.Root()) } <= 12, "and does not make a list of it either");
+    Assert(Depth(descending.Root()) <= 12, "and does not make a list of it either");
 
     // The backward walk is not the forward one read in reverse: it climbs a different set of links, and a
     // predecessor that stops early is invisible to every forward test.
     // Safety: the root is null or a live node of the tree.
-    var back = unsafe { Tree::Maximum<int32, int32>(descending.Root()) };
+    var back = Tree::Maximum<int32, int32>(descending.Root());
     var seen: uint = 0;
     var previous: int32 = 64;
     while back != null {
         // Safety: `back` is non-null, checked by the loop, and came from `Maximum` or `Predecessor` of a live node.
-        let current = unsafe { back.key };
+        let current = back.key;
         Assert(current < previous, "the backward walk strictly decreases");
         previous = current;
         seen = seen + 1;
         // Safety: `back` is still that live node; the tree is unchanged through the walk.
-        back = unsafe { Tree::Predecessor<int32, int32>(back) };
+        back = Tree::Predecessor<int32, int32>(back);
     }
     Assert(seen == 64, "and reaches every entry");
     // Safety: the tree holds 64 entries, so its leftmost node exists and is live.
-    Assert(unsafe { Tree::Minimum<int32, int32>(descending.Root()).key } == 0, "the smallest key is the smallest");
+    Assert((Tree::Minimum<int32, int32>(descending.Root()).key) == 0, "the smallest key is the smallest");
     // Safety: the tree holds 64 entries, so its rightmost node exists and is live.
-    Assert(unsafe { Tree::Maximum<int32, int32>(descending.Root()).key } == 63, "and the largest is the largest");
+    Assert((Tree::Maximum<int32, int32>(descending.Root()).key) == 63, "and the largest is the largest");
     // Safety: the leftmost node of a non-empty tree is live, and so are the links it climbs.
-    Assert(unsafe { Tree::Predecessor<int32, int32>(Tree::Minimum<int32, int32>(descending.Root())) } == null,
+    Assert((Tree::Predecessor<int32, int32>(Tree::Minimum<int32, int32>(descending.Root()))) == null,
            "nothing comes before the first");
     // Safety: the rightmost node of a non-empty tree is live, and so are the links it climbs.
-    Assert(unsafe { Tree::Successor<int32, int32>(Tree::Maximum<int32, int32>(descending.Root())) } == null,
+    Assert((Tree::Successor<int32, int32>(Tree::Maximum<int32, int32>(descending.Root()))) == null,
            "and nothing after the last");
 
     // A key already present is replaced rather than added, and hands back what it displaced.
@@ -277,7 +277,7 @@ func Main() -> int {
     Assert(displaced == .Some(57), "and gives back the value it displaced");
     Assert(ascending.Length() == 64, "without making the tree longer");
     // Safety: key 19 was just replaced, so `Find` hands back its live node.
-    Assert(unsafe { ascending.Find(19, CompareInt32).value } == 1900, "the new value is what is there now");
+    Assert(ascending.Find(19, CompareInt32).value == 1900, "the new value is what is there now");
     Assert(ascending.Find(64, CompareInt32) == null, "a key that was never put in is not found");
     Assert(ascending.Find(-1, CompareInt32) == null, "on either side of the range");
 
@@ -290,13 +290,13 @@ func Main() -> int {
         let node = ascending.Find(gone, CompareInt32);
         Assert(node != null, "each key removed around it was there");
         // Safety: `node` is non-null, asserted above, and `Find` hands back only live nodes of this tree.
-        let entry = unsafe { ascending.Detach(node) };
+        let entry = ascending.Detach(node);
         Assert(entry.key == gone, "and came back out");
         Assert(Sound(ascending), "the rules hold through the rearranging");
         gone = gone + 1;
     }
     // Safety: key 33 was never removed, so `pinned` is still a live node of the tree.
-    Assert(unsafe { pinned.key } == 33, "the pinned node still holds its key");
+    Assert(pinned.key == 33, "the pinned node still holds its key");
     Assert(ascending.Find(33, CompareInt32) == pinned, "at the address it had before any of that");
 
     // Cleared and used again. A tree has no capacity to keep back, so an emptied one is exactly a fresh one.

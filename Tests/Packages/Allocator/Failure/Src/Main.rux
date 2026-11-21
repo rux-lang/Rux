@@ -26,7 +26,7 @@ struct FailingAllocator {
 extend FailingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
-        unsafe {
+        {
             self.state.attempts = self.state.attempts + 1;
             if self.state.allowed == 0 {
                 throw .OutOfMemory;
@@ -42,25 +42,21 @@ extend FailingAllocator : Allocator {
 
     func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
-        unsafe {
-            try self.state.backing.Deallocate(block, layout);
-            if layout.size != 0 && !IsEmptyBlock(block) {
-                self.state.live = self.state.live - 1;
-            }
+        try self.state.backing.Deallocate(block, layout);
+        if layout.size != 0 && !IsEmptyBlock(block) {
+            self.state.live = self.state.live - 1;
         }
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque throws AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
-        unsafe {
-            self.state.attempts = self.state.attempts + 1;
-            if self.state.allowed == 0 {
-                throw .OutOfMemory;
-            }
-            self.state.allowed = self.state.allowed - 1;
-            return try self.state.backing.Reallocate(block, oldLayout, newLayout);
+        self.state.attempts = self.state.attempts + 1;
+        if self.state.allowed == 0 {
+            throw .OutOfMemory;
         }
+        self.state.allowed = self.state.allowed - 1;
+        return try self.state.backing.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -77,7 +73,7 @@ func Main() throws AllocError {
     var failing = Failing(@state);
     var starved: FailingAllocator = failing;
     // Safety: `starved` is a local of `Main` that outlives every container below and is never moved.
-    let budget = unsafe { @starved as Allocator };
+    let budget = @starved as Allocator;
     try {
         starved.Allocate(small);
         Panic("the allocator was expected to refuse");
@@ -132,7 +128,7 @@ func Main() throws AllocError {
     state.attempts = 0;
     var arena = Arena(budget, 256);
     // Safety: `arena` is a local that outlives `handle` and is never moved.
-    var handle = unsafe { arena.Handle() };
+    var handle = arena.Handle();
     let arenaAllocator: Allocator = handle;
     var fromArena: *var opaque = null;
     try {
@@ -164,7 +160,7 @@ func Main() throws AllocError {
     state.attempts = 0;
     var pool = Pool(budget, 4);
     // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
-    let poolAllocator = unsafe { pool.Handle() };
+    let poolAllocator = pool.Handle();
     var fromPool: *var opaque = null;
     try {
         poolAllocator.Allocate(small);

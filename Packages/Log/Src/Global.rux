@@ -20,7 +20,7 @@ var GlobalLock: Lock = Lock::Unlocked;
 pub func SetLevel(level: Level) {
     // Safety: `@GlobalLevel` is the address of a module variable, live for the whole process, aligned for its type,
     // and reached only through atomic operations.
-    unsafe { AtomicStore(@GlobalLevel, level as uint8, MemoryOrder::Relaxed); }
+    AtomicStore(@GlobalLevel, level as uint8, MemoryOrder::Relaxed);
 }
 
 /// Writes process-wide records in `format` from now on. The format starts as `Text`.
@@ -29,7 +29,7 @@ pub func SetLevel(level: Level) {
 pub func SetFormat(format: LogFormat) {
     // Safety: `@GlobalFormat` is the address of a module variable, live for the whole process, aligned for its type,
     // and reached only through atomic operations.
-    unsafe { AtomicStore(@GlobalFormat, format as uint8, MemoryOrder::Relaxed); }
+    AtomicStore(@GlobalFormat, format as uint8, MemoryOrder::Relaxed);
 }
 
 /// Whether process-wide records start with the time. They start with it.
@@ -38,7 +38,7 @@ pub func SetFormat(format: LogFormat) {
 pub func SetTimestamps(enabled: bool) {
     // Safety: `@GlobalTimestamps` is the address of a module variable, live for the whole process, aligned for its
     // type, and reached only through atomic operations.
-    unsafe { AtomicStore(@GlobalTimestamps, enabled, MemoryOrder::Relaxed); }
+    AtomicStore(@GlobalTimestamps, enabled, MemoryOrder::Relaxed);
 }
 
 /// Whether a process-wide record at `level` would be written.
@@ -49,7 +49,7 @@ pub func Enabled(level: Level) -> bool {
     if level as uint8 < CompiledLevel() as uint8 { return false; }
     // Safety: `@GlobalLevel` is the address of a module variable, live for the whole process, aligned for its type,
     // and reached only through atomic operations.
-    return level as uint8 >= unsafe { AtomicLoad(@GlobalLevel, MemoryOrder::Relaxed) };
+    return level as uint8 >= AtomicLoad(@GlobalLevel, MemoryOrder::Relaxed);
 }
 
 /// Writes a process-wide record at `level` with `message` and `fields` to standard error, if the level is enabled.
@@ -62,9 +62,9 @@ pub func Log(level: Level, message: char8[..], fields: Field[..]) {
     if !Enabled(level) { return; }
     // Safety: `@GlobalFormat` addresses a module variable, live for the whole process, aligned for its type, and
     // reached only through atomic operations.
-    let format = unsafe { AtomicLoad(@GlobalFormat, MemoryOrder::Relaxed) } as LogFormat;
+    let format = AtomicLoad(@GlobalFormat, MemoryOrder::Relaxed) as LogFormat;
     // Safety: likewise `@GlobalTimestamps`, a live, aligned module variable reached only through atomic operations.
-    let timestamps = unsafe { AtomicLoad(@GlobalTimestamps, MemoryOrder::Relaxed) };
+    let timestamps = AtomicLoad(@GlobalTimestamps, MemoryOrder::Relaxed);
     var builder = StringBuilder(SystemAllocator());
     if !WriteRecord(builder, format, timestamps, level, message, NoFields(), fields) { return; }
     GlobalLock.Acquire();

@@ -21,21 +21,17 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter,
 func DecodeUtf16(units: char16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
     let unit = units[index] as uint32;
     // Safety: the documented contract makes `scalar` and `width` non-null pointers to the caller's writable values.
-    unsafe {
-        *scalar = unit;
-        *width = 1;
-    }
+    *scalar = unit;
+    *width = 1;
     if unit < 0xD800 || unit > 0xDFFF { return true; }
     if unit >= 0xDC00 { return false; }
     if index + 1 >= units.length { return false; }
     // Safety: `index + 1` is below `units.length`, checked above.
-    let low = unsafe { units.data[index + 1] } as uint32;
+    let low = units.data[index + 1] as uint32;
     if low < 0xDC00 || low > 0xDFFF { return false; }
     // Safety: the documented contract makes `scalar` and `width` non-null pointers to the caller's writable values.
-    unsafe {
-        *scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
-        *width = 2;
-    }
+    *scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+    *width = 2;
     return true;
 }
 
@@ -136,7 +132,7 @@ extend char32[..] : Display {
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
-            let value = unsafe { units.data[index] } as uint32;
+            let value = units.data[index] as uint32;
             if IsWideScalarValue(value as uint64) {
                 try WriteScalar(writer, value as char32);
             }
@@ -163,7 +159,7 @@ extend char32[..] : Debug {
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
-            let value = unsafe { units.data[index] } as uint32;
+            let value = units.data[index] as uint32;
             if IsWideScalarValue(value as uint64) {
                 try WriteEscapedScalar(writer, value);
             }

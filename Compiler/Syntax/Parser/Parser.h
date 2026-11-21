@@ -53,7 +53,7 @@ private:
     /// last expression may leave out its ';' to be the value the block yields.
     bool blockYieldsValue = false;
     /// An operand already read, which the next `ParsePrimary` returns instead of reading one: a statement that turned
-    /// out to continue as an expression, such as `unsafe { ... }?;`.
+    /// out to continue as an expression, such as `{ ... }?;`.
     ExprPtr parsedPrimary;
     /// Whether the then branch of a conditional `c ? a : b` is being read, where `x is name: T` would take the ':'
     /// separating the branches; there `is` keeps reading a type.
@@ -223,16 +223,13 @@ private:
     DeclPtr ParseIntrinsicDecl(bool isPublic, ParsedAttrs &attrs, SourceLocation intrinsicLoc);
 
     // Declarations
-    /// A function declaration from its `func`, or from an `unsafe` written before it.
+    /// A function declaration from its `func`, or from a removed `unsafe` written before it.
     std::unique_ptr<FuncDecl> ParseFuncDecl(bool isPublic, bool isAsm,
                                             CallingConvention callConv = CallingConvention::Default);
-    /// Whether a function declaration starts here: `func`, or `unsafe func`.
+    /// Whether a function declaration starts here: `func`, or the removed `unsafe func`.
     [[nodiscard]] bool CheckFuncStart() const noexcept;
-    /// Consumes an `unsafe` that no `func` follows and reports it, naming the extern or `asm` declaration it was
-    /// written before, which is unsafe to use already.
-    void RejectMisplacedUnsafe();
-    /// Reports `unsafe` on a method nothing calls by name: a destructor, an operator, or an interface implementation.
-    void RejectImplicitlyCalledUnsafe(const FuncDecl &method, const std::optional<std::string> &interfaceName);
+    /// Consumes the removed `unsafe` and reports it; the caller reads what follows as if it were not written.
+    void RejectRemovedUnsafe();
     std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);
     std::unique_ptr<EnumDecl> ParseEnumDecl(bool isPublic);
     std::unique_ptr<UnionDecl> ParseUnionDecl(bool isPublic);
@@ -308,8 +305,8 @@ private:
     /// A braced block. A value block lets its last expression leave out the ';' to be the value the block yields.
     std::unique_ptr<Block> ParseBlock(std::string_view role = "the block", bool valueBlock = false);
     StmtPtr ParseStmt();
-    /// `unsafe { ... }`, with the current token on `unsafe`: a value block in which unsafe operations are allowed.
-    std::unique_ptr<BlockExpr> ParseUnsafeBlock();
+    /// A plain block `{ ... }`, with the current token on its '{': a value block with a scope of its own.
+    std::unique_ptr<BlockExpr> ParseBlockExpression();
     /// Whether the current token continues an expression a statement-start block has just completed, as `?`, `.` or a
     /// binary operator does. A token that could also begin the next statement, such as `*` or `(`, does not.
     [[nodiscard]] bool ContinuesBlockOperand() const;

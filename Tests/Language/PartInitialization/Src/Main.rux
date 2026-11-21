@@ -24,10 +24,8 @@ struct Tracked {
 extend Tracked {
     func ~Tracked(&var self) {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
-        unsafe {
-            self.log.count = self.log.count + 1;
-            self.log.order = self.log.order * 10 + (self.id as int64);
-        }
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
     }
 }
 
@@ -53,15 +51,13 @@ struct Segment {
 
 func Mark(log: *var Log) {
     // Safety: every caller passes `@log` or forwards that pointer to the live `Log` local of `Main`.
-    unsafe { log.order = log.order * 10; }
+    log.order = log.order * 10;
 }
 
 func Reset(log: *var Log) {
     // Safety: every caller passes `@log`, the live `Log` local of `Main`.
-    unsafe {
-        log.count = 0i32;
-        log.order = 0i64;
-    }
+    log.count = 0i32;
+    log.order = 0i64;
 }
 
 func Make(log: *var Log, id: int32) -> Tracked {

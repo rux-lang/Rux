@@ -39,7 +39,7 @@ extend FixedBuffer {
     /// @param capacity how many bytes `storage` holds
     /// @returns the buffer, having handed out nothing
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#new
-    pub unsafe func FixedBuffer(storage: *var opaque, capacity: uint) -> Self {
+    pub func FixedBuffer(storage: *var opaque, capacity: uint) -> Self {
         let base = if storage == null { 0u } else { storage as uint };
         return Self {
             start: base,
@@ -56,7 +56,7 @@ extend FixedBuffer {
     /// `Reset` the buffer while an allocation made through the handle is still in use. Nothing here tracks that.
     /// @returns a copyable handle addressing this buffer
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#handle
-    pub unsafe func Handle(*var self) -> Allocator {
+    pub func Handle(*var self) -> Allocator {
         return self as Allocator;
     }
 
@@ -200,7 +200,7 @@ extend FixedBuffer : Allocator {
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
-        unsafe { Copy(fresh, block as *opaque, keep); }
+        Copy(fresh, block as *opaque, keep);
         return fresh;
     }
 }

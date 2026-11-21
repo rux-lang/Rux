@@ -27,7 +27,7 @@ pub const ClockMonotonicRaw: int32 = 4;
 /// @param time receives the reading
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/clock#clock-get-time
-pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
+pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
     return Normalize(clock_gettime(clockId, time) as int64);
 }
 
@@ -39,7 +39,7 @@ pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 /// @param resolution receives the granularity
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/clock#clock-get-resolution
-pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
+pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
     return Normalize(clock_getres(clockId, resolution) as int64);
 }
 
@@ -51,7 +51,7 @@ pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) ->
 /// @param time receives the reading
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/clock#get-time-of-day
-pub unsafe func GetTimeOfDay(time: *var Timeval) -> int64 {
+pub func GetTimeOfDay(time: *var Timeval) -> int64 {
     return Normalize(gettimeofday(time, null) as int64);
 }
 
@@ -63,6 +63,6 @@ pub unsafe func GetTimeOfDay(time: *var Timeval) -> int64 {
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/clock#nanosleep
-pub unsafe func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
+pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Normalize(nanosleep(request, remaining) as int64);
 }

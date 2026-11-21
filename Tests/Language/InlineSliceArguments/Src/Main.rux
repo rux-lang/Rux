@@ -8,7 +8,7 @@ func TextHash(text: char8[..]) -> int {
 }
 extend char8[..] : SliceValue {
     // Safety: `data` and `length` are the receiver slice's own address and length.
-    func Hash(&self) -> int { return TextHash(unsafe { self.data[..self.length] }); }
+    func Hash(&self) -> int { return TextHash(self.data[..self.length]); }
 }
 extend int[..] : SliceValue {
     func Hash(&self) -> int {
@@ -32,12 +32,12 @@ func Select(flag: bool) -> char8[..] { return if flag { "alpha" } else { "B" }; 
 func Echo<T>(value: T) -> T { return value; }
 func Condition(calls: *var int, result: bool) -> bool {
     // Safety: every caller passes `@calls`, a live local of `Main`.
-    unsafe { *calls += 1; }
+    *calls += 1;
     return result;
 }
 func Selected(visits: *var int, digit: int, value: char8[..]) -> char8[..] {
     // Safety: every caller passes `@visits`, a live local of `Main`.
-    unsafe { *visits = *visits * 10 + digit; }
+    *visits = *visits * 10 + digit;
     return value;
 }
 func Same(left: char8[..], right: char8[..]) -> bool {
@@ -100,9 +100,9 @@ func Check(flag: bool) -> int {
     var first: int[3] = [11, 17, 23];
     var second: int[2] = [31, 37];
     // Safety: `first` is a live local array of three elements.
-    let firstView: int[..] = unsafe { (@first[0])[..3] };
+    let firstView: int[..] = (@first[0])[..3];
     // Safety: `second` is a live local array of two elements.
-    let secondView: int[..] = unsafe { (@second[0])[..2] };
+    let secondView: int[..] = (@second[0])[..2];
     if ThroughInterface(firstView) != 54 || ThroughInterface(secondView) != 70 { return 19; }
     if ThroughInterface(if flag { firstView } else { secondView }) != (if flag { 54 } else { 70 }) { return 15; }
     if ThroughInterface(if flag {

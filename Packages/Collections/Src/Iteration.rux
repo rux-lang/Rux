@@ -52,7 +52,7 @@ extend ValueIterator<T> : Iterator {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses the `length` elements of the slice this
         // was made from, which the constructor's contract keeps alive and in place.
-        let value = unsafe { self.data[self.position] };
+        let value = self.data[self.position];
         self.position = self.position + 1;
         return .Some(value);
     }
@@ -96,7 +96,7 @@ extend ReferenceIterator<T> : Iterator {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses the `length` elements of the slice this
         // was made from, which the constructor's contract keeps alive and in place.
-        let element = unsafe { @self.data[self.position] };
+        let element = @self.data[self.position];
         self.position = self.position + 1;
         return .Some(element);
     }
@@ -138,7 +138,7 @@ extend MutableReferenceIterator<T> : Iterator {
         if self.position >= self.length { return none; }
         // Safety: `position < length`, checked above, and `data` addresses the `length` elements of the slice this
         // was made from, which the constructor's contract keeps alive and in place.
-        let element = unsafe { @self.data[self.position] };
+        let element = @self.data[self.position];
         self.position = self.position + 1;
         return .Some(element);
     }

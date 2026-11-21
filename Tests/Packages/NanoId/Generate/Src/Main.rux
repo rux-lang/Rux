@@ -19,7 +19,7 @@ extend CountingSource : EntropySource {
         self.requests = self.requests + 1;
         if self.failing { throw .Failed; }
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes.
-        let bytes = unsafe { (buffer as *var byte)[..length] };
+        let bytes = (buffer as *var byte)[..length];
         var index: uint = 0;
         while index < length {
             bytes[index] = (self.next % 256) as byte;

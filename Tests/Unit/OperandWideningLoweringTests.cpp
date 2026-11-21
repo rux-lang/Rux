@@ -200,7 +200,7 @@ TEST_SUITE("OperandWideningLowering") {
     TEST_CASE("pointer arithmetic still offsets by elements") {
         const LirPackage package = CompileToLir(R"(
             // Safety: `cursor` must address an `int32` element of an array that has one more element after it
-            unsafe func Advance(cursor: *var int32) -> *var int32 {
+            func Advance(cursor: *var int32) -> *var int32 {
                 return cursor + 1;
             }
         )");

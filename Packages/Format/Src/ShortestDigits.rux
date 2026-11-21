@@ -110,7 +110,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
         short = if inclusive { reach.Compare(state.denominator) < 0 } else { reach.Compare(state.denominator) <= 0 };
     }
     // Safety: the documented contract makes `exponent10` a non-null pointer to the caller's writable `int`.
-    unsafe { *exponent10 = power; }
+    *exponent10 = power;
     return true;
 }
 
@@ -148,10 +148,8 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
                         count: *var uint, exponent10: *var int) -> bool {
     // Safety: the documented contract makes `count` and `exponent10` non-null pointers to the caller's writable
     // values.
-    unsafe {
-        *count = 0;
-        *exponent10 = 0;
-    }
+    *count = 0;
+    *exponent10 = 0;
     if into.length < MaximumShortestDigits || significand == 0 { return false; }
 
     var state = Ratio {
@@ -184,7 +182,7 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         if !low && !high {
             // Safety: `written` is below `MaximumShortestDigits`, the loop condition, which is at most `into.length`,
             // checked on entry.
-            unsafe { into.data[written] = (digit + 0x30) as char8; }
+            into.data[written] = (digit + 0x30) as char8;
             written = written + 1;
             continue;
         }
@@ -203,11 +201,9 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         // Safety: `written` is below `MaximumShortestDigits`, the loop condition, which is at most `into.length`,
         // checked on entry; the documented contract makes `count` and `exponent10` non-null pointers to the caller's
         // writable values.
-        unsafe {
-            into.data[written] = (digit + 0x30) as char8;
-            *count = written + 1;
-            *exponent10 = power - 1;
-        }
+        into.data[written] = (digit + 0x30) as char8;
+        *count = written + 1;
+        *exponent10 = power - 1;
         written = written + 1;
         return true;
     }

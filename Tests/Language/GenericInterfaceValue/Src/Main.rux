@@ -28,7 +28,7 @@ func Borrowed(value: &Named) -> int {
 func Main() -> int {
     let box = Box<int32> { value: 3, id: 7 };
     // Safety: `box` is a local of `Main` that outlives `named` and is never moved.
-    let named = unsafe { @box as Named };
+    let named = @box as Named;
     Assert(named.Id() == 7, "interface value");
     Assert(Read(Box<bool> { value: true, id: 9 }) == 9, "argument");
     Assert(Borrowed(box) == 7, "borrowed");

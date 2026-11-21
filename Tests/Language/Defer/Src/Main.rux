@@ -7,28 +7,28 @@ import Core::Assert;
 
 func LastInFirstOut(log: *var int) {
     // Safety: `log` is the address of a live local of `Main`, the only caller.
-    defer unsafe { *log = *log * 10 + 1; }
+    defer *log = *log * 10 + 1;
     // Safety: `log` is the address of a live local of `Main`, the only caller.
-    defer unsafe { *log = *log * 10 + 2; }
+    defer *log = *log * 10 + 2;
     // Safety: `log` is the address of a live local of `Main`, the only caller.
-    defer unsafe { *log = *log * 10 + 3; }
+    defer *log = *log * 10 + 3;
 }
 
 func RunsOnEarlyReturn(counter: *var int) -> int {
     // Safety: `counter` is the address of a live local of `Main`, the only caller.
-    defer unsafe { *counter += 1; }
+    defer *counter += 1;
     // Safety: `counter` is the address of a live local of `Main`, the only caller.
-    if unsafe { *counter } == 0 {
+    if *counter == 0 {
         return 100;
     }
     // Safety: `counter` is the address of a live local of `Main`, the only caller.
-    unsafe { *counter += 50; }
+    *counter += 50;
     return 200;
 }
 
 func RunsOnEveryPath(counter: *var int, takeEarly: bool) -> int {
     // Safety: `counter` is the address of a live local of `Main`, the only caller.
-    defer unsafe { *counter += 1; }
+    defer *counter += 1;
     if takeEarly {
         return 1;
     }
@@ -39,10 +39,10 @@ func RunsOnEveryPath(counter: *var int, takeEarly: bool) -> int {
 func ConditionalRegistration(counter: *var int, register: bool) {
     if register {
         // Safety: `counter` is the address of a live local of `Main`, the only caller.
-        defer unsafe { *counter += 1; }
+        defer *counter += 1;
     }
     // Safety: `counter` is the address of a live local of `Main`, the only caller.
-    unsafe { *counter += 100; }
+    *counter += 100;
 }
 
 // A defer inside a loop body belongs to that body's scope, so it runs once per iteration rather than once at the
@@ -50,9 +50,9 @@ func ConditionalRegistration(counter: *var int, register: bool) {
 func PerIteration(counter: *var int) {
     for index in 0..3 {
         // Safety: `counter` is the address of a live local of `Main`, the only caller.
-        defer unsafe { *counter += 1; }
+        defer *counter += 1;
         // Safety: `counter` is the address of a live local of `Main`, the only caller.
-        unsafe { *counter += 10; }
+        *counter += 10;
     }
 }
 
@@ -61,7 +61,7 @@ func PerIteration(counter: *var int) {
 func EvaluatesAtScopeExit(seen: *var int) {
     var value = 1;
     // Safety: `seen` is the address of a live local of `Main`, the only caller.
-    defer unsafe { *seen = value; }
+    defer *seen = value;
     value = 2;
 }
 
@@ -90,7 +90,7 @@ func RunsOnLoopExits(counter: *var int) {
     var pass = 0;
     loop {
         // Safety: `counter` is the address of a live local of `Main`, the only caller.
-        defer unsafe { *counter = *counter + 1; }
+        defer *counter = *counter + 1;
         pass += 1;
         if pass < 3 {
             continue;
@@ -103,10 +103,10 @@ func RunsOnLoopExits(counter: *var int) {
 func RunsOnLabeledBreak(order: *var int) {
     outer: for i in 0..5 {
         // Safety: `order` is the address of a live local of `Main`, the only caller.
-        defer unsafe { *order = *order * 10 + 2; }
+        defer *order = *order * 10 + 2;
         for j in 0..5 {
             // Safety: `order` is the address of a live local of `Main`, the only caller.
-            defer unsafe { *order = *order * 10 + 1; }
+            defer *order = *order * 10 + 1;
             if j == 0 {
                 break outer;
             }

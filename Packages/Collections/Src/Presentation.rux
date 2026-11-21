@@ -42,7 +42,7 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
             try WriteBytes(writer, ", ");
         }
         // Safety: `index < items.length`, checked by the loop, so the slice holds an element there.
-        unsafe { try items.data[index].WriteDebug(writer, spec); }
+        try items.data[index].WriteDebug(writer, spec);
         index = index + 1;
     }
     return;
@@ -135,10 +135,10 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
             }
             // Safety: `index` is below the table's capacity, checked by the loop, and the slot is occupied, checked
             // above, so both the key and the value there are initialized.
-            unsafe { try value.table.keys[index].WriteDebug(writer, spec); }
+            try value.table.keys[index].WriteDebug(writer, spec);
             try WriteBytes(writer, ": ");
             // Safety: the same occupied slot below the table's capacity.
-            unsafe { try value.table.values[index].WriteDebug(writer, spec); }
+            try value.table.values[index].WriteDebug(writer, spec);
             written = written + 1;
         }
         index = index + 1;
@@ -170,7 +170,7 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
             }
             // Safety: `index` is below the table's capacity, checked by the loop, and the slot is occupied, checked
             // above, so the key there is initialized.
-            unsafe { try value.table.keys[index].WriteDebug(writer, spec); }
+            try value.table.keys[index].WriteDebug(writer, spec);
             written = written + 1;
         }
         index = index + 1;
@@ -196,7 +196,7 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
                                                spec: FormatSpec) throws FormatError {
     try WriteAscii(writer, c8'{');
     // Safety: the tree invariant: the map's `root` is null or a live node of its tree.
-    var node = unsafe { Tree::Minimum<K, V>(value.tree.root) };
+    var node = Tree::Minimum<K, V>(value.tree.root);
     var written: uint = 0;
     while node != null {
         if written != 0 {
@@ -204,13 +204,13 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
         }
         // Safety: the tree invariant: `node` is non-null, checked by the loop, and a live node of the map, which is
         // borrowed and so unchanged for the whole walk.
-        unsafe { try node.key.WriteDebug(writer, spec); }
+        try node.key.WriteDebug(writer, spec);
         try WriteBytes(writer, ": ");
         // Safety: `node` is still that live node.
-        unsafe { try node.value.WriteDebug(writer, spec); }
+        try node.value.WriteDebug(writer, spec);
         written = written + 1;
         // Safety: `node` is still that live node.
-        node = unsafe { Tree::Successor<K, V>(node) };
+        node = Tree::Successor<K, V>(node);
     }
     return try WriteAscii(writer, c8'}');
 }
@@ -230,7 +230,7 @@ pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>
                                      spec: FormatSpec) throws FormatError {
     try WriteAscii(writer, c8'{');
     // Safety: the tree invariant: the set's `root` is null or a live node of its tree.
-    var node = unsafe { Tree::Minimum<T, ()>(value.tree.root) };
+    var node = Tree::Minimum<T, ()>(value.tree.root);
     var written: uint = 0;
     while node != null {
         if written != 0 {
@@ -238,10 +238,10 @@ pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>
         }
         // Safety: the tree invariant: `node` is non-null, checked by the loop, and a live node of the set, which is
         // borrowed and so unchanged for the whole walk.
-        unsafe { try node.key.WriteDebug(writer, spec); }
+        try node.key.WriteDebug(writer, spec);
         written = written + 1;
         // Safety: `node` is still that live node.
-        node = unsafe { Tree::Successor<T, ()>(node) };
+        node = Tree::Successor<T, ()>(node);
     }
     return try WriteAscii(writer, c8'}');
 }

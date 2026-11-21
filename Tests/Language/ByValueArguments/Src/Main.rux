@@ -17,7 +17,7 @@ import Core::{ Assert };
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
     // Safety: a slice's `data` addresses `length` readable elements.
-    return unsafe { (text.data)[..text.length] };
+    return (text.data)[..text.length];
 }
 
 const Seeds: uint64[4] = [11, 22, 33, 44];
@@ -56,7 +56,7 @@ extend Counter : Sink {
     func Put(&var self, bytes: char8[..]) -> uint {
         self.total = self.total + bytes.length;
         // Safety: the callers in this test pass only non-empty text, so element 0 exists.
-        return bytes.length * 256u + (unsafe { bytes.data[0] } as uint8 as uint);
+        return bytes.length * 256u + (bytes.data[0] as uint8 as uint);
     }
 }
 

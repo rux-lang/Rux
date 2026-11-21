@@ -17,7 +17,7 @@ import Memory::Copy;
 
 /// Text that owns its bytes.
 /// Move-only: it owns its block and gives it back when it dies. `Clone` makes an independent copy explicitly.
-/// Storage invariant, which every operation keeps and every `unsafe` block here relies on: `length <= capacity`;
+/// Storage invariant, which every operation keeps and every raw access here relies on: `length <= capacity`;
 /// `data` is null exactly when `capacity` is zero, and otherwise addresses a block of `capacity` bytes from
 /// `allocator` whose first `length` bytes are initialized, well-formed UTF-8.
 /// @see https://rux-lang.dev/docs/api/text/string
@@ -72,7 +72,7 @@ extend String {
         // Safety: `block` is a fresh allocation of `bytes.length` bytes, so it has room for the copy and does not
         // overlap `bytes`, which is readable for its length; it holds bytes, so viewing it as `char8` reinterprets
         // nothing.
-        let data = unsafe {
+        let data = {
             Copy(block, bytes.data as *opaque, bytes.length);
             block as *var char8
         };
@@ -128,7 +128,7 @@ extend String {
     /// @see https://rux-lang.dev/docs/api/text/string#bytes
     pub func Bytes(&self) -> char8[..] {
         // Safety: the storage invariant: the first `length` bytes at `data` are initialized and owned by this string.
-        return unsafe { (self.data)[..self.length] };
+        return (self.data)[..self.length];
     }
 
     /// A view over this string, which is what to pass to anything that only reads.

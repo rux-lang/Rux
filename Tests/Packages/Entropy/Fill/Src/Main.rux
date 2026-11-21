@@ -27,7 +27,7 @@ extend ScriptedSource : EntropySource {
         while index < length {
             // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes, and `index`
             // stays below `length`.
-            unsafe { *((buffer as *var byte) + index) = 0x7E; }
+            *((buffer as *var byte) + index) = 0x7E;
             index++;
         }
 
@@ -60,7 +60,7 @@ func Main() throws EntropyError {
     var working = Scripted(EntropyError::Failed, 0);
     let workingSource: &var EntropySource = working;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { try FillFrom(workingSource, @storage[0] as *var opaque, 64); }
+    try FillFrom(workingSource, @storage[0] as *var opaque, 64);
     Assert(working.calls == 1, "in a single call");
     Assert(AllBytesAre(storage[..64], 0x7E), "and what it wrote is what came back");
 
@@ -69,7 +69,7 @@ func Main() throws EntropyError {
     let refusingSource: &var EntropySource = refusing;
     // Safety: `storage` is a local array of exactly 64 bytes.
     try {
-        unsafe { FillFrom(refusingSource, @storage[0] as *var opaque, 64); }
+        FillFrom(refusingSource, @storage[0] as *var opaque, 64);
         Panic("the operation was expected to fail");
     } catch {
         refusal => Assert(refusal == EntropyError::Failed, "a refusal is reported as it was given"),
@@ -82,7 +82,7 @@ func Main() throws EntropyError {
     // Safety: `storage` is a local array of exactly 64 bytes.
     var caughtUnsupported: EntropyError? = none;
     try {
-        unsafe { FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4); }
+        FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4);
     } catch {
         error => { caughtUnsupported = error; }
     }
@@ -94,7 +94,7 @@ func Main() throws EntropyError {
     var signalled = Scripted(EntropyError::Interrupted, 2);
     let signalledSource: &var EntropySource = signalled;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { try FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4); }
+    try FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4);
     Assert(signalled.calls == 3, "taking exactly the two failures and the attempt that worked");
     Assert(AllBytesAre(storage[..64], 0x7E), "and the successful attempt is what the caller keeps");
 
@@ -104,7 +104,7 @@ func Main() throws EntropyError {
     // Safety: `storage` is a local array of exactly 64 bytes.
     var caughtGaveUp: EntropyError? = none;
     try {
-        unsafe { FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3); }
+        FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3);
     } catch {
         error => { caughtGaveUp = error; }
     }
@@ -119,7 +119,7 @@ func Main() throws EntropyError {
     // Safety: `storage` is a local array of exactly 64 bytes.
     var caughtOneAttempt: EntropyError? = none;
     try {
-        unsafe { FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0); }
+        FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0);
     } catch {
         error => { caughtOneAttempt = error; }
     }
@@ -131,11 +131,11 @@ func Main() throws EntropyError {
     var untouched = Scripted(EntropyError::Failed, 100);
     let untouchedSource: &var EntropySource = untouched;
     // Safety: a zero length asks for no bytes, so nothing is written.
-    unsafe { try FillFrom(untouchedSource, @storage[0] as *var opaque, 0); }
+    try FillFrom(untouchedSource, @storage[0] as *var opaque, 0);
     // Safety: a null buffer is refused before the source is asked, which is the behaviour under test.
     var caughtNullRefusal: EntropyError? = none;
     try {
-        unsafe { FillFrom(untouchedSource, null, 64); }
+        FillFrom(untouchedSource, null, 64);
     } catch {
         error => { caughtNullRefusal = error; }
     }
@@ -145,7 +145,7 @@ func Main() throws EntropyError {
 
     // The real generator, reached the way a caller reaches it.
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { try Fill(@storage[0] as *var opaque, 64); }
+    try Fill(@storage[0] as *var opaque, 64);
     Assert(!AllBytesAre(storage[..64], 0), "with something other than zeros");
     Assert(!AllBytesAre(storage[..64], 0x7E), "and something other than the scripted pattern");
 
@@ -153,7 +153,7 @@ func Main() throws EntropyError {
     var system = SystemEntropy();
     let systemSource: &var EntropySource = system;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    unsafe { try FillFrom(systemSource, @storage[0] as *var opaque, 64); }
+    try FillFrom(systemSource, @storage[0] as *var opaque, 64);
 
     // A seed is a draw like any other, and two of them differ.
     let firstSeed = try NextUint64();

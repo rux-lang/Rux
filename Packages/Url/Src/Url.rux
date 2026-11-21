@@ -449,7 +449,7 @@ extend Url {
     // Copies this URL's authority into `pieces`.
     func CopyAuthority(&self, pieces: *var Pieces) {
         // Safety: both callers pass `@` of their own local `Pieces`, live and writable for the whole call.
-        unsafe { pieces.hasAuthority = self.hasAuthority; }
+        pieces.hasAuthority = self.hasAuthority;
         if !self.hasAuthority { return; }
         let text = self.text.Bytes();
         let userinfo: char8[..]? = if self.hasUserinfo { text[self.userinfoStart..self.userinfoEnd] } else { none };
@@ -460,11 +460,9 @@ extend Url {
         };
         let port: char8[..]? = if self.hasPort { text[self.portStart..self.portEnd] } else { none };
         // Safety: both callers pass `@` of their own local `Pieces`, live and writable for the whole call.
-        unsafe {
-            pieces.userinfo = userinfo;
-            pieces.host = host;
-            pieces.port = port;
-        }
+        pieces.userinfo = userinfo;
+        pieces.host = host;
+        pieces.port = port;
     }
 }
 

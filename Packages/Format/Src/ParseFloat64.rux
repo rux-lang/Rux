@@ -84,7 +84,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseE
         special: 0
     };
     // Safety: the documented contract makes `reading` a non-null pointer to the caller's writable `DecimalReading`.
-    unsafe { *reading = scanned; }
+    *reading = scanned;
     if str.length == 0 { throw ParseError::Empty; }
 
     var index: uint = 0;
@@ -100,14 +100,14 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseE
         scanned.special = 1;
         // Safety: the documented contract makes `reading` a non-null pointer to the caller's writable
         // `DecimalReading`.
-        unsafe { *reading = scanned; }
+        *reading = scanned;
         return;
     }
     if index + 3 == str.length && str[index] == c8'I' && str[index + 1] == c8'n' && str[index + 2] == c8'f' {
         scanned.special = 2;
         // Safety: the documented contract makes `reading` a non-null pointer to the caller's writable
         // `DecimalReading`.
-        unsafe { *reading = scanned; }
+        *reading = scanned;
         return;
     }
 
@@ -179,7 +179,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseE
     }
     if index != str.length { throw ParseError::InvalidCharacter(index); }
     // Safety: the documented contract makes `reading` a non-null pointer to the caller's writable `DecimalReading`.
-    unsafe { *reading = scanned; }
+    *reading = scanned;
     return;
 }
 

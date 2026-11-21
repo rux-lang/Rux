@@ -106,7 +106,7 @@ pub func PageSize() -> uint throws PageError {
             // process. The zero check is a guard against a future stub rather than an observed case.
             var info: SystemInfo;
             // Safety: `info` is a local `SystemInfo`, which `GetSystemInfo` fills.
-            unsafe { GetSystemInfo(@info); }
+            GetSystemInfo(@info);
             if info.pageSize == 0 { throw .Unsupported; }
             return info.pageSize as uint;
         }
@@ -137,14 +137,14 @@ pub func PageAllocate(length: uint, protection: uint32) -> *var opaque throws Pa
     when #target.os {
         .Windows => {
             // Safety: a null address lets the system choose where the new pages go, so nothing existing is touched.
-            let mapped = unsafe { VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection)) };
+            let mapped = VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection));
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if mapped == null { throw WindowsError(unsafe { GetLastError() }); }
+            if mapped == null { throw WindowsError(GetLastError()); }
             return mapped;
         }
         _ => {
             // Safety: a fresh private anonymous mapping at no fixed address replaces nothing the program uses.
-            let mapped = unsafe { Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0) };
+            let mapped = Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0);
             if IsError(mapped) { throw UnixError(Errno(mapped)); }
             return mapped as *var opaque;
         }
@@ -163,7 +163,7 @@ pub func PageAllocate(length: uint, protection: uint32) -> *var opaque throws Pa
 /// @param length the length it was given
 /// @returns nothing on success, or the reason the system refused the release
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-release
-pub unsafe func PageRelease(address: *var opaque, length: uint) throws PageError {
+pub func PageRelease(address: *var opaque, length: uint) throws PageError {
     if address == null { throw .InvalidAddress; }
     if length == 0 { throw .InvalidLength; }
     when #target.os {
@@ -190,7 +190,7 @@ pub unsafe func PageRelease(address: *var opaque, length: uint) throws PageError
 /// @param protection what may be done with the pages afterwards
 /// @returns nothing on success, or the reason the system refused the change
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-protect
-pub unsafe func PageProtect(address: *var opaque, length: uint, protection: uint32) throws PageError {
+pub func PageProtect(address: *var opaque, length: uint, protection: uint32) throws PageError {
     if address == null { throw .InvalidAddress; }
     if length == 0 { throw .InvalidLength; }
     when #target.os {

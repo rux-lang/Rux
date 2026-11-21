@@ -78,7 +78,7 @@ func AtLeast<T>(a: T, b: T) -> bool {
 // evaluate each operand exactly once.
 func Count(counter: *var int32, value: int32) -> Keyed {
     // Safety: every caller passes `@evaluations`, a live local.
-    unsafe { *counter += 1; }
+    *counter += 1;
     return Keyed { key: value, origin: 0 };
 }
 

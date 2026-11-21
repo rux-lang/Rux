@@ -11,25 +11,25 @@ func Main() -> int {
         return 1;
     }
     // Safety: `getpid` takes no arguments and touches no memory.
-    if unsafe { Syscall0(SysGetPid) } != GetPid() {
+    if Syscall0(SysGetPid) != GetPid() {
         return 2;
     }
 
     // Safety: a zero count reads nothing into the null buffer.
-    let readError = unsafe { Read(-1, null as *var opaque, 0) };
+    let readError = Read(-1, null as *var opaque, 0);
     if !IsError(readError) || Errno(readError) == 0 {
         return 3;
     }
 
     // Safety: a zero count writes nothing from the null buffer.
-    let writeError = unsafe { Write(-1, null, 0) };
+    let writeError = Write(-1, null, 0);
     if !IsError(writeError) || Errno(writeError) == 0 {
         return 4;
     }
 
     var time: Timespec;
     // Safety: `time` is a local `Timespec`, the record the call fills.
-    if unsafe { ClockGetTime(ClockMonotonic, @time) } != 0 || time.seconds < 0 {
+    if ClockGetTime(ClockMonotonic, @time) != 0 || time.seconds < 0 {
         return 5;
     }
     let copiedTime = time;
@@ -39,7 +39,7 @@ func Main() -> int {
 
     const PageSize: uint = 4096;
     // Safety: a null address lets the kernel place the mapping, and an anonymous one reads no descriptor.
-    let mapping = unsafe {
+    let mapping = {
         Mmap(null, PageSize, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
     };
     if IsError(mapping) {
@@ -47,7 +47,7 @@ func Main() -> int {
     }
 
     // Safety: `mapping` is the live read-write page checked above, so its first byte may be written and read.
-    let stored = unsafe {
+    let stored = {
         let bytes = mapping as *var char8;
         *bytes = 42 as char8;
         *bytes
@@ -57,12 +57,12 @@ func Main() -> int {
     }
 
     // Safety: `mapping` is the page mapped above, and nothing uses it after this.
-    if unsafe { Munmap(mapping as *opaque, PageSize) } != 0 {
+    if Munmap(mapping as *opaque, PageSize) != 0 {
         return 9;
     }
 
     // Safety: the raw `mmap` asks for a fresh anonymous page wherever the kernel chooses, with no descriptor.
-    let rawMapping = unsafe {
+    let rawMapping = {
         Syscall6(
             SysMmap,
             0,
@@ -77,7 +77,7 @@ func Main() -> int {
         return 10;
     }
     // Safety: `rawMapping` is the page the raw call mapped, which nothing uses.
-    if unsafe { Munmap(rawMapping as *opaque, PageSize) } != 0 {
+    if Munmap(rawMapping as *opaque, PageSize) != 0 {
         return 11;
     }
 
@@ -90,7 +90,7 @@ func Main() -> int {
     // clock itself.
     var resolution: Timespec;
     // Safety: `resolution` is a local `Timespec`, the record the call fills.
-    if unsafe { ClockGetResolution(ClockMonotonic, @resolution) } != 0 {
+    if ClockGetResolution(ClockMonotonic, @resolution) != 0 {
         return 20;
     }
     if resolution.seconds < 0 || resolution.nanoseconds < 0 ||
@@ -103,14 +103,14 @@ func Main() -> int {
     var request = Timespec { seconds: 0, nanoseconds: 100000 };
     var remaining = Timespec { seconds: 0, nanoseconds: 0 };
     // Safety: `request` and `remaining` are local `Timespec` records.
-    if unsafe { Nanosleep(@request, @remaining) } != 0 {
+    if Nanosleep(@request, @remaining) != 0 {
         return 22;
     }
 
     // A nanosecond count of a second or more is what every one of the three refuses, with EINVAL.
     var invalid = Timespec { seconds: 0, nanoseconds: 1000000000 };
     // Safety: `invalid` is a local `Timespec`, and the remainder may be null.
-    let refused = unsafe { Nanosleep(@invalid, null) };
+    let refused = Nanosleep(@invalid, null);
     if !IsError(refused) || Errno(refused) != EINVAL {
         return 23;
     }
@@ -118,11 +118,11 @@ func Main() -> int {
     // FstatAt is one name on all three systems now; Linux spelled it NewFstatAt until task 38.
     var status: char8[256];
     // Safety: the path is a NUL-terminated literal, and the 256-byte local `status` holds a whole `stat` record.
-    if unsafe { FstatAt(AtFdCwd, "/".data, @status[0] as *var opaque, 0) } != 0 {
+    if FstatAt(AtFdCwd, "/".data, @status[0] as *var opaque, 0) != 0 {
         return 24;
     }
     // Safety: the path is a NUL-terminated literal, and the 256-byte local `status` holds a whole `stat` record.
-    let absent = unsafe { FstatAt(AtFdCwd, "/no-such-file-8f2c1e".data, @status[0] as *var opaque, 0) };
+    let absent = FstatAt(AtFdCwd, "/no-such-file-8f2c1e".data, @status[0] as *var opaque, 0);
     if !IsError(absent) || Errno(absent) != ENOENT {
         return 25;
     }

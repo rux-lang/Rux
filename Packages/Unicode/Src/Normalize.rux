@@ -38,7 +38,7 @@ func DecomposeHangul(offset: uint32, into: var char32[..], at: uint, written: *v
         into[at + 2] = (HangulTrailBase + trail) as char32;
     }
     // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-    unsafe { *written = needed; }
+    *written = needed;
     return true;
 }
 
@@ -64,7 +64,7 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: var char32[..], at:
         if at + 1 > into.length { return false; }
         into[at] = scalar;
         // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-        unsafe { *written = 1; }
+        *written = 1;
         return true;
     }
     if at + length > into.length { return false; }
@@ -79,7 +79,7 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: var char32[..], at:
         each = each + 1;
     }
     // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-    unsafe { *written = length; }
+    *written = length;
     return true;
 }
 
@@ -87,7 +87,7 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: var char32[..], at:
 // higher and the right is not a starter. The runs between starters are short — a handful of marks — which is why
 // the quadratic sort is the right one: it is stable, in place, and never slower than the runs are long.
 // Safety: `length` must not exceed `items.length`.
-unsafe func CanonicalOrder(items: var char32[..], length: uint) {
+func CanonicalOrder(items: var char32[..], length: uint) {
     var sorted = false;
     while !sorted {
         sorted = true;
@@ -137,7 +137,7 @@ func Decompose(text: char32[..], compatibility: bool, into: var char32[..], writ
     while index < text.length {
         var wrote: uint = 0;
         // Safety: `index` is below `text.length`, the loop condition.
-        let scalar = unsafe { text.data[index] };
+        let scalar = text.data[index];
         if !DecomposeOne(scalar, compatibility, into, length, @wrote) { return false; }
         length = length + wrote;
         index = index + 1;
@@ -145,10 +145,8 @@ func Decompose(text: char32[..], compatibility: bool, into: var char32[..], writ
     // Safety: `length` sums what `DecomposeOne` wrote, and each call checked its writes against `into.length`, so
     // `length` does not exceed `into.length`; the documented contract makes `written` a non-null pointer to the
     // caller's writable `uint`.
-    unsafe {
-        CanonicalOrder(into, length);
-        *written = length;
-    }
+    CanonicalOrder(into, length);
+    *written = length;
     return true;
 }
 
@@ -165,14 +163,14 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
         let lead = first - HangulLeadBase;
         let vowel = second - HangulVowelBase;
         // Safety: the documented contract makes `composed` a non-null pointer to the caller's writable `char32`.
-        unsafe { *composed = (HangulBase + (lead * HangulVowelCount + vowel) * HangulTrailCount) as char32; }
+        *composed = (HangulBase + (lead * HangulVowelCount + vowel) * HangulTrailCount) as char32;
         return true;
     }
     if first >= HangulBase && first < HangulBase + HangulSyllableCount &&
        (first - HangulBase) % HangulTrailCount == 0 && second > HangulTrailBase &&
        second < HangulTrailBase + HangulTrailCount {
         // Safety: the documented contract makes `composed` a non-null pointer to the caller's writable `char32`.
-        unsafe { *composed = (first + (second - HangulTrailBase)) as char32; }
+        *composed = (first + (second - HangulTrailBase)) as char32;
         return true;
     }
 
@@ -184,16 +182,16 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
         let middle = (low + high) / 2;
         // Safety: `middle` is below `high`, which never exceeds `triples.length / 3`, so `middle * 3` lies inside
         // `triples`.
-        let midStarter = unsafe { triples.data[middle * 3] };
+        let midStarter = triples.data[middle * 3];
         // Safety: the same bound, `middle < triples.length / 3`, keeps `middle * 3 + 1` inside `triples`.
-        let midFollowing = unsafe { triples.data[middle * 3 + 1] };
+        let midFollowing = triples.data[middle * 3 + 1];
         if midStarter < first || (midStarter == first && midFollowing < second) {
             low = middle + 1;
         }
         else if midStarter == first && midFollowing == second {
             // Safety: `middle < triples.length / 3` keeps `middle * 3 + 2` inside `triples`, and the documented
             // contract makes `composed` a non-null pointer to the caller's writable `char32`.
-            unsafe { *composed = triples.data[middle * 3 + 2] as char32; }
+            *composed = triples.data[middle * 3 + 2] as char32;
             return true;
         }
         else {
@@ -209,7 +207,7 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
 // and LVT come from. This is the UAX #15 algorithm; the blocking rule is the whole of its subtlety, and the
 // conformance vectors are what hold it to the standard.
 // Safety: `length` must not exceed `items.length`.
-unsafe func Compose(items: var char32[..], length: uint) -> uint {
+func Compose(items: var char32[..], length: uint) -> uint {
     if length == 0 { return 0; }
     var result: uint = 1;
     var starterAt: uint = 0;
@@ -263,7 +261,7 @@ pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *va
     if !DecomposeCanonical(text, into, @length) { return false; }
     // Safety: `length` is what the decomposition reported writing into `into`, so it does not exceed `into.length`;
     // the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-    unsafe { *written = Compose(into, length); }
+    *written = Compose(into, length);
     return true;
 }
 
@@ -279,6 +277,6 @@ pub func NormalizeCompatibility(text: char32[..], into: var char32[..], written:
     if !DecomposeCompatibility(text, into, @length) { return false; }
     // Safety: `length` is what the decomposition reported writing into `into`, so it does not exceed `into.length`;
     // the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-    unsafe { *written = Compose(into, length); }
+    *written = Compose(into, length);
     return true;
 }

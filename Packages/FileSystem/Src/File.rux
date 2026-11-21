@@ -135,7 +135,7 @@ extend NativePath {
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
-            if (unsafe { units.data[index] } as uint32) == 0 { throw IoError::Of(IoErrorKind::InvalidInput); }
+            if (units.data[index] as uint32) == 0 { throw IoError::Of(IoErrorKind::InvalidInput); }
             index = index + 1;
         }
         let layout = Layout::Of((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
@@ -143,21 +143,21 @@ extend NativePath {
         var borrowed = allocator;
         let raw = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
-        let copied = unsafe { raw as *var OsUnit };
+        let copied = raw as *var OsUnit;
         index = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, so it is inside `units` and inside the block `copied`
             // addresses.
-            unsafe { copied[index] = units.data[index]; }
+            copied[index] = units.data[index];
             index = index + 1;
         }
         when #target.os == .Windows {
             // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
-            unsafe { copied[units.length] = 0; }
+            copied[units.length] = 0;
         }
         else {
             // Safety: `copied` holds `units.length + 1` units, so the terminator's slot is `units.length`.
-            unsafe { copied[units.length] = 0u8 as char8; }
+            copied[units.length] = 0u8 as char8;
         }
         return Self { units: copied, length: units.length, allocator };
     }
@@ -217,12 +217,12 @@ extend File {
             let share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
             // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
             // in scope, and a `uint16` unit is a `char16`.
-            let handle = unsafe {
+            let handle = {
                 CreateFileW(native.Pointer() as *char16, access, share, null, disposition as uint32, FILE_ATTRIBUTE_NORMAL, null)
             };
             if (handle as uint64) == InvalidHandleValue {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw TranslateNative(unsafe { GetLastError() } as int32);
+                throw TranslateNative(GetLastError() as int32);
             }
             return Self { handle: handle as *var opaque, open: true };
         }
@@ -249,7 +249,7 @@ extend File {
             // Read and write for everyone, cut down by the process umask — the ordinary permissions an
             // ordinary file is born with.
             // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
-            let opened = unsafe { OpenAt(AtFdCwd, native.Pointer() as *char8, flags, 438) };
+            let opened = OpenAt(AtFdCwd, native.Pointer() as *char8, flags, 438);
             if opened < 0 { throw TranslateNative((0 - opened) as int32); }
             return Self { handle: opened as int32, open: true };
         }
@@ -272,9 +272,9 @@ extend File {
         self.open = false;
         when #target.os == .Windows {
             // Safety: `handle` is this file's open handle, `open` was checked above, and it is closed only once.
-            let closed = unsafe { CloseHandle(self.handle) };
+            let closed = CloseHandle(self.handle);
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if !closed { throw TranslateNative(unsafe { GetLastError() } as int32); }
+            if !closed { throw TranslateNative(GetLastError() as int32); }
         }
         else {
             let result = Close(self.handle);

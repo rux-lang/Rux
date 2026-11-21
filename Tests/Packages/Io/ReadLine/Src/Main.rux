@@ -22,13 +22,11 @@ extend ScriptHandle : Reader {
     func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at a `ScriptState` local of the checking function, which outlives the handle.
-        unsafe {
-            if state.offset == state.bytes.length {
-                throw IoError::Of(IoErrorKind::EndOfStream);
-            }
-            into[0] = state.bytes[state.offset];
-            state.offset = state.offset + 1;
+        if state.offset == state.bytes.length {
+            throw IoError::Of(IoErrorKind::EndOfStream);
         }
+        into[0] = state.bytes[state.offset];
+        state.offset = state.offset + 1;
         return 1;
     }
 }
@@ -52,18 +50,16 @@ extend PausingHandle : Reader {
     func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at a `PausingState` local of `CheckPauses`, which outlives the handle.
-        unsafe {
-            state.calls = state.calls + 1;
-            if state.offset == state.pauseAt && !state.paused {
-                state.paused = true;
-                throw IoError::Of(state.pauseKind);
-            }
-            if state.offset == state.bytes.length {
-                throw IoError::Of(IoErrorKind::EndOfStream);
-            }
-            into[0] = state.bytes[state.offset];
-            state.offset = state.offset + 1;
+        state.calls = state.calls + 1;
+        if state.offset == state.pauseAt && !state.paused {
+            state.paused = true;
+            throw IoError::Of(state.pauseKind);
         }
+        if state.offset == state.bytes.length {
+            throw IoError::Of(IoErrorKind::EndOfStream);
+        }
+        into[0] = state.bytes[state.offset];
+        state.offset = state.offset + 1;
         return 1;
     }
 }

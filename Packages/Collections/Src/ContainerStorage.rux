@@ -41,7 +41,7 @@ func TryAllocateBlock<T>(allocator: Allocator, count: uint) -> (*var T) throws A
     let block = try allocator.Allocate(layout);
     // Safety: the allocator answered `ElementLayout<T>(count)`, so the block is aligned for `T` and has room for
     // `count` of them.
-    return unsafe { block as *var T };
+    return block as *var T;
 }
 
 // Storage for `count` elements, uninitialized; terminates the program when there is none.
@@ -59,7 +59,7 @@ func TryReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, 
     let moved = try allocator.Reallocate(block as *var opaque, oldLayout, newLayout);
     // Safety: the allocator answered `ElementLayout<T>(newCount)`, so the block is aligned for `T` and has room for
     // `newCount` of them.
-    return unsafe { moved as *var T };
+    return moved as *var T;
 }
 
 // Storage for `newCount` elements holding what the old block held; terminates the program when there is none.

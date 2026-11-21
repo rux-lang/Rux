@@ -72,7 +72,7 @@ func Main() throws AllocError {
     Assert(block != null, "and reports an address");
     Assert(IsPointerAligned(block as *opaque, 16), "which satisfies the layout's alignment");
     // Safety: `block` is a live 64-byte allocation, so all 64 bytes are writable and offsets 0 and 63 readable.
-    let (front, back) = unsafe {
+    let (front, back) = {
         Set(block, 0xC3 as byte, 64);
         let bytes = block as *var byte;
         (*bytes, *(bytes + 63))
@@ -113,7 +113,7 @@ func Main() throws AllocError {
     grown = try allocator.Reallocate(block, layout, larger);
     Assert(grown != null, "and reports where the block now is");
     // Safety: `grown` is the live 256-byte block the reallocation returned, so offsets 0 and 63 are inside it.
-    let (grownFront, grownBack) = unsafe {
+    let (grownFront, grownBack) = {
         let grownBytes = grown as *var byte;
         (*grownBytes, *(grownBytes + 63))
     };
@@ -123,7 +123,7 @@ func Main() throws AllocError {
     let smaller = Layout::Of(16, 16) ?? layout;
     shrunk = try allocator.Reallocate(grown, larger, smaller);
     // Safety: `shrunk` is the live 16-byte block the reallocation returned, so its first byte is readable.
-    let shrunkFront = unsafe { *(shrunk as *var byte) };
+    let shrunkFront = *(shrunk as *var byte);
     Assert(shrunkFront == 0xC3 as byte, "and keeps what still fits");
 
     // The two layouts must share an alignment; anything else is refused rather than silently moved.

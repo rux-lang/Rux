@@ -527,13 +527,13 @@ TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") 
 TEST_CASE("array repeats remain compact in HIR and evaluate their operand once") {
     const HirPackage hir = CompileToHir(R"(
         // Safety: `counter` must address a live, writable `int`
-        unsafe func Next(counter: *var int) -> int {
+        func Next(counter: *var int) -> int {
             *counter = *counter + 1;
             return *counter;
         }
 
         // Safety: `@counter` addresses a live local
-        unsafe func Main() -> int {
+        func Main() -> int {
             var counter = 0;
             let values = [Next(@counter); 4];
             return values[3];
@@ -554,13 +554,13 @@ TEST_CASE("array repeats remain compact in HIR and evaluate their operand once")
 
     const LirPackage lir = CompileToLir(R"(
         // Safety: `counter` must address a live, writable `int`
-        unsafe func Next(counter: *var int) -> int {
+        func Next(counter: *var int) -> int {
             *counter = *counter + 1;
             return *counter;
         }
 
         // Safety: `@counter` addresses a live local
-        unsafe func Main() -> int {
+        func Main() -> int {
             var counter = 0;
             let values = [Next(@counter); 4];
             return values[3];
@@ -660,7 +660,7 @@ TEST_CASE("extern C calls follow the target's ABI rather than the host's") {
         extern func Emit(text: *uint8) -> int32;
 
         // Safety: the program is only compiled, never run, so `Emit` never reads the null text
-        unsafe func Main() -> int {
+        func Main() -> int {
             Emit(null);
             return 0;
         }
@@ -960,7 +960,7 @@ TEST_CASE("codegen generates correct calling convention for extern functions") {
         ) -> *uint8;
 
         // Safety: the program is only compiled, never run, so `CreateFileA` never reads the null name
-        unsafe func Main() -> int {
+        func Main() -> int {
             let handle = OpenFile(
                 null,
                 1073741824u32,

@@ -1,6 +1,6 @@
 const Limit: int = 10;
 
-unsafe func Main() {
+func Main() {
     let fixed = 1;
     let pointer: *int = @fixed;
 

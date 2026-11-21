@@ -34,7 +34,7 @@ extend Store<T> {
     func ~Store(&var self) {
         if self.released != null {
             // Safety: a non-null `released` is `@released`, a local of `Main` that outlives every `Store`.
-            unsafe { *self.released = *self.released + (self.Footprint() as int32); }
+            *self.released = *self.released + (self.Footprint() as int32);
         }
     }
 }

@@ -169,7 +169,7 @@ extend Table<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/table#is-occupied
     pub func IsOccupied(&self, index: uint) -> bool {
         // Safety: the table invariant: `index < self.capacity`, checked first, so the state byte is written.
-        return index < self.capacity && unsafe { self.states[index] } != SlotEmpty;
+        return index < self.capacity && self.states[index] != SlotEmpty;
     }
 
     // Where a hash starts probing. The capacity is a power of two, so the arithmetic is modular: the mask keeps the low
@@ -204,13 +204,13 @@ extend Table<K, V> {
         var distance: uint = 0;
         while distance < self.capacity {
             // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
-            let state = unsafe { self.states[index] };
+            let state = self.states[index];
             if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
             if occupantDistance < distance { return none; }
             // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
             // and key are initialized.
-            if unsafe { self.tags[index] == tag && equals(self.keys[index], key) } { return .Some(index); }
+            if (self.tags[index] == tag && equals(self.keys[index], key)) { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -227,13 +227,13 @@ extend Table<K, V> {
         var distance: uint = 0;
         while distance < self.capacity {
             // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
-            let state = unsafe { self.states[index] };
+            let state = self.states[index];
             if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
             if occupantDistance < distance { return none; }
             // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
             // and key are initialized.
-            if unsafe { self.tags[index] == tag && equals(self.keys[index], key) } { return .Some(index); }
+            if (self.tags[index] == tag && equals(self.keys[index], key)) { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -247,7 +247,7 @@ extend Table<K, V> {
 
     // Recompute the home from the current capacity; a slot cached before EnsureRoom would be invalid after growth.
     // Safety: the capacity must be nonzero, as `EnsureRoom` or `Rehash` leaves it, so every probed slot is allocated.
-    unsafe func PlaceHashed(&var self, key: K, value: V, hashed: uint64) -> uint? {
+    func PlaceHashed(&var self, key: K, value: V, hashed: uint64) -> uint? {
         var index = self.HomeOf(hashed);
         var distance: uint = 0;
         var carriedKey = move key;
@@ -298,7 +298,7 @@ extend Table<K, V> {
     // the removed entry had never been inserted. That is what a tombstone would have stood in for, and why there are
     // none here.
     // Safety: `index` must be an occupied slot below the capacity whose key and value the caller has moved out.
-    unsafe func Vacate(&var self, index: uint) {
+    func Vacate(&var self, index: uint) {
         var hole = index;
         var next = self.NextOf(hole);
         while true {
@@ -345,7 +345,7 @@ extend Table<K, V> {
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @see https://rux-lang.dev/docs/api/collections/table#rehash
-    pub unsafe func Rehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64) {
+    pub func Rehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64) {
         try self.TryRehash(capacity, hash) catch { error => AllocationFailed(error) };
     }
 
@@ -359,7 +359,7 @@ extend Table<K, V> {
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/table#try-rehash
-    pub unsafe func TryRehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64)
+    pub func TryRehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64)
         throws AllocError {
         let keys = try TryAllocateBlock<K>(self.allocator, capacity);
         let values = try TryAllocateBlock<V>(self.allocator, capacity) catch {
@@ -465,7 +465,7 @@ extend Table<K, V> {
         let wanted = try Table::CapacityFor<K, V>(AddLength(self.length, additional));
         if wanted <= self.capacity { return; }
         // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
-        unsafe { try self.TryRehash(wanted, hash); }
+        try self.TryRehash(wanted, hash);
     }
 
     /// Releases the capacity the entry count does not need.
@@ -481,7 +481,7 @@ extend Table<K, V> {
         let wanted = try Table::CapacityFor<K, V>(self.length) catch { error => AllocationFailed(error) };
         if wanted >= self.capacity { return; }
         // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
-        unsafe { self.Rehash(wanted, hash); }
+        self.Rehash(wanted, hash);
     }
 
     /// Destroys every entry, keeping the storage.
@@ -493,14 +493,12 @@ extend Table<K, V> {
             // Safety: the table invariant: `index < self.capacity`, checked by the loop, so the state byte is written,
             // and the key and value are initialized where it is not `SlotEmpty`. Each is moved out once and the slot
             // is marked empty at once.
-            unsafe {
-                if self.states[index] != SlotEmpty {
-                    // Moving each into a local destroys it when the local's life ends, which is the only way a
-                    // container has to destroy something it does not know is droppable.
-                    let takenKey = move self.keys[index];
-                    let takenValue = move self.values[index];
-                    self.states[index] = SlotEmpty;
-                }
+            if self.states[index] != SlotEmpty {
+                // Moving each into a local destroys it when the local's life ends, which is the only way a
+                // container has to destroy something it does not know is droppable.
+                let takenKey = move self.keys[index];
+                let takenValue = move self.values[index];
+                self.states[index] = SlotEmpty;
             }
             index++;
         }

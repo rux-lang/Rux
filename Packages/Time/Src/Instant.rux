@@ -37,10 +37,8 @@ extend Instant {
             var count: int64 = 0;
             var frequency: int64 = 0;
             // Safety: `count` and `frequency` are local `int64`s, which the two queries fill.
-            unsafe {
-                QueryPerformanceCounter(@count);
-                QueryPerformanceFrequency(@frequency);
-            }
+            QueryPerformanceCounter(@count);
+            QueryPerformanceFrequency(@frequency);
             let ticks = count as uint64;
             let rate = frequency as uint64;
             let whole = ticks / rate;
@@ -50,7 +48,7 @@ extend Instant {
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
             // Safety: `time` is a local `Timespec`, which the call fills.
-            unsafe { ClockGetTime(ClockMonotonic, @time); }
+            ClockGetTime(ClockMonotonic, @time);
             return Self { ticks: (time.seconds as uint64) * 1000000000 + time.nanoseconds as uint64 };
         }
     }

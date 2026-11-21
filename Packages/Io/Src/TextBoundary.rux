@@ -107,12 +107,12 @@ extend ConsoleWriter : TextWriter {
     /// @see https://rux-lang.dev/docs/api/io/console-writer#write
     pub func Write(&var self, bytes: char8[..]) throws FormatError {
         // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over to outlive it.
-        if unsafe { *self.failure } is IoError { throw .WriterFailure; }
+        if *self.failure is IoError { throw .WriterFailure; }
         try PrintBytes(bytes) catch {
             error => {
                 // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over
                 // to outlive it.
-                unsafe { *self.failure = error; }
+                *self.failure = error;
                 throw .WriterFailure;
             },
         };
@@ -158,12 +158,12 @@ extend StreamWriter : TextWriter {
     /// @see https://rux-lang.dev/docs/api/io/stream-writer#write
     pub func Write(&var self, bytes: char8[..]) throws FormatError {
         // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over to outlive it.
-        if unsafe { *self.failure } is IoError { throw .WriterFailure; }
+        if *self.failure is IoError { throw .WriterFailure; }
         try WriteAll(self.sink, bytes) catch {
             error => {
                 // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over
                 // to outlive it.
-                unsafe { *self.failure = error; }
+                *self.failure = error;
                 throw .WriterFailure;
             },
         };

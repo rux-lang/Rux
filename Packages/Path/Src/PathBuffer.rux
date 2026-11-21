@@ -8,7 +8,7 @@ import Memory::Copy;
 
 /// An owning, growable path.
 /// Move-only: it prohibits copying and gives its block back with `~PathBuffer`.
-/// Storage invariant, which every `unsafe` block here relies on: `length <= capacity`; `data` is null exactly when
+/// Storage invariant, which every raw access here relies on: `length <= capacity`; `data` is null exactly when
 /// `capacity` is zero, and otherwise addresses a block of `capacity` units from `allocator` whose first `length` are
 /// initialized.
 /// @see https://rux-lang.dev/docs/api/path/path-buffer
@@ -63,7 +63,7 @@ extend PathBuffer {
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#as-path
     pub func AsPath(&self) -> Path {
         // Safety: the storage invariant: `data` addresses at least `length` initialized units this buffer owns.
-        return Path::FromView(OsStringView::FromUnits(unsafe { (self.data)[..self.length] }));
+        return Path::FromView(OsStringView::FromUnits((self.data)[..self.length]));
     }
 
     // Room for `additional` more units, by doubling.
@@ -84,13 +84,13 @@ extend PathBuffer {
         if self.data != null {
             // Safety: `block` is a fresh allocation of `wanted >= length` units, and the storage invariant makes
             // `self.data` readable for `self.length` units.
-            unsafe { Copy(block, self.data as *opaque, self.length * unitSize); }
+            Copy(block, self.data as *opaque, self.length * unitSize);
             let old = Layout::Of(self.capacity * unitSize, alignof(OsUnit) as uint);
             try borrowed.Deallocate(self.data as *var opaque,
                                 (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         // Safety: `block` is aligned for `OsUnit` and holds `wanted` of them.
-        self.data = unsafe { block as *var OsUnit };
+        self.data = block as *var OsUnit;
         self.capacity = wanted;
     }
 
@@ -102,7 +102,7 @@ extend PathBuffer {
         while index < units.length {
             // Safety: `index` is below `units.length`, and `Reserve` above made room for `length + units.length`
             // units.
-            unsafe { self.data[self.length + index] = units.data[index]; }
+            self.data[self.length + index] = units.data[index];
             index = index + 1;
         }
         self.length = self.length + units.length;
@@ -117,13 +117,13 @@ extend PathBuffer {
         let units = segment.Units();
         if units.length == 0 { return; }
         // Safety: `units` is not empty, checked above.
-        if IsSeparator(unsafe { units.data[0] }) {
+        if IsSeparator(units.data[0]) {
             self.length = 0;
             self.AppendUnits(units);
             return;
         }
         // Safety: `self.length` is positive, checked first, and the storage invariant keeps it within the block.
-        if self.length > 0 && !IsSeparator(unsafe { self.data[self.length - 1] }) {
+        if self.length > 0 && !IsSeparator(self.data[self.length - 1]) {
             var one: OsUnit[1];
             one[0] = PreferredSeparator();
             self.AppendUnits(one[0..1]);
@@ -139,12 +139,12 @@ extend PathBuffer {
         var length = self.length;
         // Safety: the read runs only when `length` is positive, and `length` starts at `self.length`, the count of
         // units the buffer holds at `data`.
-        while length > 0 && !IsSeparator(unsafe { self.data[length - 1] }) {
+        while length > 0 && !IsSeparator(self.data[length - 1]) {
             length = length - 1;
         }
         // Keep the root separator itself; anything else loses its trailing one too.
         // Safety: the read runs only when `length` is above one, and `length` is at most `self.length`.
-        while length > 1 && IsSeparator(unsafe { self.data[length - 1] }) {
+        while length > 1 && IsSeparator(self.data[length - 1]) {
             length = length - 1;
         }
         self.length = length;
@@ -201,7 +201,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
 
     let units = path.AsView().Units();
     // Safety: `units` is not empty, checked first in the same condition.
-    let absolute = units.length > 0 && IsSeparator(unsafe { units.data[0] });
+    let absolute = units.length > 0 && IsSeparator(units.data[0]);
     if absolute {
         var one: OsUnit[1];
         one[0] = PreferredSeparator();
@@ -248,7 +248,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
                         let empty = buffer.IsEmpty();
                         // Safety: the read happens only when the buffer is not empty, and the storage invariant covers
                         // its last unit.
-                        let ended = empty || IsSeparator(unsafe { buffer.data[buffer.Length() - 1] });
+                        let ended = empty || IsSeparator(buffer.data[buffer.Length() - 1]);
                         let opening = buffer.Length() + (if ended { 0u } else { 1u });
                         starts[depth] = opening;
                         depth = depth + 1;
@@ -268,11 +268,11 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
 func IsDot(segment: OsStringView) -> bool {
     let units = segment.Units();
     // Safety: `units.length` is one, checked first in the same condition.
-    return units.length == 1 && (unsafe { units.data[0] } as uint32) == 0x2E;
+    return units.length == 1 && (units.data[0] as uint32) == 0x2E;
 }
 
 func IsDoubleDot(segment: OsStringView) -> bool {
     let units = segment.Units();
     // Safety: `units.length` is two, checked first in the same condition.
-    return units.length == 2 && unsafe { (units.data[0] as uint32) == 0x2E && (units.data[1] as uint32) == 0x2E };
+    return units.length == 2 && ((units.data[0] as uint32) == 0x2E && (units.data[1] as uint32) == 0x2E);
 }

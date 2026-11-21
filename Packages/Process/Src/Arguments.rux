@@ -26,7 +26,7 @@ pub func ArgumentCount() -> uint {
 pub func Argument(index: uint) -> OsStringView? {
     if index >= NativeArgumentCount() { return none; }
     // Safety: `index` is below the argument count, checked above.
-    return unsafe { NativeArgument(index) };
+    return NativeArgument(index);
 }
 
 /// A walk over the process's arguments in order, the program first.

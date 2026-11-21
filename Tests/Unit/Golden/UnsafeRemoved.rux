@@ -1,0 +1,14 @@
+// `unsafe` is removed: a raw pointer operation, an extern call and an asm call need no mark. The word stays reserved
+// for one release, so each place it is written is reported with the way to write it now.
+pub unsafe func Load(pointer: *int) -> int {
+    return *pointer;
+}
+
+func Main() -> int {
+    var value = 1;
+    let first = unsafe { *@value };
+    unsafe {
+        value = first + 1;
+    }
+    return Load(@value);
+}

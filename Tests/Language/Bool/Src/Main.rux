@@ -11,7 +11,7 @@ import Core::Assert;
 // the answer came out right.
 func Sees(counter: *var int, value: bool) -> bool {
     // Safety: every caller passes the address of a live local counter.
-    unsafe { *counter += 1; }
+    *counter += 1;
     return value;
 }
 

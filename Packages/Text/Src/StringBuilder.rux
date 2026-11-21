@@ -22,7 +22,7 @@ pub const MinimumBuilderCapacity: uint = 16;
 
 /// A growable buffer of text.
 /// Move-only: it explicitly prohibits copying and owns its block. Holds well-formed UTF-8 at every moment.
-/// Storage invariant, which every operation keeps and every `unsafe` block here relies on: `length <= capacity`;
+/// Storage invariant, which every operation keeps and every raw access here relies on: `length <= capacity`;
 /// `data` is null exactly when `capacity` is zero, and otherwise addresses a block of `capacity` bytes from
 /// `allocator` whose first `length` bytes are initialized, well-formed UTF-8.
 /// @see https://rux-lang.dev/docs/api/text/string-builder
@@ -88,7 +88,7 @@ extend StringBuilder {
     pub func Bytes(&self) -> char8[..] {
         // Safety: the storage invariant: the first `length` bytes at `data` are initialized and owned by this
         // builder.
-        return unsafe { (self.data)[..self.length] };
+        return (self.data)[..self.length];
     }
 
     /// A view over what has been appended so far.
@@ -107,7 +107,7 @@ extend StringBuilder {
     /// @see https://rux-lang.dev/docs/api/text/string-builder#reserve
     pub func Reserve(&var self, additional: uint) {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant.
-        unsafe { ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional); }
+        ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional);
     }
 
     /// Makes sure there is room for `additional` more bytes, or throws why there is none.
@@ -118,7 +118,7 @@ extend StringBuilder {
     /// @see https://rux-lang.dev/docs/api/text/string-builder#try-reserve
     pub func TryReserve(&var self, additional: uint) throws AllocError {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant.
-        unsafe { try TryReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional); }
+        try TryReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional);
     }
 
     /// Appends bytes the caller vouches are UTF-8.
@@ -130,7 +130,7 @@ extend StringBuilder {
     pub func AppendValidated(&var self, bytes: char8[..]) {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant; `bytes` is
         // readable for its length and cannot borrow this builder's block while `self` is borrowed exclusively.
-        unsafe { AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes); }
+        AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes);
     }
 
     /// Appends what `view` spans.
@@ -252,7 +252,7 @@ extend StringBuilder {
 // boundary; the owning builder itself remains non-copyable and all public owner operations use references.
 // Safety: `data` and `capacity` must address the fields of one live builder whose storage invariant holds with
 // `length` as its length.
-unsafe func TryReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
+func TryReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
                            additional: uint) throws AllocError {
         if additional == 0 { return; }
         if additional > 0xFFFFFFFFFFFFFFFF - length { throw .Unsupported; }
@@ -286,7 +286,7 @@ unsafe func TryReserveBuilderStorage(data: *var *var char8, length: uint, capaci
 
 // `TryReserveBuilderStorage`, terminating the program when the room cannot be had.
 // Safety: as for `TryReserveBuilderStorage`.
-unsafe func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
+func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
                            additional: uint) {
     try TryReserveBuilderStorage(data, length, capacity, allocator, additional) catch {
         error => AllocationFailed(error)
@@ -295,7 +295,7 @@ unsafe func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity:
 
 // Safety: `data`, `length` and `capacity` must address the fields of one live builder whose storage invariant
 // holds, and `bytes` must not lie inside that builder's block, which may move when it grows.
-unsafe func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
+func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
                           bytes: char8[..]) {
     if bytes.length == 0 { return; }
     ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length);

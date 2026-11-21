@@ -138,7 +138,7 @@ extend Scanner {
     func Declared(&self) -> CommandSpec {
         // Safety: `self.spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which
         // the documented contract keeps alive for as long as the parse and every walk made from it.
-        return unsafe { *self.spec };
+        return *self.spec;
     }
 
     // A walk from the same position, independent of this one.

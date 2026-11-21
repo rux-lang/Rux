@@ -1,7 +1,7 @@
 // Taking a narrow float apart, and putting its shortest digits back together as text.
 // The bits are read through a pointer rather than through a conversion, because there is no conversion that
 // preserves them: casting a `float64` to a `uint64` asks for the value's integer part, and what is wanted is its
-// representation. That is a documented unsafe boundary, the same one NarrowParse.rux crosses to turn bits back
+// representation. That is a documented raw-pointer boundary, the same one NarrowParse.rux crosses to turn bits back
 // into a float and WideFloatValue.rux crosses to bridge the wide primitives.
 // What comes out is the significand and the power of two it is scaled by, in the form the exact digit generator
 // takes. A subnormal has a zero exponent field and no implicit leading bit; a normal has the bit and an exponent
@@ -34,7 +34,7 @@ pub struct FloatParts {
 pub func BitsOfFloat64(value: float64) -> uint64 {
     // Safety: `value` is this call's live parameter, `float64` and `uint64` are both eight bytes wide with the same
     // alignment, and every bit pattern is a valid `uint64`, so reading the float's storage as one is sound.
-    return unsafe { *((@value) as *uint64) };
+    return *((@value) as *uint64);
 }
 
 /// The bits of `value`, as they are stored.
@@ -45,7 +45,7 @@ pub func BitsOfFloat64(value: float64) -> uint64 {
 pub func BitsOfFloat32(value: float32) -> uint32 {
     // Safety: `value` is this call's live parameter, `float32` and `uint32` are both four bytes wide with the same
     // alignment, and every bit pattern is a valid `uint32`, so reading the float's storage as one is sound.
-    return unsafe { *((@value) as *uint32) };
+    return *((@value) as *uint32);
 }
 
 /// The bits of `value`, as they are stored.
@@ -56,7 +56,7 @@ pub func BitsOfFloat32(value: float32) -> uint32 {
 pub func BitsOfFloat16(value: float16) -> uint16 {
     // Safety: `value` is this call's live parameter, `float16` and `uint16` are both two bytes wide with the same
     // alignment, and every bit pattern is a valid `uint16`, so reading the float's storage as one is sound.
-    return unsafe { *((@value) as *uint16) };
+    return *((@value) as *uint16);
 }
 
 /// The bits of `value`, as they are stored.
@@ -67,7 +67,7 @@ pub func BitsOfFloat16(value: float16) -> uint16 {
 pub func BitsOfFloat8(value: float8) -> uint8 {
     // Safety: `value` is this call's live parameter, `float8` and `uint8` are both one byte wide with the same
     // alignment, and every bit pattern is a valid `uint8`, so reading the float's storage as one is sound.
-    return unsafe { *((@value) as *uint8) };
+    return *((@value) as *uint8);
 }
 
 /// Takes a `float64` apart into the significand and exponent its digits are generated from.

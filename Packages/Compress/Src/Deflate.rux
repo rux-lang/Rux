@@ -34,7 +34,7 @@ pub struct CompressWriter {
     format: Format;
     level: Level;
     allocator: Allocator;
-    // The buffer invariant every `unsafe` block below relies on: `data` holds `DataCapacity` bytes with
+    // The buffer invariant every raw access below relies on: `data` holds `DataCapacity` bytes with
     // `blockStart <= dataLength <= DataCapacity`; `head` holds `HashSize` entries and `previous` `WindowSize`, each
     // -1 or a position below `dataLength`; `tokens` holds `DataCapacity` entries with `tokenCount` of them in use;
     // `output` holds `OutputCapacity` bytes with `outputLength` of them in use. All five come from `Take` in `New`
@@ -66,7 +66,7 @@ func Take(allocator: Allocator, size: uint) -> *var opaque throws IoError {
 
 // Gives back a block `Take` handed out.
 // Safety: `block` must be null or a live block from `Take` with the same `allocator` and `size`.
-unsafe func Give(allocator: Allocator, block: *var opaque, size: uint) {
+func Give(allocator: Allocator, block: *var opaque, size: uint) {
     if block == null { return; }
     var borrowed = allocator;
     try borrowed.Deallocate(block, Layout::Of(size, 8) ?? Layout::ForValue<uint64>()) catch { _ => {} };
@@ -84,19 +84,19 @@ extend CompressWriter {
         -> Self throws IoError {
         // Safety: `Take` returns a fresh block of the bytes asked for, eight-byte aligned, which holds exactly
         // `DataCapacity` bytes.
-        let data = unsafe { try Take(allocator, DataCapacity) as *var uint8 };
+        let data = try Take(allocator, DataCapacity) as *var uint8;
         // Safety: a fresh eight-byte aligned block of `HashSize` four-byte entries.
-        let head = unsafe { try Take(allocator, HashSize * 4u) as *var int32 };
+        let head = try Take(allocator, HashSize * 4u) as *var int32;
         // Safety: a fresh eight-byte aligned block of `WindowSize` four-byte entries.
-        let previous = unsafe { try Take(allocator, WindowSize * 4u) as *var int32 };
+        let previous = try Take(allocator, WindowSize * 4u) as *var int32;
         // Safety: a fresh eight-byte aligned block of `DataCapacity` four-byte entries.
-        let tokens = unsafe { try Take(allocator, DataCapacity * 4u) as *var uint32 };
+        let tokens = try Take(allocator, DataCapacity * 4u) as *var uint32;
         // Safety: a fresh block of `OutputCapacity` bytes.
-        let output = unsafe { try Take(allocator, OutputCapacity) as *var uint8 };
+        let output = try Take(allocator, OutputCapacity) as *var uint8;
         var index: uint = 0;
         while index < HashSize {
             // Safety: `index` is below `HashSize`, the number of entries `head` was allocated with.
-            unsafe { head[index] = -1; }
+            head[index] = -1;
             index = index + 1;
         }
         return Self {
@@ -175,7 +175,7 @@ extend CompressWriter {
         while self.bitCount >= 8u {
             if self.outputLength == OutputCapacity { try self.SendOutput(); }
             // Safety: `outputLength` is below `OutputCapacity`: a full buffer was just sent, which empties it.
-            unsafe { self.output[self.outputLength] = self.bits.Truncate<uint8>(); }
+            self.output[self.outputLength] = self.bits.Truncate<uint8>();
             self.outputLength = self.outputLength + 1;
             self.bits = self.bits >> 8u64;
             self.bitCount = self.bitCount - 8;
@@ -193,7 +193,7 @@ extend CompressWriter {
         while sent < self.outputLength {
             // Safety: the buffer invariant: the first `outputLength` bytes of `output` are in use, and `sent` is below
             // `outputLength`; `uint8` and `char8` are both single bytes.
-            let chunk = unsafe { (self.output as *var char8)[sent..self.outputLength] };
+            let chunk = (self.output as *var char8)[sent..self.outputLength];
             let count = try self.sink.Write(chunk);
             if count == 0u { throw IoError::Of(IoErrorKind::WriteZero); }
             sent = sent + count;
@@ -203,7 +203,7 @@ extend CompressWriter {
 
     // The hash of the three bytes at `position`, which is below `HashSize`.
     // Safety: `position + MinimumMatch` must be at most `self.dataLength`.
-    unsafe func HashAt(&self, position: uint) -> uint {
+    func HashAt(&self, position: uint) -> uint {
         let value = (self.data[position] as uint32 << 16) | (self.data[position + 1u] as uint32 << 8) |
                     self.data[position + 2u] as uint32;
         return ((value *% 2654435761u32) >> (32u32 - HashBits as uint32)) as uint;
@@ -214,7 +214,7 @@ extend CompressWriter {
         if position + MinimumMatch > self.dataLength { return; }
         // Safety: the three bytes at `position` lie below `dataLength`, checked above; `hash` is below `HashSize`
         // and the masked position below `WindowSize`, the sizes of `head` and `previous`.
-        unsafe {
+        {
             let hash = self.HashAt(position);
             self.previous[position & (WindowSize - 1u)] = self.head[hash];
             self.head[hash] = position as int32;
@@ -235,7 +235,7 @@ extend CompressWriter {
         let limit = if end - position > MaximumMatch { MaximumMatch } else { end - position };
         // Safety: the three bytes at `position` lie below `end`, which is at most `dataLength`, checked above; the
         // hash is below `HashSize`, the size of `head`.
-        var candidate = unsafe { self.head[self.HashAt(position)] };
+        var candidate = self.head[self.HashAt(position)];
         var bestLength: uint = 0;
         var bestDistance: uint = 0;
         var steps: uint = 0;
@@ -244,11 +244,11 @@ extend CompressWriter {
             if at >= position || position - at > WindowSize { break; }
             // Safety: `at` is below `position` and `bestLength` below `limit` (reaching it ends the search), so both
             // reads lie below `position + limit`, which is at most `end`.
-            if unsafe { self.data[at + bestLength] == self.data[position + bestLength] } {
+            if (self.data[at + bestLength] == self.data[position + bestLength]) {
                 var length: uint = 0;
                 // Safety: `length` is below `limit`, checked first, and `at` below `position`, so both reads lie below
                 // `end`.
-                while length < limit && unsafe { self.data[at + length] == self.data[position + length] } {
+                while length < limit && (self.data[at + length] == self.data[position + length]) {
                     length = length + 1;
                 }
                 if length > bestLength {
@@ -258,7 +258,7 @@ extend CompressWriter {
                 }
             }
             // Safety: the masked position is below `WindowSize`, the size of `previous`.
-            let next = unsafe { self.previous[at & (WindowSize - 1u)] };
+            let next = self.previous[at & (WindowSize - 1u)];
             if next >= candidate { break; }
             candidate = next;
             steps = steps + 1;
@@ -287,7 +287,7 @@ extend CompressWriter {
             if length >= MinimumMatch {
                 // Safety: every token covers at least one position in `blockStart..end`, so `tokenCount` is below
                 // `end - blockStart`, at most `DataCapacity`.
-                unsafe { self.tokens[self.tokenCount] = MatchFlag | (length as uint32 << 16) | distance as uint32; }
+                self.tokens[self.tokenCount] = MatchFlag | (length as uint32 << 16) | distance as uint32;
                 var step: uint = 1;
                 while step < length {
                     self.Insert(position + step);
@@ -298,7 +298,7 @@ extend CompressWriter {
             else {
                 // Safety: `position` is below `end`, at most `dataLength`, and `tokenCount` is below
                 // `end - blockStart`, since every token covers at least one position.
-                unsafe { self.tokens[self.tokenCount] = self.data[position] as uint32; }
+                self.tokens[self.tokenCount] = self.data[position] as uint32;
                 position = position + 1;
             }
             self.tokenCount = self.tokenCount + 1;
@@ -323,7 +323,7 @@ extend CompressWriter {
         var token: uint = 0;
         while token < self.tokenCount {
             // Safety: the buffer invariant: `token` is below `tokenCount`, the entries in use.
-            let value = unsafe { self.tokens[token] };
+            let value = self.tokens[token];
             if (value & MatchFlag) == 0u32 {
                 literalCounts[value as uint] = literalCounts[value as uint] + 1u32;
             }
@@ -342,10 +342,8 @@ extend CompressWriter {
         var literalLengths: uint8[286] = [0u8; 286];
         var distanceLengths: uint8[30] = [0u8; 30];
         // Safety: both pairs of arrays are locals holding the 286 and 30 entries passed as the counts.
-        unsafe {
-            ChooseLengths(@literalCounts[0], 286, 15, @literalLengths[0]);
-            ChooseLengths(@distanceCounts[0], 30, 15, @distanceLengths[0]);
-        }
+        ChooseLengths(@literalCounts[0], 286, 15, @literalLengths[0]);
+        ChooseLengths(@distanceCounts[0], 30, 15, @distanceLengths[0]);
         if distanceLengths[0] == 0u8 && distanceLengths[1] == 0u8 {
             var used = false;
             var check: uint = 0;
@@ -373,7 +371,7 @@ extend CompressWriter {
         }
         var runs: uint16[316] = [0u16; 316];
         // Safety: `literalCount + distanceCount` is at most 316, the length of both local arrays.
-        let runCount = unsafe { RunLengths(@all[0], literalCount + distanceCount, @runs[0]) };
+        let runCount = RunLengths(@all[0], literalCount + distanceCount, @runs[0]);
         var codeCounts: uint32[19] = [0u32; 19];
         var runBits: uint64 = 0;
         index = 0;
@@ -393,7 +391,7 @@ extend CompressWriter {
         }
         var codeLengths: uint8[19] = [0u8; 19];
         // Safety: both arrays are locals of the 19 entries passed as the count.
-        unsafe { ChooseLengths(@codeCounts[0], 19, 7, @codeLengths[0]); }
+        ChooseLengths(@codeCounts[0], 19, 7, @codeLengths[0]);
         var codeLengthCount: uint = 19;
         while codeLengthCount > 4u && codeLengths[CodeLengthOrder[codeLengthCount - 1u] as uint] == 0u8 {
             codeLengthCount = codeLengthCount - 1;
@@ -434,7 +432,7 @@ extend CompressWriter {
             }
             var fixedDistances: uint8[30] = [5u8; 30];
             // Safety: the two arrays are locals of 288 and 30 lengths.
-            unsafe { try self.WriteTokens(@fixedLiterals[0], @fixedDistances[0]); }
+            try self.WriteTokens(@fixedLiterals[0], @fixedDistances[0]);
         }
         else {
             try self.PutBits(if final { 1u64 } else { 0u64 }, 1);
@@ -449,7 +447,7 @@ extend CompressWriter {
             }
             var codeCodes: uint16[19] = [0u16; 19];
             // Safety: both arrays are locals of the 19 entries passed as the count.
-            unsafe { AssignCodes(@codeLengths[0], 19, @codeCodes[0]); }
+            AssignCodes(@codeLengths[0], 19, @codeCodes[0]);
             index = 0;
             while index < runCount {
                 let run = runs[index];
@@ -468,14 +466,14 @@ extend CompressWriter {
                 index = index + 1;
             }
             // Safety: the two arrays are locals of 288 and 30 lengths.
-            unsafe { try self.WriteTokens(@literals[0], @distanceLengths[0]); }
+            try self.WriteTokens(@literals[0], @distanceLengths[0]);
         }
         self.blockStart = end;
     }
 
     // Writes the block's tokens with the given code lengths, and the end-of-block code.
     // Safety: `literalLengths` must be readable for 288 lengths and `distanceLengths` for 30.
-    unsafe func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) throws IoError {
+    func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) throws IoError {
         var literalCodes: uint16[288] = [0u16; 288];
         var distanceCodes: uint16[30] = [0u16; 30];
         AssignCodes(literalLengths, 288, @literalCodes[0]);
@@ -519,7 +517,7 @@ extend CompressWriter {
             while index < length {
                 // Safety: `at + index` is below `at + length`, at most `end`, which every caller keeps within
                 // `dataLength`.
-                try self.PutByte(unsafe { self.data[at + index] });
+                try self.PutByte(self.data[at + index]);
                 index = index + 1;
             }
             at = at + length;
@@ -534,13 +532,13 @@ extend CompressWriter {
         var index: uint = 0;
         while index < WindowSize {
             // Safety: `shift + index` is below `shift + WindowSize`, which is `dataLength`.
-            unsafe { self.data[index] = self.data[shift + index]; }
+            self.data[index] = self.data[shift + index];
             index = index + 1;
         }
         index = 0;
         while index < HashSize {
             // Safety: `index` is below `HashSize`, the size of `head`.
-            unsafe {
+            {
                 let entry = self.head[index];
                 self.head[index] = if entry >= shift as int32 { entry - shift as int32 } else { -1 };
             }
@@ -549,7 +547,7 @@ extend CompressWriter {
         index = 0;
         while index < WindowSize {
             // Safety: `index` is below `WindowSize`, the size of `previous`.
-            unsafe {
+            {
                 let entry = self.previous[index];
                 self.previous[index] = if entry >= shift as int32 { entry - shift as int32 } else { -1 };
             }
@@ -563,13 +561,11 @@ extend CompressWriter {
 
     func ~CompressWriter(&var self) {
         // Safety: the buffer invariant: each block came from `Take` in `New` with this allocator and this size.
-        unsafe {
-            Give(self.allocator, self.data as *var opaque, DataCapacity);
-            Give(self.allocator, self.head as *var opaque, HashSize * 4u);
-            Give(self.allocator, self.previous as *var opaque, WindowSize * 4u);
-            Give(self.allocator, self.tokens as *var opaque, DataCapacity * 4u);
-            Give(self.allocator, self.output as *var opaque, OutputCapacity);
-        }
+        Give(self.allocator, self.data as *var opaque, DataCapacity);
+        Give(self.allocator, self.head as *var opaque, HashSize * 4u);
+        Give(self.allocator, self.previous as *var opaque, WindowSize * 4u);
+        Give(self.allocator, self.tokens as *var opaque, DataCapacity * 4u);
+        Give(self.allocator, self.output as *var opaque, OutputCapacity);
     }
 }
 
@@ -584,12 +580,12 @@ extend CompressWriter : Writer {
         if self.format == Format::Zlib {
             // Safety: `bytes` is readable for its length, as the `Hasher` contract requires, and `char8` and `byte`
             // are both single bytes.
-            unsafe { self.adler.Write(bytes.data as *byte, bytes.length); }
+            self.adler.Write(bytes.data as *byte, bytes.length);
         }
         else if self.format == Format::Gzip {
             // Safety: `bytes` is readable for its length, as the `Hasher` contract requires, and `char8` and `byte`
             // are both single bytes.
-            unsafe { self.crc.Write(bytes.data as *byte, bytes.length); }
+            self.crc.Write(bytes.data as *byte, bytes.length);
             self.size = self.size + bytes.length as uint32;
         }
         var taken: uint = 0;
@@ -603,7 +599,7 @@ extend CompressWriter : Writer {
             var index: uint = 0;
             while index < count {
                 // Safety: `count` is at most `room`, so `dataLength + index` is below `DataCapacity`.
-                unsafe { self.data[self.dataLength + index] = bytes[taken + index] as uint8; }
+                self.data[self.dataLength + index] = bytes[taken + index] as uint8;
                 index = index + 1;
             }
             self.dataLength = self.dataLength + count;
@@ -654,7 +650,7 @@ func DistanceCode(distance: uint) -> uint {
 // Encodes code lengths with the run symbols 16, 17 and 18, as `symbol | extra << 5`, and returns how many there are,
 // which is never more than `count`.
 // Safety: `lengths` must be readable for `count` entries and `runs` writable for `count` entries.
-unsafe func RunLengths(lengths: *uint8, count: uint, runs: *var uint16) -> uint {
+func RunLengths(lengths: *uint8, count: uint, runs: *var uint16) -> uint {
     var written: uint = 0;
     var index: uint = 0;
     while index < count {

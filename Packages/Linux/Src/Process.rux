@@ -17,7 +17,7 @@ import Linux::{ ProcessId, SysExitGroup, SysGetPid, Syscall0, Syscall1 };
 /// @see https://rux-lang.dev/docs/api/linux/process#exit
 pub func Exit(code: int32) {
     // Safety: exit_group takes only a status number and touches no memory of the caller's.
-    unsafe { Syscall1(SysExitGroup, code.Truncate<uint64>()); }
+    Syscall1(SysExitGroup, code.Truncate<uint64>());
 }
 
 /// The calling process's own identifier.
@@ -28,5 +28,5 @@ pub func Exit(code: int32) {
 /// @see https://rux-lang.dev/docs/api/linux/process#get-pid
 pub func GetPid() -> ProcessId {
     // Safety: getpid takes no arguments and only reports the caller's identifier.
-    return unsafe { Syscall0(SysGetPid) } as ProcessId;
+    return Syscall0(SysGetPid) as ProcessId;
 }

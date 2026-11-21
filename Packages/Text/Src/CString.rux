@@ -53,7 +53,7 @@ extend CString {
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, the loop condition.
-            if (unsafe { bytes.data[index] } as uint32) == 0 {
+            if (bytes.data[index] as uint32) == 0 {
                 throw .InvalidUtf8;
             }
             index = index + 1;
@@ -67,14 +67,14 @@ extend CString {
         let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
 
         // Safety: `block` is a fresh allocation of bytes, so viewing it as `char8` reinterprets nothing.
-        let data = unsafe { block as *var char8 };
+        let data = block as *var char8;
         if bytes.length > 0 {
             // Safety: `block` has room for `bytes.length + 1` bytes and, being fresh, does not overlap `bytes`, which
             // is readable for its length.
-            unsafe { Copy(block, bytes.data as *opaque, bytes.length); }
+            Copy(block, bytes.data as *opaque, bytes.length);
         }
         // Safety: `bytes.length` is the last of the `bytes.length + 1` bytes allocated above.
-        unsafe { data[bytes.length] = 0u8 as char8; }
+        data[bytes.length] = 0u8 as char8;
         return Self { data, length: bytes.length, allocator };
     }
 
@@ -89,7 +89,7 @@ extend CString {
     /// @param limit the most bytes to read before giving up on finding a terminator
     /// @returns the copy, or a failure when no terminator was found within `limit`
     /// @see https://rux-lang.dev/docs/api/text/c-string#from-raw
-    pub unsafe func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> Self throws TextError {
+    pub func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> Self throws TextError {
         if raw == null {
             throw .InvalidUtf8;
         }
@@ -142,7 +142,7 @@ extend CString {
     pub func View(&self) -> StringView {
         // Safety: the `CString` invariant: `data` addresses `length + 1` bytes this value owns, the first `length` of
         // them the text, which `FromView` checked.
-        return StringView::FromValidated(unsafe { (self.data)[..self.length] });
+        return StringView::FromValidated((self.data)[..self.length]);
     }
 
     /// Gives the block back and leaves a `CString` that owns nothing.

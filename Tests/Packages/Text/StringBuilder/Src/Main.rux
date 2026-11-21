@@ -39,7 +39,7 @@ func Main() -> int {
     var surrogate: uint32 = 0xD000;
     surrogate = surrogate + 0x0800;
     // Safety: `surrogate` is a live local `uint32`, and `char32` has the same size and alignment.
-    let surrogateScalar = unsafe { *((@surrogate) as *char32) };
+    let surrogateScalar = *((@surrogate) as *char32);
     try {
         builder.AppendScalar(surrogateScalar);
         Panic("the operation was expected to fail");

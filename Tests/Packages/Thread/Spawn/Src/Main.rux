@@ -21,7 +21,7 @@ func SumRange(range: Range) -> uint64 {
         total = total + value;
         // Safety: `range.shared` is the counter local to `Main`, which joins this thread before it returns, and
         // every thread reaches it only atomically.
-        unsafe { AtomicFetchAdd(range.shared, 1u64, MemoryOrder::Relaxed); }
+        AtomicFetchAdd(range.shared, 1u64, MemoryOrder::Relaxed);
         value = value + 1u64;
     }
     Visits = Visits + 1;
@@ -37,13 +37,13 @@ func Identify(unused: uint8) -> uint64 {
 func Bump(counter: *var uint64) {
     // Safety: `counter` is a counter local to `Main`, which waits for every thread that bumps it before it returns,
     // and every thread reaches it only atomically.
-    unsafe { AtomicFetchAdd(counter, 1u64, MemoryOrder::Release); }
+    AtomicFetchAdd(counter, 1u64, MemoryOrder::Release);
 }
 
 func BumpTwice(counter: *var uint64) -> () {
     // Safety: `counter` is a counter local to `Main`, which joins this thread before it returns, and every thread
     // reaches it only atomically.
-    unsafe { AtomicFetchAdd(counter, 2u64, MemoryOrder::Release); }
+    AtomicFetchAdd(counter, 2u64, MemoryOrder::Release);
 }
 
 // Starts a thread and lets its handle go out of scope, which detaches it.
@@ -79,7 +79,7 @@ func Main() -> int {
     }
     Assert(total == 8002000u64, "the joined results add up to the whole sum");
     // Safety: `counter` is a live local that every thread reaches only atomically.
-    let counted = unsafe { AtomicLoad(@counter, MemoryOrder::SequentiallyConsistent) };
+    let counted = AtomicLoad(@counter, MemoryOrder::SequentiallyConsistent);
     Assert(counted == 4000u64, "every thread's atomic increments are counted");
     Assert(Visits == 100, "the other threads' writes did not touch this thread's copy");
 
@@ -95,7 +95,7 @@ func Main() -> int {
     Assert(SpawnAndDrop(@finished), "a thread can be started and its handle dropped");
     var spins: uint64 = 0;
     // Safety: `finished` is a live local that every thread reaches only atomically.
-    while unsafe { AtomicLoad(@finished, MemoryOrder::Acquire) } != 2u64 {
+    while AtomicLoad(@finished, MemoryOrder::Acquire) != 2u64 {
         Yield();
         spins = spins + 1u64;
     }
@@ -106,7 +106,7 @@ func Main() -> int {
     unitless.Join();
     unit.Join();
     // Safety: `finished` is a live local that every thread reaches only atomically.
-    Assert(unsafe { AtomicLoad(@finished, MemoryOrder::Acquire) } == 5u64, "joined threads without a result ran");
+    Assert(AtomicLoad(@finished, MemoryOrder::Acquire) == 5u64, "joined threads without a result ran");
 
     // A larger stack holds a deeper recursion.
     let options = ThreadOptions().WithStackSize(16u * 1024u * 1024u);

@@ -93,7 +93,7 @@ func IsDecimal(c: char8) -> bool {
 // Reads an abbreviation, three or more letters or anything between `<` and `>`, into `names`.
 func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: &var ZoneType) throws TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    var start = unsafe { *at };
+    var start = *at;
     var end = start;
     var next = start;
     if start < text.length && text[start] == '<' {
@@ -108,7 +108,7 @@ func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: 
         next = end;
     }
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    unsafe { *at = next; }
+    *at = next;
     if end - start < 3u { throw .InvalidRule; }
     into.abbreviation = names.Length();
     into.abbreviationLength = end - start;
@@ -119,7 +119,7 @@ func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: 
 // Reads `[+-]h[h][:mm[:ss]]` as seconds, its hours at most `maximumHours`.
 func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 throws TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    var cursor = unsafe { *at };
+    var cursor = *at;
     var sign: int32 = 1;
     if cursor < text.length && (text[cursor] == '+' || text[cursor] == '-') {
         if text[cursor] == '-' { sign = -1; }
@@ -141,14 +141,14 @@ func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 t
         }
     }
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    unsafe { *at = cursor; }
+    *at = cursor;
     return sign * seconds;
 }
 
 // Reads one to `digits` decimal digits.
 func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 throws TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    var cursor = unsafe { *at };
+    var cursor = *at;
     var value: int32 = 0;
     var count: uint = 0;
     while cursor < text.length && IsDecimal(text[cursor]) && count < digits {
@@ -157,7 +157,7 @@ func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 throws T
         count = count + 1;
     }
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    unsafe { *at = cursor; }
+    *at = cursor;
     if count == 0u { throw .InvalidRule; }
     return value;
 }
@@ -165,7 +165,7 @@ func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 throws T
 // Reads a date, `Jn`, `n` or `Mm.w.d`, and its optional `/time`.
 func ParseDate(text: char8[..], at: *var uint) -> RuleDate throws TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    var cursor = unsafe { *at };
+    var cursor = *at;
     var date = RuleDate { kind: 1, day: 0, month: 0, week: 0, weekday: 0, time: 7200 };
     if cursor < text.length && text[cursor] == 'J' {
         cursor = cursor + 1;
@@ -200,7 +200,7 @@ func ParseDate(text: char8[..], at: *var uint) -> RuleDate throws TimeZoneError 
         date.time = try ParseOffset(text, @cursor, 167);
     }
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
-    unsafe { *at = cursor; }
+    *at = cursor;
     return date;
 }
 

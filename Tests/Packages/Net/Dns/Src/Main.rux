@@ -32,7 +32,7 @@ func Serve(server: UdpSocket) -> bool {
         let datagram = try server.ReceiveFrom(query[..]) catch { _ => return false };
         // Safety: the datagram filled the first `datagram.length` bytes of the local `query`, and `uint8` has the
         // layout of `char8`.
-        let bytes = unsafe { ((@query[0]) as *uint8)[..datagram.length] };
+        let bytes = ((@query[0]) as *uint8)[..datagram.length];
         // The question ends four bytes after its name's terminating zero.
         var end: uint = 12;
         while end < bytes.length && bytes[end] != 0u8 { end = end + 1 + bytes[end] as uint; }
@@ -77,7 +77,7 @@ func Serve(server: UdpSocket) -> bool {
         }
         // Safety: `at` counts the bytes written into the local `reply`, at most its 512, and `char8` has the layout
         // of `uint8`.
-        let answer = unsafe { ((@reply[0]) as *char8)[..at] };
+        let answer = ((@reply[0]) as *char8)[..at];
         try server.SendTo(answer, datagram.source) catch { _ => return false };
         answered = answered + 1;
     }

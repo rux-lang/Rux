@@ -71,7 +71,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) throws FormatErr
     var runStart: uint = 0;
     while index < text.length {
         // Safety: `index` is below `text.length`, checked by the loop.
-        let c = unsafe { text.data[index] } as uint8;
+        let c = text.data[index] as uint8;
         var escape: char8[6];
         var escapeLength: uint = 0;
         if c == 0x22 || c == 0x5C {
@@ -107,16 +107,14 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) throws FormatErr
             escape[2] = 0x30u8 as char8;
             escape[3] = 0x30u8 as char8;
             // Safety: both indices are masked to four bits, below the 16 bytes of `JsonHexDigits`.
-            unsafe {
-                escape[4] = JsonHexDigits.data[((c >> 4) & 0x0F) as uint];
-                escape[5] = JsonHexDigits.data[(c & 0x0F) as uint];
-            }
+            escape[4] = JsonHexDigits.data[((c >> 4) & 0x0F) as uint];
+            escape[5] = JsonHexDigits.data[(c & 0x0F) as uint];
             escapeLength = 6;
         }
         if escapeLength > 0 {
             if index > runStart {
                 // Safety: `runStart < index < text.length`, so the run lies inside `text`.
-                let run = unsafe { (@text.data[runStart])[..index - runStart] };
+                let run = (@text.data[runStart])[..index - runStart];
                 try sink.Write(run);
             }
             try sink.Write(escape[0..escapeLength]);
@@ -126,7 +124,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) throws FormatErr
     }
     if index > runStart {
         // Safety: `runStart < index`, and the loop ended with `index` equal to `text.length`.
-        let run = unsafe { (@text.data[runStart])[..index - runStart] };
+        let run = (@text.data[runStart])[..index - runStart];
         try sink.Write(run);
     }
     return try sink.Write(quote[0..1]);

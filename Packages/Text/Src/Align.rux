@@ -39,10 +39,8 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
     }
     // Safety: the documented contract makes `before` and `after` non-null pointers to the caller's writable `uint`
     // counts.
-    unsafe {
-        *before = leading;
-        *after = trailing;
-    }
+    *before = leading;
+    *after = trailing;
 }
 
 /// Writes `count` copies of the spec's fill byte.

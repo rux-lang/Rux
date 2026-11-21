@@ -60,7 +60,7 @@ extend SystemEntropy : EntropySource {
     pub func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError {
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes, which is exactly
         // what `FillFromSource` asks of its caller.
-        return try unsafe { FillFromSource(buffer, length) };
+        return try FillFromSource(buffer, length);
     }
 }
 
@@ -78,7 +78,7 @@ extend SystemEntropy : EntropySource {
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-from
-pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) throws EntropyError {
+pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) throws EntropyError {
     if length == 0 { return; }
     if buffer == null { throw .Failed; }
 
@@ -112,7 +112,7 @@ pub unsafe func FillFrom(source: &var EntropySource, buffer: *var opaque, length
 /// @param attempts how many times to go back to an interrupted source before giving up
 /// @returns nothing when every byte was written, or why not — `Interrupted` after `attempts` tries
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-with-retries
-pub unsafe func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
+pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
     throws EntropyError {
     var remaining = attempts;
     while true {
@@ -139,7 +139,7 @@ pub unsafe func FillWithRetries(source: &var EntropySource, buffer: *var opaque,
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill
-pub unsafe func Fill(buffer: *var opaque, length: uint) throws EntropyError {
+pub func Fill(buffer: *var opaque, length: uint) throws EntropyError {
     var system = SystemEntropy();
     let source: &var EntropySource = system;
     return try FillFrom(source, buffer, length);
@@ -153,10 +153,10 @@ pub unsafe func Fill(buffer: *var opaque, length: uint) throws EntropyError {
 pub func NextUint64() -> uint64 throws EntropyError {
     var value: uint64 = 0;
     // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
-    try (unsafe { Fill(@value as *var opaque, 8) }) catch {
+    try (Fill(@value as *var opaque, 8)) catch {
         error => {
             // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
-            unsafe { ZeroizeBlock(@value as *var opaque, 8); }
+            ZeroizeBlock(@value as *var opaque, 8);
             throw error;
         },
     };

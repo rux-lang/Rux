@@ -20,7 +20,7 @@ when #target.os == .Windows {
 /// @param size the wanted size; zero releases and returns null
 /// @returns the address of the resized allocation, or null on failure
 /// @see https://rux-lang.dev/docs/api/memory/allocation#realloc
-pub unsafe func Realloc(ptr: *opaque, size: uint) -> *var opaque {
+pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD | .Linux | .macOS => {
             if ptr == null { return Alloc(size); }

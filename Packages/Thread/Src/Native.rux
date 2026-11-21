@@ -34,7 +34,7 @@ when #target.os {
 // returns the system's name for the thread.
 // Safety: `start` must be a function of the shape the system calls a thread's entry with, and `argument` must stay
 // live until the new thread has read what it needs from it.
-unsafe func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 throws ThreadError {
+func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 throws ThreadError {
     when #target.os == .Windows {
         var flags: uint32 = 0;
         if stackSize != 0 { flags = STACK_SIZE_PARAM_IS_A_RESERVATION; }
@@ -61,7 +61,7 @@ unsafe func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) 
 
 // Waits for a thread to finish and releases it.
 // Safety: `thread` must come from `NativeStart` and must not have been joined or detached yet.
-unsafe func NativeJoin(thread: uint64) {
+func NativeJoin(thread: uint64) {
     when #target.os == .Windows {
         WaitForSingleObject(thread as *opaque, INFINITE);
         CloseHandle(thread as *opaque);
@@ -73,7 +73,7 @@ unsafe func NativeJoin(thread: uint64) {
 
 // Lets a thread release itself when it finishes.
 // Safety: `thread` must come from `NativeStart` and must not have been joined or detached yet.
-unsafe func NativeDetach(thread: uint64) {
+func NativeDetach(thread: uint64) {
     when #target.os == .Windows {
         CloseHandle(thread as *opaque);
     }
@@ -86,20 +86,20 @@ unsafe func NativeDetach(thread: uint64) {
 func NativeCurrentId() -> uint64 {
     when #target.os == .Windows {
         // Safety: `GetCurrentThreadId` takes nothing and only reads the calling thread's identifier.
-        return unsafe { GetCurrentThreadId() } as uint64;
+        return GetCurrentThreadId() as uint64;
     }
     else when #target.os == .Linux {
         // Safety: `gettid` takes nothing and only reads the calling thread's identifier.
-        return unsafe { gettid() } as uint64;
+        return gettid() as uint64;
     }
     else when #target.os == .FreeBSD {
         // Safety: `pthread_getthreadid_np` takes nothing and only reads the calling thread's identifier.
-        return unsafe { pthread_getthreadid_np() } as uint64;
+        return pthread_getthreadid_np() as uint64;
     }
     else {
         var id: uint64 = 0;
         // Safety: a zero thread asks about the calling thread, and `id` is a local the call writes one `uint64` to.
-        unsafe { pthread_threadid_np(0, @id); }
+        pthread_threadid_np(0, @id);
         return id;
     }
 }
@@ -108,11 +108,11 @@ func NativeCurrentId() -> uint64 {
 func NativeYield() {
     when #target.os == .Windows {
         // Safety: `SwitchToThread` takes nothing and only gives up the rest of this thread's time slice.
-        unsafe { SwitchToThread(); }
+        SwitchToThread();
     }
     else {
         // Safety: `sched_yield` takes nothing and only gives up the rest of this thread's time slice.
-        unsafe { sched_yield(); }
+        sched_yield();
     }
 }
 
@@ -120,11 +120,11 @@ func NativeYield() {
 func NativeProcessorCount() -> uint {
     when #target.os == .Windows {
         // Safety: `GetActiveProcessorCount` takes a group number and reads no memory of the caller's.
-        return unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) } as uint;
+        return GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) as uint;
     }
     else {
         // Safety: `sysconf` takes a setting number and reads no memory of the caller's.
-        let count = unsafe { sysconf(SC_NPROCESSORS_ONLN) };
+        let count = sysconf(SC_NPROCESSORS_ONLN);
         if count < 1 { return 0; }
         return count as uint;
     }

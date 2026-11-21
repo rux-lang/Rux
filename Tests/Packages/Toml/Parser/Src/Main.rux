@@ -105,23 +105,23 @@ struct CountingAllocator {
 extend CountingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        let block = try (unsafe { self.state.inner.Allocate(layout) });
+        let block = try (self.state.inner.Allocate(layout));
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { self.state.live = self.state.live + 1; }
+        self.state.live = self.state.live + 1;
         return block;
     }
 
     func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { try self.state.inner.Deallocate(block, layout); }
+        try self.state.inner.Deallocate(block, layout);
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { self.state.live = self.state.live - 1; }
+        self.state.live = self.state.live - 1;
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        return try unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
+        return try self.state.inner.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -273,19 +273,19 @@ func Main() -> int {
     var tracked: CountingAllocator = counting;
 
     // Safety: `tracked` is a local of this function that outlives every use of the handle.
-    let trackedHandle = unsafe { @tracked as Allocator };
+    let trackedHandle = @tracked as Allocator;
     Assert(Refuses(trackedHandle, "a = \"one\"\nb = \"two\"\na = \"three\"", "TomlParseError::DuplicateKey"),
            "a document that fails on its last line is refused");
     Assert(state.live == 0, "and everything the partial document held is released");
 
     // Safety: `tracked` is a local of this function that outlives every use of the handle.
-    Assert(Refuses(unsafe { @tracked as Allocator }, "[t]\nx = \"a\"\ny = \"b\"\nport = 010",
+    Assert(Refuses(@tracked as Allocator, "[t]\nx = \"a\"\ny = \"b\"\nport = 010",
                    "TomlParseError::BadValue(TomlScalarError::Malformed(0))"),
            "a document with a bad value after good ones is refused");
     Assert(state.live == 0, "and so is everything that one held");
 
     // Safety: `tracked` is a local of this function that outlives every use of the handle.
-    Assert(Refuses(unsafe { @tracked as Allocator }, "a = { b = \"deep\", c = [\"x\", \"y\"] }\na.d = 1",
+    Assert(Refuses(@tracked as Allocator, "a = { b = \"deep\", c = [\"x\", \"y\"] }\na.d = 1",
                    "TomlParseError::ExtendedInlineTable"),
            "a nested document that fails is refused");
     Assert(state.live == 0, "including every level of it");
@@ -294,7 +294,7 @@ func Main() -> int {
     // cleanup rather than a parser that never allocated.
     var whileHeld: int32 = 0;
     // Safety: `tracked` is a local of this function that outlives every use of the handle.
-    ParseAndDrop(unsafe { @tracked as Allocator }, "a = \"one\"\nb = \"two\"", state, whileHeld);
+    ParseAndDrop(@tracked as Allocator, "a = \"one\"\nb = \"two\"", state, whileHeld);
     Assert(whileHeld > 0, "a whole document takes storage");
     Assert(state.live == 0, "which comes back when the document's life ends");
 

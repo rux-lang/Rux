@@ -6,7 +6,7 @@ import Hash::{ Crc32, Crc32Initial, Crc32Of, Crc32Polynomial, Crc32Table, Crc32c
 // The bytes a string spans, which is how a text overload reaches the byte one.
 func TextBytes(text: char8[..]) -> byte[..] {
     // Safety: a `char8` is one byte, so the characters of `text` are readable as `text.length` bytes.
-    return unsafe { (text.data as *byte)[..text.length] };
+    return (text.data as *byte)[..text.length];
 }
 
 // Both CRCs are specified, so the test is the standard answers — above all the check value every CRC catalogue
@@ -25,12 +25,12 @@ func Crcc(text: char8[..]) -> uint32 {
 // The one-shot checksums over a byte slice, which is how the checks below reach the pointer-and-length forms.
 func CrcBytes(bytes: byte[..]) -> uint32 {
     // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
-    return unsafe { Crc32Of(bytes.data, bytes.length) };
+    return Crc32Of(bytes.data, bytes.length);
 }
 
 func CrccBytes(bytes: byte[..]) -> uint32 {
     // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
-    return unsafe { Crc32cOf(bytes.data, bytes.length) };
+    return Crc32cOf(bytes.data, bytes.length);
 }
 
 // The table is division by the generator, precomputed. Recomputing an entry the slow way is what proves the table
@@ -123,7 +123,7 @@ func Main() -> int {
     // Both types are usable through the bound, which is what puts them in generic code.
     var bounded = Crc32c();
     // Safety: `bytes` addresses the nine bytes of "123456789".
-    let boundedHash = unsafe { HashBytes<Crc32c>(bounded, bytes, 9) };
+    let boundedHash = HashBytes<Crc32c>(bounded, bytes, 9);
     Assert(boundedHash == 0xE3069283, "a CRC is usable through the hashing bound");
 
     // A single-bit change must change the checksum. That is the property a CRC exists for, and the one a broken

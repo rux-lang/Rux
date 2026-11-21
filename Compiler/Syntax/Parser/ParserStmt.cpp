@@ -108,12 +108,16 @@ bool Parser::ContinuesBlockOperand() const {
     return std::ranges::contains(kContinuing, Peek().kind);
 }
 
-std::unique_ptr<BlockExpr> Parser::ParseUnsafeBlock() {
+std::unique_ptr<BlockExpr> Parser::ParseBlockExpression() {
     auto block = std::make_unique<BlockExpr>();
-    block->location = Advance().location; // 'unsafe'
-    block->isUnsafe = true;
-    block->block = ParseBlock("the 'unsafe' block", true);
+    block->location = CurrentLocation(); // '{'
+    block->block = ParseBlock("the block", true);
     return block;
+}
+
+void Parser::RejectRemovedUnsafe() {
+    EmitError(Advance().location, "'unsafe' is not supported",
+              "remove it: a raw pointer operation, an extern call and an asm call need no mark");
 }
 
 StmtPtr Parser::ParseStmt() {
@@ -225,13 +229,21 @@ StmtPtr Parser::ParseStmt() {
         return s;
     }
 
-    // `unsafe { ... }` at the start of a statement is the statement, ended by its '}' as an `if` is. When it ends a
-    // value block and yields a value, it is that block's value. Followed by `?`, `.`, `catch` or a binary operator, it
-    // is the first operand of an expression statement instead.
-    if (Check(TokenKind::UnsafeKeyword) && Peek(1).Is(TokenKind::LeftBrace)) {
+    // The removed `unsafe` is reported, and what follows it is read as if it were not written.
+    if (Check(TokenKind::UnsafeKeyword)) {
+        RejectRemovedUnsafe();
+        if (!Check(TokenKind::LeftBrace)) {
+            return ParseStmt();
+        }
+    }
+
+    // `{ ... }` at the start of a statement is a block, ended by its '}' as an `if` is. When it ends a value block and
+    // yields a value, it is that block's value. Followed by `?`, `.`, `catch` or a binary operator, it is the first
+    // operand of an expression statement instead.
+    if (Check(TokenKind::LeftBrace)) {
         auto statement = std::make_unique<ExprStmt>();
         statement->location = loc;
-        auto block = ParseUnsafeBlock();
+        auto block = ParseBlockExpression();
         if (ContinuesBlockOperand()) {
             // An operand's value is used, so the block is in value position.
             static_cast<void>(PromoteValueTail(*block->block));
@@ -576,8 +588,8 @@ bool TailMayYield(const Block &block) noexcept {
         if (statement->yieldsValue) {
             return true;
         }
-        const auto *unsafeBlock = AstCast<const BlockExpr>(statement->expr.get());
-        return !statement->semicolon && unsafeBlock && unsafeBlock->isUnsafe && TailMayYield(*unsafeBlock->block);
+        const auto *nested = AstCast<const BlockExpr>(statement->expr.get());
+        return !statement->semicolon && nested && TailMayYield(*nested->block);
     }
     if (AstCast<const MatchStmt>(&last)) {
         return true;
@@ -596,9 +608,9 @@ bool Parser::PromoteValueTail(Block &block) {
         if (statement->yieldsValue) {
             return true;
         }
-        // `unsafe { ... }` ending the block is a value block of its own, which yields what its tail yields.
-        auto *unsafeBlock = AstCast<BlockExpr>(statement->expr.get());
-        if (!statement->semicolon && unsafeBlock && unsafeBlock->isUnsafe && PromoteValueTail(*unsafeBlock->block)) {
+        // A block ending the block is a value block of its own, which yields what its tail yields.
+        auto *nested = AstCast<BlockExpr>(statement->expr.get());
+        if (!statement->semicolon && nested && PromoteValueTail(*nested->block)) {
             statement->yieldsValue = true;
             return true;
         }

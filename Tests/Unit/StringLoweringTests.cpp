@@ -138,7 +138,7 @@ TEST_CASE("a string's members read the same two fields a slice's do") {
 TEST_CASE("weakening a returned view preserves its aggregate representation") {
     const LirPackage package = CompileToLir(R"(
         // Safety: `data` must address writable `int` elements at every index the body uses
-        unsafe func Weaken(data: *var int, count: uint) -> int[..] {
+        func Weaken(data: *var int, count: uint) -> int[..] {
             return data[..count];
         }
         func Forward(view: var int[..]) -> int[..] { return view; }

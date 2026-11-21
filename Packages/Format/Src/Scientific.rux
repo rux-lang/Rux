@@ -17,12 +17,12 @@ func ScientificMark(spec: FormatSpec, mark: *var char8) -> bool throws FormatErr
     if !spec.HasStyle() { return false; }
     if spec.StyleIs("e") {
         // Safety: the documented contract makes `mark` a non-null pointer to the caller's writable `char8`.
-        unsafe { *mark = c8'e'; }
+        *mark = c8'e';
         return true;
     }
     if spec.StyleIs("E") {
         // Safety: the documented contract makes `mark` a non-null pointer to the caller's writable `char8`.
-        unsafe { *mark = c8'E'; }
+        *mark = c8'E';
         return true;
     }
     throw .UnsupportedRequest;
@@ -44,10 +44,8 @@ func WriteNonFinite(writer: &var TextWriter, spec: FormatSpec, isNan: bool, nega
 func SignificantDigits(significand: uint64, exponent: int, wanted: uint, into: var char8[..], count: *var uint,
                        power: *var int) -> bool {
     // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
-    unsafe {
-        *count = 0;
-        *power = 0;
-    }
+    *count = 0;
+    *power = 0;
     if significand == 0 || wanted == 0 || wanted >= into.length { return false; }
 
     var state = Quotient { numerator: FixedNat(), denominator: FixedNat() };
@@ -58,22 +56,20 @@ func SignificantDigits(significand: uint64, exponent: int, wanted: uint, into: v
         if !state.numerator.MultiplySmall(10) { return false; }
         let digit = (TakeDigit(state) + 0x30) as char8;
         // Safety: `produced` is below `wanted`, the loop condition, which is below `into.length`, checked on entry.
-        unsafe { into.data[produced] = digit; }
+        into.data[produced] = digit;
         produced = produced + 1;
     }
     // Safety: `produced` equals `wanted`, which is below `into.length`, checked on entry; `produced` and `scaled` are
     // locals.
-    if !unsafe { RoundGenerated(state, into, @produced, @scaled) } { return false; }
+    if !RoundGenerated(state, into, @produced, @scaled) { return false; }
     // A carry off the front leaves a one followed by zeros, one digit more than was asked for; the extra digit is
     // a zero and the power has already moved up to account for it.
     if produced > wanted {
         produced = wanted;
     }
     // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
-    unsafe {
-        *count = produced;
-        *power = scaled;
-    }
+    *count = produced;
+    *power = scaled;
     return true;
 }
 

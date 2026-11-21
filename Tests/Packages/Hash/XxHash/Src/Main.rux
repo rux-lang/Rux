@@ -5,7 +5,7 @@ import Hash::{ HashBytes, XxBlockSize, XxHash64, XxHash64Of, XxHash64SeededOf };
 // The bytes a string spans, which is how a text overload reaches the byte one.
 func TextBytes(text: char8[..]) -> byte[..] {
     // Safety: a `char8` is one byte, so the characters of `text` are readable as `text.length` bytes.
-    return unsafe { (text.data as *byte)[..text.length] };
+    return (text.data as *byte)[..text.length];
 }
 
 // xxHash64 is specified and has published vectors, so those come first. What the vectors cannot reach is the
@@ -20,13 +20,13 @@ func Hash(text: char8[..]) -> uint64 {
 func Seeded(text: char8[..], seed: uint64) -> uint64 {
     let bytes = TextBytes(text);
     // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
-    return unsafe { XxHash64SeededOf(bytes.data, bytes.length, seed) };
+    return XxHash64SeededOf(bytes.data, bytes.length, seed);
 }
 
 // The one-shot hash over a byte slice, which is how the checks below reach the pointer-and-length form.
 func OneShot(bytes: byte[..]) -> uint64 {
     // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
-    return unsafe { XxHash64Of(bytes.data, bytes.length) };
+    return XxHash64Of(bytes.data, bytes.length);
 }
 
 func Main() -> int {
@@ -118,7 +118,7 @@ func Main() -> int {
     // Usable through the bound, which is what puts it in generic code.
     var bounded = XxHash64();
     // Safety: `bytes` and `length` are the data and length of the `pangram` slice.
-    let boundedHash = unsafe { HashBytes<XxHash64>(bounded, bytes, length) };
+    let boundedHash = HashBytes<XxHash64>(bounded, bytes, length);
     Assert(boundedHash == expected, "xxHash64 is usable through the hashing bound");
 
     // Different inputs give different hashes, including ones that differ only in order or in length.

@@ -34,7 +34,7 @@ func Main() -> int {
     let allocator = SystemAllocator();
     var sink: StandardOut = out;
     // Safety: `sink` is a local of this function that outlives every use of the handle.
-    var buffered = try BufferedWriter(allocator, unsafe { @sink as Writer }, 64) catch {
+    var buffered = try BufferedWriter(allocator, @sink as Writer, 64) catch {
         _ => Panic("the buffered writer takes its buffer")
     };
     let piece = try buffered.Write(TextBytes("buffered ")) catch { _ => Panic("a piece is gathered") };

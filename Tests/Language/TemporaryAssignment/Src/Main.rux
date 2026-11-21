@@ -26,16 +26,14 @@ extend Tracked {
 
     func Clone(&self) -> Self {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
-        unsafe { self.log.copies = self.log.copies + 1; }
+        self.log.copies = self.log.copies + 1;
         return Self { log: self.log, id: self.id + 10 };
     }
 
     func ~Tracked(&var self) {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
-        unsafe {
-            self.log.drops = self.log.drops + 1;
-            self.log.order = self.log.order * 100 + (self.id as int64);
-        }
+        self.log.drops = self.log.drops + 1;
+        self.log.order = self.log.order * 100 + (self.id as int64);
     }
 
     func Renew(&var self, id: int32) {
@@ -52,10 +50,8 @@ struct Plain {
 extend Plain {
     func ~Plain(&var self) {
         // Safety: `self.log` is the `Log` local of `Main`, which outlives every value that records into it.
-        unsafe {
-            self.log.drops = self.log.drops + 1;
-            self.log.order = self.log.order * 100 + (self.id as int64);
-        }
+        self.log.drops = self.log.drops + 1;
+        self.log.order = self.log.order * 100 + (self.id as int64);
     }
 }
 
@@ -66,7 +62,7 @@ struct Holder {
 
 func Mark(log: *var Log) {
     // Safety: every caller passes `log`, the `Log` local of `Main`, which outlives every value that records into it.
-    unsafe { log.order = log.order * 100; }
+    log.order = log.order * 100;
 }
 
 func Track(log: *var Log, id: int32) -> Tracked {
@@ -79,11 +75,9 @@ func MakePlain(log: *var Log, id: int32) -> Plain {
 
 func Reset(log: *var Log) {
     // Safety: every caller passes `log`, the `Log` local of `Main`, which outlives every value that records into it.
-    unsafe {
-        log.copies = 0;
-        log.drops = 0;
-        log.order = 1;
-    }
+    log.copies = 0;
+    log.drops = 0;
+    log.order = 1;
 }
 
 func CallIntoLocal(log: *var Log) {
@@ -210,7 +204,7 @@ func DereferencedSource(log: *var Log) {
     var source = Track(log, 2i32);
     let pointer = @source;
     // Safety: `pointer` is `@source`, a live local of this function.
-    item = unsafe { (*pointer).Clone() };
+    item = (*pointer).Clone();
     Mark(log);
     Assert(item.id == 12i32 && source.id == 2i32, "a dereferenced source is cloned explicitly");
 }

@@ -255,7 +255,7 @@ extern {
 #Abi(.C)
 func Callback(value: float32) -> float64 { return value as float64; }
 // Safety: the calls are only analyzed, never run, so the null format is never read
-unsafe func Main() {
+func Main() {
     printf(null, 1.5f32, 2.5, ldexp(1.0, 2i32), ldexpf(1.0f32, 2i32));
     printf(null, 1.0f16);
 }

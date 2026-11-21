@@ -36,7 +36,7 @@ extend Atomic<T> {
     // so the address is retyped through `*opaque`, which says that this one is deliberate.
     // Safety: the caller must reach the value through the returned address only with `Core`'s atomic intrinsics,
     // because other threads may hold the same shared reference.
-    unsafe func Address(&self) -> *var T {
+    func Address(&self) -> *var T {
         return (@self.value) as *opaque as *var T;
     }
 
@@ -46,7 +46,7 @@ extend Atomic<T> {
     pub func Load(&self) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent) };
+        return AtomicLoad(self.Address(), MemoryOrder::SequentiallyConsistent);
     }
 
     /// The current value, read with `order`, which must be `Relaxed`, `Acquire` or `SequentiallyConsistent`.
@@ -58,7 +58,7 @@ extend Atomic<T> {
     pub func LoadWith(&self, order: MemoryOrder) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe {
+        return {
             (match order {
                 .Relaxed => AtomicLoad(self.Address(), MemoryOrder::Relaxed),
                 .Acquire => AtomicLoad(self.Address(), MemoryOrder::Acquire),
@@ -74,7 +74,7 @@ extend Atomic<T> {
     pub func Store(&self, value: T) {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        unsafe { AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent); }
+        AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 
     /// Replaces the value with `order`, which must be `Relaxed`, `Release` or `SequentiallyConsistent`.
@@ -86,13 +86,11 @@ extend Atomic<T> {
     pub func StoreWith(&self, value: T, order: MemoryOrder) {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        unsafe {
-            match order {
-                .Relaxed => AtomicStore(self.Address(), value, MemoryOrder::Relaxed),
-                .Release => AtomicStore(self.Address(), value, MemoryOrder::Release),
-                .Acquire => AtomicStore(self.Address(), value, MemoryOrder::Release),
-                _ => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
-            }
+        match order {
+            .Relaxed => AtomicStore(self.Address(), value, MemoryOrder::Relaxed),
+            .Release => AtomicStore(self.Address(), value, MemoryOrder::Release),
+            .Acquire => AtomicStore(self.Address(), value, MemoryOrder::Release),
+            _ => AtomicStore(self.Address(), value, MemoryOrder::SequentiallyConsistent)
         }
     }
 
@@ -103,7 +101,7 @@ extend Atomic<T> {
     pub func Exchange(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicExchange(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
+        return AtomicExchange(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 
     /// Replaces the value with `desired` if it is `expected`, as one step, with sequential consistency.
@@ -116,7 +114,7 @@ extend Atomic<T> {
     pub func CompareExchange(&self, expected: T, desired: T) -> T throws T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        let previous = unsafe {
+        let previous = {
             AtomicCompareExchange(self.Address(), expected, desired, MemoryOrder::SequentiallyConsistent,
                                   MemoryOrder::SequentiallyConsistent)
         };
@@ -141,7 +139,7 @@ extend Atomic<T> {
                                failure == MemoryOrder::SequentiallyConsistent;
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        let previous = unsafe {
+        let previous = {
             let address = self.Address();
             (match success {
                 .Relaxed => AtomicCompareExchange(address, expected, desired, MemoryOrder::Relaxed,
@@ -177,7 +175,7 @@ extend Atomic<T> {
     pub func FetchAdd(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
+        return AtomicFetchAdd(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 
     /// Subtracts `value`, wrapping on overflow, and returns the value before, as one step, with sequential
@@ -189,7 +187,7 @@ extend Atomic<T> {
     pub func FetchSub(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
+        return AtomicFetchSub(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 
     /// Adds `value` with `order`, wrapping on overflow, and returns the value before.
@@ -201,7 +199,7 @@ extend Atomic<T> {
     pub func FetchAddWith(&self, value: T, order: MemoryOrder) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe {
+        return {
             (match order {
                 .Relaxed => AtomicFetchAdd(self.Address(), value, MemoryOrder::Relaxed),
                 .Acquire => AtomicFetchAdd(self.Address(), value, MemoryOrder::Acquire),
@@ -222,7 +220,7 @@ extend Atomic<T> {
     pub func FetchSubWith(&self, value: T, order: MemoryOrder) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe {
+        return {
             (match order {
                 .Relaxed => AtomicFetchSub(self.Address(), value, MemoryOrder::Relaxed),
                 .Acquire => AtomicFetchSub(self.Address(), value, MemoryOrder::Acquire),
@@ -241,7 +239,7 @@ extend Atomic<T> {
     pub func FetchAnd(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicFetchAnd(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
+        return AtomicFetchAnd(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 
     /// Combines the value with `value` by bitwise or, and returns the value before, with sequential consistency.
@@ -252,7 +250,7 @@ extend Atomic<T> {
     pub func FetchOr(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicFetchOr(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
+        return AtomicFetchOr(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 
     /// Combines the value with `value` by bitwise exclusive or, and returns the value before, with sequential
@@ -264,7 +262,7 @@ extend Atomic<T> {
     pub func FetchXor(&self, value: T) -> T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
-        return unsafe { AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent) };
+        return AtomicFetchXor(self.Address(), value, MemoryOrder::SequentiallyConsistent);
     }
 }
 

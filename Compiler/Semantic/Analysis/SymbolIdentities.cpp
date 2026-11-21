@@ -397,7 +397,6 @@ TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
             CheckBorrowReturnCall(*call, type);
         }
     }
-    CheckUnsafeOperation(expr, type);
     // A call whose callee throws evaluates to its success where a `try` marks it. A call already reported has lost its
     // callee, so it reads as its success too, and counts as a site of the `try` that marks it, which is then not
     // reported as covering nothing on top of the error.

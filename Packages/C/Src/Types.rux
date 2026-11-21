@@ -309,16 +309,16 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
     when #target.os {
         .Linux => {
             // Safety: `__errno_location` takes no arguments and returns the calling thread's own `errno` address.
-            return unsafe { __errno_location() };
+            return __errno_location();
         }
         .FreeBSD | .macOS => {
             // Safety: `__error` takes no arguments and returns the calling thread's own `errno` address.
-            return unsafe { __error() };
+            return __error();
         }
         .Windows => {
             // Safety: `_stream_errno` and `_errno` take no arguments and return the calling thread's own `errno`
             // address in their runtime.
-            return unsafe { if area == CRuntimeArea::Streams { _stream_errno() } else { _errno() } };
+            return if area == CRuntimeArea::Streams { _stream_errno() } else { _errno() };
         }
         _ => #Error("Unsupported operating system")
     }
@@ -334,7 +334,7 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
 /// @see https://rux-lang.dev/docs/api/c/errno#errno-for
 pub func ErrnoFor(area: CRuntimeArea) -> c_int {
     // Safety: `ErrnoLocationFor` returns the calling thread's own `errno` address, live for as long as the thread.
-    return unsafe { *ErrnoLocationFor(area) };
+    return *ErrnoLocationFor(area);
 }
 
 /// The address of the calling thread's `errno`, in the runtime `C::StdLib` and `C::Math` are bound to.
@@ -365,7 +365,7 @@ pub func ErrnoLocation() -> *var c_int {
 /// @see https://rux-lang.dev/docs/api/c/errno#errno
 pub func Errno() -> c_int {
     // Safety: `ErrnoLocation` returns the calling thread's own `errno` address, live for as long as the thread.
-    return unsafe { *ErrnoLocation() };
+    return *ErrnoLocation();
 }
 
 /// `EDOM`: an argument outside the domain over which a math function is defined.

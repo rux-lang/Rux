@@ -309,9 +309,9 @@ constexpr const char *kPlaceReplacementSource = R"(
     func Borrowed(owner: &var Owner, a: Handle) { owner.handle = move a; }
     func Viewed(items: var Handle[..], a: Handle) { items[0] = move a; }
     // Safety: `slot` must address a live, writable `Owner`
-    unsafe func Raw(slot: *var Owner, a: Handle) { slot.handle = move a; }
+    func Raw(slot: *var Owner, a: Handle) { slot.handle = move a; }
     // Safety: `slots` must address writable `Handle` elements at every index the body uses
-    unsafe func RawElements(slots: *var Handle, a: Handle, b: Handle) {
+    func RawElements(slots: *var Handle, a: Handle, b: Handle) {
         slots[1] = move a;
         *slots = move b;
     }

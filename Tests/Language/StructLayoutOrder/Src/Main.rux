@@ -18,7 +18,7 @@ func Main() -> int {
     Assert(walk.second.length == 1, "and so does the one behind it");
     Assert(!walk.finished, "and the flag behind both");
     // Safety: both `data` pointers address the non-empty string literals `text` and `comma`.
-    Assert(unsafe { walk.first.data[0] == c8'o' && walk.second.data[0] == c8',' },
+    Assert(walk.first.data[0] == c8'o' && walk.second.data[0] == c8',',
            "with the pointers still pointing home");
 
     return 0;

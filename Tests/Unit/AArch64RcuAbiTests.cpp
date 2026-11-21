@@ -485,7 +485,7 @@ TEST_CASE("AArch64 RCU emitter carries the library an extern declaration names t
         }
 
         // Safety: `abs` takes only an integer
-        unsafe func Main() -> int {
+        func Main() -> int {
             var magnitude = abs(-5);
             return 0;
         }

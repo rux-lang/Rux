@@ -10,7 +10,7 @@ struct Guard {
 extend Guard {
     func ~Guard(&var self) {
         // Safety: every `Guard` is built in `Main` with `drops` addressing its local counter, which outlives the guard.
-        unsafe { *self.drops += 1; }
+        *self.drops += 1;
     }
 }
 

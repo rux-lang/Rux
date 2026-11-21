@@ -67,28 +67,28 @@ func WriteMapping(index: uint32[..], elements: uint32[..], scalar: char32, fallb
     if !IndexWindow(index, scalar as uint32, @offset, @length) {
         if into.length < 1 {
             // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-            unsafe { *written = 0; }
+            *written = 0;
             return false;
         }
         into[0] = fallback;
         // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-        unsafe { *written = 1; }
+        *written = 1;
         return true;
     }
     if into.length < length {
         // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-        unsafe { *written = 0; }
+        *written = 0;
         return false;
     }
     var each: uint = 0;
     while each < length {
         // Safety: `IndexWindow` read `offset` and `length` from `index`, and the generated tables pair every index
         // with a pool whose windows lie inside it, so `offset + each` is below `offset + length <= elements.length`.
-        into[each] = unsafe { elements.data[offset + each] } as char32;
+        into[each] = elements.data[offset + each] as char32;
         each = each + 1;
     }
     // Safety: the documented contract makes `written` a non-null pointer to the caller's writable `uint`.
-    unsafe { *written = length; }
+    *written = length;
     return true;
 }
 

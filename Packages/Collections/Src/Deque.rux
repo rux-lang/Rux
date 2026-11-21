@@ -86,7 +86,7 @@ extend Deque<T> {
         while index < items.length {
             // Safety: `index < items.length`, checked by the loop; the slice holds that many elements and `Grow` gave
             // the ring room for as many, starting at a head of zero.
-            unsafe { deque.data[index] = items.data[index]; }
+            deque.data[index] = items.data[index];
             index++;
         }
         deque.length = items.length;
@@ -108,7 +108,7 @@ extend Deque<T> {
         copy.Grow(self.length);
         // Safety: `Grow` gave `copy.data` room for `self.length` elements, and it is a fresh block apart from this
         // ring.
-        unsafe { self.CopyInto(copy.data); }
+        self.CopyInto(copy.data);
         copy.length = self.length;
         return move copy;
     }
@@ -146,7 +146,7 @@ extend Deque<T> {
     // than a copy: the bytes move and the originals are not destroyed, because there is exactly one of each
     // afterwards.
     // Safety: `block` must have room for `self.length` elements and must not overlap the ring.
-    unsafe func CopyInto(&self, block: *var T) {
+    func CopyInto(&self, block: *var T) {
         if self.length == 0 { return; }
 
         var front = self.capacity - self.head;
@@ -175,7 +175,7 @@ extend Deque<T> {
 
         // Safety: `block` is fresh from `AllocateBlock` with room for `capacity` elements, above the old capacity
         // and so above the length.
-        unsafe { self.CopyInto(block); }
+        self.CopyInto(block);
         if self.data != null {
             ReleaseBlock<T>(self.allocator, self.data, self.capacity);
         }
@@ -216,7 +216,7 @@ extend Deque<T> {
 
         // Safety: `block` is fresh from `AllocateBlock` with room for `capacity` elements, which `PowerOfTwoCapacity`
         // made at least the length.
-        unsafe { self.CopyInto(block); }
+        self.CopyInto(block);
         ReleaseBlock<T>(self.allocator, self.data, self.capacity);
         self.data = block;
         self.head = 0;
@@ -234,7 +234,7 @@ extend Deque<T> {
             // container has to destroy an element it does not know is droppable.
             // Safety: the ring invariant: `index < self.length`, checked by the loop, so the slot is initialized;
             // each is moved out once, and the length drops to zero right after.
-            unsafe { let taken = move self.data[self.SlotOf(index)]; }
+            { let taken = move self.data[self.SlotOf(index)]; }
             index++;
         }
         self.head = 0;
@@ -266,7 +266,7 @@ extend Deque<T> {
         self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
         // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot one step before the old head is
         // allocated and holds nothing.
-        unsafe { self.data[self.head] = move value; }
+        self.data[self.head] = move value;
         self.length = self.length + 1;
     }
 
@@ -280,7 +280,7 @@ extend Deque<T> {
 
         // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot just past the last element is
         // allocated and holds nothing.
-        unsafe { self.data[self.SlotOf(self.length)] = move value; }
+        self.data[self.SlotOf(self.length)] = move value;
         self.length = self.length + 1;
     }
 
@@ -294,7 +294,7 @@ extend Deque<T> {
         if self.length == 0 { return none; }
         // Safety: the ring invariant: the deque is not empty, checked above, so the slot at `head` is initialized; the
         // head moves past it at once.
-        let taken = unsafe { move self.data[self.head] };
+        let taken = move self.data[self.head];
         self.head = (self.head + 1) & (self.capacity - 1);
         self.length = self.length - 1;
         return move taken;
@@ -310,7 +310,7 @@ extend Deque<T> {
         self.length = self.length - 1;
         // Safety: the ring invariant: the slot of the old last element is initialized, and the length has just
         // dropped below it.
-        return unsafe { move self.data[self.SlotOf(self.length)] };
+        return move self.data[self.SlotOf(self.length)];
     }
 
     /// The front element, borrowed where it sits, or `none` for an empty deque.
@@ -340,7 +340,7 @@ extend Deque<T> {
     pub func Get(&self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
-        return unsafe { self.data[self.SlotOf(index)] };
+        return self.data[self.SlotOf(index)];
     }
 
     /// The element at `index`, counting from the front, borrowed where it sits, or `none` when there is no such
@@ -352,7 +352,7 @@ extend Deque<T> {
     pub func At(&self, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
-        unsafe { return self.data[self.SlotOf(index)]; }
+        return self.data[self.SlotOf(index)];
     }
 
     /// The element at `index`, counting from the front, borrowed to be written where it sits, or `none` when there
@@ -364,7 +364,7 @@ extend Deque<T> {
     pub func AtMutable(&var self, index: uint) -> &var T? {
         if index >= self.length { return none; }
         // Safety: the ring invariant: `index < self.length`, checked above, so its slot is initialized.
-        unsafe { return self.data[self.SlotOf(index)]; }
+        return self.data[self.SlotOf(index)];
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.
@@ -381,7 +381,7 @@ extend Deque<T> {
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
         // Safety: the ring invariant: `index < self.length`, checked above, so the slot is initialized; the slot
         // emptied by the move is refilled at once.
-        unsafe {
+        {
             let previous = move self.data[slot];
             self.data[slot] = move value;
         }
@@ -401,7 +401,7 @@ extend Deque<T> {
         let slot = self.SlotOf(index);
         // Safety: the ring invariant: `index < self.length`, checked above, so the slot is initialized; the slot
         // emptied by the move is refilled at once.
-        unsafe {
+        {
             let previous = move self.data[slot];
             self.data[slot] = move value;
             return move previous;
@@ -434,10 +434,10 @@ extend Deque<T> {
         }
         // Safety: the ring invariant: the `frontLength` slots from `head`, which stop at the end of the block, are
         // initialized.
-        let front: T[..] = unsafe { (@self.data[self.head])[..frontLength] };
+        let front: T[..] = (@self.data[self.head])[..frontLength];
         if frontLength == self.length { return (front, []); }
         // Safety: the ring invariant: the elements that wrapped occupy the first `length - frontLength` slots.
-        let back: T[..] = unsafe { (self.data)[..self.length - frontLength] };
+        let back: T[..] = (self.data)[..self.length - frontLength];
         return (front, back);
     }
 
@@ -451,7 +451,7 @@ extend Deque<T> {
         if self.capacity == 0 || self.head == 0 { return; }
         // Safety: the ring invariant: `data` has room for `capacity` elements, nonzero, checked above. `Rotate` only
         // exchanges slots, so the spare ones are carried along without being read as elements.
-        Rotate<T>(unsafe { self.data[..self.capacity] }, self.head);
+        Rotate<T>(self.data[..self.capacity], self.head);
         self.head = 0;
     }
 
@@ -465,7 +465,7 @@ extend Deque<T> {
         self.MakeContiguous();
         // Safety: the ring invariant: `MakeContiguous` put the head at zero, so the first `length` slots are the
         // initialized elements.
-        return unsafe { (self.data)[..self.length] };
+        return (self.data)[..self.length];
     }
 
     /// Every element as one borrowed writable view, moving them together first.
@@ -477,7 +477,7 @@ extend Deque<T> {
         self.MakeContiguous();
         // Safety: the ring invariant: `MakeContiguous` put the head at zero, so the first `length` slots are the
         // initialized elements.
-        return unsafe { (self.data)[..self.length] };
+        return (self.data)[..self.length];
     }
 
     /// An iterator over the elements, front to back, by copy.

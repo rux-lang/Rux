@@ -20,16 +20,14 @@ pub func PartialSum<T>(items: T[..], into: var T[..]) -> bool {
     if into.length < items.length { return false; }
     if items.length == 0 { return true; }
     // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    var total = unsafe { items.data[0] };
+    var total = items.data[0];
     // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    unsafe { into.data[0] = total; }
+    into.data[0] = total;
     var index: uint = 1;
     while index < items.length {
         // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        unsafe {
-            total = total + items.data[index];
-            into.data[index] = total;
-        }
+        total = total + items.data[index];
+        into.data[index] = total;
         index++;
     }
     return true;
@@ -49,16 +47,14 @@ pub func InclusiveScan<T>(items: T[..], into: var T[..], combine: func(T, T) -> 
     if into.length < items.length { return false; }
     if items.length == 0 { return true; }
     // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    var total = unsafe { items.data[0] };
+    var total = items.data[0];
     // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    unsafe { into.data[0] = total; }
+    into.data[0] = total;
     var index: uint = 1;
     while index < items.length {
         // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        unsafe {
-            total = combine(total, items.data[index]);
-            into.data[index] = total;
-        }
+        total = combine(total, items.data[index]);
+        into.data[index] = total;
         index++;
     }
     return true;
@@ -82,9 +78,9 @@ pub func ExclusiveScan<T>(items: T[..], into: var T[..], initial: T, combine: fu
     var index: uint = 0;
     while index < items.length {
         // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        let element = unsafe { items.data[index] };
+        let element = items.data[index];
         // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        unsafe { into.data[index] = total; }
+        into.data[index] = total;
         total = combine(total, element);
         index++;
     }
@@ -104,7 +100,7 @@ pub func Iota<T>(into: var T[..], start: T, step: T) {
     var index: uint = 0;
     while index < into.length {
         // Safety: `index` is below `into.length`, the loop condition.
-        unsafe { into.data[index] = value; }
+        into.data[index] = value;
         if index + 1 < into.length { value = value + step; }
         index++;
     }

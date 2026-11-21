@@ -29,7 +29,7 @@ extend SliceHandle : Reader {
     func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
-        let current = unsafe { *state };
+        let current = *state;
         let remaining = current.bytes.length - current.offset;
         if remaining == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
         var give = if remaining < 7 { remaining } else { 7 };
@@ -42,7 +42,7 @@ extend SliceHandle : Reader {
             index = index + 1;
         }
         // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
-        unsafe { state.offset = current.offset + give; }
+        state.offset = current.offset + give;
         return give;
     }
 }
@@ -53,7 +53,7 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: &var uint, ope
     var state = SliceState { bytes: text, offset: 0 };
     var handle = SliceHandle { state: @state };
     // Safety: `handle` is a local of this function that outlives every use of the handle.
-    var reader = JsonEventReader(allocator, unsafe { @handle as Reader }, JsonLimits::Default());
+    var reader = JsonEventReader(allocator, @handle as Reader, JsonLimits::Default());
     scalars = 0;
     opens = 0;
     names = 0;

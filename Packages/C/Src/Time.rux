@@ -316,11 +316,11 @@ pub func TimespecGet(ts: &var timespec, base: c_int) -> c_int {
     when #target.os {
         .Windows => {
             // Safety: `ts` is a reference, so it addresses a live, writable `timespec` for the whole call.
-            return unsafe { _timespec64_get(ts, base) };
+            return _timespec64_get(ts, base);
         }
         _ => {
             // Safety: `ts` is a reference, so it addresses a live, writable `timespec` for the whole call.
-            return unsafe { timespec_get(ts, base) };
+            return timespec_get(ts, base);
         }
     }
 }

@@ -154,7 +154,7 @@ std::vector<std::string> AnalysisContext::InterfaceValueNotes() const {
 std::string AnalysisContext::InterfaceValueHelp(const TypeRef &target) const {
     const TypeRef interface = target.IsOptional() && !target->inner.empty() ? target->inner.front() : target;
     return std::format("borrow it as '&{0}', bound a generic parameter by '{0}', or make a handle from a pointer to "
-                       "it inside 'unsafe'",
+                       "it",
                        interface.ToString());
 }
 

@@ -6,6 +6,6 @@ func Main() -> int {
     var ptr = Alloc(size);
     Assert(ptr != null, "Memory allocation failed");
     // Safety: `ptr` is the live base address `Alloc` returned above, and nothing uses it afterwards.
-    unsafe { Free(ptr); }
+    Free(ptr);
     return 0;
 }

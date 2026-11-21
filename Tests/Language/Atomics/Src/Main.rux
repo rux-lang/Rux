@@ -12,36 +12,36 @@ var Flag: bool = false;
 func Counter64() {
     var value: int64 = 40;
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicLoad(@value, MemoryOrder::Relaxed) } == 40, "relaxed load");
+    Assert(AtomicLoad(@value, MemoryOrder::Relaxed) == 40, "relaxed load");
     // Safety: `value` is a live, aligned local `int64`.
-    unsafe { AtomicStore(@value, 41i64, MemoryOrder::Release); }
+    AtomicStore(@value, 41i64, MemoryOrder::Release);
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicLoad(@value, MemoryOrder::Acquire) } == 41, "release store, acquire load");
+    Assert(AtomicLoad(@value, MemoryOrder::Acquire) == 41, "release store, acquire load");
     // Safety: `value` is a live, aligned local `int64`.
-    unsafe { AtomicStore(@value, 42i64, MemoryOrder::SequentiallyConsistent); }
+    AtomicStore(@value, 42i64, MemoryOrder::SequentiallyConsistent);
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicLoad(@value, MemoryOrder::SequentiallyConsistent) } == 42,
+    Assert(AtomicLoad(@value, MemoryOrder::SequentiallyConsistent) == 42,
            "sequentially consistent store and load");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicExchange(@value, 7i64, MemoryOrder::AcquireRelease) } == 42 && value == 7,
+    Assert(AtomicExchange(@value, 7i64, MemoryOrder::AcquireRelease) == 42 && value == 7,
            "exchange returns the old value");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicFetchAdd(@value, 5i64, MemoryOrder::Relaxed) } == 7 && value == 12, "fetch-add");
+    Assert(AtomicFetchAdd(@value, 5i64, MemoryOrder::Relaxed) == 7 && value == 12, "fetch-add");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicFetchSub(@value, 20i64, MemoryOrder::SequentiallyConsistent) } == 12 && value == -8,
+    Assert(AtomicFetchSub(@value, 20i64, MemoryOrder::SequentiallyConsistent) == 12 && value == -8,
            "fetch-sub below zero");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicFetchAnd(@value, 0x0Fi64, MemoryOrder::Acquire) } == -8 && value == 8, "fetch-and");
+    Assert(AtomicFetchAnd(@value, 0x0Fi64, MemoryOrder::Acquire) == -8 && value == 8, "fetch-and");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicFetchOr(@value, 0x30i64, MemoryOrder::Release) } == 8 && value == 0x38, "fetch-or");
+    Assert(AtomicFetchOr(@value, 0x30i64, MemoryOrder::Release) == 8 && value == 0x38, "fetch-or");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicFetchXor(@value, 0xFFi64, MemoryOrder::Relaxed) } == 0x38 && value == 0xC7, "fetch-xor");
+    Assert(AtomicFetchXor(@value, 0xFFi64, MemoryOrder::Relaxed) == 0x38 && value == 0xC7, "fetch-xor");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicCompareExchange(@value, 0xC7i64, 99i64, MemoryOrder::SequentiallyConsistent,
+    Assert({ AtomicCompareExchange(@value, 0xC7i64, 99i64, MemoryOrder::SequentiallyConsistent,
                                           MemoryOrder::Acquire) } == 0xC7 && value == 99,
            "a matching compare-exchange writes");
     // Safety: `value` is a live, aligned local `int64`.
-    Assert(unsafe { AtomicCompareExchange(@value, 1i64, 5i64, MemoryOrder::AcquireRelease,
+    Assert({ AtomicCompareExchange(@value, 1i64, 5i64, MemoryOrder::AcquireRelease,
                                           MemoryOrder::Relaxed) } == 99 && value == 99,
            "a failing compare-exchange returns the current value and writes nothing");
 }
@@ -49,69 +49,69 @@ func Counter64() {
 func Narrow() {
     var byte: int8 = -1;
     // Safety: `byte` is a live local `int8`.
-    Assert(unsafe { AtomicFetchAdd(@byte, 1i8, MemoryOrder::Relaxed) } == -1 && byte == 0,
+    Assert(AtomicFetchAdd(@byte, 1i8, MemoryOrder::Relaxed) == -1 && byte == 0,
            "an int8 old value comes back negative");
     // Safety: `byte` is a live local `int8`.
-    Assert(unsafe { AtomicFetchSub(@byte, 1i8, MemoryOrder::Relaxed) } == 0 && byte == -1, "int8 wraps below zero");
+    Assert(AtomicFetchSub(@byte, 1i8, MemoryOrder::Relaxed) == 0 && byte == -1, "int8 wraps below zero");
     // Safety: `byte` is a live local `int8`.
-    Assert(unsafe { AtomicExchange(@byte, -128i8, MemoryOrder::SequentiallyConsistent) } == -1 && byte == -128,
+    Assert(AtomicExchange(@byte, -128i8, MemoryOrder::SequentiallyConsistent) == -1 && byte == -128,
            "int8 exchange");
     var small: uint8 = 255;
     // Safety: `small` is a live local `uint8`.
-    Assert(unsafe { AtomicFetchAdd(@small, 1u8, MemoryOrder::Relaxed) } == 255 && small == 0,
+    Assert(AtomicFetchAdd(@small, 1u8, MemoryOrder::Relaxed) == 255 && small == 0,
            "uint8 wraps above its maximum");
     var half: int16 = -300;
     // Safety: `half` is a live, aligned local `int16`.
-    Assert(unsafe { AtomicCompareExchange(@half, -300i16, 300i16, MemoryOrder::SequentiallyConsistent,
+    Assert({ AtomicCompareExchange(@half, -300i16, 300i16, MemoryOrder::SequentiallyConsistent,
                                           MemoryOrder::SequentiallyConsistent) } == -300,
            "int16 compare-exchange matches a negative value");
     Assert(half == 300, "int16 compare-exchange writes");
     // Safety: `half` is a live, aligned local `int16`.
-    Assert(unsafe { AtomicFetchXor(@half, -1i16, MemoryOrder::Relaxed) } == 300 && half == -301, "int16 fetch-xor");
+    Assert(AtomicFetchXor(@half, -1i16, MemoryOrder::Relaxed) == 300 && half == -301, "int16 fetch-xor");
     var word: uint32 = 0xFFFFFFF0;
     // Safety: `word` is a live, aligned local `uint32`.
-    Assert(unsafe { AtomicFetchOr(@word, 0x0Fu32, MemoryOrder::Relaxed) } == 0xFFFFFFF0 && word == 0xFFFFFFFF,
+    Assert(AtomicFetchOr(@word, 0x0Fu32, MemoryOrder::Relaxed) == 0xFFFFFFF0 && word == 0xFFFFFFFF,
            "uint32 fetch-or");
     // Safety: `word` is a live, aligned local `uint32`.
-    Assert(unsafe { AtomicLoad(@word, MemoryOrder::Acquire) } == 0xFFFFFFFF, "uint32 load keeps the high bit unsigned");
+    Assert(AtomicLoad(@word, MemoryOrder::Acquire) == 0xFFFFFFFF, "uint32 load keeps the high bit unsigned");
     var signedWord: int32 = -2;
     // Safety: `signedWord` is a live, aligned local `int32`.
-    Assert(unsafe { AtomicFetchAnd(@signedWord, -4i32, MemoryOrder::Relaxed) } == -2 && signedWord == -4,
+    Assert(AtomicFetchAnd(@signedWord, -4i32, MemoryOrder::Relaxed) == -2 && signedWord == -4,
            "int32 fetch-and");
     // Safety: `signedWord` is a live, aligned local `int32`.
-    Assert(unsafe { AtomicLoad(@signedWord, MemoryOrder::Relaxed) } == -4, "int32 load comes back negative");
+    Assert(AtomicLoad(@signedWord, MemoryOrder::Relaxed) == -4, "int32 load comes back negative");
 }
 
 func Others() {
     // Safety: `Flag` is a module `bool` that lives for the whole program.
-    Assert(!unsafe { AtomicExchange(@Flag, true, MemoryOrder::SequentiallyConsistent) },
+    Assert(!AtomicExchange(@Flag, true, MemoryOrder::SequentiallyConsistent),
            "bool exchange from module storage");
     // Safety: `Flag` is a module `bool` that lives for the whole program.
-    Assert(unsafe { AtomicLoad(@Flag, MemoryOrder::Acquire) }, "bool load");
+    Assert(AtomicLoad(@Flag, MemoryOrder::Acquire), "bool load");
     // Safety: `Flag` is a module `bool` that lives for the whole program.
-    Assert(unsafe { AtomicFetchAnd(@Flag, false, MemoryOrder::Relaxed) } && !Flag, "bool fetch-and");
+    Assert(AtomicFetchAnd(@Flag, false, MemoryOrder::Relaxed) && !Flag, "bool fetch-and");
     // Safety: `Flag` is a module `bool` that lives for the whole program.
-    Assert(!unsafe { AtomicFetchOr(@Flag, true, MemoryOrder::Relaxed) } && Flag, "bool fetch-or");
+    Assert(!AtomicFetchOr(@Flag, true, MemoryOrder::Relaxed) && Flag, "bool fetch-or");
     // Safety: `Flag` is a module `bool` that lives for the whole program.
-    Assert(unsafe { AtomicFetchXor(@Flag, true, MemoryOrder::Relaxed) } && !Flag, "bool fetch-xor");
+    Assert(AtomicFetchXor(@Flag, true, MemoryOrder::Relaxed) && !Flag, "bool fetch-xor");
 
     // Safety: `Shared` is a module `int64` that lives for the whole program.
-    Assert(unsafe { AtomicFetchAdd(@Shared, 10i64, MemoryOrder::SequentiallyConsistent) } == 0,
+    Assert(AtomicFetchAdd(@Shared, 10i64, MemoryOrder::SequentiallyConsistent) == 0,
            "module storage fetch-add");
     // Safety: `Shared` is a module `int64` that lives for the whole program.
-    Assert(unsafe { AtomicLoad(@Shared, MemoryOrder::SequentiallyConsistent) } == 10, "module storage keeps the sum");
+    Assert(AtomicLoad(@Shared, MemoryOrder::SequentiallyConsistent) == 10, "module storage keeps the sum");
 
     var target: int64 = 3;
     var other: int64 = 4;
     var slot: *int64 = @target;
     // Safety: `slot` is a live, aligned local `*int64`.
-    let previous = unsafe { AtomicExchange(@slot, @other as *int64, MemoryOrder::AcquireRelease) };
+    let previous = AtomicExchange(@slot, @other as *int64, MemoryOrder::AcquireRelease);
     Assert(previous == @target as *int64, "a pointer exchange returns the old pointer");
     // Safety: `slot` is a live, aligned local `*int64`.
-    Assert(unsafe { AtomicLoad(@slot, MemoryOrder::Acquire) } == @other as *int64,
+    Assert(AtomicLoad(@slot, MemoryOrder::Acquire) == @other as *int64,
            "a pointer load reads the new pointer");
     // Safety: `slot` is a live, aligned local `*int64`.
-    Assert(unsafe { AtomicCompareExchange(@slot, @other as *int64, @target as *int64,
+    Assert({ AtomicCompareExchange(@slot, @other as *int64, @target as *int64,
                                           MemoryOrder::SequentiallyConsistent, MemoryOrder::Relaxed) } ==
                @other as *int64,
            "a pointer compare-exchange");

@@ -1,6 +1,6 @@
 // A log file that is moved aside for a fresh one before it grows past a size, keeping a few of the older files.
 // The file is a `Writer`, so a `Logger` writes to it like any other destination, through a handle made from its
-// address with `unsafe { @file as Writer }`, as for a plain file.
+// address with `@file as Writer`, as for a plain file.
 
 import Allocator::Allocator;
 import FileSystem::{ File, OpenOptions, Rename };

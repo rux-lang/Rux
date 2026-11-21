@@ -5,22 +5,22 @@ import Windows::{ FreeLibrary, GetProcAddress, LoadLibraryA };
 func Main() -> int {
     let libraryName = "WindowsAArch64Dll.dll";
     // Safety: the name is a NUL-terminated string literal.
-    let library = unsafe { LoadLibraryA(libraryName.data) };
+    let library = LoadLibraryA(libraryName.data);
     if library == null { return 1; }
 
     let exportName = "Answer";
     // Safety: `library` is the module loaded above, and the export name is a NUL-terminated string literal.
-    let address = unsafe { GetProcAddress(library, exportName.data) };
+    let address = GetProcAddress(library, exportName.data);
     if address == null {
         // Safety: `library` is the module loaded above, and nothing from it is used afterwards.
-        unsafe { FreeLibrary(library); }
+        FreeLibrary(library);
         return 2;
     }
 
     // Safety: the fixture library exports `Answer` as a Rux function taking nothing and returning `int`.
-    let answer = unsafe { address as func() -> int };
+    let answer = address as func() -> int;
     let result = answer();
     // Safety: `library` is the module loaded above, and `answer` is not called after this.
-    if !unsafe { FreeLibrary(library) } { return 3; }
+    if !FreeLibrary(library) { return 3; }
     return if result == 42 { 0 } else { 4 };
 }

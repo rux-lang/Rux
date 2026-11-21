@@ -47,7 +47,7 @@ pub interface Hasher {
 /// @param length how many bytes
 /// @returns their hash
 /// @see https://rux-lang.dev/docs/api/hash/hasher#hash-bytes
-pub unsafe func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
+pub func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
     hasher.Write(bytes, length);
     return hasher.Finish();
 }

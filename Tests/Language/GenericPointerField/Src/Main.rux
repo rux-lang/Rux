@@ -26,10 +26,8 @@ func Total(node: *var Node<int32>) -> int32 {
     var walk = node;
     while walk != null {
         // Safety: `walk` is non-null, and every link of the chain `Main` builds is a live local node.
-        unsafe {
-            sum = sum + walk.value;
-            walk = walk.next;
-        }
+        sum = sum + walk.value;
+        walk = walk.next;
     }
     return sum;
 }
@@ -37,20 +35,20 @@ func Total(node: *var Node<int32>) -> int32 {
 // A field written through the pointer, so the offset is used for a store and not only a load.
 func Double(node: *var Node<int32>) {
     // Safety: the caller passes `@second`, a live local node of `Main`.
-    unsafe { node.value = node.value * 2i32; }
+    node.value = node.value * 2i32;
 }
 
 // Both parameters of a two-parameter instantiation, in a fixed order, so a substitution that used the wrong one
 // would land on the wrong type rather than nowhere.
 func Combine(pair: *Pair<int32, int64>) -> int64 {
     // Safety: the caller passes the address of a live local `Pair` of `Main`.
-    return unsafe { (pair.left as int64) + pair.right };
+    return (pair.left as int64) + pair.right;
 }
 
 // A pointer to an instantiation whose argument is itself an instantiation.
 func Inner(nested: *var Node<Pair<int32, int64>>) -> int64 {
     // Safety: the caller passes the address of a live local node of `Main`.
-    return unsafe { (nested.value.left as int64) + nested.value.right };
+    return (nested.value.left as int64) + nested.value.right;
 }
 
 func Main() -> int {
@@ -60,7 +58,7 @@ func Main() -> int {
 
     Assert(Total(@first) == 6, "a field is read through a pointer to an instantiation");
     // Safety: `first.next` is `@second` and `second.next` is `@third`, both live locals.
-    Assert(unsafe { first.next.next.value } == 3, "and through a chain of them");
+    Assert(first.next.next.value == 3, "and through a chain of them");
 
     Double(@second);
     Assert(second.value == 4, "a field is written through one too");

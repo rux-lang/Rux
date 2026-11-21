@@ -115,7 +115,7 @@ extend Crc32 : Hasher {
         while index < length {
             // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
             // bytes.
-            let slot = ((self.register ^ (unsafe { *(bytes + index) } as uint32)) & 0xFF) as uint;
+            let slot = ((self.register ^ (*(bytes + index) as uint32)) & 0xFF) as uint;
             self.register = Crc32Table[slot] ^ (self.register >> 8);
             index++;
         }
@@ -184,7 +184,7 @@ extend Crc32c : Hasher {
         while index < length {
             // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
             // bytes.
-            let slot = ((self.register ^ (unsafe { *(bytes + index) } as uint32)) & 0xFF) as uint;
+            let slot = ((self.register ^ (*(bytes + index) as uint32)) & 0xFF) as uint;
             self.register = Crc32cTable[slot] ^ (self.register >> 8);
             index++;
         }
@@ -209,7 +209,7 @@ extend Crc32c : Hasher {
 /// @param length how many bytes
 /// @returns their CRC-32 checksum
 /// @see https://rux-lang.dev/docs/api/hash/crc32#crc32-of
-pub unsafe func Crc32Of(bytes: *byte, length: uint) -> uint32 {
+pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
     var checksum = Crc32();
     checksum.Write(bytes, length);
     return checksum.Value();
@@ -224,7 +224,7 @@ pub unsafe func Crc32Of(bytes: *byte, length: uint) -> uint32 {
 /// @param length how many bytes
 /// @returns their CRC-32C checksum
 /// @see https://rux-lang.dev/docs/api/hash/crc32c#crc32c-of
-pub unsafe func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
+pub func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
     var checksum = Crc32c();
     checksum.Write(bytes, length);
     return checksum.Value();

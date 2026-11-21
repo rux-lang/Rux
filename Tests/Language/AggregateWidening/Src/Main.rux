@@ -46,7 +46,7 @@ func Main() -> int {
         return 2;
     }
     // Safety: `@W` addresses the module constant `W`, which lives for the whole program.
-    if unsafe { (*@W).factor } != -5 {
+    if (*@W).factor != -5 {
         return 3;
     }
     if O.inner.factor != -3 || O.extra != -5 {
@@ -54,7 +54,7 @@ func Main() -> int {
     }
     let outer = O;
     // Safety: `@O` addresses the module constant `O`, which lives for the whole program.
-    if outer.inner.factor != -3 || outer.extra != -5 || unsafe { (*@O).inner.factor } != -3 {
+    if outer.inner.factor != -3 || outer.extra != -5 || (*@O).inner.factor != -3 {
         return 5;
     }
     if T.0 != -5 || T.1 != -3 {
@@ -62,7 +62,7 @@ func Main() -> int {
     }
     let tuple = T;
     // Safety: `@T` addresses the module constant `T`, which lives for the whole program.
-    if tuple.0 != -5 || tuple.1 != -3 || unsafe { (*@T).0 } != -5 {
+    if tuple.0 != -5 || tuple.1 != -3 || (*@T).0 != -5 {
         return 7;
     }
     let small: int64 = -9;
@@ -78,15 +78,15 @@ func Main() -> int {
         return 10;
     }
     // Safety: `@C` addresses the module constant `C`, which lives for the whole program.
-    if @C != @C || unsafe { *(@C) } != Color::Blue {
+    if @C != @C || *(@C) != Color::Blue {
         return 11;
     }
     // Safety: `@D` addresses the module constant `D`, which lives for the whole program.
-    if @D != @D || unsafe { *(@D) } != Wide::B {
+    if @D != @D || *(@D) != Wide::B {
         return 12;
     }
     // Safety: `@P` addresses the module constant `P`, which lives for the whole program.
-    if unsafe { (*@P).color != Color::Green || (*@P).amount != 9 } {
+    if ((*@P).color != Color::Green || (*@P).amount != 9) {
         return 13;
     }
     return 0;

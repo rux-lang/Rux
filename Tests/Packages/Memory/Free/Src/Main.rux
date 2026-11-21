@@ -4,24 +4,24 @@ import Memory::{ Alloc, Free, Realloc };
 func Main() -> int {
     // Freeing null is documented as a no-op, so callers need no guard.
     // Safety: the contract binds only a non-null `ptr`.
-    unsafe { Free(null); }
+    Free(null);
 
     let buffer = Alloc(256);
     Assert(buffer != null, "Alloc(256)");
     // Safety: `buffer` is the live base address `Alloc` returned, and is not used afterwards.
-    unsafe { Free(buffer); }
+    Free(buffer);
 
     // A block that moved through Realloc is still owned by the caller.
     // Safety: the argument is the fresh base address `Alloc` returned, or null, which `Realloc` takes as `Alloc`.
-    let grown = unsafe { Realloc(Alloc(16), 512) };
+    let grown = Realloc(Alloc(16), 512);
     Assert(grown != null, "Realloc before Free");
     // Safety: `grown` is the live base address `Realloc` returned, and is not used afterwards.
-    unsafe { Free(grown); }
+    Free(grown);
 
     // The heap stays usable after a release.
     let reused = Alloc(256);
     Assert(reused != null, "Alloc after Free");
     // Safety: `reused` is the live base address `Alloc` returned, and is not used afterwards.
-    unsafe { Free(reused); }
+    Free(reused);
     return 0;
 }

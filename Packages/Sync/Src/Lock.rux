@@ -33,7 +33,7 @@ extend Lock {
     pub func Acquire(&self) {
         // Safety: `self.word` is a live, aligned field of this lock, retyped to `*var` because every thread changes it
         // only through the atomic lock-word functions.
-        unsafe { LockWord((@self.word) as *opaque as *var uint32); }
+        LockWord((@self.word) as *opaque as *var uint32);
     }
 
     /// Takes the lock if nobody holds it, without waiting.
@@ -42,7 +42,7 @@ extend Lock {
     pub func TryAcquire(&self) -> bool {
         // Safety: `self.word` is a live, aligned field of this lock, retyped to `*var` because every thread changes it
         // only through the atomic lock-word functions.
-        return unsafe { TryLockWord((@self.word) as *opaque as *var uint32) };
+        return TryLockWord((@self.word) as *opaque as *var uint32);
     }
 
     /// Releases the lock this thread holds, letting one waiting thread take it.
@@ -50,7 +50,7 @@ extend Lock {
     pub func Release(&self) {
         // Safety: `self.word` is a live, aligned field of this lock, retyped to `*var` because every thread changes it
         // only through the atomic lock-word functions.
-        unsafe { UnlockWord((@self.word) as *opaque as *var uint32); }
+        UnlockWord((@self.word) as *opaque as *var uint32);
     }
 }
 
@@ -87,28 +87,26 @@ extend Once {
     pub func Call(&self, initialize: func()) {
         // Safety: `self.state` is this once's own aligned field, retyped to `*var` because every thread changes it only
         // through atomic operations.
-        let state = unsafe { (@self.state) as *opaque as *var uint32 };
+        let state = (@self.state) as *opaque as *var uint32;
         // Safety: `state` addresses this once's live field, which every thread reaches only atomically.
-        if unsafe { AtomicLoad(state, MemoryOrder::Acquire) } == OnceComplete { return; }
+        if AtomicLoad(state, MemoryOrder::Acquire) == OnceComplete { return; }
         // Safety: `state` addresses this once's live field, which every thread reaches only atomically.
-        let previous = unsafe {
+        let previous = {
             AtomicCompareExchange(state, OnceIncomplete, OnceRunning, MemoryOrder::Acquire, MemoryOrder::Acquire)
         };
         if previous == OnceIncomplete {
             initialize();
             // Safety: `state` addresses this once's live field, which every thread reaches only atomically, and the
             // once outlives every thread sleeping on it inside `Call`.
-            unsafe {
-                AtomicStore(state, OnceComplete, MemoryOrder::Release);
-                WakeAll(state);
-            }
+            AtomicStore(state, OnceComplete, MemoryOrder::Release);
+            WakeAll(state);
             return;
         }
         // Safety: `state` addresses this once's live field, which every thread reaches only atomically.
-        while unsafe { AtomicLoad(state, MemoryOrder::Acquire) } != OnceComplete {
+        while AtomicLoad(state, MemoryOrder::Acquire) != OnceComplete {
             // Safety: the word waited on is this once's `state` field, which lives as long as the once this `Call`
             // borrows.
-            unsafe { WaitWhile(state, OnceRunning, -1); }
+            WaitWhile(state, OnceRunning, -1);
         }
     }
 
@@ -117,6 +115,6 @@ extend Once {
     /// @see https://rux-lang.dev/docs/api/sync/lock#is-completed
     pub func IsCompleted(&self) -> bool {
         // Safety: `self.state` is a live, aligned field of this once that every thread reaches only atomically.
-        return unsafe { AtomicLoad((@self.state) as *uint32, MemoryOrder::Acquire) } == OnceComplete;
+        return AtomicLoad((@self.state) as *uint32, MemoryOrder::Acquire) == OnceComplete;
     }
 }

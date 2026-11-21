@@ -23,11 +23,11 @@ when #target.os == OperatingSystem::Linux && #target.arch == Architecture::X86_6
 
     func PlatformAbiCheck() -> int {
         // Safety: `LinuxAdd` reads its two argument registers and writes only the result register.
-        if unsafe { LinuxAdd(20, 22) } != 42 {
+        if LinuxAdd(20, 22) != 42 {
             return 1;
         }
         // Safety: `LinuxGetPid` issues the argument-free getpid syscall, which only returns the process id.
-        if unsafe { LinuxGetPid() } <= 0 {
+        if LinuxGetPid() <= 0 {
             return 2;
         }
         return 0;
@@ -46,11 +46,11 @@ when #target.os == OperatingSystem::Linux && #target.arch == Architecture::X86_6
 
     func PlatformAbiCheck() -> int {
         // Safety: `LinuxAdd` reads its two argument registers and writes only the result register.
-        if unsafe { LinuxAdd(20, 22) } != 42 {
+        if LinuxAdd(20, 22) != 42 {
             return 1;
         }
         // Safety: `LinuxGetPid` issues the argument-free getpid syscall, which only returns the process id.
-        if unsafe { LinuxGetPid() } <= 0 {
+        if LinuxGetPid() <= 0 {
             return 2;
         }
         return 0;

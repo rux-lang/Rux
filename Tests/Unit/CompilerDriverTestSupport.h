@@ -199,7 +199,7 @@ extern func puts(str: *char8) -> int32;
 
 pub func SelectedAnswer() -> int {
     // Safety: a string literal is NUL-terminated and lives for the whole program
-    unsafe { puts("FreeBSD AArch64 driver test".data); }
+    puts("FreeBSD AArch64 driver test".data);
     return Answer();
 }
 

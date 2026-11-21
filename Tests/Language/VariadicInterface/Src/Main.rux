@@ -100,7 +100,7 @@ func Main() -> int {
     }
     let bytes = @buffer[0];
     // Safety: `bytes` is `@buffer[0]` and `buffer` is a live local of four bytes.
-    if SumTiny(unsafe { bytes[..2] }, tiny8) != 10 {
+    if SumTiny(bytes[..2], tiny8) != 10 {
         return 8;
     }
 

@@ -36,7 +36,7 @@ struct BorrowOrigin {
     enum class Kind {
         /// The source parameter, a part of it, or a reference returned from it.
         Source,
-        /// Storage reached through a raw pointer, which its user vouches for inside `unsafe`.
+        /// Storage reached through a raw pointer, which its user vouches for.
         Raw,
         /// `none`: nothing is borrowed.
         Absent,

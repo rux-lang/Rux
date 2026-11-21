@@ -58,7 +58,7 @@ extend Adler32 : Hasher {
             while index < end {
                 // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for
                 // `length` bytes.
-                low = low + (unsafe { *(bytes + index) } as uint32);
+                low = low + (*(bytes + index) as uint32);
                 high = high + low;
                 index++;
             }

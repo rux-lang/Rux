@@ -75,7 +75,7 @@ func Digits(reader: &var Reader, count: uint) -> uint32 throws TimeParseError {
             throw .InvalidSyntax(reader.text.length);
         }
         // Safety: `reader.at` is below `reader.text.length`, checked above.
-        let byte = unsafe { reader.text.data[reader.at] };
+        let byte = reader.text.data[reader.at];
         if !IsDigit(byte) {
             throw .InvalidSyntax(reader.at);
         }
@@ -92,7 +92,7 @@ func Literal(reader: &var Reader, byte: char8) throws TimeParseError {
         throw .InvalidSyntax(reader.text.length);
     }
     // Safety: `reader.at` is below `reader.text.length`, checked above.
-    if unsafe { reader.text.data[reader.at] } != byte {
+    if reader.text.data[reader.at] != byte {
         throw .InvalidSyntax(reader.at);
     }
     reader.at = reader.at + 1;
@@ -105,7 +105,7 @@ func ReadSeparator(reader: &var Reader) throws TimeParseError {
         throw .InvalidSyntax(reader.text.length);
     }
     // Safety: `reader.at` is below `reader.text.length`, checked above.
-    let byte = unsafe { reader.text.data[reader.at] };
+    let byte = reader.text.data[reader.at];
     if byte != c8'T' && byte != c8't' && byte != c8' ' {
         throw .InvalidSyntax(reader.at);
     }
@@ -155,18 +155,18 @@ func ReadTime(reader: &var Reader) -> TimeOfDay throws TimeParseError {
 
     var nanosecond: uint32 = 0;
     // Safety: the read runs only when `reader.at` is below `reader.text.length`, checked first.
-    if reader.at < reader.text.length && unsafe { reader.text.data[reader.at] } == c8'.' {
+    if reader.at < reader.text.length && reader.text.data[reader.at] == c8'.' {
         reader.at = reader.at + 1;
         let firstDigit = reader.at;
         var scale: uint32 = 100000000;
         var taken: uint = 0;
         // Safety: the read runs only when `reader.at` is below `reader.text.length`, checked first.
-        while reader.at < reader.text.length && IsDigit(unsafe { reader.text.data[reader.at] }) {
+        while reader.at < reader.text.length && IsDigit(reader.text.data[reader.at]) {
             if taken == 9 {
                 throw .ExcessiveFraction(reader.at);
             }
             // Safety: `reader.at` is below `reader.text.length`, the loop condition.
-            let digit = unsafe { reader.text.data[reader.at] };
+            let digit = reader.text.data[reader.at];
             nanosecond = nanosecond + ((digit as uint32) - 0x30) * scale;
             scale = scale / 10;
             taken = taken + 1;
@@ -198,7 +198,7 @@ func ReadOffset(reader: &var Reader) -> UtcOffset throws TimeParseError {
     }
     let signAt = reader.at;
     // Safety: `reader.at` is below `reader.text.length`, checked above.
-    let mark = unsafe { reader.text.data[reader.at] };
+    let mark = reader.text.data[reader.at];
     if mark == c8'Z' || mark == c8'z' {
         reader.at = reader.at + 1;
         return UtcOffset::Utc();

@@ -102,7 +102,7 @@ TEST_CASE("module variables are read, written and addressed from any function") 
             Settings::Level += 1;
             let address: *var int = @Total;
             // Safety: `address` addresses the module variable `Total`, which lives for the whole program
-            unsafe { *address = 3; }
+            *address = 3;
         }
 
         func Main() -> int {

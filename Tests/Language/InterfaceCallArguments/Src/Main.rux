@@ -11,7 +11,7 @@ struct Buffer {
 extend Buffer : Writer {
     func Put(&var self, value: uint) -> uint {
         // Safety: every `Buffer` in this test holds `@total`, a local that outlives it.
-        return unsafe {
+        return {
             *self.total += value;
             *self.total
         };
@@ -24,7 +24,7 @@ interface Reader {
 
 extend Buffer : Reader {
     // Safety: every `Buffer` in this test holds `@total`, a local that outlives it.
-    func Get(&self) -> uint { return unsafe { *self.total }; }
+    func Get(&self) -> uint { return *self.total; }
 }
 
 struct Triple {
@@ -135,7 +135,7 @@ func BoundNested<T: Reader>(value: T) -> uint { return Bound<T>(value); }
 // An explicit primitive conformance is available to interface bounds as well as direct coercion.
 extend uint64 : Reader {
     // Safety: a method call passes the address of the live `uint64` receiver as `self`.
-    func Get(*self) -> uint { return unsafe { *self } as uint; }
+    func Get(*self) -> uint { return *self as uint; }
 }
 
 func GenericArguments() {

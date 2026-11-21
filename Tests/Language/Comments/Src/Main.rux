@@ -15,7 +15,7 @@
 /// Returns a value documented with line comments.
 ///
 /// # Safety
-/// This function has no unsafe preconditions.
+/// This function has no preconditions on its caller.
 ///
 /// @returns The stable value `11`.
 func LineDocumented() -> int {

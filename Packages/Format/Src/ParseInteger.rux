@@ -24,7 +24,7 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
         if index == str.length { throw ParseError::InvalidCharacter(index - 1); }
     }
     // Safety: the documented contract makes `negative` a non-null pointer to the caller's writable `bool`.
-    unsafe { *negative = negated; }
+    *negative = negated;
 
     var radix: uint512 = 10;
     if index + 1 < str.length && str[index] == c8'0' {
@@ -73,7 +73,7 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
         index++;
     }
     // Safety: the documented contract makes `magnitude` a non-null pointer to the caller's writable `uint512`.
-    unsafe { *magnitude = total; }
+    *magnitude = total;
     return true;
 }
 

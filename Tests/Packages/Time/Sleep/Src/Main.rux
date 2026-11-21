@@ -35,7 +35,7 @@ struct ScriptedWaiter {
 extend ScriptedWaiter : Waiter {
     func WaitFor(&var self, span: Duration) -> Duration throws TimeError {
         // Safety: `state` points at a `WaiterState` local of `Main`, which outlives every waiter made over it.
-        unsafe {
+        {
             self.state.calls = self.state.calls + 1;
             let handed = (span.TotalMilliseconds() ?? -1);
             if handed > self.state.longestHanded { self.state.longestHanded = handed; }

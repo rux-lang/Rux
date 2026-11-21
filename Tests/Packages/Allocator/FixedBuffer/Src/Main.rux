@@ -10,12 +10,12 @@ func Main() throws AllocError {
     // The buffer is a local array, so nothing here allocates at all.
     var storage: byte[512];
     // Safety: `storage` is a local array of 512 bytes that outlives `buffer` and is touched only through it.
-    var buffer = unsafe { FixedBuffer(@storage[0] as *var opaque, 512) };
+    var buffer = FixedBuffer(@storage[0] as *var opaque, 512);
     Assert(buffer.BytesUsed() == 0, "an unused allocator has handed out nothing");
     Assert(buffer.BytesRemaining() == 512, "and has its whole buffer left");
 
     // Safety: `buffer` is a local that outlives `allocator` and is never moved.
-    let allocator = unsafe { buffer.Handle() };
+    let allocator = buffer.Handle();
 
     // A zero-sized layout costs the buffer nothing.
     let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
@@ -36,7 +36,7 @@ func Main() throws AllocError {
 
     // Writing through both addresses must not disturb either.
     // Safety: `first` and `second` are distinct live 32-byte allocations aligned to 8, so each holds a `uint64`.
-    let (firstValue, secondValue) = unsafe {
+    let (firstValue, secondValue) = {
         let firstBytes = first as *var uint64;
         let secondBytes = second as *var uint64;
         *firstBytes = 0x0123456789ABCDEF;
@@ -125,10 +125,10 @@ func Main() throws AllocError {
 
     // An allocator over no storage is a usable allocator that refuses everything.
     // Safety: a null `storage` gives an allocator that refuses every request, so there is no storage to keep valid.
-    var unbacked = unsafe { FixedBuffer(null, 4096) };
+    var unbacked = FixedBuffer(null, 4096);
     Assert(unbacked.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
     // Safety: `unbacked` is a local that outlives `empties` and is never moved.
-    let empties = unsafe { unbacked.Handle() };
+    let empties = unbacked.Handle();
     var refused: *var opaque = null;
     try {
         empties.Allocate(small);

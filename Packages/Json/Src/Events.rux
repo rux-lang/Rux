@@ -133,7 +133,7 @@ extend JsonEventReader {
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
         let block = try borrowed.Allocate(chunk) catch { error => AllocationFailed(error) };
         // Safety: `block` was just allocated with `JsonStreamChunk` bytes, and `char8` has size and alignment 1.
-        reader.data = unsafe { block as *var char8 };
+        reader.data = block as *var char8;
         reader.capacity = JsonStreamChunk;
         return move reader;
     }
@@ -163,7 +163,7 @@ extend JsonEventReader {
     pub func Text(&self) -> char8[..] {
         // Safety: `ScanWhile` keeps `tokenStart..tokenEnd` inside the filled part of the live buffer `self.data`, and
         // nothing has refilled it since the event that recorded them.
-        return unsafe { (@self.data[self.tokenStart])[..self.tokenEnd - self.tokenStart] };
+        return (@self.data[self.tokenStart])[..self.tokenEnd - self.tokenStart];
     }
 
     /// Whether that text holds escapes a caller must resolve.
@@ -190,7 +190,7 @@ extend JsonEventReader {
             while self.position + moved < self.filled {
                 // Safety: both offsets are below `self.filled`, which never exceeds the `self.capacity` bytes of the
                 // live buffer `self.data`.
-                unsafe { self.data[moved] = self.data[self.position + moved]; }
+                self.data[moved] = self.data[self.position + moved];
                 moved = moved + 1;
             }
             self.filled = moved;
@@ -207,12 +207,12 @@ extend JsonEventReader {
             let bigger = Layout { size: wanted, alignment: 1 };
             let block = try borrowed.Allocate(bigger) catch { error => AllocationFailed(error) };
             // Safety: `block` was just allocated with `wanted` bytes, and `char8` has size and alignment 1.
-            let grown = unsafe { block as *var char8 };
+            let grown = block as *var char8;
             var copied: uint = 0;
             while copied < self.filled {
                 // Safety: `copied` is below `self.filled`, which fits both the old buffer of `self.capacity` bytes
                 // and `grown`, which holds twice as many.
-                unsafe { grown[copied] = self.data[copied]; }
+                grown[copied] = self.data[copied];
                 copied = copied + 1;
             }
             let previous = Layout { size: self.capacity, alignment: 1 };
@@ -223,7 +223,7 @@ extend JsonEventReader {
         if self.exhausted { return false; }
         // Safety: `self.filled` is at most `self.capacity`, the size of the live buffer `self.data`, so the room after
         // it lies inside the buffer.
-        let room = unsafe { (@self.data[self.filled])[..self.capacity - self.filled] };
+        let room = (@self.data[self.filled])[..self.capacity - self.filled];
         let read = try self.source.Read(room) catch {
             error => {
                 self.exhausted = true;
@@ -266,7 +266,7 @@ extend JsonEventReader {
     func SkipWhitespace(&var self) {
         while self.Available() {
             // Safety: `Available` returned true, so `self.position` is below `self.filled` in the live buffer.
-            let c = unsafe { self.data[self.position] } as uint8;
+            let c = self.data[self.position] as uint8;
             if c != 0x20 && c != 0x09 && c != 0x0D && c != 0x0A { return; }
             self.position = self.position + 1;
         }
@@ -305,7 +305,7 @@ extend JsonEventReader {
                 continue;
             }
             // Safety: `index` is below `self.filled`, checked above, in the live buffer `self.data`.
-            let c = unsafe { self.data[index] } as uint8;
+            let c = self.data[index] as uint8;
             if isText {
                 if c == 0x5C {
                     escaped = true;
@@ -375,7 +375,7 @@ extend JsonEventReader {
             }
             // Safety: the loop above made `self.position + index` lower than `self.filled` in the live buffer, and
             // `index` is below `word.length`.
-            if unsafe { self.data[self.position + index] != word.data[index] } { return false; }
+            if (self.data[self.position + index] != word.data[index]) { return false; }
             index = index + 1;
         }
         self.position = self.position + word.length;
@@ -387,7 +387,7 @@ extend JsonEventReader {
         self.SkipWhitespace();
         if !self.Available() { return none; }
         // Safety: `Available` returned true, so `self.position` is below `self.filled` in the live buffer.
-        return unsafe { self.data[self.position] } as uint8;
+        return self.data[self.position] as uint8;
     }
 
     // The byte a value must start with after a separator; the input ending there is a truncated document.

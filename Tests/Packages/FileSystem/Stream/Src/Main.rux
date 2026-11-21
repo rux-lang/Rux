@@ -83,7 +83,7 @@ func Main() -> int throws IoError {
     try lines.Close();
     var back = try File::Open(allocator, scratch, OpenOptions::Reading());
     // Safety: `back` is a local of this function that outlives `buffered`, the only holder of the handle.
-    var buffered = try BufferedReader(allocator, unsafe { @back as Reader }, 8);
+    var buffered = try BufferedReader(allocator, @back as Reader, 8);
     var builder = StringBuilder(allocator);
     try ReadTextLine(buffered, builder, 64);
     let alpha = builder.TakeString();
@@ -117,7 +117,7 @@ func Main() -> int throws IoError {
     var closed = try File::Open(allocator, scratch, OpenOptions::Reading());
     Assert(closed.IsOpen(), "a file opens");
     // Safety: `closed` is a local of this function that outlives `stale`.
-    var stale = unsafe { @closed as Reader };
+    var stale = @closed as Reader;
     try closed.Close();
     var storage2: char8[4];
     storage2[0] = c8'z';
@@ -135,7 +135,7 @@ func Main() -> int throws IoError {
     var shared = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(shared.IsOpen(), "a file opens for writing");
     // Safety: `shared` is a local of this function that outlives `held`.
-    var held = unsafe { @shared as Writer };
+    var held = @shared as Writer;
     try WriteAll(held, TextBytes("abcd"));
     try Assert(shared.Size() == 4, "and the file itself measures them");
     try shared.Close();

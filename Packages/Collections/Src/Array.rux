@@ -46,7 +46,7 @@ extend Array<T> {
         while index < length {
             // Safety: `index < length`, checked by the loop, and `data` comes from `AllocateBlock` with room for
             // `length` elements.
-            unsafe { data[index] = value; }
+            data[index] = value;
             index++;
         }
         return Self { data, length, allocator };
@@ -67,7 +67,7 @@ extend Array<T> {
         while index < items.length {
             // Safety: `index < items.length`, checked by the loop; `items` holds that many elements and `data` comes
             // from `AllocateBlock` with room for as many.
-            unsafe { data[index] = items.data[index]; }
+            data[index] = items.data[index];
             index++;
         }
         return Self { data, length: items.length, allocator };
@@ -111,7 +111,7 @@ extend Array<T> {
     pub func Get(&self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
-        return unsafe { self.data[index] };
+        return self.data[index];
     }
 
     /// The element at `index`, borrowed where it sits, or `none` when there is no such index.
@@ -123,7 +123,7 @@ extend Array<T> {
     pub func At(&self, index: uint) -> &T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
-        unsafe { return self.data[index]; }
+        return self.data[index];
     }
 
     /// The element at `index`, borrowed to be written where it sits, or `none` when there is no such index.
@@ -134,7 +134,7 @@ extend Array<T> {
     pub func AtMutable(&var self, index: uint) -> &var T? {
         if index >= self.length { return none; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements.
-        unsafe { return self.data[index]; }
+        return self.data[index];
     }
 
     /// Replaces the element at `index` with `value`, destroying the element that was there.
@@ -150,7 +150,7 @@ extend Array<T> {
         // Moved into a local, the old element is destroyed when the local's life ends, after the new one is stored.
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements; the slot
         // emptied by the move is refilled at once.
-        unsafe {
+        {
             let previous = move self.data[index];
             self.data[index] = move value;
         }
@@ -169,7 +169,7 @@ extend Array<T> {
         if index >= self.length { throw .IndexOutOfRange; }
         // Safety: `index < self.length`, checked above, and `data` holds `length` initialized elements; the slot
         // emptied by the move is refilled at once.
-        unsafe {
+        {
             let previous = move self.data[index];
             self.data[index] = move value;
             return move previous;
@@ -183,7 +183,7 @@ extend Array<T> {
     /// @see https://rux-lang.dev/docs/api/collections/array#as-slice
     pub func AsSlice(&self) -> T[..] {
         // Safety: `data` holds `length` initialized elements for the array's whole life.
-        return unsafe { (self.data)[..self.length] };
+        return (self.data)[..self.length];
     }
 
     /// The whole array as a borrowed writable view.
@@ -194,7 +194,7 @@ extend Array<T> {
     /// @see https://rux-lang.dev/docs/api/collections/array#as-mutable-slice
     pub func AsMutableSlice(&var self) -> var T[..] {
         // Safety: `data` holds `length` initialized elements for the array's whole life.
-        return unsafe { (self.data)[..self.length] };
+        return (self.data)[..self.length];
     }
 
     /// An iterator over the elements, by copy.
@@ -236,7 +236,7 @@ extend Array<T> {
             // not. There is no other way for a container to destroy an element it does not know is droppable.
             // Safety: `index < self.length`, checked by the loop, and `data` holds `length` initialized elements; each
             // is moved out exactly once and the block is released right after.
-            unsafe { let taken = move self.data[index]; }
+            { let taken = move self.data[index]; }
             index++;
         }
         ReleaseBlock<T>(self.allocator, self.data, self.length);

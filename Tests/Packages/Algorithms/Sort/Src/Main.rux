@@ -203,25 +203,23 @@ func Main() -> int {
     // that leaves the surrounding elements untouched.
     var guarded: int32[10] = [100, 5, 4, 3, 2, 1, 0, 6, 7, 200];
     // Safety: `guarded` is a live local of ten elements, so the range from 1 up to 9 is inside it.
-    unsafe { InsertionSortRange<int32>(@guarded[0], 1, 9); }
+    InsertionSortRange<int32>(@guarded[0], 1, 9);
     if guarded[0] != 100 || guarded[9] != 200 { return 210; }
     if !Sorted<int32>(guarded[1..9]) { return 211; }
 
     var heaped: int32[10] = [100, 5, 4, 3, 2, 1, 0, 6, 7, 200];
     // Safety: `heaped` is a live local of ten elements, so the range from 1 up to 9 is inside it.
-    unsafe { HeapSortRange<int32>(@heaped[0], 1, 9); }
+    HeapSortRange<int32>(@heaped[0], 1, 9);
     if heaped[0] != 100 || heaped[9] != 200 { return 212; }
     if !Sorted<int32>(heaped[1..9]) { return 213; }
     if !SameInts(heaped[1..9], guarded[1..9]) { return 214; }
 
     // Both fallbacks accept empty and single-element ranges.
     // Safety: `heaped` is a live local of ten elements, so the ranges at index 3 are inside it.
-    unsafe {
-        InsertionSortRange<int32>(@heaped[0], 3, 3);
-        InsertionSortRange<int32>(@heaped[0], 3, 4);
-        HeapSortRange<int32>(@heaped[0], 3, 3);
-        HeapSortRange<int32>(@heaped[0], 3, 4);
-    }
+    InsertionSortRange<int32>(@heaped[0], 3, 3);
+    InsertionSortRange<int32>(@heaped[0], 3, 4);
+    HeapSortRange<int32>(@heaped[0], 3, 3);
+    HeapSortRange<int32>(@heaped[0], 3, 4);
     if !Sorted<int32>(heaped[1..9]) { return 215; }
 
     // Signed and unsigned limits sort as ordinary values.

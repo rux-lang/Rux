@@ -24,7 +24,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 // The float16 a bit pattern encodes, read through a pointer as Format reads the other way.
 func FromBits(bits: uint16) -> float16 {
     // Safety: `bits` is a live local `uint16`, the same size as `float16`, so the read stays inside it.
-    return unsafe { *((@bits) as *float16) };
+    return *((@bits) as *float16);
 }
 
 // Whether the value's `Display` text is `expected`, with `prefix` in front of it.

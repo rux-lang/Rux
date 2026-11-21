@@ -21,7 +21,7 @@ struct Tracked {
 extend Tracked {
     func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test holds `@counter`, a local of `Main` that outlives it.
-        unsafe { self.counter.count = self.counter.count + 1; }
+        self.counter.count = self.counter.count + 1;
     }
 }
 
@@ -73,7 +73,7 @@ func Required(value: int32?) -> int32 throws NotFound {
 
 func Expensive(calls: *var int32) -> int32 {
     // Safety: every caller passes `@calls`, a live local of `Main`.
-    unsafe { *calls = *calls + 1i32; }
+    *calls = *calls + 1i32;
     return 99i32;
 }
 

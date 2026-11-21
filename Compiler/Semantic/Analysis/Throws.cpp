@@ -304,13 +304,7 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
         if (!value) {
             // A statement's arm is run for its effect, as a match statement's is.
             if (const auto *block = AstCast<const BlockExpr>(arm.body.get())) {
-                if (block->isUnsafe) {
-                    BeginUnsafeBlock(*block);
-                }
                 CheckStatementBranch(*block->block);
-                if (block->isUnsafe) {
-                    EndUnsafeBlock(*block);
-                }
             }
             else {
                 static_cast<void>(CheckExpr(*arm.body));

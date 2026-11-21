@@ -33,17 +33,17 @@ struct Counter {
 extend Counter : Dial {
     func Level(&self) -> int32 {
         // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
-        return unsafe { *self.total };
+        return *self.total;
     }
 
     func Peek(&self) -> int32 {
         // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
-        return unsafe { *self.total };
+        return *self.total;
     }
 
     func Turn(&self, amount: int32) {
         // Safety: the only `Counter` stores `@total`, a local of `Main` that outlives it.
-        unsafe { *self.total += amount; }
+        *self.total += amount;
     }
 }
 
@@ -79,7 +79,7 @@ func Main() -> int {
 
     // An interface value is a handle that copies nothing, so turning it turns the knob it addresses.
     // Safety: `knob` is a local of `Main` that outlives `held` and is never moved.
-    let held = unsafe { @knob as Dial };
+    let held = @knob as Dial;
     held.Turn(5i32);
     if held.Level() != 20i32 || knob.level != 20i32 {
         return 4;

@@ -34,13 +34,13 @@ pub func Alloc(size: uint) -> *var opaque {
             let total = size + HeaderSize;
             if total < size { return null; }
             // Safety: a fresh private anonymous mapping at no fixed address replaces nothing the program uses.
-            let mapping = unsafe {
+            let mapping = {
                 Mmap(null, total, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
             };
             if IsError(mapping) { return null; }
             // Safety: `mapping` is the fresh, writable, page-aligned mapping of `total` bytes, so its first word holds
             // the size header and the block after the 16-byte header lies inside it.
-            unsafe {
+            {
                 let header = mapping as *var uint;
                 *header = size;
                 return (header + 2) as *var opaque;
@@ -49,9 +49,9 @@ pub func Alloc(size: uint) -> *var opaque {
         .Windows => {
             // Safety: `GetProcessHeap` takes nothing and returns the process heap, which lives as long as the
             // process.
-            let heap = unsafe { GetProcessHeap() };
+            let heap = GetProcessHeap();
             // Safety: `heap` is the process heap just returned, and no flags are passed.
-            return unsafe { HeapAlloc(heap, 0, size) };
+            return HeapAlloc(heap, 0, size);
         },
         _ => #Error("Unsupported operating system")
     }

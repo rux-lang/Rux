@@ -25,7 +25,7 @@ pub const UMTX_OP_WAKE_PRIVATE: int32 = 16;
 /// @returns zero after a wake or when the word already differs, or a negative error number: `EINTR` or `ETIMEDOUT`
 /// @see https://rux-lang.dev/docs/api/freebsd/umtx#umtx-wait
 /// @see https://man.freebsd.org/cgi/man.cgi?query=_umtx_op&sektion=2
-pub unsafe func UmtxWait(address: *uint32, expected: uint32, timeout: *Timespec) -> int64 {
+pub func UmtxWait(address: *uint32, expected: uint32, timeout: *Timespec) -> int64 {
     // A null size in the fourth argument says the fifth is a relative `timespec`.
     return Syscall6(SysUmtxOp, address as uint64, UMTX_OP_WAIT_UINT_PRIVATE as uint64, expected as uint64, 0,
                     timeout as uint64, 0);
@@ -38,6 +38,6 @@ pub unsafe func UmtxWait(address: *uint32, expected: uint32, timeout: *Timespec)
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/umtx#umtx-wake
 /// @see https://man.freebsd.org/cgi/man.cgi?query=_umtx_op&sektion=2
-pub unsafe func UmtxWake(address: *uint32, count: int32) -> int64 {
+pub func UmtxWake(address: *uint32, count: int32) -> int64 {
     return Syscall6(SysUmtxOp, address as uint64, UMTX_OP_WAKE_PRIVATE as uint64, count as uint64, 0, 0, 0);
 }

@@ -123,7 +123,7 @@ extend Sha512 {
 
     // One block of a hundred and twenty eight bytes.
     // Safety: `block` must address a hundred and twenty eight readable bytes.
-    unsafe func Compress(&var self, block: *char8) {
+    func Compress(&var self, block: *char8) {
         var schedule: uint64[80];
         var index: uint = 0;
         while index < 16 {
@@ -199,13 +199,13 @@ extend Sha512 : Digest {
             }
             if self.buffered == 128 {
                 // Safety: `self.buffer` is the state's array of a hundred and twenty eight bytes.
-                unsafe { self.Compress(@self.buffer[0]); }
+                self.Compress(@self.buffer[0]);
                 self.buffered = 0;
             }
         }
         while index + 128 <= bytes.length {
             // Safety: the loop condition keeps `index + 128` within `bytes.length`.
-            unsafe { self.Compress(@bytes[index]); }
+            self.Compress(@bytes[index]);
             index = index + 128;
         }
         while index < bytes.length {
@@ -230,7 +230,7 @@ extend Sha512 : Digest {
                 self.buffered = self.buffered + 1;
             }
             // Safety: `self.buffer` is the state's array of a hundred and twenty eight bytes.
-            unsafe { self.Compress(@self.buffer[0]); }
+            self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
         while self.buffered < 112 {
@@ -250,7 +250,7 @@ extend Sha512 : Digest {
             shift = shift + 1;
         }
         // Safety: `self.buffer` is the state's array of a hundred and twenty eight bytes.
-        unsafe { self.Compress(@self.buffer[0]); }
+        self.Compress(@self.buffer[0]);
 
         var index: uint = 0;
         while index < self.outputLength {

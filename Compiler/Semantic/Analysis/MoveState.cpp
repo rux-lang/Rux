@@ -970,7 +970,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         return false;
     }
     if (rawPointerStorage && currentFunctionDecl && !currentTypeParams.empty()) {
-        // Generic owning containers cannot encode ownership in `*var T`. Requiring `move` makes the unsafe transfer
+        // Generic owning containers cannot encode ownership in `*var T`. Requiring `move` makes the raw transfer
         // visible, and restricting the exception to a generic body keeps concrete raw pointers borrowed by default.
         // An extend block contributes its aggregate's parameters to `currentTypeParams`; they are not repeated on
         // every method declaration.

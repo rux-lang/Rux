@@ -92,7 +92,7 @@ pub const RemoveDirectory: int32 = 0x0080;
 /// @param count how many bytes to ask for
 /// @returns the bytes read, zero at end of file, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#read
-pub unsafe func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
+pub func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
     return Normalize(read(fd, buffer, count));
 }
 
@@ -105,7 +105,7 @@ pub unsafe func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> in
 /// @param count how many bytes to offer
 /// @returns the bytes written, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#write
-pub unsafe func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
+pub func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
     return Normalize(write(fd, buffer, count));
 }
 
@@ -116,7 +116,7 @@ pub unsafe func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64
 /// @see https://rux-lang.dev/docs/api/macos/files#close
 pub func Close(fd: FileDescriptor) -> int64 {
     // Safety: close takes only a descriptor number, which the system validates and reports as EBADF.
-    return Normalize(unsafe { close(fd) } as int64);
+    return Normalize(close(fd) as int64);
 }
 
 /// Opens `path` relative to `directoryFd` and returns a descriptor, or a negative error number.
@@ -128,7 +128,7 @@ pub func Close(fd: FileDescriptor) -> int64 {
 /// @param mode the permission bits for a file this creates, ignored otherwise
 /// @returns the new descriptor, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#open-at
-pub unsafe func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileMode) -> int64 {
+pub func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileMode) -> int64 {
     return Normalize(openat(directoryFd, path, flags, mode as uint32) as int64);
 }
 
@@ -140,7 +140,7 @@ pub unsafe func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, 
 /// @see https://rux-lang.dev/docs/api/macos/files#lseek
 pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
     // Safety: lseek takes a descriptor number and two integers, and the system validates all three.
-    return Normalize(unsafe { lseek(fd, offset, whence) });
+    return Normalize(lseek(fd, offset, whence));
 }
 
 /// Writes the current working directory's absolute path into `buffer`, NUL-terminated.
@@ -150,7 +150,7 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 /// @param size how many bytes `buffer` holds
 /// @returns the bytes written including the terminator, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#getcwd
-pub unsafe func Getcwd(buffer: *var char8, size: uint) -> int64 {
+pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
     if getcwd(buffer, size) == null { return 0 - (*__error() as int64); }
     return 0;
 }
@@ -161,7 +161,7 @@ pub unsafe func Getcwd(buffer: *var char8, size: uint) -> int64 {
 /// @param path the directory to move to
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#chdir
-pub unsafe func Chdir(path: *char8) -> int64 {
+pub func Chdir(path: *char8) -> int64 {
     return Normalize(chdir(path) as int64);
 }
 
@@ -175,7 +175,7 @@ pub unsafe func Chdir(path: *char8) -> int64 {
 /// @param size how many bytes `buffer` holds
 /// @returns the bytes written, which equals `size` when the text was truncated, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#readlink-at
-pub unsafe func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char8, size: uint) -> int64 {
+pub func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char8, size: uint) -> int64 {
     return Normalize(readlinkat(directoryFd, path, buffer, size));
 }
 
@@ -190,7 +190,7 @@ pub const SymlinkNoFollow: int32 = 0x0020;
 /// @param statBuffer receives the architecture's `struct stat`
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#fstat
-pub unsafe func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
+pub func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
     return Normalize(fstat(fd, statBuffer) as int64);
 }
 
@@ -205,7 +205,7 @@ pub unsafe func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
 /// @param flags zero to follow a final symbolic link, or `SymlinkNoFollow`
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#fstat-at
-pub unsafe func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opaque, flags: int32) -> int64 {
+pub func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opaque, flags: int32) -> int64 {
     return Normalize(fstatat(directoryFd, path, statBuffer, flags) as int64);
 }
 
@@ -219,7 +219,7 @@ pub unsafe func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *
 /// @param flags zero, or `SymlinkNoFollow` where the system supports it
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#fchmod-at
-pub unsafe func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: int32) -> int64 {
+pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: int32) -> int64 {
     return Normalize(fchmodat(directoryFd, path, mode, flags) as int64);
 }
 
@@ -235,7 +235,7 @@ pub unsafe func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMo
 /// @param flags zero to follow a final symbolic link, or `SymlinkNoFollow`
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#utimens-at
-pub unsafe func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags: int32) -> int64 {
+pub func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags: int32) -> int64 {
     return Normalize(utimensat(directoryFd, path, times, flags) as int64);
 }
 
@@ -250,7 +250,7 @@ pub unsafe func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opa
 /// @param flags zero, or `FollowSymlinks` to link what a final link points at
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#link-at
-pub unsafe func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor, newPath: *char8,
+pub func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor, newPath: *char8,
             flags: int32) -> int64 {
     return Normalize(linkat(oldDirectoryFd, oldPath, newDirectoryFd, newPath, flags) as int64);
 }
@@ -268,7 +268,7 @@ pub const FollowSymlinks: int32 = 0x0040;
 /// @param linkPath the link to create
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#symlink-at
-pub unsafe func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8) -> int64 {
+pub func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8) -> int64 {
     return Normalize(symlinkat(target, newDirectoryFd, linkPath) as int64);
 }
 
@@ -284,7 +284,7 @@ pub unsafe func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPa
 /// @param position receives the position of the block read
 /// @returns the bytes filled, zero at the end of the directory, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#getdirentries64
-pub unsafe func Getdirentries64(fd: FileDescriptor, buffer: *var opaque, count: uint, position: *var int64) -> int64 {
+pub func Getdirentries64(fd: FileDescriptor, buffer: *var opaque, count: uint, position: *var int64) -> int64 {
     return Normalize(__getdirentries64(fd, buffer, count, position));
 }
 
@@ -298,7 +298,7 @@ pub unsafe func Getdirentries64(fd: FileDescriptor, buffer: *var opaque, count: 
 /// @see https://rux-lang.dev/docs/api/macos/files#fsync
 pub func Fsync(fd: FileDescriptor) -> int64 {
     // Safety: fsync takes only a descriptor number, which the system validates and reports as EBADF.
-    return Normalize(unsafe { fsync(fd) } as int64);
+    return Normalize(fsync(fd) as int64);
 }
 
 /// Sets the length of the file behind `fd` to `length`.
@@ -309,7 +309,7 @@ pub func Fsync(fd: FileDescriptor) -> int64 {
 /// @see https://rux-lang.dev/docs/api/macos/files#ftruncate
 pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
     // Safety: ftruncate takes a descriptor number and a length, and the system validates both.
-    return Normalize(unsafe { ftruncate(fd, length) } as int64);
+    return Normalize(ftruncate(fd, length) as int64);
 }
 
 /// Removes the name `path` from its directory.
@@ -320,7 +320,7 @@ pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
 /// @param flags zero for a file, or `RemoveDirectory` for a directory
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#unlink-at
-pub unsafe func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 {
+pub func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 {
     return Normalize(unlinkat(directoryFd, path, flags) as int64);
 }
 
@@ -332,7 +332,7 @@ pub unsafe func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32
 /// @param mode the permission bits for it
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#mkdir-at
-pub unsafe func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64 {
+pub func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64 {
     return Normalize(mkdirat(directoryFd, path, mode) as int64);
 }
 
@@ -345,7 +345,7 @@ pub unsafe func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMod
 /// @param newPath the name to move it to
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/directories#rename-at
-pub unsafe func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor,
+pub func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor,
               newPath: *char8) -> int64 {
     return Normalize(renameat(oldDirectoryFd, oldPath, newDirectoryFd, newPath) as int64);
 }
@@ -358,7 +358,7 @@ pub unsafe func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDir
 /// @see https://rux-lang.dev/docs/api/macos/files#dup2
 pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
     // Safety: dup2 takes two descriptor numbers, and the system validates both.
-    return Normalize(unsafe { dup2(oldFd, newFd) } as int64);
+    return Normalize(dup2(oldFd, newFd) as int64);
 }
 
 /// Creates a pipe and writes its two descriptors into `descriptors`.
@@ -368,6 +368,6 @@ pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
 /// @param descriptors receives the read end at index zero and the write end at index one
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/files#pipe
-pub unsafe func Pipe(descriptors: *var int32) -> int64 {
+pub func Pipe(descriptors: *var int32) -> int64 {
     return Normalize(pipe(descriptors) as int64);
 }

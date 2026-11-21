@@ -210,7 +210,7 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
     var index: uint = 0;
     while index < view.bytes.length {
         // Safety: `index` is below `view.bytes.length`, the loop condition.
-        let byte = unsafe { view.bytes.data[index] };
+        let byte = view.bytes.data[index];
         let value = byte as uint32;
         let shifted = if value >= low && value <= high {
             if low == 0x61 { value - delta } else { value + delta }

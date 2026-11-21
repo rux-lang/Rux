@@ -67,19 +67,19 @@ pub func AlignUp(value: uint, alignment: uint) -> uint {
 pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool {
     if alignment <= 1 {
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `uint`.
-        unsafe { *result = value; }
+        *result = value;
         return false;
     }
     let remainder = value % alignment;
     if remainder == 0 {
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `uint`.
-        unsafe { *result = value; }
+        *result = value;
         return false;
     }
     let padding = alignment - remainder;
     if value > uint::Max - padding { return true; }
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `uint`.
-    unsafe { *result = value + padding; }
+    *result = value + padding;
     return false;
 }
 
@@ -107,7 +107,7 @@ pub func AlignDown(value: uint, alignment: uint) -> uint {
 /// @param source the address to read `sizeof(T)` bytes from, at any alignment
 /// @param destination receives the value
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#load-unaligned
-pub unsafe func LoadUnaligned<T>(source: *opaque, destination: *var T) {
+pub func LoadUnaligned<T>(source: *opaque, destination: *var T) {
     Copy(destination as *var opaque, source, sizeof(T));
 }
 
@@ -119,7 +119,7 @@ pub unsafe func LoadUnaligned<T>(source: *opaque, destination: *var T) {
 /// @param destination the address to write `sizeof(T)` bytes to, at any alignment
 /// @param value the value to write
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#store-unaligned
-pub unsafe func StoreUnaligned<T>(destination: *var opaque, value: *T) {
+pub func StoreUnaligned<T>(destination: *var opaque, value: *T) {
     Copy(destination, value as *opaque, sizeof(T));
 }
 
@@ -132,7 +132,7 @@ pub unsafe func StoreUnaligned<T>(destination: *var opaque, value: *T) {
 /// @param buffer the bytes to reverse in place
 /// @param length how many bytes; zero or one changes nothing
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#reverse-block
-pub unsafe func ReverseBlock(buffer: *var opaque, length: uint) {
+pub func ReverseBlock(buffer: *var opaque, length: uint) {
     if length < 2 { return; }
     let bytes = buffer as *var byte;
     var front: uint = 0;
@@ -157,7 +157,7 @@ pub unsafe func ReverseBlock(buffer: *var opaque, length: uint) {
 /// @param source the address to read `sizeof(T)` little-endian bytes from
 /// @param destination receives the value in the target's own order
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#load-little-endian
-pub unsafe func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
+pub func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
     LoadUnaligned<T>(source, destination);
     if !TargetIsLittleEndian() {
         ReverseBlock(destination as *var opaque, sizeof(T));
@@ -173,7 +173,7 @@ pub unsafe func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
 /// @param source the address to read `sizeof(T)` big-endian bytes from
 /// @param destination receives the value in the target's own order
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#load-big-endian
-pub unsafe func LoadBigEndian<T>(source: *opaque, destination: *var T) {
+pub func LoadBigEndian<T>(source: *opaque, destination: *var T) {
     LoadUnaligned<T>(source, destination);
     if TargetIsLittleEndian() {
         ReverseBlock(destination as *var opaque, sizeof(T));
@@ -189,7 +189,7 @@ pub unsafe func LoadBigEndian<T>(source: *opaque, destination: *var T) {
 /// @param destination receives `sizeof(T)` little-endian bytes
 /// @param value the value to write
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#store-little-endian
-pub unsafe func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
+pub func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
     StoreUnaligned<T>(destination, value);
     if !TargetIsLittleEndian() {
         ReverseBlock(destination, sizeof(T));
@@ -205,7 +205,7 @@ pub unsafe func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
 /// @param destination receives `sizeof(T)` big-endian bytes
 /// @param value the value to write
 /// @see https://rux-lang.dev/docs/api/memory/unaligned-access#store-big-endian
-pub unsafe func StoreBigEndian<T>(destination: *var opaque, value: *T) {
+pub func StoreBigEndian<T>(destination: *var opaque, value: *T) {
     StoreUnaligned<T>(destination, value);
     if TargetIsLittleEndian() {
         ReverseBlock(destination, sizeof(T));
@@ -227,7 +227,7 @@ pub unsafe func StoreBigEndian<T>(destination: *var opaque, value: *T) {
 /// @param buffer the bytes to clear
 /// @param length how many bytes; zero writes nothing and accepts a null pointer
 /// @see https://rux-lang.dev/docs/api/memory/blocks#zeroize-block
-pub unsafe func ZeroizeBlock(buffer: *var opaque, length: uint) {
+pub func ZeroizeBlock(buffer: *var opaque, length: uint) {
     if length == 0 { return; }
     Zeroize(buffer as *var uint8, length as uint64);
 }

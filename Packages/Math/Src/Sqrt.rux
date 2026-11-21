@@ -43,7 +43,7 @@ when #target.arch {
 /// @see https://rux-lang.dev/docs/api/math/powers#sqrt
 pub func Sqrt(x: float32) -> float32 {
     // Safety: the body is the one square-root instruction on its argument register, which is also the return register.
-    return unsafe { SqrtInstruction(x) };
+    return SqrtInstruction(x);
 }
 
 /// Computes the correctly rounded square root of `x`.
@@ -53,5 +53,5 @@ pub func Sqrt(x: float32) -> float32 {
 /// @see https://rux-lang.dev/docs/api/math/powers#sqrt
 pub func Sqrt(x: float64) -> float64 {
     // Safety: the body is the one square-root instruction on its argument register, which is also the return register.
-    return unsafe { SqrtInstruction(x) };
+    return SqrtInstruction(x);
 }

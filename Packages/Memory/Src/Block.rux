@@ -27,7 +27,7 @@ when #target.os == .Windows {
 /// @param source where the bytes come from
 /// @param length how many bytes to copy
 /// @see https://rux-lang.dev/docs/api/memory/blocks#copy
-pub unsafe func Copy(destination: *var opaque, source: *opaque, length: uint) {
+pub func Copy(destination: *var opaque, source: *opaque, length: uint) {
     if length == 0 { return; }
     when #target.os == .Windows {
         RtlCopyMemory(destination, source, length);
@@ -56,7 +56,7 @@ pub unsafe func Copy(destination: *var opaque, source: *opaque, length: uint) {
 /// @param source where the bytes come from
 /// @param length how many bytes to move
 /// @see https://rux-lang.dev/docs/api/memory/blocks#move
-pub unsafe func Move(destination: *var opaque, source: *opaque, length: uint) {
+pub func Move(destination: *var opaque, source: *opaque, length: uint) {
     if length == 0 { return; }
     let target = destination as *var byte;
     let origin = source as *byte;
@@ -89,7 +89,7 @@ pub unsafe func Move(destination: *var opaque, source: *opaque, length: uint) {
 /// @param value the byte to write to each
 /// @param length how many bytes to write
 /// @see https://rux-lang.dev/docs/api/memory/blocks#set
-pub unsafe func Set(destination: *var opaque, value: byte, length: uint) {
+pub func Set(destination: *var opaque, value: byte, length: uint) {
     if length == 0 { return; }
     when #target.os == .Windows {
         RtlFillMemory(destination, length, value as int32);
@@ -111,7 +111,7 @@ pub unsafe func Set(destination: *var opaque, value: byte, length: uint) {
 /// @param destination the bytes to clear
 /// @param length how many bytes to clear
 /// @see https://rux-lang.dev/docs/api/memory/blocks#zero
-pub unsafe func Zero(destination: *var opaque, length: uint) {
+pub func Zero(destination: *var opaque, length: uint) {
     if length == 0 { return; }
     when #target.os == .Windows {
         RtlZeroMemory(destination, length);
@@ -133,7 +133,7 @@ pub unsafe func Zero(destination: *var opaque, length: uint) {
 /// @param length how many bytes to compare
 /// @returns the offset of the first differing byte, or `length` when none differs
 /// @see https://rux-lang.dev/docs/api/memory/blocks#mismatch-offset
-pub unsafe func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
+pub func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
     if length == 0 { return 0; }
     when #target.os == .Windows {
         return RtlCompareMemory(left, right, length);
@@ -163,7 +163,7 @@ pub unsafe func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> u
 /// @param length how many bytes to compare
 /// @returns how `left` orders against `right`
 /// @see https://rux-lang.dev/docs/api/memory/blocks#compare
-pub unsafe func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
+pub func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
     let offset = MismatchOffset(left, right, length);
     if offset == length { return Ordering::Equal; }
     let first = *((left as *byte) + offset);
@@ -181,7 +181,7 @@ pub unsafe func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering
 /// @param length how many bytes to compare
 /// @returns whether every byte matches
 /// @see https://rux-lang.dev/docs/api/memory/blocks#equal
-pub unsafe func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
+pub func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
     return MismatchOffset(left, right, length) == length;
 }
 
@@ -195,7 +195,7 @@ pub unsafe func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
 /// @param value the byte to look for
 /// @returns the offset of the first occurrence, or `length` when there is none
 /// @see https://rux-lang.dev/docs/api/memory/blocks#find
-pub unsafe func Find(haystack: *opaque, length: uint, value: byte) -> uint {
+pub func Find(haystack: *opaque, length: uint, value: byte) -> uint {
     if length == 0 { return 0; }
     let bytes = haystack as *byte;
     var offset: uint = 0;

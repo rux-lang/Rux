@@ -24,10 +24,8 @@ extend MemorySink : Writer {
         var index: uint = 0;
         while index < bytes.length {
             // Safety: every sink is built with `memory` at the local `memory` of `Main`, which outlives each logger.
-            unsafe {
-                self.memory.bytes[self.memory.length] = bytes[index];
-                self.memory.length = self.memory.length + 1;
-            }
+            self.memory.bytes[self.memory.length] = bytes[index];
+            self.memory.length = self.memory.length + 1;
             index = index + 1;
         }
         return bytes.length;
@@ -67,7 +65,7 @@ func Main() -> int {
     // Text records.
     var memorySink4 = MemorySink { memory: @memory, broken: false };
     // Safety: `memorySink4` is a local of this function that outlives every use of the handle.
-    var text = Logger(SystemAllocator(), unsafe { @memorySink4 as Writer }, LogFormat::Text);
+    var text = Logger(SystemAllocator(), @memorySink4 as Writer, LogFormat::Text);
     text.SetTimestamps(false);
     text.Info("started", [
         Field::Text("user", "ann"), Field::Integer("n", -3), Field::Unsigned("u", 7), Field::Boolean("ok", true),
@@ -101,7 +99,7 @@ func Main() -> int {
     // JSON lines.
     var memorySink3 = MemorySink { memory: @memory, broken: false };
     // Safety: `memorySink3` is a local of this function that outlives every use of the handle.
-    var json = Logger(SystemAllocator(), unsafe { @memorySink3 as Writer }, LogFormat::JsonLines);
+    var json = Logger(SystemAllocator(), @memorySink3 as Writer, LogFormat::JsonLines);
     json.SetTimestamps(false);
     var zero = 0.0;
     json.Warn("disk \"full\"", [
@@ -114,7 +112,7 @@ func Main() -> int {
     // Times.
     var memorySink2 = MemorySink { memory: @memory, broken: false };
     // Safety: `memorySink2` is a local of this function that outlives every use of the handle.
-    var timed = Logger(SystemAllocator(), unsafe { @memorySink2 as Writer }, LogFormat::Text);
+    var timed = Logger(SystemAllocator(), @memorySink2 as Writer, LogFormat::Text);
     timed.Info("now");
     let line = memory.bytes[..memory.length];
     Assert(line.length == 35u && IsDigit(line[0]) && IsDigit(line[3]) && line[4] == c8'-' && line[7] == c8'-' &&
@@ -125,7 +123,7 @@ func Main() -> int {
     // A destination that fails.
     var memorySink = MemorySink { memory: @memory, broken: true };
     // Safety: `memorySink` is a local of this function that outlives every use of the handle.
-    var broken = Logger(SystemAllocator(), unsafe { @memorySink as Writer }, LogFormat::Text);
+    var broken = Logger(SystemAllocator(), @memorySink as Writer, LogFormat::Text);
     broken.Info("lost");
     broken.Info("lost too");
     match broken.Failure() {

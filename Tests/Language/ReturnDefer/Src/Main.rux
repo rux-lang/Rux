@@ -10,12 +10,12 @@ func Scalar(log: *var int) -> int {
     var value = 7;
     defer value = 99;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 1; }
+    defer *log = *log * 10 + 1;
     return value;
 }
 
 // Safety: `value` and `calls` must point at live, writable `int` values.
-unsafe func SideEffect(value: *var int, calls: *var int) -> int {
+func SideEffect(value: *var int, calls: *var int) -> int {
     *calls += 1;
     *value += 3;
     return *value * 2;
@@ -24,17 +24,17 @@ unsafe func SideEffect(value: *var int, calls: *var int) -> int {
 func Expression(log: *var int, calls: *var int) -> int {
     var value = 7;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = value; }
+    defer *log = value;
     defer value += 100;
     // Safety: `value` is a live local here and every caller passes `@calls`, a live local of `Main`.
-    return unsafe { SideEffect(@value, calls) };
+    return SideEffect(@value, calls);
 }
 
 func Aggregate(log: *var int) -> Triple {
     var value = Triple { first: 11, second: 22, third: 33 };
     defer value.third = 99;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log += 1; }
+    defer *log += 1;
     return value;
 }
 
@@ -42,7 +42,7 @@ func AggregateExpression(log: *var int) -> Triple {
     var value = 5;
     defer value += 100;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log += 1; }
+    defer *log += 1;
     return Triple { first: value, second: value * 2, third: value * 3 };
 }
 
@@ -50,34 +50,34 @@ func TupleReturn(log: *var int) -> (int, int) {
     var value = 9;
     defer value = 0;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log += 1; }
+    defer *log += 1;
     return (value, value + 1);
 }
 
 func Nested(log: *var int, early: bool) -> int {
     var value = 3;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 1; }
+    defer *log = *log * 10 + 1;
     defer value += 100;
     if early {
         // Safety: every caller passes `@log`, a live local of `Main`.
-        defer unsafe { *log = *log * 10 + 2; }
+        defer *log = *log * 10 + 2;
         defer value *= 7;
         return value + 1;
     }
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 3; }
+    defer *log = *log * 10 + 3;
     return value + 2;
 }
 
 func DeferredBranch(log: *var int) -> int {
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer if unsafe { *log } == 0 {
+    defer if *log == 0 {
         // Safety: every caller passes `@log`, a live local of `Main`.
-        unsafe { *log = 1; }
+        *log = 1;
     }
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log *= 10; }
+    defer *log *= 10;
     return 8;
 }
 
@@ -87,7 +87,7 @@ func Identity<T>(value: T) -> T {
 
 func GenericReturn(log: *var int) -> int {
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log += 1; }
+    defer *log += 1;
     return Identity<int>(12);
 }
 
@@ -100,23 +100,21 @@ struct Token {
 extend Token {
     func ~Token(&var self) {
         // Safety: every token holds `@drops` and `@log`, locals of `Main` that outlive it.
-        unsafe {
-            *self.drops += 1;
-            *self.log = *self.log * 10 + 2;
-        }
+        *self.drops += 1;
+        *self.log = *self.log * 10 + 2;
     }
 }
 
 func Produce(drops: *var int, log: *var int) -> Token {
     let token = Token { value: 17, drops, log };
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 1; }
+    defer *log = *log * 10 + 1;
     return move token;
 }
 
 func Forward(token: Token, log: *var int) -> Token {
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 3; }
+    defer *log = *log * 10 + 3;
     return move token;
 }
 
@@ -124,7 +122,7 @@ func OwnReturnedToken(drops: *var int, log: *var int) {
     let token = Forward(Produce(drops, log), log);
     Assert(token.value == 17, "move-only return payload survives deferred statements");
     // Safety: every caller passes `@drops` and `@log`, live locals of `Main`.
-    let (dropCount, logValue) = unsafe { (*drops, *log) };
+    let (dropCount, logValue) = (*drops, *log);
     Assert(dropCount == 0, "the returned owner is still alive in the caller");
     Assert(logValue == 13, "each returning function ran its own defer exactly once");
 }
@@ -140,26 +138,22 @@ struct CopyValue {
 extend CopyValue {
     func Clone(&self) -> Self {
         // Safety: every value holds `@copies` and `@log`, locals of `Main` that outlive it.
-        unsafe {
-            *self.copies += 1;
-            *self.log = *self.log * 10 + 1;
-        }
+        *self.copies += 1;
+        *self.log = *self.log * 10 + 1;
         return Self { value: self.value, copies: self.copies, drops: self.drops, log: self.log };
     }
 
     func ~CopyValue(&var self) {
         // Safety: every value holds `@drops` and `@log`, locals of `Main` that outlive it.
-        unsafe {
-            *self.drops += 1;
-            *self.log = *self.log * 10 + 3;
-        }
+        *self.drops += 1;
+        *self.log = *self.log * 10 + 3;
     }
 }
 
 func CopiedReturn(copies: *var int, drops: *var int, log: *var int) -> CopyValue {
     var value = CopyValue { value: 41, copies, drops, log };
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 2; }
+    defer *log = *log * 10 + 2;
     defer value.value = 99;
     return value.Clone();
 }
@@ -168,7 +162,7 @@ func OwnReturnedCopy(copies: *var int, drops: *var int, log: *var int) {
     let value = CopiedReturn(copies, drops, log);
     Assert(value.value == 41, "the returned clone is made before the deferred mutation");
     // Safety: every caller passes `@copies`, `@drops` and `@log`, live locals of `Main`.
-    let (copyCount, dropCount, logValue) = unsafe { (*copies, *drops, *log) };
+    let (copyCount, dropCount, logValue) = (*copies, *drops, *log);
     Assert(copyCount == 1, "capturing the result does not clone again");
     Assert(dropCount == 1, "the callee destroyed only its original value");
     Assert(logValue == 123, "return copy precedes defer and original destruction");
@@ -194,19 +188,19 @@ func PointerReturn(value: *var int) -> *var int {
 
 func EmptyReturn(log: *var int) {
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 1; }
+    defer *log = *log * 10 + 1;
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer unsafe { *log = *log * 10 + 2; }
+    defer *log = *log * 10 + 2;
     return;
 }
 
 func NestedDeferredBlock(log: *var int) -> int {
     // Safety: every caller passes `@log`, a live local of `Main`.
-    defer if unsafe { *log } == 0 {
+    defer if *log == 0 {
         // Safety: every caller passes `@log`, a live local of `Main`.
-        defer unsafe { *log = *log * 10 + 2; }
+        defer *log = *log * 10 + 2;
         // Safety: every caller passes `@log`, a live local of `Main`.
-        unsafe { *log = 1; }
+        *log = 1;
     }
     return 9;
 }
@@ -255,7 +249,7 @@ func Main() -> int {
     var pointee = 42;
     let pointer = PointerReturn(@pointee);
     // Safety: `pointer` is `@pointee`, a live local, as the left operand checks first.
-    Assert(pointer == @pointee && unsafe { *pointer } == 42,
+    Assert(pointer == @pointee && *pointer == 42,
            "a returned pointer is captured before its local is overwritten");
     log = 0;
     EmptyReturn(@log);

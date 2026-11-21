@@ -20,7 +20,7 @@ struct Tracked {
 extend Tracked {
     func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test stores the address of a `Counter` local that outlives it.
-        unsafe { self.counter.count = self.counter.count + 1; }
+        self.counter.count = self.counter.count + 1;
     }
 }
 

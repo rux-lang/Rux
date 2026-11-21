@@ -69,13 +69,13 @@ TEST_CASE("a field reached through a pointer to a generic instantiation substitu
         }
 
         // Safety: `node` must address a live list whose `next` links end in null
-        unsafe func Total(node: *var Node<int32>) -> int32 {
+        func Total(node: *var Node<int32>) -> int32 {
             node.value = node.value + 1i32;
             return if node.next == null { node.value } else { node.value + Total(node.next) };
         }
 
         // Safety: `pair` must address a live `Pair<int32, int64>`
-        unsafe func Combine(pair: *Pair<int32, int64>) -> int64 {
+        func Combine(pair: *Pair<int32, int64>) -> int64 {
             return (pair.left as int64) + pair.right;
         }
     )");
@@ -277,7 +277,7 @@ TEST_CASE("a generic function named as a value takes its type arguments from the
         func Double<T>(value: T) -> T { return value + value; }
         func Unwrap<V>(box: *Box<V>) -> V {
             // Safety: the only caller passes `@box`, a live local `Box<int64>`
-            return unsafe { box.value };
+            return box.value;
         }
         func Reader<U>() -> func(*Box<U>) -> U {
             let read: func(*Box<U>) -> U = Unwrap;

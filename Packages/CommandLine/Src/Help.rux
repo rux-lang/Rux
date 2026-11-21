@@ -224,7 +224,7 @@ extend Parsed {
     pub func WriteHelp(&self, writer: &var TextWriter) throws FormatError {
         // Safety: `self.parent`, tested for null here, is the `CommandSpec` whose `commands` hold this parse's command,
         // and the documented contract of `Parse` keeps it alive for as long as the `Parsed` result.
-        let parent = if self.parent == null { "" } else { unsafe { self.parent.name } };
+        let parent = if self.parent == null { "" } else { { self.parent.name } };
         let declared = self.Declared();
         return try WriteHelp(declared, writer, parent);
     }

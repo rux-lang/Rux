@@ -422,7 +422,7 @@ extend TomlValue {
         while index < slice.length {
             var held = key;
             // Safety: `index` is below `slice.length`, checked by the loop.
-            if unsafe { slice.data[index].key.View().Equals(held) } { return unsafe { @slice.data[index].value }; }
+            if slice.data[index].key.View().Equals(held) { return @slice.data[index].value; }
             index = index + 1;
         }
         return null;
@@ -433,7 +433,7 @@ extend TomlValue {
         if self.kind != TomlKind::Array || self.elements.Length() == 0 { return null; }
         var slice = self.elements.AsMutableSlice();
         // Safety: the array is not empty, checked above, so its last index is below `slice.length`.
-        return unsafe { @slice.data[slice.length - 1] };
+        return @slice.data[slice.length - 1];
     }
 
     /// Releases everything this value owns.

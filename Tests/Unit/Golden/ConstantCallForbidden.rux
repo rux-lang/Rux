@@ -15,7 +15,7 @@ func ReadsThreadLocal() -> int { return PerThread; }
 func CallsExtern(flag: bool) -> int32 {
     if flag {
         // Safety: 'abs' is defined for every value but the minimum.
-        return unsafe { abs(-3i32) };
+        return abs(-3i32);
     }
     return 0i32;
 }

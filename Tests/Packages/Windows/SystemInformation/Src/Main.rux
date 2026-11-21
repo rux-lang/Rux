@@ -26,7 +26,7 @@ when #target.os == OperatingSystem::Windows {
         var size: uint32 = (buffer.length * 2) as uint32;
         // Safety: `subKey` and `name` are NUL-terminated UTF-16 constants, `buffer` has room for the `size` bytes the
         // call may write, and `size` is a local.
-        let status = unsafe {
+        let status = {
             RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, subKey.data, name.data, RRF_RT_REG_SZ, null,
                          buffer.data as *var opaque, @size)
         };
@@ -41,7 +41,7 @@ when #target.os == OperatingSystem::Windows {
         var version: OsVersionInfoEx;
         version.size = sizeof(OsVersionInfoEx) as uint32;
         // Safety: `version` is a local whose size field names its own structure size, as the call requires.
-        if unsafe { RtlGetVersion(@version) } != 0 {
+        if RtlGetVersion(@version) != 0 {
             return 1;
         }
         if version.majorVersion < 10 || version.platformId != VER_PLATFORM_WIN32_NT || version.buildNumber == 0 {
@@ -71,7 +71,7 @@ when #target.os == OperatingSystem::Windows {
         var revisionSize: uint32 = 4;
         // Safety: the key and value names are NUL-terminated UTF-16 constants, and `revision` is a local of the four
         // bytes `revisionSize` declares.
-        let revisionStatus = unsafe {
+        let revisionStatus = {
             RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, CurrentVersion.data, UpdateBuildRevision.data,
                          RRF_RT_REG_DWORD, null, @revision as *var opaque, @revisionSize)
         };
@@ -84,7 +84,7 @@ when #target.os == OperatingSystem::Windows {
         var smallSize: uint32 = 4;
         // Safety: the key and value names are NUL-terminated UTF-16 constants, and `small` is a local of the four
         // bytes `smallSize` declares.
-        let smallStatus = unsafe {
+        let smallStatus = {
             RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, CurrentVersion.data, ProductName.data, RRF_RT_REG_SZ,
                          null, @small[0] as *var opaque, @smallSize)
         };
@@ -98,7 +98,7 @@ when #target.os == OperatingSystem::Windows {
         var missingSize: uint32 = 16;
         // Safety: the key and value names are NUL-terminated UTF-16 constants, and `missing` is a local of the 16
         // bytes `missingSize` declares.
-        let missingStatus = unsafe {
+        let missingStatus = {
             RegGetValueW(HKEY_LOCAL_MACHINE as *var opaque, CurrentVersion.data, MissingValue.data,
                          RRF_RT_REG_SZ, null, @missing[0] as *var opaque, @missingSize)
         };
@@ -117,7 +117,7 @@ when #target.os == OperatingSystem::Windows {
         var memory: MemoryStatusEx;
         memory.length = sizeof(MemoryStatusEx) as uint32;
         // Safety: `memory` is a local whose length field names its own structure size, as the call requires.
-        if unsafe { GlobalMemoryStatusEx(@memory) } == 0 {
+        if GlobalMemoryStatusEx(@memory) == 0 {
             return 10;
         }
         if memory.totalPhysical == 0 || memory.availablePhysical > memory.totalPhysical || memory.memoryLoad > 100 {
@@ -125,7 +125,7 @@ when #target.os == OperatingSystem::Windows {
         }
         var installed: uint64 = 0;
         // Safety: `installed` is a local `uint64`, the one value the call writes.
-        if unsafe { GetPhysicallyInstalledSystemMemory(@installed) } == 0 {
+        if GetPhysicallyInstalledSystemMemory(@installed) == 0 {
             return 12;
         }
         if installed * 1024 < memory.totalPhysical {
@@ -135,7 +135,7 @@ when #target.os == OperatingSystem::Windows {
         // The machine's architecture is one this compiler targets.
         var system: SystemInfo;
         // Safety: `system` is a local `SystemInfo`, the structure the call fills.
-        unsafe { GetNativeSystemInfo(@system); }
+        GetNativeSystemInfo(@system);
         let architecture = system.processorArchitecture & 0xFFFF;
         if architecture != 9 && architecture != 12 {
             return 14;
@@ -147,17 +147,17 @@ when #target.os == OperatingSystem::Windows {
         // Measuring first fails with the size it needs; filling then writes records that add up to that size.
         var needed: uint32 = 0;
         // Safety: a null buffer with the local `needed` asks only for the size, which the call stores in `needed`.
-        if unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, null, @needed) } != 0 {
+        if GetLogicalProcessorInformationEx(RelationProcessorCore, null, @needed) != 0 {
             return 16;
         }
         // Safety: `GetLastError` takes no arguments and only reads the calling thread's last-error code.
-        if unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER || needed == 0 || needed > 65536 {
+        if GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0 || needed > 65536 {
             return 17;
         }
         var records: uint8[65536] = [0; 65536];
         var filled: uint32 = needed;
         // Safety: `records` is a local of 65536 bytes, at least the `filled` bytes the call may write, checked above.
-        let fillStatus = unsafe {
+        let fillStatus = {
             GetLogicalProcessorInformationEx(RelationProcessorCore, @records[0] as *var opaque, @filled)
         };
         if fillStatus == 0 {
@@ -168,7 +168,7 @@ when #target.os == OperatingSystem::Windows {
         while offset < filled {
             // Safety: `offset` is below `filled`, so it starts a record the call wrote, and every record begins with
             // this header.
-            let header = unsafe { *((@records[offset as uint]) as *ProcessorRelationshipHeader) };
+            let header = *((@records[offset as uint]) as *ProcessorRelationshipHeader);
             if header.relationship != RelationProcessorCore || header.size == 0 {
                 return 19;
             }

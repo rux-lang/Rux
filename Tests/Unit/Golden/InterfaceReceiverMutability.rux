@@ -56,7 +56,7 @@ func Main() -> int {
     // An interface value is a handle, which writes through to the implementation it addresses.
     var turned = Knob { level: 1i32 };
     // Safety: `turned` is a local that outlives `held` and is never moved.
-    let held = unsafe { @turned as Dial };
+    let held = @turned as Dial;
     held.Turn(1i32);
     return held.Level() as int;
 }

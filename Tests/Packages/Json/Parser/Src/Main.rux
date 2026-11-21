@@ -95,23 +95,23 @@ struct CountingAllocator {
 extend CountingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        let block = try (unsafe { self.state.inner.Allocate(layout) });
+        let block = try (self.state.inner.Allocate(layout));
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { self.state.live = self.state.live + 1; }
+        self.state.live = self.state.live + 1;
         return block;
     }
 
     func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { try self.state.inner.Deallocate(block, layout); }
+        try self.state.inner.Deallocate(block, layout);
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        unsafe { self.state.live = self.state.live - 1; }
+        self.state.live = self.state.live - 1;
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque throws AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        return try unsafe { self.state.inner.Reallocate(block, oldLayout, newLayout) };
+        return try self.state.inner.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -288,17 +288,17 @@ func Main() -> int {
     var counted: CountingAllocator = counting;
 
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    Refuses(unsafe { @counted as Allocator }, "[1,2,\"three\",", "JsonParseError::Truncated(13)",
+    Refuses(@counted as Allocator, "[1,2,\"three\",", "JsonParseError::Truncated(13)",
             "an array that fails partway through is refused");
     Assert(state.live == 0, "and everything the partial array held is released");
 
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    Refuses(unsafe { @counted as Allocator }, "{\"a\":[1,2],\"b\":\"x\",\"a\":3}", "JsonParseError::DuplicateName(24)",
+    Refuses(@counted as Allocator, "{\"a\":[1,2],\"b\":\"x\",\"a\":3}", "JsonParseError::DuplicateName(24)",
             "an object with a duplicate name is refused");
     Assert(state.live == 0, "and everything the partial object held is released");
 
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    Refuses(unsafe { @counted as Allocator }, "[[[\"deep\",1,2],3],", "JsonParseError::Truncated(18)",
+    Refuses(@counted as Allocator, "[[[\"deep\",1,2],3],", "JsonParseError::Truncated(18)",
             "a nested document that fails is refused");
     Assert(state.live == 0, "and every level of it is released");
 
@@ -306,7 +306,7 @@ func Main() -> int {
     // rather than a parser that never allocated.
     var whileHeld: int32 = 0;
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    ParseAndDrop(unsafe { @counted as Allocator }, "[1,2,\"three\"]", state, whileHeld);
+    ParseAndDrop(@counted as Allocator, "[1,2,\"three\"]", state, whileHeld);
     Assert(whileHeld > 0, "and the same document, whole, takes storage");
     Assert(state.live == 0, "which comes back when the document's life ends");
 

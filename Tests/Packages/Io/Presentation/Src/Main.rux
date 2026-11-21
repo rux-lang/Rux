@@ -37,7 +37,7 @@ struct RecordingStream {
 extend RecordingStream : Writer {
     func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         // Safety: `state` points at a `StreamState` local of `Main`, which outlives every stream made over it.
-        unsafe {
+        {
             self.state.calls = self.state.calls + 1;
             if bytes.length > self.state.allowed {
                 throw IoError::Of(self.state.refusal);
@@ -68,7 +68,7 @@ extend Owned {
     func ~Owned(&var self) {
         if self.counter != null {
             // Safety: a non-null `counter` points at a local of `Main` that outlives every `Owned` value.
-            unsafe { *self.counter = *self.counter + 1; }
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -165,7 +165,7 @@ func Main() -> int {
     var sink: RecordingStream = stream;
     var failure: IoError? = none;
     // Safety: `sink` is a local of this function that outlives every use of the handle.
-    var adapter = StreamWriter(unsafe { @sink as Writer }, @failure);
+    var adapter = StreamWriter(@sink as Writer, @failure);
     let writer: &var TextWriter = adapter;
 
     try {
@@ -197,7 +197,7 @@ func Main() -> int {
     var target: RecordingStream = open;
     var healthy: IoError? = none;
     // Safety: `target` is a local of this function that outlives every use of the handle.
-    var good = StreamWriter(unsafe { @target as Writer }, @healthy);
+    var good = StreamWriter(@target as Writer, @healthy);
     let out: &var TextWriter = good;
 
     var destroyed: int32 = 0;
@@ -221,7 +221,7 @@ func Main() -> int {
     var thirdSink: RecordingStream = thirdStream;
     var thirdFailure: IoError? = none;
     // Safety: `thirdSink` is a local of this function that outlives every use of the handle.
-    var thirdAdapter = StreamWriter(unsafe { @thirdSink as Writer }, @thirdFailure);
+    var thirdAdapter = StreamWriter(@thirdSink as Writer, @thirdFailure);
     let thirdOut: &var TextWriter = thirdAdapter;
 
     var bad = Refuses {};
@@ -252,7 +252,7 @@ func Main() -> int {
     var fourthSink: RecordingStream = fourthStream;
     var fourthFailure: IoError? = none;
     // Safety: `fourthSink` is a local of this function that outlives every use of the handle.
-    var fourthAdapter = StreamWriter(unsafe { @fourthSink as Writer }, @fourthFailure);
+    var fourthAdapter = StreamWriter(@fourthSink as Writer, @fourthFailure);
     let fourthOut: &var TextWriter = fourthAdapter;
     try {
         WriteValueLine(fourthOut, value);

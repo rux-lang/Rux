@@ -64,7 +64,7 @@ func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> throws Time
         try {
             let count = file.Read(chunk[..]);
             // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
-            let read = unsafe { (chunk[..count].data as *byte)[..count] };
+            let read = (chunk[..count].data as *byte)[..count];
             bytes.PushSlice(read);
         } catch {
             error => {
@@ -186,7 +186,7 @@ extend TimeZone {
                 daylightName: [0u16; 32], daylightDate: EmptyRuleDate(), daylightBias: 0
             };
             // Safety: `information` is a local `TimeZoneInformation`, which the call fills.
-            let status = unsafe { GetTimeZoneInformation(@information) };
+            let status = GetTimeZoneInformation(@information);
             if status == 0xFFFFFFFFu32 { throw .Unreadable; }
             var zone = Self::Empty(allocator, "Local");
             var rule = NoRule();

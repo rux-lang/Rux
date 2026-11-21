@@ -47,7 +47,7 @@ extend Timestamp {
             // whole conversion.
             var time = FileTime { lowDateTime: 0, highDateTime: 0 };
             // Safety: `time` is a local `FileTime`, which the call fills.
-            unsafe { GetSystemTimePreciseAsFileTime(@time); }
+            GetSystemTimePreciseAsFileTime(@time);
             let ticks = FileTimeTicks(time);
             let seconds = ticks / FileTimeTicksPerSecond;
             let rest = ticks % FileTimeTicksPerSecond;
@@ -59,7 +59,7 @@ extend Timestamp {
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
             // Safety: `time` is a local `Timespec`, which the call fills.
-            unsafe { ClockGetTime(ClockRealtime, @time); }
+            ClockGetTime(ClockRealtime, @time);
             return Self { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
         }
     }

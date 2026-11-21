@@ -121,7 +121,7 @@ func Main() -> int {
     match optionalPointer {
         .Some(pointer) => {
             // Safety: `pointer` is `@slot`, a live local.
-            unsafe { *pointer = .Some((*pointer ?? 0i32) + 1i32); }
+            *pointer = .Some((*pointer ?? 0i32) + 1i32);
         },
         none => {}
     }

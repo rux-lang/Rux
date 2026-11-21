@@ -10,7 +10,7 @@ import Hash::{ HashBytes, SipHash24, SipHash24Of };
 func Keyed(key: byte[..]) -> SipHash24 {
     Assert(key.length == 16, "a SipHash key is sixteen bytes");
     // Safety: `key` holds sixteen readable bytes, checked above.
-    return unsafe { SipHash24::WithKeyBytes(key.data) };
+    return SipHash24::WithKeyBytes(key.data);
 }
 
 func Main() -> int {
@@ -140,7 +140,7 @@ func Main() -> int {
     // Usable through the bound, which is what puts it in a hash table.
     var bounded = Keyed(key[..]);
     // Safety: `bytes` addresses the 272 bytes of `input`, so the first forty are readable.
-    let boundedHash = unsafe { HashBytes<SipHash24>(bounded, bytes, 40) };
+    let boundedHash = HashBytes<SipHash24>(bounded, bytes, 40);
     Assert(boundedHash == expected, "SipHash is usable through the hashing bound");
 
     return 0;

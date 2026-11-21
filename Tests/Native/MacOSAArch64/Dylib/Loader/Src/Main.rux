@@ -9,21 +9,21 @@ extern {
 
 func Main() -> int {
     // Safety: the path is a NUL-terminated string literal, and 2 is `RTLD_NOW`.
-    let library = unsafe { dlopen("./libMacOSAArch64Dylib.dylib".data, 2) };
+    let library = dlopen("./libMacOSAArch64Dylib.dylib".data, 2);
     if library == null { return 1; }
 
     // Safety: `library` is the handle opened above, and the symbol name is a NUL-terminated string literal.
-    let address = unsafe { dlsym(library, "Answer".data) };
+    let address = dlsym(library, "Answer".data);
     if address == null {
         // Safety: `library` is the handle opened above, and nothing from it is used afterwards.
-        unsafe { dlclose(library); }
+        dlclose(library);
         return 2;
     }
 
     // Safety: the fixture library exports `Answer` as a Rux function taking nothing and returning `int`.
-    let answer = unsafe { address as func() -> int };
+    let answer = address as func() -> int;
     let result = answer();
     // Safety: `library` is the handle opened above, and `answer` is not called after this.
-    if unsafe { dlclose(library) } != 0 { return 3; }
+    if dlclose(library) != 0 { return 3; }
     return if result == 42 { 0 } else { 4 };
 }

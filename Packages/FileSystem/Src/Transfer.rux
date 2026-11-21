@@ -33,15 +33,15 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) throws IoError {
     when #target.os == .Windows {
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
-        if unsafe { MoveFileExW(fromNative.Pointer() as *char16, toNative.Pointer() as *char16, MOVEFILE_REPLACE_EXISTING) } == 0 {
+        if MoveFileExW(fromNative.Pointer() as *char16, toNative.Pointer() as *char16, MOVEFILE_REPLACE_EXISTING) == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            throw TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(GetLastError() as int32);
         }
     }
     else {
         // Safety: `fromNative` and `toNative` are the NUL-terminated copies `NativePath` made above, live while
         // they are in scope.
-        let result = unsafe { RenameAt(AtFdCwd, fromNative.Pointer() as *char8, AtFdCwd, toNative.Pointer() as *char8) };
+        let result = RenameAt(AtFdCwd, fromNative.Pointer() as *char8, AtFdCwd, toNative.Pointer() as *char8);
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -63,15 +63,15 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) throws
     when #target.os == .Windows {
         // Safety: `linkNative` and `existingNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
-        if unsafe { CreateHardLinkW(linkNative.Pointer() as *char16, existingNative.Pointer() as *char16, null) } == 0 {
+        if CreateHardLinkW(linkNative.Pointer() as *char16, existingNative.Pointer() as *char16, null) == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            throw TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(GetLastError() as int32);
         }
     }
     else {
         // Safety: `existingNative` and `linkNative` are the NUL-terminated copies `NativePath` made above, live while
         // they are in scope.
-        let result = unsafe { LinkAt(AtFdCwd, existingNative.Pointer() as *char8, AtFdCwd, linkNative.Pointer() as *char8, 0) };
+        let result = LinkAt(AtFdCwd, existingNative.Pointer() as *char8, AtFdCwd, linkNative.Pointer() as *char8, 0);
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -99,15 +99,15 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
         }
         // Safety: `linkNative` and `targetNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
-        if unsafe { CreateSymbolicLinkW(linkNative.Pointer() as *char16, targetNative.Pointer() as *char16, flags) } == 0 {
+        if CreateSymbolicLinkW(linkNative.Pointer() as *char16, targetNative.Pointer() as *char16, flags) == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            throw TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(GetLastError() as int32);
         }
     }
     else {
         // Safety: `targetNative` and `linkNative` are the NUL-terminated copies `NativePath` made above, live while
         // they are in scope.
-        let result = unsafe { SymlinkAt(targetNative.Pointer() as *char8, AtFdCwd, linkNative.Pointer() as *char8) };
+        let result = SymlinkAt(targetNative.Pointer() as *char8, AtFdCwd, linkNative.Pointer() as *char8);
         if result < 0 {
             throw TranslateNative((0 - result) as int32);
         }
@@ -128,9 +128,9 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) throws IoError {
         let toNative = try NativePath(allocator, to);
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
-        if unsafe { CopyFileW(fromNative.Pointer() as *char16, toNative.Pointer() as *char16, 0) } == 0 {
+        if CopyFileW(fromNative.Pointer() as *char16, toNative.Pointer() as *char16, 0) == 0 {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            throw TranslateNative(unsafe { GetLastError() } as int32);
+            throw TranslateNative(GetLastError() as int32);
         }
     }
     else {
@@ -142,7 +142,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) throws IoError {
         var borrowed = allocator;
         let block = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `block` is a fresh allocation of `layout`, 65536 bytes, released only after the loop below.
-        let buffer = unsafe { (block as *var char8)[..65536] };
+        let buffer = (block as *var char8)[..65536];
 
         var failure: IoError? = none;
         var copying = true;

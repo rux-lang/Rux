@@ -50,7 +50,7 @@ extend ByteCursor {
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, the loop condition.
-            self.Push(unsafe { bytes.data[index] });
+            self.Push(bytes.data[index]);
             index = index + 1;
         }
     }

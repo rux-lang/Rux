@@ -9,7 +9,7 @@ struct Outer { holder: Holder; }
 struct Plain { code: int32; }
 
 func Init(slot: *var Handle) {
-    unsafe { *slot = move Handle { code: 9 }; }
+    *slot = move Handle { code: 9 };
 }
 
 func DeclaredWithoutValue() {
@@ -79,7 +79,7 @@ func Generic<T>(value: T) {
     box.value = move value;
 }
 
-unsafe func Allowed(holder: &var Holder, slot: *var Holder) {
+func Allowed(holder: &var Holder, slot: *var Holder) {
     var plain: Plain;
     plain.code = 1;
     var whole: Holder;

@@ -66,7 +66,7 @@ pub const AdviseWillNeed: int32 = 3;
 /// @param offset where in the file the mapping starts
 /// @returns the mapping's address, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/memory#mmap
-pub unsafe func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32,
+pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32,
                      offset: uint64) -> int64 {
     let mapped = mmap(address, length, protection, flags, fd, offset as int64) as int64;
     return Normalize(mapped);
@@ -79,7 +79,7 @@ pub unsafe func Mmap(address: *opaque, length: uint, protection: int32, flags: i
 /// @param length how many bytes to release
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/memory#munmap
-pub unsafe func Munmap(address: *opaque, length: uint) -> int64 {
+pub func Munmap(address: *opaque, length: uint) -> int64 {
     return Normalize(munmap(address, length) as int64);
 }
 
@@ -92,7 +92,7 @@ pub unsafe func Munmap(address: *opaque, length: uint) -> int64 {
 /// @param protection what may be done with them afterwards
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/memory#mprotect
-pub unsafe func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
+pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
     return Normalize(mprotect(address, length, protection) as int64);
 }
 
@@ -105,7 +105,7 @@ pub unsafe func Mprotect(address: *opaque, length: uint, protection: int32) -> i
 /// @param advice one of the `Advise*` values
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/memory#madvise
-pub unsafe func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
+pub func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
     return Normalize(madvise(address, length, advice) as int64);
 }
 /// The size of a page, asked of libSystem.
@@ -117,5 +117,5 @@ pub unsafe func Madvise(address: *opaque, length: uint, advice: int32) -> int64 
 /// @see https://rux-lang.dev/docs/api/macos/memory#query-page-size
 pub func QueryPageSize() -> int64 {
     // Safety: getpagesize takes no arguments and only reports a system constant.
-    return unsafe { getpagesize() } as int64;
+    return getpagesize() as int64;
 }

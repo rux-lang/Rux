@@ -24,7 +24,7 @@ pub const ClockMonotonic: int32 = 1;
 /// @param time receives the reading
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-time
-pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
+pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
     return Syscall2(SysClockGetTime, clockId.Truncate<uint64>(), time as uint64);
 }
 
@@ -40,7 +40,7 @@ pub unsafe func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#nanosleep
-pub unsafe func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
+pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 
@@ -70,7 +70,7 @@ pub const TimerAbsolute: int32 = 1;
 /// @param resolution receives the granularity
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-resolution
-pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
+pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
     return Syscall2(SysClockGetRes, clockId.Truncate<uint64>(), resolution as uint64);
 }
 
@@ -87,7 +87,7 @@ pub unsafe func ClockGetResolution(clockId: int32, resolution: *var Timespec) ->
 /// @param remaining receives the unslept time for a relative wait, and may be null
 /// @returns zero, or a positive error number
 /// @see https://rux-lang.dev/docs/api/linux/clock#clock-nanosleep
-pub unsafe func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
+pub func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall4(SysClockNanosleep, clockId.Truncate<uint64>(), flags.Truncate<uint64>(),
                     request as uint64, remaining as uint64);
 }

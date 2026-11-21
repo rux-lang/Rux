@@ -39,9 +39,9 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer throws IoError {
         try units.Reserve(room);
         when #target.os == .Windows {
             // Safety: `Reserve` gave `units` room for `room` units, the size passed.
-            let written = unsafe { GetModuleFileNameW(null, units.data, room as uint32) } as uint;
+            let written = GetModuleFileNameW(null, units.data, room as uint32) as uint;
             // Safety: `GetLastError` takes nothing and only reads the calling thread's last error.
-            if written == 0u { throw FailureOf(unsafe { GetLastError() } as int64); }
+            if written == 0u { throw FailureOf(GetLastError() as int64); }
             // A path that fills the buffer was cut short, terminator and all.
             if written < room {
                 units.length = written;
@@ -50,7 +50,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer throws IoError {
         }
         else when #target.os == .Linux {
             // Safety: the path is a NUL-terminated literal, and `Reserve` gave `units` room for `room` bytes.
-            let written = unsafe { ReadlinkAt(AtFdCwd, "/proc/self/exe\0".data, units.data, room) };
+            let written = ReadlinkAt(AtFdCwd, "/proc/self/exe\0".data, units.data, room);
             if written < 0 { throw FailureOf(-written); }
             // The link's text is not terminated, and a text that fills the buffer may have been cut.
             if (written as uint) < room {
@@ -62,7 +62,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer throws IoError {
             var length = room;
             // Safety: `Reserve` gave `units` room for `room` bytes, the `length` passed, and `length` is a local the
             // call writes.
-            let status = unsafe { QueryExecutablePath(units.data, @length) };
+            let status = QueryExecutablePath(units.data, @length);
             if status == -ENOMEM {
                 room = room * 2u;
                 continue;
@@ -76,10 +76,10 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer throws IoError {
             var size = room as uint32;
             // Safety: `Reserve` gave `units` room for `room` bytes, the `size` passed, and `size` is a local the call
             // writes.
-            if unsafe { _NSGetExecutablePath(units.data, @size) } == 0 {
+            if _NSGetExecutablePath(units.data, @size) == 0 {
                 var length: uint = 0;
                 // Safety: `length` is below `room`, and `Reserve` gave `units` room for `room` bytes.
-                while length < room && unsafe { units.data[length] } != 0u8 as char8 {
+                while length < room && units.data[length] != 0u8 as char8 {
                     length = length + 1;
                 }
                 units.length = length;

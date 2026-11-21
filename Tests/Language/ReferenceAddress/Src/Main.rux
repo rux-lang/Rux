@@ -22,9 +22,7 @@ func AddressOf(point: &Point) -> *Point {
 func Shift(point: &var Point) {
     let raw: *var Point = @point;
     // Safety: `raw` is the address of the caller's writable point, which outlives this call.
-    unsafe {
-        raw.x += 10;
-    }
+    raw.x += 10;
 }
 
 func Main() -> int {

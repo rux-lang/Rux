@@ -102,7 +102,7 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
     let zero = sample - sample;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
-    unsafe { *result = zero; }
+    *result = zero;
     if IsNan(value) || IsInfinite(value) { return true; }
     let rounded = RoundTo(value, mode);
     let signed = (zero -% 1) < zero;
@@ -119,6 +119,6 @@ pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, resu
         return true;
     }
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
-    unsafe { *result = rounded as T; }
+    *result = rounded as T;
     return false;
 }

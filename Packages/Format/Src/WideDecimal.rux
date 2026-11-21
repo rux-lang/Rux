@@ -30,7 +30,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
                         count: *var uint, exponent10: *var int, failure: *var WideDigitFailure) -> bool {
     // Safety: the documented contract makes `failure` a non-null pointer to the caller's writable
     // `WideDigitFailure`.
-    unsafe { *failure = WideDigitFailure::OutOfMemory; }
+    *failure = WideDigitFailure::OutOfMemory;
     let f = value.significand;
     let e = value.exponent;
     let leading = 1u512 << (layout.precision - 1);
@@ -107,7 +107,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
         if produced >= digits.length {
             // Safety: the documented contract makes `failure` a non-null pointer to the caller's writable
             // `WideDigitFailure`.
-            unsafe { *failure = WideDigitFailure::BufferTooSmall; }
+            *failure = WideDigitFailure::BufferTooSmall;
             return false;
         }
         if !r.MultiplySmall(10) || !high.MultiplySmall(10) || !low.MultiplySmall(10) { return false; }
@@ -128,17 +128,15 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
             digit = digit + 1;
         }
         // Safety: `produced` is below `digits.length`, checked at the top of the loop.
-        unsafe { digits.data[produced] = (digit as uint8 + 0x30) as char8; }
+        digits.data[produced] = (digit as uint8 + 0x30) as char8;
         produced = produced + 1;
         if withinLow || withinHigh { break; }
     }
     // Safety: the documented contract makes `count`, `exponent10` and `failure` non-null pointers to the caller's
     // writable values.
-    unsafe {
-        *count = produced;
-        *exponent10 = k - 1;
-        *failure = WideDigitFailure::None;
-    }
+    *count = produced;
+    *exponent10 = k - 1;
+    *failure = WideDigitFailure::None;
     return true;
 }
 
@@ -162,7 +160,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
                      failure: *var WideDigitFailure) -> bool {
     // Safety: the documented contract makes `failure` a non-null pointer to the caller's writable
     // `WideDigitFailure`.
-    unsafe { *failure = WideDigitFailure::OutOfMemory; }
+    *failure = WideDigitFailure::OutOfMemory;
     var r = BigNat(allocator);
     var s = BigNat(allocator);
     var tmp = BigNat(allocator);
@@ -203,15 +201,13 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
 
     let wanted = k + fraction as int;
     // Safety: the documented contract makes `exponent10` a non-null pointer to the caller's writable `int`.
-    unsafe { *exponent10 = k - 1; }
+    *exponent10 = k - 1;
     if wanted < 0 {
         // Below half a unit in the last place asked for, so every digit is a zero.
         // Safety: the documented contract makes `count`, `exponent10` and `failure` non-null pointers to the caller's
         // writable values.
-        unsafe {
-            *count = 0;
-            *failure = WideDigitFailure::None;
-        }
+        *count = 0;
+        *failure = WideDigitFailure::None;
         return true;
     }
     if wanted == 0 {
@@ -221,26 +217,22 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
             digits[0] = c8'1';
             // Safety: the documented contract makes `count`, `exponent10` and `failure` non-null pointers to the
             // caller's writable values.
-            unsafe {
-                *count = 1;
-                *exponent10 = 0 - fraction as int;
-                *failure = WideDigitFailure::None;
-            }
+            *count = 1;
+            *exponent10 = 0 - fraction as int;
+            *failure = WideDigitFailure::None;
             return true;
         }
         // Safety: the documented contract makes `count`, `exponent10` and `failure` non-null pointers to the caller's
         // writable values.
-        unsafe {
-            *count = 0;
-            *failure = WideDigitFailure::None;
-        }
+        *count = 0;
+        *failure = WideDigitFailure::None;
         return true;
     }
     let needed = wanted as uint;
     if needed + 1 > digits.length {
         // Safety: the documented contract makes `failure` a non-null pointer to the caller's writable
         // `WideDigitFailure`.
-        unsafe { *failure = WideDigitFailure::BufferTooSmall; }
+        *failure = WideDigitFailure::BufferTooSmall;
         return false;
     }
     var produced: uint = 0;
@@ -249,7 +241,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
         let digit = (r.TakeDigit(s) as uint8 + 0x30) as char8;
         // Safety: `produced` is below `needed`, the loop condition, and `needed + 1` is at most `digits.length`,
         // checked above.
-        unsafe { digits.data[produced] = digit; }
+        digits.data[produced] = digit;
         produced = produced + 1;
     }
     // What is left decides the last digit: over half rounds up, under half rounds down, and exactly half goes to
@@ -257,21 +249,21 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     if !tmp.Assign(r) || !tmp.ShiftLeft(1) { return false; }
     let order = tmp.Compare(s);
     // Safety: `needed` is positive (`wanted` is above zero here) and `needed + 1` is at most `digits.length`.
-    let lastOdd = ((unsafe { digits.data[needed - 1] } as uint8) & 1) == 1;
+    let lastOdd = ((digits.data[needed - 1] as uint8) & 1) == 1;
     if order > 0 || (order == 0 && lastOdd) {
         var index = needed;
         var carried = true;
         while carried && index > 0 {
             index = index - 1;
             // Safety: `index` only falls from `needed`, and `needed + 1` is at most `digits.length`, checked above.
-            let current = unsafe { digits.data[index] };
+            let current = digits.data[index];
             if current == c8'9' {
                 // Safety: the same `index`, below `needed`, which is below `digits.length`.
-                unsafe { digits.data[index] = c8'0'; }
+                digits.data[index] = c8'0';
             }
             else {
                 // Safety: the same `index`, below `needed`, which is below `digits.length`.
-                unsafe { digits.data[index] = ((current as uint8) + 1) as char8; }
+                digits.data[index] = ((current as uint8) + 1) as char8;
                 carried = false;
             }
         }
@@ -281,22 +273,18 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
             while shift > 0 {
                 // Safety: `shift` is at most `needed`, and `needed + 1` is at most `digits.length`, checked above,
                 // so both `shift` and `shift - 1` lie inside `digits`.
-                unsafe { digits.data[shift] = digits.data[shift - 1]; }
+                digits.data[shift] = digits.data[shift - 1];
                 shift = shift - 1;
             }
             // Safety: `needed + 1` is at most `digits.length`, so `digits` is not empty; the documented contract
             // makes `exponent10` a non-null pointer to the caller's writable `int`.
-            unsafe {
-                digits.data[0] = c8'1';
-                *exponent10 = k;
-            }
+            digits.data[0] = c8'1';
+            *exponent10 = k;
             produced = produced + 1;
         }
     }
     // Safety: the documented contract makes `count` and `failure` non-null pointers to the caller's writable values.
-    unsafe {
-        *count = produced;
-        *failure = WideDigitFailure::None;
-    }
+    *count = produced;
+    *failure = WideDigitFailure::None;
     return true;
 }

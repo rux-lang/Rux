@@ -66,7 +66,7 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
     if parsed.help || parsed.version { return parsed; }
     // Safety: `spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which the
     // documented contract keeps alive for as long as the parse.
-    let declared = unsafe { *spec };
+    let declared = *spec;
     if parsed.command != NoCommand {
         try ParseLevel(@declared.commands[parsed.command], spec, source, parsed.commandAt + 1);
         return parsed;
@@ -189,7 +189,7 @@ extend Parsed {
     func Declared(&self) -> CommandSpec {
         // Safety: `self.spec` is the `CommandSpec` passed to `Parse` or `ParseProcess`, or one of its `commands`, which
         // the documented contract keeps alive for as long as the `Parsed` result.
-        return unsafe { *self.spec };
+        return *self.spec;
     }
 
     // A fresh walk over this level's arguments.

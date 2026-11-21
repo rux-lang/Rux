@@ -27,7 +27,7 @@ extend SourceHandle : Reader {
     func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at the `CountingSource` local of `Main`, which outlives every handle made from it.
-        unsafe {
+        {
             state.calls = state.calls + 1;
             if state.served >= state.limit {
                 throw IoError::Of(IoErrorKind::EndOfStream);
@@ -63,7 +63,7 @@ extend SinkHandle : Writer {
     func Write(&var self, bytes: char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
-        unsafe {
+        {
             state.calls = state.calls + 1;
             var take = bytes.length;
             if take > state.room.length - state.written {
@@ -81,7 +81,7 @@ extend SinkHandle : Writer {
 
     func Flush(&var self) throws IoError {
         // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
-        unsafe { self.state.flushes = self.state.flushes + 1; }
+        self.state.flushes = self.state.flushes + 1;
     }
 }
 
@@ -93,7 +93,7 @@ struct BlockedHandle {
 extend BlockedHandle : Reader {
     func Read(&var self, into: var char8[..]) -> uint throws IoError {
         // Safety: `calls` points at a counter local of `Main`, which outlives the handle.
-        unsafe { *self.calls = *self.calls + 1; }
+        *self.calls = *self.calls + 1;
         throw IoError::Of(IoErrorKind::WouldBlock);
     }
 }
@@ -105,7 +105,7 @@ func Main() -> int {
     var source = CountingSource { served: 0, calls: 0, limit: 64 };
     var sourceHandle = SourceHandle { state: @source };
     // Safety: `sourceHandle` is a local of this function that outlives every use of the handle.
-    var reader = try BufferedReader(allocator, unsafe { @sourceHandle as Reader }, 16) catch {
+    var reader = try BufferedReader(allocator, @sourceHandle as Reader, 16) catch {
         _ => Panic("the reader takes its buffer")
     };
     var one: char8[1];
@@ -129,7 +129,7 @@ func Main() -> int {
     var bigSource = CountingSource { served: 0, calls: 0, limit: 64 };
     var bigHandle = SourceHandle { state: @bigSource };
     // Safety: `bigHandle` is a local of this function that outlives every use of the handle.
-    var bypassReader = try BufferedReader(allocator, unsafe { @bigHandle as Reader }, 8) catch {
+    var bypassReader = try BufferedReader(allocator, @bigHandle as Reader, 8) catch {
         _ => Panic("the reader takes its buffer")
     };
     var bigStorage: char8[32];
@@ -142,7 +142,7 @@ func Main() -> int {
     var peekSource = CountingSource { served: 0, calls: 0, limit: 10 };
     var peekHandle = SourceHandle { state: @peekSource };
     // Safety: `peekHandle` is a local of this function that outlives every use of the handle.
-    var peekReader = try BufferedReader(allocator, unsafe { @peekHandle as Reader }, 16) catch {
+    var peekReader = try BufferedReader(allocator, @peekHandle as Reader, 16) catch {
         _ => Panic("the reader takes its buffer")
     };
     try peekReader.Fill() catch { _ => Panic("the buffer fills on request") };
@@ -162,7 +162,7 @@ func Main() -> int {
     };
     var sinkHandle = SinkHandle { state: @sink };
     // Safety: `sinkHandle` is a local of this function that outlives every use of the handle.
-    let sinkHandleView = unsafe { @sinkHandle as Writer };
+    let sinkHandleView = @sinkHandle as Writer;
     var writer = try BufferedWriter(allocator, sinkHandleView, 32) catch { _ => Panic("the writer takes its buffer") };
     var piece: uint = 0;
     while piece < 8 {
@@ -193,7 +193,7 @@ func Main() -> int {
     var blockedCalls: uint = 0;
     var blockedHandle = BlockedHandle { calls: @blockedCalls };
     // Safety: `blockedHandle` is a local of this function that outlives every use of the handle.
-    var blocked = try BufferedReader(allocator, unsafe { @blockedHandle as Reader }, 8) catch {
+    var blocked = try BufferedReader(allocator, @blockedHandle as Reader, 8) catch {
         _ => Panic("the reader takes its buffer")
     };
     try {

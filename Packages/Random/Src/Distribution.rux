@@ -64,10 +64,8 @@ pub func NormalPair<G: RandomGenerator>(generator: &var G, first: *var float64, 
     let angle = Tau * NextFloat64<G>(generator);
     // Safety: the documented contract makes `first` and `second` non-null pointers to the caller's writable `float64`
     // values.
-    unsafe {
-        *first = radius * Cos(angle);
-        *second = radius * Sin(angle);
-    }
+    *first = radius * Cos(angle);
+    *second = radius * Sin(angle);
 }
 
 /// A single standard normal value: mean zero, standard deviation one.

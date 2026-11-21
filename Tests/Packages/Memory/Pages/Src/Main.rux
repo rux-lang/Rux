@@ -50,7 +50,7 @@ func Main() throws PageError {
     // The whole rounded length is usable, not just the length asked for.
     // Safety: `address` is a live read-write mapping of `size + 1` bytes rounded up to whole pages of `size`, which is
     // two pages, so all `size * 2` bytes are inside it.
-    let (first, last) = unsafe {
+    let (first, last) = {
         let bytes = address as *var byte;
         Set(address, 0xC3 as byte, size * 2);
         (*bytes, *(bytes + size * 2 - 1))
@@ -61,20 +61,20 @@ func Main() throws PageError {
     // Pages come zeroed, which the next allocation is what shows.
     let second = try PageAllocate(size, PageRead | PageWrite);
     // Safety: retyping only; `second` is a live read-write mapping of one page of `size` bytes.
-    let secondBytes = unsafe { second as *var byte };
+    let secondBytes = second as *var byte;
     // Safety: offsets 0 and `size - 1` are inside the live readable page at `second`.
-    let (secondFirst, secondLast) = unsafe { (*secondBytes, *(secondBytes + size - 1)) };
+    let (secondFirst, secondLast) = (*secondBytes, *(secondBytes + size - 1));
     Assert(secondFirst == 0 as byte && secondLast == 0 as byte, "fresh pages are zero-filled");
 
     // Protection changes are accepted for a range that exists.
     // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
-    unsafe { try PageProtect(second, size, PageRead); }
+    try PageProtect(second, size, PageRead);
     // Safety: the page at `second` is live and was just made readable.
-    Assert(unsafe { *secondBytes } == 0 as byte, "narrowed to read-only, the pages are still readable");
+    Assert(*secondBytes == 0 as byte, "narrowed to read-only, the pages are still readable");
     // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
-    unsafe { try PageProtect(second, size, PageRead | PageWrite); }
+    try PageProtect(second, size, PageRead | PageWrite);
     // Safety: the page at `second` is live and was just made readable and writable again.
-    let rewritten = unsafe {
+    let rewritten = {
         *secondBytes = 0x5A as byte;
         *secondBytes
     };
@@ -82,43 +82,41 @@ func Main() throws PageError {
 
     // The degenerate arguments are reported rather than passed through.
     // Safety: each call is refused by the argument checks that run before any system call, so no page changes.
-    unsafe {
-        try {
-            PageProtect(null, size, PageRead);
-            Panic("the operation was expected to be refused");
-        } catch {
-            refusal => Assert(refusal == PageError::InvalidAddress, "a null address is refused"),
-        }
-        try {
-            PageProtect(second, 0, PageRead);
-            Panic("the operation was expected to be refused");
-        } catch {
-            refusal => Assert(refusal == PageError::InvalidLength, "a zero length is refused"),
-        }
-        try {
-            PageRelease(null, size);
-            Panic("the operation was expected to be refused");
-        } catch {
-            refusal => Assert(refusal == PageError::InvalidAddress, "and so is releasing null"),
-        }
-        try {
-            PageRelease(second, 0);
-            Panic("the operation was expected to be refused");
-        } catch {
-            refusal => Assert(refusal == PageError::InvalidLength, "or releasing nothing"),
-        }
+    try {
+        PageProtect(null, size, PageRead);
+        Panic("the operation was expected to be refused");
+    } catch {
+        refusal => Assert(refusal == PageError::InvalidAddress, "a null address is refused"),
+    }
+    try {
+        PageProtect(second, 0, PageRead);
+        Panic("the operation was expected to be refused");
+    } catch {
+        refusal => Assert(refusal == PageError::InvalidLength, "a zero length is refused"),
+    }
+    try {
+        PageRelease(null, size);
+        Panic("the operation was expected to be refused");
+    } catch {
+        refusal => Assert(refusal == PageError::InvalidAddress, "and so is releasing null"),
+    }
+    try {
+        PageRelease(second, 0);
+        Panic("the operation was expected to be refused");
+    } catch {
+        refusal => Assert(refusal == PageError::InvalidLength, "or releasing nothing"),
     }
 
     // A protection of none is legal: it takes the space and refuses every access to it, which is a guard page.
     let guarded = try PageAllocate(size, PageNone);
     Assert(guarded != null, "an inaccessible allocation still reports an address");
     // Safety: `guarded` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
-    unsafe { try PageRelease(guarded, size); }
+    try PageRelease(guarded, size);
 
     // Safety: `second` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
-    unsafe { try PageRelease(second, size); }
+    try PageRelease(second, size);
     // The first allocation is released by the length it asked for.
     // Safety: `address` is the base `PageAllocate` returned for `size + 1` bytes, and nothing uses it afterwards.
-    unsafe { try PageRelease(address, size + 1); }
+    try PageRelease(address, size + 1);
 }
 

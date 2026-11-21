@@ -36,10 +36,10 @@ extend File : Reader {
             var read: uint32 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above; `into` is writable for
             // `into.length` bytes and `count` is at most that; `read` is a local `uint32`.
-            let accepted = unsafe { ReadFile(self.handle, into.data as *var opaque, count, @read, null) };
+            let accepted = ReadFile(self.handle, into.data as *var opaque, count, @read, null);
             if !accepted {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                let raw = unsafe { GetLastError() } as int32;
+                let raw = GetLastError() as int32;
                 // A pipe whose writing end closed reports through a failure; for a reader it is the end.
                 if raw == 109 { throw IoError::Of(IoErrorKind::EndOfStream); }
                 throw TranslateNative(raw);
@@ -50,7 +50,7 @@ extend File : Reader {
         else {
             // Safety: `handle` is this file's open descriptor, `open` was checked above, and `into` is writable for
             // `into.length` bytes.
-            let result = unsafe { Read(self.handle, into.data as *var opaque, into.length) };
+            let result = Read(self.handle, into.data as *var opaque, into.length);
             if result < 0 { throw TranslateNative((0 - result) as int32); }
             if result == 0 { throw IoError::Of(IoErrorKind::EndOfStream); }
             return result as uint;
@@ -71,17 +71,17 @@ extend File : Writer {
             var written: uint32 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above; `bytes` is readable for
             // `bytes.length` bytes and `count` is at most that; `written` is a local `uint32`.
-            let accepted = unsafe { WriteFile(self.handle, bytes.data as *opaque, count, @written, null) };
+            let accepted = WriteFile(self.handle, bytes.data as *opaque, count, @written, null);
             if !accepted {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw TranslateNative(unsafe { GetLastError() } as int32);
+                throw TranslateNative(GetLastError() as int32);
             }
             return written as uint;
         }
         else {
             // Safety: `handle` is this file's open descriptor, `open` was checked above, and `bytes` is readable
             // for `bytes.length` bytes.
-            let result = unsafe { Write(self.handle, bytes.data as *opaque, bytes.length) };
+            let result = Write(self.handle, bytes.data as *opaque, bytes.length);
             if result < 0 { throw TranslateNative((0i64 - result) as int32); }
             return result as uint;
         }
@@ -109,10 +109,10 @@ extend File : Seeker {
         when #target.os == .Windows {
             var landed: int64 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local `int64`.
-            let moved = unsafe { SetFilePointerEx(self.handle, offset, @landed, origin as int32 as uint32) };
+            let moved = SetFilePointerEx(self.handle, offset, @landed, origin as int32 as uint32);
             if !moved {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw TranslateNative(unsafe { GetLastError() } as int32);
+                throw TranslateNative(GetLastError() as int32);
             }
             return landed as uint64;
         }
@@ -141,9 +141,9 @@ extend File {
         if !self.open { throw ClosedFile(); }
         when #target.os == .Windows {
             // Safety: `handle` is this file's open handle, `open` was checked above.
-            let flushed = unsafe { FlushFileBuffers(self.handle) };
+            let flushed = FlushFileBuffers(self.handle);
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if flushed == 0 { throw TranslateNative(unsafe { GetLastError() } as int32); }
+            if flushed == 0 { throw TranslateNative(GetLastError() as int32); }
         }
         else {
             let result = Fsync(self.handle);
@@ -162,9 +162,9 @@ extend File {
         when #target.os == .Windows {
             var reported: int64 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above, and `reported` is a local `int64`.
-            let measured = unsafe { GetFileSizeEx(self.handle, @reported) };
+            let measured = GetFileSizeEx(self.handle, @reported);
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if !measured { throw TranslateNative(unsafe { GetLastError() } as int32); }
+            if !measured { throw TranslateNative(GetLastError() as int32); }
             return reported as uint64;
         }
         else {
@@ -190,29 +190,29 @@ extend File {
             // SetEndOfFile cuts at the current position, so the position moves there and back.
             var held: int64 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above, and `held` is a local `int64`.
-            let measured = unsafe { SetFilePointerEx(self.handle, 0, @held, 1) };
+            let measured = SetFilePointerEx(self.handle, 0, @held, 1);
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if !measured { throw TranslateNative(unsafe { GetLastError() } as int32); }
+            if !measured { throw TranslateNative(GetLastError() as int32); }
             var landed: int64 = 0;
             // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local `int64`.
-            let moved = unsafe { SetFilePointerEx(self.handle, length as int64, @landed, 0) };
+            let moved = SetFilePointerEx(self.handle, length as int64, @landed, 0);
             if !moved {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw TranslateNative(unsafe { GetLastError() } as int32);
+                throw TranslateNative(GetLastError() as int32);
             }
             // Safety: `handle` is this file's open handle, `open` was checked above.
-            if unsafe { SetEndOfFile(self.handle as *var opaque) } == 0 {
+            if SetEndOfFile(self.handle as *var opaque) == 0 {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                let raw = unsafe { GetLastError() } as int32;
+                let raw = GetLastError() as int32;
                 // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local
                 // `int64`.
-                unsafe { SetFilePointerEx(self.handle, held, @landed, 0); }
+                SetFilePointerEx(self.handle, held, @landed, 0);
                 throw TranslateNative(raw);
             }
             // Safety: `handle` is this file's open handle, `open` was checked above, and `landed` is a local `int64`.
-            let restored = unsafe { SetFilePointerEx(self.handle, held, @landed, 0) };
+            let restored = SetFilePointerEx(self.handle, held, @landed, 0);
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-            if !restored { throw TranslateNative(unsafe { GetLastError() } as int32); }
+            if !restored { throw TranslateNative(GetLastError() as int32); }
         }
         else {
             let result = Ftruncate(self.handle, length as int64);

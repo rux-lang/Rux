@@ -32,7 +32,7 @@ pub func TimeOrdered() -> Uuid throws EntropyError {
 pub func TimeOrderedAt(milliseconds: uint64) -> Uuid throws EntropyError {
     var bytes: byte[16];
     // Safety: `bytes` is a local array of sixteen bytes, exactly the sixteen `Fill` is asked to write.
-    unsafe { try Fill(@bytes[0] as *var opaque, 16); }
+    try Fill(@bytes[0] as *var opaque, 16);
     var value = Uuid::FromBytes(bytes[..16]);
     // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;

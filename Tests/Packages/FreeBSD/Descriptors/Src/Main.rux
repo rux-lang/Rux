@@ -32,16 +32,14 @@ when #target.os == OperatingSystem::FreeBSD {
         // Leftovers from a run that died partway through would make the exclusive-create case pass for the wrong
         // reason, so the names are cleared first and the results deliberately ignored.
         // Safety: every name is a NUL-terminated string constant.
-        unsafe {
-            UnlinkAt(AtFdCwd, ScratchPath.data, 0);
-            UnlinkAt(AtFdCwd, RenamedPath.data, 0);
-            UnlinkAt(AtFdCwd, ScratchDirectory.data, RemoveDirectory);
-        }
+        UnlinkAt(AtFdCwd, ScratchPath.data, 0);
+        UnlinkAt(AtFdCwd, RenamedPath.data, 0);
+        UnlinkAt(AtFdCwd, ScratchDirectory.data, RemoveDirectory);
 
         // --- Where descriptor numbers come from ---------------------------------------------------------------
 
         // Safety: `ScratchPath` is a NUL-terminated string constant.
-        let created = unsafe {
+        let created = {
             OpenAt(AtFdCwd, ScratchPath.data, OpenReadWrite | OpenCreate | OpenTruncate, ScratchMode)
         };
         Assert(!IsError(created), "creating a scratch file succeeds");
@@ -55,7 +53,7 @@ when #target.os == OperatingSystem::FreeBSD {
 
         // A second open of the same file is a second descriptor, not the same one.
         // Safety: `ScratchPath` is a NUL-terminated string constant.
-        let alias = unsafe { OpenAt(AtFdCwd, ScratchPath.data, OpenReadOnly, 0) };
+        let alias = OpenAt(AtFdCwd, ScratchPath.data, OpenReadOnly, 0);
         Assert(!IsError(alias), "opening the file again succeeds");
         Assert(alias != created, "two opens of one file are two descriptors");
         Assert(Close(alias as int32) == 0, "closing the second descriptor succeeds");
@@ -66,11 +64,11 @@ when #target.os == OperatingSystem::FreeBSD {
         // what makes the count worth asserting exactly here and worth looping over on a pipe or a socket.
         var payload: char8[8] = [c8'b', c8'o', c8'u', c8'n', c8'd', c8'a', c8'r', c8'y'];
         // Safety: `payload` is a local array of 8 bytes, readable for the whole count.
-        Assert(unsafe { Write(fd, @payload[0] as *opaque, 8) } == 8, "a regular-file write takes the whole request");
+        Assert(Write(fd, @payload[0] as *opaque, 8) == 8, "a regular-file write takes the whole request");
 
         // A zero-length write is not an error and moves nothing.
         // Safety: a zero count reads nothing from `payload`, a local array of 8 bytes.
-        Assert(unsafe { Write(fd, @payload[0] as *opaque, 0) } == 0, "a zero-length write reports zero");
+        Assert(Write(fd, @payload[0] as *opaque, 0) == 0, "a zero-length write reports zero");
         Assert(Lseek(fd, 0, SeekCurrent) == 8, "a zero-length write leaves the offset alone");
 
         Assert(Lseek(fd, 0, SeekSet) == 0, "seeking to the start reports the start");
@@ -79,14 +77,14 @@ when #target.os == OperatingSystem::FreeBSD {
         // how much arrived; only zero means end of file.
         var buffer: char8[32];
         // Safety: `buffer` is a local array of 32 bytes, writable for the whole count.
-        let shortRead = unsafe { Read(fd, @buffer[0] as *var opaque, 32) };
+        let shortRead = Read(fd, @buffer[0] as *var opaque, 32);
         Assert(shortRead == 8, "a read past the end returns what is there, not an error");
         Assert(buffer[0] == c8'b' && buffer[7] == c8'y', "the bytes read back are the bytes written");
 
         // At the end, a further read reports zero rather than failing. This is the one result a caller's loop must
         // tell apart from a short count, and the two look alike until you check for it.
         // Safety: `buffer` is a local array of 32 bytes, writable for the whole count.
-        let atEnd = unsafe { Read(fd, @buffer[0] as *var opaque, 32) };
+        let atEnd = Read(fd, @buffer[0] as *var opaque, 32);
         Assert(atEnd == 0, "a read at the end reports zero, not a failure");
         Assert(!IsError(0), "and zero is not an error");
 
@@ -100,7 +98,7 @@ when #target.os == OperatingSystem::FreeBSD {
         Assert(Ftruncate(fd, 12) == 0, "extending succeeds");
         Assert(Lseek(fd, 0, SeekSet) == 0, "seeking back to the start succeeds");
         // Safety: `buffer` is a local array of 32 bytes, writable for the whole count.
-        let extended = unsafe { Read(fd, @buffer[0] as *var opaque, 32) };
+        let extended = Read(fd, @buffer[0] as *var opaque, 32);
         Assert(extended == 12, "the extended file reads its whole new length");
         Assert(buffer[4] == 0 as char8 && buffer[11] == 0 as char8, "the extension reads as zeros");
 
@@ -117,10 +115,10 @@ when #target.os == OperatingSystem::FreeBSD {
         // Every operation on a number that is no longer a descriptor reports the same thing, which is what makes a
         // use-after-close diagnosable rather than merely wrong.
         // Safety: `buffer` is a local array of 32 bytes, writable for the one byte asked for.
-        let readClosed = unsafe { Read(fd, @buffer[0] as *var opaque, 1) };
+        let readClosed = Read(fd, @buffer[0] as *var opaque, 1);
         Assert(IsError(readClosed) && Errno(readClosed) == EBADF, "reading a closed descriptor is EBADF");
         // Safety: `payload` is a local array of 8 bytes, readable for the one byte offered.
-        let writeClosed = unsafe { Write(fd, @payload[0] as *opaque, 1) };
+        let writeClosed = Write(fd, @payload[0] as *opaque, 1);
         Assert(IsError(writeClosed) && Errno(writeClosed) == EBADF, "writing a closed descriptor is EBADF");
         let seekClosed = Lseek(fd, 0, SeekSet);
         Assert(IsError(seekClosed) && Errno(seekClosed) == EBADF, "seeking a closed descriptor is EBADF");
@@ -131,20 +129,20 @@ when #target.os == OperatingSystem::FreeBSD {
 
         // A negative descriptor is not merely unusual; it can never have been handed out.
         // Safety: `buffer` is a local array of 32 bytes, writable for the one byte asked for.
-        let negative = unsafe { Read(-1, @buffer[0] as *var opaque, 1) };
+        let negative = Read(-1, @buffer[0] as *var opaque, 1);
         Assert(IsError(negative) && Errno(negative) == EBADF, "a negative descriptor is EBADF");
 
         // A name that is not there, on the two calls that take one.
         // Safety: `MissingPath` is a NUL-terminated string constant.
-        let missing = unsafe { OpenAt(AtFdCwd, MissingPath.data, OpenReadOnly, 0) };
+        let missing = OpenAt(AtFdCwd, MissingPath.data, OpenReadOnly, 0);
         Assert(IsError(missing) && Errno(missing) == ENOENT, "opening a missing name is ENOENT");
         // Safety: `MissingPath` is a NUL-terminated string constant.
-        let unlinkMissing = unsafe { UnlinkAt(AtFdCwd, MissingPath.data, 0) };
+        let unlinkMissing = UnlinkAt(AtFdCwd, MissingPath.data, 0);
         Assert(IsError(unlinkMissing) && Errno(unlinkMissing) == ENOENT, "unlinking a missing name is ENOENT");
 
         // An exclusive create is the one way to find out whether a name was free without a window in between.
         // Safety: `ScratchPath` is a NUL-terminated string constant.
-        let exclusive = unsafe {
+        let exclusive = {
             OpenAt(AtFdCwd, ScratchPath.data, OpenWriteOnly | OpenCreate | OpenExclusive, ScratchMode)
         };
         Assert(IsError(exclusive) && Errno(exclusive) == EEXIST, "an exclusive create over an existing name is EEXIST");
@@ -152,7 +150,7 @@ when #target.os == OperatingSystem::FreeBSD {
         // A directory is not writable through this interface. The number differs enough between systems that only
         // the refusal is asserted.
         // Safety: `ScratchDirectory` is a NUL-terminated string constant.
-        unsafe {
+        {
             Assert(MkdirAt(AtFdCwd, ScratchDirectory.data, 0o700) == 0, "creating a directory succeeds");
             let twice = MkdirAt(AtFdCwd, ScratchDirectory.data, 0o700);
             Assert(IsError(twice) && Errno(twice) == EEXIST, "creating a directory that exists is EEXIST");
@@ -165,18 +163,18 @@ when #target.os == OperatingSystem::FreeBSD {
 
         // An append-mode write goes to the end whatever the offset says, which is the whole point of the flag.
         // Safety: `ScratchPath` is a NUL-terminated string constant.
-        let appending = unsafe { OpenAt(AtFdCwd, ScratchPath.data, OpenWriteOnly | OpenAppend, 0) };
+        let appending = OpenAt(AtFdCwd, ScratchPath.data, OpenWriteOnly | OpenAppend, 0);
         Assert(!IsError(appending), "opening for append succeeds");
         let appendFd = appending as int32;
         Assert(Lseek(appendFd, 0, SeekSet) == 0, "the offset can still be moved to the start");
         // Safety: `payload` is a local array of 8 bytes, readable for the whole count.
-        let appended = unsafe { Write(appendFd, @payload[0] as *opaque, 8) };
+        let appended = Write(appendFd, @payload[0] as *opaque, 8);
         Assert(appended == 8, "the append write takes the whole request");
         Assert(Lseek(appendFd, 0, SeekEnd) == 20, "the bytes landed at the end, not at the offset");
         Assert(Close(appendFd) == 0, "closing the appending descriptor succeeds");
 
         // Safety: every name is a NUL-terminated string constant.
-        unsafe {
+        {
             Assert(RenameAt(AtFdCwd, ScratchPath.data, AtFdCwd, RenamedPath.data) == 0, "renaming succeeds");
             let gone = OpenAt(AtFdCwd, ScratchPath.data, OpenReadOnly, 0);
             Assert(IsError(gone) && Errno(gone) == ENOENT, "the old name is gone after a rename");

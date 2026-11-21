@@ -16,4 +16,4 @@
 /// @param memory the bytes to clear
 /// @param length how many bytes
 /// @see https://rux-lang.dev/docs/api/core/zeroize
-pub intrinsic unsafe func Zeroize(memory: *var uint8, length: uint64);
+pub intrinsic func Zeroize(memory: *var uint8, length: uint64);

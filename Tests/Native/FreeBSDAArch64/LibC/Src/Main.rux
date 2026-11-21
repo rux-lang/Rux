@@ -8,9 +8,9 @@ extern {
 
 func Main() -> int {
     // Safety: the argument is a NUL-terminated string literal.
-    if unsafe { strlen("fixed-call".data) } != 10u { return 1; }
+    if strlen("fixed-call".data) != 10u { return 1; }
 
     // Safety: the format is a NUL-terminated literal whose two conversions match the `int` and `double` passed.
-    let written = unsafe { printf("freebsd-aarch64:%d:%.1f\n".data, 42, 2.5) };
+    let written = printf("freebsd-aarch64:%d:%.1f\n".data, 42, 2.5);
     return if written == 23 { 0 } else { 2 };
 }

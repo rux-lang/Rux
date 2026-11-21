@@ -181,7 +181,7 @@ extend TimeZone {
             if close == data.length { throw .InvalidData; }
             if close > end + 1u {
                 // Safety: `close` is below `data.length`, checked above, and a `char8` is one `byte`.
-                let text = unsafe { (data.data as *char8)[end + 1u..close] };
+                let text = (data.data as *char8)[end + 1u..close];
                 zone.rule = try ParseRule(text, zone.names) catch { _ => throw .InvalidData };
             }
         }

@@ -302,7 +302,7 @@ void ConstantCallEvaluator::Report(const ConstDecl &constant) {
                                     failure->location.column));
     std::optional<std::string> help;
     if (failure->forbidden) {
-        help = "a constant may call only functions that use no raw pointers, 'unsafe', extern functions, allocators, "
+        help = "a constant may call only functions that use no raw pointers, extern functions, allocators, "
                "thread-local or module variables, and that call only such functions";
     }
     else if (failure->limit) {
@@ -716,7 +716,7 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateExpression(const Ex
         return EvaluateTuple(*tuple);
     if (const auto *cast = AstCast<const CastExpr>(&expression))
         return EvaluateCast(*cast);
-    if (const auto *block = AstCast<const BlockExpr>(&expression); block && !block->isUnsafe)
+    if (const auto *block = AstCast<const BlockExpr>(&expression))
         return EvaluateBlock(*block->block);
     if (const auto *match = AstCast<const MatchExpr>(&expression))
         return EvaluateMatch(*match);
@@ -732,11 +732,6 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateOther(const Expr &e
             return std::nullopt;
         const auto matched = Matches(*test->pattern, *subject);
         return matched ? std::optional{MakeBool(*matched)} : std::nullopt;
-    }
-    if (const auto *block = AstCast<const BlockExpr>(&expression)) {
-        static_cast<void>(Fail(block->location, std::format("{} uses an 'unsafe' block", Actor())));
-        failure->forbidden = true;
-        return std::nullopt;
     }
     if (const auto *query = AstCast<const TypeQueryExpr>(&expression)) {
         const auto value = context.typeQueryValues.find(query);

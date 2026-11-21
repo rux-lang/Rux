@@ -1,4 +1,4 @@
-// A statement that starts with `unsafe { ... }` ends at its '}', unless a tight `?`, `.`, `??`, `as`, `is` or a binary
+// A statement that starts with a block `{ ... }` ends at its '}', unless a tight `?`, `.`, `??`, `as`, `is` or a binary
 // or assignment operator follows. Then the block is the first operand of an expression statement and is in value
 // position, so it yields its last expression. A token that could start the next statement, such as `*`, `-` or `(`,
 // ends the block as before.
@@ -16,20 +16,16 @@ func Positive(value: int) -> int? {
 }
 
 func Count(address: *int, total: &var int) -> int? {
-    // Safety: the caller passes the address of a live `int`.
-    unsafe { Positive(*address) }?;
+    { Positive(*address) }?;
     total += 1;
     return 0;
 }
 
 func Compare(address: *int, pair: *Pair) -> bool {
     var same = false;
-    // Safety: the caller passes the addresses of a live `int` and a live `Pair`.
-    unsafe { *address } + 1 == 6 && unsafe { pair.left } == 3;
-    // Safety: as above.
-    unsafe { *pair }.right == 4;
-    // Safety: as above.
-    same = unsafe { *address } == unsafe { pair.left } + 2;
+    { *address } + 1 == 6 && { pair.left } == 3;
+    { *pair }.right == 4;
+    same = { *address } == { pair.left } + 2;
     return same;
 }
 
@@ -43,8 +39,7 @@ func Main() -> int {
     Assert(Compare(@five, @pair), "a block then an operator");
     var after = 0;
     let address = @five;
-    // Safety: `address` is the address of `five`, which is live.
-    unsafe {
+    {
         after = *address;
     }
     -after;

@@ -17,7 +17,7 @@
 /// @param left one of the two elements
 /// @param right the other
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#swap
-pub unsafe func Swap<T>(left: *var T, right: *var T) {
+pub func Swap<T>(left: *var T, right: *var T) {
     let held = *left;
     *left = *right;
     *right = held;
@@ -36,7 +36,7 @@ pub func Reverse<T>(items: var T[..]) {
     var high = items.length - 1;
     while low < high {
         // Safety: `low < high < items.length`, so both pointers address distinct live elements of `items`.
-        unsafe { Swap<T>(@items[low], @items[high]); }
+        Swap<T>(@items[low], @items[high]);
         low = low + 1;
         high = high - 1;
     }
@@ -216,7 +216,7 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
         else {
             high = high - 1;
             // Safety: `low <= high < items.length`, so both pointers address live elements of `items`.
-            unsafe { Swap<T>(@items[low], @items[high]); }
+            Swap<T>(@items[low], @items[high]);
         }
     }
     return low;

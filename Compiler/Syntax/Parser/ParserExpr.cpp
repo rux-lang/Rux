@@ -853,13 +853,14 @@ ExprPtr Parser::ParsePrimary() {
     if (Check(TokenKind::IfKeyword)) {
         return ParseIfExpr();
     }
-    // `unsafe { ... }` in value position yields its last expression, as any value block does.
+    // The removed `unsafe` is reported, and what follows it is read as if it were not written.
     if (Check(TokenKind::UnsafeKeyword)) {
-        if (!Peek(1).Is(TokenKind::LeftBrace)) {
-            RejectMisplacedUnsafe();
-            return nullptr;
-        }
-        auto block = ParseUnsafeBlock();
+        RejectRemovedUnsafe();
+    }
+    // `{ ... }` in value position yields its last expression, as any value block does. Where a '{' opens the body of
+    // an `if`, `while`, `for` or `match`, it is not an operand.
+    if (Check(TokenKind::LeftBrace) && structInitAllowed) {
+        auto block = ParseBlockExpression();
         static_cast<void>(PromoteValueTail(*block->block));
         return block;
     }

@@ -15,7 +15,7 @@ extend Tracked {
     func ~Tracked(&var self) {
         if self.destroyed != null {
             // Safety: a non-null `destroyed` is the address of the local counter in `Main`, which outlives the value.
-            unsafe { *self.destroyed += 1; }
+            *self.destroyed += 1;
         }
     }
 }
@@ -25,7 +25,7 @@ func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) throws AllocErro
     var boxed = Box<Tracked>(allocator, Tracked { destroyed, value: 91 });
     let held = (boxed.Get() ?? Panic("the box was just filled")).value;
     // Safety: `destroyed` is the address of the caller's live counter.
-    let destroyedCount = unsafe { *destroyed };
+    let destroyedCount = *destroyed;
     Assert(held == 91, "the box owns its value");
     Assert(destroyedCount == 0, "without destroying it during construction");
 }
@@ -35,7 +35,7 @@ func BoxAndTake(allocator: Allocator, destroyed: *var int32) throws AllocError {
     let taken = boxed.Take() ?? Panic("a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
     // Safety: `destroyed` is the address of the live counter the caller passed in.
-    let destroyedCount = unsafe { *destroyed };
+    let destroyedCount = *destroyed;
     Assert(taken.value == 27 && destroyedCount == 0, "and transfers rather than destroys the value");
 }
 

@@ -30,7 +30,7 @@ func Main() throws AllocError {
     Assert(pool.ClassSize(PoolClassCount) == 0, "with nothing past the last");
 
     // Safety: `pool` is a local that outlives `allocator` and is never moved.
-    let allocator = unsafe { pool.Handle() };
+    let allocator = pool.Handle();
 
     // A zero-sized layout costs the pool nothing.
     let empty = try allocator.Allocate(zero);
@@ -63,7 +63,7 @@ func Main() throws AllocError {
 
     // Writing through every block must not disturb the others.
     // Safety: the four are distinct live blocks of the 16-byte class, chunk-aligned, so each holds a `uint64`.
-    let (firstValue, fourthValue) = unsafe {
+    let (firstValue, fourthValue) = {
         *(first as *var uint64) = 0x1111111111111111;
         *(second as *var uint64) = 0x2222222222222222;
         *(third as *var uint64) = 0x3333333333333333;
@@ -113,7 +113,7 @@ func Main() throws AllocError {
     // Growing past the class moves it, and carries the bytes across.
     let moved = try allocator.Reallocate(grown, sameClass, medium);
     // Safety: `moved` is a live 128-byte block, aligned to 8, that the reallocation just returned.
-    let movedValue = unsafe { *(moved as *uint64) };
+    let movedValue = *(moved as *uint64);
     Assert(movedValue == 0x1111111111111111, "carrying the contents to the new block");
 
     // A request no class can serve goes to the backing allocator, and comes back from it.
@@ -127,7 +127,7 @@ func Main() throws AllocError {
     Assert(pool.ChunkCount() == chunksBefore, "without the pool taking a chunk");
     Assert(pool.LiveBlocks() == liveBefore, "and without the pool counting it as its own");
     // Safety: `direct` is a live 4096-byte allocation aligned to 8, not yet released.
-    let directValue = unsafe {
+    let directValue = {
         *(direct as *var uint64) = 0x5555555555555555;
         *(direct as *uint64)
     };
@@ -145,12 +145,12 @@ func Main() throws AllocError {
     // Exhaustion: a pool over a buffer too small for a chunk reports the failure rather than inventing storage.
     var storage: byte[64];
     // Safety: `storage` is a local array of 64 bytes that outlives `tiny` and is touched only through it.
-    var tiny = unsafe { FixedBuffer(@storage[0] as *var opaque, 64) };
+    var tiny = FixedBuffer(@storage[0] as *var opaque, 64);
     // Safety: `tiny` is a local that outlives `starved` and is never moved.
-    let starved = unsafe { tiny.Handle() };
+    let starved = tiny.Handle();
     var starvedPool = Pool(starved, 32);
     // Safety: `starvedPool` is a local that outlives `starvedAllocator` and is never moved.
-    let starvedAllocator = unsafe { starvedPool.Handle() };
+    let starvedAllocator = starvedPool.Handle();
     var refused: *var opaque = null;
     try {
         starvedAllocator.Allocate(small);

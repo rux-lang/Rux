@@ -30,7 +30,7 @@ extend Tracked {
     func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
-            unsafe { *self.counter = *self.counter + 1; }
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -49,7 +49,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     var index: uint = 0;
     while index < actual.length {
         // Safety: `index` is below `actual.length`, checked by the loop, which equals `expected.length`.
-        if unsafe { actual.data[index] != expected.data[index] } { return false; }
+        if (actual.data[index] != expected.data[index]) { return false; }
         index = index + 1;
     }
     return true;
@@ -64,7 +64,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 func ShownVector(value: &Vector<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     // Safety: `storage` is a local array of 128 elements.
-    var writer = BufferWriter(unsafe { (@storage[0])[..128] });
+    var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     if (try? WriteVectorDebug<int32>(sink, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -73,7 +73,7 @@ func ShownVector(value: &Vector<int32>, spec: FormatSpec, expected: char8[..]) -
 func ShownArray(value: &Array<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     // Safety: `storage` is a local array of 128 elements.
-    var writer = BufferWriter(unsafe { (@storage[0])[..128] });
+    var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     if (try? WriteArrayDebug<int32>(sink, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -82,7 +82,7 @@ func ShownArray(value: &Array<int32>, spec: FormatSpec, expected: char8[..]) -> 
 func ShownDeque(value: &Deque<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     // Safety: `storage` is a local array of 128 elements.
-    var writer = BufferWriter(unsafe { (@storage[0])[..128] });
+    var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     if (try? WriteDequeDebug<int32>(sink, value, spec)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -151,7 +151,7 @@ func Main() -> int {
 
     var storage: char8[128];
     // Safety: `storage` is a local array of 128 elements.
-    var writer = BufferWriter(unsafe { (@storage[0])[..128] });
+    var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     Assert((try? WriteVectorDebug<Tracked>(sink, owned, plain)) is .Some(_), "a move-only vector is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
@@ -170,7 +170,7 @@ func Main() -> int {
 
     var ringStorage: char8[128];
     // Safety: `ringStorage` is a local array of 128 elements.
-    var ringWriter = BufferWriter(unsafe { (@ringStorage[0])[..128] });
+    var ringWriter = BufferWriter((@ringStorage[0])[..128]);
     let ringSink: &var TextWriter = ringWriter;
     Assert((try? WriteDequeDebug<Tracked>(ringSink, ring, plain)) is .Some(_), "a wrapped move-only deque is shown");
     Assert(Same(ringWriter.Written(), "[T(0), T(1), T(2)]"), "front to back across the split");
@@ -179,7 +179,7 @@ func Main() -> int {
     // A destination that runs out of room reports it and stops, rather than losing its tail quietly.
     var small: char8[6];
     // Safety: `small` is a local array of six elements.
-    var tight = BufferWriter(unsafe { (@small[0])[..6] });
+    var tight = BufferWriter((@small[0])[..6]);
     let tightSink: &var TextWriter = tight;
     let refused: Result<(), FormatError> = try .Success(WriteVectorDebug<Tracked>(tightSink, owned, plain)) catch {
         error => .Failure(error),

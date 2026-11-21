@@ -39,7 +39,7 @@ pub enum MemoryOrder: uint8 {
 /// @param order which other operations may move across this one
 /// @returns the value read
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-load
-pub intrinsic unsafe func AtomicLoad<T>(address: *T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicLoad<T>(address: *T, order: MemoryOrder) -> T;
 
 /// Writes `value` to `address` atomically.
 /// `order` must be `Relaxed`, `Release` or `SequentiallyConsistent`, written at the call. `address` must be aligned to
@@ -51,7 +51,7 @@ pub intrinsic unsafe func AtomicLoad<T>(address: *T, order: MemoryOrder) -> T;
 /// @param value what to write
 /// @param order which other operations may move across this one
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-store
-pub intrinsic unsafe func AtomicStore<T>(address: *var T, value: T, order: MemoryOrder);
+pub intrinsic func AtomicStore<T>(address: *var T, value: T, order: MemoryOrder);
 
 /// Writes `value` to `address` and returns what was there, as one atomic step.
 /// Any ordering is allowed. `address` must be aligned to the size of `T`. Runs in constant time and allocates nothing.
@@ -63,7 +63,7 @@ pub intrinsic unsafe func AtomicStore<T>(address: *var T, value: T, order: Memor
 /// @param order which other operations may move across this one
 /// @returns the value that was replaced
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-exchange
-pub intrinsic unsafe func AtomicExchange<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicExchange<T>(address: *var T, value: T, order: MemoryOrder) -> T;
 
 /// Writes `desired` to `address` if it holds `expected`, and returns what it held, as one atomic step.
 /// The write happened exactly when the returned value equals `expected`. `success` orders the operation when it writes,
@@ -80,7 +80,7 @@ pub intrinsic unsafe func AtomicExchange<T>(address: *var T, value: T, order: Me
 /// @param failure the ordering when it does not
 /// @returns the value `address` held before the operation
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-compare-exchange
-pub intrinsic unsafe func AtomicCompareExchange<T>(address: *var T, expected: T, desired: T, success: MemoryOrder,
+pub intrinsic func AtomicCompareExchange<T>(address: *var T, expected: T, desired: T, success: MemoryOrder,
                                             failure: MemoryOrder) -> T;
 
 /// Adds `value` to the integer at `address` and returns what was there, as one atomic step.
@@ -94,7 +94,7 @@ pub intrinsic unsafe func AtomicCompareExchange<T>(address: *var T, expected: T,
 /// @param order which other operations may move across this one
 /// @returns the value before the addition
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-add
-pub intrinsic unsafe func AtomicFetchAdd<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicFetchAdd<T>(address: *var T, value: T, order: MemoryOrder) -> T;
 
 /// Subtracts `value` from the integer at `address` and returns what was there, as one atomic step.
 /// The difference wraps on overflow. Any ordering is allowed. Runs in constant time apart from contention and
@@ -107,7 +107,7 @@ pub intrinsic unsafe func AtomicFetchAdd<T>(address: *var T, value: T, order: Me
 /// @param order which other operations may move across this one
 /// @returns the value before the subtraction
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-sub
-pub intrinsic unsafe func AtomicFetchSub<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicFetchSub<T>(address: *var T, value: T, order: MemoryOrder) -> T;
 
 /// Combines the value at `address` with `value` by bitwise and, and returns what was there, as one atomic step.
 /// Any ordering is allowed. Runs in constant time apart from contention and allocates nothing.
@@ -119,7 +119,7 @@ pub intrinsic unsafe func AtomicFetchSub<T>(address: *var T, value: T, order: Me
 /// @param order which other operations may move across this one
 /// @returns the value before the operation
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-and
-pub intrinsic unsafe func AtomicFetchAnd<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicFetchAnd<T>(address: *var T, value: T, order: MemoryOrder) -> T;
 
 /// Combines the value at `address` with `value` by bitwise or, and returns what was there, as one atomic step.
 /// Any ordering is allowed. Runs in constant time apart from contention and allocates nothing.
@@ -131,7 +131,7 @@ pub intrinsic unsafe func AtomicFetchAnd<T>(address: *var T, value: T, order: Me
 /// @param order which other operations may move across this one
 /// @returns the value before the operation
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-or
-pub intrinsic unsafe func AtomicFetchOr<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicFetchOr<T>(address: *var T, value: T, order: MemoryOrder) -> T;
 
 /// Combines the value at `address` with `value` by bitwise exclusive or, and returns what was there, as one atomic
 /// step.
@@ -144,7 +144,7 @@ pub intrinsic unsafe func AtomicFetchOr<T>(address: *var T, value: T, order: Mem
 /// @param order which other operations may move across this one
 /// @returns the value before the operation
 /// @see https://rux-lang.dev/docs/api/core/atomic#atomic-fetch-xor
-pub intrinsic unsafe func AtomicFetchXor<T>(address: *var T, value: T, order: MemoryOrder) -> T;
+pub intrinsic func AtomicFetchXor<T>(address: *var T, value: T, order: MemoryOrder) -> T;
 
 /// Orders this thread's memory operations without touching memory.
 /// `order` must not be `Relaxed`, which would order nothing. An `Acquire` fence keeps later operations after earlier

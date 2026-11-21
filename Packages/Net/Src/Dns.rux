@@ -45,7 +45,7 @@ enum Outcome: uint8 {
 
 // Reads the whole of `path` into `into`; empty when it cannot be read.
 // Safety: `path` must end in a NUL.
-unsafe func ReadSmallFile(path: char8[..], into: &var Vector<char8>) {
+func ReadSmallFile(path: char8[..], into: &var Vector<char8>) {
     when #target.os == .Linux {
         let opened = OpenAt(AtFdCwd, path.data, OpenReadOnly | OpenCloseOnExec, 0);
         if opened < 0i64 { return; }
@@ -87,12 +87,12 @@ func IsBlank(c: char8) -> bool {
 // The next field of `line` from `at`, moving `at` past it; empty at the end of the line.
 func NextField(line: char8[..], at: *var uint) -> char8[..] {
     // Safety: the documented contract makes `at` a non-null pointer to the caller's writable position.
-    var start = unsafe { *at };
+    var start = *at;
     while start < line.length && IsBlank(line[start]) { start = start + 1; }
     var end = start;
     while end < line.length && !IsBlank(line[end]) { end = end + 1; }
     // Safety: the documented contract makes `at` a non-null pointer to the caller's writable position.
-    unsafe { *at = end; }
+    *at = end;
     return line[start..end];
 }
 
@@ -119,7 +119,7 @@ struct Range {
 func FromHostsFile(allocator: Allocator, host: char8[..], port: uint16, found: &var Vector<SocketAddress>) {
     var text = Vector<char8>(allocator);
     // Safety: the path literal ends in a NUL.
-    unsafe { ReadSmallFile("/etc/hosts\0", text); }
+    ReadSmallFile("/etc/hosts\0", text);
     var lines = Vector<Range>(allocator);
     Lines(text.AsSlice(), lines);
     for range in lines.AsSlice() {
@@ -213,7 +213,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
                                    attempts: 2 };
     var text = Vector<char8>(allocator);
     // Safety: the path literal ends in a NUL.
-    unsafe { ReadSmallFile("/etc/resolv.conf\0", text); }
+    ReadSmallFile("/etc/resolv.conf\0", text);
     var lines = Vector<Range>(allocator);
     Lines(text.AsSlice(), lines);
     for range in lines.AsSlice() {
@@ -370,13 +370,13 @@ func AskOverTcp(server: SocketAddress, query: uint8[..], timeout: Duration, answ
     var prefix: char8[2] = [(query.length >> 8) as char8, query.length as char8];
     try WriteAll(stream, prefix[..]);
     // Safety: `query` is a slice of `query.length` bytes, and `char8` has the layout of `uint8`.
-    try WriteAll(stream, unsafe { (query.data as *char8)[..query.length] });
+    try WriteAll(stream, (query.data as *char8)[..query.length]);
     var size: char8[2] = [c8'\0'; 2];
     try ReadExact(stream, size[..]);
     let length = (size[0] as uint << 8) | size[1] as uint;
     if length > answer.length { throw IoError::Of(IoErrorKind::LimitExceeded); }
     // Safety: `length` is at most `answer.length`, checked above, and `char8` has the layout of `uint8`.
-    try ReadExact(stream, unsafe { (answer.data as *var char8)[..length] });
+    try ReadExact(stream, (answer.data as *var char8)[..length]);
     return length;
 }
 
@@ -399,14 +399,14 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
     try socket.SetReadTimeout(timeout) catch { _ => return Outcome::Failed };
     // Safety: `WriteQuery` wrote `length` bytes, at most the 512 of the local `query`, and `char8` has the layout of
     // `uint8`.
-    try socket.Send(unsafe { ((@query[0]) as *char8)[..length] }) catch { _ => return Outcome::Failed };
+    try socket.Send(((@query[0]) as *char8)[..length]) catch { _ => return Outcome::Failed };
     var answer: uint8[65535] = [0u8; 65535];
     // An answer to an earlier query, or from somewhere else, is read past until the timeout.
     let started = Instant::Now();
     while true {
         // Safety: `answer` is a local of 65535 bytes, so its first 512 are writable, and `char8` has the layout of
         // `uint8`.
-        let datagram = unsafe { ((@answer[0]) as *var char8)[..512] };
+        let datagram = ((@answer[0]) as *var char8)[..512];
         let received = try socket.Receive(datagram) catch { _ => return Outcome::Failed };
         let message = answer[..received];
         if received < 12u || Word16(message, 0) != id {

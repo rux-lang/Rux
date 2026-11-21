@@ -11,7 +11,7 @@ import macOS::{ ProcessId, _exit, getpid };
 /// @see https://rux-lang.dev/docs/api/macos/process#exit
 pub func Exit(code: int32) {
     // Safety: _exit takes only a status number and touches no memory of the caller's.
-    unsafe { _exit(code); }
+    _exit(code);
 }
 
 /// The calling process's own identifier.
@@ -20,5 +20,5 @@ pub func Exit(code: int32) {
 /// @see https://rux-lang.dev/docs/api/macos/process#get-pid
 pub func GetPid() -> ProcessId {
     // Safety: getpid takes no arguments and only reports the caller's identifier.
-    return unsafe { getpid() };
+    return getpid();
 }

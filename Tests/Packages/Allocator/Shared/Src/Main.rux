@@ -15,13 +15,13 @@ pub struct Tracked {
 extend Tracked {
     func ~Tracked(&var self) {
         // Safety: `Destroyed` is a global `int64`, aligned and live for the whole run, and only touched atomically.
-        unsafe { AtomicFetchAdd<int64>(@Destroyed, 1, MemoryOrder::Relaxed); }
+        AtomicFetchAdd<int64>(@Destroyed, 1, MemoryOrder::Relaxed);
     }
 }
 
 func Destroys() -> int64 {
     // Safety: `Destroyed` is a global `int64`, aligned and live for the whole run, and only touched atomically.
-    return unsafe { AtomicLoad<int64>(@Destroyed, MemoryOrder::Acquire) };
+    return AtomicLoad<int64>(@Destroyed, MemoryOrder::Acquire);
 }
 
 func Keep(handle: Rc<Tracked>) -> uint {

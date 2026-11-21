@@ -194,7 +194,7 @@ func Main() -> int {
     // WriteScalar rejects a surrogate read from raw storage independently of checked character casts.
     var half: uint32 = 0xD800;
     // Safety: `half` is a live local `uint32`, and `char32` has the same size and alignment.
-    let halfScalar = unsafe { *((@half) as *char32) };
+    let halfScalar = *((@half) as *char32);
     try {
         WriteScalar(writer, halfScalar);
         Assert((0) == 2, "a surrogate half is not a scalar value");

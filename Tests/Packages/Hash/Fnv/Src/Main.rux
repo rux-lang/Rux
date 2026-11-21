@@ -6,18 +6,18 @@ import Hash::{ Fnv1a32, Fnv1a32Of, Fnv1a64, Fnv1a64Of, FnvOffsetBasis32, FnvOffs
 // The bytes a string spans, which is how a text overload reaches the byte one.
 func TextBytes(text: char8[..]) -> byte[..] {
     // Safety: a `char8` is one byte, so the characters of `text` are readable as `text.length` bytes.
-    return unsafe { (text.data as *byte)[..text.length] };
+    return (text.data as *byte)[..text.length];
 }
 
 // The one-shot hashes over a byte slice, which is how the checks below reach the pointer-and-length forms.
 func Bytes32(bytes: byte[..]) -> uint32 {
     // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
-    return unsafe { Fnv1a32Of(bytes.data, bytes.length) };
+    return Fnv1a32Of(bytes.data, bytes.length);
 }
 
 func Bytes64(bytes: byte[..]) -> uint64 {
     // Safety: a slice's `data` is readable for its `length` bytes, and an empty slice reads none.
-    return unsafe { Fnv1a64Of(bytes.data, bytes.length) };
+    return Fnv1a64Of(bytes.data, bytes.length);
 }
 
 // FNV-1a is a published algorithm, so the test is the published answers: a hash that agrees with the specification is
@@ -110,7 +110,7 @@ func Main() -> int {
     // The generic helper borrows the caller's own hasher, so what it hashed is still in there afterwards.
     var helped = Fnv1a64();
     // Safety: `bytes` addresses the six bytes of "foobar".
-    let helpedHash = unsafe { HashBytes<Fnv1a64>(helped, bytes, 6) };
+    let helpedHash = HashBytes<Fnv1a64>(helped, bytes, 6);
     Assert(helpedHash == 0x85944171F73967E8, "the generic helper hashes what it is given");
     Assert(helped.Finish() == 0x85944171F73967E8, "leaving the caller's hasher holding it");
 

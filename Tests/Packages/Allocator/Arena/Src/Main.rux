@@ -15,7 +15,7 @@ func Main() throws AllocError {
     Assert(arena.BytesUsed() == 0, "and has handed out nothing");
 
     // Safety: `arena` is a local that outlives `allocator` and is never moved.
-    let allocator = unsafe { arena.Handle() };
+    let allocator = arena.Handle();
 
     // A zero-sized layout costs the arena nothing.
     let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
@@ -43,7 +43,7 @@ func Main() throws AllocError {
 
     // Writing through every address must not disturb the others.
     // Safety: `first` and `second` are distinct live 32-byte allocations aligned to 8, so each holds a `uint64`.
-    let (firstValue, secondValue) = unsafe {
+    let (firstValue, secondValue) = {
         let firstBytes = first as *var uint64;
         let secondBytes = second as *var uint64;
         *firstBytes = 0x1111111111111111;
@@ -75,7 +75,7 @@ func Main() throws AllocError {
     large = try allocator.Allocate(huge);
     Assert(arena.BlockCount() > blocksBeforeHuge, "by taking a block for itself");
     // Safety: `large` is a live allocation of 8192 bytes, so offsets 0 and 8191 are both inside it.
-    let (front, back) = unsafe {
+    let (front, back) = {
         let largeBytes = large as *var byte;
         *largeBytes = 0x7F as byte;
         *(largeBytes + 8191) = 0x7E as byte;

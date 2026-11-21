@@ -46,7 +46,7 @@ extend TomlPath {
         while index < bytes.length {
             // Safety: `self.length + bytes.length` fits in `self.room`, checked above, and `index` is below
             // `bytes.length`.
-            unsafe { self.room.data[self.length + index] = bytes.data[index]; }
+            self.room.data[self.length + index] = bytes.data[index];
             index = index + 1;
         }
         self.length = self.length + bytes.length;
@@ -56,7 +56,7 @@ extend TomlPath {
     func Bytes(&self) -> char8[..] {
         // Safety: `self.length` only ever holds a length `Append` accepted or an earlier such length, so it is at
         // most `self.room.length`.
-        return unsafe { (self.room.data)[..self.length] };
+        return (self.room.data)[..self.length];
     }
 }
 
@@ -66,7 +66,7 @@ func IsBareKey(name: char8[..]) -> bool {
     var index: uint = 0;
     while index < name.length {
         // Safety: `index` is below `name.length`, checked by the loop.
-        let c = unsafe { name.data[index] } as uint8;
+        let c = name.data[index] as uint8;
         let allowed = (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
                       (c >= 0x30 && c <= 0x39) || c == 0x5F || c == 0x2D;
         if !allowed { return false; }
@@ -93,7 +93,7 @@ func EmitBasicString(writer: &var TextWriter, text: char8[..]) throws FormatErro
     var index: uint = 0;
     while index < text.length {
         // Safety: `index` is below `text.length`, checked by the loop.
-        let c = unsafe { text.data[index] } as uint8;
+        let c = text.data[index] as uint8;
         if c == 0x22 || c == 0x5C {
             try EmitByte(writer, 0x5C);
             try EmitByte(writer, c);
@@ -150,7 +150,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) throws FormatError {
     var significant: uint = 15;
     while significant <= 17 {
         // Safety: `storage` is a local array of 64 bytes.
-        var cursor = ByteCursor(unsafe { (@storage[0])[..64] });
+        var cursor = ByteCursor((@storage[0])[..64]);
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
@@ -163,14 +163,14 @@ func EmitFloat(writer: &var TextWriter, value: float64) throws FormatError {
         }
     }
     // Safety: `length` is what the cursor wrote into the 64 bytes of `storage`, so it is at most 64.
-    let text = unsafe { (@storage[0])[..length] };
+    let text = (@storage[0])[..length];
         try Emit(writer, text);
     // TOML tells a float from an integer by its point or its exponent, so a whole value needs one written out or
     // it would read back as an integer and stop being the same document.
     var index: uint = 0;
     while index < length {
         // Safety: `index` is below `length`, the length of `text`, checked by the loop.
-        let c = unsafe { text.data[index] } as uint8;
+        let c = text.data[index] as uint8;
         if c == 0x2E || c == 0x65 || c == 0x45 { return; }
         index = index + 1;
     }
@@ -392,7 +392,7 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) throws FormatError {
     }
     var storage: char8[512];
     // Safety: `storage` is a local array of 512 bytes.
-    var cursor = ByteCursor(unsafe { (@storage[0])[..512] });
+    var cursor = ByteCursor((@storage[0])[..512]);
     let quoted: &var TextWriter = cursor;
     try EmitBasicString(quoted, name);
     if !path.Append(cursor.Written()) { try PathTooLong(); }
@@ -417,7 +417,7 @@ pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) throws Fo
     if table.Kind() != TomlKind::Table { return try EmitValue(writer, table); }
     var storage: char8[1024];
     // Safety: `storage` is a local array of `MaximumHeaderPath` bytes, and `path` does not outlive it.
-    var path = TomlPath { room: unsafe { (@storage[0])[..MaximumHeaderPath] }, length: 0 };
+    var path = TomlPath { room: (@storage[0])[..MaximumHeaderPath], length: 0 };
     try EmitBody(writer, table);
     // The root's own lines come first, so a header needs a blank line before it unless nothing has been
     // written yet.

@@ -59,7 +59,7 @@ pub const MapAnonymous: int32 = 0x1000;
 /// @param offset where in the file the mapping starts
 /// @returns the mapping's address, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#mmap
-pub unsafe func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32,
+pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32,
                      offset: uint64) -> int64 {
     return Syscall6(
         SysMmap,
@@ -79,7 +79,7 @@ pub unsafe func Mmap(address: *opaque, length: uint, protection: int32, flags: i
 /// @param length how many bytes to release
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#munmap
-pub unsafe func Munmap(address: *opaque, length: uint) -> int64 {
+pub func Munmap(address: *opaque, length: uint) -> int64 {
     return Syscall2(SysMunmap, address as uint64, length as uint64);
 }
 
@@ -89,7 +89,7 @@ pub unsafe func Munmap(address: *opaque, length: uint) -> int64 {
 /// @param address where to move the program break, or null to read it
 /// @returns the resulting break, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#brk
-pub unsafe func Brk(address: *opaque) -> int64 {
+pub func Brk(address: *opaque) -> int64 {
     return Syscall1(SysBrk, address as uint64);
 }
 
@@ -130,7 +130,7 @@ pub const AdviseFree: int32 = 5;
 /// @param protection what may be done with them afterwards
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#mprotect
-pub unsafe func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
+pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
     return Syscall3(SysMprotect, address as uint64, length as uint64, protection.Truncate<uint64>());
 }
 
@@ -143,7 +143,7 @@ pub unsafe func Mprotect(address: *opaque, length: uint, protection: int32) -> i
 /// @param advice one of the `Advise*` values
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/memory#madvise
-pub unsafe func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
+pub func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
     return Syscall3(SysMadvise, address as uint64, length as uint64, advice.Truncate<uint64>());
 }
 /// `CTL_HW`: the sysctl branch describing the machine.
@@ -168,7 +168,7 @@ pub func QueryPageSize() -> int64 {
     var length: uint = 4;
     // Safety: `name`, `value` and `length` are locals: the kernel reads the two-word name and writes at most
     // `length` (four) bytes into `value`, then the size it wrote into `length`.
-    let status = unsafe { Syscall6(SysSysctl, @name[0] as uint64, 2, @value as uint64, @length as uint64, 0, 0) };
+    let status = Syscall6(SysSysctl, @name[0] as uint64, 2, @value as uint64, @length as uint64, 0, 0);
     if IsError(status) { return status; }
     // A kernel that answered with something other than a whole `int`, or with a value that is not a positive power
     // of two, has not answered the question this asks. Reporting EINVAL is better than passing the number on.

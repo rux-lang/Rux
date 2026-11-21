@@ -54,7 +54,7 @@ func InvalidAt(text: char8[..], at: uint) -> bool {
 func Main() -> int {
     let hello = "Hello World!";
     // Safety: `hello` is a literal of `hello.length` bytes, and `char8` and `byte` have the same size.
-    let helloBytes = unsafe { (hello.data as *byte)[..hello.length] };
+    let helloBytes = (hello.data as *byte)[..hello.length];
     if !Vector(helloBytes, "2NEpo7TZRRrLZSi2U") { return 1; }
     let zeros: byte[6] = [0, 0, 0x28, 0x7F, 0xB4, 0xCD];
     if !Vector(zeros[..], "11233QC4") { return 2; }

@@ -82,11 +82,9 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
                        significand: *var uint64, binaryExponent: *var int, overflowed: *var bool) -> bool {
     // Safety: the documented contract makes `significand`, `binaryExponent` and `overflowed` non-null pointers to the
     // caller's writable values.
-    unsafe {
-        *significand = 0;
-        *binaryExponent = 0;
-        *overflowed = false;
-    }
+    *significand = 0;
+    *binaryExponent = 0;
+    *overflowed = false;
     if digits.IsZero() { return true; }
 
     var state = Reading { numerator: FixedNat(), denominator: FixedNat(), sticky: truncated };
@@ -112,7 +110,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     let highest = layout.maximumExponent + (layout.precision as int) - 1;
     if binade > highest {
         // Safety: the documented contract makes `overflowed` a non-null pointer to the caller's writable `bool`.
-        unsafe { *overflowed = true; }
+        *overflowed = true;
         return false;
     }
     // Below half the smallest subnormal there is nothing to round to but zero.
@@ -148,10 +146,8 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
             if remainder.Compare(divisor) > 0 || state.sticky {
                 // Safety: the documented contract makes `significand` and `binaryExponent` non-null pointers to the
                 // caller's writable values.
-                unsafe {
-                    *significand = 1;
-                    *binaryExponent = layout.minimumExponent;
-                }
+                *significand = 1;
+                *binaryExponent = layout.minimumExponent;
             }
             return true;
         }
@@ -191,10 +187,8 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
                 // significand is the implicit bit and the exponent is the format's smallest.
                 // Safety: the documented contract makes `significand` and `binaryExponent` non-null pointers to the
                 // caller's writable values.
-                unsafe {
-                    *significand = quotient;
-                    *binaryExponent = layout.minimumExponent;
-                }
+                *significand = quotient;
+                *binaryExponent = layout.minimumExponent;
                 return true;
             }
             // The carry filled the significand, so it steps up a binade and loses its last bit.
@@ -203,7 +197,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
             if scale > layout.maximumExponent {
                 // Safety: the documented contract makes `overflowed` a non-null pointer to the caller's writable
                 // `bool`.
-                unsafe { *overflowed = true; }
+                *overflowed = true;
                 return false;
             }
         }
@@ -211,10 +205,8 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     if quotient == 0 { return true; }
     // Safety: the documented contract makes `significand` and `binaryExponent` non-null pointers to the caller's
     // writable values.
-    unsafe {
-        *significand = quotient;
-        *binaryExponent = scale;
-    }
+    *significand = quotient;
+    *binaryExponent = scale;
     return true;
 }
 
@@ -264,7 +256,7 @@ func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
 
 /// The `float64` whose bits are `bits`.
 /// Writes the value's storage from an integer of the same width through a raw pointer, which is the inverse of
-/// `BitsOfFloat64` and unsafe for the same reason: there is no conversion that preserves a representation.
+/// `BitsOfFloat64` and written that way for the same reason: there is no conversion that preserves a representation.
 /// @param bits the sixty-four bits to read as a value
 /// @returns the value they spell
 /// @see https://rux-lang.dev/docs/api/format/float-bits#float64-from-bits
@@ -272,7 +264,7 @@ pub func Float64FromBits(bits: uint64) -> float64 {
     // Safety: `bits` is this call's live parameter, `uint64` and `float64` are both eight bytes wide with the same
     // alignment, and every bit pattern is a valid `float64` (the ones that are not numbers are NaNs), so reading the
     // integer's storage as a float is sound.
-    return unsafe { *((@bits) as *float64) };
+    return *((@bits) as *float64);
 }
 
 /// The `float32` whose bits are `bits`.
@@ -284,7 +276,7 @@ pub func Float32FromBits(bits: uint32) -> float32 {
     // Safety: `bits` is this call's live parameter, `uint32` and `float32` are both four bytes wide with the same
     // alignment, and every bit pattern is a valid `float32` (the ones that are not numbers are NaNs), so reading the
     // integer's storage as a float is sound.
-    return unsafe { *((@bits) as *float32) };
+    return *((@bits) as *float32);
 }
 
 /// Reads the decimal `digits * 10^exponent` into the nearest `float64`, with ties to even.
@@ -306,7 +298,7 @@ pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negativ
         return false;
     }
     // Safety: the documented contract makes `value` a non-null pointer to the caller's writable `float64`.
-    unsafe { *value = Float64FromBits(PackFloat64(significand, binary, negative)); }
+    *value = Float64FromBits(PackFloat64(significand, binary, negative));
     return true;
 }
 
@@ -332,6 +324,6 @@ pub func ExactFloat32(digits: &FixedNat, exponent: int, truncated: bool, negativ
         return false;
     }
     // Safety: the documented contract makes `value` a non-null pointer to the caller's writable `float32`.
-    unsafe { *value = Float32FromBits(PackFloat32(significand, binary, negative)); }
+    *value = Float32FromBits(PackFloat32(significand, binary, negative));
     return true;
 }

@@ -169,15 +169,15 @@ func Main() -> int {
 
     // A block of exactly sizeof bytes holds the whole value, the last field included.
     // Safety: the fresh allocation is `sizeof(Uint256Field)` bytes, aligned for any primitive, and holds nothing yet.
-    let block = unsafe { Alloc(sizeof(Uint256Field)) as *var Uint256Field };
+    let block = Alloc(sizeof(Uint256Field)) as *var Uint256Field;
     Assert(block != null, "the allocation succeeds");
     // Safety: `block` is the live, non-null allocation of one `Uint256Field` made above.
-    unsafe { *block = Uint256Field { a: 0x1234u16, b: ~0u256, c: 0xA5u8 }; }
+    *block = Uint256Field { a: 0x1234u16, b: ~0u256, c: 0xA5u8 };
     // Safety: `block` is the live allocation written just above.
-    let roundTrips = unsafe { (*block).a == 0x1234u16 && (*block).b == ~0u256 && (*block).c == 0xA5u8 };
+    let roundTrips = (*block).a == 0x1234u16 && (*block).b == ~0u256 && (*block).c == 0xA5u8;
     Assert(roundTrips, "a heap value round-trips");
     // Safety: `block` came from `Alloc` above, is freed once, and is not used again.
-    unsafe { Free(block as *var opaque); }
+    Free(block as *var opaque);
 
     // Passed, returned and stored by value.
     let echoed = Echo(Uint256Field { a: 9u16, b: 1u256 << 200, c: 8u8 });

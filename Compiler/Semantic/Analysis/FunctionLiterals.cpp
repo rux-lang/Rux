@@ -105,7 +105,7 @@ TypeRef AnalysisContext::CheckFunctionLiteral(const FuncLiteralExpr &literal) {
     functionLiterals.insert_or_assign(&literal, name);
 
     // The body is checked as a function of its own, from the file's scope, with nothing of the enclosing body's
-    // control flow, error handling or unsafe context in force.
+    // control flow or error handling in force.
     literalSites.push_back({currentScope, inImpl});
     Scope *const savedScope = std::exchange(currentScope, FileScopeOf(currentScope));
     const FuncLiteralExpr *savedLiteral = std::exchange(currentFunctionLiteral, &literal);
@@ -121,10 +121,6 @@ TypeRef AnalysisContext::CheckFunctionLiteral(const FuncLiteralExpr &literal) {
     auto savedHandlers = std::exchange(throwHandlerFrames, {});
     auto savedMarks = std::exchange(throwMarkFrames, {});
     const Expr *savedOutcome = std::exchange(outcomeOperand, nullptr);
-    auto savedUnsafeFrames = std::exchange(unsafeBlockFrames, {});
-    const FuncDecl *savedUnsafeFunction = std::exchange(unsafeFunction, nullptr);
-    const Expr *savedCallee = std::exchange(calleeBeingChecked, nullptr);
-    const Expr *savedAddress = std::exchange(addressOperand, nullptr);
     const IndexExpr *savedIndexTarget = std::exchange(indexAssignmentTarget, nullptr);
     const bool savedPlainTarget = std::exchange(checkingPlainAssignmentTarget, false);
     const bool savedProjectionRoot = std::exchange(checkingBorrowProjectionRoot, false);
@@ -140,10 +136,6 @@ TypeRef AnalysisContext::CheckFunctionLiteral(const FuncLiteralExpr &literal) {
     checkingBorrowProjectionRoot = savedProjectionRoot;
     checkingPlainAssignmentTarget = savedPlainTarget;
     indexAssignmentTarget = savedIndexTarget;
-    addressOperand = savedAddress;
-    calleeBeingChecked = savedCallee;
-    unsafeFunction = savedUnsafeFunction;
-    unsafeBlockFrames = std::move(savedUnsafeFrames);
     outcomeOperand = savedOutcome;
     throwMarkFrames = std::move(savedMarks);
     throwHandlerFrames = std::move(savedHandlers);

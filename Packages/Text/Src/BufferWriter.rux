@@ -46,7 +46,7 @@ extend BufferWriter {
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#written
     pub func Written(&self) -> char8[..] {
         // Safety: `self.length` never exceeds `self.room.length`: `Write` refuses a run that does not fit.
-        return unsafe { (self.room.data)[..self.length] };
+        return (self.room.data)[..self.length];
     }
 
     /// How many bytes of text the writer holds.
@@ -98,7 +98,7 @@ extend BufferWriter : TextWriter {
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, the loop condition.
-            self.room[self.length + index] = unsafe { bytes.data[index] };
+            self.room[self.length + index] = bytes.data[index];
             index = index + 1;
         }
         self.length = self.length + bytes.length;

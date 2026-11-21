@@ -41,7 +41,7 @@ const Table: float256[4] = [Tenth, NegativeZero, Largest, Infinity];
 
 func Bits(value: float256) -> uint256 {
     // Safety: `value` is a by-value parameter, and `float256` and `uint256` have the same size.
-    unsafe {
+    {
         let address = (@value) as *uint256;
         return *address;
     }

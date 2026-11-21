@@ -42,7 +42,7 @@ extend Channel<T> {
         if capacity == 0u { Panic("a channel needs room for at least one value"); }
         // Safety: `Alloc` returns memory aligned for any type, and this retyping only names the `capacity` slots it
         // asked for.
-        let slots = unsafe { Alloc(capacity * sizeof(T)) as *var T };
+        let slots = Alloc(capacity * sizeof(T)) as *var T;
         if slots == null { Panic("out of memory for a channel"); }
         return Self {
             block: AllocateBlock(ChannelBlock<T> {
@@ -58,7 +58,7 @@ extend Channel<T> {
     pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
-        unsafe { RetainBlock(@self.block.references); }
+        RetainBlock(@self.block.references);
         return Self { block: self.block };
     }
 
@@ -70,12 +70,12 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so its fields are steady.
-        while unsafe { block.length == block.capacity && !block.closed } {
+        while (block.length == block.capacity && !block.closed) {
             // Safety: this thread holds the lock on `block`, a live block this handle counts in; the word waited on is
             // its `departures`, which outlives the wait for the same reason, and every thread reaches it atomically.
-            unsafe {
+            {
                 let departures = AtomicLoad(@block.departures, MemoryOrder::Relaxed);
                 UnlockWord(@block.word);
                 WaitWhile(@block.departures, departures, -1);
@@ -83,13 +83,13 @@ extend Channel<T> {
             }
         }
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so its fields are steady.
-        if unsafe { block.closed } {
+        if block.closed {
             // Safety: this thread holds the lock on `block`, a live block this handle counts in.
-            unsafe { UnlockWord(@block.word); }
+            UnlockWord(@block.word);
             throw value;
         }
         // Safety: this thread holds the lock on `block`, which `Push` releases, and the ring has room, checked above.
-        unsafe { self.Push(move value); }
+        self.Push(move value);
     }
 
     /// Sends `value` if there is room, without waiting.
@@ -100,15 +100,15 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so its fields are steady.
-        if unsafe { block.closed || block.length == block.capacity } {
+        if (block.closed || block.length == block.capacity) {
             // Safety: this thread holds the lock on `block`, a live block this handle counts in.
-            unsafe { UnlockWord(@block.word); }
+            UnlockWord(@block.word);
             throw value;
         }
         // Safety: this thread holds the lock on `block`, which `Push` releases, and the ring has room, checked above.
-        unsafe { self.Push(move value); }
+        self.Push(move value);
     }
 
     /// Receives the oldest value, waiting while the channel is empty.
@@ -118,12 +118,12 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so its fields are steady.
-        while unsafe { block.length == 0u && !block.closed } {
+        while (block.length == 0u && !block.closed) {
             // Safety: this thread holds the lock on `block`, a live block this handle counts in; the word waited on is
             // its `arrivals`, which outlives the wait for the same reason, and every thread reaches it atomically.
-            unsafe {
+            {
                 let arrivals = AtomicLoad(@block.arrivals, MemoryOrder::Relaxed);
                 UnlockWord(@block.word);
                 WaitWhile(@block.arrivals, arrivals, -1);
@@ -131,14 +131,14 @@ extend Channel<T> {
             }
         }
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so its fields are steady.
-        if unsafe { block.length == 0u } {
+        if (block.length == 0u) {
             // Safety: this thread holds the lock on `block`, a live block this handle counts in.
-            unsafe { UnlockWord(@block.word); }
+            UnlockWord(@block.word);
             return none;
         }
         // Safety: this thread holds the lock on `block`, which `Pop` releases, and the ring holds a value, checked
         // above.
-        return unsafe { self.Pop() };
+        return self.Pop();
     }
 
     /// Receives the oldest value if there is one, without waiting.
@@ -148,16 +148,16 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so its fields are steady.
-        if unsafe { block.length == 0u } {
+        if (block.length == 0u) {
             // Safety: this thread holds the lock on `block`, a live block this handle counts in.
-            unsafe { UnlockWord(@block.word); }
+            UnlockWord(@block.word);
             return none;
         }
         // Safety: this thread holds the lock on `block`, which `Pop` releases, and the ring holds a value, checked
         // above.
-        return unsafe { self.Pop() };
+        return self.Pop();
     }
 
     /// Closes the channel: sends fail from now on, and receivers take what is left and then get none. Closing a
@@ -167,17 +167,15 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, and its sequence words are
         // reached only atomically.
-        unsafe {
-            block.closed = true;
-            AtomicFetchAdd(@block.arrivals, 1u32, MemoryOrder::Relaxed);
-            AtomicFetchAdd(@block.departures, 1u32, MemoryOrder::Relaxed);
-            UnlockWord(@block.word);
-            WakeAll(@block.arrivals);
-            WakeAll(@block.departures);
-        }
+        block.closed = true;
+        AtomicFetchAdd(@block.arrivals, 1u32, MemoryOrder::Relaxed);
+        AtomicFetchAdd(@block.departures, 1u32, MemoryOrder::Relaxed);
+        UnlockWord(@block.word);
+        WakeAll(@block.arrivals);
+        WakeAll(@block.departures);
     }
 
     /// Whether the channel was closed.
@@ -187,11 +185,11 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so the field is steady.
-        let closed = unsafe { block.closed };
+        let closed = block.closed;
         // Safety: this thread holds the lock on `block`, a live block this handle counts in.
-        unsafe { UnlockWord(@block.word); }
+        UnlockWord(@block.word);
         return closed;
     }
 
@@ -202,17 +200,17 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
-        unsafe { LockWord(@block.word); }
+        LockWord(@block.word);
         // Safety: this thread holds the lock on `block`, a live block this handle counts in, so the field is steady.
-        let length = unsafe { block.length };
+        let length = block.length;
         // Safety: this thread holds the lock on `block`, a live block this handle counts in.
-        unsafe { UnlockWord(@block.word); }
+        UnlockWord(@block.word);
         return length;
     }
 
     // Appends a value under the lock, releases it and wakes a receiver.
     // Safety: the calling thread must hold the lock on `self.block`, and the ring must have room for one more value.
-    unsafe func Push(&self, value: T) {
+    func Push(&self, value: T) {
         let block = self.block;
         Slot<T>(block, (block.head + block.length) % block.capacity)[0] = move value;
         block.length = block.length + 1u;
@@ -223,7 +221,7 @@ extend Channel<T> {
 
     // Takes the oldest value under the lock, releases it and wakes a sender.
     // Safety: the calling thread must hold the lock on `self.block`, and the ring must hold at least one value.
-    unsafe func Pop(&self) -> T? {
+    func Pop(&self) -> T? {
         let block = self.block;
         let value = move Slot<T>(block, block.head)[0];
         block.head = (block.head + 1u) % block.capacity;
@@ -238,23 +236,21 @@ extend Channel<T> {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
         // atomically.
-        if !unsafe { ReleaseBlock(@block.references) } { return; }
+        if !ReleaseBlock(@block.references) { return; }
         // Safety: this handle let go of the last count, so no other thread reaches `block`; the ring invariant holds:
         // `head` is below `capacity` and the `length` slots from it hold live values in `slots`, from `Alloc`.
-        unsafe {
-            while block.length != 0u {
-                DiscardValue<T>(Slot<T>(block, block.head));
-                block.head = (block.head + 1u) % block.capacity;
-                block.length = block.length - 1u;
-            }
-            Free(block.slots as *opaque);
-            DestroyBlock<ChannelBlock<T>>(block);
+        while block.length != 0u {
+            DiscardValue<T>(Slot<T>(block, block.head));
+            block.head = (block.head + 1u) % block.capacity;
+            block.length = block.length - 1u;
         }
+        Free(block.slots as *opaque);
+        DestroyBlock<ChannelBlock<T>>(block);
     }
 }
 
 // The slot at `index` in the ring.
 // Safety: `block` must be a live channel block and `index` must be below its `capacity`.
-unsafe func Slot<T>(block: *var ChannelBlock<T>, index: uint) -> *var T {
+func Slot<T>(block: *var ChannelBlock<T>, index: uint) -> *var T {
     return ((block.slots as uint) + index * sizeof(T)) as *var T;
 }

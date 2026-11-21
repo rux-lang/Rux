@@ -23,7 +23,7 @@ extend Tracked {
     func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
-            unsafe { *self.counter = *self.counter + 1; }
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -38,7 +38,7 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
     // Safety: both point at locals of the caller, which outlive this call.
-    unsafe { *afterInserting = *counter; }
+    *afterInserting = *counter;
 }
 
 // A consuming walk stopped part-way: what was handed out is destroyed by whoever received it, and what was not is
@@ -65,7 +65,7 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
         taken = taken + 1;
     }
     // Safety: both point at locals of the caller, which outlive this call.
-    unsafe { *afterTaking = *counter; }
+    *afterTaking = *counter;
 }
 
 // Counts what a range hands back, checking on the way that it is sorted and that both bounds are respected.

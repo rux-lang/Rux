@@ -114,7 +114,7 @@ pub const MSG_NOSIGNAL: int32 = 0x4000;
 /// @see https://man7.org/linux/man-pages/man2/socket.2.html
 pub func Socket(domain: int32, kind: int32, protocol: int32) -> int64 {
     // Safety: socket takes only integer arguments and returns a new descriptor.
-    return unsafe {
+    return {
         Syscall6(SysSocket, domain.Truncate<uint64>(), kind.Truncate<uint64>(), protocol.Truncate<uint64>(), 0, 0, 0)
     };
 }
@@ -127,7 +127,7 @@ pub func Socket(domain: int32, kind: int32, protocol: int32) -> int64 {
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#connect
 /// @see https://man7.org/linux/man-pages/man2/connect.2.html
-pub unsafe func Connect(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
+pub func Connect(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
     return Syscall6(SysConnect, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
 }
 
@@ -139,7 +139,7 @@ pub unsafe func Connect(fd: FileDescriptor, address: *opaque, length: uint32) ->
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#bind
 /// @see https://man7.org/linux/man-pages/man2/bind.2.html
-pub unsafe func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
+pub func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> int64 {
     return Syscall6(SysBind, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
 }
 
@@ -151,7 +151,7 @@ pub unsafe func Bind(fd: FileDescriptor, address: *opaque, length: uint32) -> in
 /// @see https://man7.org/linux/man-pages/man2/listen.2.html
 pub func Listen(fd: FileDescriptor, backlog: int32) -> int64 {
     // Safety: listen takes a descriptor number and a backlog, and the kernel validates both.
-    return unsafe { Syscall6(SysListen, SignExtendFd(fd), backlog.Truncate<uint64>(), 0, 0, 0, 0) };
+    return Syscall6(SysListen, SignExtendFd(fd), backlog.Truncate<uint64>(), 0, 0, 0, 0);
 }
 
 /// Accepts a waiting connection as a new socket.
@@ -164,7 +164,7 @@ pub func Listen(fd: FileDescriptor, backlog: int32) -> int64 {
 /// @returns the new descriptor, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#accept4
 /// @see https://man7.org/linux/man-pages/man2/accept4.2.html
-pub unsafe func Accept4(fd: FileDescriptor, address: *var opaque, length: *var uint32, flags: int32) -> int64 {
+pub func Accept4(fd: FileDescriptor, address: *var opaque, length: *var uint32, flags: int32) -> int64 {
     return Syscall6(SysAccept4, SignExtendFd(fd), address as uint64, length as uint64, flags.Truncate<uint64>(), 0, 0);
 }
 
@@ -179,7 +179,7 @@ pub unsafe func Accept4(fd: FileDescriptor, address: *var opaque, length: *var u
 /// @returns the bytes sent, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#sendto
 /// @see https://man7.org/linux/man-pages/man2/sendto.2.html
-pub unsafe func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: int32, address: *opaque,
+pub func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: int32, address: *opaque,
                        length: uint32) -> int64 {
     return Syscall6(SysSendTo, SignExtendFd(fd), buffer as uint64, count as uint64, flags.Truncate<uint64>(), address as uint64, length as uint64);
 }
@@ -196,7 +196,7 @@ pub unsafe func SendTo(fd: FileDescriptor, buffer: *opaque, count: uint, flags: 
 /// @returns the bytes received, zero once a stream's peer closed it, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#receivefrom
 /// @see https://man7.org/linux/man-pages/man2/recvfrom.2.html
-pub unsafe func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint, flags: int32, address: *var opaque,
+pub func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint, flags: int32, address: *var opaque,
                             length: *var uint32) -> int64 {
     return Syscall6(SysReceiveFrom, SignExtendFd(fd), buffer as uint64, count as uint64, flags.Truncate<uint64>(), address as uint64, length as uint64);
 }
@@ -209,7 +209,7 @@ pub unsafe func ReceiveFrom(fd: FileDescriptor, buffer: *var opaque, count: uint
 /// @see https://man7.org/linux/man-pages/man2/shutdown.2.html
 pub func Shutdown(fd: FileDescriptor, how: int32) -> int64 {
     // Safety: shutdown takes a descriptor number and a direction, and the kernel validates both.
-    return unsafe { Syscall6(SysShutdown, SignExtendFd(fd), how.Truncate<uint64>(), 0, 0, 0, 0) };
+    return Syscall6(SysShutdown, SignExtendFd(fd), how.Truncate<uint64>(), 0, 0, 0, 0);
 }
 
 /// Sets a socket option.
@@ -222,7 +222,7 @@ pub func Shutdown(fd: FileDescriptor, how: int32) -> int64 {
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#setsocketoption
 /// @see https://man7.org/linux/man-pages/man2/setsockopt.2.html
-pub unsafe func SetSocketOption(fd: FileDescriptor, level: int32, name: int32, value: *opaque,
+pub func SetSocketOption(fd: FileDescriptor, level: int32, name: int32, value: *opaque,
                                 length: uint32) -> int64 {
     return Syscall6(SysSetSockOpt, SignExtendFd(fd), level.Truncate<uint64>(), name.Truncate<uint64>(), value as uint64, length as uint64, 0);
 }
@@ -235,7 +235,7 @@ pub unsafe func SetSocketOption(fd: FileDescriptor, level: int32, name: int32, v
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#getsocketname
 /// @see https://man7.org/linux/man-pages/man2/getsockname.2.html
-pub unsafe func GetSocketName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
+pub func GetSocketName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
     return Syscall6(SysGetSockName, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
 }
 
@@ -247,6 +247,6 @@ pub unsafe func GetSocketName(fd: FileDescriptor, address: *var opaque, length: 
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/socket#getpeername
 /// @see https://man7.org/linux/man-pages/man2/getpeername.2.html
-pub unsafe func GetPeerName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
+pub func GetPeerName(fd: FileDescriptor, address: *var opaque, length: *var uint32) -> int64 {
     return Syscall6(SysGetPeerName, SignExtendFd(fd), address as uint64, length as uint64, 0, 0, 0);
 }

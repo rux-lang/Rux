@@ -79,16 +79,16 @@ extend JoinHandle<R> {
         self.block = null;
         // Safety: `self.thread` came from `NativeStart`, and this handle, still joinable, has neither joined nor
         // detached it.
-        unsafe { NativeJoin(self.thread); }
+        NativeJoin(self.thread);
         // Safety: `block` is the packet `SpawnWith` built, whose header records where the result sits, and the thread
         // has finished, so the result it left there is live and nothing else reads it.
-        let result = unsafe {
+        let result = {
             let header = block as *var PacketHeader;
             move (((block as uint) + header.resultOffset) as *var R)[0]
         };
         // The thread let go before it finished, so this is the last owner.
         // Safety: the thread has finished and let go, and the result was moved out above, so nobody holds `block`.
-        unsafe { Release(block); }
+        Release(block);
         return move result;
     }
 
@@ -101,12 +101,12 @@ extend JoinHandle<R> {
         self.block = null;
         // Safety: `self.thread` came from `NativeStart`, and this handle, still joinable, has neither joined nor
         // detached it.
-        unsafe { NativeDetach(self.thread); }
+        NativeDetach(self.thread);
         // Safety: `block` is the packet `SpawnWith` built, and this handle holds one of its two owner counts.
-        if unsafe { LetGo(block) } {
+        if LetGo(block) {
             // Safety: the thread let go first, so it has finished: the result slot its header records holds the live
             // result, and nobody else holds `block`.
-            unsafe {
+            {
                 let header = block as *var PacketHeader;
                 DiscardSlot<R>(((block as uint) + header.resultOffset) as *var R);
                 Release(block);
@@ -155,7 +155,7 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
     let block = try PageAllocate(length, PageRead | PageWrite) catch { _ => throw .Exhausted };
     // Safety: `block` is a fresh, page-aligned allocation of `length` bytes, which hold a `Packet<T, R>` and, past it,
     // the context slot at `contextOffset`, each aligned for its type; no other thread sees it yet.
-    unsafe {
+    {
         let packet = block as *var Packet<T, R>;
         packet.header.length = length;
         packet.header.resultOffset = resultOffset;
@@ -167,17 +167,15 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
     try {
         // Safety: `Start` has the shape every system calls a thread's entry with, and `block` stays live for the new
         // thread because it holds one of the block's two owner counts, which it gives up only when it is done with it.
-        let thread = unsafe { NativeStart(start as *opaque, block, options.stackSize) };
+        let thread = NativeStart(start as *opaque, block, options.stackSize);
         return JoinHandle<R> { thread, block };
     } catch {
         error => {
             // The thread never ran, so the context is still here to destroy.
             // Safety: the thread never ran, so the context written above is live in its slot and nobody else holds
             // `block`.
-            unsafe {
-                DiscardSlot<T>(((block as uint) + contextOffset) as *var T);
-                Release(block);
-            }
+            DiscardSlot<T>(((block as uint) + contextOffset) as *var T);
+            Release(block);
             throw error;
         },
     }
@@ -199,29 +197,27 @@ func ResultOffset<T, R>() -> uint {
 func Start<T, R>(packet: *var Packet<T, R>) -> *var opaque {
     let block = packet as *var opaque;
     // Safety: `packet` is the block `SpawnWith` built and handed to this thread, which holds an owner count on it.
-    let entry = unsafe { packet.entry };
+    let entry = packet.entry;
     // Safety: the context slot of this thread's block holds the context `SpawnWith` moved in, which only this thread
     // takes.
-    let context = unsafe { move (((block as uint) + ContextOffset<T, R>()) as *var T)[0] };
+    let context = move (((block as uint) + ContextOffset<T, R>()) as *var T)[0];
     // Safety: the result slot lies inside this thread's block, aligned for `R`, by `ResultOffset`.
-    let result = unsafe { ((block as uint) + ResultOffset<T, R>()) as *var R };
+    let result = ((block as uint) + ResultOffset<T, R>()) as *var R;
     // Safety: `result` addresses the empty result slot of the block this thread still holds.
-    unsafe { result[0] = entry(move context); }
+    result[0] = entry(move context);
     // Safety: this thread holds one of the block's two owner counts.
-    if unsafe { LetGo(block) } {
+    if LetGo(block) {
         // The handle was dropped while this thread ran, so nobody will take the result.
         // Safety: this thread let go last, so nobody else holds `block`, and `result` holds the live result.
-        unsafe {
-            DiscardSlot<R>(result);
-            Release(block);
-        }
+        DiscardSlot<R>(result);
+        Release(block);
     }
     return null;
 }
 
 // Gives up one owner's hold on a block, and says whether that was the last one.
 // Safety: `block` must be a live packet block from `SpawnWith`, and the caller must hold one of its owner counts.
-unsafe func LetGo(block: *var opaque) -> bool {
+func LetGo(block: *var opaque) -> bool {
     let header = block as *var PacketHeader;
     return AtomicFetchSub(@header.owners, 1u32, MemoryOrder::AcquireRelease) == 1u32;
 }
@@ -229,13 +225,13 @@ unsafe func LetGo(block: *var opaque) -> bool {
 // Returns a block nobody holds to the system.
 // Safety: `block` must be a packet block from `SpawnWith` that nobody else holds, with its context and result moved
 // out or destroyed.
-unsafe func Release(block: *var opaque) {
+func Release(block: *var opaque) {
     let header = block as *var PacketHeader;
     try PageRelease(block, header.length) catch { _ => {} };
 }
 
 // Destroys the value in a slot by moving it out.
 // Safety: `slot` must address a live `T` that nothing reads afterwards.
-unsafe func DiscardSlot<T>(slot: *var T) {
+func DiscardSlot<T>(slot: *var T) {
     let taken = move slot[0];
 }

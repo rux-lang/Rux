@@ -354,7 +354,7 @@ pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 throws IoEr
     var bits = try ReadUint32(reader, endian);
     var value = 0.0f32;
     // Safety: `value` and `bits` are distinct locals of exactly 4 bytes each.
-    unsafe { Copy(@value as *var opaque, @bits as *opaque, 4); }
+    Copy(@value as *var opaque, @bits as *opaque, 4);
     return value;
 }
 
@@ -368,7 +368,7 @@ pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) throw
     var bits: uint32 = 0;
     var held = value;
     // Safety: `bits` and `held` are distinct locals of exactly 4 bytes each.
-    unsafe { Copy(@bits as *var opaque, @held as *opaque, 4); }
+    Copy(@bits as *var opaque, @held as *opaque, 4);
     return try WriteUint32(writer, endian, bits);
 }
 
@@ -381,7 +381,7 @@ pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 throws IoEr
     var bits = try ReadUint64(reader, endian);
     var value = 0.0f64;
     // Safety: `value` and `bits` are distinct locals of exactly 8 bytes each.
-    unsafe { Copy(@value as *var opaque, @bits as *opaque, 8); }
+    Copy(@value as *var opaque, @bits as *opaque, 8);
     return value;
 }
 
@@ -395,6 +395,6 @@ pub func WriteFloat64(writer: &var Writer, endian: Endian, value: float64) throw
     var bits: uint64 = 0;
     var held = value;
     // Safety: `bits` and `held` are distinct locals of exactly 8 bytes each.
-    unsafe { Copy(@bits as *var opaque, @held as *opaque, 8); }
+    Copy(@bits as *var opaque, @held as *opaque, 8);
     return try WriteUint64(writer, endian, bits);
 }

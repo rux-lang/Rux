@@ -103,7 +103,7 @@ extend StringView {
         if start > end || end > self.bytes.length { return none; }
         if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) { return none; }
         // Safety: `start <= end <= self.bytes.length`, checked above, so the part lies inside the view.
-        let part = unsafe { (@self.bytes.data[start])[..end - start] };
+        let part = (@self.bytes.data[start])[..end - start];
         return Self { bytes: part };
     }
 
@@ -129,7 +129,7 @@ extend StringView {
         var index: uint = 0;
         while index < self.bytes.length {
             // Safety: `index` is below `self.bytes.length`, which equals `other.bytes.length`, checked above.
-            if unsafe { self.bytes.data[index] != other.bytes.data[index] } { return false; }
+            if (self.bytes.data[index] != other.bytes.data[index]) { return false; }
             index = index + 1;
         }
         return true;
@@ -146,9 +146,9 @@ extend StringView {
         var index: uint = 0;
         while index < shared {
             // Safety: `index` is below `shared`, the shorter of the two lengths.
-            let mine = unsafe { self.bytes.data[index] };
+            let mine = self.bytes.data[index];
             // Safety: `index` is below `shared`, the shorter of the two lengths.
-            let theirs = unsafe { other.bytes.data[index] };
+            let theirs = other.bytes.data[index];
             if mine < theirs { return Ordering::Less; }
             if mine > theirs { return Ordering::Greater; }
             index = index + 1;

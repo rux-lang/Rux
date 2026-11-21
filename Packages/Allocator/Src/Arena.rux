@@ -8,7 +8,7 @@
 // `Reset` is what makes an arena worth reusing: it rewinds every allocation while keeping the largest block, so the
 // next round of work runs without asking the system for anything at all.
 // The arena owns its blocks, so it moves rather than copies, and `~Arena` releases them. `Handle` gives the
-// `Allocator` handle a container keeps: it addresses the arena, so making one is `unsafe` and its caller promises
+// `Allocator` handle a container keeps: it addresses the arena, so its caller promises
 // that the arena outlives every copy, stays where it is, and is not reset while an allocation made through it is in
 // use.
 
@@ -85,7 +85,7 @@ extend Arena {
     /// handle held past its arena's life points at released storage.
     /// @returns a copyable handle addressing this arena
     /// @see https://rux-lang.dev/docs/api/allocator/arena#handle
-    pub unsafe func Handle(*var self) -> Allocator {
+    pub func Handle(*var self) -> Allocator {
         return self as Allocator;
     }
 
@@ -101,11 +101,11 @@ extend Arena {
         if self.current == null { return; }
         // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
         // `backing`.
-        var block = unsafe { self.current.previous };
+        var block = self.current.previous;
         while block != null {
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
             // from `backing`; the link is read before the block is released, and nothing reaches it after.
-            unsafe {
+            {
                 let earlier = block.previous;
                 self.ReleaseBlock(block);
                 block = earlier;
@@ -113,10 +113,8 @@ extend Arena {
         }
         // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
         // `backing`, and `current` is not null, checked above.
-        unsafe {
-            self.current.previous = null;
-            self.current.used = 0;
-        }
+        self.current.previous = null;
+        self.current.used = 0;
         self.lastAllocation = 0;
         self.blocks = 1;
     }
@@ -134,10 +132,8 @@ extend Arena {
         while block != null {
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
             // from `backing`.
-            unsafe {
-                total = total + block.used;
-                block = block.previous;
-            }
+            total = total + block.used;
+            block = block.previous;
         }
         return total;
     }
@@ -152,7 +148,7 @@ extend Arena {
 
     // Gives one block back to the backing allocator, with the layout it was taken under.
     // Safety: `block` must be a live block this arena took from `backing`, and nothing may reach it afterwards.
-    unsafe func ReleaseBlock(&var self, block: *var ArenaBlock) {
+    func ReleaseBlock(&var self, block: *var ArenaBlock) {
         let total = sizeof(ArenaBlock) + block.capacity;
         let layout = Layout::Of(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
         // The block came from the backing allocator with this layout, and the arena is giving it up either way.
@@ -161,7 +157,7 @@ extend Arena {
 
     // Takes a block able to hold `payload` bytes, chains it in front of the current one, and makes it current.
     // Safety: the chain invariant holds for `self`.
-    unsafe func TakeBlock(&var self, payload: uint) throws AllocError {
+    func TakeBlock(&var self, payload: uint) throws AllocError {
         var capacity = self.nextBlockSize;
         if capacity < payload {
             capacity = payload;
@@ -184,7 +180,7 @@ extend Arena {
 
     // The bump allocation itself: align within the current block, take the space, and remember where it went.
     // Safety: the chain invariant holds for `self`.
-    unsafe func Bump(&var self, layout: Layout) -> uint {
+    func Bump(&var self, layout: Layout) -> uint {
         if self.current == null { return 0; }
         let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
         let unaligned = payloadStart + self.current.used;
@@ -207,7 +203,7 @@ extend Arena {
         while block != null {
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
             // from `backing`; the link is read before the block is released, and nothing reaches it after.
-            unsafe {
+            {
                 let earlier = block.previous;
                 self.ReleaseBlock(block);
                 block = earlier;
@@ -236,12 +232,12 @@ extend Arena : Allocator {
 
         // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
         // from `backing`.
-        var address = unsafe { self.Bump(layout) };
+        var address = self.Bump(layout);
         if address == 0 {
             // Safety: the chain invariant, as above.
-            unsafe { try self.TakeBlock(layout.size + layout.alignment); }
+            try self.TakeBlock(layout.size + layout.alignment);
             // Safety: the chain invariant, as above; `TakeBlock` keeps it.
-            address = unsafe { self.Bump(layout) };
+            address = self.Bump(layout);
             if address == 0 { throw .OutOfMemory; }
         }
         return address as *var opaque;
@@ -263,14 +259,12 @@ extend Arena : Allocator {
         let address = block as uint;
         // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
         // `backing`, so a non-null `current` is live.
-        unsafe {
-            if address == self.lastAllocation && self.current != null {
-                let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
-                let offset = address - payloadStart;
-                if offset + layout.size <= self.current.used {
-                    self.current.used = offset;
-                    self.lastAllocation = 0;
-                }
+        if address == self.lastAllocation && self.current != null {
+            let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
+            let offset = address - payloadStart;
+            if offset + layout.size <= self.current.used {
+                self.current.used = offset;
+                self.lastAllocation = 0;
             }
         }
     }
@@ -304,20 +298,18 @@ extend Arena : Allocator {
         let address = block as uint;
         // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
         // `backing`, so a non-null `current` is live.
-        unsafe {
-            if address != 0 && address == self.lastAllocation && self.current != null {
-                let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
-                let offset = address - payloadStart;
-                if offset + oldLayout.size == self.current.used {
-                    if newLayout.size <= oldLayout.size {
-                        self.current.used = offset + newLayout.size;
-                        return block;
-                    }
-                    let extra = newLayout.size - oldLayout.size;
-                    if extra <= self.current.capacity - self.current.used {
-                        self.current.used = self.current.used + extra;
-                        return block;
-                    }
+        if address != 0 && address == self.lastAllocation && self.current != null {
+            let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
+            let offset = address - payloadStart;
+            if offset + oldLayout.size == self.current.used {
+                if newLayout.size <= oldLayout.size {
+                    self.current.used = offset + newLayout.size;
+                    return block;
+                }
+                let extra = newLayout.size - oldLayout.size;
+                if extra <= self.current.capacity - self.current.used {
+                    self.current.used = self.current.used + extra;
+                    return block;
                 }
             }
         }
@@ -326,7 +318,7 @@ extend Arena : Allocator {
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes, the `Allocator` contract makes `block` an
         // allocation of this arena with `oldLayout.size` bytes, and `offset` stays below the smaller of the two.
-        unsafe {
+        {
             var offset: uint = 0;
             let target = fresh as *var byte;
             let origin = block as *byte;

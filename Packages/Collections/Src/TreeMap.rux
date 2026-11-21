@@ -67,7 +67,7 @@ extend TreeMap<K, V> {
         let node = self.tree.Find(key, self.compare);
         if node == null { return none; }
         // Safety: the tree invariant: `node` is non-null, checked above, and `Find` hands back only live nodes.
-        return .Some(unsafe { node.value });
+        return .Some(node.value);
     }
 
     /// The value stored under `key`, borrowed where it sits, or `none`.
@@ -79,7 +79,7 @@ extend TreeMap<K, V> {
         let node = self.tree.Find(key, self.compare);
         if node == null { return none; }
         // Safety: the tree invariant: `node` is non-null, checked above, and `Find` hands back only live nodes.
-        unsafe { return node.value; }
+        return node.value;
     }
 
     /// The value stored under `key`, borrowed to be written where it sits, or `none`.
@@ -92,7 +92,7 @@ extend TreeMap<K, V> {
         let node = self.tree.Find(key, self.compare);
         if node == null { return none; }
         // Safety: the tree invariant: `node` is non-null, checked above, and `Find` hands back only live nodes.
-        unsafe { return node.value; }
+        return node.value;
     }
 
     /// Stores `value` under `key`, replacing and destroying whatever was there.
@@ -127,7 +127,7 @@ extend TreeMap<K, V> {
         let node = self.tree.Find(key, self.compare);
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
-        let entry = unsafe { self.tree.Detach(node) };
+        let entry = self.tree.Detach(node);
         return .Some(entry.value);
     }
 
@@ -141,7 +141,7 @@ extend TreeMap<K, V> {
         let node = self.tree.Find(key, self.compare);
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
-        let entry = unsafe { self.tree.Detach(node) };
+        let entry = self.tree.Detach(node);
         return .Some(move entry);
     }
 
@@ -154,7 +154,7 @@ extend TreeMap<K, V> {
     // The entry a node holds, or `none` for a node that is not there. Every ordered query ends in one of these, and
     // writing it once keeps the null check off each of them.
     // Safety: `node` must be null or a live node of a tree.
-    unsafe func EntryOf(node: *var TreeNode<K, V>) -> KeyValue<K, V>? {
+    func EntryOf(node: *var TreeNode<K, V>) -> KeyValue<K, V>? {
         if node == null { return none; }
         return .Some(KeyValue<K, V> { key: node.key, value: node.value });
     }
@@ -165,7 +165,7 @@ extend TreeMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#first
     pub func First(&self) -> KeyValue<K, V>? {
         // Safety: the tree invariant: `root` is null or a live node, and so is the leftmost node below it.
-        return unsafe { TreeMap::EntryOf<K, V>(Tree::Minimum<K, V>(self.tree.root)) };
+        return TreeMap::EntryOf<K, V>(Tree::Minimum<K, V>(self.tree.root));
     }
 
     /// The entry with the largest key, or `none` for an empty map.
@@ -173,7 +173,7 @@ extend TreeMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#last
     pub func Last(&self) -> KeyValue<K, V>? {
         // Safety: the tree invariant: `root` is null or a live node, and so is the rightmost node below it.
-        return unsafe { TreeMap::EntryOf<K, V>(Tree::Maximum<K, V>(self.tree.root)) };
+        return TreeMap::EntryOf<K, V>(Tree::Maximum<K, V>(self.tree.root));
     }
 
     /// The entry with the largest key at or below `key`, or `none` when every key is above it.
@@ -188,21 +188,21 @@ extend TreeMap<K, V> {
         var walk = self.tree.root;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of the tree.
-            let order = unsafe { self.compare(key, walk.key) };
+            let order = self.compare(key, walk.key);
             // Safety: the tree invariant: `walk` is still that live node.
-            if order.IsEqual() { return unsafe { TreeMap::EntryOf<K, V>(walk) }; }
+            if order.IsEqual() { return TreeMap::EntryOf<K, V>(walk); }
             if order.IsGreater() {
                 best = walk;
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
             }
             else {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
             }
         }
         // Safety: the tree invariant: `best` is null or a node the descent passed, and so a live one.
-        return unsafe { TreeMap::EntryOf<K, V>(best) };
+        return TreeMap::EntryOf<K, V>(best);
     }
 
     /// The entry with the smallest key at or above `key`, or `none` when every key is below it.
@@ -214,21 +214,21 @@ extend TreeMap<K, V> {
         var walk = self.tree.root;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of the tree.
-            let order = unsafe { self.compare(key, walk.key) };
+            let order = self.compare(key, walk.key);
             // Safety: the tree invariant: `walk` is still that live node.
-            if order.IsEqual() { return unsafe { TreeMap::EntryOf<K, V>(walk) }; }
+            if order.IsEqual() { return TreeMap::EntryOf<K, V>(walk); }
             if order.IsLess() {
                 best = walk;
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
             }
             else {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
             }
         }
         // Safety: the tree invariant: `best` is null or a node the descent passed, and so a live one.
-        return unsafe { TreeMap::EntryOf<K, V>(best) };
+        return TreeMap::EntryOf<K, V>(best);
     }
 
     /// A walk over this map, smallest key first, leaving it untouched.
@@ -237,7 +237,7 @@ extend TreeMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#iterate
     pub func Iterate(&self) -> TreeMapIterator<K, V> {
         // Safety: the tree invariant: `root` is null or a live node of the tree.
-        return TreeMapIterator<K, V> { next: unsafe { Tree::Minimum<K, V>(self.tree.root) } };
+        return TreeMapIterator<K, V> { next: (Tree::Minimum<K, V>(self.tree.root)) };
     }
 
     /// A walk over the entries whose keys are at or above `start` and below `end`.
@@ -255,7 +255,7 @@ extend TreeMap<K, V> {
         var walk = self.tree.root;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of the tree.
-            let order = unsafe { self.compare(start, walk.key) };
+            let order = self.compare(start, walk.key);
             if order.IsEqual() {
                 first = walk;
                 walk = null;
@@ -263,11 +263,11 @@ extend TreeMap<K, V> {
             else if order.IsLess() {
                 first = walk;
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
             }
             else {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
             }
         }
         return TreeMapRangeIterator<K, V> { next: first, end, compare: self.compare };
@@ -311,10 +311,8 @@ extend TreeMapIterator<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and a live node of the map: `Iterate` requires the map to
         // outlive the walk untouched, so every node it reached is still linked in.
-        unsafe {
-            self.next = Tree::Successor<K, V>(node);
-            return .Some(KeyValue<K, V> { key: node.key, value: node.value });
-        }
+        self.next = Tree::Successor<K, V>(node);
+        return .Some(KeyValue<K, V> { key: node.key, value: node.value });
     }
 }
 
@@ -340,15 +338,13 @@ extend TreeMapRangeIterator<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and a live node of the map: `Range` requires the map to outlive
         // the walk untouched, so every node it reached is still linked in.
-        if !unsafe { self.compare(node.key, self.end) }.IsLess() {
+        if !self.compare(node.key, self.end).IsLess() {
             self.next = null;
             return none;
         }
         // Safety: `node` is still that live node of the map.
-        unsafe {
-            self.next = Tree::Successor<K, V>(node);
-            return .Some(KeyValue<K, V> { key: node.key, value: node.value });
-        }
+        self.next = Tree::Successor<K, V>(node);
+        return .Some(KeyValue<K, V> { key: node.key, value: node.value });
     }
 }
 
@@ -372,10 +368,10 @@ extend TreeMapIntoIterator<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#tree-map-into-iterator-next
     pub func Next(&var self) -> KeyValue<K, V>? {
         // Safety: the tree invariant: `root` is null or a live node of the tree this iterator owns.
-        let node = unsafe { Tree::Minimum<K, V>(self.tree.root) };
+        let node = Tree::Minimum<K, V>(self.tree.root);
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Minimum` of a live subtree is a live node of it.
-        let entry = unsafe { self.tree.Detach(node) };
+        let entry = self.tree.Detach(node);
         return .Some(move entry);
     }
 }

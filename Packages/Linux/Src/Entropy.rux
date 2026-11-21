@@ -30,6 +30,6 @@ pub const RandomBlockingPool: uint32 = 2;
 /// @param flags zero, or one of the `Random*` values
 /// @returns the bytes written, which may be fewer than asked for, or a negative error number
 /// @see https://rux-lang.dev/docs/api/linux/get-random
-pub unsafe func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
+pub func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
     return Syscall3(SysGetRandom, buffer as uint64, length as uint64, flags as uint64);
 }

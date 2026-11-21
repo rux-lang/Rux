@@ -44,7 +44,7 @@ pub func IsSortedUntil<T>(items: T[..]) -> uint {
     while index < items.length {
         // Safety: `index` is below `items.length`, the loop condition, and at least one, so `index - 1` is in range
         // too.
-        if unsafe { items.data[index] < items.data[index - 1] } { return index; }
+        if (items.data[index] < items.data[index - 1]) { return index; }
         index++;
     }
     return items.length;
@@ -67,7 +67,7 @@ pub func LowerBound<T>(items: T[..], value: T) -> uint {
     while low < high {
         let middle = low + (high - low) / 2;
         // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if unsafe { items.data[middle] } < value {
+        if items.data[middle] < value {
             low = middle + 1;
         }
         else {
@@ -93,7 +93,7 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
     while low < high {
         let middle = low + (high - low) / 2;
         // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if value < unsafe { items.data[middle] } {
+        if value < items.data[middle] {
             high = middle;
         }
         else {
@@ -119,7 +119,7 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
     let at = LowerBound<T>(items, value);
     // Safety: `at` is below `items.length`, checked just before.
-    if at < items.length && !(value < unsafe { items.data[at] }) { return at; }
+    if at < items.length && !(value < items.data[at]) { return at; }
     return none;
 }
 
@@ -166,7 +166,7 @@ pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> ui
     while index < items.length {
         // Safety: `index` is below `items.length`, the loop condition, and at least one, so `index - 1` is in range
         // too.
-        if unsafe { compare(items.data[index], items.data[index - 1]).IsLess() } { return index; }
+        if compare(items.data[index], items.data[index - 1]).IsLess() { return index; }
         index++;
     }
     return items.length;
@@ -188,7 +188,7 @@ pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
     while low < high {
         let middle = low + (high - low) / 2;
         // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if unsafe { compare(items.data[middle], value).IsLess() } {
+        if compare(items.data[middle], value).IsLess() {
             low = middle + 1;
         }
         else {
@@ -214,7 +214,7 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
     while low < high {
         let middle = low + (high - low) / 2;
         // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if unsafe { compare(value, items.data[middle]).IsLess() } {
+        if compare(value, items.data[middle]).IsLess() {
             high = middle;
         }
         else {
@@ -238,7 +238,7 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
     let at = LowerBoundBy<T>(items, value, compare);
     // Safety: `at` is below `items.length`, checked just before.
-    if at < items.length && !unsafe { compare(value, items.data[at]).IsLess() } { return at; }
+    if at < items.length && !compare(value, items.data[at]).IsLess() { return at; }
     return none;
 }
 

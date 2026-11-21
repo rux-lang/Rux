@@ -89,7 +89,7 @@ func Main() -> int {
     let pointed = 3;
     let pointer = @pointed;
     // Safety: `pointer` is `@pointed`, a live local.
-    if unsafe { 2 ** pointer != 6 || 2 * *pointer != 6 } {
+    if (2 ** pointer != 6 || 2 * *pointer != 6) {
         return 11;
     }
 

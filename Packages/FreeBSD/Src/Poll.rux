@@ -102,7 +102,7 @@ extend Kevent {
 /// @returns the command's result, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/poll#fcntl-int
 /// @see https://man.freebsd.org/cgi/man.cgi?query=fcntl&sektion=2
-pub unsafe func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) -> int64 {
+pub func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) -> int64 {
     return Syscall6(SysFcntl, SignExtendFd(fd), command.Truncate<uint64>(), argument as uint64, 0, 0, 0);
 }
 
@@ -112,7 +112,7 @@ pub unsafe func FcntlInt(fd: FileDescriptor, command: int32, argument: int64) ->
 /// @see https://man.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
 pub func Kqueue() -> int64 {
     // Safety: kqueue takes no arguments and returns a new descriptor.
-    return unsafe { Syscall6(SysKqueue, 0, 0, 0, 0, 0, 0) };
+    return Syscall6(SysKqueue, 0, 0, 0, 0, 0, 0);
 }
 
 /// Applies `changeCount` changes, then waits until an event is ready or `timeout` passes, filling `events`.
@@ -127,7 +127,7 @@ pub func Kqueue() -> int64 {
 /// @returns how many events were filled, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/poll#kevent-call
 /// @see https://man.freebsd.org/cgi/man.cgi?query=kevent&sektion=2
-pub unsafe func KeventCall(queue: FileDescriptor, changes: *Kevent, changeCount: int32, events: *var Kevent,
+pub func KeventCall(queue: FileDescriptor, changes: *Kevent, changeCount: int32, events: *var Kevent,
                            eventCount: int32, timeout: *Timespec) -> int64 {
     return Syscall6(SysKevent, SignExtendFd(queue), changes as uint64, changeCount.Truncate<uint64>(), events as uint64,
                     eventCount.Truncate<uint64>(), timeout as uint64);

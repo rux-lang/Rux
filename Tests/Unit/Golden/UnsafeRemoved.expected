@@ -1,0 +1,3 @@
+3:5: error: 'unsafe' is not supported
+9:17: error: 'unsafe' is not supported
+10:5: error: 'unsafe' is not supported

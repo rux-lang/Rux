@@ -60,10 +60,10 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint throws
             var written: uint32 = 0;
             // Safety: `bytes` is readable for `bytes.length` bytes and `count` is at most that; `written` is a
             // local `uint32`; `handle` is the stream's handle from `GetStdHandle`.
-            let accepted = unsafe { WriteFile(handle, bytes.data as *opaque, count, @written, null) };
+            let accepted = WriteFile(handle, bytes.data as *opaque, count, @written, null);
             if !accepted {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(GetLastError() as int32);
             }
             return written as uint;
         }
@@ -87,26 +87,26 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint throws
             var wide: char16[1024];
             // Safety: `offset + chunk` is at most `bytes.length`, so the source run is readable; `wide` is a local
             // `char16[1024]` and 1024 is its length.
-            let units = unsafe {
+            let units = {
                 MultiByteToWideChar(CodePage::Utf8 as uint32, 0, @bytes.data[offset], chunk as int32, @wide[0], 1024)
             };
             if units <= 0 {
                 if offset > 0 { return offset; }
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(GetLastError() as int32);
             }
             var sent: uint = 0;
             while sent < units as uint {
                 var written: uint32 = 0;
                 // Safety: `sent` is below `units`, the count the conversion wrote into the local `wide`, so the
                 // run is readable; `written` is a local `uint32`; `handle` is the console's handle.
-                let accepted = unsafe {
+                let accepted = {
                     WriteConsoleW(handle, @wide[sent], (units as uint - sent) as uint32, @written, null)
                 };
                 if !accepted {
                     if offset > 0 { return offset; }
                     // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                    throw PlatformFailure(unsafe { GetLastError() } as int32);
+                    throw PlatformFailure(GetLastError() as int32);
                 }
                 if written == 0 {
                     if offset > 0 { return offset; }
@@ -120,7 +120,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint throws
     }
     else {
         // Safety: `bytes` is readable for `bytes.length` bytes, and `handle` is a standard descriptor.
-        let result = unsafe { Write(handle, bytes.data as *opaque, bytes.length) };
+        let result = Write(handle, bytes.data as *opaque, bytes.length);
         if result < 0 { throw PlatformFailure((0 - result) as int32); }
         return result as uint;
     }
@@ -155,10 +155,10 @@ extend StandardIn {
     pub func Acquire() -> Self {
         when #target.os == .Windows {
             // Safety: `GetStdHandle` takes only a stream number and touches no memory of the caller's.
-            let handle = unsafe { GetStdHandle(StdInputHandle) };
+            let handle = GetStdHandle(StdInputHandle);
             var mode: uint32 = 0;
             // Safety: `mode` is a local `uint32`, which the call fills; `handle` was just returned.
-            let console = if (unsafe { GetConsoleMode(handle, @mode) }) { true } else { false };
+            let console = if (GetConsoleMode(handle, @mode)) { true } else { false };
             return Self {
                 handle, console, pending: 0, pendingCount: 0, heldUnit: 0, hasHeldUnit: false
             };
@@ -193,10 +193,10 @@ extend StandardIn : Reader {
             let count = if room > 0x100000 { 0x100000u32 } else { room as uint32 };
             // Safety: `served` is below `into.length`, checked above, and `count` is at most the room after it;
             // `read` is a local `uint32`; `handle` is this stream's handle from `GetStdHandle`.
-            let accepted = unsafe { ReadFile(self.handle, @into[served] as *var opaque, count, @read, null) };
+            let accepted = ReadFile(self.handle, @into[served] as *var opaque, count, @read, null);
             if !accepted {
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                let raw = unsafe { GetLastError() } as int32;
+                let raw = GetLastError() as int32;
                 if served > 0 { return served; }
                 // A pipe whose writing end has closed reports through a failure; it means the stream is over.
                 if raw == 109 { throw IoError::Of(IoErrorKind::EndOfStream); }
@@ -208,7 +208,7 @@ extend StandardIn : Reader {
         }
         else {
             // Safety: `served` is below `into.length`, checked above, so `into` is writable for the count asked.
-            let result = unsafe { Read(self.handle, @into[served] as *var opaque, into.length - served) };
+            let result = Read(self.handle, @into[served] as *var opaque, into.length - served);
             if result < 0 {
                 if served > 0 { return served; }
                 throw PlatformFailure((0 - result) as int32);
@@ -244,13 +244,13 @@ when #target.os == .Windows {
             var read: uint32 = 0;
             // Safety: `wide` is a local `char16[257]` and `base + ask` is at most 257; `read` is a local
             // `uint32`; `handle` is this stream's console handle.
-            let status = unsafe {
+            let status = {
                 ReadConsoleW(self.handle as *var opaque, @wide[base] as *var opaque, ask as uint32, @read, null)
             };
             if status == 0 {
                 if served > 0 { return served; }
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(GetLastError() as int32);
             }
             var total = base + read as uint;
             // Nothing at all, or Ctrl-Z at the start of a line, is how a console says the input is over.
@@ -268,13 +268,13 @@ when #target.os == .Windows {
             var text: char8[1028];
             // Safety: `total` is at most the 257 units of the local `wide`, and `text` is a local `char8[1028]`
             // whose length is passed.
-            let converted = unsafe {
+            let converted = {
                 WideCharToMultiByte(CodePage::Utf8 as uint32, 0, @wide[0], total as int32, @text[0], 1028, null, null)
             };
             if converted <= 0 {
                 if served > 0 { return served; }
                 // Safety: `GetLastError` takes nothing and reads this thread's last error code.
-                throw PlatformFailure(unsafe { GetLastError() } as int32);
+                throw PlatformFailure(GetLastError() as int32);
             }
             var index: uint = 0;
             var at = served;
@@ -312,10 +312,10 @@ extend StandardOut {
     pub func Acquire() -> Self {
         when #target.os == .Windows {
             // Safety: `GetStdHandle` takes only a stream number and touches no memory of the caller's.
-            let handle = unsafe { GetStdHandle(StdOutputHandle) };
+            let handle = GetStdHandle(StdOutputHandle);
             var mode: uint32 = 0;
             // Safety: `mode` is a local `uint32`, which the call fills; `handle` was just returned.
-            let console = if (unsafe { GetConsoleMode(handle, @mode) }) { true } else { false };
+            let console = if (GetConsoleMode(handle, @mode)) { true } else { false };
             return Self { handle, console };
         }
         else {
@@ -356,10 +356,10 @@ extend StandardError {
     pub func Acquire() -> Self {
         when #target.os == .Windows {
             // Safety: `GetStdHandle` takes only a stream number and touches no memory of the caller's.
-            let handle = unsafe { GetStdHandle(StdErrorHandle) };
+            let handle = GetStdHandle(StdErrorHandle);
             var mode: uint32 = 0;
             // Safety: `mode` is a local `uint32`, which the call fills; `handle` was just returned.
-            let console = if (unsafe { GetConsoleMode(handle, @mode) }) { true } else { false };
+            let console = if (GetConsoleMode(handle, @mode)) { true } else { false };
             return Self { handle, console };
         }
         else {

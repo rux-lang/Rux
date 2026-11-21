@@ -204,7 +204,7 @@ extend FormatSpec {
         var index: uint = 0;
         while index < name.length {
             // Safety: `index` is below `name.length`, which equals `self.style.length`, checked above.
-            if unsafe { self.style.data[index] != name.data[index] } { return false; }
+            if (self.style.data[index] != name.data[index]) { return false; }
             index = index + 1;
         }
         return true;
@@ -227,7 +227,7 @@ func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
         return false;
     }
     // Safety: the one caller, `ParseFormatSpec`, passes the address of its own `FormatAlign` local.
-    unsafe { *align = found; }
+    *align = found;
     return true;
 }
 
@@ -270,22 +270,20 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
     var index = start;
     var total: uint = 0;
     // Safety: `index` is below `text.length`, checked first in the same condition.
-    while index < text.length && IsDigit(unsafe { text.data[index] }) {
+    while index < text.length && IsDigit(text.data[index]) {
         // Safety: `index` is below `text.length`, the loop condition.
-        let digit = ((unsafe { text.data[index] } as uint32) - 0x30) as uint;
+        let digit = ((text.data[index] as uint32) - 0x30) as uint;
         if total > (uint::Max - digit) / 10 {
             // Safety: the one caller, `ParseFormatSpec`, passes the address of its own `uint` local for `end`.
-            unsafe { *end = index; }
+            *end = index;
             return false;
         }
         total = total * 10 + digit;
         index = index + 1;
     }
     // Safety: the one caller, `ParseFormatSpec`, passes the addresses of its own `uint` locals for `value` and `end`.
-    unsafe {
-        *value = total;
-        *end = index;
-    }
+    *value = total;
+    *end = index;
     return true;
 }
 
@@ -315,34 +313,34 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec throws FormatError {
     // style, not an x-shaped padding.
     var align = FormatAlign::Default;
     // Safety: `index + 1` is below `text.length`, checked first in the same condition.
-    if index + 1 < text.length && AlignOf(unsafe { text.data[index + 1] }, @align) {
+    if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {
         // Safety: `index + 1` is below `text.length`, checked above, so `index` is too.
-        let fill = unsafe { text.data[index] };
+        let fill = text.data[index];
         if !IsFillByte(fill) { return try Malformed(index); }
         spec.fill = fill;
         spec.align = align;
         index = index + 2;
     }
     // Safety: `index` is below `text.length`, checked first in the same condition.
-    else if index < text.length && AlignOf(unsafe { text.data[index] }, @align) {
+    else if index < text.length && AlignOf(text.data[index], @align) {
         spec.align = align;
         index = index + 1;
     }
 
     // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && unsafe { text.data[index] } == c8'+' {
+    if index < text.length && text.data[index] == c8'+' {
         spec.showSign = true;
         index = index + 1;
     }
     // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && unsafe { text.data[index] } == c8'#' {
+    if index < text.length && text.data[index] == c8'#' {
         spec.alternate = true;
         index = index + 1;
     }
     // A leading zero is the zero-padding flag rather than the first digit of the width, which is why it is read
     // before the number and why `{:0}` asks for padding to no width at all.
     // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && unsafe { text.data[index] } == c8'0' {
+    if index < text.length && text.data[index] == c8'0' {
         spec.zeroPad = true;
         index = index + 1;
     }
@@ -354,10 +352,10 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec throws FormatError {
     index = after;
 
     // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && unsafe { text.data[index] } == c8'.' {
+    if index < text.length && text.data[index] == c8'.' {
         index = index + 1;
         // Safety: the read happens only when `index` is below `text.length`, checked first.
-        if index >= text.length || !IsDigit(unsafe { text.data[index] }) { return try Malformed(index); }
+        if index >= text.length || !IsDigit(text.data[index]) { return try Malformed(index); }
         var precision: uint = 0;
         if !ReadNumber(text, index, @precision, @after) { return try Malformed(after); }
         spec.hasPrecision = true;
@@ -367,15 +365,15 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec throws FormatError {
 
     if index < text.length {
         // Safety: `index` is below `text.length`, checked above.
-        if !IsStyleStart(unsafe { text.data[index] }) { return try Malformed(index); }
+        if !IsStyleStart(text.data[index]) { return try Malformed(index); }
         let start = index;
         // Safety: `index` is below `text.length`, checked first in the same condition.
-        while index < text.length && IsStyleByte(unsafe { text.data[index] }) {
+        while index < text.length && IsStyleByte(text.data[index]) {
             index = index + 1;
         }
         if index != text.length { return try Malformed(index); }
         // Safety: `start` is below `index`, which equals `text.length`, so the style lies inside `text`.
-        spec.style = unsafe { (@text.data[start])[..index - start] };
+        spec.style = (@text.data[start])[..index - start];
         spec.base = BaseOfStyle(spec.style);
     }
 
@@ -387,7 +385,7 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec throws FormatError {
 func BaseOfStyle(style: char8[..]) -> FormatBase {
     if style.length != 1 { return FormatBase::Decimal; }
     // Safety: `style.length` is one, checked above.
-    let mark = unsafe { style.data[0] };
+    let mark = style.data[0];
     if mark == c8'b' { return FormatBase::Binary; }
     if mark == c8'o' { return FormatBase::Octal; }
     if mark == c8'x' { return FormatBase::LowerHex; }

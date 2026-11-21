@@ -10,7 +10,7 @@ struct Tracked {
 extend Tracked {
     func ~Tracked(&var self) {
         // Safety: every `Tracked` in this test stores `@drops`, a local of `Main` that outlives it.
-        unsafe { *self.drops = *self.drops + self.id; }
+        *self.drops = *self.drops + self.id;
     }
 }
 

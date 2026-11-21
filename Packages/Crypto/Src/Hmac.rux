@@ -64,7 +64,7 @@ extend Hmac<D> {
             var index: uint = 0;
             while index < keyLength {
                 // Safety: `index` is below `keyLength`, which is `key.length` on this branch.
-                shortened[index] = unsafe { key.data[index] };
+                shortened[index] = key.data[index];
                 index = index + 1;
             }
         }

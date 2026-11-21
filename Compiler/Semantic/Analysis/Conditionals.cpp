@@ -173,17 +173,25 @@ TypeRef AnalysisContext::CheckValueBlock(const BlockExpr &expression) {
         }
     }
     TypeRef yielded = TypeRef::MakeUnit();
-    if (expression.isUnsafe) {
-        BeginUnsafeBlock(expression);
-    }
     CheckBlock(block, tail, &yielded);
-    if (expression.isUnsafe) {
-        EndUnsafeBlock(expression);
-    }
     if (BlockCannotComplete(block)) {
         return TypeRef::MakeUnknown();
     }
     return tail ? yielded : TypeRef::MakeUnit();
+}
+
+void AnalysisContext::ReportUnusedBlockValue(const BlockExpr &expression, const TypeRef &yielded) {
+    if (yielded.IsUnknown() || yielded.IsUnit() || yielded.IsOpaque() || !expression.block) {
+        return;
+    }
+    const ExprStmt *tail = YieldedStatement(*expression.block);
+    if (!tail) {
+        return;
+    }
+    EmitError(tail->location,
+              std::format("this block yields a value of type '{}' that is not used", yielded.DisplayString()),
+              {"a block written as a statement yields nothing, so its last expression needs a ';'"},
+              "add ';' or use the value");
 }
 
 void AnalysisContext::CheckStatementBranch(const Block &block) {

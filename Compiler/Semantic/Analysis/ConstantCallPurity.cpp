@@ -1,4 +1,4 @@
-// What a function a constant calls may not use: raw pointers, `unsafe`, extern functions and variables, assembly,
+// What a function a constant calls may not use: raw pointers, extern functions and variables, assembly,
 // thread-local and module variables. Allocators are reached only through raw pointers and interfaces, so they are
 // covered by the same rules. The check reads the whole body and every function it calls, not only the path one
 // evaluation takes, so whether a function may be called from a constant never depends on its arguments.
@@ -85,8 +85,6 @@ ConstantCallEvaluator::Offense ConstantCallEvaluator::OffenseAt(const FuncDecl &
 std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanFunction(const FuncDecl &function) {
     if (function.isAsm)
         return OffenseAt(function, function.location, "is written in assembly");
-    if (function.isUnsafe)
-        return OffenseAt(function, function.unsafeLocation, "is an 'unsafe func'");
     for (const Param &parameter : function.params) {
         const auto type = context.typeNodeTypes.find(parameter.type.get());
         if (type != context.typeNodeTypes.end() && type->second->kind == TypeRef::Kind::Pointer)
@@ -116,8 +114,6 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanCallee(
     const auto *function = AstCast<const FuncDecl>(callee);
     if (function == nullptr)
         return std::nullopt;
-    if (function->isUnsafe)
-        return OffenseAt(owner, site.location, std::format("calls 'unsafe func' '{}'", function->name));
     if (function->isAsm)
         return OffenseAt(owner, site.location, std::format("calls assembly function '{}'", function->name));
     const auto &inner = PurityOf(*function);
@@ -258,8 +254,6 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanExpress
         return std::nullopt;
     };
     if (const auto *block = AstCast<const BlockExpr>(&expression)) {
-        if (block->isUnsafe)
-            return OffenseAt(owner, block->location, "uses an 'unsafe' block");
         return block->block ? ScanBlock(*block->block, owner) : std::nullopt;
     }
     if (const auto *call = AstCast<const CallExpr>(&expression)) {

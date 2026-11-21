@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "Unsafe"
+Name = "BlockOperand"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: Unsafe"
+Description = "Language test: a statement block followed by '?' or an operator is the expression's first operand"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

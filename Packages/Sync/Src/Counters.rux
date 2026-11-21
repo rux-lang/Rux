@@ -34,7 +34,7 @@ extend Semaphore {
     pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
-        unsafe { RetainBlock(@self.block.references); }
+        RetainBlock(@self.block.references);
         return Self { block: self.block };
     }
 
@@ -45,11 +45,9 @@ extend Semaphore {
         while !self.TryAcquire() {
             // Safety: this handle holds a count on `block`, so the block and its words outlive the wait on `permits`,
             // and every thread reaches those words only atomically.
-            unsafe {
-                AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
-                WaitWhile(@block.permits, 0u32, -1);
-                AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
-            }
+            AtomicFetchAdd(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
+            WaitWhile(@block.permits, 0u32, -1);
+            AtomicFetchSub(@block.waiters, 1u32, MemoryOrder::SequentiallyConsistent);
         }
     }
 
@@ -60,11 +58,11 @@ extend Semaphore {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
-        var permits = unsafe { AtomicLoad(@block.permits, MemoryOrder::SequentiallyConsistent) };
+        var permits = AtomicLoad(@block.permits, MemoryOrder::SequentiallyConsistent);
         while permits != 0u32 {
             // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
             // atomically.
-            let found = unsafe {
+            let found = {
                 AtomicCompareExchange(@block.permits, permits, permits - 1u32, MemoryOrder::Acquire,
                                       MemoryOrder::Relaxed)
             };
@@ -81,14 +79,12 @@ extend Semaphore {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
-        unsafe { AtomicFetchAdd(@block.permits, count, MemoryOrder::SequentiallyConsistent); }
+        AtomicFetchAdd(@block.permits, count, MemoryOrder::SequentiallyConsistent);
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
-        if unsafe { AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) } == 0u32 { return; }
+        if AtomicLoad(@block.waiters, MemoryOrder::SequentiallyConsistent) == 0u32 { return; }
         // Safety: this handle holds a count on `block`, so the `permits` word is live.
-        unsafe {
-            if count == 1u32 { WakeOne(@block.permits); } else { WakeAll(@block.permits); }
-        }
+        if count == 1u32 { WakeOne(@block.permits); } else { WakeAll(@block.permits); }
     }
 
     /// The permits left right now, which other threads may change at any moment.
@@ -97,16 +93,14 @@ extend Semaphore {
     pub func Available(&self) -> uint32 {
         // Safety: this handle holds a count on `self.block`, so its `permits` word is live, and every thread reaches it
         // only atomically.
-        return unsafe { AtomicLoad(@self.block.permits, MemoryOrder::Relaxed) };
+        return AtomicLoad(@self.block.permits, MemoryOrder::Relaxed);
     }
 
     func ~Semaphore(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
-        unsafe {
-            if ReleaseBlock(@self.block.references) {
-                DestroyBlock<SemaphoreBlock>(self.block);
-            }
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<SemaphoreBlock>(self.block);
         }
     }
 }
@@ -144,7 +138,7 @@ extend Barrier {
     pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
-        unsafe { RetainBlock(@self.block.references); }
+        RetainBlock(@self.block.references);
         return Self { block: self.block };
     }
 
@@ -155,29 +149,27 @@ extend Barrier {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
-        let generation = unsafe { AtomicLoad(@block.generation, MemoryOrder::Acquire) };
+        let generation = AtomicLoad(@block.generation, MemoryOrder::Acquire);
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
-        let arrived = unsafe { AtomicFetchAdd(@block.arrived, 1u32, MemoryOrder::AcquireRelease) + 1u32 };
+        let arrived = AtomicFetchAdd(@block.arrived, 1u32, MemoryOrder::AcquireRelease) + 1u32;
         // Safety: this handle holds a count on `block`, so the block is live, and `parties` never changes after it is
         // built.
-        if arrived == unsafe { block.parties } {
+        if arrived == block.parties {
             // Nobody of the next round can arrive before the generation moves, so resetting first is safe.
             // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
             // atomically.
-            unsafe {
-                AtomicStore(@block.arrived, 0u32, MemoryOrder::Relaxed);
-                AtomicFetchAdd(@block.generation, 1u32, MemoryOrder::Release);
-                WakeAll(@block.generation);
-            }
+            AtomicStore(@block.arrived, 0u32, MemoryOrder::Relaxed);
+            AtomicFetchAdd(@block.generation, 1u32, MemoryOrder::Release);
+            WakeAll(@block.generation);
             return true;
         }
         // Safety: this handle holds a count on `block`, so its words are live, and every thread reaches them only
         // atomically.
-        while unsafe { AtomicLoad(@block.generation, MemoryOrder::Acquire) } == generation {
+        while AtomicLoad(@block.generation, MemoryOrder::Acquire) == generation {
             // Safety: the word waited on is the barrier's `generation`, which outlives the wait because this handle
             // holds a count on its block.
-            unsafe { WaitWhile(@block.generation, generation, -1); }
+            WaitWhile(@block.generation, generation, -1);
         }
         return false;
     }
@@ -185,10 +177,8 @@ extend Barrier {
     func ~Barrier(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
-        unsafe {
-            if ReleaseBlock(@self.block.references) {
-                DestroyBlock<BarrierBlock>(self.block);
-            }
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<BarrierBlock>(self.block);
         }
     }
 }
@@ -219,7 +209,7 @@ extend WaitGroup {
     pub func Clone(&self) -> Self {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically.
-        unsafe { RetainBlock(@self.block.references); }
+        RetainBlock(@self.block.references);
         return Self { block: self.block };
     }
 
@@ -229,7 +219,7 @@ extend WaitGroup {
     pub func Add(&self, count: uint32 = 1) {
         // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread reaches it
         // only atomically.
-        unsafe { AtomicFetchAdd(@self.block.pending, count, MemoryOrder::Relaxed); }
+        AtomicFetchAdd(@self.block.pending, count, MemoryOrder::Relaxed);
     }
 
     /// Marks one piece of work done, waking the waiters when it was the last. Marking more done than were added is a
@@ -238,10 +228,10 @@ extend WaitGroup {
     pub func Done(&self) {
         // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread reaches it
         // only atomically.
-        let previous = unsafe { AtomicFetchSub(@self.block.pending, 1u32, MemoryOrder::AcquireRelease) };
+        let previous = AtomicFetchSub(@self.block.pending, 1u32, MemoryOrder::AcquireRelease);
         if previous == 0u32 { Panic("a wait group was marked done more times than work was added"); }
         // Safety: this handle holds a count on `self.block`, so its `pending` word is live.
-        if previous == 1u32 { unsafe { WakeAll(@self.block.pending); } }
+        if previous == 1u32 { WakeAll(@self.block.pending); }
     }
 
     /// Waits until no work is pending.
@@ -250,21 +240,19 @@ extend WaitGroup {
         while true {
             // Safety: this handle holds a count on `self.block`, so its `pending` word is live, and every thread
             // reaches it only atomically.
-            let pending = unsafe { AtomicLoad(@self.block.pending, MemoryOrder::Acquire) };
+            let pending = AtomicLoad(@self.block.pending, MemoryOrder::Acquire);
             if pending == 0u32 { return; }
             // Safety: the word waited on is the group's `pending`, which outlives the wait because this handle holds a
             // count on its block.
-            unsafe { WaitWhile(@self.block.pending, pending, -1); }
+            WaitWhile(@self.block.pending, pending, -1);
         }
     }
 
     func ~WaitGroup(&var self) {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
-        unsafe {
-            if ReleaseBlock(@self.block.references) {
-                DestroyBlock<WaitGroupBlock>(self.block);
-            }
+        if ReleaseBlock(@self.block.references) {
+            DestroyBlock<WaitGroupBlock>(self.block);
         }
     }
 }

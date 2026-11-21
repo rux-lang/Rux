@@ -238,7 +238,7 @@ TEST_CASE("explicit moves invalidate copyable places and reject invalid ownershi
         }
 
         // Safety: `pointer` must address a live `Pair`
-        unsafe func ThroughPointer(pointer: *Pair) {
+        func ThroughPointer(pointer: *Pair) {
             let pointee = move *pointer;
         }
 
@@ -548,14 +548,14 @@ TEST_CASE("an explicit generic store retains ownership transfer for its instanti
         }
 
         // Safety: `slot` must address a live, writable `T`
-        unsafe func Store<T>(slot: *var T, value: T) {
+        func Store<T>(slot: *var T, value: T) {
             *slot = move value;
         }
 
         func Main() {
             var room = Handle { value: 0 };
             // Safety: `@room` addresses a live local `Handle`
-            unsafe { Store<Handle>(@room, Handle { value: 1 }); }
+            Store<Handle>(@room, Handle { value: 1 });
         }
     )",
                 "generic_consumption.rux");
@@ -613,7 +613,7 @@ TEST_CASE("an explicit move into a match consumes its subject") {
         }
 
         // Safety: `held` must address a live `Held`
-        unsafe func Borrowed(held: *Held) {
+        func Borrowed(held: *Held) {
             match *held {
                 .Full(handle) => {},
                 .Empty => {}
@@ -687,7 +687,7 @@ TEST_CASE("a by-value match owns the copy it makes of a named plain-data subject
         }
 
         // Safety: `held` must address a live `Held`
-        unsafe func Borrowed(held: *Held) {
+        func Borrowed(held: *Held) {
             match *held {
                 .Full(item) => {},
                 .Empty => {}
@@ -755,7 +755,7 @@ TEST_CASE("assignment transfers a fresh temporary and never copies a named ownin
             item = named.Clone();
             item = holder.item.Clone();
             // Safety: callers pass `pointer` addressing a live `Counted`
-            unsafe { item = (*pointer).Clone(); }
+            item = (*pointer).Clone();
             slot = named.Clone();
             item = named;
             item = holder.item;
@@ -813,7 +813,7 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
         func Take(value: Handle) {}
 
         // Safety: `pointer` must address a live `Handle`
-        unsafe func Invalid(inputHandle: Handle, inputOwner: Owner, values: Handle[2], pointer: *Handle) {
+        func Invalid(inputHandle: Handle, inputOwner: Owner, values: Handle[2], pointer: *Handle) {
             var handle = move inputHandle;
             var owner = move inputOwner;
             Take(move owner.handle);

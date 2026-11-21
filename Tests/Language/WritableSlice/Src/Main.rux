@@ -64,7 +64,7 @@ func Main() -> int {
 
     // A pointer to writable storage, given a length, is a writable view as well.
     // Safety: `storage` is a live local of six elements, so elements 1 and 2 exist.
-    let fromPointer = unsafe { (@storage[1])[..2] };
+    let fromPointer = (@storage[1])[..2];
     Assert(fromPointer.length == 2 && fromPointer[0] == 20, "the pointer view starts at the pointer");
     fromPointer[0] = 21;
     Assert(storage[1] == 21, "a write through the pointer view reaches the array");

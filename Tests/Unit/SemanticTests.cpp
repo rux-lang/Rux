@@ -15,10 +15,8 @@ TEST_CASE("let and var independently control binding and pointee mutability") {
 
             immutable = 11;
             // Safety: both pointers address the live locals above
-            unsafe {
-                *readOnly = 12;
-                *writable = 21;
-            }
+            *readOnly = 12;
+            *writable = 21;
             mutable = 22;
 
             let bad: *var int = @immutable;
@@ -38,7 +36,7 @@ TEST_CASE("function parameters are immutable") {
             x = 1;
             ptr = ptr;
             // Safety: callers pass `ptr` addressing a live, writable `int`
-            unsafe { *ptr = 2; }
+            *ptr = 2;
         }
     )");
 
@@ -66,10 +64,8 @@ TEST_CASE("pointer binding mutability is independent of pointee mutability") {
             mutableWritable = immutableWritable;
 
             // Safety: both pointers address the live local `b`
-            unsafe {
-                *immutableWritable = 21;
-                *mutableWritable = 22;
-            }
+            *immutableWritable = 21;
+            *mutableWritable = 22;
         }
     )");
 
@@ -90,7 +86,7 @@ TEST_CASE("byte is a canonical alias of uint8") {
             var storage: byte[2] = [raw, numeric];
             let ptr: *var byte = @storage[0];
             // Safety: `ptr` addresses the first element of the live local `storage`
-            unsafe { *ptr = Read(1u8); }
+            *ptr = Read(1u8);
         }
     )");
 
@@ -111,10 +107,8 @@ TEST_CASE("extern function call attributes emit direct and qualified diagnostics
 
         func Main() -> int {
             // Safety: `Beep` and `Sleep` take only integers
-            unsafe {
-                Beep(1000u32, 500u32);
-                Native::Sleep(1u32);
-            }
+            Beep(1000u32, 500u32);
+            Native::Sleep(1u32);
             return 0;
         }
     )");

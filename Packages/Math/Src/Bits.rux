@@ -62,26 +62,26 @@ when #target.arch {
     _ => #Error("Unsupported architecture")
 }
 
-// The safe faces of the four moves above, which the rest of the package calls. An `asm` body is outside what the
-// compiler checks, so each call needs `unsafe`; these four bodies are the only places that take it.
+// The typed faces of the four moves above, which the rest of the package calls. An `asm` body is outside what the
+// compiler checks, so these four bodies are the only places that call one.
 func FloatBits(x: float64) -> uint64 {
     // Safety: the body reads only its float argument register and writes only the integer return register.
-    return unsafe { FloatBitsInstruction(x) };
+    return FloatBitsInstruction(x);
 }
 
 func FromBits(bits: uint64) -> float64 {
     // Safety: the body reads only its integer argument register and writes only the float return register.
-    return unsafe { FromBitsInstruction(bits) };
+    return FromBitsInstruction(bits);
 }
 
 func Float32Bits(x: float32) -> uint32 {
     // Safety: the body reads only its float argument register and writes only the integer return register.
-    return unsafe { Float32BitsInstruction(x) };
+    return Float32BitsInstruction(x);
 }
 
 func Float32FromBits(bits: uint32) -> float32 {
     // Safety: the body reads only its integer argument register and writes only the float return register.
-    return unsafe { Float32FromBitsInstruction(bits) };
+    return Float32FromBitsInstruction(bits);
 }
 
 // The halves of the bit pattern, the way fdlibm reads them. The high word carries the sign, the exponent and the

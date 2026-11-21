@@ -634,7 +634,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
         extend Holder<T> {
             func ~Holder(&var self) {
                 // Safety: `pair` addresses the `Pair<T>` this holder owns
-                unsafe { Take<T>(self.pair); }
+                Take<T>(self.pair);
             }
         }
 
@@ -643,7 +643,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
         }
 
         // Safety: `pair` must address a live `Pair<T>` that the caller gives up
-        unsafe func Take<T>(pair: *var Pair<T>) {
+        func Take<T>(pair: *var Pair<T>) {
             let taken = move pair[0];
         }
 

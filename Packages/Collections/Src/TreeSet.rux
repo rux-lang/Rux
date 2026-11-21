@@ -88,7 +88,7 @@ extend TreeSet<T> {
         let node = self.tree.Find(value, self.compare);
         if node == null { return false; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
-        let entry = unsafe { self.tree.Detach(node) };
+        let entry = self.tree.Detach(node);
         return true;
     }
 
@@ -104,7 +104,7 @@ extend TreeSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#first
     pub func First(&self) -> T? {
         // Safety: the tree invariant: `root` is null or a live node, and so is the leftmost node below it.
-        return unsafe { TreeSet::ElementOf<T>(Tree::Minimum<T, ()>(self.tree.root)) };
+        return TreeSet::ElementOf<T>(Tree::Minimum<T, ()>(self.tree.root));
     }
 
     /// The largest element, or `none` for an empty set.
@@ -112,7 +112,7 @@ extend TreeSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#last
     pub func Last(&self) -> T? {
         // Safety: the tree invariant: `root` is null or a live node, and so is the rightmost node below it.
-        return unsafe { TreeSet::ElementOf<T>(Tree::Maximum<T, ()>(self.tree.root)) };
+        return TreeSet::ElementOf<T>(Tree::Maximum<T, ()>(self.tree.root));
     }
 
     /// The largest element at or below `value`, or `none` when every element is above it.
@@ -122,9 +122,9 @@ extend TreeSet<T> {
     pub func Floor(&self, value: T) -> T? {
         let exact = self.tree.Find(value, self.compare);
         // Safety: the tree invariant: `exact` is non-null, checked here, and `Find` hands back only live nodes.
-        if exact != null { return unsafe { TreeSet::ElementOf<T>(exact) }; }
+        if exact != null { return TreeSet::ElementOf<T>(exact); }
         // Safety: the tree invariant: `Below` hands back null or a live node of this tree.
-        return unsafe { TreeSet::ElementOf<T>(self.tree.Below(value, self.compare)) };
+        return TreeSet::ElementOf<T>(self.tree.Below(value, self.compare));
     }
 
     /// The smallest element at or above `value`, or `none` when every element is below it.
@@ -134,14 +134,14 @@ extend TreeSet<T> {
     pub func Ceiling(&self, value: T) -> T? {
         let exact = self.tree.Find(value, self.compare);
         // Safety: the tree invariant: `exact` is non-null, checked here, and `Find` hands back only live nodes.
-        if exact != null { return unsafe { TreeSet::ElementOf<T>(exact) }; }
+        if exact != null { return TreeSet::ElementOf<T>(exact); }
         // Safety: the tree invariant: `Above` hands back null or a live node of this tree.
-        return unsafe { TreeSet::ElementOf<T>(self.tree.Above(value, self.compare)) };
+        return TreeSet::ElementOf<T>(self.tree.Above(value, self.compare));
     }
 
     // The element a node holds, or `none` for a node that is not there. Every ordered query ends in one of these.
     // Safety: `node` must be null or a live node of a tree.
-    unsafe func ElementOf(node: *var TreeNode<T, ()>) -> T? {
+    func ElementOf(node: *var TreeNode<T, ()>) -> T? {
         if node == null { return none; }
         return .Some(node.key);
     }
@@ -152,7 +152,7 @@ extend TreeSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#iterate
     pub func Iterate(&self) -> TreeSetIterator<T> {
         // Safety: the tree invariant: `root` is null or a live node of the tree.
-        return TreeSetIterator<T> { next: unsafe { Tree::Minimum<T, ()>(self.tree.root) } };
+        return TreeSetIterator<T> { next: (Tree::Minimum<T, ()>(self.tree.root)) };
     }
 
     /// A walk over the elements at or above `start` and below `end`.
@@ -283,14 +283,14 @@ extend TreeSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#intersect-with
     pub func IntersectWith(&var self, other: &Self) {
         // Safety: the tree invariant: `root` is null or a live node of the tree.
-        var node = unsafe { Tree::Minimum<T, ()>(self.tree.root) };
+        var node = Tree::Minimum<T, ()>(self.tree.root);
         while node != null {
             // Safety: the tree invariant: `node` is non-null, checked by the loop, and came from `Minimum` or
             // `Above`, so it is a live node of this tree.
-            let value = unsafe { node.key };
+            let value = node.key;
             if !other.Contains(value) {
                 // Safety: `node` is still that live node; nothing reads through it after this.
-                let entry = unsafe { self.tree.Detach(node) };
+                let entry = self.tree.Detach(node);
             }
             node = self.tree.Above(value, self.compare);
         }
@@ -303,14 +303,14 @@ extend TreeSet<T> {
     pub func Subtract(&var self, other: &Self) {
         if other.Length() == 0 { return; }
         // Safety: the tree invariant: `root` is null or a live node of the tree.
-        var node = unsafe { Tree::Minimum<T, ()>(self.tree.root) };
+        var node = Tree::Minimum<T, ()>(self.tree.root);
         while node != null {
             // Safety: the tree invariant: `node` is non-null, checked by the loop, and came from `Minimum` or
             // `Above`, so it is a live node of this tree.
-            let value = unsafe { node.key };
+            let value = node.key;
             if other.Contains(value) {
                 // Safety: `node` is still that live node; nothing reads through it after this.
-                let entry = unsafe { self.tree.Detach(node) };
+                let entry = self.tree.Detach(node);
             }
             node = self.tree.Above(value, self.compare);
         }
@@ -389,10 +389,8 @@ extend TreeSetIterator<T> : Iterator {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and a live node of the set: `Iterate` requires the set to
         // outlive the walk untouched, so every node it reached is still linked in.
-        unsafe {
-            self.next = Tree::Successor<T, ()>(node);
-            return .Some(node.key);
-        }
+        self.next = Tree::Successor<T, ()>(node);
+        return .Some(node.key);
     }
 }
 
@@ -417,15 +415,13 @@ extend TreeSetRangeIterator<T> : Iterator {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and a live node of the set: `Range` requires the set to outlive
         // the walk untouched, so every node it reached is still linked in.
-        if !unsafe { self.compare(node.key, self.end) }.IsLess() {
+        if !self.compare(node.key, self.end).IsLess() {
             self.next = null;
             return none;
         }
         // Safety: `node` is still that live node of the set.
-        unsafe {
-            self.next = Tree::Successor<T, ()>(node);
-            return .Some(node.key);
-        }
+        self.next = Tree::Successor<T, ()>(node);
+        return .Some(node.key);
     }
 }
 
@@ -449,10 +445,10 @@ extend TreeSetIntoIterator<T> : Iterator {
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-into-iterator-next
     pub func Next(&var self) -> T? {
         // Safety: the tree invariant: `root` is null or a live node of the tree this iterator owns.
-        let node = unsafe { Tree::Minimum<T, ()>(self.tree.root) };
+        let node = Tree::Minimum<T, ()>(self.tree.root);
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Minimum` of a live subtree is a live node of it.
-        let entry = unsafe { self.tree.Detach(node) };
+        let entry = self.tree.Detach(node);
         return .Some(entry.key);
     }
 }

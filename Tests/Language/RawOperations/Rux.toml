@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "UnsafeOperand"
+Name = "RawOperations"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: a statement 'unsafe' block followed by '?' or an operator is the expression's first operand"
+Description = "Language test: raw pointer, extern and intrinsic operations need no mark"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

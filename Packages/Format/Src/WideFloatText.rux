@@ -88,9 +88,9 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     // Safety: `block` came from `Allocate` above with `digitRoom + textRoom` bytes at alignment one, every bit
     // pattern is a valid `char8`, and the block stays live until the `Deallocate` at the end; the first `digitRoom`
     // bytes hold the digits.
-    let digits = unsafe { (block as *var char8)[..digitRoom] };
+    let digits = (block as *var char8)[..digitRoom];
     // Safety: the same live block; the `textRoom` bytes after the first `digitRoom` are the rest of it.
-    let text = unsafe { ((block as *var char8) + digitRoom)[..textRoom] };
+    let text = ((block as *var char8) + digitRoom)[..textRoom];
     var count: uint = 0;
     var exponent10: int = 0;
     // A block was allocated above and must be released on every path, so failure is accumulated and thrown at

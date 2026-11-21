@@ -119,7 +119,7 @@ extend HashMap<K, V> {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its value is
         // initialized.
-        unsafe { return self.table.values[slot]; }
+        return self.table.values[slot];
     }
 
     /// The value stored under `key`, borrowed where it sits, or `none` when there is no such entry.
@@ -132,7 +132,7 @@ extend HashMap<K, V> {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its value is
         // initialized.
-        unsafe { return self.table.values[slot]; }
+        return self.table.values[slot];
     }
 
     /// The value stored under `key`, borrowed to be changed in place, or `none` when there is no such entry.
@@ -145,7 +145,7 @@ extend HashMap<K, V> {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its value is
         // initialized.
-        unsafe { return self.table.values[slot]; }
+        return self.table.values[slot];
     }
 
     /// Stores `value` under `key`, replacing whatever was there.
@@ -176,7 +176,7 @@ extend HashMap<K, V> {
                 // replaced value from being leaked.
                 // Safety: the table invariant: `FindHashed` names only an occupied slot below the capacity, and its
                 // value is refilled right after it is moved out.
-                unsafe {
+                {
                     let replaced = move self.table.values[slot];
                     self.table.values[slot] = move value;
                 }
@@ -194,7 +194,7 @@ extend HashMap<K, V> {
         // The table has room and the probe can still run past what a distance byte holds, when the keys collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `TryEnsureRoom` succeeded, so the capacity is nonzero.
-        return unsafe { self.table.PlaceHashed(move key, move value, hashed) } ?? throw .Unsupported;
+        return self.table.PlaceHashed(move key, move value, hashed) ?? throw .Unsupported;
     }
 
     /// Takes the entry for `key` out and hands back its value.
@@ -209,7 +209,7 @@ extend HashMap<K, V> {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key and value
         // are initialized; both are moved out before `Vacate` closes the slot.
-        unsafe {
+        {
             let takenKey = move self.table.keys[slot];
             let takenValue = move self.table.values[slot];
             self.table.Vacate(slot);
@@ -264,7 +264,7 @@ extend HashMap<K, V> {
             if self.table.IsOccupied(index) {
                 cursor = index + 1;
                 // Safety: by the table invariant the slot, occupied and below the capacity, holds a key and a value.
-                return .Some(unsafe { KeyValue<K, V> { key: self.table.keys[index], value: self.table.values[index] } });
+                return .Some(KeyValue<K, V> { key: self.table.keys[index], value: self.table.values[index] });
             }
             index++;
         }
@@ -296,7 +296,7 @@ extend HashMap<K, V> {
         }
         // Safety: by the table invariant `FindHashed` and `Place` name only an occupied slot below the capacity, and
         // the reference borrows `self`, so nothing can move the slot while it is in use.
-        unsafe { return self.table.values[slot]; }
+        return self.table.values[slot];
     }
 
     /// Stores `value` under `key` and hands back the value that was there.
@@ -314,7 +314,7 @@ extend HashMap<K, V> {
             .Some(slot) => {
                 // Safety: the table invariant: `FindHashed` names only an occupied slot below the capacity, and its
                 // value is refilled right after it is moved out.
-                unsafe {
+                {
                     let previous = move self.table.values[slot];
                     self.table.values[slot] = move value;
                     return move previous;
@@ -340,7 +340,7 @@ extend HashMap<K, V> {
         let slot = self.table.Find(key, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key and value
         // are initialized; both are moved out before `Vacate` closes the slot.
-        unsafe {
+        {
             let takenKey = move self.table.keys[slot];
             let takenValue = move self.table.values[slot];
             self.table.Vacate(slot);
@@ -438,11 +438,11 @@ extend HashMapIterator<K, V> : Iterator {
         while index < self.capacity {
             // Safety: `index < self.capacity`, checked by the loop, and the runs are the map's, which `Iterate`
             // requires to outlive this walk unchanged, so by the table invariant the state byte is written.
-            if unsafe { self.states[index] } != SlotEmpty {
+            if self.states[index] != SlotEmpty {
                 self.cursor = index + 1;
                 // Safety: the same slot of the map's runs, occupied, checked above, so its key and value are
                 // initialized.
-                return .Some(unsafe { KeyValue<K, V> { key: self.keys[index], value: self.values[index] } });
+                return .Some(KeyValue<K, V> { key: self.keys[index], value: self.values[index] });
             }
             index++;
         }
@@ -479,7 +479,7 @@ extend HashMapIntoIterator<K, V> : Iterator {
             if self.table.IsOccupied(index) {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its key
                 // and value are initialized; both are moved out and the slot is marked empty at once.
-                unsafe {
+                {
                     let takenKey = move self.table.keys[index];
                     let takenValue = move self.table.values[index];
                     self.table.states[index] = SlotEmpty;

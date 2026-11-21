@@ -16,7 +16,7 @@ extend Tracked {
     func ~Tracked(&var self) {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
-            unsafe { *self.counter = *self.counter + 1; }
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -31,7 +31,7 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterF
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
     // Safety: both point at locals of the caller, which outlive this call.
-    unsafe { *afterFilling = *counter; }
+    *afterFilling = *counter;
 }
 
 // Drains a map of tracked values completely, giving each yielded entry its own scope so it is owned by exactly one
@@ -89,7 +89,7 @@ struct CountedKey {
 
 func CountedHash(key: CountedKey, low: uint64, high: uint64) -> uint64 {
     // Safety: `hashes` points at a local of the test that outlives every key hashed.
-    unsafe { *key.hashes += 1; }
+    *key.hashes += 1;
     // Deliberate collisions exercise displacement as well as growth with a cached hash.
     return ((key.value % 4) as uint64) ^ low ^ high;
 }

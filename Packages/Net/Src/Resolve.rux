@@ -65,15 +65,15 @@ when #target.os != .Linux {
         var first: *var AddressInfo = null;
         // Safety: `name` ends in the NUL pushed above, `hints` is a local `AddressInfo`, and `first` is a local the
         // call writes the head of its list to.
-        let code = unsafe { getaddrinfo(name.AsSlice().data, null, @hints, @first) };
+        let code = getaddrinfo(name.AsSlice().data, null, @hints, @first);
         if code != 0 { throw IoError { kind: IoErrorKind::NotFound, raw: code }; }
         var node = first;
         while node != null {
             // Safety: `node` is a live node of the list `getaddrinfo` returned, which is freed only below.
-            let found = unsafe { node.address };
+            let found = node.address;
             if found != null {
                 // Safety: a node's non-null address is a `sockaddr` the resolver filled, as long as its family says.
-                match unsafe { Decode(found as *uint8) } {
+                match Decode(found as *uint8) {
                     .Some(found) => {
                         let address = SocketAddress { ip: found.ip, port };
                         var seen = false;
@@ -88,10 +88,10 @@ when #target.os != .Linux {
                 }
             }
             // Safety: `node` is a live node of the list `getaddrinfo` returned, which is freed only below.
-            node = unsafe { node.next };
+            node = node.next;
         }
         // Safety: `first` is the head `getaddrinfo` returned, freed once, here.
-        unsafe { freeaddrinfo(first); }
+        freeaddrinfo(first);
         if results.Length() == 0u { throw IoError::Of(IoErrorKind::NotFound); }
         return move results;
     }

@@ -75,7 +75,7 @@ func Main() -> int {
     let square = Square { side: 2 };
     let circle = Circle { radius: 1 };
     // Safety: `square` and `circle` are locals of `Main` that outlive `shapes` and are never moved.
-    let shapes: Shape[2] = unsafe { [@square as Shape, @circle as Shape] };
+    let shapes: Shape[2] = [@square as Shape, @circle as Shape];
     var area: int32 = 0;
     for shape in shapes {
         area += shape.Area();

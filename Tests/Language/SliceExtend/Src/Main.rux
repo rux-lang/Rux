@@ -51,7 +51,7 @@ func Main() -> int {
 
     let greeting = "Hello";
     // Safety: `greeting.data` addresses the literal's `greeting.length` bytes.
-    var text: char8[..] = unsafe { (greeting.data)[..greeting.length] };
+    var text: char8[..] = (greeting.data)[..greeting.length];
     Assert(text.Count() == 5, "Expected count of 5");
 
     let triple: int[3] = [2, 3, 4];

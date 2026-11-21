@@ -74,7 +74,7 @@ func Main() -> int {
     storage[2] = 3u8;
     storage[3] = 4u8;
     // Safety: `storage` is a live local of four bytes.
-    let view: Bytes = unsafe { (@storage[0])[..4] };
+    let view: Bytes = (@storage[0])[..4];
     Assert(view.length == 4u, "a slice alias is the slice type");
     Assert(Total(view) == 10i32, "and is accepted where the alias is written");
 

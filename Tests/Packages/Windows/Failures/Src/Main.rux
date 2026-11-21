@@ -37,7 +37,7 @@ when #target.os == OperatingSystem::Windows {
     /// The calling thread's last-error code, which is where every failing call below leaves its reason.
     func LastError() -> uint32 {
         // Safety: `GetLastError` takes no arguments and only reads the calling thread's last-error code.
-        return unsafe { GetLastError() };
+        return GetLastError();
     }
 
     func Main() -> int {
@@ -58,7 +58,7 @@ when #target.os == OperatingSystem::Windows {
         var filePath: char16[64];
         WriteWide(filePath[..], "Bin\\WindowsFailuresNoSuchFile.tmp");
         // Safety: `filePath` is a local holding a NUL-terminated wide name, and the optional pointers are null.
-        let missingFile = unsafe {
+        let missingFile = {
             CreateFileW(@filePath[0], GENERIC_READ, FILE_SHARE_READ, null, CreationDisposition::OpenExisting as uint32,
                         FILE_ATTRIBUTE_NORMAL, null)
         };
@@ -72,7 +72,7 @@ when #target.os == OperatingSystem::Windows {
         var drivePath: char16[32];
         WriteWide(drivePath[..], "K:\\no-such-path-2f8c1e");
         // Safety: `drivePath` is a local holding a NUL-terminated wide name, and the optional pointers are null.
-        let missingPath = unsafe {
+        let missingPath = {
             CreateFileW(@drivePath[0], GENERIC_READ, FILE_SHARE_READ, null, CreationDisposition::OpenExisting as uint32,
                         FILE_ATTRIBUTE_NORMAL, null)
         };
@@ -82,16 +82,16 @@ when #target.os == OperatingSystem::Windows {
 
         // The attribute query has a sentinel of its own and leaves the same code the open did.
         // Safety: `filePath` still holds the NUL-terminated wide name written above.
-        Assert(unsafe { GetFileAttributesW(@filePath[0]) } == INVALID_FILE_ATTRIBUTES,
+        Assert(GetFileAttributesW(@filePath[0]) == INVALID_FILE_ATTRIBUTES,
                "querying a missing file reports the attribute sentinel");
         Assert(LastError() == ERROR_FILE_NOT_FOUND, "and leaves the same Win32 code as the open did");
 
         // Closing something that was never a handle is refused, and says which way it was wrong.
         // Safety: `CloseHandle` validates its argument and refuses null without touching memory.
-        Assert(!unsafe { CloseHandle(null) }, "closing null fails");
+        Assert(!CloseHandle(null), "closing null fails");
         Assert(LastError() == ERROR_INVALID_HANDLE, "closing null is INVALID_HANDLE");
         // Safety: `CloseHandle` looks the value up in the process handle table and refuses one that was never issued.
-        Assert(!unsafe { CloseHandle(0x1234 as *var opaque) }, "closing an arbitrary number fails");
+        Assert(!CloseHandle(0x1234 as *var opaque), "closing an arbitrary number fails");
         Assert(LastError() == ERROR_INVALID_HANDLE, "closing an arbitrary number is INVALID_HANDLE too");
 
         // The first surprise, and the reason this test exists rather than a reading of the documentation:
@@ -100,7 +100,7 @@ when #target.os == OperatingSystem::Windows {
         // the sentinel defensively is not caught by its return value — it silently does nothing, which is the
         // opposite of what its name suggests and the opposite of what null and garbage do two lines above.
         // Safety: the sentinel is the current-process pseudo-handle, and closing a pseudo-handle is a no-op.
-        Assert(unsafe { CloseHandle(InvalidHandleValue as *var opaque) },
+        Assert(CloseHandle(InvalidHandleValue as *var opaque),
                "closing the handle sentinel SUCCEEDS: it is the current-process pseudo-handle, not an invalid one");
 
         // --- A memory-returning failure ------------------------------------------------------------------------
@@ -108,7 +108,7 @@ when #target.os == OperatingSystem::Windows {
         // A zero-size request is refused, and the refusal is null — not the handle sentinel. A caller comparing
         // against `InvalidHandleValue` here would treat a failed allocation as a success and dereference null.
         // Safety: a null base lets the system choose, and a zero-size request maps nothing.
-        let emptyAllocation = unsafe { VirtualAlloc(null, 0, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
+        let emptyAllocation = VirtualAlloc(null, 0, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         Assert(emptyAllocation == null, "a zero-size reservation reports null");
         Assert((emptyAllocation as uint64) != InvalidHandleValue, "and null is not the handle sentinel");
         Assert(LastError() == ERROR_INVALID_PARAMETER, "a zero-size reservation is INVALID_PARAMETER");
@@ -116,7 +116,7 @@ when #target.os == OperatingSystem::Windows {
         // More address space than the process can have. Windows calls this a bad parameter rather than a memory
         // shortage, which is worth pinning: the size is rejected before anything is asked of the memory manager.
         // Safety: a null base lets the system choose, and a size beyond the address space is refused unmapped.
-        let enormous = unsafe { VirtualAlloc(null, 0x7FFFFFFFFFFF, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
+        let enormous = VirtualAlloc(null, 0x7FFFFFFFFFFF, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         Assert(enormous == null, "an impossible reservation reports null");
         Assert((enormous as uint64) != InvalidHandleValue, "and still not the handle sentinel");
         Assert(LastError() == ERROR_INVALID_PARAMETER, "an impossible reservation is INVALID_PARAMETER");
@@ -124,10 +124,10 @@ when #target.os == OperatingSystem::Windows {
         // The heap refuses the same size with a different code, so the two allocators do not share a failure
         // vocabulary either. A translation layer that mapped one and assumed the other would lose the distinction.
         // Safety: `GetProcessHeap` takes no arguments and returns the process's own heap handle.
-        let heap = unsafe { GetProcessHeap() };
+        let heap = GetProcessHeap();
         Assert(heap != null, "the process heap exists");
         // Safety: `heap` is the live process heap, checked above, and a request this large is refused unallocated.
-        Assert(unsafe { HeapAlloc(heap, 0, 0x7FFFFFFFFFFF) } == null, "an impossible heap request reports null");
+        Assert(HeapAlloc(heap, 0, 0x7FFFFFFFFFFF) == null, "an impossible heap request reports null");
         Assert(LastError() == ERROR_NOT_ENOUGH_MEMORY, "and the heap calls it NOT_ENOUGH_MEMORY, not a bad size");
         Assert(ERROR_NOT_ENOUGH_MEMORY != ERROR_INVALID_PARAMETER, "the two allocators' refusals are distinct codes");
 
@@ -135,23 +135,23 @@ when #target.os == OperatingSystem::Windows {
 
         const Size: uint = 65536;
         // Safety: a null base lets the system choose where to reserve, and nothing reads or writes the reservation.
-        let reserved = unsafe { VirtualAlloc(null, Size, MEM_RESERVE, PAGE_READWRITE) };
+        let reserved = VirtualAlloc(null, Size, MEM_RESERVE, PAGE_READWRITE);
         Assert(reserved != null, "an ordinary reservation succeeds");
         Assert((reserved as uint64) != InvalidHandleValue, "a success is not the handle sentinel either");
 
         // MEM_RELEASE takes a size of zero and the exact base address. Passing the size is the mistake a caller who
         // thinks of release as the inverse of commit will make, and it is refused rather than partially honored.
         // Safety: `reserved` is the untouched reservation above, and a release with a non-zero size is refused.
-        Assert(unsafe { VirtualFree(reserved, Size, MEM_RELEASE) } == 0, "releasing with a non-zero size fails");
+        Assert(VirtualFree(reserved, Size, MEM_RELEASE) == 0, "releasing with a non-zero size fails");
         Assert(LastError() == ERROR_INVALID_PARAMETER, "releasing with a non-zero size is INVALID_PARAMETER");
         // Safety: `reserved` is the exact base of the untouched reservation above, and nothing uses it afterwards.
-        Assert(unsafe { VirtualFree(reserved, 0, MEM_RELEASE) } != 0, "releasing with a zero size succeeds");
+        Assert(VirtualFree(reserved, 0, MEM_RELEASE) != 0, "releasing with a zero size succeeds");
 
         // The second surprise, and it runs the other way from POSIX: releasing an already-released reservation
         // fails here, where `munmap` on an already-unmapped range succeeds. Anything that treats a double release
         // as harmless is portable in one direction only.
         // Safety: the range was released above, so the system finds no reservation there and changes nothing.
-        Assert(unsafe { VirtualFree(reserved, 0, MEM_RELEASE) } == 0,
+        Assert(VirtualFree(reserved, 0, MEM_RELEASE) == 0,
                "releasing an already-released reservation fails");
         Assert(LastError() == ERROR_INVALID_ADDRESS, "a double release is INVALID_ADDRESS, a third distinct code");
 
@@ -166,7 +166,7 @@ when #target.os == OperatingSystem::Windows {
         // place first is what makes that checkable: a successful draw must not disturb it, and a caller who read
         // `GetLastError` afterwards would see a failure that belongs to something else entirely.
         // Safety: `CloseHandle` validates its argument and refuses null without touching memory.
-        Assert(!unsafe { CloseHandle(null) }, "closing null fails, leaving a known code");
+        Assert(!CloseHandle(null), "closing null fails, leaving a known code");
         let beforeSuccess = LastError();
         Assert(beforeSuccess == ERROR_INVALID_HANDLE, "the standing Win32 code is INVALID_HANDLE");
 

@@ -248,9 +248,6 @@ void DeclarationPrinter::PrintFuncDecl(const FuncDecl &decl) {
     if (decl.isPublic) {
         out << "pub ";
     }
-    if (decl.isUnsafe) {
-        out << "unsafe ";
-    }
     if (decl.isAsm) {
         out << "asm ";
     }

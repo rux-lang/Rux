@@ -80,30 +80,28 @@ extern func abort();
 func Main() -> int {
     // Safety: `abs`, `llabs` and `AbsoluteValue` read no memory, and no argument is the minimum value of its width,
     // whose absolute value C leaves undefined.
-    unsafe {
-        // A call through a block member reaches the real runtime.
-        Assert(abs(-5i32) == 5i32, "a negative argument comes back positive");
-        Assert(abs(5i32) == 5i32, "a positive argument is unchanged");
-        Assert(abs(0i32) == 0i32, "zero is unchanged");
+    // A call through a block member reaches the real runtime.
+    Assert(abs(-5i32) == 5i32, "a negative argument comes back positive");
+    Assert(abs(5i32) == 5i32, "a positive argument is unchanged");
+    Assert(abs(0i32) == 0i32, "zero is unchanged");
 
-        // A call through a single declaration outside any block.
-        Assert(llabs(-5000000000i64) == 5000000000i64, "the wide form reaches its own symbol");
+    // A call through a single declaration outside any block.
+    Assert(llabs(-5000000000i64) == 5000000000i64, "the wide form reaches its own symbol");
 
-        // The renamed declaration must reach the symbol named second, not the one named first.
-        Assert(AbsoluteValue(-42i32) == 42i32, "a Rux name may differ from the exported symbol");
-        Assert(AbsoluteValue(-42i32) == abs(-42i32), "and reaches the same code as the matching name");
-    }
+    // The renamed declaration must reach the symbol named second, not the one named first.
+    Assert(AbsoluteValue(-42i32) == 42i32, "a Rux name may differ from the exported symbol");
+    Assert(AbsoluteValue(-42i32) == abs(-42i32), "and reaches the same code as the matching name");
 
     // A literal keeps its trailing NUL, excluded from .length, which is what makes .data a C string.
     let greeting = "hello";
     Assert(greeting.length == 5u, "the length excludes the terminator");
     // Safety: a string literal's `data` is followed by a NUL terminator.
-    Assert(unsafe { strlen(greeting.data) } == 5u, "and the runtime finds the terminator that is still there");
+    Assert(strlen(greeting.data) == 5u, "and the runtime finds the terminator that is still there");
 
     let empty = "";
     Assert(empty.length == 0u, "an empty literal has no content");
     // Safety: a string literal's `data` is followed by a NUL terminator, even when it is empty.
-    Assert(unsafe { strlen(empty.data) } == 0u, "and is still terminated");
+    Assert(strlen(empty.data) == 0u, "and is still terminated");
 
     // A pointer argument may come from storage this program owns rather than from a literal.
     var buffer: char8[4];
@@ -112,13 +110,13 @@ func Main() -> int {
     buffer[2] = c8'c';
     buffer[3] = c8'\0';
     // Safety: `buffer` is a live local whose last element, `buffer[3]`, is the NUL terminator.
-    Assert(unsafe { strlen(@buffer[0]) } == 3u, "a pointer into local storage is an ordinary argument");
+    Assert(strlen(@buffer[0]) == 3u, "a pointer into local storage is an ordinary argument");
 
     // An extern variable is the runtime's own storage: a write is seen by the next read, and `@` addresses the same
     // word.
     // Safety: `RuntimeFlag` is the runtime's plain `int` flag, which this single-threaded program may change while
     // nothing in the runtime reads it; `flag` addresses it, and its original value is restored before the block ends.
-    unsafe {
+    {
         let saved = RuntimeFlag;
         RuntimeFlag = 7i32;
         Assert(RuntimeFlag == 7i32, "a write to an extern variable is read back");

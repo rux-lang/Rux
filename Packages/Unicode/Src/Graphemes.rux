@@ -83,9 +83,9 @@ func IsConjunctExtend(scalar: char32) -> bool {
 pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     if index == 0 || index >= text.length { return true; }
     // Safety: `index` is above zero and below `text.length`, checked above, so `index - 1` lies inside `text`.
-    let previous = unsafe { text.data[index - 1] };
+    let previous = text.data[index - 1];
     // Safety: `index` is below `text.length`, checked above.
-    let current = unsafe { text.data[index] };
+    let current = text.data[index];
     let before = GraphemeBreakOf(previous);
     let after = GraphemeBreakOf(current);
 
@@ -129,7 +129,7 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
         while walk > 0 && !joined {
             walk = walk - 1;
             // Safety: `walk` only falls from `index`, which is below `text.length`.
-            let each = unsafe { text.data[walk] };
+            let each = text.data[walk];
             if IsConjunctLinker(each) {
                 sawLinker = true;
             }
@@ -148,7 +148,7 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
         while walk > 0 {
             walk = walk - 1;
             // Safety: `walk` only falls from `index - 1`, which is below `text.length`.
-            let each = unsafe { text.data[walk] };
+            let each = text.data[walk];
             let kind = GraphemeBreakOf(each);
             if kind != GraphemeBreak::Extend {
                 if IsPictographic(each) { return false; }
@@ -161,7 +161,7 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
         var run: uint = 0;
         var walk = index;
         // Safety: `walk` is above zero, tested first, and only falls from `index`, which is below `text.length`.
-        while walk > 0 && GraphemeBreakOf(unsafe { text.data[walk - 1] }) == GraphemeBreak::RegionalIndicator {
+        while walk > 0 && GraphemeBreakOf(text.data[walk - 1]) == GraphemeBreak::RegionalIndicator {
             run = run + 1;
             walk = walk - 1;
         }

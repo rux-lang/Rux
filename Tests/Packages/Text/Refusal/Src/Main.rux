@@ -22,22 +22,22 @@ struct RefusingAllocator {
 extend RefusingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
         // Safety: `state` points at a `RefusalState` the test keeps alive for as long as this allocator is used.
-        if unsafe { self.state.refusing } { throw .OutOfMemory; }
+        if self.state.refusing { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `RefusalState`.
-        return try unsafe { self.state.backing.Allocate(layout) };
+        return try self.state.backing.Allocate(layout);
     }
 
     func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
         // Safety: `state` points at the test's live `RefusalState`.
-        return try unsafe { self.state.backing.Deallocate(block, layout) };
+        return try self.state.backing.Deallocate(block, layout);
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque throws AllocError {
         // Safety: `state` points at the test's live `RefusalState`.
-        if unsafe { self.state.refusing } { throw .OutOfMemory; }
+        if self.state.refusing { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `RefusalState`.
-        return try unsafe { self.state.backing.Reallocate(block, oldLayout, newLayout) };
+        return try self.state.backing.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -55,7 +55,7 @@ func Main() -> int {
 
     // A builder holding text keeps it when a growth is refused.
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
-    var builder = StringBuilder(unsafe { @hostile as Allocator });
+    var builder = StringBuilder(@hostile as Allocator);
     builder.Append("hello");
     let capacity = builder.Capacity();
     state.refusing = true;

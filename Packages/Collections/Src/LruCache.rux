@@ -126,7 +126,7 @@ extend LruCache<K, V> {
                 let entry: *var CacheEntry<K, V> = @self.entries.AsMutableSlice()[at];
                 // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and
                 // the vector does not change while it is used; the value moved out is refilled at once.
-                unsafe {
+                {
                     let replaced = move entry.value;
                     entry.value = move value;
                 }
@@ -155,7 +155,7 @@ extend LruCache<K, V> {
         let entry: *var CacheEntry<K, V> = @entries[at];
         // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and the
         // vector does not change while it is used; the value moved out is refilled at once.
-        unsafe {
+        {
             let displaced = move entry.value;
             entry.value = move value;
         }

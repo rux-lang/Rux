@@ -1,6 +1,6 @@
 // A `match` that ends a block in value position is the value the block yields, as the `match` expression it would be
-// there: in an `if` branch used as a value, in the block of a `match` or `catch` arm used as a value, and in an
-// `unsafe` block used as a value. Its arms unify and take the expected type like any match's. Ending a statement's
+// there: in an `if` branch used as a value, in the block of a `match` or `catch` arm used as a value, and in a
+// plain block used as a value. Its arms unify and take the expected type like any match's. Ending a statement's
 // block it stays a statement, whose arms' values are not used.
 
 import Core::Assert;
@@ -75,7 +75,7 @@ func Recover(value: int) -> int {
 func Read(value: int) -> int {
     let address = @value;
     // Safety: `address` is the address of the parameter, which lives for the whole call.
-    return unsafe {
+    return {
         let read = *address;
         match read {
             1 => 10,
@@ -101,7 +101,7 @@ func Main() -> int {
     Assert(Measure(.Dot) == 40 && Measure(.Circle(5)) == 5, "the block of a match arm");
     Assert(Pick(true) is .Circle(3) && Pick(false) is .Dot, "the arms take the expected type");
     Assert(Recover(-1) == 10 && Recover(-7) == 7 && Recover(3) == 3, "the block of a catch arm");
-    Assert(Read(1) == 10 && Read(7) == 7, "an 'unsafe' block");
+    Assert(Read(1) == 10 && Read(7) == 7, "a plain block");
     Assert(Count(1) == 1 && Count(5) == 2 && Count(0) == 0, "a statement's block keeps a match statement");
     return 0;
 }

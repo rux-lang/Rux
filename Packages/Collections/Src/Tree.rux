@@ -76,7 +76,7 @@ extend Tree<K, V> {
     }
 
     /// The topmost node, or null for an empty tree, for code that walks the shape itself.
-    /// `self` is borrowed. Reading through the pointer needs `unsafe`, and it is valid until the tree next changes;
+    /// `self` is borrowed. The pointer is valid until the tree next changes;
     /// the field it reads stays private, so only the tree's own operations can move it.
     /// @returns the root node, or null when the tree is empty
     /// @see https://rux-lang.dev/docs/api/collections/tree#root
@@ -95,7 +95,7 @@ extend Tree<K, V> {
     // Whether a node is red. A missing child is black, which is what lets the fix-ups ask about a colour without
     // first asking whether there is a node.
     // Safety: `node` must be null or a live node of a tree.
-    unsafe func IsRed(node: *TreeNode<K, V>) -> bool {
+    func IsRed(node: *TreeNode<K, V>) -> bool {
         return node != null && node.red;
     }
 
@@ -108,7 +108,7 @@ extend Tree<K, V> {
     // Every key stays on the correct side of every other, which is why a rotation can be used to fix a colour
     // without touching the order.
     // Safety: `pivot` must be a live node of this tree with a right child.
-    unsafe func RotateLeft(&var self, pivot: *var TreeNode<K, V>) {
+    func RotateLeft(&var self, pivot: *var TreeNode<K, V>) {
         let risen = pivot.right;
         pivot.right = risen.left;
         if risen.left != null {
@@ -130,7 +130,7 @@ extend Tree<K, V> {
 
     // The mirror of `RotateLeft`, which the left child must therefore exist for.
     // Safety: `pivot` must be a live node of this tree with a left child.
-    unsafe func RotateRight(&var self, pivot: *var TreeNode<K, V>) {
+    func RotateRight(&var self, pivot: *var TreeNode<K, V>) {
         let risen = pivot.left;
         pivot.left = risen.right;
         if risen.right != null {
@@ -163,14 +163,14 @@ extend Tree<K, V> {
         var walk = self.root;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            let order = unsafe { compare(key, walk.key) };
+            let order = compare(key, walk.key);
             if order.IsLess() {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
             }
             else if order.IsGreater() {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
             }
             else {
                 return walk;
@@ -195,14 +195,14 @@ extend Tree<K, V> {
         var walk = self.root;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            if unsafe { compare(key, walk.key) }.IsLess() {
+            if compare(key, walk.key).IsLess() {
                 best = walk;
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
             }
             else {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
             }
         }
         return best;
@@ -219,14 +219,14 @@ extend Tree<K, V> {
         var walk = self.root;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            if unsafe { compare(key, walk.key) }.IsGreater() {
+            if compare(key, walk.key).IsGreater() {
                 best = walk;
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
             }
             else {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
             }
         }
         return best;
@@ -238,7 +238,7 @@ extend Tree<K, V> {
     /// @param from the subtree to search
     /// @returns the leftmost node of that subtree, or null when it is empty
     /// @see https://rux-lang.dev/docs/api/collections/tree#minimum
-    pub unsafe func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         var walk = from;
         while walk != null && walk.left != null {
             walk = walk.left;
@@ -252,7 +252,7 @@ extend Tree<K, V> {
     /// @param from the subtree to search
     /// @returns the rightmost node of that subtree, or null when it is empty
     /// @see https://rux-lang.dev/docs/api/collections/tree#maximum
-    pub unsafe func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         var walk = from;
         while walk != null && walk.right != null {
             walk = walk.right;
@@ -269,7 +269,7 @@ extend Tree<K, V> {
     /// @param node the node to act on
     /// @returns the node with the next key in order, or null after the last
     /// @see https://rux-lang.dev/docs/api/collections/tree#successor
-    pub unsafe func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         if node == null { return null; }
         if node.right != null { return Tree::Minimum<K, V>(node.right); }
         var walk = node;
@@ -287,7 +287,7 @@ extend Tree<K, V> {
     /// @param node the node to act on
     /// @returns the node with the previous key in order, or null before the first
     /// @see https://rux-lang.dev/docs/api/collections/tree#predecessor
-    pub unsafe func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         if node == null { return null; }
         if node.left != null { return Tree::Maximum<K, V>(node.left); }
         var walk = node;
@@ -306,7 +306,7 @@ extend Tree<K, V> {
     // uncle is black, a rotation moves the black grandparent down between the two reds and ends it: at most two
     // rotations run per insertion, however tall the tree.
     // Safety: `node` must be a live node of this tree, just linked in below its parent or as the root.
-    unsafe func InsertFixup(&var self, node: *var TreeNode<K, V>) {
+    func InsertFixup(&var self, node: *var TreeNode<K, V>) {
         var walk = node;
         while walk.parent != null && walk.parent.red {
             // A red parent is never the root, so the grandparent exists.
@@ -374,22 +374,22 @@ extend Tree<K, V> {
         var descendedLeft = false;
         while walk != null {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            let order = unsafe { compare(key, walk.key) };
+            let order = compare(key, walk.key);
             above = walk;
             if order.IsLess() {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.left };
+                walk = walk.left;
                 descendedLeft = true;
             }
             else if order.IsGreater() {
                 // Safety: the tree invariant: `walk` is still that live node.
-                walk = unsafe { walk.right };
+                walk = walk.right;
                 descendedLeft = false;
             }
             else {
                 // Safety: the tree invariant: `walk` is still that live node, and its value is refilled right after
                 // it is moved out.
-                unsafe {
+                {
                     let displaced = move walk.value;
                     walk.value = move value;
                     return move displaced;
@@ -402,39 +402,37 @@ extend Tree<K, V> {
         // Red is what a fresh node is coloured, because red is the colour that cannot break the black-count rule.
         // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.
         // Safety: `fresh` comes from `AllocateBlock` with room for one node, and this is its first write.
-        unsafe {
-            *fresh = TreeNode<K, V> {
-                key: move key,
-                value: move value,
-                left: null,
-                right: null,
-                parent: above,
-                red: true
-            };
-        }
+        *fresh = TreeNode<K, V> {
+            key: move key,
+            value: move value,
+            left: null,
+            right: null,
+            parent: above,
+            red: true
+        };
         if above == null {
             self.root = fresh;
         }
         else if descendedLeft {
             // Safety: the tree invariant: `above` is non-null, checked above, so it is the live node the descent
             // stopped at.
-            unsafe { above.left = fresh; }
+            above.left = fresh;
         }
         else {
             // Safety: the tree invariant: `above` is non-null, checked above, so it is the live node the descent
             // stopped at.
-            unsafe { above.right = fresh; }
+            above.right = fresh;
         }
         self.length = self.length + 1;
         // Safety: `fresh` is a live node of this tree now, linked in below `above` or as the root.
-        unsafe { self.InsertFixup(fresh); }
+        self.InsertFixup(fresh);
         return none;
     }
 
     // Puts `replacement` where `hollow` was. Only the link downward from the parent and the link upward from the
     // replacement are moved; `hollow`'s own children are left pointing where they did, for the caller to deal with.
     // Safety: `hollow` must be a live node of this tree, and `replacement` null or a live node of it.
-    unsafe func Transplant(&var self, hollow: *var TreeNode<K, V>, replacement: *var TreeNode<K, V>) {
+    func Transplant(&var self, hollow: *var TreeNode<K, V>, replacement: *var TreeNode<K, V>) {
         if hollow.parent == null {
             self.root = replacement;
         }
@@ -461,7 +459,7 @@ extend Tree<K, V> {
     // So at most three rotations run per removal, however tall the tree.
     // Safety: `node` must be null or a live node of this tree, and `parent` the live node it hangs from, or null when
     // `node` is the root: the pair `Detach` computes for what took the removed node's place.
-    unsafe func RemoveFixup(&var self, node: *var TreeNode<K, V>, parent: *var TreeNode<K, V>) {
+    func RemoveFixup(&var self, node: *var TreeNode<K, V>, parent: *var TreeNode<K, V>) {
         var walk = node;
         var above = parent;
         while walk != self.root && !Tree::IsRed<K, V>(walk) {
@@ -547,7 +545,7 @@ extend Tree<K, V> {
     /// @param node the node to act on
     /// @returns the entry the node held
     /// @see https://rux-lang.dev/docs/api/collections/tree#detach
-    pub unsafe func Detach(&var self, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
+    pub func Detach(&var self, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
         // Whichever node actually leaves its place, and what moves up into it. A red one leaving costs no path a
         // black, so the fix-up is only run when a black one goes.
         var vacatedWasRed = node.red;
@@ -611,30 +609,28 @@ extend Tree<K, V> {
             // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it and its parent are live nodes
             // of this tree. A node is released only once both its subtrees are gone and the link down to it is cut,
             // so no link the walk follows reaches a released node.
-            unsafe {
-                if walk.left != null {
-                    walk = walk.left;
-                }
-                else if walk.right != null {
-                    walk = walk.right;
-                }
-                else {
-                    let above = walk.parent;
-                    if above != null {
-                        if above.left == walk {
-                            above.left = null;
-                        }
-                        else {
-                            above.right = null;
-                        }
+            if walk.left != null {
+                walk = walk.left;
+            }
+            else if walk.right != null {
+                walk = walk.right;
+            }
+            else {
+                let above = walk.parent;
+                if above != null {
+                    if above.left == walk {
+                        above.left = null;
                     }
-                    // Reading the key and the value out gives them to locals, and the locals dying here is what
-                    // destroys them. Nothing else in a generic container can reach a destructor.
-                    let key = move walk.key;
-                    let value = move walk.value;
-                    ReleaseBlock<TreeNode<K, V>>(self.allocator, walk, 1);
-                    walk = above;
+                    else {
+                        above.right = null;
+                    }
                 }
+                // Reading the key and the value out gives them to locals, and the locals dying here is what
+                // destroys them. Nothing else in a generic container can reach a destructor.
+                let key = move walk.key;
+                let value = move walk.value;
+                ReleaseBlock<TreeNode<K, V>>(self.allocator, walk, 1);
+                walk = above;
             }
         }
         self.root = null;

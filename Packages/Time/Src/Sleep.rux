@@ -125,7 +125,7 @@ extend SystemWaiter : Waiter {
         when #target.os == .Windows {
             // Rounded up above, so this waits at least as long as asked and never less.
             // Safety: `Sleep` takes only a millisecond count and touches no memory of the caller's.
-            unsafe { Sleep(chunk as uint32); }
+            Sleep(chunk as uint32);
             return leftover;
         }
         else {
@@ -135,7 +135,7 @@ extend SystemWaiter : Waiter {
             };
             var unslept = Timespec { seconds: 0, nanoseconds: 0 };
             // Safety: `request` and `unslept` are local `Timespec`s; the first is read and the second written.
-            let status = unsafe { Nanosleep(@request, @unslept) };
+            let status = Nanosleep(@request, @unslept);
             if !IsError(status) {
                 return leftover;
             }

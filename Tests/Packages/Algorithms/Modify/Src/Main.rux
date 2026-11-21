@@ -32,10 +32,10 @@ func Main() -> int {
     pair[0] = 1;
     pair[1] = 2;
     // Safety: both pointers address elements of the live local `pair`, which nothing else refers to.
-    unsafe { Swap<int32>(@pair[0], @pair[1]); }
+    Swap<int32>(@pair[0], @pair[1]);
     Assert(pair[0] == 2 && pair[1] == 1, "swapping exchanges both values");
     // Safety: the pointer addresses an element of the live local `pair`; `Swap` allows both sides to be the same.
-    unsafe { Swap<int32>(@pair[0], @pair[0]); }
+    Swap<int32>(@pair[0], @pair[0]);
     Assert(pair[0] == 2, "and swapping a location with itself leaves it alone");
 
     // Reverse, including the two lengths that are already reversed.

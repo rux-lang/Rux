@@ -88,7 +88,7 @@ func RenderDiffers64(allocator: Allocator, left: float64, right: float64) -> boo
 // positive value gives the very next float, with no arithmetic that could round.
 func FromBits64(bits: uint64) -> float64 {
     // Safety: `bits` is a live local `uint64`, the same size as `float64`, so the read stays inside it.
-    return unsafe { *((@bits) as *float64) };
+    return *((@bits) as *float64);
 }
 
 func Main() -> int {

@@ -24,7 +24,7 @@ struct Named {
 extend Named {
     func ~Named(&var self) {
         // Safety: every `Named` in this test points `drops` at a local of `Main` that outlives it.
-        unsafe { *self.drops += 1; }
+        *self.drops += 1;
     }
 
     func Id(&self) -> &int32 { return self.id; }
@@ -68,18 +68,18 @@ struct Window {
 extend Window {
     func At(&self, index: uint) -> &int32 {
         // Safety: every `Window` in this test points `data` at `count` initialized elements of a local of `Main`.
-        unsafe { return self.data[index]; }
+        return self.data[index];
     }
 
     func AtMutable(&var self, index: uint) -> &var int32 {
         // Safety: every `Window` in this test points `data` at `count` initialized elements of a local of `Main`.
-        unsafe { return self.data[index]; }
+        return self.data[index];
     }
 
     func Find(&self, index: uint) -> &int32? {
         if index >= self.count { return none; }
         // Safety: `index < count`, checked above, so the element is one of the initialized ones.
-        unsafe { return self.data[index]; }
+        return self.data[index];
     }
 }
 
@@ -110,7 +110,7 @@ func People(drops: *var int32) {
     people.AtMutable(1).id = 12i32;
     Assert(people.At(1).id == 12i32, "a field of a call's returned mutable reference is a place");
     // Safety: `drops` points at a local of `Main`, which outlives this call.
-    Assert(unsafe { *drops } == 0i32, "borrowing an owning element neither copies nor destroys it");
+    Assert(*drops == 0i32, "borrowing an owning element neither copies nor destroys it");
 }
 
 func Read(value: &int32) -> int32 { return value; }

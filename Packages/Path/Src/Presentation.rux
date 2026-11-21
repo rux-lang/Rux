@@ -36,7 +36,7 @@ func WriteHexDigits(writer: &var TextWriter, value: uint32, count: uint) throws 
     while shift > 0 {
         shift = shift - 4;
         // Safety: the index is masked to four bits, below the sixteen digits of `digits`.
-        try WriteAscii(writer, unsafe { digits.data[((value >> (shift as uint32)) & 0xF) as uint] });
+        try WriteAscii(writer, digits.data[((value >> (shift as uint32)) & 0xF) as uint]);
     }
     return;
 }
@@ -66,7 +66,7 @@ when #target.os == .Windows {
             var scalar: uint32 = 0;
             var width: uint = 0;
             // Safety: `index` is below `units.length`, the loop condition, and the two outputs are locals.
-            if unsafe { DecodeNativeUnit(units, index, @scalar, @width) } {
+            if DecodeNativeUnit(units, index, @scalar, @width) {
                 try WriteScalar(writer, scalar as char32);
                 index = index + width;
             }
@@ -89,7 +89,7 @@ when #target.os == .Windows {
             var scalar: uint32 = 0;
             var width: uint = 0;
             // Safety: `index` is below `units.length`, the loop condition, and the two outputs are locals.
-            if unsafe { DecodeNativeUnit(units, index, @scalar, @width) } {
+            if DecodeNativeUnit(units, index, @scalar, @width) {
                 var encoded: char8[4];
                 var written: uint = 0;
                 let sink = encoded[..];
@@ -99,7 +99,7 @@ when #target.os == .Windows {
             }
             else {
                 // Safety: `index` is below `units.length`, the loop condition.
-                try WriteUnitEscape(writer, unsafe { units.data[index] } as uint32);
+                try WriteUnitEscape(writer, units.data[index] as uint32);
                 index = index + 1;
             }
         }
@@ -108,7 +108,7 @@ when #target.os == .Windows {
 
     // One scalar out of the UTF-16 units at `index`: a lone unit outside the surrogates, or a high-low pair.
     // Safety: `index` must be below `units.length`, and `scalar` and `width` must address writable values.
-    unsafe func DecodeNativeUnit(units: OsUnit[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
+    func DecodeNativeUnit(units: OsUnit[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
         let unit = units.data[index] as uint32;
         if unit < 0xD800 || unit > 0xDFFF {
             *scalar = unit;
@@ -145,7 +145,7 @@ else {
                 _ => {
                     if index > runStart {
                         // Safety: `runStart < index`, and `index` is below `units.length`, the loop condition.
-                        try WriteBytes(writer, unsafe { (@units.data[runStart])[..index - runStart] });
+                        try WriteBytes(writer, (@units.data[runStart])[..index - runStart]);
                     }
                     try WriteScalar(writer, ReplacementScalar as char32);
                     index = index + 1;
@@ -156,7 +156,7 @@ else {
         if index > runStart {
             // Safety: `runStart < index`, and `index` is at most `units.length`: it advances only by widths
             // `DecodeAt` found inside `units`, or by one past a unit below the length.
-            return try WriteBytes(writer, unsafe { (@units.data[runStart])[..index - runStart] });
+            return try WriteBytes(writer, (@units.data[runStart])[..index - runStart]);
         }
         return;
     }
@@ -179,10 +179,10 @@ else {
                 _ => {
                     if index > runStart {
                         // Safety: `runStart < index`, and `index` is below `units.length`, the loop condition.
-                        try WriteEscaped(writer, unsafe { (@units.data[runStart])[..index - runStart] });
+                        try WriteEscaped(writer, (@units.data[runStart])[..index - runStart]);
                     }
                     // Safety: `index` is below `units.length`, the loop condition.
-                    try WriteByteEscape(writer, unsafe { units.data[index] } as uint32);
+                    try WriteByteEscape(writer, units.data[index] as uint32);
                     index = index + 1;
                     runStart = index;
                 },
@@ -191,7 +191,7 @@ else {
         if index > runStart {
             // Safety: `runStart < index`, and `index` is at most `units.length`: it advances only by widths
             // `DecodeAt` found inside `units`, or by one past a unit below the length.
-            return try WriteEscaped(writer, unsafe { (@units.data[runStart])[..index - runStart] });
+            return try WriteEscaped(writer, (@units.data[runStart])[..index - runStart]);
         }
         return;
     }

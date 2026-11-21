@@ -66,7 +66,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
         if !reach.MultiplySmall(10) { return false; }
     }
     // Safety: the documented contract makes `power` a non-null pointer to the caller's writable `int`.
-    unsafe { *power = scaled; }
+    *power = scaled;
     return true;
 }
 
@@ -102,10 +102,8 @@ func TakeDigit(state: &var Quotient) -> uint64 {
 pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, into: var char8[..], count: *var uint,
                          power: *var int) -> bool {
     // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
-    unsafe {
-        *count = 0;
-        *power = 0;
-    }
+    *count = 0;
+    *power = 0;
     if precision > MaximumPrecision || significand == 0 { return false; }
 
     var state = Quotient { numerator: FixedNat(), denominator: FixedNat() };
@@ -124,26 +122,24 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
             let digit = (TakeDigit(state) + 0x30) as char8;
             // Safety: `produced` is below `wanted`, the loop condition, which is at most `into.length`, checked
             // above.
-            unsafe { into.data[produced] = digit; }
+            into.data[produced] = digit;
             produced = produced + 1;
         }
     }
 
     // Safety: `produced` is zero or `wanted`, which is at most `into.length`, checked above; `produced` and `scaled`
     // are locals.
-    if !unsafe { RoundGenerated(state, into, @produced, @scaled) } { return false; }
+    if !RoundGenerated(state, into, @produced, @scaled) { return false; }
     // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
-    unsafe {
-        *count = produced;
-        *power = scaled;
-    }
+    *count = produced;
+    *power = scaled;
     return true;
 }
 
 // Rounds the `produced` digits at the front of `into` on the remainder left in `state`, to nearest with ties to
 // even, adjusting the count and the power when a carry runs off the front.
 // Safety: `produced` and `scaled` must be non-null and writable, and `*produced` must not exceed `into.length`.
-unsafe func RoundGenerated(state: &Quotient, into: var char8[..], produced: *var uint, scaled: *var int) -> bool {
+func RoundGenerated(state: &Quotient, into: var char8[..], produced: *var uint, scaled: *var int) -> bool {
     // Round on what is left. Twice the remainder against the denominator is the exact "more than half", and a tie
     // goes to the even digit, which is what reading the result back would do with it. With no digits produced the
     // implicit last digit is a zero, which is even, so a tie stays down.

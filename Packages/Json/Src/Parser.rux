@@ -293,35 +293,35 @@ extend JsonParser {
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
     func TakeText(&var self, token: JsonToken) -> String throws TextError {
         // Safety: the lexer produced `token` from `self.input`, so `token.start..token.end` lies inside it.
-        let span = unsafe { (@self.input.data[token.start])[..token.end - token.start] };
+        let span = (@self.input.data[token.start])[..token.end - token.start];
         if !token.escaped { return try String::FromBytes(self.allocator, span); }
         var builder = StringBuilder(self.allocator);
         var index: uint = 0;
         while index < span.length {
             // Safety: `index` is below `span.length`, checked by the loop.
-            let c = unsafe { span.data[index] } as uint8;
+            let c = span.data[index] as uint8;
             if c != 0x5C {
                 // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte
                 // scalar across two appends, and a builder that validates what it is given refuses half of one
                 // — so an accented letter beside an escape would quietly disappear.
                 var run = index;
                 // Safety: the read happens only when `run` is below `span.length`, tested first.
-                while run < span.length && (unsafe { span.data[run] } as uint8) != 0x5C {
+                while run < span.length && (span.data[run] as uint8) != 0x5C {
                     run = run + 1;
                 }
                 // Safety: `index <= run <= span.length`, so the run lies inside `span`.
-                try builder.AppendBytes(unsafe { (@span.data[index])[..run - index] });
+                try builder.AppendBytes((@span.data[index])[..run - index]);
                 index = run;
                 continue;
             }
             index = index + 1;
             // Safety: the lexer accepted the token only with a byte after every backslash, so `index` is below
             // `span.length`.
-            let kind = unsafe { span.data[index] } as uint8;
+            let kind = span.data[index] as uint8;
             index = index + 1;
             if kind == 0x75 {
                 // Safety: the lexer accepted the token only with four hexadecimal digits after every `\u`.
-                var scalar = unsafe { HexQuad(span, index) };
+                var scalar = HexQuad(span, index);
                 let escapeAt = index - 2;
                 index = index + 4;
                 if scalar >= 0xD800 && scalar <= 0xDBFF {
@@ -329,10 +329,10 @@ extend JsonParser {
                     // is the one place a JSON string is not simply a sequence of scalar values.
                     var paired = false;
                     // Safety: the reads happen only when `index + 6 <= span.length`, tested first.
-                    if index + 6 <= span.length && unsafe { (span.data[index] as uint8) == 0x5C &&
-                        (span.data[index + 1] as uint8) == 0x75 } {
+                    if index + 6 <= span.length && ({ (span.data[index] as uint8) == 0x5C &&
+                        (span.data[index + 1] as uint8) == 0x75 }) {
                         // Safety: `index + 6 <= span.length`, checked above, leaves four bytes at `index + 2`.
-                        let low = unsafe { HexQuad(span, index + 2) };
+                        let low = HexQuad(span, index + 2);
                         if low >= 0xDC00 && low <= 0xDFFF {
                             scalar = 0x10000 + ((scalar - 0xD800) << 10) + (low - 0xDC00);
                             index = index + 6;
@@ -400,7 +400,7 @@ extend JsonParser {
     // while a helper's frame is gone again before the parser descends.
     func ParseNumber(&var self, token: JsonToken) -> JsonValue {
         // Safety: the lexer produced `token` from `self.input`, so `token.start..token.end` lies inside it.
-        let span = unsafe { (@self.input.data[token.start])[..token.end - token.start] };
+        let span = (@self.input.data[token.start])[..token.end - token.start];
         return JsonValue::LexedNumber(self.allocator, span);
     }
 
@@ -582,7 +582,7 @@ extend JsonParser {
 
 // Four hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
 // Safety: `at + 4` must not exceed `span.length`; the bytes are read without a bounds check.
-unsafe func HexQuad(span: char8[..], at: uint) -> uint32 {
+func HexQuad(span: char8[..], at: uint) -> uint32 {
     var value: uint32 = 0;
     var index: uint = 0;
     while index < 4 {

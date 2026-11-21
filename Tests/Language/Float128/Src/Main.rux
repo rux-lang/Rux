@@ -40,7 +40,7 @@ const Table: float128[4] = [Tenth, NegativeZero, Largest, Infinity];
 
 func Bits(value: float128) -> uint128 {
     // Safety: `value` is a by-value parameter, and `float128` and `uint128` have the same size.
-    unsafe {
+    {
         let address = (@value) as *uint128;
         return *address;
     }

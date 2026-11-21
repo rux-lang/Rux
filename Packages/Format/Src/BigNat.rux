@@ -54,12 +54,12 @@ extend BigNat {
         let block = try self.allocator.Allocate(layout) catch { _ => return false };
         // Safety: `block` came from `Allocate` with `wanted * 8` bytes at alignment eight, room for `wanted` limbs,
         // and every bit pattern is a valid `uint64`.
-        let fresh = unsafe { block as *var uint64 };
+        let fresh = block as *var uint64;
         var index: uint = 0;
         while index < self.length {
             // Safety: `index` is below `self.length`, which is at most `self.capacity` (the BigNat invariant) and so
             // below `count` and `wanted`: it lies inside both the old block and `fresh`.
-            unsafe { fresh[index] = self.limbs[index]; }
+            fresh[index] = self.limbs[index];
             index = index + 1;
         }
         // The old block goes back by hand rather than through Release, which also forgets the length — and the
@@ -87,7 +87,7 @@ extend BigNat {
     // Drops leading zero limbs so that `length` is canonical, which every comparison relies on.
     func Trim(&var self) {
         // Safety: `self.length` is above zero, tested first, and at most `self.capacity` (the BigNat invariant).
-        while self.length > 0 && unsafe { self.limbs[self.length - 1] } == 0 {
+        while self.length > 0 && self.limbs[self.length - 1] == 0 {
             self.length = self.length - 1;
         }
     }
@@ -106,7 +106,7 @@ extend BigNat {
     func SetSmall(&var self, value: uint64) -> bool {
         if !self.Reserve(1) { return false; }
         // Safety: `Reserve` made room for at least one limb.
-        unsafe { self.limbs[0] = value; }
+        self.limbs[0] = value;
         self.length = if value == 0 { 0 } else { 1 };
         return true;
     }
@@ -120,7 +120,7 @@ extend BigNat {
         var index: uint = 0;
         while index < 8 {
             // Safety: `index` is below eight, and `Reserve` made room for eight limbs.
-            unsafe { self.limbs[index] = (value >> (index * 64)).Truncate<uint64>(); }
+            self.limbs[index] = (value >> (index * 64)).Truncate<uint64>();
             index = index + 1;
         }
         self.length = 8;
@@ -138,7 +138,7 @@ extend BigNat {
         while index < other.length {
             // Safety: `index` is below `other.length`, which is within `other`'s block (the BigNat invariant), and
             // `Reserve` made room for `other.length` limbs in this one.
-            unsafe { self.limbs[index] = other.limbs[index]; }
+            self.limbs[index] = other.limbs[index];
             index = index + 1;
         }
         self.length = other.length;
@@ -151,7 +151,7 @@ extend BigNat {
     func BitLength(&self) -> uint {
         if self.length == 0 { return 0; }
         // Safety: `self.length` is above zero, checked above, and at most `self.capacity` (the BigNat invariant).
-        var top = unsafe { self.limbs[self.length - 1] };
+        var top = self.limbs[self.length - 1];
         var bits: uint = 0;
         while top != 0 {
             top = top >> 1;
@@ -171,9 +171,9 @@ extend BigNat {
             index = index - 1;
             // Safety: `index` is below `self.length`, which equals `other.length`, and each length is within its own
             // block (the BigNat invariant).
-            let mine = unsafe { self.limbs[index] };
+            let mine = self.limbs[index];
             // Safety: the same `index`, below `other.length`, which is within `other`'s block.
-            let theirs = unsafe { other.limbs[index] };
+            let theirs = other.limbs[index];
             if mine != theirs { return if mine < theirs { -1 } else { 1 }; }
         }
         return 0;
@@ -191,13 +191,13 @@ extend BigNat {
         if !self.Reserve(newLength) { return false; }
         // From the top down, so nothing is overwritten before it has been read.
         // Safety: `Reserve` made room for `newLength` limbs.
-        unsafe { self.limbs[newLength - 1] = 0; }
+        self.limbs[newLength - 1] = 0;
         var index = self.length;
         while index > 0 {
             index = index - 1;
             // Safety: `index` is below `self.length`, so `index + limbShift + 1` is at most `newLength - 1`, inside the
             // `newLength` limbs `Reserve` made room for.
-            unsafe {
+            {
                 let limb = self.limbs[index];
                 if bitShift == 0 {
                     self.limbs[index + limbShift] = limb;
@@ -211,7 +211,7 @@ extend BigNat {
         index = 0;
         while index < limbShift {
             // Safety: `index` is below `limbShift`, which is below `newLength`, the room `Reserve` made.
-            unsafe { self.limbs[index] = 0; }
+            self.limbs[index] = 0;
             index = index + 1;
         }
         self.length = newLength;
@@ -233,16 +233,16 @@ extend BigNat {
         var index: uint = 0;
         while index < self.length {
             // Safety: `index` is below `self.length`, which is at most `self.capacity` (the BigNat invariant).
-            let limb = unsafe { self.limbs[index] };
+            let limb = self.limbs[index];
             let product = (limb as uint128) * (factor as uint128) + (carry as uint128);
             // Safety: the same `index`, below `self.length`.
-            unsafe { self.limbs[index] = product.Truncate<uint64>(); }
+            self.limbs[index] = product.Truncate<uint64>();
             carry = (product >> 64) as uint64;
             index = index + 1;
         }
         if carry != 0 {
             // Safety: `Reserve` made room for `self.length + 1` limbs.
-            unsafe { self.limbs[self.length] = carry; }
+            self.limbs[self.length] = carry;
             self.length = self.length + 1;
         }
         return true;
@@ -258,16 +258,16 @@ extend BigNat {
         var index: uint = 0;
         while carry != 0 && index < self.length {
             // Safety: `index` is below `self.length`, which is at most `self.capacity` (the BigNat invariant).
-            let limb = unsafe { self.limbs[index] };
+            let limb = self.limbs[index];
             let sum = (limb as uint128) + (carry as uint128);
             // Safety: the same `index`, below `self.length`.
-            unsafe { self.limbs[index] = sum.Truncate<uint64>(); }
+            self.limbs[index] = sum.Truncate<uint64>();
             carry = (sum >> 64) as uint64;
             index = index + 1;
         }
         if carry != 0 {
             // Safety: `Reserve` made room for `self.length + 1` limbs.
-            unsafe { self.limbs[self.length] = carry; }
+            self.limbs[self.length] = carry;
             self.length = self.length + 1;
         }
         return true;
@@ -286,7 +286,7 @@ extend BigNat {
             // Safety: each limb is read only below its own number's length, which is within its block (the BigNat
             // invariant), and the write at `index`, below `longest`, is inside the `longest + 1` limbs `Reserve`
             // made room for.
-            unsafe {
+            {
                 let left = if index < self.length { self.limbs[index] } else { 0 };
                 let right = if index < other.length { other.limbs[index] } else { 0 };
                 let sum = (left as uint128) + (right as uint128) + (carry as uint128);
@@ -298,7 +298,7 @@ extend BigNat {
         self.length = longest;
         if carry != 0 {
             // Safety: `Reserve` made room for `longest + 1` limbs.
-            unsafe { self.limbs[self.length] = carry; }
+            self.limbs[self.length] = carry;
             self.length = self.length + 1;
         }
         return true;
@@ -313,7 +313,7 @@ extend BigNat {
         while index < self.length {
             // Safety: `other` is read only below `other.length` and this value only below `self.length`, each within
             // its own block (the BigNat invariant).
-            unsafe {
+            {
                 let right = if index < other.length { other.limbs[index] } else { 0u64 };
                 let left = self.limbs[index];
                 let taken = (right as uint128) + (borrow as uint128);
@@ -347,7 +347,7 @@ extend BigNat {
         // Safety: `Reserve` made room for `total + 1` limbs here, each factor's length is within its block (the
         // BigNat invariant), `work` holds the `ProductWork` limbs the product needs (none when `room` is zero), and
         // the documented rule that neither operand is this keeps the output apart from both factors.
-        unsafe { MultiplyLimbs(self.limbs, left.limbs, left.length, right.limbs, right.length, work.limbs); }
+        MultiplyLimbs(self.limbs, left.limbs, left.length, right.limbs, right.length, work.limbs);
         self.length = total;
         self.Trim();
         return true;
@@ -406,7 +406,7 @@ func ProductWork(leftCount: uint, rightCount: uint) -> uint {
 // out[0, l + r) = left[0, l) * right[0, r), one row at a time.
 // Safety: `out` must be writable for `leftCount + rightCount` limbs, `left` and `right` readable for `leftCount` and
 // `rightCount`, and `out` must overlap neither factor.
-unsafe func SchoolbookProduct(out: *var uint64, left: *uint64, leftCount: uint, right: *uint64, rightCount: uint) {
+func SchoolbookProduct(out: *var uint64, left: *uint64, leftCount: uint, right: *uint64, rightCount: uint) {
     var index: uint = 0;
     while index < leftCount + rightCount {
         out[index] = 0;
@@ -430,7 +430,7 @@ unsafe func SchoolbookProduct(out: *var uint64, left: *uint64, leftCount: uint, 
 // Adds `count` limbs of `value` into `out` from `offset` on, carrying as far as `end`.
 // Safety: `out` must be writable for `end` limbs with `offset + count` at most `end`, and `value` readable for
 // `count` limbs.
-unsafe func AddLimbsAt(out: *var uint64, end: uint, offset: uint, value: *uint64, count: uint) {
+func AddLimbsAt(out: *var uint64, end: uint, offset: uint, value: *uint64, count: uint) {
     var carry: uint64 = 0;
     var index: uint = 0;
     while index < count || (carry != 0 && offset + index < end) {
@@ -444,7 +444,7 @@ unsafe func AddLimbsAt(out: *var uint64, end: uint, offset: uint, value: *uint64
 
 // Subtracts `count` limbs of `value` from the `length` limbs of `out`, which is never the smaller.
 // Safety: `out` must be writable for `length` limbs and `value` readable for `count` limbs.
-unsafe func SubtractLimbs(out: *var uint64, length: uint, value: *uint64, count: uint) {
+func SubtractLimbs(out: *var uint64, length: uint, value: *uint64, count: uint) {
     var borrow: uint64 = 0;
     var index: uint = 0;
     while index < length {
@@ -464,7 +464,7 @@ unsafe func SubtractLimbs(out: *var uint64, length: uint, value: *uint64, count:
 
 // Sets sum[0, upper + 1) to low[0, lower) + high[0, upper), where lower is at most upper.
 // Safety: `sum` must be writable for `upper + 1` limbs, `low` readable for `lower` and `high` for `upper`.
-unsafe func SumHalves(sum: *var uint64, low: *uint64, lower: uint, high: *uint64, upper: uint) {
+func SumHalves(sum: *var uint64, low: *uint64, lower: uint, high: *uint64, upper: uint) {
     var carry: uint64 = 0;
     var index: uint = 0;
     while index < upper {
@@ -482,7 +482,7 @@ unsafe func SumHalves(sum: *var uint64, low: *uint64, lower: uint, high: *uint64
 // takes its room from `work` rather than from an allocator.
 // Safety: `out` must be writable for `2 * count` limbs, `left` and `right` readable for `count` limbs, `work`
 // writable for `KaratsubaWork(count)` limbs, and `out` and `work` must overlap neither each other nor the factors.
-unsafe func KaratsubaProduct(out: *var uint64, left: *uint64, right: *uint64, count: uint, work: *var uint64) {
+func KaratsubaProduct(out: *var uint64, left: *uint64, right: *uint64, count: uint, work: *var uint64) {
     if count < KaratsubaLimbs {
         SchoolbookProduct(out, left, count, right, count);
         return;
@@ -510,7 +510,7 @@ unsafe func KaratsubaProduct(out: *var uint64, left: *uint64, right: *uint64, co
 // Safety: `out` must be writable for `leftCount + rightCount` limbs, `left` and `right` readable for `leftCount` and
 // `rightCount`, `work` writable for `ProductWork(leftCount, rightCount)` limbs (it may be null when that is zero),
 // and `out` and `work` must overlap neither each other nor the factors.
-unsafe func MultiplyLimbs(out: *var uint64, left: *uint64, leftCount: uint, right: *uint64, rightCount: uint,
+func MultiplyLimbs(out: *var uint64, left: *uint64, leftCount: uint, right: *uint64, rightCount: uint,
                    work: *var uint64) {
     if leftCount < rightCount {
         MultiplyLimbs(out, right, rightCount, left, leftCount, work);

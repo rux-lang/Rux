@@ -96,7 +96,7 @@ func Nested(value: Mark) -> int {
 
 func Once(calls: *var uint) -> char32 {
     // Safety: every caller passes `@calls`, a live local.
-    unsafe { *calls += 1u; }
+    *calls += 1u;
     return 'A';
 }
 

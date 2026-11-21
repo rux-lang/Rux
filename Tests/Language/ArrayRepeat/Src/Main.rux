@@ -9,9 +9,9 @@ struct Cell {
 
 func Next(counter: *var int) -> int {
     // Safety: every caller passes `@calls`, a live local of `Main`.
-    unsafe { *counter = *counter + 1; }
+    *counter = *counter + 1;
     // Safety: every caller passes `@calls`, a live local of `Main`.
-    return unsafe { *counter };
+    return *counter;
 }
 
 func Sum(values: int[..]) -> int {

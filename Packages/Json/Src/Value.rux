@@ -33,12 +33,12 @@ pub enum JsonError: int32 {
 func IsJsonNumberText(text: char8[..]) -> bool {
     var at: uint = 0;
     // Safety: the read happens only when `at` is below `text.length`, tested first.
-    if at < text.length && (unsafe { text.data[at] } as uint8) == 0x2D {
+    if at < text.length && (text.data[at] as uint8) == 0x2D {
         at = at + 1;
     }
     if at >= text.length { return false; }
     // Safety: `at` is below `text.length`, checked just above.
-    let first = unsafe { text.data[at] } as uint8;
+    let first = text.data[at] as uint8;
     if first == 0x30 {
         at = at + 1;
     }
@@ -49,16 +49,16 @@ func IsJsonNumberText(text: char8[..]) -> bool {
         return false;
     }
     // Safety: the read happens only when `at` is below `text.length`, tested first.
-    if at < text.length && (unsafe { text.data[at] } as uint8) == 0x2E {
+    if at < text.length && (text.data[at] as uint8) == 0x2E {
         let fractionEnd = DigitRunEnd(text, at + 1);
         if fractionEnd == at + 1 { return false; }
         at = fractionEnd;
     }
     // Safety: the reads happen only when `at` is below `text.length`, tested first.
-    if at < text.length && unsafe { (text.data[at] as uint8) == 0x65 || (text.data[at] as uint8) == 0x45 } {
+    if at < text.length && ((text.data[at] as uint8) == 0x65 || (text.data[at] as uint8) == 0x45) {
         at = at + 1;
         // Safety: the reads happen only when `at` is below `text.length`, tested first.
-        if at < text.length && unsafe { (text.data[at] as uint8) == 0x2B || (text.data[at] as uint8) == 0x2D } {
+        if at < text.length && ((text.data[at] as uint8) == 0x2B || (text.data[at] as uint8) == 0x2D) {
             at = at + 1;
         }
         let exponentEnd = DigitRunEnd(text, at);
@@ -73,7 +73,7 @@ func DigitRunEnd(text: char8[..], at: uint) -> uint {
     var index = at;
     while index < text.length {
         // Safety: `index` is below `text.length`, checked by the loop.
-        let c = unsafe { text.data[index] } as uint8;
+        let c = text.data[index] as uint8;
         if c < 0x30 || c > 0x39 { break; }
         index = index + 1;
     }
@@ -168,7 +168,7 @@ extend JsonNumber {
         var index: uint = 0;
         while index < bytes.length {
             // Safety: `index` is below `bytes.length`, checked by the loop.
-            let c = unsafe { bytes.data[index] } as uint8;
+            let c = bytes.data[index] as uint8;
             if c == 0x2E || c == 0x65 || c == 0x45 { return false; }
             index = index + 1;
         }
@@ -424,7 +424,7 @@ extend JsonValue {
         while index < slice.length {
             var held = name;
             // Safety: `index` is below `slice.length`, checked by the loop.
-            if unsafe { slice.data[index].name.View().Equals(held) } {
+            if slice.data[index].name.View().Equals(held) {
                 target = index;
                 index = slice.length;
             }

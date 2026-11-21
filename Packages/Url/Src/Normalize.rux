@@ -31,17 +31,17 @@ extend Bytes {
             if self.data != null {
                 // Safety: `self.data` holds `self.length` bytes of a live block of `self.capacity` bytes, and `block`
                 // was just allocated with room for `capacity`, which is larger.
-                unsafe { Copy(block, self.data as *opaque, self.length); }
+                Copy(block, self.data as *opaque, self.length);
                 try allocator.Deallocate(self.data as *var opaque, Layout::Of(self.capacity, 1) ?? layout)
                     catch { _ => {} };
             }
             // Safety: `block` was allocated above with room for `capacity` bytes, and `char8` has size and alignment 1.
-            self.data = unsafe { block as *var char8 };
+            self.data = block as *var char8;
             self.capacity = capacity;
         }
         // Safety: `self.length` is below `self.capacity`, ensured above, and `self.data` is a live block of that many
         // bytes.
-        unsafe { self.data[self.length] = value; }
+        self.data[self.length] = value;
         self.length = self.length + 1;
     }
 
@@ -60,7 +60,7 @@ extend Bytes {
     func View(&self) -> char8[..] {
         if self.data == null { return ""; }
         // Safety: `self.data`, not null here, is a live block whose first `self.length` bytes were written by `Push`.
-        return unsafe { self.data[..self.length] };
+        return self.data[..self.length];
     }
 
     func ~Bytes(&var self) {
@@ -341,7 +341,7 @@ func DropLastSegment(out: &var Bytes, start: uint) {
     while end > start {
         end = end - 1;
         // Safety: `end` is below `out.length`, and `out.data` is live and holds `out.length` written bytes.
-        if unsafe { out.data[end] } == '/' { break; }
+        if out.data[end] == '/' { break; }
     }
     out.Truncate(end);
 }

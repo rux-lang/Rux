@@ -143,7 +143,7 @@ func Main() -> int {
     let nothing: *var int32 = null;
     // Safety: the view is never read or written: `Transform` refuses a null view with a non-zero length before it
     // touches an element, which is what these two checks assert.
-    let nullView = unsafe { nothing[..2] };
+    let nullView = nothing[..2];
     if Transform<int32, int32>(nullView, source[..4], Double) { return 86; }
     if Transform<int32, int32>(doubled[..4], nullView, Double) { return 87; }
 

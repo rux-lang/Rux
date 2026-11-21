@@ -107,7 +107,7 @@ extend HashSet<T> {
         // The table has room and the probe can still run past what a distance byte holds, when the elements collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `EnsureRoom` returned, so the capacity is nonzero.
-        if unsafe { self.table.PlaceHashed(move value, (), hashed) } == none {
+        if self.table.PlaceHashed(move value, (), hashed) == none {
             AllocationFailed(AllocError::Unsupported);
         }
         return true;
@@ -123,7 +123,7 @@ extend HashSet<T> {
         let slot = self.table.Find(value, self.hash, self.equals) ?? return none;
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key is
         // initialized; it is moved out before `Vacate` closes the slot.
-        unsafe {
+        {
             let taken = move self.table.keys[slot];
             self.table.Vacate(slot);
             return .Some(move taken);
@@ -163,7 +163,7 @@ extend HashSet<T> {
             if self.table.IsOccupied(index) {
                 cursor = index + 1;
                 // Safety: by the table invariant the slot, occupied and below the capacity, holds a key.
-                return .Some(unsafe { self.table.keys[index] });
+                return .Some(self.table.keys[index]);
             }
             index++;
         }
@@ -333,9 +333,9 @@ extend HashSet<T> {
             while index < self.table.Capacity() {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked first, so its key
                 // is initialized.
-                if self.table.IsOccupied(index) && !unsafe { other.Contains(self.table.keys[index]) } {
+                if self.table.IsOccupied(index) && !other.Contains(self.table.keys[index]) {
                     // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
-                    unsafe {
+                    {
                         let taken = move self.table.keys[index];
                         self.table.Vacate(index);
                     }
@@ -363,9 +363,9 @@ extend HashSet<T> {
             while index < self.table.Capacity() {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked first, so its key
                 // is initialized.
-                if self.table.IsOccupied(index) && unsafe { other.Contains(self.table.keys[index]) } {
+                if self.table.IsOccupied(index) && other.Contains(self.table.keys[index]) {
                     // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
-                    unsafe {
+                    {
                         let taken = move self.table.keys[index];
                         self.table.Vacate(index);
                     }
@@ -398,7 +398,7 @@ extend HashSet<T> {
                         .Some(slot) => {
                             // Safety: the table invariant: `Find` names only an occupied slot below the capacity; its
                             // key is moved out before `Vacate` closes the slot.
-                            unsafe {
+                            {
                                 let taken = move self.table.keys[slot];
                                 self.table.Vacate(slot);
                             }
@@ -468,10 +468,10 @@ extend HashSetIterator<T> : Iterator {
         while index < self.capacity {
             // Safety: `index < self.capacity`, checked by the loop, and the runs are the set's, which `Iterate`
             // requires to outlive this walk unchanged, so by the table invariant the state byte is written.
-            if unsafe { self.states[index] } != SlotEmpty {
+            if self.states[index] != SlotEmpty {
                 self.cursor = index + 1;
                 // Safety: the same slot of the set's runs, occupied, checked above, so its key is initialized.
-                return .Some(unsafe { self.keys[index] });
+                return .Some(self.keys[index]);
             }
             index++;
         }
@@ -506,7 +506,7 @@ extend HashSetIntoIterator<T> : Iterator {
             if self.table.IsOccupied(index) {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its key
                 // is initialized; it is moved out and the slot is marked empty at once.
-                unsafe {
+                {
                     let taken = move self.table.keys[index];
                     self.table.states[index] = SlotEmpty;
                     self.table.length = self.table.length - 1;

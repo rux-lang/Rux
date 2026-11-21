@@ -27,7 +27,7 @@ import Allocator::{ AllocError, Layout };
 /// Every operation may write its receiver: an arena advances its pointer and a pool its free lists.
 /// A container keeps its allocator as an `Allocator` value, which is a copyable handle to the implementation and owns
 /// nothing. A stateless allocator such as `SystemAllocator` converts to one anywhere and stays valid forever; a
-/// stateful one gives a handle only through an `unsafe` `Handle`, whose caller promises the allocator outlives it.
+/// stateful one gives a handle only through its `Handle`, whose caller promises the allocator outlives it.
 /// @see https://rux-lang.dev/docs/api/allocator/allocator
 pub interface Allocator {
     /// Takes storage matching `layout` and reports where it landed.

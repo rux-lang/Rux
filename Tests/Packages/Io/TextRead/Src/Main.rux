@@ -30,7 +30,7 @@ extend ScriptHandle : Reader {
     func Read(&var self, into: var char8[..]) -> uint throws IoError {
         let state = self.state;
         // Safety: `state` points at a `ScriptState` local of the checking function, which outlives the handle.
-        unsafe {
+        {
             let remaining = state.bytes.length - state.offset;
             if remaining == 0 {
                 throw IoError::Of(IoErrorKind::EndOfStream);
@@ -57,7 +57,7 @@ func CheckBytes(allocator: Allocator, bytes: char8[..], step: uint, limit: uint,
     var state = ScriptState { bytes, offset: 0, step };
     var source = ScriptHandle { state: @state };
     // Safety: `source` is a local of this function that outlives every use of the handle.
-    let sourceHandle = unsafe { @source as Reader };
+    let sourceHandle = @source as Reader;
     var reader = try BufferedReader(allocator, sourceHandle, 16) catch { _ => Panic("the reader takes its buffer") };
     var builder = StringBuilder(allocator);
     var reported: IoErrorKind? = none;
@@ -111,7 +111,7 @@ func Main() -> int {
     var state = ScriptState { bytes: TextBytes("one\ntwo\nthree"), offset: 0, step: 64 };
     var source = ScriptHandle { state: @state };
     // Safety: `source` is a local of this function that outlives every use of the handle.
-    let sourceHandle = unsafe { @source as Reader };
+    let sourceHandle = @source as Reader;
     var reader = try BufferedReader(allocator, sourceHandle, 16) catch { _ => Panic("the reader takes its buffer") };
     var builder = StringBuilder(allocator);
     try ReadTextLine(reader, builder, 64) catch { _ => Panic("the first line reads") };

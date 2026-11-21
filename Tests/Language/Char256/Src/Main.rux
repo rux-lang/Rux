@@ -18,7 +18,7 @@ func Echo(value: char256) -> char256 { return value; }
 // Reads the whole storage, so a value with any word above the low one set does not compare equal to its code point.
 func Storage(value: char256) -> uint256 {
     // Safety: `value` is a by-value parameter, and `char256` and `uint256` have the same size.
-    unsafe {
+    {
         let address = (@value) as *uint256;
         return *address;
     }

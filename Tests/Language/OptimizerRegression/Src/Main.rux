@@ -25,7 +25,7 @@ func Apply(operation: func(int) -> int, value: int) -> int {
 
 func Observe(counter: *var int) -> int {
     // Safety: the only caller passes `@observations`, a live local of `Main`.
-    unsafe { *counter +%= 1; }
+    *counter +%= 1;
     return 7;
 }
 
@@ -137,33 +137,27 @@ func CheckMemoryOperands() {
     let sentinel = 0x1122334455667788u64;
     var words: uint64[3] = [sentinel, sentinel, sentinel];
     // Safety: `words[1]` is a live local `uint64`, so its first byte is in bounds and any bit pattern is a valid byte.
-    unsafe {
-        *(@words[1] as *var uint8) = 0x80u8;
-        Assert(words[1] == 0x1122334455667780u64, "byte store changes only one byte");
-        Assert((*(@words[1] as *int8) as int64) == -128i64, "byte load sign-extends");
-        Assert((*(@words[1] as *uint8) as uint64) == 128u64, "byte load zero-extends");
-    }
+    *(@words[1] as *var uint8) = 0x80u8;
+    Assert(words[1] == 0x1122334455667780u64, "byte store changes only one byte");
+    Assert((*(@words[1] as *int8) as int64) == -128i64, "byte load sign-extends");
+    Assert((*(@words[1] as *uint8) as uint64) == 128u64, "byte load zero-extends");
     // Safety: `words[1]` is a live, 8-byte-aligned local `uint64`, so its first two bytes hold an aligned 16-bit word.
-    unsafe {
-        *(@words[1] as *var uint16) = 0x8000u16;
-        Assert(words[1] == 0x1122334455668000u64, "word store changes only two bytes");
-        Assert((*(@words[1] as *int16) as int64) == -32768i64, "word load sign-extends");
-        Assert((*(@words[1] as *uint16) as uint64) == 32768u64, "word load zero-extends");
-    }
+    *(@words[1] as *var uint16) = 0x8000u16;
+    Assert(words[1] == 0x1122334455668000u64, "word store changes only two bytes");
+    Assert((*(@words[1] as *int16) as int64) == -32768i64, "word load sign-extends");
+    Assert((*(@words[1] as *uint16) as uint64) == 32768u64, "word load zero-extends");
     // Safety: `words[1]` is a live, 8-byte-aligned local `uint64`, so its first four bytes hold an aligned 32-bit word.
-    unsafe {
-        *(@words[1] as *var uint32) = 0x80000000u32;
-        Assert(words[1] == 0x1122334480000000u64, "dword store changes only four bytes");
-        Assert((*(@words[1] as *int32) as int64) == -2147483648i64, "dword load sign-extends");
-        Assert((*(@words[1] as *uint32) as uint64) == 2147483648u64, "dword load zero-extends");
-    }
+    *(@words[1] as *var uint32) = 0x80000000u32;
+    Assert(words[1] == 0x1122334480000000u64, "dword store changes only four bytes");
+    Assert((*(@words[1] as *int32) as int64) == -2147483648i64, "dword load sign-extends");
+    Assert((*(@words[1] as *uint32) as uint64) == 2147483648u64, "dword load zero-extends");
     Assert(words[0] == sentinel && words[2] == sentinel, "narrow writes preserve adjacent objects");
     for pattern in [0u64, 0x8000000000000000u64, 0x7FF0000000000000u64, 0x7FF8000000001234u64,
         0x7FF0000000000001u64, 1u64] {
         let bits = pattern;
         var copied = 0u64;
         // Safety: `bits` and `copied` are live 8-byte `uint64` locals, and every bit pattern is a valid `float64`.
-        unsafe {
+        {
             let number = *(@bits as *float64);
             *(@copied as *var float64) = number;
         }
@@ -173,7 +167,7 @@ func CheckMemoryOperands() {
         let bits = pattern;
         var copied = 0u32;
         // Safety: `bits` and `copied` are live 4-byte `uint32` locals, and every bit pattern is a valid `float32`.
-        unsafe {
+        {
             let number = *(@bits as *float32);
             *(@copied as *var float32) = number;
         }
@@ -404,12 +398,12 @@ when #target.os == OperatingSystem::Windows && #target.arch == Architecture::X86
 
     func CheckIntegerPreservation() -> int {
         // Safety: the probe restores `rsp`, `rsi` and `rdi` and calls only `ManyIntegers`, a safe function.
-        return unsafe { ProbeIntegerPreservation() };
+        return ProbeIntegerPreservation();
     }
 
     func CheckFloatPreservation() -> int {
         // Safety: the probe restores `rsp` and `xmm8` to `xmm15` and calls only `ManyFloats`, a safe function.
-        return unsafe { ProbeFloatPreservation() };
+        return ProbeFloatPreservation();
     }
 } else {
     func CheckFloatPreservation() -> int { return 1; }
@@ -456,13 +450,11 @@ func CheckAddressOperands() {
         let expected = (offset +% 4) as uint64;
         // Safety: `b`, `w`, `d` and `q` address element 3 of live 8-element local arrays, and `offset` in -3..5 keeps
         // every access on elements 0 through 7.
-        unsafe {
-            Assert((b + offset)[0] as uint64 == expected, "byte addressing with signed offset");
-            Assert((w + offset)[0] as uint64 == expected, "word addressing with signed offset");
-            Assert((d + offset)[0] as uint64 == expected, "dword addressing with signed offset");
-            Assert((q + offset)[0] == expected, "qword addressing with signed offset");
-            (q + offset)[0] = expected +% 100u64;
-        }
+        Assert((b + offset)[0] as uint64 == expected, "byte addressing with signed offset");
+        Assert((w + offset)[0] as uint64 == expected, "word addressing with signed offset");
+        Assert((d + offset)[0] as uint64 == expected, "dword addressing with signed offset");
+        Assert((q + offset)[0] == expected, "qword addressing with signed offset");
+        (q + offset)[0] = expected +% 100u64;
     }
     for index in 0..8 {
         Assert(qwords[index] == (index as uint64) +% 101u64, "scaled writes reach each element exactly");
@@ -479,10 +471,8 @@ func UnrolledWalk(start: uint, limit: uint, output: *var uint, floating: *var fl
         b = old +% i;
         // Safety: every caller passes live 8-byte locals of `CheckUnrolledLoops`, which may be the same `uint` read
         // back as a `float64`.
-        unsafe {
-            *output = *output *% 7u +% a +% b;
-            *floating = (*floating * 0.25) + 1.0;
-        }
+        *output = *output *% 7u +% a +% b;
+        *floating = (*floating * 0.25) + 1.0;
         i +%= 1u;
     }
     return a +% b;
@@ -499,10 +489,8 @@ func ReferenceWalk(start: uint, limit: uint, output: *var uint, floating: *var f
         b = old +% i;
         // Safety: every caller passes live 8-byte locals of `CheckUnrolledLoops`, which may be the same `uint` read
         // back as a `float64`.
-        unsafe {
-            *output = *output *% 7u +% a +% b;
-            *floating = (*floating * 0.25) + 1.0;
-        }
+        *output = *output *% 7u +% a +% b;
+        *floating = (*floating * 0.25) + 1.0;
         i +%= 1u;
         left -%= 1u;
     }
@@ -527,9 +515,9 @@ func CheckUnrolledLoops() {
         var actual = 0u;
         var expected = 0u;
         // Safety: `actual` is a live 8-byte local, so it can also be read and written as a `float64`.
-        let a = walk(0u, count, @actual, unsafe { @actual as *var float64 });
+        let a = walk(0u, count, @actual, @actual as *var float64);
         // Safety: `expected` is a live 8-byte local, so it can also be read and written as a `float64`.
-        let b = ReferenceWalk(0u, count, @expected, unsafe { @expected as *var float64 });
+        let b = ReferenceWalk(0u, count, @expected, @expected as *var float64);
         Assert(a == b && actual == expected, "unrolling preserves legal raw-pointer alias order");
     }
     var untouched = 13u;
@@ -579,7 +567,7 @@ func CheckAllocatedShifts() {
 
 func LoadBranch(pointer: *var uint, other: *var uint, first: bool, second: bool) -> uint {
     // Safety: every caller passes live `uint` locals of `CheckLoadFacts`, which may be the same one.
-    unsafe {
+    {
         let before = *pointer;
         if first { *other +%= 3u; return before +% *pointer; }
         if second { return before +% *pointer; }
@@ -588,7 +576,7 @@ func LoadBranch(pointer: *var uint, other: *var uint, first: bool, second: bool)
 }
 func LoadJoin(pointer: *var uint, other: *var uint, test: bool) -> uint {
     // Safety: every caller passes live `uint` locals of `CheckLoadFacts`, which may be the same one.
-    unsafe {
+    {
         let before = *pointer;
         if test { *other +%= 9u; }
         return before +% *pointer;
@@ -596,7 +584,7 @@ func LoadJoin(pointer: *var uint, other: *var uint, test: bool) -> uint {
 }
 func LoadLoop(pointer: *var uint, other: *var uint, count: uint) -> uint {
     // Safety: every caller passes live `uint` locals of `CheckLoadFacts`, which may be the same one.
-    unsafe {
+    {
         var result = *pointer;
         for i in 0u..count { *other +%= 1u; result +%= *pointer; }
         return result;
@@ -668,10 +656,8 @@ func AffinePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uint, 
     for i in start..limit {
         // Safety: every caller passes pointers into a live local `uint[12]` whose `row + i`-th elements, after
         // unsigned wrapping, stay inside that array.
-        unsafe {
-            *(pointer + (row +% i)) +%= 3u;
-            result +%= *(other + (row +% i));
-        }
+        *(pointer + (row +% i)) +%= 3u;
+        result +%= *(other + (row +% i));
     }
     return result;
 }
@@ -682,10 +668,8 @@ func ReferencePointerWalk(start: uint, limit: uint, row: uint, pointer: *var uin
     while remaining > 0u {
         // Safety: every caller passes pointers into a live local `uint[12]` whose `row + index`-th elements, after
         // unsigned wrapping, stay inside that array.
-        unsafe {
-            *(pointer + (row +% index)) +%= 3u;
-            result +%= *(other + (row +% index));
-        }
+        *(pointer + (row +% index)) +%= 3u;
+        result +%= *(other + (row +% index));
         index +%= 1u;
         remaining -%= 1u;
     }
@@ -721,48 +705,48 @@ func StridedWalk3(limit: uint, row: uint, bound: uint, pointer: *var uint) -> ui
     while i < limit {
         let index = row +% i;
         // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-        if index < bound { unsafe { *pointer +%= index; } }
+        if index < bound { *pointer +%= index; }
         else { return 123u; }
         i +%= 3u;
     }
     // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-    return unsafe { *pointer };
+    return *pointer;
 }
 func StridedWalk4(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
     var i = 0u;
     while i < limit {
         let index = row +% i;
         // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-        if index < bound { unsafe { *pointer +%= index; } }
+        if index < bound { *pointer +%= index; }
         else { return 123u; }
         i +%= 4u;
     }
     // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-    return unsafe { *pointer };
+    return *pointer;
 }
 func StridedWalk6(limit: uint, row: uint, bound: uint, pointer: *var uint) -> uint {
     var i = 0u;
     while i < limit {
         let index = row +% i;
         // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-        if index < bound { unsafe { *pointer +%= index; } }
+        if index < bound { *pointer +%= index; }
         else { return 123u; }
         i +%= 6u;
     }
     // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-    return unsafe { *pointer };
+    return *pointer;
 }
 func ReferenceStridedWalk(limit: uint, row: uint, bound: uint, pointer: *var uint, stride: uint) -> uint {
     var i = 0u;
     while i < limit {
         let index = row +% i;
         // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-        if index < bound { unsafe { *pointer +%= index; } }
+        if index < bound { *pointer +%= index; }
         else { return 123u; }
         i +%= stride;
     }
     // Safety: every caller passes a live `uint` local of `CheckStridedVersioning`.
-    return unsafe { *pointer };
+    return *pointer;
 }
 func CheckStridedVersioning() {
     let reference: func(uint, uint, uint, *var uint, uint) -> uint = ReferenceStridedWalk;
@@ -799,7 +783,7 @@ func ReadMutableLookup() -> uint { return MutableLookupValue; }
 func MutateLookup(pointer: *var uint) -> uint {
     let before = ReadMutableLookup();
     // Safety: every caller passes a live `uint`: a local or the module variable `MutableLookupValue`.
-    unsafe { *pointer +%= 1u; }
+    *pointer +%= 1u;
     return before +% ReadMutableLookup();
 }
 func LookupLengths() -> uint { return LookupAlphabet.length +% WideLookup.length *% 100u +% ScalarLookup.length *% 10000u; }
@@ -820,24 +804,22 @@ func CheckConstantSlices() {
 
 func CastWords(value: uint64, output: *var uint64) {
     // Safety: the only caller passes element 0 of a live local `uint64[12]`, so offsets 0 through 11 are in bounds.
-    unsafe {
-        *(output + 0u) = value.Truncate<uint8>() as uint64;
-        *(output + 1u) = value.Truncate<uint16>() as uint64;
-        *(output + 2u) = value.Truncate<uint32>() as uint64;
-        *(output + 3u) = value as uint64;
-        *(output + 4u) = value.Truncate<int8>().Truncate<uint64>();
-        *(output + 5u) = value.Truncate<int16>().Truncate<uint64>();
-        *(output + 6u) = value.Truncate<int32>().Truncate<uint64>();
-        *(output + 7u) = value.Truncate<int64>().Truncate<uint64>();
-        *(output + 8u) = value.Truncate<int8>().Truncate<uint32>() as uint64;
-        *(output + 9u) = value.Truncate<int16>().Truncate<uint32>() as uint64;
-        *(output + 10u) = ((value & 127u64) as char8) as uint64;
-        *(output + 11u) = ((value & 127u64) as char16) as uint64;
-    }
+    *(output + 0u) = value.Truncate<uint8>() as uint64;
+    *(output + 1u) = value.Truncate<uint16>() as uint64;
+    *(output + 2u) = value.Truncate<uint32>() as uint64;
+    *(output + 3u) = value as uint64;
+    *(output + 4u) = value.Truncate<int8>().Truncate<uint64>();
+    *(output + 5u) = value.Truncate<int16>().Truncate<uint64>();
+    *(output + 6u) = value.Truncate<int32>().Truncate<uint64>();
+    *(output + 7u) = value.Truncate<int64>().Truncate<uint64>();
+    *(output + 8u) = value.Truncate<int8>().Truncate<uint32>() as uint64;
+    *(output + 9u) = value.Truncate<int16>().Truncate<uint32>() as uint64;
+    *(output + 10u) = ((value & 127u64) as char8) as uint64;
+    *(output + 11u) = ((value & 127u64) as char16) as uint64;
 }
 func CastPointer(pointer: *uint64) -> *uint64 {
     // Safety: the integer is `pointer`'s own address, so the cast restores the same `*uint64`.
-    return unsafe { (pointer as uint64) as *uint64 };
+    return (pointer as uint64) as *uint64;
 }
 func CheckAllocatedCasts() {
     let convert: func(uint64, *var uint64) = CastWords;
@@ -860,7 +842,7 @@ func CheckAllocatedCasts() {
         expected[11] = value & 127u64;
         for i in 0u..12u { Assert(actual[i] == expected[i], "allocated cast width and signedness"); }
         // Safety: `pointer` returns its argument, the address of `actual[0]`, a live local element.
-        Assert(pointer(@actual[0]) == @actual[0] && unsafe { *pointer(@actual[0]) } == expected[0],
+        Assert(pointer(@actual[0]) == @actual[0] && *pointer(@actual[0]) == expected[0],
                "allocated pointer bit round trip");
     }
 }

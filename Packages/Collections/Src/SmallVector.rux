@@ -89,7 +89,7 @@ extend SmallVector<T> {
         if self.heap != null { return self.heap; }
         // Safety: the inline room is 64 bytes at an alignment of eight. A `T` aligned to at most eight is placed
         // there, and any other has an inline capacity of zero, so nothing is read through this pointer for it.
-        return unsafe { (@self.inline[0]) as *T };
+        return (@self.inline[0]) as *T;
     }
 
     // Where the elements are, to change them.
@@ -97,7 +97,7 @@ extend SmallVector<T> {
         if self.heap != null { return self.heap; }
         // Safety: the inline room is 64 bytes at an alignment of eight. A `T` aligned to at most eight is placed
         // there, and any other has an inline capacity of zero, so nothing is written through this pointer for it.
-        return unsafe { (@self.inline[0]) as *var T };
+        return (@self.inline[0]) as *var T;
     }
 
     // Moves the elements to a block of at least `required` elements.
@@ -115,7 +115,7 @@ extend SmallVector<T> {
         while index < self.length {
             // Safety: the small-vector invariant: `index < self.length`, checked by the loop, and the length fits the
             // inline room it is read from and the fresh block, sized above the current capacity, it moves into.
-            unsafe { block[index] = move inline[index]; }
+            block[index] = move inline[index];
             index++;
         }
         self.heap = block;
@@ -133,7 +133,7 @@ extend SmallVector<T> {
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `length < Capacity()`, checked or grown above, so the slot is room the
         // storage has and holds nothing yet.
-        unsafe { items[self.length] = move value; }
+        items[self.length] = move value;
         self.length = self.length + 1;
     }
 
@@ -146,7 +146,7 @@ extend SmallVector<T> {
         let items = self.WritableItems();
         // Safety: the small-vector invariant: the old last element is initialized and now outside `length`, so
         // nothing destroys it again once it is moved out.
-        let removed = unsafe { move items[self.length] };
+        let removed = move items[self.length];
         return .Some(move removed);
     }
 
@@ -158,7 +158,7 @@ extend SmallVector<T> {
         if index >= self.length { return none; }
         let items = self.Items();
         // Safety: the small-vector invariant: `index < self.length`, checked above, so the element is initialized.
-        return unsafe { items[index] };
+        return items[index];
     }
 
     /// The elements, valid until the vector next changes or moves.
@@ -167,7 +167,7 @@ extend SmallVector<T> {
     pub func AsSlice(&self) -> T[..] {
         let items = self.Items();
         // Safety: the small-vector invariant: `items` addresses `length` initialized elements.
-        return unsafe { items[..self.length] };
+        return items[..self.length];
     }
 
     /// The elements, writable, valid until the vector next changes or moves.
@@ -176,7 +176,7 @@ extend SmallVector<T> {
     pub func AsMutableSlice(&var self) -> var T[..] {
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `items` addresses `length` initialized elements.
-        return unsafe { items[..self.length] };
+        return items[..self.length];
     }
 
     /// Destroys the elements past `length`, keeping the storage.
@@ -189,7 +189,7 @@ extend SmallVector<T> {
         while index < self.length {
             // Safety: the small-vector invariant: `index < self.length`, checked by the loop, so the element is
             // initialized; each is moved out once, and the length drops below all of them right after.
-            unsafe { let taken = move items[index]; }
+            { let taken = move items[index]; }
             index++;
         }
         self.length = length;

@@ -29,7 +29,7 @@ pub func AbsChecked<T>(value: T, result: *var T) -> bool {
         magnitude = zero -% value;
     }
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
-    unsafe { *result = magnitude; }
+    *result = magnitude;
     return magnitude < zero;
 }
 
@@ -110,7 +110,7 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
     // `a` is a magnitude, except in the one case where it is the most negative value standing in for a magnitude one
     // larger than the type can hold.
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
-    unsafe { *result = a; }
+    *result = a;
     return a < zero;
 }
 
@@ -128,7 +128,7 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
 pub func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
-    unsafe { *result = zero; }
+    *result = zero;
     if left == zero || right == zero { return false; }
     var divisor = zero;
     if GcdChecked<T>(left, right, @divisor) { return true; }
@@ -181,6 +181,6 @@ pub func PowChecked<T>(base: T, exponent: uint, result: *var T) -> bool {
         }
     }
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
-    unsafe { *result = accumulated; }
+    *result = accumulated;
     return overflowed;
 }
