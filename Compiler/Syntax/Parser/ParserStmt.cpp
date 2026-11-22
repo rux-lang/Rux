@@ -740,9 +740,13 @@ std::unique_ptr<ForStmt> Parser::ParseForStmt() {
     // once and skipped, so the rest of the loop parses as it would without it.
     if (Check(TokenKind::VarKeyword) || Check(TokenKind::LetKeyword)) {
         const bool mutableBinding = Check(TokenKind::VarKeyword);
-        EmitError(CurrentLocation(), std::format("'{}' is not written before a 'for' variable", Peek().text),
-                  mutableBinding ? "declare a 'var' local from it in the body, as in 'var item = item;'"
-                                 : "remove 'let'");
+        // The help names the variable when one follows, so it can be copied as written.
+        const std::string help =
+            !mutableBinding ? std::string("remove 'let'")
+            : Peek(1).Is(TokenKind::Ident)
+                ? std::format("declare a 'var' local from it in the body, as in 'var {0} = {0};'", Peek(1).text)
+                : std::string("declare a 'var' local from it in the body");
+        EmitError(CurrentLocation(), std::format("'{}' is not written before a 'for' variable", Peek().text), help);
         Advance();
     }
     // A pattern other than a name binds a hidden loop variable and takes it apart at the top of the body.

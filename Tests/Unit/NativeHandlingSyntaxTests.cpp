@@ -198,5 +198,10 @@ TEST_CASE("a for variable takes no binding keyword") {
     const ParseResult parsed = ParseSource("func F() { for var i in 0..3 { } }");
     REQUIRE_EQ(parsed.diagnostics.size(), 1);
     CHECK_EQ(parsed.diagnostics.front().message, "'var' is not written before a 'for' variable");
-    CHECK_EQ(parsed.diagnostics.front().help, "declare a 'var' local from it in the body, as in 'var item = item;'");
+    CHECK_EQ(parsed.diagnostics.front().help, "declare a 'var' local from it in the body, as in 'var i = i;'");
+
+    // A pattern after the keyword has no single name to copy, so the help names none.
+    const ParseResult tuple = ParseSource("func F() { for var (a, b) in pairs { } }");
+    REQUIRE_FALSE(tuple.diagnostics.empty());
+    CHECK_EQ(tuple.diagnostics.front().help, "declare a 'var' local from it in the body");
 }

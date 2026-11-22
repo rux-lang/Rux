@@ -598,7 +598,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **Duplicate diagnostics** — an error found twice at one place, as for `tally.count += 1` on an uninitialized local, is reported once, and a second destructor is no longer also reported as an overload.
 - **Fallible spelling** — one type read both as `! E` and `!E`, and as `T ! (A | B)` and `T ! A | B`; every message now spells it as the language reference does, `!E` and `T ! A | B`.
 - **A member of a fallible's success** — `ToString().View()` on `String ! TextError` said the type has no field `View`; it now says `View` is a member of `String` and to handle the error first, and the same for an optional's payload.
-- **`for var`** — six parser errors became one, `'var' is not written before a 'for' variable`, and writing a loop variable now suggests a `var` local in the body.
+- **`for var`** — six parser errors became one, `'var' is not written before a 'for' variable`, whose help names the variable (`var i = i;`), and writing a loop variable now suggests a `var` local in the body.
 - **Did-you-mean** — `note` no longer suggests `byte`; short names get one-edit suggestions only, and swapping two neighbouring characters counts as one edit.
 - **A repeat count that is not constant** — `[0; n]` no longer adds `cannot assign 'int[0]' to 'int32[4]'`.
 - **A fallible or optional type argument** — the help no longer says to extend `int32 ! TestFailure`; it says to handle the error or take the value out first.
