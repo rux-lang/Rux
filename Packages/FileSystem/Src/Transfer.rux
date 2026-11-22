@@ -12,7 +12,7 @@ import Path::{ OsUnit, Path };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
-    .Linux => import Linux::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
+    .Linux => import Linux::File::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .macOS => import macOS::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .Windows => import Windows::{ CopyFileW, CreateHardLinkW, CreateSymbolicLinkW, GetLastError,
                                   MOVEFILE_REPLACE_EXISTING, MoveFileExW, SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,

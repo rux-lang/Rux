@@ -16,7 +16,7 @@ import Time::Timestamp;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
-    .Linux => import Linux::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
+    .Linux => import Linux::File::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .macOS => import macOS::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .Windows => import Windows::{ CloseHandle, CreateFileW, CreationDisposition, FILE_ATTRIBUTE_DIRECTORY,
                                   FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT,

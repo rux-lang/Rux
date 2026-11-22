@@ -17,9 +17,11 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError, MapAnonymous, MapPrivate, Mmap,
                                   Mprotect, Munmap, ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite,
                                   QueryPageSize },
-    .Linux => import Linux::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError, MapAnonymous, MapPrivate, Mmap, Mprotect,
-                              Munmap, ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite,
-                              QueryPageSize },
+    .Linux => {
+        import Linux::Errors::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError };
+        import Linux::Memory::{ MapAnonymous, MapPrivate, Mmap, Mprotect, Munmap, ProtectionExecute, ProtectionNone,
+                                ProtectionRead, ProtectionWrite, QueryPageSize };
+    },
     .macOS => import macOS::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError, MapAnonymous, MapPrivate, Mmap, Mprotect,
                               Munmap, ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite,
                               QueryPageSize },

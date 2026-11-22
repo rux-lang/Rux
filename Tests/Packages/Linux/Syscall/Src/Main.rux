@@ -1,9 +1,13 @@
 import Core::Compilation::{ #target, OperatingSystem };
-import Linux::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT,
-                EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO,
-                EOVERFLOW, EPERM, EPIPE, EROFS, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, FstatAt, GetPid, IsError,
-                MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead, ProtectionWrite, Read, SysGetPid,
-                SysMmap, Syscall0, Syscall6, Timespec, Write };
+import Linux::Clock::{ ClockGetResolution, ClockGetTime, ClockMonotonic, Nanosleep };
+import Linux::Errors::{ EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE,
+                        ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS,
+                        ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, IsError };
+import Linux::File::{ AtFdCwd, FstatAt, Read, Write };
+import Linux::Memory::{ MapAnonymous, MapPrivate, Mmap, Munmap, ProtectionRead, ProtectionWrite };
+import Linux::Process::GetPid;
+import Linux::Syscall::{ SysGetPid, SysMmap, Syscall0, Syscall6 };
+import Linux::Types::Timespec;
 
 when #target.os == OperatingSystem::Linux {
 func Main() -> int {

@@ -17,7 +17,7 @@ import Path::{ IsAbsolute, Normalize };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
-    .Linux => import Linux::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
+    .Linux => import Linux::File::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
     .macOS => import macOS::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
     .Windows => import Windows::{ CloseHandle, GetCurrentDirectoryW, GetFinalPathNameByHandleW, GetLastError,
                                   InvalidHandleValue, SetCurrentDirectoryW }

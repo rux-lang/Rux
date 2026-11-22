@@ -17,8 +17,8 @@ import Path::Path;
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
                                   OpenReadWrite, OpenTruncate, OpenWriteOnly },
-    .Linux => import Linux::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
-                              OpenReadWrite, OpenTruncate, OpenWriteOnly },
+    .Linux => import Linux::File::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
+                                    OpenReadWrite, OpenTruncate, OpenWriteOnly },
     .macOS => import macOS::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
                               OpenReadWrite, OpenTruncate, OpenWriteOnly },
     .Windows => import Windows::{ CloseHandle, CreateFileW, CreationDisposition, FILE_APPEND_DATA,

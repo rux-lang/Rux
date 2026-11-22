@@ -12,10 +12,12 @@ import Io::{ IoError, IoErrorKind };
 import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
 
 when #target.os {
-    .Linux => import Linux::{
-        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,
-        MSG_NOSIGNAL, O_NONBLOCK, ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo,
-        SetSocketOption, Shutdown, Socket
+    .Linux => {
+        import Linux::File::Close;
+        import Linux::Poll::{ F_GETFL, F_SETFL, FcntlInt, O_NONBLOCK };
+        import Linux::Sockets::{ AF_INET, AF_INET6, Accept4, Bind, Connect, GetPeerName, GetSocketName, Listen,
+                                 MSG_NOSIGNAL, ReceiveFrom, SOCK_CLOEXEC, SOL_SOCKET, SO_RCVTIMEO, SO_REUSEADDR,
+                                 SO_SNDTIMEO, SendTo, SetSocketOption, Shutdown, Socket };
     },
     .FreeBSD => import FreeBSD::{
         AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,

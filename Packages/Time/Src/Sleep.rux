@@ -20,7 +20,11 @@ import Time::Duration;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ EINTR, Errno, IsError, Nanosleep, Timespec },
-    .Linux => import Linux::{ EINTR, Errno, IsError, Nanosleep, Timespec },
+    .Linux => {
+        import Linux::Clock::Nanosleep;
+        import Linux::Errors::{ EINTR, Errno, IsError };
+        import Linux::Types::Timespec;
+    },
     .macOS => import macOS::{ EINTR, Errno, IsError, Nanosleep, Timespec },
     .Windows => import Windows::Sleep,
     _ => #Error("Unsupported operating system")

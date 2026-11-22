@@ -18,282 +18,285 @@ import Core::Primitives::*;
 // Only calls both architectures have are named. AArch64 came after the directory-relative interface and never got
 // `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe` — it has the `*at` forms alone. Naming those here
 // keeps one wrapper right on both, and `AtFdCwd` is what makes an ordinary path work through them.
-when #target.arch {
-    .X86_64 => {
-        const SysRead: uint64 = 0;
-        const SysWrite: uint64 = 1;
-        const SysClose: uint64 = 3;
-        /// `mmap(2)`'s system-call number.
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-mmap
-        pub const SysMmap: uint64 = 9;
-        const SysMunmap: uint64 = 11;
-        const SysBrk: uint64 = 12;
-        const SysNanosleep: uint64 = 35;
-        /// `getpid(2)`'s system-call number.
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-get-pid
-        pub const SysGetPid: uint64 = 39;
-        const SysExitGroup: uint64 = 231;
-        const SysClockGetTime: uint64 = 228;
-        const SysOpenAt: uint64 = 257;
-        const SysGetdents64: uint64 = 217;
-        const SysLinkAt: uint64 = 265;
-        const SysNewFstatAt: uint64 = 262;
-        const SysGetcwd: uint64 = 79;
-        const SysChdir: uint64 = 80;
-        const SysReadlinkAt: uint64 = 267;
-        const SysFchmodAt: uint64 = 268;
-        const SysUtimensAt: uint64 = 280;
-        const SysSymlinkAt: uint64 = 266;
-        const SysLseek: uint64 = 8;
-        const SysFsync: uint64 = 74;
-        const SysFtruncate: uint64 = 77;
-        const SysUnlinkAt: uint64 = 263;
-        const SysMkdirAt: uint64 = 258;
-        const SysRenameAt: uint64 = 264;
-        const SysFstat: uint64 = 5;
-        const SysDup3: uint64 = 292;
-        const SysPipe2: uint64 = 293;
-        const SysMprotect: uint64 = 10;
-        const SysMadvise: uint64 = 28;
-        const SysGetRandom: uint64 = 318;
-        const SysClockGetRes: uint64 = 229;
-        const SysClockNanosleep: uint64 = 230;
-    },
-    .AArch64 => {
-        const SysRead: uint64 = 63;
-        const SysWrite: uint64 = 64;
-        const SysClose: uint64 = 57;
-        /// `mmap(2)`'s system-call number.
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-mmap
-        pub const SysMmap: uint64 = 222;
-        const SysMunmap: uint64 = 215;
-        const SysBrk: uint64 = 214;
-        const SysNanosleep: uint64 = 101;
-        /// `getpid(2)`'s system-call number.
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-get-pid
-        pub const SysGetPid: uint64 = 172;
-        const SysExitGroup: uint64 = 94;
-        const SysClockGetTime: uint64 = 113;
-        const SysOpenAt: uint64 = 56;
-        const SysGetdents64: uint64 = 61;
-        const SysLinkAt: uint64 = 37;
-        const SysNewFstatAt: uint64 = 79;
-        const SysGetcwd: uint64 = 17;
-        const SysChdir: uint64 = 49;
-        const SysReadlinkAt: uint64 = 78;
-        const SysFchmodAt: uint64 = 53;
-        const SysUtimensAt: uint64 = 88;
-        const SysSymlinkAt: uint64 = 36;
-        const SysLseek: uint64 = 62;
-        const SysFsync: uint64 = 82;
-        const SysFtruncate: uint64 = 46;
-        const SysUnlinkAt: uint64 = 35;
-        const SysMkdirAt: uint64 = 34;
-        const SysRenameAt: uint64 = 38;
-        const SysFstat: uint64 = 80;
-        const SysDup3: uint64 = 24;
-        const SysPipe2: uint64 = 59;
-        const SysMprotect: uint64 = 226;
-        const SysMadvise: uint64 = 233;
-        const SysGetRandom: uint64 = 278;
-        const SysClockGetRes: uint64 = 114;
-        const SysClockNanosleep: uint64 = 115;
-    },
-    _ => #Error("Unsupported Linux architecture")
-}
 
-// Linux returns either a non-negative result or -errno from every system call,
-// on both architectures. What differs is where the call number and the
-// arguments go, so each architecture writes the whole wrapper.
-// x86-64: Rux functions use the System V ABI, whose first three argument
-// registers the kernel keeps. The fourth argument moves from rcx to r10, and a
-// seventh function argument arrives at [rsp + 8], after the return address.
-// AArch64: Rux functions use AAPCS64, whose first eight argument registers
-// cover even the widest wrapper. The kernel takes the call number in x8 and the
-// arguments in x0 through x5, so each wrapper moves the number aside and then
-// shifts the arguments down by one register, lowest first, which is the order
-// in which each register has been read before it is written.
-when #target.arch {
-    .X86_64 => {
-        // Executes a raw Linux system call without arguments.
-        /// Executes a raw Linux system call without arguments.
-        /// @param number the system call to make
-        /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-0
-        pub asm func Syscall0(number: uint64) -> int64 {
-            mov rax, rdi
-            syscall
-            ret
-        }
+pub module Syscall {
+    when #target.arch {
+        .X86_64 => {
+            const SysRead: uint64 = 0;
+            const SysWrite: uint64 = 1;
+            const SysClose: uint64 = 3;
+            /// `mmap(2)`'s system-call number.
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-mmap
+            pub const SysMmap: uint64 = 9;
+            const SysMunmap: uint64 = 11;
+            const SysBrk: uint64 = 12;
+            const SysNanosleep: uint64 = 35;
+            /// `getpid(2)`'s system-call number.
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-get-pid
+            pub const SysGetPid: uint64 = 39;
+            const SysExitGroup: uint64 = 231;
+            const SysClockGetTime: uint64 = 228;
+            const SysOpenAt: uint64 = 257;
+            const SysGetdents64: uint64 = 217;
+            const SysLinkAt: uint64 = 265;
+            const SysNewFstatAt: uint64 = 262;
+            const SysGetcwd: uint64 = 79;
+            const SysChdir: uint64 = 80;
+            const SysReadlinkAt: uint64 = 267;
+            const SysFchmodAt: uint64 = 268;
+            const SysUtimensAt: uint64 = 280;
+            const SysSymlinkAt: uint64 = 266;
+            const SysLseek: uint64 = 8;
+            const SysFsync: uint64 = 74;
+            const SysFtruncate: uint64 = 77;
+            const SysUnlinkAt: uint64 = 263;
+            const SysMkdirAt: uint64 = 258;
+            const SysRenameAt: uint64 = 264;
+            const SysFstat: uint64 = 5;
+            const SysDup3: uint64 = 292;
+            const SysPipe2: uint64 = 293;
+            const SysMprotect: uint64 = 10;
+            const SysMadvise: uint64 = 28;
+            const SysGetRandom: uint64 = 318;
+            const SysClockGetRes: uint64 = 229;
+            const SysClockNanosleep: uint64 = 230;
+        },
+        .AArch64 => {
+            const SysRead: uint64 = 63;
+            const SysWrite: uint64 = 64;
+            const SysClose: uint64 = 57;
+            /// `mmap(2)`'s system-call number.
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-mmap
+            pub const SysMmap: uint64 = 222;
+            const SysMunmap: uint64 = 215;
+            const SysBrk: uint64 = 214;
+            const SysNanosleep: uint64 = 101;
+            /// `getpid(2)`'s system-call number.
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#sys-get-pid
+            pub const SysGetPid: uint64 = 172;
+            const SysExitGroup: uint64 = 94;
+            const SysClockGetTime: uint64 = 113;
+            const SysOpenAt: uint64 = 56;
+            const SysGetdents64: uint64 = 61;
+            const SysLinkAt: uint64 = 37;
+            const SysNewFstatAt: uint64 = 79;
+            const SysGetcwd: uint64 = 17;
+            const SysChdir: uint64 = 49;
+            const SysReadlinkAt: uint64 = 78;
+            const SysFchmodAt: uint64 = 53;
+            const SysUtimensAt: uint64 = 88;
+            const SysSymlinkAt: uint64 = 36;
+            const SysLseek: uint64 = 62;
+            const SysFsync: uint64 = 82;
+            const SysFtruncate: uint64 = 46;
+            const SysUnlinkAt: uint64 = 35;
+            const SysMkdirAt: uint64 = 34;
+            const SysRenameAt: uint64 = 38;
+            const SysFstat: uint64 = 80;
+            const SysDup3: uint64 = 24;
+            const SysPipe2: uint64 = 59;
+            const SysMprotect: uint64 = 226;
+            const SysMadvise: uint64 = 233;
+            const SysGetRandom: uint64 = 278;
+            const SysClockGetRes: uint64 = 114;
+            const SysClockNanosleep: uint64 = 115;
+        },
+        _ => #Error("Unsupported Linux architecture")
+    }
 
-        // Executes a raw Linux system call with one argument.
-        asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
-            mov rax, rdi
-            mov rdi, rsi
-            syscall
-            ret
-        }
+    // Linux returns either a non-negative result or -errno from every system call,
+    // on both architectures. What differs is where the call number and the
+    // arguments go, so each architecture writes the whole wrapper.
+    // x86-64: Rux functions use the System V ABI, whose first three argument
+    // registers the kernel keeps. The fourth argument moves from rcx to r10, and a
+    // seventh function argument arrives at [rsp + 8], after the return address.
+    // AArch64: Rux functions use AAPCS64, whose first eight argument registers
+    // cover even the widest wrapper. The kernel takes the call number in x8 and the
+    // arguments in x0 through x5, so each wrapper moves the number aside and then
+    // shifts the arguments down by one register, lowest first, which is the order
+    // in which each register has been read before it is written.
+    when #target.arch {
+        .X86_64 => {
+            // Executes a raw Linux system call without arguments.
+            /// Executes a raw Linux system call without arguments.
+            /// @param number the system call to make
+            /// @returns the kernel's raw result
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-0
+            pub asm func Syscall0(number: uint64) -> int64 {
+                mov rax, rdi
+                syscall
+                ret
+            }
 
-        // Executes a raw Linux system call with two arguments.
-        asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
-            mov rax, rdi
-            mov rdi, rsi
-            mov rsi, rdx
-            syscall
-            ret
-        }
+            // Executes a raw Linux system call with one argument.
+            asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+                mov rax, rdi
+                mov rdi, rsi
+                syscall
+                ret
+            }
 
-        // Executes a raw Linux system call with three arguments.
-        asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
-            mov rax, rdi
-            mov rdi, rsi
-            mov rsi, rdx
-            mov rdx, rcx
-            syscall
-            ret
-        }
+            // Executes a raw Linux system call with two arguments.
+            asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+                mov rax, rdi
+                mov rdi, rsi
+                mov rsi, rdx
+                syscall
+                ret
+            }
 
-        // Executes a raw Linux system call with four arguments.
-        asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
-            mov rax, rdi
-            mov rdi, rsi
-            mov rsi, rdx
-            mov rdx, rcx
-            mov r10, r8
-            syscall
-            ret
-        }
+            // Executes a raw Linux system call with three arguments.
+            asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+                mov rax, rdi
+                mov rdi, rsi
+                mov rsi, rdx
+                mov rdx, rcx
+                syscall
+                ret
+            }
 
-        // Executes a raw Linux system call with five arguments.
-        asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
-            mov rax, rdi
-            mov rdi, rsi
-            mov rsi, rdx
-            mov rdx, rcx
-            mov r10, r8
-            mov r8, r9
-            syscall
-            ret
-        }
+            // Executes a raw Linux system call with four arguments.
+            asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+                mov rax, rdi
+                mov rdi, rsi
+                mov rsi, rdx
+                mov rdx, rcx
+                mov r10, r8
+                syscall
+                ret
+            }
 
-        // Executes a raw Linux system call with six arguments.
-        /// Executes a raw Linux system call with six arguments.
-        /// @param number the system call to make
-        /// @param arg0 the call's first argument
-        /// @param arg1 the call's second argument
-        /// @param arg2 the call's third argument
-        /// @param arg3 the call's fourth argument
-        /// @param arg4 the call's fifth argument
-        /// @param arg5 the call's sixth argument
-        /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-6
-        pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
-            mov rax, rdi
-            mov rdi, rsi
-            mov rsi, rdx
-            mov rdx, rcx
-            mov r10, r8
-            mov r8, r9
-            mov r9, qword [rsp + 8]
-            syscall
-            ret
-        }
-    },
-    .AArch64 => {
-        // Executes a raw Linux system call without arguments.
-        /// Executes a raw Linux system call without arguments.
-        /// @param number the system call to make
-        /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-0
-        pub asm func Syscall0(number: uint64) -> int64 {
-            mov x8, x0
-            svc #0
-            ret
-        }
+            // Executes a raw Linux system call with five arguments.
+            asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+                mov rax, rdi
+                mov rdi, rsi
+                mov rsi, rdx
+                mov rdx, rcx
+                mov r10, r8
+                mov r8, r9
+                syscall
+                ret
+            }
 
-        // Executes a raw Linux system call with one argument.
-        asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
-            mov x8, x0
-            mov x0, x1
-            svc #0
-            ret
-        }
+            // Executes a raw Linux system call with six arguments.
+            /// Executes a raw Linux system call with six arguments.
+            /// @param number the system call to make
+            /// @param arg0 the call's first argument
+            /// @param arg1 the call's second argument
+            /// @param arg2 the call's third argument
+            /// @param arg3 the call's fourth argument
+            /// @param arg4 the call's fifth argument
+            /// @param arg5 the call's sixth argument
+            /// @returns the kernel's raw result
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-6
+            pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+                mov rax, rdi
+                mov rdi, rsi
+                mov rsi, rdx
+                mov rdx, rcx
+                mov r10, r8
+                mov r8, r9
+                mov r9, qword [rsp + 8]
+                syscall
+                ret
+            }
+        },
+        .AArch64 => {
+            // Executes a raw Linux system call without arguments.
+            /// Executes a raw Linux system call without arguments.
+            /// @param number the system call to make
+            /// @returns the kernel's raw result
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-0
+            pub asm func Syscall0(number: uint64) -> int64 {
+                mov x8, x0
+                svc #0
+                ret
+            }
 
-        // Executes a raw Linux system call with two arguments.
-        asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
-            mov x8, x0
-            mov x0, x1
-            mov x1, x2
-            svc #0
-            ret
-        }
+            // Executes a raw Linux system call with one argument.
+            asm func Syscall1(number: uint64, arg0: uint64) -> int64 {
+                mov x8, x0
+                mov x0, x1
+                svc #0
+                ret
+            }
 
-        // Executes a raw Linux system call with three arguments.
-        asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
-            mov x8, x0
-            mov x0, x1
-            mov x1, x2
-            mov x2, x3
-            svc #0
-            ret
-        }
+            // Executes a raw Linux system call with two arguments.
+            asm func Syscall2(number: uint64, arg0: uint64, arg1: uint64) -> int64 {
+                mov x8, x0
+                mov x0, x1
+                mov x1, x2
+                svc #0
+                ret
+            }
 
-        // Executes a raw Linux system call with four arguments.
-        asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
-            mov x8, x0
-            mov x0, x1
-            mov x1, x2
-            mov x2, x3
-            mov x3, x4
-            svc #0
-            ret
-        }
+            // Executes a raw Linux system call with three arguments.
+            asm func Syscall3(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64) -> int64 {
+                mov x8, x0
+                mov x0, x1
+                mov x1, x2
+                mov x2, x3
+                svc #0
+                ret
+            }
 
-        // Executes a raw Linux system call with five arguments.
-        asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
-            mov x8, x0
-            mov x0, x1
-            mov x1, x2
-            mov x2, x3
-            mov x3, x4
-            mov x4, x5
-            svc #0
-            ret
-        }
+            // Executes a raw Linux system call with four arguments.
+            asm func Syscall4(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64) -> int64 {
+                mov x8, x0
+                mov x0, x1
+                mov x1, x2
+                mov x2, x3
+                mov x3, x4
+                svc #0
+                ret
+            }
 
-        // Executes a raw Linux system call with six arguments.
-        /// Executes a raw Linux system call with six arguments.
-        /// @param number the system call to make
-        /// @param arg0 the call's first argument
-        /// @param arg1 the call's second argument
-        /// @param arg2 the call's third argument
-        /// @param arg3 the call's fourth argument
-        /// @param arg4 the call's fifth argument
-        /// @param arg5 the call's sixth argument
-        /// @returns the kernel's raw result
-        /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-6
-        pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
-            mov x8, x0
-            mov x0, x1
-            mov x1, x2
-            mov x2, x3
-            mov x3, x4
-            mov x4, x5
-            mov x5, x6
-            svc #0
-            ret
-        }
-    },
-    _ => #Error("Unsupported Linux architecture")
-}
+            // Executes a raw Linux system call with five arguments.
+            asm func Syscall5(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64) -> int64 {
+                mov x8, x0
+                mov x0, x1
+                mov x1, x2
+                mov x2, x3
+                mov x3, x4
+                mov x4, x5
+                svc #0
+                ret
+            }
 
-/// Widens a file descriptor to the register width a system call takes it in.
-/// `fd` is read by value; the widened value is returned by copy. Sign extension is what matters: `-1` has to arrive
-/// as all ones rather than as a small positive number, which is how `mmap` is told it has no backing descriptor.
-/// Cannot fail. Runs in constant time and allocates nothing.
-/// @param fd the descriptor to widen
-/// @returns it sign-extended, so a negative one stays negative
-/// @see https://rux-lang.dev/docs/api/linux/syscalls#sign-extend-fd
-pub func SignExtendFd(fd: int32) -> uint64 {
-    return fd.Truncate<uint64>();
+            // Executes a raw Linux system call with six arguments.
+            /// Executes a raw Linux system call with six arguments.
+            /// @param number the system call to make
+            /// @param arg0 the call's first argument
+            /// @param arg1 the call's second argument
+            /// @param arg2 the call's third argument
+            /// @param arg3 the call's fourth argument
+            /// @param arg4 the call's fifth argument
+            /// @param arg5 the call's sixth argument
+            /// @returns the kernel's raw result
+            /// @see https://rux-lang.dev/docs/api/linux/syscalls#syscall-6
+            pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+                mov x8, x0
+                mov x0, x1
+                mov x1, x2
+                mov x2, x3
+                mov x3, x4
+                mov x4, x5
+                mov x5, x6
+                svc #0
+                ret
+            }
+        },
+        _ => #Error("Unsupported Linux architecture")
+    }
+
+    /// Widens a file descriptor to the register width a system call takes it in.
+    /// `fd` is read by value; the widened value is returned by copy. Sign extension is what matters: `-1` has to arrive
+    /// as all ones rather than as a small positive number, which is how `mmap` is told it has no backing descriptor.
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    /// @param fd the descriptor to widen
+    /// @returns it sign-extended, so a negative one stays negative
+    /// @see https://rux-lang.dev/docs/api/linux/syscalls#sign-extend-fd
+    pub func SignExtendFd(fd: int32) -> uint64 {
+        return fd.Truncate<uint64>();
+    }
 }

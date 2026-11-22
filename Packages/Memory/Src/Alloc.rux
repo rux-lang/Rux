@@ -12,7 +12,10 @@ import Core::Diagnostics::#Error;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
-    .Linux => import Linux::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
+    .Linux => {
+        import Linux::Errors::IsError;
+        import Linux::Memory::{ MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite };
+    },
     .macOS => import macOS::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
     .Windows => import Windows::{ GetProcessHeap, HeapAlloc }
 }

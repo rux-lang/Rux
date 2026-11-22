@@ -4,29 +4,31 @@
 // three wrong; that belongs above this package.
 
 import Core::Primitives::*;
-import Linux::{ ProcessId, SysExitGroup, SysGetPid, Syscall0, Syscall1 };
+import Linux::Syscall::{ SysExitGroup, SysGetPid, Syscall0, Syscall1 };
+import Linux::Types::ProcessId;
 
-/// Ends the calling thread's process with `code`.
-/// `code` is read by value; only its low eight bits reach a waiting parent, which is the kernel's rule rather than
-/// this binding's. Does not return.
-/// Nothing is flushed, unwound, or destroyed on the way out: the kernel reclaims the address space and the
-/// descriptors, and anything the program was holding elsewhere is simply gone.
-/// This ends the whole process rather than one thread: it is `exit_group`, not `exit`, which on Linux stops only the
-/// calling thread and would leave the others running.
-/// @param code the status to report to the parent
-/// @see https://rux-lang.dev/docs/api/linux/process#exit
-pub func Exit(code: int32) {
-    // Safety: exit_group takes only a status number and touches no memory of the caller's.
-    Syscall1(SysExitGroup, code.Truncate<uint64>());
-}
+pub module Process {
+    /// Ends the calling thread's process with `code`.
+    /// `code` is read by value; only its low eight bits reach a waiting parent, which is the kernel's rule rather than
+    /// this binding's. Does not return. Nothing is flushed, unwound, or destroyed on the way out: the kernel reclaims
+    /// the address space and the descriptors, and anything the program was holding elsewhere is simply gone. This ends
+    /// the whole process rather than one thread: it is `exit_group`, not `exit`, which on Linux stops only the calling
+    /// thread and would leave the others running.
+    /// @param code the status to report to the parent
+    /// @see https://rux-lang.dev/docs/api/linux/process#exit
+    pub func Exit(code: int32) {
+        // Safety: exit_group takes only a status number and touches no memory of the caller's.
+        Syscall1(SysExitGroup, code.Truncate<uint64>());
+    }
 
-/// The calling process's own identifier.
-/// Takes nothing and returns the identifier by copy. Cannot fail: every process has one, and the call has no way to
-/// be given a bad argument.
-/// Runs in constant time and allocates nothing.
-/// @returns the calling process's identifier
-/// @see https://rux-lang.dev/docs/api/linux/process#get-pid
-pub func GetPid() -> ProcessId {
-    // Safety: getpid takes no arguments and only reports the caller's identifier.
-    return Syscall0(SysGetPid) as ProcessId;
+    /// The calling process's own identifier.
+    /// Takes nothing and returns the identifier by copy. Cannot fail: every process has one, and the call has no way to
+    /// be given a bad argument.
+    /// Runs in constant time and allocates nothing.
+    /// @returns the calling process's identifier
+    /// @see https://rux-lang.dev/docs/api/linux/process#get-pid
+    pub func GetPid() -> ProcessId {
+        // Safety: getpid takes no arguments and only reports the caller's identifier.
+        return Syscall0(SysGetPid) as ProcessId;
+    }
 }

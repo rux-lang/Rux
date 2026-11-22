@@ -11,7 +11,10 @@ import Core::Diagnostics::#Error;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ ClockGetTime, ClockMonotonic, Timespec },
-    .Linux => import Linux::{ ClockGetTime, ClockMonotonic, Timespec },
+    .Linux => {
+        import Linux::Clock::{ ClockGetTime, ClockMonotonic };
+        import Linux::Types::Timespec;
+    },
     .macOS => import macOS::{ ClockGetTime, ClockMonotonic, Timespec },
     .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency },
     _ => #Error("Unsupported operating system")

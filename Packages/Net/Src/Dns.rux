@@ -15,7 +15,7 @@ import Net::{
 import Time::{ Duration, Instant };
 
 when #target.os == .Linux {
-    import Linux::{ AtFdCwd, Close, OpenAt, OpenCloseOnExec, OpenReadOnly, Read };
+    import Linux::File::{ AtFdCwd, Close, OpenAt, OpenCloseOnExec, OpenReadOnly, Read };
 }
 
 // What a DNS record's type is.

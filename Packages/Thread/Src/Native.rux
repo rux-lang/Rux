@@ -9,10 +9,11 @@ import Core::Diagnostics::#Error;
 import Thread::ThreadError;
 
 when #target.os {
-    .Linux => import Linux::{
-        EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, gettid, pthread_attr_destroy,
-        pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach, pthread_join, sched_yield,
-        sysconf
+    .Linux => {
+        import Linux::Errors::{ EAGAIN, EINVAL };
+        import Linux::Thread::{ PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, gettid, pthread_attr_destroy,
+                                pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach,
+                                pthread_join, sched_yield, sysconf };
     },
     .FreeBSD => import FreeBSD::{
         EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy,

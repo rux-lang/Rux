@@ -16,9 +16,11 @@ import Net::{ FailureOf, LastFailure, NoSocket };
 import Time::Duration;
 
 when #target.os {
-    .Linux => import Linux::{
-        Close, EPOLLERR, EPOLLHUP, EPOLLIN, EPOLLOUT, EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD, EPOLL_CTL_DEL,
-        EPOLL_CTL_MOD, EpollControl, EpollCreate1, EpollEventBytes, EpollEventWordOffset, EpollWait
+    .Linux => {
+        import Linux::File::Close;
+        import Linux::Poll::{ EPOLLERR, EPOLLHUP, EPOLLIN, EPOLLOUT, EPOLLRDHUP, EPOLL_CLOEXEC, EPOLL_CTL_ADD,
+                              EPOLL_CTL_DEL, EPOLL_CTL_MOD, EpollControl, EpollCreate1, EpollEventBytes,
+                              EpollEventWordOffset, EpollWait };
     },
     .FreeBSD => import FreeBSD::{
         Close, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FD_CLOEXEC, F_SETFD,

@@ -43,8 +43,8 @@ A multi-name import list is laid out by one mechanical rule, so that any two aut
 
 ```rux
 when #target.os {
-    .Linux => import Linux::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
-                              RemoveDirectory, UnlinkAt },
+    .Linux => import Linux::File::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                                    RemoveDirectory, UnlinkAt },
     .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
                                   FindNextFileW, GetLastError, InvalidHandleValue, RemoveDirectoryW }
 }

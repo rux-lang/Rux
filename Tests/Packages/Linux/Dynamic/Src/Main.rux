@@ -1,5 +1,5 @@
 import Core::Compilation::{ #target, OperatingSystem };
-import Linux::{ RTLD_NOW, dlclose, dlerror, dlopen, dlsym };
+import Linux::Dynamic::{ RTLD_NOW, dlclose, dlerror, dlopen, dlsym };
 
 when #target.os == OperatingSystem::Linux {
 func Main() -> int {

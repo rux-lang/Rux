@@ -18,7 +18,10 @@ import Memory::Access::ZeroizeBlock;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ EAGAIN, EINTR, ENOSYS, Errno, GetRandom, IsError },
-    .Linux => import Linux::{ EAGAIN, EINTR, ENOSYS, Errno, GetRandom, IsError },
+    .Linux => {
+        import Linux::Entropy::GetRandom;
+        import Linux::Errors::{ EAGAIN, EINTR, ENOSYS, Errno, IsError };
+    },
     .macOS => import macOS::GetRandom,
     .Windows => import Windows::GetRandom,
     _ => #Error("Unsupported operating system")

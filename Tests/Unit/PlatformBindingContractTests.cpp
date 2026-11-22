@@ -214,6 +214,13 @@ void CollectSurface(const std::string &file, const Decl &declaration, PackageSur
         for (const auto &item : block->items) {
             CollectSurface(file, *item, surface);
         }
+        return;
+    }
+    // Each platform file wraps its bindings in a module named after it.
+    if (const auto *module = dynamic_cast<const ModuleDecl *>(&declaration)) {
+        for (const auto &item : module->items) {
+            CollectSurface(file, *item, surface);
+        }
     }
 }
 

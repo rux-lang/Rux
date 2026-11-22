@@ -10,7 +10,11 @@ import Io::{ IoError, IoErrorKind, Reader, Writer };
 import Process::FailureOf;
 
 when #target.os {
-    .Linux => import Linux::{ Close, IsError, Read, SIGKILL, WNOHANG, Write, __errno_location, kill, waitpid },
+    .Linux => {
+        import Linux::Errors::IsError;
+        import Linux::File::{ Close, Read, Write };
+        import Linux::Spawn::{ SIGKILL, WNOHANG, __errno_location, kill, waitpid };
+    },
     .FreeBSD => import FreeBSD::{ Close, IsError, Read, SIGKILL, WNOHANG, Write, __error, kill, waitpid },
     .macOS => import macOS::{ Close, CurrentErrno, IsError, Read, SIGKILL, WNOHANG, Write, kill, waitpid },
     .Windows => import Windows::{

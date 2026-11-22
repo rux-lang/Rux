@@ -8,7 +8,7 @@ import Core::Diagnostics::#Error;
 import Core::Primitives::*;
 
 when #target.os {
-    .Linux => import Linux::GetPid,
+    .Linux => import Linux::Process::GetPid,
     .FreeBSD => import FreeBSD::GetPid,
     .macOS => import macOS::GetPid,
     .Windows => import Windows::{ ExitProcess, GetCurrentProcessId },
@@ -20,7 +20,7 @@ module SystemExit {
     import Core::Compilation::#target;
 
     when #target.os {
-        .Linux => import Linux::Exit,
+        .Linux => import Linux::Process::Exit,
         .FreeBSD => import FreeBSD::Exit,
         .macOS => import macOS::Exit,
         _ => {}

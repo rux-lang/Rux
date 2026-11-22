@@ -8,7 +8,7 @@ import Path::OsUnit;
 import Process::{ Buffer, NextScalar };
 
 when #target.os {
-    .Linux => import Linux::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
+    .Linux => import Linux::Errors::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .FreeBSD => import FreeBSD::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .macOS => import macOS::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .Windows => {},

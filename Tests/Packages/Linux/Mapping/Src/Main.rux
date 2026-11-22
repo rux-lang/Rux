@@ -14,9 +14,9 @@ import Core::Compilation::{ #target, OperatingSystem };
 import Core::Diagnostics::Assert;
 
 when #target.os == OperatingSystem::Linux {
-    import Linux::{ AdviseDontNeed, AdviseWillNeed, EINVAL, Errno, IsError, Madvise, MapAnonymous, MapPrivate,
-                    MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead, ProtectionWrite,
-                    QueryPageSize };
+    import Linux::Errors::{ EINVAL, Errno, IsError, MaximumErrno };
+    import Linux::Memory::{ AdviseDontNeed, AdviseWillNeed, Madvise, MapAnonymous, MapPrivate, Mmap, Mprotect, Munmap,
+                            ProtectionNone, ProtectionRead, ProtectionWrite, QueryPageSize };
 
     /// One mapping unit. Thirty-two kibibytes is a whole number of pages on every supported cell, and more than one
     /// of them: x86-64 pages are 4 KiB and Apple Silicon's are 16 KiB, so the unit is at least two pages everywhere,

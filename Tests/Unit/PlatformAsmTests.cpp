@@ -99,15 +99,29 @@ std::string ReadFileText(const std::filesystem::path &path) {
         return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
     });
 
+    // Each platform file wraps its declarations in a module named after it, so the walk descends into module blocks.
+    std::vector<const Decl *> declarations;
+    const auto flatten = [&declarations](this const auto &self, const std::vector<DeclPtr> &items) -> void {
+        for (const auto &item : items) {
+            if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get())) {
+                self(nested->items);
+            }
+            else {
+                declarations.push_back(item.get());
+            }
+        }
+    };
+    flatten(parsed.module.items);
+
     std::vector<std::uint8_t> code;
-    for (const auto &item : parsed.module.items) {
-        if (const auto *constant = dynamic_cast<const ConstDecl *>(item.get())) {
+    for (const auto *item : declarations) {
+        if (const auto *constant = dynamic_cast<const ConstDecl *>(item)) {
             if (const auto *literal = dynamic_cast<const LiteralExpr *>(constant->value.get())) {
                 result.constants.emplace(constant->name, literal->token.text);
             }
             continue;
         }
-        const auto *func = dynamic_cast<const FuncDecl *>(item.get());
+        const auto *func = dynamic_cast<const FuncDecl *>(item);
         if (func == nullptr || !func->isAsm) {
             continue;
         }

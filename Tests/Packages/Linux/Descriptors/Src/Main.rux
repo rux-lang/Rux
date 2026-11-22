@@ -15,10 +15,12 @@ import Core::Compilation::{ #target, OperatingSystem };
 import Core::Diagnostics::Assert;
 
 when #target.os == OperatingSystem::Linux {
-    import Linux::{ AtFdCwd, Close, EBADF, EEXIST, EINVAL, ENOENT, Errno, FileMode, Fsync, Ftruncate, IsError, Lseek,
-                    MkdirAt, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate,
-                    OpenWriteOnly, Read, RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn,
-                    StdOut, UnlinkAt, Write };
+    import Linux::Errors::{ EBADF, EEXIST, EINVAL, ENOENT, Errno, IsError };
+    import Linux::File::{ AtFdCwd, Close, Fsync, Ftruncate, Lseek, MkdirAt, OpenAppend, OpenAt, OpenCreate,
+                          OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate, OpenWriteOnly, Read,
+                          RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn, StdOut, UnlinkAt,
+                          Write };
+    import Linux::Types::FileMode;
 
     const ScratchPath = "Bin/LinuxDescriptors.tmp";
     const RenamedPath = "Bin/LinuxDescriptorsRenamed.tmp";
