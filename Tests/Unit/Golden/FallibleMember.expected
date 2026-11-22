@@ -1,0 +1,4 @@
+18:26: error: 'View' is a member of 'Text', but the value is the fallible 'Text ! TextError'
+19:26: error: 'length' is a member of 'Text', but the value is the fallible 'Text ! TextError'
+20:23: error: 'View' is a member of 'Text', but the value is the optional 'Text?'
+21:27: error: type 'Text ! TextError' has no field 'Missing'

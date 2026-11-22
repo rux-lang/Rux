@@ -963,9 +963,31 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         if (TypeRef fieldType = StructFieldType(objectType, field->field); !fieldType.IsUnknown()) {
             return fieldType;
         }
-        if (!objectType.IsUnknown()) {
-            EmitError(field->location, std::format("type '{}' has no field '{}'", objectType.ToString(), field->field));
+        if (objectType.IsUnknown()) {
+            return TypeRef::MakeUnknown();
         }
+        // A fallible or an optional is not its value: a member of the value is reached once the error is handled or
+        // the presence tested, which the diagnostic says rather than that the member does not exist.
+        if (objectValueType.IsFallible() || objectValueType.IsOptional()) {
+            const bool fallible = objectValueType.IsFallible();
+            const TypeRef &inner = fallible ? objectValueType.FallibleSuccess() : objectValueType->inner.front();
+            const auto methods = methodsByType.find(NamedBaseTypeName(inner));
+            const bool member = !StructFieldType(inner, field->field).IsUnknown() ||
+                                (methods != methodsByType.end() && methods->second.contains(field->field));
+            if (member) {
+                EmitError(field->location,
+                          std::format("'{}' is a member of '{}', but the value is the {} '{}'", field->field,
+                                      inner.DisplayString(), fallible ? "fallible" : "optional",
+                                      objectValueType.DisplayString()),
+                          {},
+                          fallible ? std::string("handle the error first: pass it on with '!' before the '.', replace "
+                                                 "it with '!!', or handle it with 'catch { ... }'")
+                                   : std::string("take the value out first, with '?', '?"
+                                                 "?' or 'if let'"));
+                return TypeRef::MakeUnknown();
+            }
+        }
+        EmitError(field->location, std::format("type '{}' has no field '{}'", objectType.ToString(), field->field));
         return TypeRef::MakeUnknown();
     }
 

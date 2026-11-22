@@ -1,0 +1,23 @@
+// A member of a fallible's success or an optional's payload is reached once the error is handled or the presence
+// tested, which the diagnostic says rather than that the member does not exist.
+enum TextError { Bad }
+
+struct Text {
+    length: int;
+}
+
+extend Text {
+    func View(&self) -> int { return self.length; }
+}
+
+func Render() -> Text ! TextError { return Text { length: 1 }; }
+
+func Find() -> Text? { return none; }
+
+func Use() -> int ! TextError {
+    let viewed = Render().View();
+    let length = Render().length;
+    let found = Find().View();
+    let missing = Render().Missing;
+    return Render()!.View();
+}
