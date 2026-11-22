@@ -40,7 +40,7 @@ usage() {
         '  policy    Run the source-tree policy guards' \
         '  tidy      Run clang-tidy over maintained C++ sources' \
         '  unit      Run the C++ unit tests through CTest' \
-        '  clean     Remove the build directory and Bin' \
+        '  clean     Remove the build directory, Bin, and package Temp folders' \
         '  sync      Copy the repository packages into the local package cache' \
         '  help      Show this help' \
         '' \
@@ -753,6 +753,29 @@ run_clean() {
             printf "  Skipped '%s' (not present)\n" "$path"
         fi
     done
+
+    # Each package keeps its build records and per-module objects in its own Temp folder. They name the compiler
+    # that wrote them, so once Bin is gone they can only be rebuilt.
+    clean_removed=0
+    while IFS= read -r clean_manifest; do
+        [ -n "$clean_manifest" ] || continue
+        clean_temp=$(dirname "$clean_manifest")/Temp
+        [ -d "$clean_temp" ] || continue
+        rm -rf "$clean_temp"
+        clean_removed=$((clean_removed + 1))
+    done <<EOF
+$repository_root/Rux.toml
+$(for clean_root in "$repository_root/Packages" "$repository_root/Tests"; do
+        [ -d "$clean_root" ] && find "$clean_root" -name Temp -prune -o -type f -name Rux.toml -print
+    done)
+EOF
+    if [ "$clean_removed" -eq 0 ]; then
+        printf "  Skipped package 'Temp' folders (not present)\n"
+    elif [ "$clean_removed" -eq 1 ]; then
+        printf "  Removed 'Temp' from 1 package\n"
+    else
+        printf "  Removed 'Temp' from %s packages\n" "$clean_removed"
+    fi
 }
 
 # The value of the single quoted `$2 = "..."` field in manifest $1.

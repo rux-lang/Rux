@@ -11,7 +11,7 @@ Run.ps1 dispatches one command per invocation:
   policy    Run the source-tree policy guards
   tidy      Run clang-tidy over maintained C++ sources
   unit      Run the C++ unit tests through CTest
-  clean     Remove the build directory and Bin
+  clean     Remove the build directory, Bin, and package Temp folders
   sync      Copy the repository packages into the local package cache
   help      Show the command and option summary
 
@@ -190,7 +190,7 @@ function Show-Usage {
     Write-Host "  policy    Run the source-tree policy guards"
     Write-Host "  tidy      Run clang-tidy over maintained C++ sources"
     Write-Host "  unit      Run the C++ unit tests through CTest"
-    Write-Host "  clean     Remove the build directory and Bin"
+    Write-Host "  clean     Remove the build directory, Bin, and package Temp folders"
     Write-Host "  sync      Copy the repository packages into the local package cache"
     Write-Host "  help      Show this help"
     Write-Host ""
@@ -816,6 +816,27 @@ function Invoke-Clean {
         else {
             Write-Host "  Skipped '$(Format-DisplayPath $path)' (not present)"
         }
+    }
+
+    # Each package keeps its build records and per-module objects in its own Temp folder. They name the compiler
+    # that wrote them, so once Bin is gone they can only be rebuilt.
+    $packageRoots = @((Join-Path $repositoryRoot "Packages"), (Join-Path $repositoryRoot "Tests")) |
+        Where-Object { Test-Path -LiteralPath $_ }
+    $manifests = @(Join-Path $repositoryRoot "Rux.toml")
+    $manifests += @(Get-ChildItem -LiteralPath $packageRoots -Recurse -File -Filter "Rux.toml").FullName
+    $removed = 0
+    foreach ($manifest in $manifests) {
+        $temp = Join-Path (Split-Path -Parent $manifest) "Temp"
+        if (Test-Path -LiteralPath $temp -PathType Container) {
+            Remove-Item -LiteralPath $temp -Recurse -Force
+            $removed++
+        }
+    }
+    if ($removed -eq 0) {
+        Write-Host "  Skipped package 'Temp' folders (not present)"
+    }
+    else {
+        Write-Host "  Removed 'Temp' from $removed $(if ($removed -eq 1) { 'package' } else { 'packages' })"
     }
 }
 
