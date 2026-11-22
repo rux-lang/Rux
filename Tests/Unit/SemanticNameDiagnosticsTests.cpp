@@ -219,3 +219,46 @@ TEST_CASE("an executable's Main is func Main() -> int") {
               "module Tools {\n func Main(x: int) -> bool { return true; }\n}\nfunc Main() -> int { return 0; }")
               .empty());
 }
+
+TEST_CASE("an error that would leave Main is handled there, never declared on it") {
+    // `Main` cannot fail, so the help never offers a fallible signature for it.
+    const auto passed = AnalyzeEntryPoint(R"(
+        enum InstallError: int32 { Failed = 1 }
+        func Install() -> !InstallError {}
+        func Main() -> int {
+            Install()!;
+            return 0;
+        }
+    )");
+    REQUIRE_EQ(passed.size(), 1);
+    CHECK_EQ(passed[0].message, "call to 'Install' can fail with 'InstallError', but 'Main' cannot fail");
+    CHECK_EQ(passed[0].help, "handle the error here, as in '!! return 1', or move the steps that can fail into a "
+                             "function and handle its error in 'Main', as in 'return Run() !! 1;'");
+
+    const auto thrown = AnalyzeEntryPoint(R"(
+        enum LookupError: int32 { Missing = 1 }
+        func Find() -> int? { return none; }
+        func Main() -> int {
+            let found = Find() ?? throw LookupError::Missing;
+            return found;
+        }
+    )");
+    REQUIRE_EQ(thrown.size(), 1);
+    CHECK_EQ(thrown[0].message, "'throw' needs a function that can fail, but 'Main' returns 'int'");
+    CHECK_EQ(thrown[0].help, "leave 'Main' with an exit status, as in 'return 1;', or move the steps that can fail "
+                             "into a function and handle its error in 'Main', as in 'return Run() !! 1;'");
+
+    // Any other function is offered the fallible signature.
+    const auto ordinary = AnalyzeEntryPoint(R"(
+        enum InstallError: int32 { Failed = 1 }
+        func Install() -> !InstallError {}
+        func Setup() -> int {
+            Install()!;
+            return 0;
+        }
+        func Main() -> int { return Setup(); }
+    )");
+    REQUIRE_EQ(ordinary.size(), 1);
+    CHECK_EQ(ordinary[0].help, "handle the error with '!!' or 'catch { ... }', or declare '-> int ! InstallError' on "
+                               "'Setup'");
+}

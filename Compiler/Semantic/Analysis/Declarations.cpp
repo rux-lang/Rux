@@ -22,12 +22,18 @@
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
-void AnalysisContext::CheckMainSignature(const FuncDecl &declaration, const TypeRef &returnType) {
+bool AnalysisContext::IsEntryPoint(const FuncDecl *declaration) const {
     // Only the executable's own entry point: a `Main` of a dependency, or one inside a module, is an ordinary function.
-    if (!context.checksEntryPoint || context.outputKind != OutputKind::Executable || currentPackage != packageName) {
-        return;
+    if (declaration == nullptr || declaration->name != "Main" || !context.checksEntryPoint ||
+        context.outputKind != OutputKind::Executable || currentPackage != packageName) {
+        return false;
     }
-    if (const auto *info = programIndex.InfoFor(declaration); info == nullptr || !info->modulePath.empty()) {
+    const auto *info = programIndex.InfoFor(*declaration);
+    return info != nullptr && info->modulePath.empty();
+}
+
+void AnalysisContext::CheckMainSignature(const FuncDecl &declaration, const TypeRef &returnType) {
+    if (!IsEntryPoint(&declaration)) {
         return;
     }
     // The result of `Main` is the process's exit status, so it has one signature and cannot fail: an error that reaches
@@ -51,10 +57,8 @@ void AnalysisContext::CheckMainSignature(const FuncDecl &declaration, const Type
     }
     EmitError(declaration.location, std::format("'Main' must be 'func Main() -> int', but it {}", problem),
               {"the result of 'Main' is the process's exit status"},
-              returnType.IsFallible()
-                  ? "move the steps that can fail into a function and handle its error in 'Main', as in "
-                    "'return Run() !! 1;'"
-                  : "declare it as 'func Main() -> int' and return the exit status");
+              returnType.IsFallible() ? std::string(MainStepsHelp)
+                                      : std::string("declare it as 'func Main() -> int' and return the exit status"));
 }
 
 void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {

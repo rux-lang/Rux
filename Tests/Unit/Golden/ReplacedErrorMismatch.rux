@@ -1,0 +1,14 @@
+// The fallback of '!!' is named as such when it does not convert to the success, and a 'catch' arm as an arm.
+enum Failure { Bad }
+
+func Parse() -> int ! Failure { return 1; }
+
+func Replaced() -> int {
+    let value = Parse() !! "five";
+    return value;
+}
+
+func Caught() -> int {
+    let value = Parse() catch { _ => "five" };
+    return value;
+}

@@ -26,6 +26,9 @@ namespace Rux::SemanticDetail {
 /// The help for a fallible used where its success is needed, or not used at all: the three ways to take it apart.
 inline constexpr std::string_view HandleErrorHelp =
     "pass the error on with '!', replace it with '!!', or handle it with 'catch { ... }'";
+/// The help for an error that would leave `Main`, which cannot fail: where its steps that can fail belong.
+inline constexpr std::string_view MainStepsHelp =
+    "move the steps that can fail into a function and handle its error in 'Main', as in 'return Run() !! 1;'";
 /// The name an interface uses for the type implementing it. There are no generic interfaces, so this is the only way
 /// an interface method can say that an operand or a result is the same type as its receiver.
 inline constexpr std::string_view SelfTypeName = "Self";
@@ -427,6 +430,8 @@ private:
     /// Refuses an executable's `Main` that takes parameters, is generic, or returns anything but nothing, an integer,
     /// or a fallible whose success is either.
     void CheckMainSignature(const FuncDecl &declaration, const TypeRef &returnType);
+    /// Whether `declaration` is the executable's own entry point, the `Main` whose signature is fixed.
+    [[nodiscard]] bool IsEntryPoint(const FuncDecl *declaration) const;
     /// Whether a value of `type` holds a view -- a slice, in itself or in any field, element or payload -- whose
     /// storage must outlive the value. Pointers do not count: what a raw pointer reaches is its user's to vouch for.
     [[nodiscard]] bool TypeHoldsView(const TypeRef &type);
@@ -924,10 +929,11 @@ private:
     bool RouteThrownError(ResolvedThrowSite &site, const TypeRef &error, SourceLocation location,
                           const std::string &description, const ErrorFormExpr *handler = nullptr);
     /// The arms of a handler, which match `error` as a `match` would. An expression handler's arms produce `value`; a
-    /// statement's discard what they produce. Each arm's exit flow is added to `exits`.
+    /// statement's discard what they produce. Each arm's exit flow is added to `exits`. `form` is how the handler is
+    /// written, `catch` or `!!`, which its diagnostics name.
     void CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, const TypeRef &error,
-                          const std::optional<TypeRef> &value, SourceLocation location,
-                          std::vector<TrackedFlow> &exits);
+                          const std::optional<TypeRef> &value, SourceLocation location, std::vector<TrackedFlow> &exits,
+                          std::string_view form);
     /// The error type a handler takes: the sum of the errors thrown to it, or unknown when nothing throws.
     [[nodiscard]] static TypeRef HandlerErrorType(const ThrowHandlerFrame &frame);
     /// Runs `check` inside a barrier no error may cross, as a deferred statement or destructor body is.

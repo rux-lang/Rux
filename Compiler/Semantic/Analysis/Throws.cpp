@@ -189,12 +189,15 @@ bool AnalysisContext::RouteThrownError(ResolvedThrowSite &site, const TypeRef &e
                 currentReturnType.IsOpaque() || currentReturnType.IsUnit()
                     ? std::format("-> !{}", error.DisplayString())
                     : std::format("-> {} ! {}", currentReturnType.DisplayString(), error.DisplayString());
+            // `Main` cannot fail at all, so its error is handled there or its steps go into a function of their own.
             EmitError(
                 location,
                 std::format("{} can fail with '{}', but {} cannot fail", description, error.DisplayString(), function),
                 {},
-                std::format("handle the error with '!!' or 'catch {{ ... }}', or declare '{}' on {}", declared,
-                            function));
+                IsEntryPoint(currentFunctionDecl)
+                    ? std::format("handle the error here, as in '!! return 1', or {}", MainStepsHelp)
+                    : std::format("handle the error with '!!' or 'catch {{ ... }}', or declare '{}' on {}", declared,
+                                  function));
         }
         return false;
     }
@@ -230,12 +233,16 @@ std::optional<ResolvedThrowSite> AnalysisContext::CheckFail(const Expr *value, c
             const bool nothing = currentReturnType.IsOpaque() || currentReturnType.IsUnit();
             const std::string returned =
                 nothing ? std::string("returns no value") : std::format("returns '{}'", currentReturnType.ToString());
+            std::string help =
+                nothing ? std::string("declare '-> !E' on the function")
+                        : std::format("declare '-> {} ! E' on the function", currentReturnType.DisplayString());
+            if (IsEntryPoint(currentFunctionDecl)) {
+                help = std::format("leave 'Main' with an exit status, as in 'return 1;', or {}", MainStepsHelp);
+            }
             EmitError(location,
                       std::format("'throw' needs a function that can fail, but {} {}",
                                   FunctionName(currentFunctionDecl), returned),
-                      {},
-                      nothing ? std::string("declare '-> !E' on the function")
-                              : std::format("declare '-> {} ! E' on the function", currentReturnType.DisplayString()));
+                      {}, std::move(help));
         }
     }
     else if (value && !valueType.IsUnknown()) {
@@ -271,7 +278,7 @@ void AnalysisContext::CheckBehindThrowBarrier(const ThrowHandlerFrame::Kind kind
 
 void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, const TypeRef &error,
                                        const std::optional<TypeRef> &value, const SourceLocation location,
-                                       std::vector<TrackedFlow> &exits) {
+                                       std::vector<TrackedFlow> &exits, const std::string_view form) {
     // An arm is outside its handler: an `x!` or a `throw` in it leaves the function.
     throwMarkFrames.emplace_back();
     const TrackedFlow entry = SaveTrackedFlow();
@@ -308,9 +315,9 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
                 if (blockArm && bodyType.IsUnit() && !recovered.IsUnit() && !recovered.IsUnknown()) {
                     if (!ReportStrayTailSemicolon(*arm.body, recovered)) {
                         EmitError(arm.location,
-                                  std::format("a block arm completes with '()', but 'catch' must produce a value of "
+                                  std::format("a block arm completes with '()', but '{}' must produce a value of "
                                               "type '{}'",
-                                              recovered.ToString()),
+                                              form, recovered.ToString()),
                                   {},
                                   "end the block with the value written without a ';', or leave it with 'throw', "
                                   "'return', or a call to 'Panic'");
@@ -323,9 +330,13 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
                     else {
                         EmitError(arm.location,
                                   AssignmentErrorMessage(*arm.body, recovered,
-                                                         std::format("'catch' arm produces '{}', but the handled "
-                                                                     "value has type '{}'",
-                                                                     bodyType.ToString(), recovered.ToString())));
+                                                         form == "!!"
+                                                             ? std::format("'!!' replaces the error with '{}', but "
+                                                                           "the handled value has type '{}'",
+                                                                           bodyType.ToString(), recovered.ToString())
+                                                             : std::format("'catch' arm produces '{}', but the "
+                                                                           "handled value has type '{}'",
+                                                                           bodyType.ToString(), recovered.ToString())));
                     }
                 }
             }
@@ -441,7 +452,7 @@ TypeRef AnalysisContext::CheckErrorForm(const ErrorFormExpr &expression) {
     }
     else {
         CheckHandlerArms(expression.arms, error, asStatement ? std::nullopt : std::optional<TypeRef>(result),
-                         expression.catchLocation, exits);
+                         expression.catchLocation, exits, spelling);
     }
     MergeTrackedFlows(exits);
     if (!operandType.IsUnknown()) {

@@ -1,0 +1,2 @@
+7:28: error: '!!' replaces the error with 'char8[..]', but the handled value has type 'int'
+12:33: error: 'catch' arm produces 'char8[..]', but the handled value has type 'int'
