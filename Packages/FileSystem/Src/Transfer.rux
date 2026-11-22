@@ -11,7 +11,7 @@ import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsUnit, Path };
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
+    .FreeBSD => import FreeBSD::File::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .Linux => import Linux::File::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .macOS => import macOS::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .Windows => import Windows::{ CopyFileW, CreateHardLinkW, CreateSymbolicLinkW, GetLastError,

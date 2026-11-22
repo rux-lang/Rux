@@ -24,11 +24,11 @@ rux add Rux/FreeBSD
 | `Thread`  | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `pthread_getthreadid_np`, linked from libthr and libc |
 | `Umtx`    | `UmtxWait` and `UmtxWake`, the private `_umtx_op(2)` word operations every lock in `Rux/Sync` sleeps on |
 | `Spawn`   | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill`, `fcntl` and `__error`, linked from libc |
-| `Socket`  | `Socket`, `Connect`, `Bind`, `Listen`, `Accept4`, `SendTo`, `ReceiveFrom`, `Shutdown`, `SetSocketOption`, `GetSocketName` and `GetPeerName` as system calls, with the address families, socket options and `MSG_NOSIGNAL` |
+| `Sockets` | `Socket`, `Connect`, `Bind`, `Listen`, `Accept4`, `SendTo`, `ReceiveFrom`, `Shutdown`, `SetSocketOption`, `GetSocketName` and `GetPeerName` as system calls, with the address families, socket options and `MSG_NOSIGNAL` |
 | `Resolve` | `getaddrinfo`, `freeaddrinfo` and `AddressInfo`, linked from libc                         |
 | `Poll`    | `Kqueue` and `KeventCall` as system calls, `Kevent`, the `EVFILT_*` and `EV_*` flags, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+Every declaration lives in the module of its row, and the module is part of the import path: `import FreeBSD::File::{ Close, OpenAt };`.
 
 FreeBSD reports an error by setting the carry flag and leaving a *positive* errno in the result register, so a raw instruction result cannot be tested for sign. The assembly wrappers normalize that to a small negative number, which is Linux's convention, so everything above them reads the same on both systems and `IsError` and `Errno` are the same two functions.
 
@@ -62,7 +62,7 @@ FreeBSD only. Guard use behind a compile-time check, so a build for another targ
 import Core::Compilation::#target;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ StdOut, Write }
+    .FreeBSD => import FreeBSD::File::{ StdOut, Write }
 }
 ```
 

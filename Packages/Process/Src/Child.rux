@@ -15,7 +15,11 @@ when #target.os {
         import Linux::File::{ Close, Read, Write };
         import Linux::Spawn::{ SIGKILL, WNOHANG, __errno_location, kill, waitpid };
     },
-    .FreeBSD => import FreeBSD::{ Close, IsError, Read, SIGKILL, WNOHANG, Write, __error, kill, waitpid },
+    .FreeBSD => {
+        import FreeBSD::Errors::IsError;
+        import FreeBSD::File::{ Close, Read, Write };
+        import FreeBSD::Spawn::{ SIGKILL, WNOHANG, __error, kill, waitpid };
+    },
     .macOS => import macOS::{ Close, CurrentErrno, IsError, Read, SIGKILL, WNOHANG, Write, kill, waitpid },
     .Windows => import Windows::{
         CloseHandle, ERROR_BROKEN_PIPE, GetExitCodeProcess, GetLastError, INFINITE, ReadFile, TerminateProcess,

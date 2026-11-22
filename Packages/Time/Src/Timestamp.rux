@@ -13,7 +13,10 @@ import Core::Compilation::#target;
 import Core::Diagnostics::#Error;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ ClockGetTime, ClockRealtime, Timespec },
+    .FreeBSD => {
+        import FreeBSD::Clock::{ ClockGetTime, ClockRealtime };
+        import FreeBSD::Types::Timespec;
+    },
     .Linux => {
         import Linux::Clock::{ ClockGetTime, ClockRealtime };
         import Linux::Types::Timespec;

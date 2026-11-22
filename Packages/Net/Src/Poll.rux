@@ -22,9 +22,12 @@ when #target.os {
                               EPOLL_CTL_DEL, EPOLL_CTL_MOD, EpollControl, EpollCreate1, EpollEventBytes,
                               EpollEventWordOffset, EpollWait };
     },
-    .FreeBSD => import FreeBSD::{
-        Close, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FD_CLOEXEC, F_SETFD,
-        FcntlInt, Kevent, KeventCall, Kqueue, Timespec
+    .FreeBSD => {
+        import FreeBSD::File::Close;
+        import FreeBSD::Poll::{ EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FcntlInt,
+                                Kevent, KeventCall, Kqueue };
+        import FreeBSD::Spawn::{ FD_CLOEXEC, F_SETFD };
+        import FreeBSD::Types::Timespec;
     },
     .macOS => import macOS::{
         Close, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FD_CLOEXEC, F_SETFD,

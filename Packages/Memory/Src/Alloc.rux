@@ -11,7 +11,10 @@ import Core::Compilation::#target;
 import Core::Diagnostics::#Error;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
+    .FreeBSD => {
+        import FreeBSD::Errors::IsError;
+        import FreeBSD::Memory::{ MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite };
+    },
     .Linux => {
         import Linux::Errors::IsError;
         import Linux::Memory::{ MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite };

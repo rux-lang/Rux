@@ -19,10 +19,12 @@ when #target.os {
                                  MSG_NOSIGNAL, ReceiveFrom, SOCK_CLOEXEC, SOL_SOCKET, SO_RCVTIMEO, SO_REUSEADDR,
                                  SO_SNDTIMEO, SendTo, SetSocketOption, Shutdown, Socket };
     },
-    .FreeBSD => import FreeBSD::{
-        AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,
-        MSG_NOSIGNAL, O_NONBLOCK, ReceiveFrom, SO_RCVTIMEO, SO_REUSEADDR, SO_SNDTIMEO, SOCK_CLOEXEC, SOL_SOCKET, SendTo,
-        SetSocketOption, Shutdown, Socket
+    .FreeBSD => {
+        import FreeBSD::File::Close;
+        import FreeBSD::Poll::{ F_GETFL, F_SETFL, FcntlInt, O_NONBLOCK };
+        import FreeBSD::Sockets::{ AF_INET, AF_INET6, Accept4, Bind, Connect, GetPeerName, GetSocketName, Listen,
+                                   MSG_NOSIGNAL, ReceiveFrom, SOCK_CLOEXEC, SOL_SOCKET, SO_RCVTIMEO, SO_REUSEADDR,
+                                   SO_SNDTIMEO, SendTo, SetSocketOption, Shutdown, Socket };
     },
     .macOS => import macOS::{
         AF_INET, AF_INET6, Accept4, Bind, Close, Connect, F_GETFL, F_SETFL, FcntlInt, GetPeerName, GetSocketName, Listen,

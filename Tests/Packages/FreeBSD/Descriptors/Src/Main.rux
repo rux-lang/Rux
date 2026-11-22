@@ -15,10 +15,12 @@ import Core::Compilation::{ #target, OperatingSystem };
 import Core::Diagnostics::Assert;
 
 when #target.os == OperatingSystem::FreeBSD {
-    import FreeBSD::{ AtFdCwd, Close, EBADF, EEXIST, EINVAL, ENOENT, Errno, FileMode, Fsync, Ftruncate, IsError, Lseek,
-                      MkdirAt, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate,
-                      OpenWriteOnly, Read, RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn,
-                      StdOut, UnlinkAt, Write };
+    import FreeBSD::Errors::{ EBADF, EEXIST, EINVAL, ENOENT, Errno, IsError };
+    import FreeBSD::File::{ AtFdCwd, Close, Fsync, Ftruncate, Lseek, MkdirAt, OpenAppend, OpenAt, OpenCreate,
+                            OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate, OpenWriteOnly, Read,
+                            RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn, StdOut, UnlinkAt,
+                            Write };
+    import FreeBSD::Types::FileMode;
 
     const ScratchPath = "Bin/FreeBSDDescriptors.tmp";
     const RenamedPath = "Bin/FreeBSDDescriptorsRenamed.tmp";

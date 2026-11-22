@@ -24,10 +24,11 @@ when #target.os {
                                posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
                                posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp };
     },
-    .FreeBSD => import FreeBSD::{
-        F_SETFD, FD_CLOEXEC, OpenCloseOnExec, OpenReadOnly, OpenWriteOnly, Pipe2, SpawnFileActions, fcntl,
-        posix_spawn_file_actions_addchdir_np, posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
-        posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp
+    .FreeBSD => {
+        import FreeBSD::File::{ OpenCloseOnExec, OpenReadOnly, OpenWriteOnly, Pipe2 };
+        import FreeBSD::Spawn::{ FD_CLOEXEC, F_SETFD, SpawnFileActions, fcntl, posix_spawn_file_actions_addchdir_np,
+                                 posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
+                                 posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp };
     },
     .macOS => import macOS::{
         F_SETFD, FD_CLOEXEC, OpenReadOnly, OpenWriteOnly, Pipe, SpawnFileActions, fcntl,

@@ -9,7 +9,7 @@ import Core::Primitives::*;
 
 when #target.os {
     .Linux => import Linux::Process::GetPid,
-    .FreeBSD => import FreeBSD::GetPid,
+    .FreeBSD => import FreeBSD::Process::GetPid,
     .macOS => import macOS::GetPid,
     .Windows => import Windows::{ ExitProcess, GetCurrentProcessId },
     _ => #Error("Unsupported operating system")
@@ -21,7 +21,7 @@ module SystemExit {
 
     when #target.os {
         .Linux => import Linux::Process::Exit,
-        .FreeBSD => import FreeBSD::Exit,
+        .FreeBSD => import FreeBSD::Process::Exit,
         .macOS => import macOS::Exit,
         _ => {}
     }

@@ -14,7 +14,10 @@ import Process::{ Buffer, FailureOf };
 
 when #target.os {
     .Linux => import Linux::File::{ AtFdCwd, ReadlinkAt },
-    .FreeBSD => import FreeBSD::{ ENOMEM, QueryExecutablePath },
+    .FreeBSD => {
+        import FreeBSD::Errors::ENOMEM;
+        import FreeBSD::Process::QueryExecutablePath;
+    },
     .macOS => import macOS::_NSGetExecutablePath,
     .Windows => import Windows::{ GetLastError, GetModuleFileNameW },
     _ => #Error("Unsupported operating system")

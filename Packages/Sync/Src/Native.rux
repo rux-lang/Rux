@@ -13,7 +13,11 @@ when #target.os {
         import Linux::Futex::{ FutexWait, FutexWake };
         import Linux::Types::Timespec;
     },
-    .FreeBSD => import FreeBSD::{ ETIMEDOUT, Timespec, UmtxWait, UmtxWake },
+    .FreeBSD => {
+        import FreeBSD::Errors::ETIMEDOUT;
+        import FreeBSD::Types::Timespec;
+        import FreeBSD::Umtx::{ UmtxWait, UmtxWake };
+    },
     .macOS => import macOS::{ ETIMEDOUT, UL_COMPARE_AND_WAIT, ULF_NO_ERRNO, ULF_WAKE_ALL, __ulock_wait, __ulock_wake },
     .Windows => import Windows::{ INFINITE, WaitOnAddress, WakeByAddressAll, WakeByAddressSingle },
     _ => #Error("Unsupported operating system")

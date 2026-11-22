@@ -15,10 +15,11 @@ when #target.os {
                                 pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach,
                                 pthread_join, sched_yield, sysconf };
     },
-    .FreeBSD => import FreeBSD::{
-        EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy,
-        pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach, pthread_getthreadid_np,
-        pthread_join, sched_yield, sysconf
+    .FreeBSD => {
+        import FreeBSD::Errors::{ EAGAIN, EINVAL };
+        import FreeBSD::Thread::{ PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy,
+                                  pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach,
+                                  pthread_getthreadid_np, pthread_join, sched_yield, sysconf };
     },
     .macOS => import macOS::{
         EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy, pthread_attr_init,

@@ -10,8 +10,8 @@ import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path };
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ AtFdCwd, Close, Getdirentries, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
-                                  RemoveDirectory, UnlinkAt },
+    .FreeBSD => import FreeBSD::File::{ AtFdCwd, Close, Getdirentries, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                                        RemoveDirectory, UnlinkAt },
     .Linux => import Linux::File::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                                     RemoveDirectory, UnlinkAt },
     .macOS => import macOS::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,

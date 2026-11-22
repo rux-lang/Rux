@@ -14,9 +14,11 @@ import Core::Diagnostics::#Error;
 import Memory::Access::AlignUp;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError, MapAnonymous, MapPrivate, Mmap,
-                                  Mprotect, Munmap, ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite,
-                                  QueryPageSize },
+    .FreeBSD => {
+        import FreeBSD::Errors::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError };
+        import FreeBSD::Memory::{ MapAnonymous, MapPrivate, Mmap, Mprotect, Munmap, ProtectionExecute, ProtectionNone,
+                                  ProtectionRead, ProtectionWrite, QueryPageSize };
+    },
     .Linux => {
         import Linux::Errors::{ EACCES, EINVAL, ENOMEM, EPERM, Errno, IsError };
         import Linux::Memory::{ MapAnonymous, MapPrivate, Mmap, Mprotect, Munmap, ProtectionExecute, ProtectionNone,

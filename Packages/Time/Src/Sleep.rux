@@ -19,7 +19,11 @@ import Core::Diagnostics::#Error;
 import Time::Duration;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ EINTR, Errno, IsError, Nanosleep, Timespec },
+    .FreeBSD => {
+        import FreeBSD::Clock::Nanosleep;
+        import FreeBSD::Errors::{ EINTR, Errno, IsError };
+        import FreeBSD::Types::Timespec;
+    },
     .Linux => {
         import Linux::Clock::Nanosleep;
         import Linux::Errors::{ EINTR, Errno, IsError };

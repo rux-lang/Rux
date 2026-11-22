@@ -1,11 +1,15 @@
 import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::FreeBSD {
-    import FreeBSD::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST,
-                      EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS,
-                      ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, FstatAt,
-                      GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead,
-                      ProtectionWrite, Read, SysGetPid, SysMmap, Syscall0, Syscall6, Timespec, Write };
+    import FreeBSD::Clock::{ ClockGetResolution, ClockGetTime, ClockMonotonic, Nanosleep };
+    import FreeBSD::Errors::{ EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE,
+                              ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE,
+                              EROFS, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, IsError };
+    import FreeBSD::File::{ AtFdCwd, FstatAt, Read, Write };
+    import FreeBSD::Memory::{ MapAnonymous, MapPrivate, Mmap, Munmap, ProtectionRead, ProtectionWrite };
+    import FreeBSD::Process::GetPid;
+    import FreeBSD::Syscall::{ SysGetPid, SysMmap, Syscall0, Syscall6 };
+    import FreeBSD::Types::Timespec;
 
     func Main() -> int {
         if GetPid() <= 0 {

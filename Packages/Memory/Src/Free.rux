@@ -6,7 +6,7 @@
 import Core::Compilation::#target;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::Munmap,
+    .FreeBSD => import FreeBSD::Memory::Munmap,
     .Linux => import Linux::Memory::Munmap,
     .macOS => import macOS::Munmap,
     .Windows => import Windows::{ GetProcessHeap, HeapFree }
