@@ -564,6 +564,16 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
         EmitError(intrinsicLoc, "intrinsic aggregate declarations have been removed; use native slice or range types");
         return ApplyAttrs(ParseStructDecl(isPublic), attrs);
     }
+    // `intrinsic interface Copyable;` declares a capability the compiler decides from a type.
+    if (Match(TokenKind::InterfaceKeyword)) {
+        auto decl = std::make_unique<InterfaceDecl>();
+        decl->location = intrinsicLoc;
+        decl->isPublic = isPublic;
+        decl->isIntrinsic = true;
+        decl->name = ExpectBefore(TokenKind::Ident, "an interface name after 'intrinsic interface'").text;
+        ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic interface declaration");
+        return ApplyAttrs(std::move(decl), attrs);
+    }
     if (Match(TokenKind::ConstKeyword)) {
         auto decl = std::make_unique<ConstDecl>();
         decl->location = intrinsicLoc;

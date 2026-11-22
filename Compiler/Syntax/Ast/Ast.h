@@ -932,6 +932,9 @@ struct UnionDecl : Decl {
 // interface Name<T> { func Sig(); ... }
 struct InterfaceDecl : Decl {
     std::string name;
+    /// `intrinsic interface Name;`: a capability the compiler decides from a type, such as `Copyable`. Nothing
+    /// implements it, it is no type of a value, and it is used only as a bound.
+    bool isIntrinsic = false;
     /// The parameters of a generic interface, which may only be named as a type-parameter bound, as in `I: Cursor<T>`.
     std::vector<TypeParameter> typeParams;
     std::vector<std::unique_ptr<FuncDecl>> methods;

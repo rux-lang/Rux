@@ -80,11 +80,13 @@ std::string DeclarationNote(const Symbol &symbol) {
     if (symbol.ownerPackage == "<builtin>") {
         return std::format("'{}' is a built-in type", symbol.name);
     }
+    const std::string_view kind = SymbolKindName(symbol.kind);
+    const std::string_view article = !kind.empty() && std::string_view("aeiou").contains(kind.front()) ? "an" : "a";
     if (symbol.sourceName.empty() || symbol.location.line == 0) {
-        return std::format("'{}' is declared as a {}", symbol.name, SymbolKindName(symbol.kind));
+        return std::format("'{}' is declared as {} {}", symbol.name, article, kind);
     }
-    return std::format("'{}' was declared as a {} at '{}':{}:{}", symbol.name, SymbolKindName(symbol.kind),
-                       symbol.sourceName, symbol.location.line, symbol.location.column);
+    return std::format("'{}' was declared as {} {} at '{}':{}:{}", symbol.name, article, kind, symbol.sourceName,
+                       symbol.location.line, symbol.location.column);
 }
 
 SemanticDiagnostic DuplicateDeclaration(const Symbol &previous, const Symbol &symbol, const std::string &sourceName) {

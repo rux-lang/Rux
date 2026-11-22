@@ -8,6 +8,7 @@
 // itself, so the order is established from the target's own storage instead — exactly, and by the one construct that
 // answers the question without being told: writing a value and reading back the byte it starts with.
 
+import Core::Arithmetic::Integer;
 import Core::Ownership::Copyable;
 
 pub module Bits {
@@ -33,7 +34,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns the value with its bytes in little-endian order
     /// @see https://rux-lang.dev/docs/api/core/byte-order#to-little-endian
-    pub func ToLittleEndian<T: Copyable>(value: T) -> T {
+    pub func ToLittleEndian<T: Integer>(value: T) -> T {
         return if TargetIsLittleEndian() { value } else { ReverseBytes<T>(value) };
     }
 
@@ -45,7 +46,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns the value read from little-endian bytes, in the target's own order
     /// @see https://rux-lang.dev/docs/api/core/byte-order#from-little-endian
-    pub func FromLittleEndian<T: Copyable>(value: T) -> T {
+    pub func FromLittleEndian<T: Integer>(value: T) -> T {
         return ToLittleEndian<T>(value);
     }
 
@@ -58,7 +59,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns the value with its bytes in big-endian order
     /// @see https://rux-lang.dev/docs/api/core/byte-order#to-big-endian
-    pub func ToBigEndian<T: Copyable>(value: T) -> T {
+    pub func ToBigEndian<T: Integer>(value: T) -> T {
         return if TargetIsLittleEndian() { ReverseBytes<T>(value) } else { value };
     }
 
@@ -70,7 +71,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns the value read from big-endian bytes, in the target's own order
     /// @see https://rux-lang.dev/docs/api/core/byte-order#from-big-endian
-    pub func FromBigEndian<T: Copyable>(value: T) -> T {
+    pub func FromBigEndian<T: Integer>(value: T) -> T {
         return ToBigEndian<T>(value);
     }
 
@@ -83,7 +84,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @param destination receives the bytes
     /// @see https://rux-lang.dev/docs/api/core/byte-order#store-little-endian
-    pub func StoreLittleEndian<T: Copyable>(value: T, destination: *var byte) {
+    pub func StoreLittleEndian<T: Integer>(value: T, destination: *var byte) {
         var ordered = ToLittleEndian<T>(value);
         // Reading the ordered value back as bytes is what makes this work at any width without knowing the type: the
         // reversal above has already put them in the order they are to be written.
@@ -104,7 +105,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @param destination receives the bytes
     /// @see https://rux-lang.dev/docs/api/core/byte-order#store-big-endian
-    pub func StoreBigEndian<T: Copyable>(value: T, destination: *var byte) {
+    pub func StoreBigEndian<T: Integer>(value: T, destination: *var byte) {
         var ordered = ToBigEndian<T>(value);
         let source = @ordered as *byte;
         var index: uint64 = 0;
@@ -124,7 +125,7 @@ pub module Bits {
     /// @param source the bytes to read
     /// @param destination receives the bytes
     /// @see https://rux-lang.dev/docs/api/core/byte-order#load-little-endian
-    pub func LoadLittleEndian<T: Copyable>(source: *byte, destination: *var T) {
+    pub func LoadLittleEndian<T: Integer>(source: *byte, destination: *var T) {
         let raw = destination as *var byte;
         var index: uint64 = 0;
         while index < sizeof(T) {
@@ -143,7 +144,7 @@ pub module Bits {
     /// @param source the bytes to read
     /// @param destination receives the bytes
     /// @see https://rux-lang.dev/docs/api/core/byte-order#load-big-endian
-    pub func LoadBigEndian<T: Copyable>(source: *byte, destination: *var T) {
+    pub func LoadBigEndian<T: Integer>(source: *byte, destination: *var T) {
         let raw = destination as *var byte;
         var index: uint64 = 0;
         while index < sizeof(T) {

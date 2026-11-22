@@ -263,19 +263,37 @@ namespace {
 /// The compiler-known marker a thread's context and result are bound by: an interface named `Sendable` that requires
 /// nothing. A type satisfies it unless it is or holds a type declared `#Unsendable`, or a reference.
 bool IsSendableMarker(const InterfaceDecl &interface) {
-    return interface.name == "Sendable" && interface.methods.empty() && interface.typeParams.empty();
+    return interface.isIntrinsic && interface.name == "Sendable";
 }
 
 /// The compiler-known marker generic code copies a value under: an interface named `Copyable` that requires nothing. A
 /// type satisfies it when it is plain data -- no destructor anywhere inside it and no `#NoCopy` -- so `=` copies its
 /// bytes.
 bool IsCopyableMarker(const InterfaceDecl &interface) {
-    return interface.name == "Copyable" && interface.methods.empty() && interface.typeParams.empty();
+    return interface.isIntrinsic && interface.name == "Copyable";
+}
+
+/// The numeric capabilities: a number of the kind the name says. Each implies `Copyable`, since every number is
+/// plain data.
+bool IsNumericMarker(const InterfaceDecl &interface) {
+    return interface.isIntrinsic &&
+           (interface.name == "Integer" || interface.name == "SignedInteger" || interface.name == "Float");
 }
 
 /// A marker the compiler decides from the type's shape, which a type parameter satisfies only by carrying the bound.
 bool IsDecidedMarker(const InterfaceDecl &interface) {
-    return IsSendableMarker(interface) || IsCopyableMarker(interface);
+    return IsSendableMarker(interface) || IsCopyableMarker(interface) || IsNumericMarker(interface);
+}
+
+/// Whether a primitive type is a number of the kind a numeric capability names.
+bool SatisfiesNumeric(const InterfaceDecl &interface, const TypeRef &type) {
+    if (interface.name == "Float") {
+        return type.IsFloat();
+    }
+    if (!type.IsInteger()) {
+        return false;
+    }
+    return interface.name == "Integer" || type.IsSigned();
 }
 } // namespace
 
@@ -318,6 +336,16 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
         }
         return true;
     }
+    if (IsNumericMarker(interface) && argument->kind != TypeRef::Kind::TypeParam) {
+        if (SatisfiesNumeric(interface, argument)) {
+            return true;
+        }
+        reason = std::format("'{}' is not {}", argument.DisplayString(),
+                             interface.name == "Float"           ? "a floating-point number"
+                             : interface.name == "SignedInteger" ? "a signed integer"
+                                                                 : "an integer");
+        return false;
+    }
     if (IsCopyableMarker(interface) && argument->kind != TypeRef::Kind::TypeParam) {
         const TypeProperties properties = ClassifyTypeProperties(argument);
         // A type still written in terms of an enclosing declaration's parameters is decided where that declaration
@@ -350,6 +378,12 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
         }
         for (const ResolvedTypeBound &bound : bounds->second) {
             if (bound.interface == &interface && bound.typeArguments == interfaceArguments) {
+                return true;
+            }
+            // Every numeric capability implies `Copyable`, and a signed integer is an integer.
+            if (bound.interface && IsNumericMarker(*bound.interface) &&
+                (IsCopyableMarker(interface) ||
+                 (interface.name == "Integer" && interface.isIntrinsic && bound.interface->name == "SignedInteger"))) {
                 return true;
             }
         }
@@ -564,6 +598,12 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
             else if (IsCopyableMarker(*bound.interface)) {
                 // No extension makes a type copyable: a destructor or '#NoCopy' decides, so the help points at moving.
                 help = "pass a type that is plain data, or move the value and call 'Clone' under a 'Cloneable' bound";
+            }
+            else if (IsNumericMarker(*bound.interface)) {
+                // No extension makes a type a number: the kind of the type decides, so the help names one.
+                help = bound.interface->name == "Float"         ? "pass a floating-point type, such as 'float64'"
+                     : bound.interface->name == "SignedInteger" ? "pass a signed integer type, such as 'int'"
+                                                                : "pass an integer type, such as 'int' or 'uint'";
             }
             else if (IsSendableMarker(*bound.interface)) {
                 // No extension makes a type sendable: what it holds decides, so the help points at what to hold.

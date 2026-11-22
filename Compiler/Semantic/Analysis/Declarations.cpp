@@ -792,6 +792,12 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
                 {DeclarationNote(*ifaceSym)});
         }
         else {
+            if (const auto *decided = AstCast<const InterfaceDecl>(ifaceSym->declaration);
+                decided && decided->isIntrinsic) {
+                EmitError(d.location,
+                          std::format("'{}' is decided by the compiler and cannot be implemented", *d.interfaceName),
+                          {std::format("whether a type is '{}' follows from what the type is", *d.interfaceName)});
+            }
             // A generic interface is implemented for particular type arguments, and any other is named bare.
             if (const auto *interface = AstCast<const InterfaceDecl>(ifaceSym->declaration)) {
                 const std::size_t expected = interface->typeParams.size();

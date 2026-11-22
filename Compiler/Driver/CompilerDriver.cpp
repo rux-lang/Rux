@@ -985,6 +985,9 @@ std::optional<SourceLocation> FirstIntrinsicIn(const Decl &declaration) {
     if (const auto *constant = AstCast<const ConstDecl>(&declaration); constant && !constant->intrinsicName.empty()) {
         return constant->location;
     }
+    if (const auto *interface = AstCast<const InterfaceDecl>(&declaration); interface && interface->isIntrinsic) {
+        return interface->location;
+    }
     if (const auto *extension = AstCast<const ImplDecl>(&declaration)) {
         for (const auto &method : extension->methods) {
             if (!method->intrinsicName.empty()) {

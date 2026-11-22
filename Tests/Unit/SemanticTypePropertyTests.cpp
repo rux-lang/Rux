@@ -370,7 +370,7 @@ TEST_CASE("only plain data is copyable, and a destructor anywhere inside makes a
 
 TEST_CASE("Copyable is decided by the compiler and bounds what generic code may copy") {
     Lexer lexer(R"(
-        interface Copyable {}
+        intrinsic interface Copyable;
 
         struct Owner { value: int32; }
         extend Owner {

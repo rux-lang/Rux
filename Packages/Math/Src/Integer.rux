@@ -9,7 +9,7 @@
 // so its magnitude, its negation and its greatest common divisor with zero are all unrepresentable. That one asymmetry
 // is behind nearly every edge case below.
 
-import Core::Ownership::Copyable;
+import Core::Arithmetic::Integer;
 import Core::Arithmetic::{ MaximumOf, MinimumOf };
 
 /// The magnitude of `value`, reporting whether it is representable.
@@ -22,7 +22,7 @@ import Core::Arithmetic::{ MaximumOf, MinimumOf };
 /// @param result receives the magnitude or its wrapped representation
 /// @returns `true` when the mathematical magnitude is not representable as `T`
 /// @see https://rux-lang.dev/docs/api/math/integer#abs-checked
-pub func AbsChecked<T: Copyable>(value: T, result: *var T) -> bool {
+pub func AbsChecked<T: Integer>(value: T, result: *var T) -> bool {
     let zero = value - value;
     var magnitude = value;
     if value < zero {
@@ -41,7 +41,7 @@ pub func AbsChecked<T: Copyable>(value: T, result: *var T) -> bool {
 /// @param value value whose magnitude is computed
 /// @returns the magnitude of `value`, wrapping when necessary
 /// @see https://rux-lang.dev/docs/api/math/integer#abs-wrapping
-pub func AbsWrapping<T: Copyable>(value: T) -> T {
+pub func AbsWrapping<T: Integer>(value: T) -> T {
     var magnitude = value;
     AbsChecked<T>(value, @magnitude);
     return magnitude;
@@ -54,7 +54,7 @@ pub func AbsWrapping<T: Copyable>(value: T) -> T {
 /// @param right second value to compare
 /// @returns the smaller value
 /// @see https://rux-lang.dev/docs/api/math/integer#minimum
-pub func Minimum<T: Copyable>(left: T, right: T) -> T {
+pub func Minimum<T: Integer>(left: T, right: T) -> T {
     return if left < right { left } else { right };
 }
 
@@ -64,7 +64,7 @@ pub func Minimum<T: Copyable>(left: T, right: T) -> T {
 /// @param right second value to compare
 /// @returns the larger value
 /// @see https://rux-lang.dev/docs/api/math/integer#maximum
-pub func Maximum<T: Copyable>(left: T, right: T) -> T {
+pub func Maximum<T: Integer>(left: T, right: T) -> T {
     return if left < right { right } else { left };
 }
 
@@ -78,7 +78,7 @@ pub func Maximum<T: Copyable>(left: T, right: T) -> T {
 /// @param high inclusive upper bound
 /// @returns `value` constrained to `[low, high]`, or `low` when the bounds contradict each other
 /// @see https://rux-lang.dev/docs/api/math/integer#clamp
-pub func Clamp<T: Copyable>(value: T, low: T, high: T) -> T {
+pub func Clamp<T: Integer>(value: T, low: T, high: T) -> T {
     if value < low { return low; }
     if high < value { return high; }
     return value;
@@ -96,7 +96,7 @@ pub func Clamp<T: Copyable>(value: T, low: T, high: T) -> T {
 /// @param result receives the greatest common divisor or its unrepresentable bit pattern
 /// @returns `true` when the non-negative divisor is not representable as `T`
 /// @see https://rux-lang.dev/docs/api/math/integer#gcd-checked
-pub func GcdChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
+pub func GcdChecked<T: Integer>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     // Euclid on magnitudes. The magnitudes are taken with the wrapping form on purpose: the most negative value comes
     // back as itself, whose remainder arithmetic below is still correct on the bit pattern, and only the final answer
@@ -126,7 +126,7 @@ pub func GcdChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
 /// @param result receives the least common multiple or a wrapped intermediate
 /// @returns `true` when the least common multiple is not representable as `T`
 /// @see https://rux-lang.dev/docs/api/math/integer#lcm-checked
-pub func LcmChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
+pub func LcmChecked<T: Integer>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     *result = zero;
@@ -154,7 +154,7 @@ pub func LcmChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
 /// @param result receives the power, wrapping on overflow
 /// @returns `true` when the mathematical power is not representable as `T`
 /// @see https://rux-lang.dev/docs/api/math/integer#pow-checked
-pub func PowChecked<T: Copyable>(base: T, exponent: uint, result: *var T) -> bool {
+pub func PowChecked<T: Integer>(base: T, exponent: uint, result: *var T) -> bool {
     let zero = base - base;
     let one = zero + 1;
     var accumulated = one;
@@ -188,7 +188,7 @@ pub func PowChecked<T: Copyable>(base: T, exponent: uint, result: *var T) -> boo
 
 // Multiplies two integers of any width and reports whether the true product is representable, writing the product
 // the machine produced. Core keeps the same helper for its `CheckedMul` methods; generic code here needs it over `T`.
-func MulChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
+func MulChecked<T: Integer>(left: T, right: T, result: *var T) -> bool {
     let product = left *% right;
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     *result = product;

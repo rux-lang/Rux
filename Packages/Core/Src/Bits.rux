@@ -9,7 +9,7 @@
 // Nothing here is a machine instruction. A back end may recognize some of these shapes, but the count and reversal
 // operations are written as loops over the width so that a 512-bit type behaves exactly like an 8-bit one.
 
-import Core::Ownership::Copyable;
+import Core::Arithmetic::Integer;
 
 pub module Bits {
     /// The number of bits in the integer type of `sample`.
@@ -19,7 +19,7 @@ pub module Bits {
     /// @param sample any value of the type, read only to deduce it
     /// @returns how many bits the type occupies
     /// @see https://rux-lang.dev/docs/api/core/bits#bit-width-of
-    pub func BitWidthOf<T: Copyable>(sample: T) -> uint64 {
+    pub func BitWidthOf<T: Integer>(sample: T) -> uint64 {
         return sizeof(T) * 8u64;
     }
 
@@ -33,7 +33,7 @@ pub module Bits {
     /// @param amount how many bits
     /// @returns the value shifted right with zero bits shifted in, whatever its signedness
     /// @see https://rux-lang.dev/docs/api/core/bits#shift-right-logical
-    pub func ShiftRightLogical<T: Copyable>(value: T, amount: uint64) -> T {
+    pub func ShiftRightLogical<T: Integer>(value: T, amount: uint64) -> T {
         let zero = value - value;
         if amount == 0 { return value; }
         let bits = sizeof(T) * 8;
@@ -54,7 +54,7 @@ pub module Bits {
     /// @param index which bit, counting from the least significant
     /// @returns whether the bit at `index` is set
     /// @see https://rux-lang.dev/docs/api/core/bits#bit-at
-    pub func BitAt<T: Copyable>(value: T, index: uint64) -> bool {
+    pub func BitAt<T: Integer>(value: T, index: uint64) -> bool {
         let zero = value - value;
         if index >= sizeof(T) * 8 { return false; }
         // Masking with one leaves nothing for an arithmetic shift to have replicated, so signedness does not matter
@@ -69,7 +69,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns how many bits are set
     /// @see https://rux-lang.dev/docs/api/core/bits#count-ones
-    pub func CountOnes<T: Copyable>(value: T) -> uint32 {
+    pub func CountOnes<T: Integer>(value: T) -> uint32 {
         let bits = sizeof(T) * 8;
         var count: uint32 = 0;
         var index: uint64 = 0;
@@ -89,7 +89,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns how many bits are clear
     /// @see https://rux-lang.dev/docs/api/core/bits#count-zeros
-    pub func CountZeros<T: Copyable>(value: T) -> uint32 {
+    pub func CountZeros<T: Integer>(value: T) -> uint32 {
         return (sizeof(T) * 8u64) as uint32 - CountOnes<T>(value);
     }
 
@@ -100,7 +100,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns how many clear bits precede the most significant set one
     /// @see https://rux-lang.dev/docs/api/core/bits#leading-zeros
-    pub func LeadingZeros<T: Copyable>(value: T) -> uint32 {
+    pub func LeadingZeros<T: Integer>(value: T) -> uint32 {
         var count: uint32 = 0;
         var index = sizeof(T) * 8u64;
         while index > 0 {
@@ -118,7 +118,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns how many clear bits follow the least significant set one
     /// @see https://rux-lang.dev/docs/api/core/bits#trailing-zeros
-    pub func TrailingZeros<T: Copyable>(value: T) -> uint32 {
+    pub func TrailingZeros<T: Integer>(value: T) -> uint32 {
         let bits = sizeof(T) * 8u64;
         var index: uint64 = 0;
         while index < bits {
@@ -135,7 +135,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns how many set bits precede the most significant clear one
     /// @see https://rux-lang.dev/docs/api/core/bits#leading-ones
-    pub func LeadingOnes<T: Copyable>(value: T) -> uint32 {
+    pub func LeadingOnes<T: Integer>(value: T) -> uint32 {
         var count: uint32 = 0;
         var index = sizeof(T) * 8u64;
         while index > 0 {
@@ -153,7 +153,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns how many set bits follow the least significant clear one
     /// @see https://rux-lang.dev/docs/api/core/bits#trailing-ones
-    pub func TrailingOnes<T: Copyable>(value: T) -> uint32 {
+    pub func TrailingOnes<T: Integer>(value: T) -> uint32 {
         let bits = sizeof(T) * 8u64;
         var index: uint64 = 0;
         while index < bits {
@@ -172,7 +172,7 @@ pub module Bits {
     /// @param amount how many bits
     /// @returns the value rotated left, with the bits that leave the top re-entering at the bottom
     /// @see https://rux-lang.dev/docs/api/core/bits#rotate-left
-    pub func RotateLeft<T: Copyable>(value: T, amount: uint64) -> T {
+    pub func RotateLeft<T: Integer>(value: T, amount: uint64) -> T {
         let bits = sizeof(T) * 8u64;
         let shift = amount % bits;
         if shift == 0 { return value; }
@@ -188,7 +188,7 @@ pub module Bits {
     /// @param amount how many bits
     /// @returns the value rotated right, with the bits that leave the bottom re-entering at the top
     /// @see https://rux-lang.dev/docs/api/core/bits#rotate-right
-    pub func RotateRight<T: Copyable>(value: T, amount: uint64) -> T {
+    pub func RotateRight<T: Integer>(value: T, amount: uint64) -> T {
         let bits = sizeof(T) * 8u64;
         let shift = amount % bits;
         if shift == 0 { return value; }
@@ -202,7 +202,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns the value with its bit order reversed
     /// @see https://rux-lang.dev/docs/api/core/bits#reverse-bits
-    pub func ReverseBits<T: Copyable>(value: T) -> T {
+    pub func ReverseBits<T: Integer>(value: T) -> T {
         let zero = value - value;
         let one = zero + 1;
         let bits = sizeof(T) * 8u64;
@@ -225,7 +225,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns the value with its byte order reversed
     /// @see https://rux-lang.dev/docs/api/core/bits#reverse-bytes
-    pub func ReverseBytes<T: Copyable>(value: T) -> T {
+    pub func ReverseBytes<T: Integer>(value: T) -> T {
         let zero = value - value;
         let bytes = sizeof(T);
         if bytes <= 1 { return value; }
@@ -252,7 +252,7 @@ pub module Bits {
     /// @param value the value to act on
     /// @returns whether exactly one bit is set; false for zero
     /// @see https://rux-lang.dev/docs/api/core/bits#is-power-of-two
-    pub func IsPowerOfTwo<T: Copyable>(value: T) -> bool {
+    pub func IsPowerOfTwo<T: Integer>(value: T) -> bool {
         return CountOnes<T>(value) == 1;
     }
 }

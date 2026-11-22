@@ -15,6 +15,19 @@
 import Core::Ownership::Copyable;
 
 pub module Arithmetic {
+    /// An integer of any width, signed or not. The compiler decides it from the type, so nothing implements it; it is
+    /// only a bound, and it implies `Copyable`, since every integer is plain data.
+    /// @see https://rux-lang.dev/docs/api/core/arithmetic#integer
+    pub intrinsic interface Integer;
+
+    /// A signed integer of any width. The compiler decides it from the type, and it implies `Integer` and `Copyable`.
+    /// @see https://rux-lang.dev/docs/api/core/arithmetic#signed-integer
+    pub intrinsic interface SignedInteger;
+
+    /// A floating-point number of any width. The compiler decides it from the type, and it implies `Copyable`.
+    /// @see https://rux-lang.dev/docs/api/core/arithmetic#float
+    pub intrinsic interface Float;
+
     /// The largest value the integer type of `sample` can hold.
     /// `sample` is read by value and only its type matters; its value is never used. Returns the maximum by copy.
     /// Cannot fail. Runs in constant time and allocates nothing.
@@ -59,7 +72,7 @@ pub module Arithmetic {
     /// @param result receives the answer the machine produced, true or wrapped; never null
     /// @returns true when the sum does not fit; `result` then holds the wrapped sum
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#add-checked
-    func AddChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
+    func AddChecked<T: Integer>(left: T, right: T, result: *var T) -> bool {
         let sum = left +% right;
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
         *result = sum;
@@ -82,7 +95,7 @@ pub module Arithmetic {
     /// @param result receives the answer the machine produced, true or wrapped; never null
     /// @returns true when the difference does not fit; `result` then holds the wrapped difference
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-checked
-    func SubChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
+    func SubChecked<T: Integer>(left: T, right: T, result: *var T) -> bool {
         let difference = left -% right;
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
         *result = difference;
@@ -108,7 +121,7 @@ pub module Arithmetic {
     /// @param result receives the answer the machine produced, true or wrapped; never null
     /// @returns true when the product does not fit; `result` then holds the wrapped product
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-checked
-    func MulChecked<T: Copyable>(left: T, right: T, result: *var T) -> bool {
+    func MulChecked<T: Integer>(left: T, right: T, result: *var T) -> bool {
         let product = left *% right;
         // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
         *result = product;
@@ -138,7 +151,7 @@ pub module Arithmetic {
     /// @param right the right operand
     /// @returns the sum, wrapped into the type's range
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#add-wrapping
-    func AddWrapping<T: Copyable>(left: T, right: T) -> T {
+    func AddWrapping<T: Integer>(left: T, right: T) -> T {
         return left +% right;
     }
 
@@ -150,7 +163,7 @@ pub module Arithmetic {
     /// @param right the right operand
     /// @returns the difference, wrapped into the type's range
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-wrapping
-    func SubWrapping<T: Copyable>(left: T, right: T) -> T {
+    func SubWrapping<T: Integer>(left: T, right: T) -> T {
         return left -% right;
     }
 
@@ -162,7 +175,7 @@ pub module Arithmetic {
     /// @param right the right operand
     /// @returns the product, wrapped into the type's range
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-wrapping
-    func MulWrapping<T: Copyable>(left: T, right: T) -> T {
+    func MulWrapping<T: Integer>(left: T, right: T) -> T {
         return left *% right;
     }
 
@@ -175,7 +188,7 @@ pub module Arithmetic {
     /// @param right the right operand
     /// @returns the sum, clamped to the type's range rather than wrapped
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#add-saturating
-    func AddSaturating<T: Copyable>(left: T, right: T) -> T {
+    func AddSaturating<T: Integer>(left: T, right: T) -> T {
         var sum = left - left;
         if !AddChecked<T>(left, right, @sum) { return sum; }
         let zero = left - left;
@@ -195,7 +208,7 @@ pub module Arithmetic {
     /// @param right the right operand
     /// @returns the difference, clamped to the type's range rather than wrapped
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#sub-saturating
-    func SubSaturating<T: Copyable>(left: T, right: T) -> T {
+    func SubSaturating<T: Integer>(left: T, right: T) -> T {
         var difference = left - left;
         if !SubChecked<T>(left, right, @difference) { return difference; }
         let zero = left - left;
@@ -215,7 +228,7 @@ pub module Arithmetic {
     /// @param right the right operand
     /// @returns the product, clamped to the type's range rather than wrapped
     /// @see https://rux-lang.dev/docs/api/core/arithmetic#mul-saturating
-    func MulSaturating<T: Copyable>(left: T, right: T) -> T {
+    func MulSaturating<T: Integer>(left: T, right: T) -> T {
         var product = left - left;
         if !MulChecked<T>(left, right, @product) { return product; }
         let zero = left - left;

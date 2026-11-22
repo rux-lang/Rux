@@ -1,7 +1,7 @@
 // The compiler knows an empty interface named `Sendable`: a type satisfies it unless it is or holds a type declared
 // `#Unsendable()`. A type parameter satisfies it only when bound by it, and a raw pointer always does.
 
-interface Sendable {}
+intrinsic interface Sendable;
 
 #Unsendable
 struct Local {

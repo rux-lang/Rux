@@ -1270,8 +1270,11 @@ bool AnalysisContext::CopiesUnderBound(const TypeRef &type) const {
         return false;
     }
     return std::ranges::any_of(bounds->second, [](const ResolvedTypeBound &bound) {
-        return bound.interface && bound.interface->name == "Copyable" && bound.interface->methods.empty() &&
-               bound.interface->typeParams.empty();
+        if (!bound.interface || !bound.interface->isIntrinsic) {
+            return false;
+        }
+        const std::string &name = bound.interface->name;
+        return name == "Copyable" || name == "Integer" || name == "SignedInteger" || name == "Float";
     });
 }
 

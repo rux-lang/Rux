@@ -9,5 +9,5 @@ pub module Ownership {
     /// arrays of them are copyable. A type with a destructor, or one holding such a value, owns resources and is
     /// move-only, and so is a type declared `#NoCopy`. A copy is always the value's bytes and never runs user code.
     /// @see https://rux-lang.dev/docs/api/core/copyable
-    pub interface Copyable {}
+    pub intrinsic interface Copyable;
 }

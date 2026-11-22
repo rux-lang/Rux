@@ -1,0 +1,24 @@
+// A capability the compiler decides from a type is an intrinsic interface: nothing implements it, it is no type of a
+// value, and it is only a bound. The numeric capabilities admit numbers of their kind and imply 'Copyable'.
+intrinsic interface Copyable;
+intrinsic interface Integer;
+intrinsic interface Float;
+struct Token { id: int; }
+extend Token : Copyable {}
+func Twice<T: Integer>(value: T) -> T { return value + value; }
+func Half<T: Float>(value: T) -> T { return value; }
+func Use() -> int {
+    let copied: Copyable = 1;
+    let a = Twice(3);
+    let b = Twice(2.5);
+    let c = Half(1);
+    return 0;
+}
+
+func Keeps<T: Integer>(value: T) -> (T, T) {
+    return (value, value);
+}
+
+func Main() -> int {
+    return 0;
+}

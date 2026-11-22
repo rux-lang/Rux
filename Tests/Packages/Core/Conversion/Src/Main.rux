@@ -1,3 +1,4 @@
+import Core::Arithmetic::Float;
 import Core::Ownership::Copyable;
 import Core::Convert::{ ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN,
                         IsNegativeZero, IsSignNegative, IsSignPositive, IsSignedType, IsZero, SignOf };
@@ -43,7 +44,7 @@ func CheckLost<From: Copyable, To: Copyable>(value: From, wrapped: To, saturated
     return 0;
 }
 
-func CheckFloat<T: Copyable>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int32 {
+func CheckFloat<T: Float>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int32 {
     // Nothing is a NaN but a NaN.
     if !IsNaN<T>(nan) { return 1; }
     if IsNaN<T>(zero) { return 2; }

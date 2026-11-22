@@ -1,0 +1,4 @@
+7:1: error: 'Copyable' is decided by the compiler and cannot be implemented
+11:17: error: 'Copyable' is only a bound, not the type of a value
+13:18: error: type argument 'float64' does not satisfy interface bound 'Integer' on type parameter 'T'
+14:17: error: type argument 'int' does not satisfy interface bound 'Float' on type parameter 'T'

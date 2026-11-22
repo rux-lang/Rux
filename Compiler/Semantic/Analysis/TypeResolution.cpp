@@ -352,6 +352,13 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         if (const Symbol *named = sym ? sym : FindUniquePackageType(t->name);
             named && named->kind == Symbol::Kind::Interface) {
             if (const auto *interface = AstCast<const InterfaceDecl>(named->declaration);
+                interface && interface->isIntrinsic) {
+                EmitError(expr.location, std::format("'{}' is only a bound, not the type of a value", t->name),
+                          {DeclarationNote(*named)},
+                          std::format("write it on a type parameter, as in 'func Twice<T: {}>(value: T)'", t->name));
+                return TypeRef::MakeUnknown();
+            }
+            if (const auto *interface = AstCast<const InterfaceDecl>(named->declaration);
                 interface && !interface->typeParams.empty()) {
                 EmitError(expr.location,
                           std::format("generic interface '{}' can only be used as a type-parameter bound", t->name),
