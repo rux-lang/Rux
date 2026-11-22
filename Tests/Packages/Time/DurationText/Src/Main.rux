@@ -1,5 +1,6 @@
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
+import Text::{ BufferWriter, Display };
+import Text::Formatting::{ FormatSpec, ParseFormatSpec };
 import Time::{ Duration, ParseDuration, TimeParseError };
 
 // A span as text, and back.

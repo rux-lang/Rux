@@ -15,6 +15,7 @@ import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Core::Compare::Ordering;
 import Core::Ownership::Cloneable;
 import Memory::Block::Copy;
+import Text::Utf8::{ CountScalars, IsBoundary, Validate };
 
 /// Text that owns its bytes.
 /// Move-only: it owns its block and gives it back when it dies. `Clone` makes an independent copy explicitly.

@@ -9,7 +9,7 @@
 // is how two decoders come to disagree. Escapes may decode to bytes that are not UTF-8, so the result is bytes.
 // Both directions check the room they need before writing, so a refusal leaves the destination exactly as it was.
 
-import Text::FormatError;
+import Text::Formatting::FormatError;
 
 /// Which characters percent-encoding leaves as they are.
 /// Copy, carrying no payload. Every set leaves the unreserved characters of RFC 3986 alone, apart from `Form`, which

@@ -7,7 +7,8 @@
 // a token can pass through them without its value showing in the timing. Every function checks the room it needs
 // before it writes a byte, so a refusal leaves the destination exactly as it was.
 
-import Text::{ Display, FormatBase, FormatError, FormatSpec, PaddingAround, TextWriter, WriteBytes, WriteFill };
+import Text::{ Display, TextWriter, WriteBytes };
+import Text::Formatting::{ FormatBase, FormatError, FormatSpec, PaddingAround, WriteFill };
 
 /// Which case hexadecimal digits above nine are written in.
 /// Copy, carrying no payload. Decoding accepts both regardless.

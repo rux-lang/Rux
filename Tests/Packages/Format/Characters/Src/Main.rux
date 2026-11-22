@@ -1,7 +1,8 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::Assert;
 import Format::Render;
-import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView, TextWriter, WriteDebugValue };
+import Text::{ BufferWriter, Debug, String, StringView, TextWriter, WriteDebugValue };
+import Text::Formatting::{ FormatError, FormatSpec };
 
 // Every boolean and character width, and the two character slices that had no printer.
 // One rule runs through all of it, applied at four widths and three slice types. A value that is not a whole

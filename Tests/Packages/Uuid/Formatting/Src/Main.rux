@@ -13,8 +13,8 @@
 // a string that is not a UUID where a caller may go on to read one.
 
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFailure, ParseFormatSpec, StringView,
-               TextWriter };
+import Text::{ BufferWriter, Debug, Display, StringView, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFailure, ParseFormatSpec };
 import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError, UuidTextLength, UuidUrnLength };
 
 // Which failure a result carries, as a small code, so a check names the reason it expects rather than only that

@@ -6,7 +6,8 @@
 // character rather than reject the whole string. The capacity failure carries the length the destination needed
 // instead, which is the number a caller sizing a buffer actually wants.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes };
+import Text::{ Debug, Display, TextWriter, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle };
 
 /// Why text could not be decoded.
 /// Failure-only: a decode that succeeds returns its count, so no case means that nothing went wrong.

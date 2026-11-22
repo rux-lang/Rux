@@ -11,7 +11,8 @@ import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Core::Compilation::#target;
 import Core::Ownership::Cloneable;
 import Memory::Block::Copy;
-import Text::{ DecodeAt, String, StringBuilder, TextError };
+import Text::{ String, StringBuilder, TextError };
+import Text::Utf8::DecodeAt;
 
 when #target.os == .Windows {
     /// The unit a native string is made of: a UTF-16 code unit on Windows, and a byte on the Unix systems.

@@ -1,6 +1,7 @@
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Render;
-import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec };
+import Text::{ BufferWriter, Debug, Display };
+import Text::Formatting::{ FormatSpec, ParseFormatSpec };
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }

@@ -10,7 +10,8 @@
 // output is diagnostic and promises no round trip, which is exactly the right promise for a number whose meaning
 // ends with the process that produced it.
 
-import Text::{ Debug, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle };
 
 extend Instant : Debug {
     /// Writes the reading as `Instant(nanoseconds: N)`.

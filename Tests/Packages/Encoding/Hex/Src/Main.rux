@@ -6,7 +6,8 @@
 
 import Core::Diagnostics::Panic;
 import Encoding::{ DecodeError, HexCase, HexDecode, HexDecodedLength, HexEncode, HexEncodedLength, ViewHex };
-import Text::{ BufferWriter, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ BufferWriter, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }

@@ -1,6 +1,7 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ FoldCase, Join, StringView, ToLower, ToUpper };
+import Text::StringView;
+import Text::Transform::{ FoldCase, Join, ToLower, ToUpper };
 
 // Joining puts the separator only between parts; a walk over lines drops each break, `\r\n` included, and adds no
 // empty line after a final break; and case conversion follows Unicode's full mappings, lengths changing included.

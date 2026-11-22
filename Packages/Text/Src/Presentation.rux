@@ -11,165 +11,168 @@
 // scripts unreadable in exactly the place a reader is trying to read it, and it is text — the fact that it survives
 // a round trip through a terminal is the whole point of it being UTF-8.
 
+import Text::Utf8::DecodeAt;
 
-extend String : Display {
-    /// Writes this string's bytes.
-    /// Reports whatever the writer reported, and `UnsupportedRequest` for a style, since text has none.
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the string's text was accepted
-    /// @see https://rux-lang.dev/docs/api/text/string#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        let view = self.View();
-        return view.WriteDisplay(writer, spec)!;
-    }
-}
-
-extend String : Debug {
-    /// Writes this string quoted and escaped.
-    /// Reports whatever the writer reported, and `UnsupportedRequest` for a style.
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the quoted string was accepted
-    /// @see https://rux-lang.dev/docs/api/text/string#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        let view = self.View();
-        return view.WriteDebug(writer, spec)!;
-    }
-}
-
-extend StringView : Display {
-    /// Writes what this view spans, truncated to the spec's precision and padded to its width.
-    /// Precision counts Unicode scalar values rather than bytes, and a cut lands on a character boundary by
-    /// construction: the walk that counts them is the walk that finds where to stop.
-    /// Reports whatever the writer reported, and `UnsupportedRequest` for a style, since text has none.
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the view's text was accepted
-    /// @see https://rux-lang.dev/docs/api/text/string-view#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        RejectStyle(spec)!;
-        return WriteAligned(writer, spec, Truncated(self, spec), false)!;
-    }
-}
-
-extend StringView : Debug {
-    /// Writes what this view spans, quoted and escaped.
-    /// The quotes sit outside the precision: what is kept is text, and the quotes say where it stops. Alignment is
-    /// not applied, because padding a quoted rendering to a width would put the fill outside the quotes, where it
-    /// would read as part of the surrounding text rather than as part of the value.
-    /// Reports whatever the writer reported, stopping at the first refusal, so a failed opening quote is not
-    /// followed by a body. Reports `UnsupportedRequest` for a style.
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the quoted view was accepted
-    /// @see https://rux-lang.dev/docs/api/text/string-view#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        RejectStyle(spec)!;
-        WriteAscii(writer, c8'"')!;
-        WriteEscaped(writer, Truncated(self, spec))!;
-        return WriteAscii(writer, c8'"')!;
-    }
-}
-
-/// Writes `text` with the characters that would be ambiguous or invisible replaced by escapes.
-/// The quote and the backslash are escaped because they collide with the quoting around a debug rendering. The C0
-/// and C1 control ranges are escaped because they act on a terminal rather than being read, and a value containing
-/// one should say so rather than doing it. `\n`, `\r`, `\t` and `\0` get their short forms; every other control
-/// becomes `\u{XX}`. Everything else, including all ordinary non-ASCII text, is written unchanged.
-/// Runs of ordinary bytes are written in one call rather than byte by byte, so escaping costs a pass and not a
-/// write per character.
-/// Reports whatever the writer reported, stopping at the first refusal.
-/// @param writer the destination
-/// @param text the UTF-8 text to escape and write
-/// @returns success when the escaped text was accepted
-/// @see https://rux-lang.dev/docs/api/text/debug#write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> !FormatError {
-    var index: uint = 0;
-    var runStart: uint = 0;
-    while index < text.length {
-        // Safety: `index` is below `text.length`, the loop condition.
-        let byte = text.data[index];
-        let code = byte as uint32;
-        // A C1 control is the second byte of a two-byte sequence whose first is 0xC2, so it is found by looking at
-        // the pair rather than at one byte; every other escape is a single ASCII byte.
-        // Safety: the next byte is read only when `index + 1` is below `text.length`, checked first.
-        let next = if index + 1 < text.length { (text.data[index + 1] as uint32) } else { 0 };
-        let isC1 = code == 0xC2 && next >= 0x80 && next <= 0x9F;
-        let escapes = byte == c8'"' || byte == c8'\\' || code < 0x20 || code == 0x7F || isC1;
-        if escapes {
-            if index > runStart {
-                // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
-                WriteBytes(writer, (@text.data[runStart])[..index - runStart])!;
-            }
-            let scalar = if isC1 { next } else { code };
-            WriteEscapeFor(writer, byte, scalar)!;
-            index = index + (if isC1 { 2u } else { 1u });
-            runStart = index;
-            continue;
+pub module Formatting {
+    extend String : Display {
+        /// Writes this string's bytes.
+        /// Reports whatever the writer reported, and `UnsupportedRequest` for a style, since text has none.
+        /// @param writer the destination
+        /// @param spec what the placeholder asked for
+        /// @returns success when the string's text was accepted
+        /// @see https://rux-lang.dev/docs/api/text/string#write-display
+        pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
+            let view = self.View();
+            return view.WriteDisplay(writer, spec)!;
         }
-        index = index + 1;
     }
-    if index > runStart {
-        // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
-        return WriteBytes(writer, (@text.data[runStart])[..index - runStart])!;
-    }
-    return;
-}
 
-// The escape for one character. `byte` is the ASCII byte for everything but a C1 control, whose `scalar` is what is
-// spelled instead.
-func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> !FormatError {
-    if byte == c8'"' { return WriteBytes(writer, "\\\"")!; }
-    if byte == c8'\\' { return WriteBytes(writer, "\\\\")!; }
-    if scalar == 0x0A { return WriteBytes(writer, "\\n")!; }
-    if scalar == 0x0D { return WriteBytes(writer, "\\r")!; }
-    if scalar == 0x09 { return WriteBytes(writer, "\\t")!; }
-    if scalar == 0x00 { return WriteBytes(writer, "\\0")!; }
-    WriteBytes(writer, "\\u{")!;
-    WriteHex(writer, scalar)!;
-    return WriteAscii(writer, c8'}')!;
-}
+    extend String : Debug {
+        /// Writes this string quoted and escaped.
+        /// Reports whatever the writer reported, and `UnsupportedRequest` for a style.
+        /// @param writer the destination
+        /// @param spec what the placeholder asked for
+        /// @returns success when the quoted string was accepted
+        /// @see https://rux-lang.dev/docs/api/text/string#write-debug
+        pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
+            let view = self.View();
+            return view.WriteDebug(writer, spec)!;
+        }
+    }
 
-// The shortest lower-case hexadecimal spelling of `value`, which for an escaped control is two digits at most.
-func WriteHex(writer: &var TextWriter, value: uint32) -> !FormatError {
-    var digits: char8[8];
-    var count: uint = 0;
-    var rest = value;
-    if rest == 0 {
-        digits[0] = c8'0';
-        count = 1;
+    extend StringView : Display {
+        /// Writes what this view spans, truncated to the spec's precision and padded to its width.
+        /// Precision counts Unicode scalar values rather than bytes, and a cut lands on a character boundary by
+        /// construction: the walk that counts them is the walk that finds where to stop.
+        /// Reports whatever the writer reported, and `UnsupportedRequest` for a style, since text has none.
+        /// @param writer the destination
+        /// @param spec what the placeholder asked for
+        /// @returns success when the view's text was accepted
+        /// @see https://rux-lang.dev/docs/api/text/string-view#write-display
+        pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
+            RejectStyle(spec)!;
+            return WriteAligned(writer, spec, Truncated(self, spec), false)!;
+        }
     }
-    while rest > 0 {
-        let digit = rest % 16;
-        digits[count] = (if digit < 10 { digit + 0x30 } else { digit + 0x57 }) as char8;
-        count = count + 1;
-        rest = rest / 16;
-    }
-    var index = count;
-    while index > 0 {
-        index = index - 1;
-        WriteAscii(writer, digits[index])!;
-    }
-    return;
-}
 
-// The front of `view` holding at most the spec's precision in characters, or all of it. A cut lands on a character
-// boundary by construction: it walks whole characters and stops.
-func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
-    let bytes = view.Bytes();
-    if !spec.HasPrecision() { return bytes; }
-    var kept: uint = 0;
-    var index: uint = 0;
-    while index < bytes.length && kept < spec.Precision() {
-        var width: uint = 0;
-        // Safety: `index` is below `bytes.length`, the loop condition, so the prefix lies inside `bytes`.
-        let decoded = DecodeAt(bytes, index) catch { _ => return (bytes.data)[..index] };
-        width = decoded.width;
-        index = index + width;
-        kept = kept + 1;
+    extend StringView : Debug {
+        /// Writes what this view spans, quoted and escaped.
+        /// The quotes sit outside the precision: what is kept is text, and the quotes say where it stops. Alignment is
+        /// not applied, because padding a quoted rendering to a width would put the fill outside the quotes, where it
+        /// would read as part of the surrounding text rather than as part of the value.
+        /// Reports whatever the writer reported, stopping at the first refusal, so a failed opening quote is not
+        /// followed by a body. Reports `UnsupportedRequest` for a style.
+        /// @param writer the destination
+        /// @param spec what the placeholder asked for
+        /// @returns success when the quoted view was accepted
+        /// @see https://rux-lang.dev/docs/api/text/string-view#write-debug
+        pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
+            RejectStyle(spec)!;
+            WriteAscii(writer, c8'"')!;
+            WriteEscaped(writer, Truncated(self, spec))!;
+            return WriteAscii(writer, c8'"')!;
+        }
     }
-    // Safety: `index` is at most `bytes.length`: each step adds the width of a character `DecodeAt` found whole
-    // inside `bytes`.
-    return (bytes.data)[..index];
+
+    /// Writes `text` with the characters that would be ambiguous or invisible replaced by escapes.
+    /// The quote and the backslash are escaped because they collide with the quoting around a debug rendering. The C0
+    /// and C1 control ranges are escaped because they act on a terminal rather than being read, and a value containing
+    /// one should say so rather than doing it. `\n`, `\r`, `\t` and `\0` get their short forms; every other control
+    /// becomes `\u{XX}`. Everything else, including all ordinary non-ASCII text, is written unchanged.
+    /// Runs of ordinary bytes are written in one call rather than byte by byte, so escaping costs a pass and not a
+    /// write per character.
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// @param writer the destination
+    /// @param text the UTF-8 text to escape and write
+    /// @returns success when the escaped text was accepted
+    /// @see https://rux-lang.dev/docs/api/text/debug#write-escaped
+    pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> !FormatError {
+        var index: uint = 0;
+        var runStart: uint = 0;
+        while index < text.length {
+            // Safety: `index` is below `text.length`, the loop condition.
+            let byte = text.data[index];
+            let code = byte as uint32;
+            // A C1 control is the second byte of a two-byte sequence whose first is 0xC2, so it is found by looking at
+            // the pair rather than at one byte; every other escape is a single ASCII byte.
+            // Safety: the next byte is read only when `index + 1` is below `text.length`, checked first.
+            let next = if index + 1 < text.length { (text.data[index + 1] as uint32) } else { 0 };
+            let isC1 = code == 0xC2 && next >= 0x80 && next <= 0x9F;
+            let escapes = byte == c8'"' || byte == c8'\\' || code < 0x20 || code == 0x7F || isC1;
+            if escapes {
+                if index > runStart {
+                    // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
+                    WriteBytes(writer, (@text.data[runStart])[..index - runStart])!;
+                }
+                let scalar = if isC1 { next } else { code };
+                WriteEscapeFor(writer, byte, scalar)!;
+                index = index + (if isC1 { 2u } else { 1u });
+                runStart = index;
+                continue;
+            }
+            index = index + 1;
+        }
+        if index > runStart {
+            // Safety: `runStart < index <= text.length`, so the run lies inside `text`.
+            return WriteBytes(writer, (@text.data[runStart])[..index - runStart])!;
+        }
+        return;
+    }
+
+    // The escape for one character. `byte` is the ASCII byte for everything but a C1 control, whose `scalar` is what is
+    // spelled instead.
+    func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> !FormatError {
+        if byte == c8'"' { return WriteBytes(writer, "\\\"")!; }
+        if byte == c8'\\' { return WriteBytes(writer, "\\\\")!; }
+        if scalar == 0x0A { return WriteBytes(writer, "\\n")!; }
+        if scalar == 0x0D { return WriteBytes(writer, "\\r")!; }
+        if scalar == 0x09 { return WriteBytes(writer, "\\t")!; }
+        if scalar == 0x00 { return WriteBytes(writer, "\\0")!; }
+        WriteBytes(writer, "\\u{")!;
+        WriteHex(writer, scalar)!;
+        return WriteAscii(writer, c8'}')!;
+    }
+
+    // The shortest lower-case hexadecimal spelling of `value`, which for an escaped control is two digits at most.
+    func WriteHex(writer: &var TextWriter, value: uint32) -> !FormatError {
+        var digits: char8[8];
+        var count: uint = 0;
+        var rest = value;
+        if rest == 0 {
+            digits[0] = c8'0';
+            count = 1;
+        }
+        while rest > 0 {
+            let digit = rest % 16;
+            digits[count] = (if digit < 10 { digit + 0x30 } else { digit + 0x57 }) as char8;
+            count = count + 1;
+            rest = rest / 16;
+        }
+        var index = count;
+        while index > 0 {
+            index = index - 1;
+            WriteAscii(writer, digits[index])!;
+        }
+        return;
+    }
+
+    // The front of `view` holding at most the spec's precision in characters, or all of it. A cut lands on a character
+    // boundary by construction: it walks whole characters and stops.
+    func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
+        let bytes = view.Bytes();
+        if !spec.HasPrecision() { return bytes; }
+        var kept: uint = 0;
+        var index: uint = 0;
+        while index < bytes.length && kept < spec.Precision() {
+            var width: uint = 0;
+            // Safety: `index` is below `bytes.length`, the loop condition, so the prefix lies inside `bytes`.
+            let decoded = DecodeAt(bytes, index) catch { _ => return (bytes.data)[..index] };
+            width = decoded.width;
+            index = index + width;
+            kept = kept + 1;
+        }
+        // Safety: `index` is at most `bytes.length`: each step adds the width of a character `DecodeAt` found whole
+        // inside `bytes`.
+        return (bytes.data)[..index];
+    }
 }

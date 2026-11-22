@@ -15,8 +15,9 @@
 // reaches a `Display` implementation has already passed whatever check its own type applies; the replacement here
 // is presentation, and never a substitute for the check.
 
-import Text::{ Encode, FormatError, FormatSpec, IsScalarValue, PaddingAround, TextWriter, WriteAscii, WriteBytes,
-               WriteFill, WriteScalar };
+import Text::{ TextWriter, WriteAscii, WriteBytes, WriteScalar };
+import Text::Formatting::{ FormatError, FormatSpec, PaddingAround, WriteFill };
+import Text::Utf8::{ Encode, IsScalarValue };
 
 pub module Characters {
     /// The largest value a Unicode scalar can have, past which nothing is a character.
@@ -27,7 +28,7 @@ pub module Characters {
 
     /// Whether `value`, at whatever width it was read from, is a Unicode scalar value.
     /// Takes a `uint64` so that a `char64` is checked before it is narrowed rather than after. A value past the last
-    /// scalar and a value in the surrogate range are both refused, which is the same rule `Text::IsScalarValue`
+    /// scalar and a value in the surrogate range are both refused, which is the same rule `Text::Utf8::IsScalarValue`
     /// applies at thirty-two bits.
     /// Cannot fail; runs in constant time and allocates nothing.
     /// @param value the numeric value of a character, at its own width

@@ -5,7 +5,8 @@
 // Writing the byte on its own would produce something that is not UTF-8, and the promise that it is holds every
 // reader of the result together.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteAligned };
 import Format::Characters::WriteCharacterDebug;
 import Format::Digits::FormatScalar;
 

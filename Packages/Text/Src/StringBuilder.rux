@@ -13,6 +13,7 @@
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Memory::Block::Copy;
+import Text::Utf8::{ Encode, Validate };
 
 /// The room a builder takes when it first needs any.
 /// Small enough that a builder for a short string wastes little, large enough that short strings never grow twice.

@@ -1,6 +1,7 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ Concat, String, StringView };
+import Text::{ String, StringView };
+import Text::Transform::Concat;
 
 // Joining two owned strings through the package: the join borrows views of both, copies once into a fresh block,
 // and both inputs stay whole and are destroyed exactly once when the function ends.

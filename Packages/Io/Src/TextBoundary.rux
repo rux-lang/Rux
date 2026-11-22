@@ -22,7 +22,8 @@
 // and calls `Text::WriteValue` themselves, which hands back the `FormatError` whole.
 
 import Format::WriteFormat;
-import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
+import Text::{ Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, TextFailureKind };
 
 pub module TextBoundary {
     /// Turns an error a stream threw into what a formatter understands.

@@ -1,7 +1,8 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::Assert;
 import Format::Render;
-import Text::{ FormatError, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::FormatError;
 
 // A format call reached the way a program reaches one: literal text, two placeholders, two values of different
 // types, and the result checked as text rather than byte by byte.

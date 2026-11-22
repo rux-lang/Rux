@@ -6,7 +6,8 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::Assert;
 import Format::Render;
-import Text::{ FormatError, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::FormatError;
 
 struct Point {
     x: int32;

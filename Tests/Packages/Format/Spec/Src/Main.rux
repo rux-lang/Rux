@@ -2,7 +2,8 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Render;
-import Text::{ FormatError, ParseFormatSpec, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::{ FormatError, ParseFormatSpec };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

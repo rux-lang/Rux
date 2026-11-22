@@ -1,5 +1,6 @@
 
-import Text::{ Display, FormatSpec, TextWriter };
+import Text::{ Display, TextWriter };
+import Text::Formatting::FormatSpec;
 import Format::Characters::ByteCursor;
 
 // A failed check returns its numbered exit code for `rux test`.

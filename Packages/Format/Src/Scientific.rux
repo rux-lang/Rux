@@ -9,7 +9,8 @@
 // A NaN or an infinity has no digits to place, so it renders as `NaN`, `Inf` or `-Inf` whatever the placeholder
 // asked for, and only the sign, width, fill and alignment of the specification apply to it.
 
-import Text::{ FormatError, FormatSpec, TextWriter, WriteAligned };
+import Text::TextWriter;
+import Text::Formatting::{ FormatError, FormatSpec, WriteAligned };
 
 // Whether the specification asks for scientific notation, and with which exponent mark. Any style but `e` and
 // `E` is refused, as `RejectStyle` refuses a style on a value that has none. `mark` must be non-null and writable.

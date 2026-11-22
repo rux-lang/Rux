@@ -13,6 +13,8 @@
 // depending on the numeric conversion engine. Time, Uuid and Path all implement them and none of them needs to
 // know how a float is rounded.
 
+import Text::Formatting::{ FormatError, FormatSpec };
+
 
 /// The text a value has for a reader.
 /// An implementation writes into the destination it is handed and allocates no working storage of its own. A value

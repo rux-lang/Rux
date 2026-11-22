@@ -9,7 +9,8 @@ import Core::Diagnostics::Panic;
 import Core::Primitives::*;
 import Encoding::{ Base64Decode, Base64DecodedLength, Base64Encode, Base64EncodedLength, Base64Variant, DecodeError,
                    ViewBase64 };
-import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ BufferWriter, Display, TextWriter };
+import Text::Formatting::{ FormatSpec, ParseFormatSpec };
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }

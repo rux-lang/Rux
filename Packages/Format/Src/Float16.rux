@@ -8,7 +8,8 @@
 // the bits rather than comparing values: it costs a mask instead of a call into the software comparison.
 
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, WriteAligned };
 
 // The exponent field and the stored significand field of a float16, and the sign bit.
 import Format::Characters::ByteCursor;

@@ -3,7 +3,8 @@
 // noise and one that is there on request belongs to the placeholder rather than the value.
 
 import Core::Primitives::*;
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec };
 import Format::Digits::WriteIntegerSpec;
 
 extend int8 : Display {

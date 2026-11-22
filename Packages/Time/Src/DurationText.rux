@@ -10,8 +10,8 @@
 // `int64` — comes out right rather than wrapping to itself.
 
 import Core::Primitives::*;
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes,
-               WriteDisplayAligned };
+import Text::{ Debug, Display, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, WriteDisplayAligned };
 
 // The magnitude of `value` as whole seconds and a fraction, both non-negative, with the sign reported separately.
 // For a negative duration the normalized fields are not the magnitude: -1.5 is stored as (-2, 5e8), so the whole

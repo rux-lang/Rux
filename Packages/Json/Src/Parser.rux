@@ -11,8 +11,8 @@
 import Allocator::Allocator;
 import Collections::CollectionError;
 
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringBuilder, StringView,
-               TextError, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, Display, String, StringBuilder, StringView, TextError, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFailure, RejectStyle };
 
 /// What to do about an object containing the same name twice.
 /// @see https://rux-lang.dev/docs/api/json/parse#duplicate-key-policy

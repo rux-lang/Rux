@@ -6,7 +6,8 @@
 // the two happen to be the same width. Widening to `int64` first is what makes that implementation one line.
 
 import Core::Primitives::*;
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec };
 import Format::Digits::WriteIntegerSpec;
 
 extend int : Display {

@@ -11,7 +11,7 @@
 // meant for identifiers rather than secrets and maps characters with an ordinary table. The whole text is checked
 // before a byte is written, so a refusal leaves the destination exactly as it was.
 
-import Text::FormatError;
+import Text::Formatting::FormatError;
 
 /// Which Base32 alphabet a text uses, and whether it is padded.
 /// Copy, carrying no payload.

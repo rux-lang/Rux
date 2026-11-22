@@ -9,7 +9,8 @@ import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
                JsonValue, Parse, ParseWith, WriteValue };
-import Text::{ BufferWriter, FormatSpec, String, StringBuilder, StringView, TextError, TextWriter };
+import Text::{ BufferWriter, String, StringBuilder, StringView, TextError, TextWriter };
+import Text::Formatting::FormatSpec;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

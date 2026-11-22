@@ -1,6 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::Assert;
-import Text::{ IsAsciiSpace, StringView };
+import Text::StringView;
+import Text::Transform::IsAsciiSpace;
 
 // Searching is over bytes, and works out to searching over characters for free: UTF-8 is self-synchronising, so no
 // character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start

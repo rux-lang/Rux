@@ -1,7 +1,8 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
 import Core::Diagnostics::Assert;
 import Format::{ Render, WriteFormat };
-import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
+import Text::{ BufferWriter, Display, String, StringView, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec };
 
 // Placeholder filling, and what it refuses.
 // The grammar is four shapes: `{}`, `{:spec}`, `{{` and `}}`. Everything else containing a brace is a mistake in

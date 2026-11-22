@@ -2,7 +2,8 @@ import Allocator::SystemAllocator;
 import Core::Compilation::#target;
 import Core::Diagnostics::Assert;
 import Format::Render;
-import Text::{ FormatError, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::FormatError;
 
 // Every implemented integer width, in every base it renders in, with the ends of each range.
 // The per-width tests next door each check one type in decimal. What none of them checks is the matrix: sixteen

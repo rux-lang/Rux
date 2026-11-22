@@ -15,8 +15,9 @@
 // worse than a rendering that refuses.
 
 import Core::Compilation::#target;
-import Text::{ Debug, DecodeAt, Display, Encode, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii,
-               WriteBytes, WriteEscaped, WriteScalar };
+import Text::{ Debug, Display, TextWriter, WriteAscii, WriteBytes, WriteScalar };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteEscaped };
+import Text::Utf8::{ DecodeAt, Encode };
 
 // The character a unit that is not text is shown as by `Display`.
 const ReplacementScalar: uint32 = 0xFFFD;

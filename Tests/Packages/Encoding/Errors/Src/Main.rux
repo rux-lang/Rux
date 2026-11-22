@@ -1,7 +1,8 @@
 // A decode error says where it was found, or how much room was needed, and renders as a short description.
 
 import Encoding::{ DecodeError, HexDecode };
-import Text::{ BufferWriter, Debug, Display, FormatSpec, TextWriter };
+import Text::{ BufferWriter, Debug, Display, TextWriter };
+import Text::Formatting::FormatSpec;
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }

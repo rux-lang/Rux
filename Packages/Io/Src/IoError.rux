@@ -9,7 +9,8 @@
 // translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
 // can fail declares `throws IoError`, and `IoError` is only ever what it throws.
 
-import Text::{ Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
+import Text::{ Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteAligned };
 
 /// What an I/O operation reported.
 /// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind

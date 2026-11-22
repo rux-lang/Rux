@@ -4,7 +4,8 @@
 // computed independently. The vectors in Vectors.rux carry that reference; the cases here are the ones a reader can
 // check by eye, and Primitives.rux carries the same checks across to the primitives themselves.
 
-import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::{ FormatSpec, ParseFormatSpec };
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Characters::ByteCursor;

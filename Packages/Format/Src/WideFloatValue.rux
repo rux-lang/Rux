@@ -11,7 +11,8 @@
 // is the whole point: where a rendering allocates, the caller says from where.
 
 import Allocator::Allocator;
-import Text::{ FormatError, FormatSpec, RejectStyle, TextFailureKind, TextWriter, WriteAligned };
+import Text::TextWriter;
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, TextFailureKind, WriteAligned };
 
 pub module Digits {
     /// An x87 extended-precision value, held as its eighty bits.

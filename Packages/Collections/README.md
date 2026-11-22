@@ -217,7 +217,8 @@ import Collections::Vector;
 import Collections::Presentation::WriteVectorDebug;
 import Io::IoError;
 import Io::TextBoundary::ConsoleWriter;
-import Text::{ FormatError, FormatSpec, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::{ FormatError, FormatSpec };
 
 // `Rux/Format` is imported for its `Debug` implementations, not for a name: `WriteVectorDebug` is bound on
 // `T: Debug`, and the implementation for `int32` lives there. Without this the bound is unsatisfied.

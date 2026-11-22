@@ -7,7 +7,8 @@
 // re-decided here.
 
 import Format::WriteFormat;
-import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
+import Text::{ Display, String, StringView, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec };
 
 // The one write under everything here.
 import Io::TextBoundary::{ ConsoleWriter, ToIoError };

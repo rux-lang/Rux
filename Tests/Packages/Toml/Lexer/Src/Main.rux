@@ -6,7 +6,7 @@
 
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ String };
+import Text::String;
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 
 func FirstToken(text: char8[..]) -> TomlToken {

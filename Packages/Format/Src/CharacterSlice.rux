@@ -6,7 +6,8 @@
 // wants. `char16[..]` and `char32[..]` each need a transcoding printer and have one in `WideCharacterSlice.rux`,
 // where the decisions about units that are not characters live.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned, WriteAscii };
+import Text::{ Debug, Display, TextWriter, WriteAscii };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteAligned };
 
 extend char8[..] : Display {
     /// Writes this text.

@@ -12,411 +12,414 @@
 
 import Core::Primitives::*;
 
-/// Where the padding goes when the rendering is narrower than the width.
-/// Copy, carrying no payload.
-/// @see https://rux-lang.dev/docs/api/text/format-spec#format-align
-pub enum FormatAlign: int32 {
-    /// The type's own default: numbers to the right, text to the left.
-    Default = 0,
-    /// The value at the start, fill after it.
-    Left = 1,
-    /// The value in the middle, fill on both sides, the odd column on the right.
-    Center = 2,
-    /// The value at the end, fill before it.
-    Right = 3
-}
-
-/// The base an integer renders in.
-/// Copy, carrying no payload. A negative signed integer renders in every base as a minus sign followed by the
-/// digits of its magnitude, not as its two's-complement bits: `{:b}` of `-5` is `-101` and `{:#x}` of `-255` is
-/// `-0xff`. That keeps the text of a value independent of the width of the type it happens to be stored in.
-/// @see https://rux-lang.dev/docs/api/text/format-spec#format-base
-pub enum FormatBase: int32 {
-    /// Base ten, the default.
-    Decimal = 0,
-    /// Base two, `b`, prefixed `0b` under `#`.
-    Binary = 1,
-    /// Base eight, `o`, prefixed `0o` under `#`.
-    Octal = 2,
-    /// Base sixteen with lower-case digits, `x`, prefixed `0x` under `#`.
-    LowerHex = 3,
-    /// Base sixteen with upper-case digits, `X`, prefixed `0x` under `#`.
-    UpperHex = 4
-}
-
-/// Everything a placeholder asked for.
-/// Copy, and cheap to pass: a spec is read, never held. Its representation is private, so a value applying a spec
-/// reads it and cannot alter what the placeholder asked for.
-/// @see https://rux-lang.dev/docs/api/text/format-spec
-pub struct FormatSpec {
-    /// The byte that pads, a space unless the spec names one.
-    fill: char8;
-    /// Where the padding goes.
-    align: FormatAlign;
-    /// Whether a non-negative number shows a plus sign.
-    showSign: bool;
-    /// Whether a based integer carries its base prefix.
-    alternate: bool;
-    /// Whether a number pads with zeros between its sign and its digits, which is different from filling: the
-    /// zeros are inside the number, so `-7` at width four is `-007` and not `00-7`.
-    zeroPad: bool;
-    /// The fewest columns the rendering occupies. Zero asks for nothing.
-    width: uint;
-    /// How many characters of text to keep, or how many digits a float carries. Meaningful only when
-    /// `HasPrecision` reports true, since zero is a precision a caller can mean.
-    precision: uint;
-    /// Whether the spec named a precision.
-    hasPrecision: bool;
-    /// The base an integer renders in, derived from a single-letter style so an integer need not read style text.
-    base: FormatBase;
-    /// The style the specification named, borrowed from the specification text. Empty when none was written.
-    /// This borrows rather than copies because a style is read during the call that parses it and never held: a
-    /// value applies its specification and is done. Storing one past the text it names is a lifetime error nothing
-    /// here can catch.
-    style: char8[..];
-}
-
-extend FormatSpec {
-    /// What a bare `{}` asks for: nothing at all.
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    /// @returns a spec with no width, no precision, default alignment and base ten
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#plain
-    pub func Plain() -> Self {
-        return Self {
-            fill: c8' ',
-            align: FormatAlign::Default,
-            showSign: false,
-            alternate: false,
-            zeroPad: false,
-            width: 0,
-            precision: 0,
-            hasPrecision: false,
-            base: FormatBase::Decimal,
-            style: []
-        };
+pub module Formatting {
+    /// Where the padding goes when the rendering is narrower than the width.
+    /// Copy, carrying no payload.
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#format-align
+    pub enum FormatAlign: int32 {
+        /// The type's own default: numbers to the right, text to the left.
+        Default = 0,
+        /// The value at the start, fill after it.
+        Left = 1,
+        /// The value in the middle, fill on both sides, the odd column on the right.
+        Center = 2,
+        /// The value at the end, fill before it.
+        Right = 3
     }
 
-    /// The byte that pads a rendering narrower than the width.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns the fill byte, a space unless the placeholder named one
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#fill
-    pub func Fill(&self) -> char8 {
-        return self.fill;
+    /// The base an integer renders in.
+    /// Copy, carrying no payload. A negative signed integer renders in every base as a minus sign followed by the
+    /// digits of its magnitude, not as its two's-complement bits: `{:b}` of `-5` is `-101` and `{:#x}` of `-255` is
+    /// `-0xff`. That keeps the text of a value independent of the width of the type it happens to be stored in.
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#format-base
+    pub enum FormatBase: int32 {
+        /// Base ten, the default.
+        Decimal = 0,
+        /// Base two, `b`, prefixed `0b` under `#`.
+        Binary = 1,
+        /// Base eight, `o`, prefixed `0o` under `#`.
+        Octal = 2,
+        /// Base sixteen with lower-case digits, `x`, prefixed `0x` under `#`.
+        LowerHex = 3,
+        /// Base sixteen with upper-case digits, `X`, prefixed `0x` under `#`.
+        UpperHex = 4
     }
 
-    /// Where the padding goes.
-    /// `Default` means the value chooses, which is why it is a case rather than being resolved here: numbers pad on
-    /// the left and text on the right, and only the value knows which it is.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns the requested alignment, or `Default` when the placeholder named none
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#alignment
-    pub func Alignment(&self) -> FormatAlign {
-        return self.align;
+    /// Everything a placeholder asked for.
+    /// Copy, and cheap to pass: a spec is read, never held. Its representation is private, so a value applying a spec
+    /// reads it and cannot alter what the placeholder asked for.
+    /// @see https://rux-lang.dev/docs/api/text/format-spec
+    pub struct FormatSpec {
+        /// The byte that pads, a space unless the spec names one.
+        fill: char8;
+        /// Where the padding goes.
+        align: FormatAlign;
+        /// Whether a non-negative number shows a plus sign.
+        showSign: bool;
+        /// Whether a based integer carries its base prefix.
+        alternate: bool;
+        /// Whether a number pads with zeros between its sign and its digits, which is different from filling: the
+        /// zeros are inside the number, so `-7` at width four is `-007` and not `00-7`.
+        zeroPad: bool;
+        /// The fewest columns the rendering occupies. Zero asks for nothing.
+        width: uint;
+        /// How many characters of text to keep, or how many digits a float carries. Meaningful only when
+        /// `HasPrecision` reports true, since zero is a precision a caller can mean.
+        precision: uint;
+        /// Whether the spec named a precision.
+        hasPrecision: bool;
+        /// The base an integer renders in, derived from a single-letter style so an integer need not read style text.
+        base: FormatBase;
+        /// The style the specification named, borrowed from the specification text. Empty when none was written.
+        /// This borrows rather than copies because a style is read during the call that parses it and never held: a
+        /// value applies its specification and is done. Storing one past the text it names is a lifetime error nothing
+        /// here can catch.
+        style: char8[..];
     }
 
-    /// Whether a non-negative number should carry a `+`.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns true when the placeholder wrote `+`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#shows-sign
-    pub func ShowsSign(&self) -> bool {
-        return self.showSign;
-    }
-
-    /// Whether a based integer should carry its `0b`, `0o` or `0x` prefix.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns true when the placeholder wrote `#`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#is-alternate
-    pub func IsAlternate(&self) -> bool {
-        return self.alternate;
-    }
-
-    /// Whether a number pads with zeros inside itself rather than with fill outside itself.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns true when the placeholder wrote a leading `0`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#zero-pads
-    pub func ZeroPads(&self) -> bool {
-        return self.zeroPad;
-    }
-
-    /// The fewest Unicode scalar values the rendering should occupy.
-    /// Counted in scalars rather than bytes, so an accented name pads the same as an unaccented one.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns the requested width, or zero when the placeholder asked for none
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#width
-    pub func Width(&self) -> uint {
-        return self.width;
-    }
-
-    /// How many characters of text to keep, or how many digits a float carries.
-    /// Meaningful only when `HasPrecision` reports true: zero is a precision a caller can mean, so the value alone
-    /// cannot say whether one was asked for.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns the requested precision, meaningful only alongside `HasPrecision`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#precision
-    pub func Precision(&self) -> uint {
-        return self.precision;
-    }
-
-    /// Whether the placeholder named a precision at all.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns true when a precision was written, including `.0`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#has-precision
-    pub func HasPrecision(&self) -> bool {
-        return self.hasPrecision;
-    }
-
-    /// The base an integer should render in.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns the requested base, or `Decimal` when the placeholder named none
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#base
-    pub func Base(&self) -> FormatBase {
-        return self.base;
-    }
-
-    /// The style the specification named, or an empty slice when it named none.
-    /// A value compares this against the styles it understands and reports `UnsupportedRequest` for anything else.
-    /// The four single-letter integer bases are also reflected in `Base`, so an integer has no reason to read this.
-    /// The result borrows the specification text this was parsed from and must not outlive it.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns the style bytes, empty when no style was written
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#style
-    pub func Style(&self) -> char8[..] {
-        return self.style;
-    }
-
-    /// Whether the specification named a style at all.
-    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns true when a style was written
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#has-style
-    pub func HasStyle(&self) -> bool {
-        return self.style.length > 0;
-    }
-
-    /// Whether the specification named exactly the style `name`.
-    /// The comparison a value makes to decide whether a style is one of its own, written once so each renderer does
-    /// not repeat a byte loop.
-    /// Borrows the spec. Cannot fail; runs in time proportional to `name`, and allocates nothing.
-    /// @param name the style to compare against
-    /// @returns true when the specification named exactly that style
-    /// @see https://rux-lang.dev/docs/api/text/format-spec#style-is
-    pub func StyleIs(&self, name: char8[..]) -> bool {
-        if self.style.length != name.length { return false; }
-        var index: uint = 0;
-        while index < name.length {
-            // Safety: `index` is below `name.length`, which equals `self.style.length`, checked above.
-            if (self.style.data[index] != name.data[index]) { return false; }
-            index = index + 1;
+    extend FormatSpec {
+        /// What a bare `{}` asks for: nothing at all.
+        /// Cannot fail. Runs in constant time and allocates nothing.
+        /// @returns a spec with no width, no precision, default alignment and base ten
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#plain
+        pub func Plain() -> Self {
+            return Self {
+                fill: c8' ',
+                align: FormatAlign::Default,
+                showSign: false,
+                alternate: false,
+                zeroPad: false,
+                width: 0,
+                precision: 0,
+                hasPrecision: false,
+                base: FormatBase::Decimal,
+                style: []
+            };
         }
-        return true;
+
+        /// The byte that pads a rendering narrower than the width.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns the fill byte, a space unless the placeholder named one
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#fill
+        pub func Fill(&self) -> char8 {
+            return self.fill;
+        }
+
+        /// Where the padding goes.
+        /// `Default` means the value chooses, which is why it is a case rather than being resolved here: numbers pad on
+        /// the left and text on the right, and only the value knows which it is.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns the requested alignment, or `Default` when the placeholder named none
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#alignment
+        pub func Alignment(&self) -> FormatAlign {
+            return self.align;
+        }
+
+        /// Whether a non-negative number should carry a `+`.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns true when the placeholder wrote `+`
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#shows-sign
+        pub func ShowsSign(&self) -> bool {
+            return self.showSign;
+        }
+
+        /// Whether a based integer should carry its `0b`, `0o` or `0x` prefix.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns true when the placeholder wrote `#`
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#is-alternate
+        pub func IsAlternate(&self) -> bool {
+            return self.alternate;
+        }
+
+        /// Whether a number pads with zeros inside itself rather than with fill outside itself.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns true when the placeholder wrote a leading `0`
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#zero-pads
+        pub func ZeroPads(&self) -> bool {
+            return self.zeroPad;
+        }
+
+        /// The fewest Unicode scalar values the rendering should occupy.
+        /// Counted in scalars rather than bytes, so an accented name pads the same as an unaccented one.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns the requested width, or zero when the placeholder asked for none
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#width
+        pub func Width(&self) -> uint {
+            return self.width;
+        }
+
+        /// How many characters of text to keep, or how many digits a float carries.
+        /// Meaningful only when `HasPrecision` reports true: zero is a precision a caller can mean, so the value alone
+        /// cannot say whether one was asked for.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns the requested precision, meaningful only alongside `HasPrecision`
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#precision
+        pub func Precision(&self) -> uint {
+            return self.precision;
+        }
+
+        /// Whether the placeholder named a precision at all.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns true when a precision was written, including `.0`
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#has-precision
+        pub func HasPrecision(&self) -> bool {
+            return self.hasPrecision;
+        }
+
+        /// The base an integer should render in.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns the requested base, or `Decimal` when the placeholder named none
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#base
+        pub func Base(&self) -> FormatBase {
+            return self.base;
+        }
+
+        /// The style the specification named, or an empty slice when it named none.
+        /// A value compares this against the styles it understands and reports `UnsupportedRequest` for anything else.
+        /// The four single-letter integer bases are also reflected in `Base`, so an integer has no reason to read this.
+        /// The result borrows the specification text this was parsed from and must not outlive it.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns the style bytes, empty when no style was written
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#style
+        pub func Style(&self) -> char8[..] {
+            return self.style;
+        }
+
+        /// Whether the specification named a style at all.
+        /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns true when a style was written
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#has-style
+        pub func HasStyle(&self) -> bool {
+            return self.style.length > 0;
+        }
+
+        /// Whether the specification named exactly the style `name`.
+        /// The comparison a value makes to decide whether a style is one of its own, written once so each renderer does
+        /// not repeat a byte loop.
+        /// Borrows the spec. Cannot fail; runs in time proportional to `name`, and allocates nothing.
+        /// @param name the style to compare against
+        /// @returns true when the specification named exactly that style
+        /// @see https://rux-lang.dev/docs/api/text/format-spec#style-is
+        pub func StyleIs(&self, name: char8[..]) -> bool {
+            if self.style.length != name.length { return false; }
+            var index: uint = 0;
+            while index < name.length {
+                // Safety: `index` is below `name.length`, which equals `self.style.length`, checked above.
+                if (self.style.data[index] != name.data[index]) { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
     }
-}
 
-// Whether `byte` is one of the three alignment marks, and which.
-func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
-    var found = FormatAlign::Default;
-    if byte == c8'<' {
-        found = FormatAlign::Left;
-    }
-    else if byte == c8'^' {
-        found = FormatAlign::Center;
-    }
-    else if byte == c8'>' {
-        found = FormatAlign::Right;
-    }
-    else {
-        return false;
-    }
-    // Safety: the one caller, `ParseFormatSpec`, passes the address of its own `FormatAlign` local.
-    *align = found;
-    return true;
-}
-
-// Whether `byte` may be the fill. Printable ASCII only, and not a brace: a brace inside a specification would end
-// the placeholder before the parser ever saw it, so accepting one here would describe input that cannot occur.
-func IsFillByte(byte: char8) -> bool {
-    let code = byte as uint32;
-    if code < 0x20 || code > 0x7E { return false; }
-    return byte != c8'{' && byte != c8'}';
-}
-
-// Whether `byte` may open a style. A style is an identifier, so it starts with a letter; a digit there would be
-// indistinguishable from a width.
-func IsStyleStart(byte: char8) -> bool {
-    return (byte >= c8'a' && byte <= c8'z') || (byte >= c8'A' && byte <= c8'Z');
-}
-
-// Whether `byte` may continue a style.
-func IsStyleByte(byte: char8) -> bool {
-    if IsStyleStart(byte) { return true; }
-    if byte >= c8'0' && byte <= c8'9' { return true; }
-    return byte == c8'_' || byte == c8'-';
-}
-
-// Whether `byte` is an ASCII digit.
-func IsDigit(byte: char8) -> bool {
-    return byte >= c8'0' && byte <= c8'9';
-}
-
-// One malformed-specification failure, carrying where it was found.
-func Malformed(offset: uint) -> FormatSpec ! FormatError {
-    throw .InvalidSpecification(offset);
-}
-
-// Reads a run of digits into `value`, reporting the offset of the digit that would overflow.
-// The check is exact rather than a generous cap: a value is refused precisely when multiplying it by ten and adding
-// the next digit would not fit a `uint`. A width nobody could satisfy is still a width the parser understood, so
-// only arithmetic that cannot be represented fails here.
-func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) -> bool {
-    var index = start;
-    var total: uint = 0;
-    // Safety: `index` is below `text.length`, checked first in the same condition.
-    while index < text.length && IsDigit(text.data[index]) {
-        // Safety: `index` is below `text.length`, the loop condition.
-        let digit = ((text.data[index] as uint32) - 0x30) as uint;
-        if total > (uint::Max - digit) / 10 {
-            // Safety: the one caller, `ParseFormatSpec`, passes the address of its own `uint` local for `end`.
-            *end = index;
+    // Whether `byte` is one of the three alignment marks, and which.
+    func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
+        var found = FormatAlign::Default;
+        if byte == c8'<' {
+            found = FormatAlign::Left;
+        }
+        else if byte == c8'^' {
+            found = FormatAlign::Center;
+        }
+        else if byte == c8'>' {
+            found = FormatAlign::Right;
+        }
+        else {
             return false;
         }
-        total = total * 10 + digit;
-        index = index + 1;
-    }
-    // Safety: the one caller, `ParseFormatSpec`, passes the addresses of its own `uint` locals for `value` and `end`.
-    *value = total;
-    *end = index;
-    return true;
-}
-
-/// Parses the text between `{:` and `}`.
-/// The grammar is `[[fill]align][+][#][0][width][.precision][style]`, every piece optional, so the empty
-/// specification is well-formed and asks for nothing. A style is an identifier: an ASCII letter followed by
-/// letters, digits, `_` or `-`. That covers the single-letter integer bases `b`, `o`, `x` and `X`, which also set
-/// `Base` so an integer need not inspect the style text, the float styles `e` and `E` for scientific notation, and
-/// the domain styles such as `iso8601` and `hyphenated` that a value interprets for itself.
-/// Syntax is recognized here once; whether a style or flag *applies* is the value's question, since only the value
-/// knows whether a precision means digits, characters or nothing at all. A specification this accepts may still be
-/// refused with `UnsupportedRequest` by the value it is handed to.
-/// The returned specification's style borrows `text`. It must not outlive the specification text it was parsed
-/// from, and nothing here tracks that.
-/// Reports `InvalidSpecification` carrying the zero-based byte offset into `text` where parsing stopped: an
-/// unprintable or brace fill, a `.` with no digits after it, a width or precision whose arithmetic will not fit a
-/// `uint`, or any byte that can begin none of the remaining pieces. Nothing is written and no partial
-/// specification escapes.
-/// @param text the specification body, without the surrounding braces or the colon
-/// @returns the parsed specification, or where it was malformed
-/// @see https://rux-lang.dev/docs/api/text/format-spec#parse-format-spec
-pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
-    var spec = FormatSpec::Plain();
-    var index: uint = 0;
-
-    // Fill-and-align comes first, and the fill is only a fill when an alignment mark follows it — `{:x}` is a
-    // style, not an x-shaped padding.
-    var align = FormatAlign::Default;
-    // Safety: `index + 1` is below `text.length`, checked first in the same condition.
-    if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {
-        // Safety: `index + 1` is below `text.length`, checked above, so `index` is too.
-        let fill = text.data[index];
-        if !IsFillByte(fill) { return Malformed(index)!; }
-        spec.fill = fill;
-        spec.align = align;
-        index = index + 2;
-    }
-    // Safety: `index` is below `text.length`, checked first in the same condition.
-    else if index < text.length && AlignOf(text.data[index], @align) {
-        spec.align = align;
-        index = index + 1;
+        // Safety: the one caller, `ParseFormatSpec`, passes the address of its own `FormatAlign` local.
+        *align = found;
+        return true;
     }
 
-    // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && text.data[index] == c8'+' {
-        spec.showSign = true;
-        index = index + 1;
-    }
-    // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && text.data[index] == c8'#' {
-        spec.alternate = true;
-        index = index + 1;
-    }
-    // A leading zero is the zero-padding flag rather than the first digit of the width, which is why it is read
-    // before the number and why `{:0}` asks for padding to no width at all.
-    // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && text.data[index] == c8'0' {
-        spec.zeroPad = true;
-        index = index + 1;
+    // Whether `byte` may be the fill. Printable ASCII only, and not a brace: a brace inside a specification would end
+    // the placeholder before the parser ever saw it, so accepting one here would describe input that cannot occur.
+    func IsFillByte(byte: char8) -> bool {
+        let code = byte as uint32;
+        if code < 0x20 || code > 0x7E { return false; }
+        return byte != c8'{' && byte != c8'}';
     }
 
-    var width: uint = 0;
-    var after: uint = index;
-    if !ReadNumber(text, index, @width, @after) { return Malformed(after)!; }
-    spec.width = width;
-    index = after;
-
-    // Safety: `index` is below `text.length`, checked first in the same condition.
-    if index < text.length && text.data[index] == c8'.' {
-        index = index + 1;
-        // Safety: the read happens only when `index` is below `text.length`, checked first.
-        if index >= text.length || !IsDigit(text.data[index]) { return Malformed(index)!; }
-        var precision: uint = 0;
-        if !ReadNumber(text, index, @precision, @after) { return Malformed(after)!; }
-        spec.hasPrecision = true;
-        spec.precision = precision;
-        index = after;
+    // Whether `byte` may open a style. A style is an identifier, so it starts with a letter; a digit there would be
+    // indistinguishable from a width.
+    func IsStyleStart(byte: char8) -> bool {
+        return (byte >= c8'a' && byte <= c8'z') || (byte >= c8'A' && byte <= c8'Z');
     }
 
-    if index < text.length {
-        // Safety: `index` is below `text.length`, checked above.
-        if !IsStyleStart(text.data[index]) { return Malformed(index)!; }
-        let start = index;
+    // Whether `byte` may continue a style.
+    func IsStyleByte(byte: char8) -> bool {
+        if IsStyleStart(byte) { return true; }
+        if byte >= c8'0' && byte <= c8'9' { return true; }
+        return byte == c8'_' || byte == c8'-';
+    }
+
+    // Whether `byte` is an ASCII digit.
+    func IsDigit(byte: char8) -> bool {
+        return byte >= c8'0' && byte <= c8'9';
+    }
+
+    // One malformed-specification failure, carrying where it was found.
+    func Malformed(offset: uint) -> FormatSpec ! FormatError {
+        throw .InvalidSpecification(offset);
+    }
+
+    // Reads a run of digits into `value`, reporting the offset of the digit that would overflow.
+    // The check is exact rather than a generous cap: a value is refused precisely when multiplying it by ten and adding
+    // the next digit would not fit a `uint`. A width nobody could satisfy is still a width the parser understood, so
+    // only arithmetic that cannot be represented fails here.
+    func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) -> bool {
+        var index = start;
+        var total: uint = 0;
         // Safety: `index` is below `text.length`, checked first in the same condition.
-        while index < text.length && IsStyleByte(text.data[index]) {
+        while index < text.length && IsDigit(text.data[index]) {
+            // Safety: `index` is below `text.length`, the loop condition.
+            let digit = ((text.data[index] as uint32) - 0x30) as uint;
+            if total > (uint::Max - digit) / 10 {
+                // Safety: the one caller, `ParseFormatSpec`, passes the address of its own `uint` local for `end`.
+                *end = index;
+                return false;
+            }
+            total = total * 10 + digit;
             index = index + 1;
         }
-        if index != text.length { return Malformed(index)!; }
-        // Safety: `start` is below `index`, which equals `text.length`, so the style lies inside `text`.
-        spec.style = (@text.data[start])[..index - start];
-        spec.base = BaseOfStyle(spec.style);
+        // Safety: the one caller, `ParseFormatSpec`, passes the addresses of its own `uint` locals for `value` and
+        // `end`.
+        *value = total;
+        *end = index;
+        return true;
     }
 
-    return spec;
-}
+    /// Parses the text between `{:` and `}`.
+    /// The grammar is `[[fill]align][+][#][0][width][.precision][style]`, every piece optional, so the empty
+    /// specification is well-formed and asks for nothing. A style is an identifier: an ASCII letter followed by
+    /// letters, digits, `_` or `-`. That covers the single-letter integer bases `b`, `o`, `x` and `X`, which also set
+    /// `Base` so an integer need not inspect the style text, the float styles `e` and `E` for scientific notation, and
+    /// the domain styles such as `iso8601` and `hyphenated` that a value interprets for itself.
+    /// Syntax is recognized here once; whether a style or flag *applies* is the value's question, since only the value
+    /// knows whether a precision means digits, characters or nothing at all. A specification this accepts may still be
+    /// refused with `UnsupportedRequest` by the value it is handed to.
+    /// The returned specification's style borrows `text`. It must not outlive the specification text it was parsed
+    /// from, and nothing here tracks that.
+    /// Reports `InvalidSpecification` carrying the zero-based byte offset into `text` where parsing stopped: an
+    /// unprintable or brace fill, a `.` with no digits after it, a width or precision whose arithmetic will not fit a
+    /// `uint`, or any byte that can begin none of the remaining pieces. Nothing is written and no partial
+    /// specification escapes.
+    /// @param text the specification body, without the surrounding braces or the colon
+    /// @returns the parsed specification, or where it was malformed
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#parse-format-spec
+    pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
+        var spec = FormatSpec::Plain();
+        var index: uint = 0;
 
-// The base a style names, for the four single letters that carry one. Every other style leaves the base decimal,
-// including a longer one that happens to begin with `x`.
-func BaseOfStyle(style: char8[..]) -> FormatBase {
-    if style.length != 1 { return FormatBase::Decimal; }
-    // Safety: `style.length` is one, checked above.
-    let mark = style.data[0];
-    if mark == c8'b' { return FormatBase::Binary; }
-    if mark == c8'o' { return FormatBase::Octal; }
-    if mark == c8'x' { return FormatBase::LowerHex; }
-    if mark == c8'X' { return FormatBase::UpperHex; }
-    return FormatBase::Decimal;
-}
+        // Fill-and-align comes first, and the fill is only a fill when an alignment mark follows it — `{:x}` is a
+        // style, not an x-shaped padding.
+        var align = FormatAlign::Default;
+        // Safety: `index + 1` is below `text.length`, checked first in the same condition.
+        if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {
+            // Safety: `index + 1` is below `text.length`, checked above, so `index` is too.
+            let fill = text.data[index];
+            if !IsFillByte(fill) { return Malformed(index)!; }
+            spec.fill = fill;
+            spec.align = align;
+            index = index + 2;
+        }
+        // Safety: `index` is below `text.length`, checked first in the same condition.
+        else if index < text.length && AlignOf(text.data[index], @align) {
+            spec.align = align;
+            index = index + 1;
+        }
 
-/// Refuses a specification that names any style.
-/// The parser recognizes a style wherever the grammar allows one; whether it *means* anything is the value's
-/// question. A value with no styles of its own calls this so that `{:q}` is refused rather than silently rendered
-/// as though nothing had been asked for.
-/// Reports `UnsupportedRequest` when a style was written.
-/// @param spec the specification to check
-/// @returns success when no style was named
-/// @see https://rux-lang.dev/docs/api/text/format-spec#reject-style
-pub func RejectStyle(spec: FormatSpec) -> !FormatError {
-    if spec.HasStyle() { throw .UnsupportedRequest; }
-    return;
-}
+        // Safety: `index` is below `text.length`, checked first in the same condition.
+        if index < text.length && text.data[index] == c8'+' {
+            spec.showSign = true;
+            index = index + 1;
+        }
+        // Safety: `index` is below `text.length`, checked first in the same condition.
+        if index < text.length && text.data[index] == c8'#' {
+            spec.alternate = true;
+            index = index + 1;
+        }
+        // A leading zero is the zero-padding flag rather than the first digit of the width, which is why it is read
+        // before the number and why `{:0}` asks for padding to no width at all.
+        // Safety: `index` is below `text.length`, checked first in the same condition.
+        if index < text.length && text.data[index] == c8'0' {
+            spec.zeroPad = true;
+            index = index + 1;
+        }
 
-/// Refuses a specification whose style is not one of the integer bases.
-/// What an integer supports is exactly `b`, `o`, `x` and `X`, and each of those is already reflected in `Base`.
-/// So a style that left the base decimal is one this value has no meaning for, which is what this refuses. It is
-/// the integer counterpart of `RejectStyle` and exists for the same reason.
-/// Reports `UnsupportedRequest` for a style that names no base.
-/// @param spec the specification to check
-/// @returns success when no style was named, or the style named a base
-/// @see https://rux-lang.dev/docs/api/text/format-spec#reject-non-base-style
-pub func RejectNonBaseStyle(spec: FormatSpec) -> !FormatError {
-    if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
-        throw .UnsupportedRequest;
+        var width: uint = 0;
+        var after: uint = index;
+        if !ReadNumber(text, index, @width, @after) { return Malformed(after)!; }
+        spec.width = width;
+        index = after;
+
+        // Safety: `index` is below `text.length`, checked first in the same condition.
+        if index < text.length && text.data[index] == c8'.' {
+            index = index + 1;
+            // Safety: the read happens only when `index` is below `text.length`, checked first.
+            if index >= text.length || !IsDigit(text.data[index]) { return Malformed(index)!; }
+            var precision: uint = 0;
+            if !ReadNumber(text, index, @precision, @after) { return Malformed(after)!; }
+            spec.hasPrecision = true;
+            spec.precision = precision;
+            index = after;
+        }
+
+        if index < text.length {
+            // Safety: `index` is below `text.length`, checked above.
+            if !IsStyleStart(text.data[index]) { return Malformed(index)!; }
+            let start = index;
+            // Safety: `index` is below `text.length`, checked first in the same condition.
+            while index < text.length && IsStyleByte(text.data[index]) {
+                index = index + 1;
+            }
+            if index != text.length { return Malformed(index)!; }
+            // Safety: `start` is below `index`, which equals `text.length`, so the style lies inside `text`.
+            spec.style = (@text.data[start])[..index - start];
+            spec.base = BaseOfStyle(spec.style);
+        }
+
+        return spec;
     }
-    return;
+
+    // The base a style names, for the four single letters that carry one. Every other style leaves the base decimal,
+    // including a longer one that happens to begin with `x`.
+    func BaseOfStyle(style: char8[..]) -> FormatBase {
+        if style.length != 1 { return FormatBase::Decimal; }
+        // Safety: `style.length` is one, checked above.
+        let mark = style.data[0];
+        if mark == c8'b' { return FormatBase::Binary; }
+        if mark == c8'o' { return FormatBase::Octal; }
+        if mark == c8'x' { return FormatBase::LowerHex; }
+        if mark == c8'X' { return FormatBase::UpperHex; }
+        return FormatBase::Decimal;
+    }
+
+    /// Refuses a specification that names any style.
+    /// The parser recognizes a style wherever the grammar allows one; whether it *means* anything is the value's
+    /// question. A value with no styles of its own calls this so that `{:q}` is refused rather than silently rendered
+    /// as though nothing had been asked for.
+    /// Reports `UnsupportedRequest` when a style was written.
+    /// @param spec the specification to check
+    /// @returns success when no style was named
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#reject-style
+    pub func RejectStyle(spec: FormatSpec) -> !FormatError {
+        if spec.HasStyle() { throw .UnsupportedRequest; }
+        return;
+    }
+
+    /// Refuses a specification whose style is not one of the integer bases.
+    /// What an integer supports is exactly `b`, `o`, `x` and `X`, and each of those is already reflected in `Base`.
+    /// So a style that left the base decimal is one this value has no meaning for, which is what this refuses. It is
+    /// the integer counterpart of `RejectStyle` and exists for the same reason.
+    /// Reports `UnsupportedRequest` for a style that names no base.
+    /// @param spec the specification to check
+    /// @returns success when no style was named, or the style named a base
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#reject-non-base-style
+    pub func RejectNonBaseStyle(spec: FormatSpec) -> !FormatError {
+        if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
+            throw .UnsupportedRequest;
+        }
+        return;
+    }
 }

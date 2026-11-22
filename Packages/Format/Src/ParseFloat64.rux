@@ -12,7 +12,8 @@
 // spellings `NaN` and `Inf` exactly as formatting writes them, so what one side prints the other reads.
 
 import Allocator::{ AllocError, AllocationFailed };
-import Text::{ ParseFailure, StringView };
+import Text::StringView;
+import Text::Formatting::ParseFailure;
 import Format::Digits::FixedNat;
 
 pub module Parsing {

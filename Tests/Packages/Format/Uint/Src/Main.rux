@@ -1,5 +1,6 @@
 
-import Text::{ Display, FormatSpec, TextWriter };
+import Text::{ Display, TextWriter };
+import Text::Formatting::FormatSpec;
 import Text::StringView;
 
 import Format::Characters::ByteCursor;

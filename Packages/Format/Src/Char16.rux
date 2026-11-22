@@ -3,7 +3,9 @@
 // two of them, and one of them is all this sees. So it is written as the replacement character rather than as an
 // ill-formed sequence.
 
-import Text::{ Debug, Display, IsScalarValue, RejectStyle, TextError };
+import Text::{ Debug, Display, TextError };
+import Text::Formatting::RejectStyle;
+import Text::Utf8::IsScalarValue;
 import Format::Characters::WriteCharacterDebug;
 import Format::Digits::FormatScalar;
 

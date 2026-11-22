@@ -4,7 +4,8 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
-import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextWriter };
+import Text::{ BufferWriter, String, StringBuilder, StringView, TextWriter };
+import Text::Formatting::FormatError;
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView::New();

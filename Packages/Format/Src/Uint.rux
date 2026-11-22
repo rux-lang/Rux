@@ -2,7 +2,8 @@
 
 // `uint` is a type of its own rather than a name for `uint64`, as `int` is for `int64`.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec };
 import Format::Digits::WriteIntegerSpec;
 
 extend uint : Display {

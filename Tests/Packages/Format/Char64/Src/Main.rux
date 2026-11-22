@@ -1,7 +1,8 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Render;
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView };
+import Text::{ BufferWriter, Debug, Display, String, StringView };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 // A `char64` holds one Unicode scalar value in eight bytes, and renders exactly as a `char32` of the same scalar.
 // What is particular to the width is the room it has for numbers no character has. Raw storage can contain one, and

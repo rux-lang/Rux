@@ -5,7 +5,8 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError, JsonReadError, Parse };
-import Text::{ BufferWriter, FormatSpec, TextWriter };
+import Text::{ BufferWriter, TextWriter };
+import Text::Formatting::FormatSpec;
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {

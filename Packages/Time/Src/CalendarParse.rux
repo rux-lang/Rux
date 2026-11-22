@@ -10,7 +10,7 @@
 // the missing character would have gone. The four entry points share their machinery rather than reimplementing it, so
 // `ParseRfc3339` cannot disagree with `ParseDate` about what a date is.
 
-import Text::ParseFailure;
+import Text::Formatting::ParseFailure;
 
 /// Why text could not be read as a calendar value.
 /// Failure-only: every case is a failure, and each carries the zero-based UTF-8 byte offset into the text where it

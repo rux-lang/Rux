@@ -8,7 +8,7 @@
 // has been used as scratch space, so a refusal leaves it zeroed rather than untouched. Every other refusal is
 // found before anything is written. Base58 is not constant time and should not carry a secret whose timing matters.
 
-import Text::FormatError;
+import Text::Formatting::FormatError;
 
 // The Bitcoin alphabet, in digit order.
 const Base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

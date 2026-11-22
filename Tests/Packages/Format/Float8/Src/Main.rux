@@ -1,6 +1,7 @@
 
 
-import Text::{ Debug, Display, FormatSpec, TextWriter };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::FormatSpec;
 import Format::{ IsFinite, IsInfinite, IsNan, WriteFormat };
 import Format::Characters::ByteCursor;
 import Format::Digits::BitsOfFloat8;

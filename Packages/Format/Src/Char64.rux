@@ -5,7 +5,8 @@
 // character is harder to notice than a refused one. So validity is decided at the full sixty-four bits, before
 // anything is narrowed.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle };
 import Format::Characters::{ IsWideScalarValue, WriteCharacterDebug };
 import Format::Digits::FormatScalar;
 

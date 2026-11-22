@@ -21,8 +21,8 @@
 // and no way to learn it. Every writer here checks the room it needs before it writes a byte, so a refusal leaves
 // the destination exactly as it was and a success is always the complete form.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes,
-               WriteDisplayAligned };
+import Text::{ Debug, Display, StringView, TextWriter, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFailure, WriteDisplayAligned };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 /// @see https://rux-lang.dev/docs/api/uuid/text#uuid-text-length

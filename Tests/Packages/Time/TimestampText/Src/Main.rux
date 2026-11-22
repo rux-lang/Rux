@@ -1,5 +1,6 @@
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec };
+import Text::{ BufferWriter, Debug, Display };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 import Time::{ ParseRfc3339, Timestamp };
 
 // The wall clock as text, where the whole question is which of its two readings a bare placeholder produces.

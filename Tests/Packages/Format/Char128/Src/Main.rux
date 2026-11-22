@@ -1,7 +1,8 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Render;
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView };
+import Text::{ BufferWriter, Debug, Display, String, StringView };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 // A `char128` holds one Unicode scalar value in sixteen bytes, and renders exactly as a `char64` of the same value.
 // The width adds a second machine word that no character ever uses. A value with a bit set there is no character,

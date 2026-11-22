@@ -14,7 +14,7 @@
 // of the rounding can run the whole length of the digits — 9.99 at one decimal is 10.0, not 9.10 — so it is
 // propagated rather than applied to the last digit alone.
 
-import Text::{ FormatError, WriteAligned };
+import Text::Formatting::{ FormatError, WriteAligned };
 import Format::Characters::ByteCursor;
 
 pub module Digits {

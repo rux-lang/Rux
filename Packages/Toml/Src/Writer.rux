@@ -24,7 +24,8 @@ import Core::Primitives::*;
 import Format::Characters::ByteCursor;
 import Format::Digits::WriteDecimal;
 import Format::Parsing::ParseFloat64;
-import Text::{ FormatError, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::FormatError;
 
 /// How long a table's header path may be, in bytes.
 /// A header is written as text, so the path is assembled into a fixed buffer rather than a list of names, and this

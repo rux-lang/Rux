@@ -2,7 +2,8 @@ import Allocator::SystemAllocator;
 import Core::Compilation::#target;
 import Core::Diagnostics::{ Assert, Panic };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
-import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ BufferWriter, Debug, Display, TextWriter };
+import Text::Formatting::{ FormatSpec, ParseFormatSpec };
 
 // Two renderings of one name, and the reason there have to be two.
 // A native name is not obliged to be text. `Display` shows it to a reader anyway, replacing every unit that is not

@@ -4,7 +4,8 @@
 import CommandLine::CommandLineError;
 import Core::Compilation::#target;
 import Path::{ OsStringView, OsUnit };
-import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
+import Text::{ BufferWriter, Display, TextWriter };
+import Text::Formatting::FormatSpec;
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
     if actual.length != expected.length { return false; }

@@ -1,8 +1,9 @@
 import Allocator::AllocError;
 import Core::Diagnostics::{ Assert, Panic };
 import Memory::Pages::PageError;
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextError, TextFailureKind,
-               TextWriter, Utf8Error };
+import Text::{ BufferWriter, Debug, Display, TextError, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec, TextFailureKind };
+import Text::Utf8::Utf8Error;
 
 // What a program says when something goes wrong, in the two registers it has to say it in.
 // `Display` is the description a reader sees, short enough to sit inside a sentence the program is already writing.

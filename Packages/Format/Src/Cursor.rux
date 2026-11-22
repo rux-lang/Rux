@@ -9,7 +9,8 @@
 
 
 
-import Text::{ FormatError, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::FormatError;
 
 pub module Characters {
     /// A fixed buffer being filled from the front.

@@ -5,7 +5,8 @@
 // A character is exactly one scalar value's encoding, whole: an empty string is not a character, and neither are
 // two of them.
 
-import Text::{ DecodeAt, StringView };
+import Text::StringView;
+import Text::Utf8::DecodeAt;
 
 pub module Parsing {
     /// Parses `true` or `false`, exactly.

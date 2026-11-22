@@ -9,93 +9,94 @@
 // too small. A writer failure is the destination itself failing, and its details stay in the adapter that knows
 // them: this package has no vocabulary for a broken pipe and does not pretend to.
 
-
-/// The ways text handling fails, with no case for success.
-/// The same failures as `TextError`, carried by a `FormatError::TextFailure`. Running out of memory is not one of
-/// them: a builder that cannot grow terminates the program.
-/// Copy, carrying no payload and owning nothing.
-/// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-kind
-pub variant TextFailureKind {
-    /// The bytes offered were not well-formed UTF-8.
-    InvalidUtf8,
-    /// A byte offset that is not where a character starts, and so not a place text may be cut.
-    NotABoundary
-}
-
-/// Why a formatting operation did not produce the text it was asked for.
-/// Failure-only: every case is a failure, and success is what an operation that `throws FormatError` returns
-/// rather than a case here. Which case arises says who must fix it, so the
-/// categories are not interchangeable and a writer may not invent the ones that belong to the parser or the value.
-/// Copy, and cheap to return: the widest payload is a pair of counts.
-/// @see https://rux-lang.dev/docs/api/text/format-error
-pub variant FormatError {
-    /// The pattern or specification was malformed, at the zero-based UTF-8 byte offset carried here. The offset is
-    /// into the text that was being parsed, and end-of-input is that text's length.
-    InvalidSpecification(uint),
-    /// The style or flag asked for is not one this value supports. A precision on a boolean, or a base on a string,
-    /// arrives here rather than being ignored.
-    UnsupportedRequest,
-    /// A pattern's placeholders and the arguments supplied did not agree: expected first, supplied second.
-    ArgumentCountMismatch(uint, uint),
-    /// The destination is bounded and cannot accept the whole write. Nothing partial is left behind by a writer
-    /// that promises otherwise; see the writer's own contract.
-    InsufficientCapacity,
-    /// The value is valid but cannot be represented in the form requested, such as a timestamp outside the
-    /// calendar range a format covers.
-    ValueOutOfRange,
-    /// Text handling failed, for the reason carried. This is where rejected UTF-8 arrives.
-    TextFailure(TextFailureKind),
-    /// The destination failed on its own terms. Its details stay with the adapter that produced it, which is the
-    /// only thing that knows what a failure of that destination means.
-    WriterFailure
-}
-
-extend FormatError {
-    /// Whether this failure came from the destination rather than from the text or the request.
-    /// Useful at a boundary that must tell an unusable destination apart from a request that was wrong: the first is
-    /// worth retrying elsewhere and the second never is.
-    /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns true for `WriterFailure`, false for every other case
-    /// @see https://rux-lang.dev/docs/api/text/format-error#is-writer-failure
-    pub func IsWriterFailure(&self) -> bool {
-        return match self {
-            .WriterFailure => true,
-            _ => false
-        };
+pub module Formatting {
+    /// The ways text handling fails, with no case for success.
+    /// The same failures as `TextError`, carried by a `FormatError::TextFailure`. Running out of memory is not one of
+    /// them: a builder that cannot grow terminates the program.
+    /// Copy, carrying no payload and owning nothing.
+    /// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-kind
+    pub variant TextFailureKind {
+        /// The bytes offered were not well-formed UTF-8.
+        InvalidUtf8,
+        /// A byte offset that is not where a character starts, and so not a place text may be cut.
+        NotABoundary
     }
-}
 
-/// The failure-only kind corresponding to `error`.
-/// @param error the text status to narrow, which must be a failure
-/// @returns the matching failure kind
-/// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-of
-pub func TextFailureOf(error: TextError) -> TextFailureKind {
-    if error == TextError::NotABoundary { return TextFailureKind::NotABoundary; }
-    return TextFailureKind::InvalidUtf8;
-}
+    /// Why a formatting operation did not produce the text it was asked for.
+    /// Failure-only: every case is a failure, and success is what an operation that `throws FormatError` returns
+    /// rather than a case here. Which case arises says who must fix it, so the
+    /// categories are not interchangeable and a writer may not invent the ones that belong to the parser or the value.
+    /// Copy, and cheap to return: the widest payload is a pair of counts.
+    /// @see https://rux-lang.dev/docs/api/text/format-error
+    pub variant FormatError {
+        /// The pattern or specification was malformed, at the zero-based UTF-8 byte offset carried here. The offset is
+        /// into the text that was being parsed, and end-of-input is that text's length.
+        InvalidSpecification(uint),
+        /// The style or flag asked for is not one this value supports. A precision on a boolean, or a base on a string,
+        /// arrives here rather than being ignored.
+        UnsupportedRequest,
+        /// A pattern's placeholders and the arguments supplied did not agree: expected first, supplied second.
+        ArgumentCountMismatch(uint, uint),
+        /// The destination is bounded and cannot accept the whole write. Nothing partial is left behind by a writer
+        /// that promises otherwise; see the writer's own contract.
+        InsufficientCapacity,
+        /// The value is valid but cannot be represented in the form requested, such as a timestamp outside the
+        /// calendar range a format covers.
+        ValueOutOfRange,
+        /// Text handling failed, for the reason carried. This is where rejected UTF-8 arrives.
+        TextFailure(TextFailureKind),
+        /// The destination failed on its own terms. Its details stay with the adapter that produced it, which is the
+        /// only thing that knows what a failure of that destination means.
+        WriterFailure
+    }
 
-/// `error` translated across the boundary between this package's status convention and the formatting protocol.
-/// This is the only sanctioned crossing: every text failure becomes a `TextFailure` carrying the reason. It is the
-/// mapper a formatting operation hands a text operation's failure to, as in `builder.Append(view) catch {
-/// e => throw FromTextError(e) }`.
-/// @param error why the storage or validation operation failed
-/// @returns the matching formatting failure
-/// @see https://rux-lang.dev/docs/api/text/format-error#from-text-error
-pub func FromTextError(error: TextError) -> FormatError {
-    return FormatError::TextFailure(TextFailureOf(error));
-}
+    extend FormatError {
+        /// Whether this failure came from the destination rather than from the text or the request.
+        /// Useful at a boundary that must tell an unusable destination apart from a request that was wrong: the first
+        /// is worth retrying elsewhere and the second never is. Borrows the error and leaves it untouched. Cannot fail;
+        /// runs in constant time and allocates nothing.
+        /// @returns true for `WriterFailure`, false for every other case
+        /// @see https://rux-lang.dev/docs/api/text/format-error#is-writer-failure
+        pub func IsWriterFailure(&self) -> bool {
+            return match self {
+                .WriterFailure => true,
+                _ => false
+            };
+        }
+    }
 
-/// A parsing failure that can say where it happened.
-/// Every domain owns its own parse error, because what went wrong in a UUID and what went wrong in a timestamp are
-/// different questions with different answers, and flattening them into one type would lose the distinctions a
-/// caller acts on. What they share is the position, and that is what this names.
-/// The offset is a zero-based UTF-8 byte offset into the text that was handed to the parser. End of input is the
-/// text's length, which is a position and not a failure to have one. A parser embedded in a larger grammar adds the
-/// offset of the token it was given, so positions compose.
-/// @see https://rux-lang.dev/docs/api/text/parse-failure
-pub interface ParseFailure {
-    /// Where in the input the failure was found.
-    /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
-    /// @see https://rux-lang.dev/docs/api/text/parse-failure#offset
-    func Offset() -> uint;
+    /// The failure-only kind corresponding to `error`.
+    /// @param error the text status to narrow, which must be a failure
+    /// @returns the matching failure kind
+    /// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-of
+    pub func TextFailureOf(error: TextError) -> TextFailureKind {
+        if error == TextError::NotABoundary { return TextFailureKind::NotABoundary; }
+        return TextFailureKind::InvalidUtf8;
+    }
+
+    /// `error` translated across the boundary between this package's status convention and the formatting protocol.
+    /// This is the only sanctioned crossing: every text failure becomes a `TextFailure` carrying the reason. It is the
+    /// mapper a formatting operation hands a text operation's failure to, as in `builder.Append(view) catch {
+    /// e => throw FromTextError(e) }`.
+    /// @param error why the storage or validation operation failed
+    /// @returns the matching formatting failure
+    /// @see https://rux-lang.dev/docs/api/text/format-error#from-text-error
+    pub func FromTextError(error: TextError) -> FormatError {
+        return FormatError::TextFailure(TextFailureOf(error));
+    }
+
+    /// A parsing failure that can say where it happened.
+    /// Every domain owns its own parse error, because what went wrong in a UUID and what went wrong in a timestamp are
+    /// different questions with different answers, and flattening them into one type would lose the distinctions a
+    /// caller acts on. What they share is the position, and that is what this names.
+    /// The offset is a zero-based UTF-8 byte offset into the text that was handed to the parser. End of input is the
+    /// text's length, which is a position and not a failure to have one. A parser embedded in a larger grammar adds the
+    /// offset of the token it was given, so positions compose.
+    /// @see https://rux-lang.dev/docs/api/text/parse-failure
+    pub interface ParseFailure {
+        /// Where in the input the failure was found.
+        /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
+        /// @see https://rux-lang.dev/docs/api/text/parse-failure#offset
+        func Offset() -> uint;
+    }
 }

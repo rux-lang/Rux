@@ -1,7 +1,8 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Render;
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView };
+import Text::{ BufferWriter, Debug, Display, String, StringView };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 // A `char256` holds one Unicode scalar value in thirty-two bytes, and renders exactly as a `char64` of the same
 // value. Three of its four machine words are never used by a character. A value with a bit set in any of them is

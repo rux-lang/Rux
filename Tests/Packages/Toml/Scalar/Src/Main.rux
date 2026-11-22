@@ -11,7 +11,8 @@
 // mapping from stripped text back to written text were dropped.
 
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, FormatSpec, TextWriter };
+import Text::{ BufferWriter, TextWriter };
+import Text::Formatting::FormatSpec;
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger, TomlScalarError };
 

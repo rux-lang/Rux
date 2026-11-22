@@ -19,62 +19,61 @@
 // Sequential containers are in `Rux/Collections`, which borrows a run of elements out of a vector, an array or a
 // deque and calls `WriteSliceDebug` with it. Nothing here knows those types exist.
 
-
-
-
-/// Writes a borrowed optional as `Some(value)` or `none`.
-/// The optional is borrowed and its payload with it, so this can be called on an optional holding a value that
-/// cannot be copied, as many times as wanted, and the optional still holds it afterwards.
-/// `spec` is handed to the payload's own `WriteDebug` and describes it rather than the wrapper.
-/// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal, so a
-/// destination that has already refused something is not written to again.
-/// @typeParam T the payload type, which must know how to show itself
-/// @param writer the destination
-/// @param value the optional to show, borrowed for the call
-/// @param spec what to show the payload under
-/// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/debug#write-optional-debug
-pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
-                                    spec: FormatSpec) -> !FormatError {
-    match value {
-        payload? => {
-            WriteBytes(writer, "Some(")!;
-            payload.WriteDebug(writer, spec)!;
-            return WriteAscii(writer, c8')')!;
-        },
-        none => {
-            return WriteBytes(writer, "none")!;
+pub module Formatting {
+    /// Writes a borrowed optional as `Some(value)` or `none`.
+    /// The optional is borrowed and its payload with it, so this can be called on an optional holding a value that
+    /// cannot be copied, as many times as wanted, and the optional still holds it afterwards.
+    /// `spec` is handed to the payload's own `WriteDebug` and describes it rather than the wrapper.
+    /// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal, so a
+    /// destination that has already refused something is not written to again.
+    /// @typeParam T the payload type, which must know how to show itself
+    /// @param writer the destination
+    /// @param value the optional to show, borrowed for the call
+    /// @param spec what to show the payload under
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/text/debug#write-optional-debug
+    pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
+                                        spec: FormatSpec) -> !FormatError {
+        match value {
+            payload? => {
+                WriteBytes(writer, "Some(")!;
+                payload.WriteDebug(writer, spec)!;
+                return WriteAscii(writer, c8')')!;
+            },
+            none => {
+                return WriteBytes(writer, "none")!;
+            }
         }
     }
-}
 
-/// Writes a borrowed run of elements as `[first, second, third]`.
-/// An empty run is `[]`, which is visible where writing nothing would not be. Elements are separated by a comma and
-/// a space, and every element is shown, since a diagnostic that elided part of what it was given would be worse
-/// than a long one.
-/// The run is borrowed and each element is shown through a borrow of it, so a slice of a move-only element type is
-/// shown without disturbing a single one of them.
-/// `spec` is handed to each element unchanged and means whatever that element type makes of it. The brackets and
-/// commas are punctuation and are never padded.
-/// Reports whatever the writer or an element's implementation reported, stopping at the first refusal rather than
-/// continuing through the rest of the run.
-/// @typeParam T the element type, which must know how to show itself
-/// @param writer the destination
-/// @param items the run of elements to show, borrowed for the call
-/// @param spec what to show each element under
-/// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/debug#write-slice-debug
-pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
-                                   spec: FormatSpec) -> !FormatError {
-    WriteAscii(writer, c8'[')!;
-    var index: uint = 0;
-    while index < items.length {
-        if index != 0 {
-            WriteBytes(writer, ", ")!;
+    /// Writes a borrowed run of elements as `[first, second, third]`.
+    /// An empty run is `[]`, which is visible where writing nothing would not be. Elements are separated by a comma and
+    /// a space, and every element is shown, since a diagnostic that elided part of what it was given would be worse
+    /// than a long one.
+    /// The run is borrowed and each element is shown through a borrow of it, so a slice of a move-only element type is
+    /// shown without disturbing a single one of them.
+    /// `spec` is handed to each element unchanged and means whatever that element type makes of it. The brackets and
+    /// commas are punctuation and are never padded.
+    /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal rather than
+    /// continuing through the rest of the run.
+    /// @typeParam T the element type, which must know how to show itself
+    /// @param writer the destination
+    /// @param items the run of elements to show, borrowed for the call
+    /// @param spec what to show each element under
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/text/debug#write-slice-debug
+    pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
+                                       spec: FormatSpec) -> !FormatError {
+        WriteAscii(writer, c8'[')!;
+        var index: uint = 0;
+        while index < items.length {
+            if index != 0 {
+                WriteBytes(writer, ", ")!;
+            }
+            // Safety: `index` is below `items.length`, the loop condition.
+            items.data[index].WriteDebug(writer, spec)!;
+            index = index + 1;
         }
-        // Safety: `index` is below `items.length`, the loop condition.
-        items.data[index].WriteDebug(writer, spec)!;
-        index = index + 1;
+        return WriteAscii(writer, c8']')!;
     }
-    return WriteAscii(writer, c8']')!;
 }

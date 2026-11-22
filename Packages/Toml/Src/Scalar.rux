@@ -15,13 +15,14 @@
 
 import Format::Parsing::{ ParseError, ParseFloat64, ParseInt64 };
 import Math::Classification::{ PositiveInfinity64, QuietNan64 };
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, Display, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFailure, RejectStyle };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
 /// Why a scalar could not be read, and where in it.
 /// Failure-only: there is no case meaning nothing went wrong, because a scalar that read hands back its value
 /// instead. Every offset is a zero-based byte offset into the scalar's own text, as the caller wrote it —
-/// underscores included — and reachable through `Text::ParseFailure`.
+/// underscores included — and reachable through `Text::Formatting::ParseFailure`.
 /// @see https://rux-lang.dev/docs/api/toml/toml-scalar-error
 pub variant TomlScalarError {
     /// The text does not have the shape TOML defines, at the byte carried. That is the first character that

@@ -1,7 +1,8 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Render;
-import Text::{ FormatError, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::FormatError;
 
 // `{:e}` and `{:E}` write one digit before the point, the rest after it, the mark, and the exponent with its sign
 // and at least two digits. Without a precision the digits are the shortest that read back as the same value, as

@@ -16,8 +16,9 @@
 // a string on the way, which is what keeps the allocation count at what the result itself needs.
 
 import Allocator::Allocator;
-import Text::{ DecodeAt, Display, FormatError, FormatSpec, FromTextError, ParseFormatSpec, String, StringBuilder,
-               TextFailureKind, TextWriter, Utf8Error, WriteAscii, WriteBytes };
+import Text::{ Display, String, StringBuilder, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, FromTextError, ParseFormatSpec, TextFailureKind };
+import Text::Utf8::{ DecodeAt, Utf8Error };
 
 // Where a placeholder's specification begins and ends inside the pattern, and where the placeholder itself does.
 // `body` is the half-open range of the specification's bytes, empty for a bare `{}`. `after` is the byte just past

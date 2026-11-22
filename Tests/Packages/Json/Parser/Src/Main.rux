@@ -14,7 +14,8 @@ import Json::{
     DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonMember, JsonNumber, JsonParseError, JsonParser,
     JsonValue, Parse, ParseWith
 };
-import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
+import Text::{ BufferWriter, StringView, TextError, TextWriter };
+import Text::Formatting::FormatSpec;
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView::New();

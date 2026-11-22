@@ -12,6 +12,9 @@
 // an unsupported request, an argument-count mismatch and a value out of range all belong to the parser, the value
 // or the placeholder engine, so a writer that invented one would be reporting a fault it cannot have observed.
 
+import Text::Formatting::{ FormatError, TextFailureKind };
+import Text::Utf8::{ Encode, Validate };
+
 
 /// Somewhere formatted text can be written.
 /// Writing advances the writer, so `Write` borrows its receiver mutably and is called through a `&var TextWriter`

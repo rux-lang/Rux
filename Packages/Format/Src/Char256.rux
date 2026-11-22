@@ -4,7 +4,8 @@
 // at all. The check runs at the full 256 bits, before anything is narrowed: dropping the high words first would
 // turn a value whose low bits spell `A` into that `A`.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle };
 import Format::Characters::{ IsScalarValue512, WriteWideCharacterDebug };
 import Format::Digits::FormatScalar;
 

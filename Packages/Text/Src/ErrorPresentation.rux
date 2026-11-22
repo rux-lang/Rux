@@ -20,6 +20,8 @@ import Memory::Pages::PageError;
 
 // Whether the specification is one an error description can answer. Neither a style nor a precision is: a
 // description has one form, and truncating it produces a sentence that says something else.
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, TextFailureKind };
+import Text::Utf8::Utf8Error;
 func AcceptsErrorSpec(spec: FormatSpec) -> !FormatError {
     RejectStyle(spec)!;
     if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }

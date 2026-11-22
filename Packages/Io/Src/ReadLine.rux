@@ -6,7 +6,8 @@
 // `ReadLineFrom` is the same reading over any `Reader`, which is also what lets the contract be tested without a
 // console.
 
-import Text::{ DecodeAt, StringBuilder, Utf8Error };
+import Text::StringBuilder;
+import Text::Utf8::{ DecodeAt, Utf8Error };
 
 /// Appends the next line of standard input to `builder`, without its ending.
 /// `EndOfStream` is reported only when the input ends with nothing before it; a stream failure is returned as

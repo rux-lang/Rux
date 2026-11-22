@@ -1,5 +1,5 @@
 import Core::Diagnostics::Assert;
-import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf8Error, Validate };
+import Text::Utf8::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf8Error, Validate };
 
 // UTF-8 is easy to decode wrongly in three specific ways, and every one of them has been a hole in something real:
 // an overlong form spells a character a second way, a surrogate half is not a character at all, and four bytes can

@@ -5,7 +5,8 @@
 // styles ask for scientific notation.
 
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, WriteAligned };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
 import Format::Characters::ByteCursor;

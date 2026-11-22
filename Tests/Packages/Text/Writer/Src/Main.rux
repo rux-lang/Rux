@@ -1,7 +1,7 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::Assert;
-import Text::{ BufferWriter, FormatError, String, StringBuilder, TextFailureKind, TextWriter, WriteAscii, WriteBytes,
-               WriteScalar };
+import Text::{ BufferWriter, String, StringBuilder, TextWriter, WriteAscii, WriteBytes, WriteScalar };
+import Text::Formatting::{ FormatError, TextFailureKind };
 
 // What a `TextWriter` promises, checked at the promises rather than at one happy path.
 // Three of them matter and none is observable from a successful write. A full write reports success and nothing

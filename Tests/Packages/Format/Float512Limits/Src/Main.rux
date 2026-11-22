@@ -1,4 +1,5 @@
-import Text::{ FormatSpec, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::FormatSpec;
 import Allocator::SystemAllocator;
 import Core::Diagnostics::Assert;
 import Format::Characters::ByteCursor;

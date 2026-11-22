@@ -4,7 +4,8 @@
 // be worse than saying so.
 
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, FormatSpec, TextWriter };
+import Text::{ BufferWriter, TextWriter };
+import Text::Formatting::FormatSpec;
 import Toml::{ TomlEvent, TomlEventReader };
 
 // Whether the next event arrives and is `expected`.

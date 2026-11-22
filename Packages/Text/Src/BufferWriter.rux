@@ -10,6 +10,9 @@
 // Neither promise costs a copy. Validation reads the run in place, and the fit is decided by comparing two lengths;
 // bytes move once, after both have passed.
 
+import Text::Formatting::{ FormatError, TextFailureKind };
+import Text::Utf8::Validate;
+
 
 /// A fixed buffer being filled with text from the front.
 /// Holds well-formed UTF-8 at every moment. A write either appends its whole run or changes nothing, so what has

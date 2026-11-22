@@ -1,5 +1,6 @@
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec };
+import Text::{ BufferWriter, Debug };
+import Text::Formatting::{ FormatSpec, ParseFormatSpec };
 import Time::{ Duration, Instant, SleepFor, TimeError };
 
 // A monotonic clock's whole contract is an inequality: a later reading is never earlier. So the test is bounds,

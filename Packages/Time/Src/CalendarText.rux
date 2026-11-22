@@ -10,8 +10,8 @@
 // anyway without Time depending on it. Every field here has a known width, so the loops are fixed and nothing
 // allocates: a year is four digits or as many as it needs, everything else is exactly two.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes,
-               WriteDisplayAligned };
+import Text::{ Debug, Display, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteDisplayAligned };
 
 /// A date and time together with the offset from UTC they are stated in.
 /// `DateTime` deliberately carries no offset, since what offset a bare date and time is in is usually the caller's

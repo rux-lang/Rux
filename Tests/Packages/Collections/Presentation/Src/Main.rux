@@ -3,7 +3,8 @@ import Collections::{ Array, Deque, Vector };
 import Collections::Presentation::{ WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
 import Core::Diagnostics::{ Assert, Panic };
 import Format::WriteFormat;
-import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
+import Text::{ BufferWriter, Debug, TextWriter, WriteAscii, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 // What a sequential container looks like when a program has to say what is in it.
 // The containers cannot implement `Debug` themselves — what a `Vector<T>` looks like is a question about `T`, and an

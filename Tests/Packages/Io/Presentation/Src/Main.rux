@@ -2,7 +2,8 @@ import Core::Diagnostics::Assert;
 import Format::WriteFormat;
 import Io::{ IoError, IoErrorKind, Writer };
 import Io::TextBoundary::{ ConsoleWriter, FromIoError, StreamWriter, ToIoError, WriteFormatLine, WriteValueLine };
-import Text::{ BufferWriter, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteBytes };
+import Text::{ BufferWriter, Display, TextWriter, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, TextFailureKind };
 
 // The one place a stream and the text protocols have to agree, checked from both sides.
 // Neither error type can hold the other's failures, and pretending otherwise is how information gets lost. Going

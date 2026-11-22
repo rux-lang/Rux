@@ -4,7 +4,8 @@
 // arithmetic runs at run time, each operation behind a function so it is not folded away. Both are checked against
 // the reference vectors where the vectors have them, and otherwise against the bits the layout says they are.
 
-import Text::{ FormatSpec, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::FormatSpec;
 import Allocator::SystemAllocator;
 import Core::Compilation::#config;
 import Core::Diagnostics::{ Assert, Panic };

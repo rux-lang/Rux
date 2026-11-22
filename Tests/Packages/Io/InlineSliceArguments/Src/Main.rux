@@ -1,7 +1,8 @@
 import Core::Diagnostics::Assert;
 import Format::WriteFormat;
 import Io::{ IoError, PrintLine };
-import Text::{ BufferWriter, FormatSpec, WriteValue };
+import Text::{ BufferWriter, WriteValue };
+import Text::Formatting::FormatSpec;
 
 func Same(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }

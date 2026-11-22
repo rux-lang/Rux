@@ -1,6 +1,7 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter };
+import Text::{ BufferWriter, Debug, Display, String, StringView, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 // How text presents itself, checked through the protocols rather than through a format call, so a failure here is
 // about the value and not about the placeholder engine above it.

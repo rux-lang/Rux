@@ -8,7 +8,8 @@
 // bits and nothing else. The primitives get no `Display` of their own: the text allocates, and `FormatWith` on the
 // value is where a caller says from where.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
+import Text::{ Debug, Display, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, TextFailureKind, WriteAligned };
 
 pub module Digits {
     /// The shape of one binary interchange format: where its fields are and what they mean.

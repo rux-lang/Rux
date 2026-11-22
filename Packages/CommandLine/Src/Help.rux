@@ -3,7 +3,8 @@
 // two columns with the descriptions aligned. `--help` and `--version` are listed with the options a command declares,
 // unless it declares its own of the same name.
 
-import Text::{ FormatError, TextWriter, WriteAscii, WriteBytes, WriteScalar };
+import Text::{ TextWriter, WriteAscii, WriteBytes, WriteScalar };
+import Text::Formatting::FormatError;
 
 // Writes `count` spaces.
 func WriteSpaces(writer: &var TextWriter, count: uint) -> !FormatError {

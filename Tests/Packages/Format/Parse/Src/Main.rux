@@ -2,7 +2,7 @@ import Core::Diagnostics::Assert;
 import Format::{ IsInfinite, IsNan };
 import Format::Parsing::{ ParseBool, ParseChar, ParseError, ParseFloat32, ParseFloat64, ParseInt128, ParseInt64,
                           ParseInt8, ParseUint128, ParseUint512, ParseUint64, ParseUint8 };
-import Text::ParseFailure;
+import Text::Formatting::ParseFailure;
 
 // One grammar serves every width — sign, optional base prefix, digits — and the width's own bound is checked
 // last, so what is tested per width is the bound: the largest value in, one past it refused, and for the signed

@@ -6,7 +6,8 @@
 
 import Core::Compilation::#target;
 import Path::{ OsStringView, OsUnit };
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes, WriteScalar };
+import Text::{ Debug, Display, TextWriter, WriteBytes, WriteScalar };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle };
 
 /// Why the arguments did not match the command.
 /// Failure-only: a parse that succeeds returns `Parsed`, and this is what it throws. Copy; every view and name it

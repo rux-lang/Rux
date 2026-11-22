@@ -1,8 +1,8 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::Render;
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView,
-               TextWriter, WriteBytes };
+import Text::{ BufferWriter, Debug, Display, String, StringView, TextWriter, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFormatSpec };
 
 // A `char512` holds one Unicode scalar value in sixty-four bytes, and renders exactly as a `char64` of the same
 // value. Seven of its eight machine words are never used by a character. A value with a bit set in any of them is

@@ -5,7 +5,8 @@
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
-import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
+import Text::{ BufferWriter, Display, String, StringView, TextError, TextWriter, WriteAscii };
+import Text::Formatting::FormatSpec;
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 
 func View(bytes: char8[..]) -> StringView {

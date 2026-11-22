@@ -15,7 +15,8 @@
 // number is `ValueOutOfRange`, which is what that case is for: the value is perfectly good and the requested form
 // cannot hold it.
 
-import Text::{ FormatError, TextWriter };
+import Text::TextWriter;
+import Text::Formatting::FormatError;
 
 /// How deep a document may nest before the writer refuses.
 /// The writer descends recursively, so this bounds its own stack rather than the document's shape. It is far past

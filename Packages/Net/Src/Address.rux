@@ -6,7 +6,8 @@
 
 import Allocator::Allocator;
 import Core::Primitives::*;
-import Text::{ Display, FormatError, FormatSpec, RejectStyle, String, TextError, TextWriter, WriteAligned };
+import Text::{ Display, String, TextError, TextWriter };
+import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteAligned };
 
 /// An IPv4 address. `Copy`.
 /// @see https://rux-lang.dev/docs/api/net/address#ipv4-address

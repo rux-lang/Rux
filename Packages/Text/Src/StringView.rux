@@ -11,6 +11,7 @@
 
 import Core::Compare::Ordering;
 import Core::Iteration::Iterator;
+import Text::Utf8::{ CountScalars, DecodeAt, IsBoundary, Validate };
 
 /// A borrowed run of bytes that has been checked to be UTF-8.
 /// Copy, owning nothing. The bytes it names must outlive it.

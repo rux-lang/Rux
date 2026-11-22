@@ -7,8 +7,8 @@
 
 import Core::Compare::Ordering;
 import Entropy::EntropyError;
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter,
-               WriteBytes, WriteDisplayAligned };
+import Text::{ Debug, Display, TextWriter, WriteBytes };
+import Text::Formatting::{ FormatError, FormatSpec, ParseFailure, RejectStyle, WriteDisplayAligned };
 
 /// A Nano ID of the standard form: twenty-one characters from `NanoIdAlphabet`.
 /// Copy, holding its text inline and owning nothing. Equality and ordering compare the text byte by byte.

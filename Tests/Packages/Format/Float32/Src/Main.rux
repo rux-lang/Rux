@@ -1,6 +1,7 @@
 
 
-import Text::{ Display, FormatSpec, TextWriter };
+import Text::{ Display, TextWriter };
+import Text::Formatting::FormatSpec;
 import Format::{ IsFinite, IsInfinite, IsNan };
 import Format::Characters::ByteCursor;
 

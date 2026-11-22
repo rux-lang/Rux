@@ -1,6 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Render;
-import Text::{ FormatError, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::FormatError;
 
 // The wide widths, checked at their edges: the largest value of each unsigned width, the most negative of each
 // signed one — the value with no positive counterpart, which is exactly where a negation-based magnitude goes

@@ -3,7 +3,8 @@ import Core::Diagnostics::Assert;
 import Format::Render;
 import Format::Digits::{ BitsOfFloat32, BitsOfFloat64 };
 import Format::Parsing::{ ParseFloat32, ParseFloat64 };
-import Text::{ FormatError, String, StringView };
+import Text::{ String, StringView };
+import Text::Formatting::FormatError;
 
 // The claim this file exists to check is one sentence: what is written reads back as the same bits, and nothing
 // shorter would.

@@ -12,6 +12,7 @@
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Memory::Block::Copy;
+import Text::Utf8::Validate;
 
 /// Text carrying the terminator C expects, in storage of its own.
 /// Move-only: it explicitly prohibits copying, owns its block, and gives it back when it dies. The terminator is
