@@ -574,6 +574,36 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Giving away a payload of a lent subject** — `match &slot { .Full(token) => Keep(token), ... }` (or on a `slot: &Slot` parameter) was accepted and destroyed the payload twice; a case, tuple or structure binding over a lent subject is now refused with `'token' names a part of a lent subject and cannot be given away`, as presence and typed bindings already were.
+- **`if var` over a named local** — `if var n? = count` and `if var .A(n) = v` on a named plain-data local made `n` immutable; `if var` now binds a copy the body may write, and the local keeps its value.
+- **Unused owning results** — an expression statement such as `MakeKey(9);`, `Guest { ... };` or `moving.HandOverKey();` never destroyed its value; it is now destroyed where the statement ends.
+- **A binding arm read only the tag** — a plain binding arm over a variant, optional, sum or fallible held garbage beyond the tag, so `match kept { whole => whole is Oops }` could be false for a failure; it now binds the whole value.
+- **`for` over an owning `Vector`** — `for t in vec` destroyed every element twice, and an iterator the loop made or received as a temporary was never destroyed (leaking the vector's storage); each element and the iterator are now destroyed exactly once.
+- **`for` over a lent array** — `for x in &values` over a fixed array ran no iteration at all, and over move-only elements was refused; it now visits every element, lending a move-only one as `&T` (`&var T` under `&var`).
+- **An empty `for` loop destroying garbage** — a loop over an iterator whose first `Next` reports the end, such as one over an empty vector, read its variable's drop flag before anything set it and could run a destructor on whatever its slot held; the variable now starts as holding nothing.
+- **`&var` and `@` need a place** — `&var 5`, `&var Make()`, `@(score + 1)` and `@10` compiled, writing to a temporary or addressing a value destroyed at the end of its statement; they are now errors at the operator.
+- **`x !!;` is a statement** — `let a = Make(1) !!;` compiled with a value nobody chose; `!!` with no replacement is now accepted only as a whole statement.
+- **Associated functions are not called through values** — `start.FromMinutes(3)` evaluated `start` and ignored it; it is now an error whose help names `Time::FromMinutes(...)`.
+- **Variadic reference arguments are lent** — an owning value passed bare to `&T...`, such as `PrintLine("{}", s)`, was given away; each element now follows the fixed-parameter rule, so an owning place is lent with a written `&s` and stays with its owner.
+- **Function types without a result read as written** — messages spelled them `func() -> opaque`; they now read `func()`.
+- **Unknown intrinsic interfaces are rejected** — an `intrinsic interface` the compiler has no rule for admitted every type as a bound; it is now an error at its declaration.
+- **A read-only loop does not call a writing `Iterate`** — `for t in &shelf` called an `Iterate(&var self)` on a container lent for reading; it is now an error with help to lend `&var shelf`.
+- **An error that would leave `Main`** — the help said `declare '-> int ! E' on 'Main'`, a signature `Main` is then refused for; it now says to handle the error there, as in `!! return 1`, to leave with an exit status, or to move the steps that can fail into a function whose error `Main` handles.
+- **A `!!` fallback of the wrong type** — it was reported as a `catch` arm; it now reads `'!!' replaces the error with 'X', but the handled value has type 'Y'`.
+- **`??` on a fallible** — the help said `propagate it with '?'`; it now points at `!!` or `!`, and at `value! ?? fallback` when the success is optional.
+- **Retired `.Some` in messages** — a presence pattern on a value that is not optional was reported as a shorthand pattern `.Some`; it now reads `a presence pattern needs an optional subject, but the matched value has type 'uint'`. Patterns on an unresolved subject no longer cascade, and no help suggests `.Some(...)` any more.
+- **Retired `move` in help** — a generic field copy no longer says `write 'move b.v'`, and a by-value parameter is no longer to be "moved into a 'var' local"; the help offers the `Copyable` or `Cloneable` bound and a `var` local declared from the parameter.
+- **Primitive constant import** — `int16::Max` without an import suggested `import Core::int16;`; it now suggests `import Core::Primitives::int16;`.
+- **A diverging form used as a value** — the help named "an error mapping body"; it now names the right side of `??` or `!!`.
+- **Duplicate diagnostics** — an error found twice at one place, as for `tally.count += 1` on an uninitialized local, is reported once, and a second destructor is no longer also reported as an overload.
+- **Fallible spelling** — one type read both as `! E` and `!E`, and as `T ! (A | B)` and `T ! A | B`; every message now spells it as the language reference does, `!E` and `T ! A | B`.
+- **A member of a fallible's success** — `ToString().View()` on `String ! TextError` said the type has no field `View`; it now says `View` is a member of `String` and to handle the error first, and the same for an optional's payload.
+- **`for var`** — six parser errors became one, `'var' is not written before a 'for' variable`, and writing a loop variable now suggests a `var` local in the body.
+- **Did-you-mean** — `note` no longer suggests `byte`; short names get one-edit suggestions only, and swapping two neighbouring characters counts as one edit.
+- **A repeat count that is not constant** — `[0; n]` no longer adds `cannot assign 'int[0]' to 'int32[4]'`.
+- **A fallible or optional type argument** — the help no longer says to extend `int32 ! TestFailure`; it says to handle the error or take the value out first.
+- **`Replace` through a read-only loan** — `Replace` and `Swap` are offered only for a place that can be written.
+- **`?` in a `defer`** — the help talked about errors; it now says to handle the absence with `??` or `if let`.
 - **A fixed array's length passed by reference** — `PrintLine("{}", primes.length)` on an `int32[4]` printed `12884901890`, the array's first two elements read as one number, because a place for `.length` (a format argument, any interface view or a loan `&primes.length`) pointed at the array itself. The length has no storage, so its place is now a temporary holding the constant.
 - **A `catch` that misses an error says so** — arms that leave an error case unhandled reported `match on 'ParseError' is not exhaustive`, as if they were a `match`. They now report `'catch' arms do not cover every error of type 'ParseError'; missing ParseError::Invalid`, with the help to add a `_` arm or bind the whole error.
 - **A stray `;` in a block given to an annotated binding** — `let width: int = { let base = 3; base * 2; };` reported `cannot assign '()' to 'int'` at the `let`; the `;` is now reported where it is, `this block yields '()' because of the ';'`, as it already was for `if` branches and `match` arms.
