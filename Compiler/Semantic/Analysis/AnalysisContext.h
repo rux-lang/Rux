@@ -1307,6 +1307,8 @@ private:
     std::vector<DeferredLoan> deferredLoans;
     /// Reports giving away `symbol` from a deferred statement (O18) or while a `defer` lends it (O21).
     [[nodiscard]] bool RejectDeferredTransfer(const Symbol &symbol, SourceLocation location);
+    /// Reports a fallible whose error nothing uses: a statement, or a binding to `_` (F11, F20).
+    void ReportUnusedFallible(const Expr &expression, const TypeRef &type);
     /// For each loop being checked, innermost last, the expressions its body has recorded types for.
     std::vector<std::vector<const Expr *>> loopCheckedExpressions;
     /// The parameters of the function whose default value is being checked, none of which a default may read.
@@ -1368,6 +1370,8 @@ private:
     /// The statement whose end destroys the locals a join inside it leaves dead on some flows only: the innermost
     /// statement of a block that is not the block's yielded value.
     const Stmt *joinDropStatement = nullptr;
+    /// The loan a `let` binds directly, which may not lend a temporary.
+    const LoanExpr *boundLoan = nullptr;
     std::vector<const Stmt *> savedBorrowStatements;
     std::unordered_set<std::string> referenceStorageChecks;
     /// The types `UnsendablePart` is inside, so a recursive type ends its own walk.

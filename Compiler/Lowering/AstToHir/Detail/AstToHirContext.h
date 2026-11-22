@@ -187,6 +187,15 @@ protected:
     [[nodiscard]] std::uint64_t BindingId(const HirExpr &expression) const;
     /// The cleanup binding of each field of the receiver of the `~self` method being lowered.
     std::unordered_map<std::string, std::uint64_t> endingFieldBindings;
+    /// The owning temporaries the statement being lowered lends, destroyed where it ends (O8).
+    std::vector<std::uint64_t> statementTemporaries;
+    std::size_t temporaryOrdinal = 0;
+    /// Whether `expression` names storage, so lending it needs no temporary.
+    [[nodiscard]] static bool IsHirPlace(const HirExpr &expression);
+    /// Keeps an owning temporary in a hidden local of the statement being lowered and returns `make(local)` evaluated
+    /// after it: the local is destroyed where the statement ends, or at an exit that leaves the statement first. A
+    /// value with nothing to destroy is returned through `make` as it stands.
+    [[nodiscard]] HirExprPtr KeepTemporary(HirExprPtr value, const std::function<HirExprPtr(HirExprPtr)> &make);
     [[nodiscard]] std::uint64_t ConsumedBindingId(const HirExpr &expression) const;
     /// What a `=` or `<-` `assignment` to the lowered `target` destroys before it stores: the binding it writes whole,
     /// or the value semantic analysis recorded at the place it writes. Null when it replaces nothing.

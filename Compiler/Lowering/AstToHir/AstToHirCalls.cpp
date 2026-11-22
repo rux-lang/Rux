@@ -107,12 +107,16 @@ HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr 
         receiver->type = declared;
         return receiver;
     }
-    auto address = std::make_unique<HirUnaryExpr>();
-    address->location = receiver->location;
-    address->op = TokenKind::At;
-    address->type = declared.IsUnknown() ? TypeRef::MakePointer(receiver->type) : declared;
-    address->operand = std::move(receiver);
-    return address;
+    // A temporary receiver is lent from a hidden local the statement destroys (O8).
+    const TypeRef addressType = declared.IsUnknown() ? TypeRef::MakePointer(receiver->type) : declared;
+    return KeepTemporary(std::move(receiver), [&](HirExprPtr place) -> HirExprPtr {
+        auto address = std::make_unique<HirUnaryExpr>();
+        address->location = place->location;
+        address->op = TokenKind::At;
+        address->type = addressType;
+        address->operand = std::move(place);
+        return address;
+    });
 }
 
 ResolvedCallableBinding AstToHirContext::ResolvedCall(const CallExpr &call) const {

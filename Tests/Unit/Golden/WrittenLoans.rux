@@ -1,5 +1,6 @@
 // A loan is written where it starts: `&x` for reading and `&var x` for writing. `&var` needs a place that may be
-// written, `&` and `&var` lend places and never temporaries, and a read-only loan does not reach a `&var` parameter.
+// written, a temporary may be lent to a call but a loan of it is never bound to a name, and a read-only loan does not
+// reach a `&var` parameter.
 struct Box {
     value: int;
 }
@@ -21,6 +22,7 @@ func Main() -> int {
     var open = Box { value: 2 };
     Bump(&var fixed);
     let read = Read(&Make());
+    let bound = &Make();
     Bump(&open);
     Bump(&var open);
     return Read(&open) + Read(&fixed);

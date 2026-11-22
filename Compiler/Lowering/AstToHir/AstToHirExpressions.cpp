@@ -219,12 +219,15 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             place->type = type;
             return place;
         }
-        auto borrowed = std::make_unique<HirUnaryExpr>();
-        borrowed->location = loan->location;
-        borrowed->op = TokenKind::At;
-        borrowed->type = type;
-        borrowed->operand = std::move(place);
-        return borrowed;
+        // A loan of a temporary lends a hidden local the statement destroys (O8).
+        return KeepTemporary(std::move(place), [&](HirExprPtr kept) -> HirExprPtr {
+            auto borrowed = std::make_unique<HirUnaryExpr>();
+            borrowed->location = loan->location;
+            borrowed->op = TokenKind::At;
+            borrowed->type = type;
+            borrowed->operand = std::move(kept);
+            return borrowed;
+        });
     }
     if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         auto lowered = std::make_unique<HirLiteralExpr>();

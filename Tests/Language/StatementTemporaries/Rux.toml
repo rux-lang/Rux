@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "StatementTemporaries"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: an owning temporary that is lent is destroyed where its statement ends"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

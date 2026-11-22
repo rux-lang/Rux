@@ -342,22 +342,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             statementHandler = handler;
         }
         const TypeRef type = CheckExpr(*expressionStatement->expr);
-        // A fallible that is not used drops its error with nothing written, so it is refused.
-        if (type.IsFallible() && !type.FallibleError().IsUnknown()) {
-            const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get());
-            const auto binding = call ? callableBindings.find(call) : callableBindings.end();
-            const auto *function = binding != callableBindings.end()
-                                     ? AstCast<const FuncDecl>(binding->second.selectedDeclaration)
-                                     : nullptr;
-            const ThrowingCallee callee = ThrowingCalleeOf(*expressionStatement->expr);
-            EmitError(callee.spelling == ThrowingCallee::Spelling::None ? expressionStatement->expr->location
-                                                                        : callee.location,
-                      function ? std::format("'{}' can fail with '{}', and the result is not used", function->name,
-                                             type.FallibleError().DisplayString())
-                               : std::format("this value can fail with '{}', and it is not used",
-                                             type.FallibleError().DisplayString()),
-                      {}, "pass the error on with '!', ignore it with '!!;', or handle it with 'catch { ... }'");
-        }
+        ReportUnusedFallible(*expressionStatement->expr, type);
         if (const auto *block = AstCast<const BlockExpr>(expressionStatement->expr.get())) {
             ReportUnusedBlockValue(*block, type);
         }
@@ -379,7 +364,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (letStatement->init && !annotatedType.IsUnknown()) {
             expectedExpressionTypes.insert_or_assign(letStatement->init.get(), annotatedType);
         }
+        const LoanExpr *savedBoundLoan =
+            std::exchange(boundLoan, letStatement->init ? AstCast<const LoanExpr>(letStatement->init.get()) : nullptr);
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
+        boundLoan = savedBoundLoan;
+        // Binding a fallible to `_` keeps nothing, so it drops the error as a statement would (F20).
+        if (letStatement->init && AstCast<const WildcardPattern>(letStatement->pattern.get())) {
+            ReportUnusedFallible(*letStatement->init, initializerType);
+        }
         TypeRef declarationType = letStatement->type ? annotatedType : initializerType;
         // With nothing to give it a width, an unsuffixed literal is an `int`, so one too large for that is reported
         // here rather than stored as whatever its low bits happen to be.
@@ -815,6 +807,24 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             checkingDeferred = std::move(saved);
         }
     }
+}
+
+void AnalysisContext::ReportUnusedFallible(const Expr &expression, const TypeRef &type) {
+    // A fallible that is not used drops its error with nothing written, so it is refused.
+    if (!type.IsFallible() || type.FallibleError().IsUnknown()) {
+        return;
+    }
+    const auto *call = AstCast<const CallExpr>(&expression);
+    const auto binding = call ? callableBindings.find(call) : callableBindings.end();
+    const auto *function =
+        binding != callableBindings.end() ? AstCast<const FuncDecl>(binding->second.selectedDeclaration) : nullptr;
+    const ThrowingCallee callee = ThrowingCalleeOf(expression);
+    EmitError(callee.spelling == ThrowingCallee::Spelling::None ? expression.location : callee.location,
+              function ? std::format("'{}' can fail with '{}', and the result is not used", function->name,
+                                     type.FallibleError().DisplayString())
+                       : std::format("this value can fail with '{}', and it is not used",
+                                     type.FallibleError().DisplayString()),
+              {}, "pass the error on with '!', ignore it with '!!;', or handle it with 'catch { ... }'");
 }
 
 void AnalysisContext::EmitExitFromDeferred(const SourceLocation location, const std::string_view keyword,

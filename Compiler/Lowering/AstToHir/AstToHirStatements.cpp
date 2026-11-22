@@ -88,7 +88,18 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
                 }
             }
         }
+        auto savedTemporaries = std::exchange(statementTemporaries, {});
         LowerStmtInto(loweredBlock, *statement);
+        // The temporaries the statement lent end with it, the last made first (O8).
+        for (auto temporary = statementTemporaries.rbegin(); temporary != statementTemporaries.rend(); ++temporary) {
+            if (const std::optional<HirDropAction> action = cleanupPlanner.ActionFor(*temporary)) {
+                auto cleanup = std::make_unique<HirDropStmt>();
+                cleanup->location = statement->location;
+                cleanup->action = *action;
+                loweredBlock.stmts.push_back(std::move(cleanup));
+            }
+        }
+        statementTemporaries = std::move(savedTemporaries);
         // The last declared goes first, as at the end of a scope.
         std::ranges::sort(joinActions, std::ranges::greater{}, &HirDropAction::bindingId);
         for (HirDropAction &action : joinActions) {

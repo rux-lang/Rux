@@ -1,0 +1,25 @@
+// An owning temporary that is not given away is destroyed where the statement that made it ends. A temporary may be
+// lent to a call, as a receiver or as an argument, for that long, and the last made is destroyed first.
+
+import Core::Diagnostics::Assert;
+var log: int = 0;
+struct Token { id: int; }
+extend Token {
+    func Look(&self) -> int { return self.id; }
+    destructor { log = log * 10 + self.id; }
+}
+func Make(id: int) -> Token { return Token { id }; }
+func Peek(token: &Token) -> int { return token.id; }
+func Main() -> int {
+    log = 0;
+    let seen = Make(1).Look();
+    log = log * 10 + 9;
+    Assert(seen == 1, "read");
+    Assert(log == 19, "a temporary receiver is destroyed at the end of its statement");
+    log = 0;
+    let peeked = Peek(&Make(2)) + Peek(&Make(3));
+    log = log * 10 + 9;
+    Assert(peeked == 5, "lent temporaries are read");
+    Assert(log == 329, "lent temporaries end with their statement, the last made first");
+    return 0;
+}

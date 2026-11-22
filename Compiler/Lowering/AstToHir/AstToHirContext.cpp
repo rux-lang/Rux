@@ -299,6 +299,64 @@ std::uint64_t AstToHirContext::BindingId(const HirExpr &expression) const {
     return symbol && symbol->kind == HirSymbol::Kind::Var ? symbol->bindingId : 0;
 }
 
+bool AstToHirContext::IsHirPlace(const HirExpr &expression) {
+    if (HirCast<const HirVarExpr>(&expression) || HirCast<const HirSelfExpr>(&expression)) {
+        return true;
+    }
+    if (const auto *unary = HirCast<const HirUnaryExpr>(&expression)) {
+        return unary->op == TokenKind::Star;
+    }
+    if (const auto *field = HirCast<const HirFieldExpr>(&expression)) {
+        const TypeRef &object = field->object->type;
+        return object->kind == TypeRef::Kind::Pointer || object->kind == TypeRef::Kind::Reference ||
+               IsHirPlace(*field->object);
+    }
+    if (const auto *index = HirCast<const HirIndexExpr>(&expression)) {
+        const TypeRef &object = index->object->type;
+        return object->kind == TypeRef::Kind::Pointer || object->kind == TypeRef::Kind::Reference || object.IsSlice() ||
+               IsHirPlace(*index->object);
+    }
+    return false;
+}
+
+HirExprPtr AstToHirContext::KeepTemporary(HirExprPtr value, const std::function<HirExprPtr(HirExprPtr)> &make) {
+    const DropGluePlan *glue = model.TryGetDropGlue(value->type);
+    if (!glue || IsHirPlace(*value)) {
+        return make(std::move(value));
+    }
+    const SourceLocation location = value->location;
+    const TypeRef type = value->type;
+    const std::string name = std::format("$temporary.{}", temporaryOrdinal++);
+    auto local = std::make_unique<HirLetStmt>();
+    local->location = location;
+    local->name = name;
+    local->type = type;
+    local->isMut = true;
+    local->init = std::move(value);
+    local->bindingId = RegisterCleanupBinding(name, type, location);
+    if (local->bindingId != 0) {
+        statementTemporaries.push_back(local->bindingId);
+    }
+    HirSymbol symbol;
+    symbol.kind = HirSymbol::Kind::Var;
+    symbol.name = name;
+    symbol.type = type;
+    symbol.isMut = true;
+    symbol.bindingId = local->bindingId;
+    Define(symbol);
+    auto read = std::make_unique<HirVarExpr>();
+    read->location = location;
+    read->name = name;
+    read->type = type;
+    auto block = std::make_unique<HirBlockExpr>();
+    block->location = location;
+    block->block.location = location;
+    block->block.stmts.push_back(std::move(local));
+    block->value = make(std::move(read));
+    block->type = block->value->type;
+    return block;
+}
+
 std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) const {
     return BindingId(expression);
 }

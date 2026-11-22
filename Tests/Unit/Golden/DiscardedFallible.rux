@@ -1,0 +1,16 @@
+// Binding a fallible to `_` keeps nothing, so it drops the error as an unused statement would: the way to ignore an
+// error is `!!`, which shows it.
+struct Oops {
+    code: int;
+}
+
+func Fails() -> int ! Oops {
+    return 1;
+}
+
+func Main() -> int {
+    let _ = Fails();
+    Fails() !!;
+    let _ = Fails() !! 0;
+    return 0;
+}

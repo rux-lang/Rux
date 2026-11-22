@@ -337,10 +337,19 @@ TypeRef AnalysisContext::CheckLoan(const LoanExpr &loan) {
                        AstCast<const FieldExpr>(&operand) || (index && !IsIndexOperatorCall(*index)) ||
                        (unary && unary->op == TokenKind::Star);
     const std::string_view spelling = loan.writes ? "&var" : "&";
-    if (!place) {
-        EmitError(loan.location, std::format("'{}' lends a place, and this is a temporary value", spelling), {},
+    // A temporary lives until the end of the statement that made it, so it may be lent for that long, as to a call,
+    // but a loan of it is never bound to a name that would outlive it (O8).
+    if (!place && boundLoan == &loan) {
+        EmitError(loan.location, std::format("a loan of a temporary cannot be bound to a name"), {},
                   "store the value in a local first and lend the local");
         return TypeRef::MakeReference(referent);
+    }
+    if (!place) {
+        TypeRef lent = TypeRef::MakeReference(referent);
+        if (loan.writes) {
+            lent = lent.WithWritableInner(true);
+        }
+        return lent;
     }
     RejectSubsetViewUse(operand, loan.location, "be lent");
     if (!loan.writes) {
