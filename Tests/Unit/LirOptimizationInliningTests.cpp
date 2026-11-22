@@ -352,7 +352,7 @@ TEST_CASE("Scalar reference leaf inlining preserves updates through a lowered lo
         func Bump(value: &var uint64) -> uint64 { value += 1; return value; }
         func Work(input: uint64) -> uint64 {
             var state = input;
-            let result = Bump(state);
+            let result = Bump(&var state);
             return state + result;
         }
     )",
@@ -469,7 +469,7 @@ TEST_CASE("Leaf inlining admits a larger callee given the address of a caller's 
         }
         func Local(value: uint64) -> uint64 {
             var state = State { first: 1u64, second: 2u64 };
-            Mix(state, value);
+            Mix(&var state, value);
             return state.second;
         }
         func Forwarded(state: &var State, value: uint64) {

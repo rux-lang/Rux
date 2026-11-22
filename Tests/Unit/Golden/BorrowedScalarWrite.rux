@@ -18,7 +18,7 @@ func Pointerlike(count: &var int) {
 
 func Main() -> int {
     var total = 4;
-    Bump(total);
+    Bump(&var total);
     // A reference is never reseated, so a 'var' binding cannot hold one.
     var rebound: &var int = total;
     rebound = 5;

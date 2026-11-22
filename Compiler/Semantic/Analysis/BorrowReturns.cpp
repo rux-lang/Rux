@@ -224,6 +224,27 @@ void AnalysisContext::CheckBorrowReturnCall(const CallExpr &call, const TypeRef 
     if (!source) {
         return;
     }
+    // A place the result borrows from is lent with a written loan, plain data included; a receiver stays implicit,
+    // and a reference or a binding over a borrowed subject is passed on as it is.
+    const auto *member = AstCast<const FieldExpr>(call.callee.get());
+    const bool receiver = member && member->object.get() == source;
+    if (const auto sourceType = expressionTypes.find(source);
+        !receiver && !AstCast<const LoanExpr>(source) && sourceType != expressionTypes.end() &&
+        sourceType->second->kind != TypeRef::Kind::Reference && !sourceType->second.IsSlice()) {
+        const MovePlace place = AnalyzeMovePlace(*source);
+        const auto *name = AstCast<const IdentExpr>(source);
+        const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
+        if ((place.IsNamedStorage() || place.IsBorrowedStorage()) && !(symbol && symbol->isBorrowedBinding)) {
+            const auto *callee = AstCast<const IdentExpr>(call.callee.get());
+            EmitError(source->location,
+                      std::format("the result of '{}' borrows from its argument, so the loan must be written",
+                                  callee   ? callee->name
+                                  : member ? member->field
+                                           : std::string("the callee")),
+                      {}, std::format("write '&{}'", place.Display()));
+            return;
+        }
+    }
     if (const auto sourceType = expressionTypes.find(source);
         sourceType != expressionTypes.end() &&
         (sourceType->second->kind == TypeRef::Kind::Reference || sourceType->second.IsSlice())) {

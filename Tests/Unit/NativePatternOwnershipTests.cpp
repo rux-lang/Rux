@@ -59,8 +59,8 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
         }
         func Owner() {
             let value: Owned? = Owned { handle: 1i32 };
-            Read(value);
-            Read(value);
+            Read(&value);
+            Read(&value);
         }
         func Read(value: &(Owned?)) -> bool {
             return match value {
@@ -206,7 +206,7 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
     CHECK(ErrorsIn(R"(
         func Guarded(value: Owned?) {
             match move value {
-                owned? if Look(owned) => Keep(move owned),
+                owned? if Look(&owned) => Keep(move owned),
                 owned? => Keep(move owned),
                 none => {}
             }

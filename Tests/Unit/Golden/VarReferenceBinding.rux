@@ -9,6 +9,6 @@ func Bump(count: &var int) {
 
 func Main() -> int {
     var total = 1;
-    Bump(total);
+    Bump(&var total);
     return total;
 }

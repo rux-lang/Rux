@@ -372,7 +372,7 @@ func Main() -> int {
 
 func Main() -> int {
     var slots: int32[3] = [0, 0, 0];
-    Write(slots, 3);
+    Write(&var slots, 3);
     return slots[0] as int;
 }
 )",

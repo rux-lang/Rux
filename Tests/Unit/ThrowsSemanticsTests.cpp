@@ -232,13 +232,13 @@ TEST_CASE("an error handled by the arms carries the state at the call into them"
         func Read(resource: &Resource) -> int32 { return resource.id; }
         func Before() -> int32 {
             var resource = Resource { id: 1i32 };
-            let digit = ReadDigit('1') catch { _ => return Read(resource) };
+            let digit = ReadDigit('1') catch { _ => return Read(&resource) };
             return Take(move resource, digit);
         }
         func After() -> int32 {
             var resource = Resource { id: 1i32 };
             Take(move resource, 0);
-            ReadDigit('1') catch { _ => return Read(resource) };
+            ReadDigit('1') catch { _ => return Read(&resource) };
             return 0i32;
         }
     )"));

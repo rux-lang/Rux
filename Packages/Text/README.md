@@ -36,7 +36,7 @@ import Text::{ String, TextError };
 func Greet() -> !TextError {
     let allocator = SystemAllocator::New();
     let greeting = String::FromBytes(allocator, "Hello")!;
-    PrintLine(greeting);
+    PrintLine(&greeting);
 }
 
 func Main() -> int {

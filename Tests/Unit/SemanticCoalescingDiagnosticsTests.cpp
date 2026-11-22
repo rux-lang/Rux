@@ -123,7 +123,7 @@ TEST_CASE("coalescing uses explicit and branch-sensitive ownership") {
             var item = Item { value: 1i32 };
             let borrowed: &Item = item;
             let selected = option ?? Read(borrowed);
-            Write(item);
+            Write(&var item);
         }
     )");
     CHECK(borrowMerge.empty());

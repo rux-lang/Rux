@@ -1725,6 +1725,10 @@ private:
     [[nodiscard]] TypeRef CheckLoan(const LoanExpr &loan);
     /// `place.~()`: ends a local or a parameter, or destroys a value in place through a raw pointer.
     [[nodiscard]] TypeRef CheckDestroy(const DestroyExpr &destroy);
+    /// Reports each place passed bare to a reference parameter whose loan must be written: one the callee writes, or
+    /// an owning value. The argument a result borrows from is checked with the call's binding, in BorrowReturns.cpp.
+    void RequireWrittenLoans(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
+                             const std::vector<TypeRef> &parameterTypes);
     [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                                const FuncDecl &method);
     /// The check `CheckReceiverMutability` applies once a method is known to write through `declared`: a reference or

@@ -10,14 +10,14 @@ rux add Rux/Net
 
 ## What it provides
 
-| Module    | Covers                                                                                                         |
-| --------- | -------------------------------------------------------------------------------------------------------------- |
-| `Address` | `Ipv4Address`, `Ipv6Address`, `IpAddress` and `SocketAddress`, each with `Parse`, `WriteText`, `Equals` and `Display` |
+| Module    | Covers                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Address` | `Ipv4Address`, `Ipv6Address`, `IpAddress` and `SocketAddress`, each with `Parse`, `WriteText`, `Equals` and `Display`                                                                            |
 | `Tcp`     | `TcpListener` with `Bind`, `Accept` and `LocalAddress`; `TcpStream`, an `Io` reader and writer, with `Connect`, `Shutdown`, `SetNoDelay` and timeouts; `SetNonBlocking` and `PollSource` on both |
-| `Udp`     | `UdpSocket` with `Bind`, `SendTo`, `ReceiveFrom`, `Connect`, `Send`, `Receive`, a read timeout, `SetNonBlocking` and `PollSource`; `Datagram` |
-| `Resolve` | `Resolve`, the addresses of a host name                                                                         |
-| `Dns`     | `Resolver`, a DNS client with `WithServers`, `FromSystem`, `SetTimeout`, `SetAttempts` and `Lookup`              |
-| `Poll`    | `Poller` with `Register`, `Modify`, `Deregister` and `Wait`; `Interest`, `PollSource` and `PollEvent`              |
+| `Udp`     | `UdpSocket` with `Bind`, `SendTo`, `ReceiveFrom`, `Connect`, `Send`, `Receive`, a read timeout, `SetNonBlocking` and `PollSource`; `Datagram`                                                    |
+| `Resolve` | `Resolve`, the addresses of a host name                                                                                                                                                          |
+| `Dns`     | `Resolver`, a DNS client with `WithServers`, `FromSystem`, `SetTimeout`, `SetAttempts` and `Lookup`                                                                                              |
+| `Poll`    | `Poller` with `Register`, `Modify`, `Deregister` and `Wait`; `Interest`, `PollSource` and `PollEvent`                                                                                            |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
@@ -31,9 +31,9 @@ import Net::{ Resolve, TcpStream };
 func Greet(host: char8[..]) -> !IoError {
     let addresses = Resolve(SystemAllocator::New(), host, 7)!;
     var stream = TcpStream::Connect(addresses.AsSlice()[0])!;
-    WriteAll(stream, "hello")!;
+    WriteAll(&var stream, "hello")!;
     var echoed: char8[5] = ['\0'; 5];
-    ReadExact(stream, echoed[..])!;
+    ReadExact(&var stream, echoed[..])!;
 }
 ```
 

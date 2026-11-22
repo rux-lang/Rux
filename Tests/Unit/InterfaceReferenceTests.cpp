@@ -149,7 +149,7 @@ TEST_CASE("concrete methods accept concrete interface arguments through shared o
             var number = Number { value: 3 };
             let borrowed: &var Number = number;
             var buffer = Buffer { count: 0 };
-            borrowed.Render(buffer);
+            borrowed.Render(&var buffer);
         }
     )");
     for (const auto &diagnostic : diagnostics) {
@@ -253,7 +253,7 @@ TEST_CASE("interface references are borrowed fat views through HIR and LIR") {
             let view: &CounterView = counter;
             let marker: &Marker = counter;
             let observed = Observe(view);
-            Mutate(counter);
+            Mutate(&var counter);
             return observed;
         }
     )",
@@ -365,7 +365,7 @@ TEST_CASE("interface-typed fields borrow their existing fat pointer") {
             func Read(&self) -> int32 { return self.value; }
         }
         func Observe(view: &var CounterView) -> int32 { return view.Read(); }
-        func Use(holder: &var Holder) -> int32 { return Observe(holder.view); }
+        func Use(holder: &var Holder) -> int32 { return Observe(&var holder.view); }
     )",
                 "interface-field-reference.rux");
     auto lexed = lexer.Tokenize();

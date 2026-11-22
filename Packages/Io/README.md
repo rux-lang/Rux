@@ -83,9 +83,9 @@ func Main() -> int {
     let allocator = SystemAllocator::New();
     var name = StringBuilder::New(allocator);
     PrintLine("What is your name?");
-    ReadLine(name) catch { _ => return 1 };
+    ReadLine(&var name) catch { _ => return 1 };
     let text = name.TakeString();
-    PrintLine(text);
+    PrintLine(&text);
     return 0;
 }
 ```

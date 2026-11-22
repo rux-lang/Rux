@@ -124,7 +124,7 @@ func Main() -> int {
     let second = pair.SecondMutable();
     second = 12i32;
     Assert(pair.second == 12i32, "a returned mutable reference writes its source");
-    Assert(Larger(pair) == 12i32 && pair.Larger() == 12i32, "a reference parameter or the receiver is the source");
+    Assert(Larger(&pair) == 12i32 && pair.Larger() == 12i32, "a reference parameter or the receiver is the source");
     Assert(Read(pair.First()) == 3i32, "a returned reference is passed on to a reference parameter");
     Bump(pair.SecondMutable());
     Assert(pair.second == 13i32, "a returned mutable reference is passed on to a mutable reference parameter");

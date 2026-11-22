@@ -230,7 +230,7 @@ func Show() -> !FormatError {
     var failure: IoError? = none;
     var console = ConsoleWriter::New(@failure);
     let sink: &var TextWriter = console;
-    WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain())!;
+    WriteVectorDebug<int32>(sink, &numbers, FormatSpec::Plain())!;
 }
 ```
 

@@ -1,0 +1,3 @@
+30:9: error: 'Add' writes its argument 'total', so the loan must be written
+31:22: error: 'Show' borrows its argument, and 'Names' owns resources, so the loan must be written
+33:22: error: the result of 'Pick' borrows from its argument, so the loan must be written

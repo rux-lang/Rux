@@ -31,6 +31,6 @@ func Main() -> int {
     let ledger = Ledger { main: Account { balance: 0i32 } };
     Deposit(ledger.main, 5i32);
     var open = Account { balance: 0i32 };
-    Deposit(open, 5i32);
+    Deposit(&var open, 5i32);
     return Area(Shape::Circle(2i32)) as int;
 }

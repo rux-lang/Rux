@@ -291,8 +291,8 @@ TEST_CASE("generic borrowed scalar reads validate every instantiated referent") 
             func Main() {
                 var narrow = 3i8;
                 var wide = 18446744073709551617u128;
-                let first = Read<int8>(narrow);
-                let second = Read<uint128>(wide);
+                let first = Read<int8>(&var narrow);
+                let second = Read<uint128>(&var wide);
             }
         )");
         for (const auto &diagnostic : diagnostics) {

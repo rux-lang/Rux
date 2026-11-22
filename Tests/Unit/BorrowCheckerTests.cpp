@@ -58,7 +58,7 @@ TEST_CASE("shared loans coexist and end at their last path use") {
                 Read(first);
             }
             Read(second);
-            Write(item);
+            Write(&var item);
             let final: &var Item = item;
             if Value(final) != 1i32 || item.value != 1i32 {
                 return;
@@ -91,18 +91,18 @@ TEST_CASE("exclusive loans reject overlapping reads borrows and call arguments")
         }
         func OverlappingArguments() {
             var item = Item { value: 1i32 };
-            Pair(item, item);
+            Pair(&var item, &var item);
         }
         func AliasedArguments() {
             var item = Item { value: 1i32 };
             let exclusive: &var Item = item;
-            Pair(exclusive, item);
+            Pair(exclusive, &var item);
         }
         func AcrossConditional(flag: bool) {
             var item = Item { value: 1i32 };
             let shared: &Item = item;
             if flag && Value(shared) == 1i32 {
-                Write(item);
+                Write(&var item);
                 Read(shared);
             }
         }
@@ -145,8 +145,8 @@ TEST_CASE("a borrow made in a branch ends with the branch and expires after use"
                 let selected: &Item = left;
                 Read(selected);
             }
-            Write(left);
-            Write(right);
+            Write(&var left);
+            Write(&var right);
         }
     )");
 

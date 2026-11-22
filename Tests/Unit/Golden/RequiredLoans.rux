@@ -1,0 +1,36 @@
+// A loan of a place is written where the callee writes it, where the value owns resources, and where the callee's
+// result borrows from it. Plain data read by the callee and a reference are passed bare.
+struct Names {
+    count: int;
+}
+
+extend Names {
+    func ~(&var self) {}
+}
+
+func Add(total: &var int, amount: int) {
+    total += amount;
+}
+
+func Show(names: &Names) -> int {
+    return names.count;
+}
+
+func Pick(value: &int) -> &int {
+    return value;
+}
+
+func Lent(names: &Names) -> int {
+    return Show(names);
+}
+
+func Main() -> int {
+    var total = 0;
+    let names = Names { count: 2 };
+    Add(total, 5);
+    let shown = Show(names);
+    let count = 3;
+    let first = Pick(count);
+    let read = Show(&names) + Lent(&names);
+    return total + first + read;
+}

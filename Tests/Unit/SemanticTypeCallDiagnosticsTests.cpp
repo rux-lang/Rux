@@ -266,8 +266,8 @@ TEST_CASE("a method called through its type takes its receiver as the first argu
         func Main() {
             var p = Pair { a: 1i32, b: 2i32 };
             let got = Pair::Get(p);
-            Pair::Bump(p);
-            Pair::Bump(p, 3i32);
+            Pair::Bump(&var p);
+            Pair::Bump(&var p, 3i32);
             let same = Pair::Same(p, p);
             let empty = Pair::Sum(p);
             let many = Pair::Sum(p, 1i32, 2i64);

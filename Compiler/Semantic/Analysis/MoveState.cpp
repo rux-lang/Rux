@@ -1241,6 +1241,7 @@ void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vect
     }
     if (parameterTypes) {
         ValidateCallReferenceBorrows(call, *parameterTypes);
+        RequireWrittenLoans(call, argumentTypes, *parameterTypes);
     }
     const std::size_t count = std::min(call.args.size(), argumentTypes.size());
     for (std::size_t index = 0; index < count; ++index) {
@@ -1250,6 +1251,57 @@ void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vect
         }
         ConsumeValue(*call.args[index], argumentTypes[index], ValueConsumptionKind::Argument,
                      call.args[index]->location);
+    }
+}
+
+void AnalysisContext::RequireWrittenLoans(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
+                                          const std::vector<TypeRef> &parameterTypes) {
+    // The callee's name as a diagnostic spells it: the function, or the method after its receiver.
+    std::string callee = "the callee";
+    if (const auto *name = AstCast<const IdentExpr>(call.callee.get())) {
+        callee = name->name;
+    }
+    else if (const auto *member = AstCast<const FieldExpr>(call.callee.get())) {
+        callee = member->field;
+    }
+    else if (const auto *path = AstCast<const PathExpr>(call.callee.get()); path && !path->segments.empty()) {
+        callee = path->segments.back();
+    }
+    const std::size_t count = std::min({call.args.size(), argumentTypes.size(), parameterTypes.size()});
+    for (std::size_t index = 0; index < count; ++index) {
+        const TypeRef &parameter = parameterTypes[index];
+        const TypeRef &argumentType = argumentTypes[index];
+        const Expr &argument = *call.args[index];
+        if (parameter->kind != TypeRef::Kind::Reference || parameter->inner.empty() || argumentType.IsUnknown() ||
+            argumentType->kind == TypeRef::Kind::Reference || AstCast<const LoanExpr>(&argument)) {
+            continue;
+        }
+        // A temporary is lent where it is, and only a place's loan is written. A binding a pattern made over a borrowed
+        // subject already names a loan, so it is passed on bare, as a reference is.
+        const MovePlace place = AnalyzeMovePlace(argument);
+        if (!place.IsNamedStorage() && !place.IsBorrowedStorage()) {
+            continue;
+        }
+        if (const auto *name = AstCast<const IdentExpr>(&argument)) {
+            if (const Symbol *symbol = currentScope->Lookup(name->name); symbol && symbol->isBorrowedBinding) {
+                continue;
+            }
+        }
+        const std::string written = place.Display();
+        if (parameter->inner.front().isMut) {
+            EmitError(argument.location,
+                      std::format("'{}' writes its argument '{}', so the loan must be written", callee, written), {},
+                      std::format("write '&var {}'", written));
+            continue;
+        }
+        const TypeProperties properties = ClassifyTypeProperties(argumentType);
+        if (!properties.IsResolved() || !properties.IsCopy()) {
+            EmitError(argument.location,
+                      std::format("'{}' borrows its argument, and '{}' owns resources, so the loan must be written",
+                                  callee, argumentType.DisplayString()),
+                      {}, std::format("write '&{}'", written));
+            continue;
+        }
     }
 }
 

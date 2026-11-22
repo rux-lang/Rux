@@ -474,7 +474,7 @@ TEST_SUITE("VariadicWideningLowering") {
 
             func CallAdd(word: int32) -> int64 {
                 var total = Total { base: 0i128 };
-                return Total::Add(total, 1i32, word);
+                return Total::Add(&var total, 1i32, word);
             }
 
             func CallScale(total: Total) -> int64 {
