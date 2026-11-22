@@ -1062,3 +1062,14 @@ struct SemanticVersion { major: uint; minor: uint; patch: uint; }
         }
     }
 }
+
+TEST_CASE("a primitive constant nothing imports names the module that declares it") {
+    // The extension is imported from its module, so the suggested import names the module's path.
+    auto provider = ParseIntrinsicSource("pub module Primitives {" + IntegerDeclaration + "}", "provider.rux");
+    auto parsed = ParseIntrinsicSource("func Main() -> int8 { return int8::Max; }");
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 1);
+    CHECK_EQ(model.diagnostics[0].help, std::optional<std::string>("import the extension that declares it, for example "
+                                                                   "'import Provider::Primitives::int8;'"));
+}

@@ -176,8 +176,9 @@ std::optional<std::string> AnalysisContext::AssociatedConstantImportHelp(const S
             if (constant->name != name || !constant->isPublic) {
                 continue;
             }
+            // The extension is imported from the module that declares it, as in 'Core::Primitives::int16'.
             if (const auto alias = importName(owner->second.ownerPackage)) {
-                candidates.insert(*alias);
+                candidates.insert(owner->second.modulePath.empty() ? *alias : *alias + "::" + owner->second.modulePath);
             }
         }
     }
