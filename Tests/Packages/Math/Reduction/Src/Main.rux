@@ -10,7 +10,9 @@
 // method has thrown away.
 
 import Core::Diagnostics::Assert;
-import Math::{ Abs, Cos, IsNan, Pi, ScaleByPowerOfTwo, Sin, Tan, UlpDistance };
+import Math::{ Abs, Cos, Sin, Tan };
+import Math::Classification::{ IsNan, ScaleByPowerOfTwo, UlpDistance };
+import Math::Constants::Pi;
 
 // The exact product of two doubles, as a rounded head and the remainder the rounding dropped.
 func ExactProduct(left: float64, right: float64, remainder: &var float64) -> float64 {

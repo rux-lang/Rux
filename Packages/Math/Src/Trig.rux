@@ -3,6 +3,8 @@
 
 // The reduced argument: x = hi + lo + quadrant * (Pi/2), with |hi| <= Pi/4. hi alone cannot hold the reduced value to
 // full precision when x is close to a multiple of Pi/2, so the kernels below take the low part as well.
+
+import Math::Constants::Pi;
 struct Reduction {
     quadrant: int64;
     hi: float64;

@@ -4,6 +4,8 @@
 // term actually wants. The two results are identical to what `Sin` and `Cos` return for the same argument.
 
 import Core::Primitives::*;
+import Math::Classification::{ IsInfinite, IsNan };
+import Math::Constants::QuarterPi;
 
 /*
     Sine and cosine of the same angle, from one reduction. Accuracy: error at most 1 ulp in each, the same as computing

@@ -4,6 +4,7 @@
 // digits depends on.
 
 import Core::Primitives::*;
+import Math::Classification::{ IsInfinite, IsNan, IsZero };
 
 /// Computes the base-ten logarithm of `x`.
 /// The error is at most one ulp, and an exact power of ten returns its exact exponent. Either signed zero returns

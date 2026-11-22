@@ -4,7 +4,8 @@
 // is the other classic failure.
 
 import Core::Diagnostics::Assert;
-import Math::{ Abs, PositiveInfinity64 };
+import Math::Abs;
+import Math::Classification::PositiveInfinity64;
 import Random::{ NextFloat64, RandomGenerator, UniformBelow, UniformFloatInRange, UniformInRange, UniformInSignedRange,
                  Xoshiro256 };
 

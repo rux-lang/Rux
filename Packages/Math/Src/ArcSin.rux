@@ -4,6 +4,8 @@
 // argument outside `[-1, 1]` is a NaN rather than a clamped answer.
 
 import Core::Primitives::*;
+import Math::Classification::IsNan;
+import Math::Constants::HalfPi;
 
 /// Computes the inverse sine of `x` in radians.
 /// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, either endpoint maps to the matching endpoint

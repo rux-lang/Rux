@@ -8,7 +8,8 @@
 // of these functions fails here rather than going unnoticed.
 
 import Core::Diagnostics::Assert;
-import Math::{ Cos, Exp, Log, Sin, UlpDistance };
+import Math::{ Cos, Exp, Log, Sin };
+import Math::Classification::UlpDistance;
 
 func Main() -> int {
     Assert(RowCount == 72, "the table holds the rows the generator wrote");

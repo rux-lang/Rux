@@ -14,7 +14,7 @@
 // point at the `x`, not at the fourth character of something the caller never saw.
 
 import Format::{ ParseError, ParseFloat64, ParseInt64 };
-import Math::{ PositiveInfinity64, QuietNan64 };
+import Math::Classification::{ PositiveInfinity64, QuietNan64 };
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteAscii, WriteBytes };
 import Time::{ Date, TimeOfDay, UtcOffset };
 

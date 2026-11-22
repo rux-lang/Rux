@@ -4,7 +4,8 @@
 // the edges would not.
 
 import Core::Diagnostics::Assert;
-import Math::{ Abs, IsFinite, IsNan, Sqrt };
+import Math::{ Abs, Sqrt };
+import Math::Classification::{ IsFinite, IsNan };
 import Random::{ RandomGenerator, Xoshiro256 };
 import Random::Distributions::{ Bernoulli, Exponential, ExponentialWithRate, Normal, NormalPair, NormalWith };
 

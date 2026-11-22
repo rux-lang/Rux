@@ -4,7 +4,8 @@
 // direct method's.
 
 import Core::Diagnostics::Assert;
-import Math::{ Abs, IsFinite, Sqrt };
+import Math::{ Abs, Sqrt };
+import Math::Classification::IsFinite;
 import Random::{ RandomGenerator, Xoshiro256 };
 import Random::Distributions::{ Beta, Binomial, Gamma, GammaWithScale, Poisson };
 

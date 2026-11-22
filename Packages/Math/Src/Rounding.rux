@@ -10,6 +10,7 @@
 
 import Core::Arithmetic::Integer;
 import Core::Arithmetic::MaximumOf;
+import Math::Classification::{ IsInfinite, IsNan, ScaleByPowerOfTwo };
 
 /// Which way a value that falls between two integers should go.
 /// `Copy`.

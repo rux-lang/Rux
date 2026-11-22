@@ -6,6 +6,7 @@
 import Core::Primitives::*;
 
 // x = m * 2^k with m in [sqrt(2)/2, sqrt(2)).
+import Math::Classification::{ IsInfinite, IsNan, IsZero };
 struct LogReduction {
     k: int64;
     m: float64;

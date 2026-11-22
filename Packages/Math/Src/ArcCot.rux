@@ -3,6 +3,9 @@
 // the cotangent is large and the subtraction would cancel — keeps its precision. The result is in `[0, Pi]`,
 // with the infinities mapping to the endpoints.
 
+import Math::Classification::IsNan;
+import Math::Constants::HalfPi;
+
 /// Computes the inverse cotangent of `x` in radians.
 /// The result lies in `[0, Pi]`: positive infinity maps to zero, either signed zero maps to `Pi / 2`, and negative
 /// infinity maps to `Pi`. A NaN remains a NaN.

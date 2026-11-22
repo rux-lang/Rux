@@ -4,6 +4,8 @@
 // `[0, Pi]`, and an argument outside `[-1, 1]` is a NaN rather than a clamped answer.
 
 import Core::Primitives::*;
+import Math::Classification::IsNan;
+import Math::Constants::{ HalfPi, Pi };
 
 /// Computes the inverse cosine of `x` in radians.
 /// The result lies in `[0, Pi]`: `1.0` maps to zero, either signed zero maps to `Pi / 2`, and `-1.0` maps to `Pi`. An

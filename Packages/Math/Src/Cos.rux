@@ -4,6 +4,8 @@
 // so a large angle would be meaningless. Error at most one ulp for every finite argument; an infinity is a NaN.
 
 import Core::Primitives::*;
+import Math::Classification::{ IsInfinite, IsNan };
+import Math::Constants::QuarterPi;
 
 /// Computes the cosine of `x`, where `x` is in radians.
 /// The error is at most one ulp for every finite argument. Exact argument reduction keeps a large angle no less

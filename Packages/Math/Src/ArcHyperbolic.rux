@@ -6,6 +6,9 @@
 // doing the work near zero, where its whole reason for existing applies. Accuracy: error at most 2 ulps in each - one
 // from the logarithm and one from what is fed to it.
 
+import Math::Classification::{ IsInfinite, IsNan, PositiveInfinity64, QuietNan64, SignBit };
+import Math::Constants::Ln2;
+
 /// The inverse hyperbolic sine: the value whose hyperbolic sine is `x`.
 /// Defined for every real argument, odd, and unbounded in both directions. A NaN propagates and an infinity gives an
 /// infinity of the same sign.

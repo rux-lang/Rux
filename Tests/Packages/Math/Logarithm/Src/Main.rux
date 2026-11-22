@@ -3,8 +3,9 @@
 // a power of ten must be whole numbers, which is precisely what scaling a natural logarithm cannot deliver.
 
 import Core::Diagnostics::Assert;
-import Math::{ Abs, E, Exp, Expm1, IsNan, Log, Log10, Log1p, Log2, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo,
-               SignBit, UlpDistance };
+import Math::{ Abs, Exp, Expm1, Log, Log10, Log1p, Log2 };
+import Math::Classification::{ IsNan, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, SignBit, UlpDistance };
+import Math::Constants::E;
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

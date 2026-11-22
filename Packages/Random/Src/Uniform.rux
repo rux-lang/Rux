@@ -10,7 +10,7 @@
 // and another drawn. The rejection test is exact and the expected number of extra draws is far below one.
 
 import Core::Primitives::*;
-import Math::{ IsInfinite, NextDown };
+import Math::Classification::{ IsInfinite, NextDown };
 
 /// A uniform value in `[0, bound)`.
 /// A bound of zero has no values to choose from and gives zero, which is the only answer that is not a lie.

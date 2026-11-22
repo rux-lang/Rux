@@ -5,7 +5,7 @@
 
 import Core::Arithmetic::{ MaximumOf, MinimumOf };
 import Core::Diagnostics::Assert;
-import Math::{ AbsChecked, AbsWrapping, Clamp, GcdChecked, LcmChecked, Maximum, Minimum, PowChecked };
+import Math::Integers::{ AbsChecked, AbsWrapping, Clamp, GcdChecked, LcmChecked, Maximum, Minimum, PowChecked };
 
 func Main() -> int {
     // Magnitude, including the one input that has none.

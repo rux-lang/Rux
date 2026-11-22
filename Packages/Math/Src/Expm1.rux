@@ -4,6 +4,8 @@
 // error stays at one ulp as the argument approaches zero. That is the whole reason the function exists, and
 // it is what `Log1p` is the inverse of.
 
+import Math::Classification::SignBit;
+
 /// Computes `Exp(x) - 1` without losing precision near zero.
 /// The error is at most one ulp and remains small relative to the result as `x` approaches zero. A signed zero returns
 /// itself, positive infinity returns positive infinity, negative infinity returns `-1.0`, and a NaN remains a NaN.

@@ -1,5 +1,6 @@
 import Core::Diagnostics::Assert;
-import Math::{ Complex, Complex32, Pi };
+import Math::{ Complex, Complex32 };
+import Math::Constants::Pi;
 
 // Arithmetic against values worked by hand, division that keeps its precision for divisors far from one, the polar
 // form, and the principal branches of the logarithm, square root and power, at both widths.

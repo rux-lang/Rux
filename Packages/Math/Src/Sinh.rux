@@ -3,6 +3,9 @@
 // everything there; further out the subtraction is harmless and only the growing term survives at the top. Odd,
 // so a signed zero returns itself and each infinity returns itself.
 
+import Math::Classification::{ IsNan, SignBit };
+import Math::Constants::Ln2;
+
 /// Computes the hyperbolic sine of `x`.
 /// A signed zero or infinity returns itself, and a NaN remains a NaN.
 /// @param x hyperbolic angle

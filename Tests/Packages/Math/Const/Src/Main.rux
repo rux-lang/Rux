@@ -1,19 +1,19 @@
 import Core::Diagnostics::Assert;
-import Math::E;
-import Math::Log2E;
-import Math::Log10E;
-import Math::Ln2;
-import Math::Ln10;
-import Math::Pi;
-import Math::Tau;
-import Math::HalfPi;
-import Math::QuarterPi;
-import Math::InvPi;
-import Math::InvTau;
-import Math::Sqrt2;
-import Math::InvSqrt2;
-import Math::RadPerDeg;
-import Math::DegPerRad;
+import Math::Constants::E;
+import Math::Constants::Log2E;
+import Math::Constants::Log10E;
+import Math::Constants::Ln2;
+import Math::Constants::Ln10;
+import Math::Constants::Pi;
+import Math::Constants::Tau;
+import Math::Constants::HalfPi;
+import Math::Constants::QuarterPi;
+import Math::Constants::InvPi;
+import Math::Constants::InvTau;
+import Math::Constants::Sqrt2;
+import Math::Constants::InvSqrt2;
+import Math::Constants::RadPerDeg;
+import Math::Constants::DegPerRad;
 
 func Main() -> int {
     Assert(E == 2.718281828459045, "E");

@@ -3,6 +3,8 @@
 // two zeros apart. Here a NaN argument is ignored in favour of the other one — two NaNs give a NaN — and
 // `+0.0` is greater than `-0.0`, which a comparison says is false.
 
+import Math::Classification::{ IsNan, SignBit };
+
 /// Selects the larger of `a` and `b`.
 /// A NaN loses to a number, so one NaN returns the other argument and two NaNs return a NaN. When both arguments are
 /// zeros, a positive zero wins.

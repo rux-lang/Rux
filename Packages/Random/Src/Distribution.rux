@@ -4,7 +4,8 @@
 // can be catastrophically wrong in floating point at the edge of its input range, because the generator will
 // eventually produce the edge.
 
-import Math::{ Cos, Log, Sin, Sqrt, Tau };
+import Math::{ Cos, Log, Sin, Sqrt };
+import Math::Constants::Tau;
 
 pub module Distributions {
     /// A coin that comes up `true` with probability `probability`.

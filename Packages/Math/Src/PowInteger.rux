@@ -7,6 +7,7 @@
 // ordinary here where `Pow` has to work to make it meaningful at all.
 
 import Core::Primitives::*;
+import Math::Classification::IsNan;
 
 /// `base` raised to the integer power `exponent`.
 /// A zero exponent gives one for every base, including zero and a NaN, which is the same rule `Pow` follows: the empty

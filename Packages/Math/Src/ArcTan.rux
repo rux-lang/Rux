@@ -4,6 +4,8 @@
 // `[-Pi/2, Pi/2]`, which is half a turn — `ArcTan2` is the one that gives the whole turn and needs two
 // arguments to do it.
 
+import Math::Classification::{ IsNan, SignBit };
+
 /// Computes the inverse tangent of `x` in radians.
 /// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, infinities approach the matching endpoint, and
 /// a NaN remains a NaN.

@@ -10,464 +10,466 @@
 
 import Core::Primitives::*;
 
-/*
-    What a floating-point value *is*, before any arithmetic is done to it. IEEE 754 sorts every bit pattern
-    into five kinds, and most of the bugs in floating-point code come from treating one of them as another:
-    a NaN mistaken for a number because a comparison against it was false, a signed zero whose sign was thrown away
-    by a comparison, a subnormal treated as zero because it printed as one. So the classification here is by bit
-    pattern rather than by comparison wherever a comparison would lie, and the sign of a zero is preserved
-    everywhere it is meaningful. Only the two machine widths are covered: the compiler implements `float8` through
-    `float512`, but this package's operations are written for `float32` and `float64`, and reaching the other widths
-    is outside its scope. `float32` is not merely widened - its neighbours are not its widened value's neighbours, so
-    stepping is done in its own bits.
-*/
+pub module Classification {
+    /*
+        What a floating-point value *is*, before any arithmetic is done to it. IEEE 754 sorts every bit pattern
+        into five kinds, and most of the bugs in floating-point code come from treating one of them as another:
+        a NaN mistaken for a number because a comparison against it was false, a signed zero whose sign was thrown away
+        by a comparison, a subnormal treated as zero because it printed as one. So the classification here is by bit
+        pattern rather than by comparison wherever a comparison would lie, and the sign of a zero is preserved
+        everywhere it is meaningful. Only the two machine widths are covered: the compiler implements `float8` through
+        `float512`, but this package's operations are written for `float32` and `float64`, and reaching the other widths
+        is outside its scope. `float32` is not merely widened - its neighbours are not its widened value's neighbours,
+        so stepping is done in its own bits.
+    */
 
-/// The five kinds IEEE 754 sorts every value into.
-/// `Copy`.
-/// @see https://rux-lang.dev/docs/api/math/classification#float-class
-pub enum FloatClass: int32 {
-    /// Not a number: the result of an operation with no meaningful answer.
-    NotANumber = 0,
-    /// One of the two infinities.
-    Infinite = 1,
-    /// Positive or negative zero.
-    Zero = 2,
-    /// A value too small to carry a full significand, whose precision degrades toward zero.
-    Subnormal = 3,
-    /// An ordinary value at full precision.
-    Normal = 4
-}
-
-/// Whether `value` is a NaN.
-/// A NaN is the only value not equal to itself, which is why this needs no bit pattern.
-/// @param value value to test
-/// @returns `true` when `value` is a NaN
-/// @see https://rux-lang.dev/docs/api/math/classification#is-nan
-pub func IsNan(value: float64) -> bool {
-    return value != value;
-}
-
-/// Determines whether `value` is a NaN at `float32` precision.
-/// @param value value to test
-/// @returns `true` when `value` is a NaN
-/// @see https://rux-lang.dev/docs/api/math/classification#is-nan
-pub func IsNan(value: float32) -> bool {
-    return value != value;
-}
-
-/// Whether `value` is one of the two infinities.
-/// @param value value to test
-/// @returns `true` when `value` is positive or negative infinity
-/// @see https://rux-lang.dev/docs/api/math/classification#is-infinite
-pub func IsInfinite(value: float64) -> bool {
-    return (FloatBits(value) & 0x7FFFFFFFFFFFFFFF) == 0x7FF0000000000000;
-}
-
-/// Determines whether `value` is an infinity at `float32` precision.
-/// @param value value to test
-/// @returns `true` when `value` is positive or negative infinity
-/// @see https://rux-lang.dev/docs/api/math/classification#is-infinite
-pub func IsInfinite(value: float32) -> bool {
-    return (Float32Bits(value) & 0x7FFFFFFF) == 0x7F800000;
-}
-
-/// Whether `value` is an ordinary number: neither a NaN nor an infinity.
-/// @param value value to test
-/// @returns `true` when `value` is neither a NaN nor an infinity
-/// @see https://rux-lang.dev/docs/api/math/classification#is-finite
-pub func IsFinite(value: float64) -> bool {
-    return (FloatBits(value) & 0x7FFFFFFFFFFFFFFF) < 0x7FF0000000000000;
-}
-
-/// Determines whether `value` is finite at `float32` precision.
-/// @param value value to test
-/// @returns `true` when `value` is neither a NaN nor an infinity
-/// @see https://rux-lang.dev/docs/api/math/classification#is-finite
-pub func IsFinite(value: float32) -> bool {
-    return (Float32Bits(value) & 0x7FFFFFFF) < 0x7F800000;
-}
-
-/// Whether `value` is either zero.
-/// Both zeros answer `true`; `SignBit` is what tells them apart.
-/// @param value value to test
-/// @returns `true` when `value` is positive or negative zero
-/// @see https://rux-lang.dev/docs/api/math/classification#is-zero
-pub func IsZero(value: float64) -> bool {
-    return (FloatBits(value) & 0x7FFFFFFFFFFFFFFF) == 0;
-}
-
-/// Determines whether `value` is either signed zero at `float32` precision.
-/// @param value value to test
-/// @returns `true` when `value` is positive or negative zero
-/// @see https://rux-lang.dev/docs/api/math/classification#is-zero
-pub func IsZero(value: float32) -> bool {
-    return (Float32Bits(value) & 0x7FFFFFFF) == 0;
-}
-
-/// Whether `value` is subnormal: nonzero, but too small to carry a full significand.
-/// @param value value to test
-/// @returns `true` when `value` is subnormal
-/// @see https://rux-lang.dev/docs/api/math/classification#is-subnormal
-pub func IsSubnormal(value: float64) -> bool {
-    let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
-    return magnitude != 0 && magnitude < 0x0010000000000000;
-}
-
-/// Determines whether `value` is subnormal at `float32` precision.
-/// @param value value to test
-/// @returns `true` when `value` is subnormal
-/// @see https://rux-lang.dev/docs/api/math/classification#is-subnormal
-pub func IsSubnormal(value: float32) -> bool {
-    let magnitude = Float32Bits(value) & 0x7FFFFFFF;
-    return magnitude != 0 && magnitude < 0x00800000;
-}
-
-/// Whether `value` is an ordinary value at full precision.
-/// Zero is **not** normal, which surprises people and is the definition every IEEE 754 implementation uses.
-/// @param value value to test
-/// @returns `true` when `value` is normal
-/// @see https://rux-lang.dev/docs/api/math/classification#is-normal
-pub func IsNormal(value: float64) -> bool {
-    let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
-    return magnitude >= 0x0010000000000000 && magnitude < 0x7FF0000000000000;
-}
-
-/// Determines whether `value` is normal at `float32` precision.
-/// @param value value to test
-/// @returns `true` when `value` is normal
-/// @see https://rux-lang.dev/docs/api/math/classification#is-normal
-pub func IsNormal(value: float32) -> bool {
-    let magnitude = Float32Bits(value) & 0x7FFFFFFF;
-    return magnitude >= 0x00800000 && magnitude < 0x7F800000;
-}
-
-/// Which of the five kinds `value` belongs to.
-/// @param value value to classify
-/// @returns the IEEE-754 class of `value`
-/// @see https://rux-lang.dev/docs/api/math/classification#classify
-pub func Classify(value: float64) -> FloatClass {
-    let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
-    if magnitude > 0x7FF0000000000000 { return FloatClass::NotANumber; }
-    if magnitude == 0x7FF0000000000000 { return FloatClass::Infinite; }
-    if magnitude == 0 { return FloatClass::Zero; }
-    return if magnitude < 0x0010000000000000 { FloatClass::Subnormal } else { FloatClass::Normal };
-}
-
-/// Classifies `value` at `float32` precision.
-/// @param value value to classify
-/// @returns the IEEE-754 class of `value`
-/// @see https://rux-lang.dev/docs/api/math/classification#classify
-pub func Classify(value: float32) -> FloatClass {
-    let magnitude = Float32Bits(value) & 0x7FFFFFFF;
-    if magnitude > 0x7F800000 { return FloatClass::NotANumber; }
-    if magnitude == 0x7F800000 { return FloatClass::Infinite; }
-    if magnitude == 0 { return FloatClass::Zero; }
-    return if magnitude < 0x00800000 { FloatClass::Subnormal } else { FloatClass::Normal };
-}
-
-/// Whether `value`'s sign bit is set.
-/// This is the sign bit, not a comparison: `SignBit(-0.0)` is `true` where `-0.0 < 0.0` is false, and a negative NaN
-/// answers `true` where every comparison against it answers false. That is the whole reason to ask by bit.
-/// @param value value whose sign is inspected
-/// @returns `true` when the sign bit is set
-/// @see https://rux-lang.dev/docs/api/math/classification#sign-bit
-pub func SignBit(value: float64) -> bool {
-    return (FloatBits(value) >> 63) != 0;
-}
-
-/// Determines whether the sign bit of `value` is set at `float32` precision.
-/// @param value value whose sign is inspected
-/// @returns `true` when the sign bit is set
-/// @see https://rux-lang.dev/docs/api/math/classification#sign-bit
-pub func SignBit(value: float32) -> bool {
-    return (Float32Bits(value) >> 31) != 0;
-}
-
-/// `magnitude` carrying the sign of `sign`.
-/// Works on every value including NaNs and zeros, since it moves one bit and reads no others.
-/// @param magnitude value supplying every bit except the sign
-/// @param sign value supplying the sign bit
-/// @returns the magnitude of `magnitude` with the sign of `sign`
-/// @see https://rux-lang.dev/docs/api/math/float-representation#copy-sign
-pub func CopySign(magnitude: float64, sign: float64) -> float64 {
-    return FromBits((FloatBits(magnitude) & 0x7FFFFFFFFFFFFFFF) | (FloatBits(sign) & 0x8000000000000000));
-}
-
-/// Copies the sign of `sign` onto `magnitude` at `float32` precision.
-/// @param magnitude value supplying every bit except the sign
-/// @param sign value supplying the sign bit
-/// @returns the magnitude of `magnitude` with the sign of `sign`
-/// @see https://rux-lang.dev/docs/api/math/float-representation#copy-sign
-pub func CopySign(magnitude: float32, sign: float32) -> float32 {
-    return Float32FromBits((Float32Bits(magnitude) & 0x7FFFFFFF) | (Float32Bits(sign) & 0x80000000));
-}
-
-/// The value adjacent to `from` in the direction of `toward`.
-/// One representable value in that direction, subnormals and zeros included: stepping down from the smallest positive
-/// normal lands in the subnormals rather than jumping to zero, and stepping down from `+0.0` gives the smallest
-/// negative subnormal rather than `-0.0`. `from` equal to `toward` returns `toward`, which is what makes the sign of a
-/// zero come from the destination. A NaN in either argument gives a NaN.
-/// @param from starting value
-/// @param toward direction selected by another value
-/// @returns the value adjacent to `from` toward `toward`, or `toward` when they compare equal
-/// @see https://rux-lang.dev/docs/api/math/float-representation#next-after
-pub func NextAfter(from: float64, toward: float64) -> float64 {
-    if IsNan(from) || IsNan(toward) { return from + toward; }
-    if from == toward { return toward; }
-    if IsZero(from) {
-        // The step out of either zero is the smallest subnormal, signed by where it is heading.
-        return CopySign(FromBits(1), toward);
+    /// The five kinds IEEE 754 sorts every value into.
+    /// `Copy`.
+    /// @see https://rux-lang.dev/docs/api/math/classification#float-class
+    pub enum FloatClass: int32 {
+        /// Not a number: the result of an operation with no meaningful answer.
+        NotANumber = 0,
+        /// One of the two infinities.
+        Infinite = 1,
+        /// Positive or negative zero.
+        Zero = 2,
+        /// A value too small to carry a full significand, whose precision degrades toward zero.
+        Subnormal = 3,
+        /// An ordinary value at full precision.
+        Normal = 4
     }
-    let bits = FloatBits(from);
-    // Away from zero increases the magnitude field; toward zero decreases it. Since the ordering of the magnitude bits
-    // matches the ordering of the values, that is the whole step.
-    let awayFromZero = (from < toward) == (from > 0.0);
-    return FromBits(if awayFromZero { bits + 1 } else { bits - 1 });
-}
 
-/// Finds the `float32` value adjacent to `from` in the direction of `toward`.
-/// @param from starting value
-/// @param toward direction selected by another value
-/// @returns the value adjacent to `from` toward `toward`, or `toward` when they compare equal
-/// @see https://rux-lang.dev/docs/api/math/float-representation#next-after
-pub func NextAfter(from: float32, toward: float32) -> float32 {
-    if IsNan(from) || IsNan(toward) { return from + toward; }
-    if from == toward { return toward; }
-    if IsZero(from) { return CopySign(Float32FromBits(1), toward); }
-    let bits = Float32Bits(from);
-    let awayFromZero = (from < toward) == (from > 0.0f32);
-    return Float32FromBits(if awayFromZero { bits + 1 } else { bits - 1 });
-}
-
-/// The next representable value above `value`.
-/// @param value starting value
-/// @returns the adjacent value toward positive infinity
-/// @see https://rux-lang.dev/docs/api/math/float-representation#next-up
-pub func NextUp(value: float64) -> float64 {
-    return NextAfter(value, PositiveInfinity64());
-}
-
-/// Finds the next `float32` value above `value`.
-/// @param value starting value
-/// @returns the adjacent value toward positive infinity
-/// @see https://rux-lang.dev/docs/api/math/float-representation#next-up
-pub func NextUp(value: float32) -> float32 {
-    return NextAfter(value, PositiveInfinity32());
-}
-
-/// The next representable value below `value`.
-/// @param value starting value
-/// @returns the adjacent value toward negative infinity
-/// @see https://rux-lang.dev/docs/api/math/float-representation#next-down
-pub func NextDown(value: float64) -> float64 {
-    return NextAfter(value, -PositiveInfinity64());
-}
-
-/// Finds the next `float32` value below `value`.
-/// @param value starting value
-/// @returns the adjacent value toward negative infinity
-/// @see https://rux-lang.dev/docs/api/math/float-representation#next-down
-pub func NextDown(value: float32) -> float32 {
-    return NextAfter(value, -PositiveInfinity32());
-}
-
-/// Positive infinity.
-/// @returns positive infinity at `float64` precision
-/// @see https://rux-lang.dev/docs/api/math/classification#positive-infinity64
-pub func PositiveInfinity64() -> float64 {
-    return float64::Infinity;
-}
-
-/// Positive infinity at the narrow width.
-/// @returns positive infinity at `float32` precision
-/// @see https://rux-lang.dev/docs/api/math/classification#positive-infinity32
-pub func PositiveInfinity32() -> float32 {
-    return float32::Infinity;
-}
-
-/// A quiet NaN.
-/// @returns A quiet NaN at `float64` precision
-/// @see https://rux-lang.dev/docs/api/math/classification#quiet-nan64
-pub func QuietNan64() -> float64 {
-    return float64::NaN;
-}
-
-/// A quiet NaN at the narrow width.
-/// @returns A quiet NaN at `float32` precision
-/// @see https://rux-lang.dev/docs/api/math/classification#quiet-nan32
-pub func QuietNan32() -> float32 {
-    return float32::NaN;
-}
-
-/// `value` multiplied by two raised to `exponent`, with one rounding.
-/// The obvious spelling - multiplying by a computed power of two - overflows for large exponents and rounds twice when
-/// the answer lands in the subnormals. This steps in bounded pieces so neither happens: the result is correctly rounded
-/// once, and an exponent far outside the range saturates to an infinity or a zero rather than wrapping the exponent
-/// field into a wrong answer.
-/// @param value value to scale
-/// @param exponent binary exponent added to `value`
-/// @returns `value * 2^exponent`, rounded once
-/// @see https://rux-lang.dev/docs/api/math/float-representation#scale-by-power-of-two
-pub func ScaleByPowerOfTwo(value: float64, exponent: int64) -> float64 {
-    if !IsFinite(value) || IsZero(value) {
-        // Infinities, NaNs and zeros are unchanged by scaling.
-        return value;
+    /// Whether `value` is a NaN.
+    /// A NaN is the only value not equal to itself, which is why this needs no bit pattern.
+    /// @param value value to test
+    /// @returns `true` when `value` is a NaN
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-nan
+    pub func IsNan(value: float64) -> bool {
+        return value != value;
     }
-    return Scalb(value, exponent);
-}
 
-/// Multiplies `value` by two raised to `exponent` at `float32` precision.
-/// @param value value to scale
-/// @param exponent binary exponent added to `value`
-/// @returns `value * 2^exponent`, rounded once
-/// @see https://rux-lang.dev/docs/api/math/float-representation#scale-by-power-of-two
-pub func ScaleByPowerOfTwo(value: float32, exponent: int64) -> float32 {
-    if !IsFinite(value) || IsZero(value) { return value; }
-    // The wide type has enough exponent range that a narrow result is exact before narrowing, so the single rounding
-    // happens on the way back down — including into the narrow subnormals.
-    return Scalb(value as float64, exponent) as float32;
-}
+    /// Determines whether `value` is a NaN at `float32` precision.
+    /// @param value value to test
+    /// @returns `true` when `value` is a NaN
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-nan
+    pub func IsNan(value: float32) -> bool {
+        return value != value;
+    }
 
-/// The exponent of `value`: the power of two of its most significant bit.
-/// A normal value's exponent is such that its magnitude lies in `[2^e, 2^(e+1))`; a subnormal reports the exponent it
-/// would have with unbounded range, so the relationship keeps holding into the subnormals. Zero has no exponent and
-/// reports `NoExponent`, and a NaN or infinity reports `IndeterminateExponent`; both are values far outside any real
-/// exponent, so neither can be mistaken for one.
-/// @param value value whose exponent is extracted
-/// @returns its binary exponent, `NoExponent` for zero, or `IndeterminateExponent` for a NaN or infinity
-/// @see https://rux-lang.dev/docs/api/math/float-representation#exponent-of
-pub func ExponentOf(value: float64) -> int64 {
-    if IsZero(value) { return NoExponent; }
-    if !IsFinite(value) { return IndeterminateExponent; }
-    let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
-    if magnitude >= 0x0010000000000000 { return ((magnitude >> 52) as int64) - 1023; }
-    // Subnormal: scale it into the normal range, take the exponent there, and subtract what was added.
-    let scaled = FloatBits(value * 4503599627370496.0) & 0x7FFFFFFFFFFFFFFF; // 2^52
-    return ((scaled >> 52) as int64) - 1023 - 52;
-}
+    /// Whether `value` is one of the two infinities.
+    /// @param value value to test
+    /// @returns `true` when `value` is positive or negative infinity
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-infinite
+    pub func IsInfinite(value: float64) -> bool {
+        return (FloatBits(value) & 0x7FFFFFFFFFFFFFFF) == 0x7FF0000000000000;
+    }
 
-/// Extracts the binary exponent of `value` at `float32` precision.
-/// @param value value whose exponent is extracted
-/// @returns its binary exponent, `NoExponent` for zero, or `IndeterminateExponent` for a NaN or infinity
-/// @see https://rux-lang.dev/docs/api/math/float-representation#exponent-of
-pub func ExponentOf(value: float32) -> int64 {
-    if IsZero(value) { return NoExponent; }
-    if !IsFinite(value) { return IndeterminateExponent; }
-    // Widening is exact and moves a narrow subnormal into the wide normal range, so the wide answer is the narrow one
-    // without a second case to write.
-    return ExponentOf(value as float64);
-}
+    /// Determines whether `value` is an infinity at `float32` precision.
+    /// @param value value to test
+    /// @returns `true` when `value` is positive or negative infinity
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-infinite
+    pub func IsInfinite(value: float32) -> bool {
+        return (Float32Bits(value) & 0x7FFFFFFF) == 0x7F800000;
+    }
 
-/// What `ExponentOf` reports for zero, which has no exponent at all.
-/// @see https://rux-lang.dev/docs/api/math/float-representation#no-exponent
-pub const NoExponent: int64 = int64::Min;
+    /// Whether `value` is an ordinary number: neither a NaN nor an infinity.
+    /// @param value value to test
+    /// @returns `true` when `value` is neither a NaN nor an infinity
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-finite
+    pub func IsFinite(value: float64) -> bool {
+        return (FloatBits(value) & 0x7FFFFFFFFFFFFFFF) < 0x7FF0000000000000;
+    }
 
-/// What `ExponentOf` reports for a NaN or an infinity.
-/// @see https://rux-lang.dev/docs/api/math/float-representation#indeterminate-exponent
-pub const IndeterminateExponent: int64 = int64::Max;
+    /// Determines whether `value` is finite at `float32` precision.
+    /// @param value value to test
+    /// @returns `true` when `value` is neither a NaN nor an infinity
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-finite
+    pub func IsFinite(value: float32) -> bool {
+        return (Float32Bits(value) & 0x7FFFFFFF) < 0x7F800000;
+    }
 
-/// Splits `value` into a fraction in `[0.5, 1)` and a power of two, so that `fraction * 2^exponent == value`.
-/// The classic decomposition. Zero gives zero with an exponent of zero, and a NaN or infinity is returned unchanged
-/// with an exponent of zero - neither has a decomposition, and inventing one would be worse than returning the value
-/// itself. The sign stays with the fraction. `exponent` must be non-null and writable.
-/// @param value value to decompose
-/// @param exponent receives the binary exponent
-/// @returns the signed fraction, normally with magnitude in `[0.5, 1)`
-/// @see https://rux-lang.dev/docs/api/math/float-representation#decompose
-pub func Decompose(value: float64, exponent: *var int64) -> float64 {
-    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
-    *exponent = 0;
-    if IsZero(value) || !IsFinite(value) { return value; }
-    let power = ExponentOf(value) + 1;
-    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
-    *exponent = power;
-    return ScaleByPowerOfTwo(value, 0 - power);
-}
+    /// Whether `value` is either zero.
+    /// Both zeros answer `true`; `SignBit` is what tells them apart.
+    /// @param value value to test
+    /// @returns `true` when `value` is positive or negative zero
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-zero
+    pub func IsZero(value: float64) -> bool {
+        return (FloatBits(value) & 0x7FFFFFFFFFFFFFFF) == 0;
+    }
 
-/// Decomposes `value` into a `float32` fraction and a binary exponent.
-/// @param value value to decompose
-/// @param exponent receives the binary exponent
-/// @returns the signed fraction, normally with magnitude in `[0.5, 1)`
-/// @see https://rux-lang.dev/docs/api/math/float-representation#decompose
-pub func Decompose(value: float32, exponent: *var int64) -> float32 {
-    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
-    *exponent = 0;
-    if IsZero(value) || !IsFinite(value) { return value; }
-    let power = ExponentOf(value) + 1;
-    // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
-    *exponent = power;
-    return ScaleByPowerOfTwo(value, 0 - power);
-}
+    /// Determines whether `value` is either signed zero at `float32` precision.
+    /// @param value value to test
+    /// @returns `true` when `value` is positive or negative zero
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-zero
+    pub func IsZero(value: float32) -> bool {
+        return (Float32Bits(value) & 0x7FFFFFFF) == 0;
+    }
 
-/// Splits `value` into its integral and fractional parts, both carrying its sign.
-/// `integral` receives the part toward zero and the fractional part is returned, so the two always sum back to `value`
-/// exactly. An infinity puts itself in `integral` and returns a zero of the same sign; a NaN puts a NaN in both.
-/// `integral` must be non-null and writable.
-/// @param value value to split
-/// @param integral receives the part rounded toward zero
-/// @returns the signed fractional part
-/// @see https://rux-lang.dev/docs/api/math/float-representation#split-integral
-pub func SplitIntegral(value: float64, integral: *var float64) -> float64 {
-    if IsNan(value) || IsInfinite(value) {
+    /// Whether `value` is subnormal: nonzero, but too small to carry a full significand.
+    /// @param value value to test
+    /// @returns `true` when `value` is subnormal
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-subnormal
+    pub func IsSubnormal(value: float64) -> bool {
+        let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
+        return magnitude != 0 && magnitude < 0x0010000000000000;
+    }
+
+    /// Determines whether `value` is subnormal at `float32` precision.
+    /// @param value value to test
+    /// @returns `true` when `value` is subnormal
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-subnormal
+    pub func IsSubnormal(value: float32) -> bool {
+        let magnitude = Float32Bits(value) & 0x7FFFFFFF;
+        return magnitude != 0 && magnitude < 0x00800000;
+    }
+
+    /// Whether `value` is an ordinary value at full precision.
+    /// Zero is **not** normal, which surprises people and is the definition every IEEE 754 implementation uses.
+    /// @param value value to test
+    /// @returns `true` when `value` is normal
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-normal
+    pub func IsNormal(value: float64) -> bool {
+        let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
+        return magnitude >= 0x0010000000000000 && magnitude < 0x7FF0000000000000;
+    }
+
+    /// Determines whether `value` is normal at `float32` precision.
+    /// @param value value to test
+    /// @returns `true` when `value` is normal
+    /// @see https://rux-lang.dev/docs/api/math/classification#is-normal
+    pub func IsNormal(value: float32) -> bool {
+        let magnitude = Float32Bits(value) & 0x7FFFFFFF;
+        return magnitude >= 0x00800000 && magnitude < 0x7F800000;
+    }
+
+    /// Which of the five kinds `value` belongs to.
+    /// @param value value to classify
+    /// @returns the IEEE-754 class of `value`
+    /// @see https://rux-lang.dev/docs/api/math/classification#classify
+    pub func Classify(value: float64) -> FloatClass {
+        let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
+        if magnitude > 0x7FF0000000000000 { return FloatClass::NotANumber; }
+        if magnitude == 0x7FF0000000000000 { return FloatClass::Infinite; }
+        if magnitude == 0 { return FloatClass::Zero; }
+        return if magnitude < 0x0010000000000000 { FloatClass::Subnormal } else { FloatClass::Normal };
+    }
+
+    /// Classifies `value` at `float32` precision.
+    /// @param value value to classify
+    /// @returns the IEEE-754 class of `value`
+    /// @see https://rux-lang.dev/docs/api/math/classification#classify
+    pub func Classify(value: float32) -> FloatClass {
+        let magnitude = Float32Bits(value) & 0x7FFFFFFF;
+        if magnitude > 0x7F800000 { return FloatClass::NotANumber; }
+        if magnitude == 0x7F800000 { return FloatClass::Infinite; }
+        if magnitude == 0 { return FloatClass::Zero; }
+        return if magnitude < 0x00800000 { FloatClass::Subnormal } else { FloatClass::Normal };
+    }
+
+    /// Whether `value`'s sign bit is set.
+    /// This is the sign bit, not a comparison: `SignBit(-0.0)` is `true` where `-0.0 < 0.0` is false, and a negative
+    /// NaN answers `true` where every comparison against it answers false. That is the whole reason to ask by bit.
+    /// @param value value whose sign is inspected
+    /// @returns `true` when the sign bit is set
+    /// @see https://rux-lang.dev/docs/api/math/classification#sign-bit
+    pub func SignBit(value: float64) -> bool {
+        return (FloatBits(value) >> 63) != 0;
+    }
+
+    /// Determines whether the sign bit of `value` is set at `float32` precision.
+    /// @param value value whose sign is inspected
+    /// @returns `true` when the sign bit is set
+    /// @see https://rux-lang.dev/docs/api/math/classification#sign-bit
+    pub func SignBit(value: float32) -> bool {
+        return (Float32Bits(value) >> 31) != 0;
+    }
+
+    /// `magnitude` carrying the sign of `sign`.
+    /// Works on every value including NaNs and zeros, since it moves one bit and reads no others.
+    /// @param magnitude value supplying every bit except the sign
+    /// @param sign value supplying the sign bit
+    /// @returns the magnitude of `magnitude` with the sign of `sign`
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#copy-sign
+    pub func CopySign(magnitude: float64, sign: float64) -> float64 {
+        return FromBits((FloatBits(magnitude) & 0x7FFFFFFFFFFFFFFF) | (FloatBits(sign) & 0x8000000000000000));
+    }
+
+    /// Copies the sign of `sign` onto `magnitude` at `float32` precision.
+    /// @param magnitude value supplying every bit except the sign
+    /// @param sign value supplying the sign bit
+    /// @returns the magnitude of `magnitude` with the sign of `sign`
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#copy-sign
+    pub func CopySign(magnitude: float32, sign: float32) -> float32 {
+        return Float32FromBits((Float32Bits(magnitude) & 0x7FFFFFFF) | (Float32Bits(sign) & 0x80000000));
+    }
+
+    /// The value adjacent to `from` in the direction of `toward`.
+    /// One representable value in that direction, subnormals and zeros included: stepping down from the smallest
+    /// positive normal lands in the subnormals rather than jumping to zero, and stepping down from `+0.0` gives the
+    /// smallest negative subnormal rather than `-0.0`. `from` equal to `toward` returns `toward`, which is what makes
+    /// the sign of a zero come from the destination. A NaN in either argument gives a NaN.
+    /// @param from starting value
+    /// @param toward direction selected by another value
+    /// @returns the value adjacent to `from` toward `toward`, or `toward` when they compare equal
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#next-after
+    pub func NextAfter(from: float64, toward: float64) -> float64 {
+        if IsNan(from) || IsNan(toward) { return from + toward; }
+        if from == toward { return toward; }
+        if IsZero(from) {
+            // The step out of either zero is the smallest subnormal, signed by where it is heading.
+            return CopySign(FromBits(1), toward);
+        }
+        let bits = FloatBits(from);
+        // Away from zero increases the magnitude field; toward zero decreases it. Since the ordering of the magnitude
+        // bits matches the ordering of the values, that is the whole step.
+        let awayFromZero = (from < toward) == (from > 0.0);
+        return FromBits(if awayFromZero { bits + 1 } else { bits - 1 });
+    }
+
+    /// Finds the `float32` value adjacent to `from` in the direction of `toward`.
+    /// @param from starting value
+    /// @param toward direction selected by another value
+    /// @returns the value adjacent to `from` toward `toward`, or `toward` when they compare equal
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#next-after
+    pub func NextAfter(from: float32, toward: float32) -> float32 {
+        if IsNan(from) || IsNan(toward) { return from + toward; }
+        if from == toward { return toward; }
+        if IsZero(from) { return CopySign(Float32FromBits(1), toward); }
+        let bits = Float32Bits(from);
+        let awayFromZero = (from < toward) == (from > 0.0f32);
+        return Float32FromBits(if awayFromZero { bits + 1 } else { bits - 1 });
+    }
+
+    /// The next representable value above `value`.
+    /// @param value starting value
+    /// @returns the adjacent value toward positive infinity
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#next-up
+    pub func NextUp(value: float64) -> float64 {
+        return NextAfter(value, PositiveInfinity64());
+    }
+
+    /// Finds the next `float32` value above `value`.
+    /// @param value starting value
+    /// @returns the adjacent value toward positive infinity
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#next-up
+    pub func NextUp(value: float32) -> float32 {
+        return NextAfter(value, PositiveInfinity32());
+    }
+
+    /// The next representable value below `value`.
+    /// @param value starting value
+    /// @returns the adjacent value toward negative infinity
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#next-down
+    pub func NextDown(value: float64) -> float64 {
+        return NextAfter(value, -PositiveInfinity64());
+    }
+
+    /// Finds the next `float32` value below `value`.
+    /// @param value starting value
+    /// @returns the adjacent value toward negative infinity
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#next-down
+    pub func NextDown(value: float32) -> float32 {
+        return NextAfter(value, -PositiveInfinity32());
+    }
+
+    /// Positive infinity.
+    /// @returns positive infinity at `float64` precision
+    /// @see https://rux-lang.dev/docs/api/math/classification#positive-infinity64
+    pub func PositiveInfinity64() -> float64 {
+        return float64::Infinity;
+    }
+
+    /// Positive infinity at the narrow width.
+    /// @returns positive infinity at `float32` precision
+    /// @see https://rux-lang.dev/docs/api/math/classification#positive-infinity32
+    pub func PositiveInfinity32() -> float32 {
+        return float32::Infinity;
+    }
+
+    /// A quiet NaN.
+    /// @returns A quiet NaN at `float64` precision
+    /// @see https://rux-lang.dev/docs/api/math/classification#quiet-nan64
+    pub func QuietNan64() -> float64 {
+        return float64::NaN;
+    }
+
+    /// A quiet NaN at the narrow width.
+    /// @returns A quiet NaN at `float32` precision
+    /// @see https://rux-lang.dev/docs/api/math/classification#quiet-nan32
+    pub func QuietNan32() -> float32 {
+        return float32::NaN;
+    }
+
+    /// `value` multiplied by two raised to `exponent`, with one rounding.
+    /// The obvious spelling - multiplying by a computed power of two - overflows for large exponents and rounds twice
+    /// when the answer lands in the subnormals. This steps in bounded pieces so neither happens: the result is
+    /// correctly rounded once, and an exponent far outside the range saturates to an infinity or a zero rather than
+    /// wrapping the exponent field into a wrong answer.
+    /// @param value value to scale
+    /// @param exponent binary exponent added to `value`
+    /// @returns `value * 2^exponent`, rounded once
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#scale-by-power-of-two
+    pub func ScaleByPowerOfTwo(value: float64, exponent: int64) -> float64 {
+        if !IsFinite(value) || IsZero(value) {
+            // Infinities, NaNs and zeros are unchanged by scaling.
+            return value;
+        }
+        return Scalb(value, exponent);
+    }
+
+    /// Multiplies `value` by two raised to `exponent` at `float32` precision.
+    /// @param value value to scale
+    /// @param exponent binary exponent added to `value`
+    /// @returns `value * 2^exponent`, rounded once
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#scale-by-power-of-two
+    pub func ScaleByPowerOfTwo(value: float32, exponent: int64) -> float32 {
+        if !IsFinite(value) || IsZero(value) { return value; }
+        // The wide type has enough exponent range that a narrow result is exact before narrowing, so the single
+        // rounding happens on the way back down — including into the narrow subnormals.
+        return Scalb(value as float64, exponent) as float32;
+    }
+
+    /// The exponent of `value`: the power of two of its most significant bit.
+    /// A normal value's exponent is such that its magnitude lies in `[2^e, 2^(e+1))`; a subnormal reports the exponent
+    /// it would have with unbounded range, so the relationship keeps holding into the subnormals. Zero has no exponent
+    /// and reports `NoExponent`, and a NaN or infinity reports `IndeterminateExponent`; both are values far outside any
+    /// real exponent, so neither can be mistaken for one.
+    /// @param value value whose exponent is extracted
+    /// @returns its binary exponent, `NoExponent` for zero, or `IndeterminateExponent` for a NaN or infinity
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#exponent-of
+    pub func ExponentOf(value: float64) -> int64 {
+        if IsZero(value) { return NoExponent; }
+        if !IsFinite(value) { return IndeterminateExponent; }
+        let magnitude = FloatBits(value) & 0x7FFFFFFFFFFFFFFF;
+        if magnitude >= 0x0010000000000000 { return ((magnitude >> 52) as int64) - 1023; }
+        // Subnormal: scale it into the normal range, take the exponent there, and subtract what was added.
+        let scaled = FloatBits(value * 4503599627370496.0) & 0x7FFFFFFFFFFFFFFF; // 2^52
+        return ((scaled >> 52) as int64) - 1023 - 52;
+    }
+
+    /// Extracts the binary exponent of `value` at `float32` precision.
+    /// @param value value whose exponent is extracted
+    /// @returns its binary exponent, `NoExponent` for zero, or `IndeterminateExponent` for a NaN or infinity
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#exponent-of
+    pub func ExponentOf(value: float32) -> int64 {
+        if IsZero(value) { return NoExponent; }
+        if !IsFinite(value) { return IndeterminateExponent; }
+        // Widening is exact and moves a narrow subnormal into the wide normal range, so the wide answer is the narrow
+        // one without a second case to write.
+        return ExponentOf(value as float64);
+    }
+
+    /// What `ExponentOf` reports for zero, which has no exponent at all.
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#no-exponent
+    pub const NoExponent: int64 = int64::Min;
+
+    /// What `ExponentOf` reports for a NaN or an infinity.
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#indeterminate-exponent
+    pub const IndeterminateExponent: int64 = int64::Max;
+
+    /// Splits `value` into a fraction in `[0.5, 1)` and a power of two, so that `fraction * 2^exponent == value`.
+    /// The classic decomposition. Zero gives zero with an exponent of zero, and a NaN or infinity is returned unchanged
+    /// with an exponent of zero - neither has a decomposition, and inventing one would be worse than returning the
+    /// value itself. The sign stays with the fraction. `exponent` must be non-null and writable.
+    /// @param value value to decompose
+    /// @param exponent receives the binary exponent
+    /// @returns the signed fraction, normally with magnitude in `[0.5, 1)`
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#decompose
+    pub func Decompose(value: float64, exponent: *var int64) -> float64 {
+        // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+        *exponent = 0;
+        if IsZero(value) || !IsFinite(value) { return value; }
+        let power = ExponentOf(value) + 1;
+        // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+        *exponent = power;
+        return ScaleByPowerOfTwo(value, 0 - power);
+    }
+
+    /// Decomposes `value` into a `float32` fraction and a binary exponent.
+    /// @param value value to decompose
+    /// @param exponent receives the binary exponent
+    /// @returns the signed fraction, normally with magnitude in `[0.5, 1)`
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#decompose
+    pub func Decompose(value: float32, exponent: *var int64) -> float32 {
+        // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+        *exponent = 0;
+        if IsZero(value) || !IsFinite(value) { return value; }
+        let power = ExponentOf(value) + 1;
+        // Safety: the documented contract makes `exponent` a non-null pointer to the caller's writable `int64`.
+        *exponent = power;
+        return ScaleByPowerOfTwo(value, 0 - power);
+    }
+
+    /// Splits `value` into its integral and fractional parts, both carrying its sign.
+    /// `integral` receives the part toward zero and the fractional part is returned, so the two always sum back to
+    /// `value` exactly. An infinity puts itself in `integral` and returns a zero of the same sign; a NaN puts a NaN in
+    /// both. `integral` must be non-null and writable.
+    /// @param value value to split
+    /// @param integral receives the part rounded toward zero
+    /// @returns the signed fractional part
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#split-integral
+    pub func SplitIntegral(value: float64, integral: *var float64) -> float64 {
+        if IsNan(value) || IsInfinite(value) {
+            // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
+            *integral = value;
+            return if IsNan(value) { value } else { CopySign(0.0, value) };
+        }
+        let whole = Trunc(value);
         // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
-        *integral = value;
-        return if IsNan(value) { value } else { CopySign(0.0, value) };
+        *integral = whole;
+        // Subtracting is exact here, and the sign of a zero remainder follows the value rather than the subtraction.
+        return if IsZero(value - whole) { CopySign(0.0, value) } else { value - whole };
     }
-    let whole = Trunc(value);
-    // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float64`.
-    *integral = whole;
-    // Subtracting is exact here, and the sign of a zero remainder follows the value rather than the subtraction.
-    return if IsZero(value - whole) { CopySign(0.0, value) } else { value - whole };
-}
 
-/// Splits `value` into integral and fractional `float32` parts.
-/// @param value value to split
-/// @param integral receives the part rounded toward zero
-/// @returns the signed fractional part
-/// @see https://rux-lang.dev/docs/api/math/float-representation#split-integral
-pub func SplitIntegral(value: float32, integral: *var float32) -> float32 {
-    var whole = 0.0;
-    let fraction = SplitIntegral(value as float64, @whole);
-    // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float32`.
-    *integral = whole as float32;
-    return fraction as float32;
-}
-
-/// How many representable values lie between `left` and `right`.
-/// The natural way to state a floating-point error bound: two values are one ulp apart when nothing is representable
-/// between them, and a function accurate to half an ulp returns the nearest representable value to the true answer.
-/// Counting steps rather than subtracting is what makes the measure meaningful near zero, where the absolute difference
-/// between neighbours is vanishingly small, and near the maximum, where it is enormous. Values of opposite sign are
-/// counted through zero, with the two zeros treated as one value - the step from the smallest negative subnormal to the
-/// smallest positive one is two, not three. A NaN in either argument has no distance and reports the largest `uint64`,
-/// which no real distance can reach.
-/// @param left first value
-/// @param right second value
-/// @returns their distance in representable values, or the largest `uint64` when either is a NaN
-/// @see https://rux-lang.dev/docs/api/math/float-representation#ulp-distance
-pub func UlpDistance(left: float64, right: float64) -> uint64 {
-    if IsNan(left) || IsNan(right) { return uint64::Max; }
-    // Ordering the magnitude bits matches ordering the values, so within one sign the distance is a subtraction.
-    let leftBits = FloatBits(left) & 0x7FFFFFFFFFFFFFFF;
-    let rightBits = FloatBits(right) & 0x7FFFFFFFFFFFFFFF;
-    if SignBit(left) == SignBit(right) {
-        return if leftBits > rightBits { leftBits - rightBits } else { rightBits - leftBits };
+    /// Splits `value` into integral and fractional `float32` parts.
+    /// @param value value to split
+    /// @param integral receives the part rounded toward zero
+    /// @returns the signed fractional part
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#split-integral
+    pub func SplitIntegral(value: float32, integral: *var float32) -> float32 {
+        var whole = 0.0;
+        let fraction = SplitIntegral(value as float64, @whole);
+        // Safety: the documented contract makes `integral` a non-null pointer to the caller's writable `float32`.
+        *integral = whole as float32;
+        return fraction as float32;
     }
-    // Opposite signs: cross at zero, which both sides share, so the two halves simply add.
-    return leftBits + rightBits;
-}
 
-/// Counts the representable `float32` values between `left` and `right`.
-/// @param left first value
-/// @param right second value
-/// @returns their distance in representable values, or the largest `uint64` when either is a NaN
-/// @see https://rux-lang.dev/docs/api/math/float-representation#ulp-distance
-pub func UlpDistance(left: float32, right: float32) -> uint64 {
-    if IsNan(left) || IsNan(right) { return uint64::Max; }
-    let leftBits = (Float32Bits(left) & 0x7FFFFFFF) as uint64;
-    let rightBits = (Float32Bits(right) & 0x7FFFFFFF) as uint64;
-    if SignBit(left) == SignBit(right) {
-        return if leftBits > rightBits { leftBits - rightBits } else { rightBits - leftBits };
+    /// How many representable values lie between `left` and `right`.
+    /// The natural way to state a floating-point error bound: two values are one ulp apart when nothing is
+    /// representable between them, and a function accurate to half an ulp returns the nearest representable value to
+    /// the true answer. Counting steps rather than subtracting is what makes the measure meaningful near zero, where
+    /// the absolute difference between neighbours is vanishingly small, and near the maximum, where it is enormous.
+    /// Values of opposite sign are counted through zero, with the two zeros treated as one value - the step from the
+    /// smallest negative subnormal to the smallest positive one is two, not three. A NaN in either argument has no
+    /// distance and reports the largest `uint64`, which no real distance can reach.
+    /// @param left first value
+    /// @param right second value
+    /// @returns their distance in representable values, or the largest `uint64` when either is a NaN
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#ulp-distance
+    pub func UlpDistance(left: float64, right: float64) -> uint64 {
+        if IsNan(left) || IsNan(right) { return uint64::Max; }
+        // Ordering the magnitude bits matches ordering the values, so within one sign the distance is a subtraction.
+        let leftBits = FloatBits(left) & 0x7FFFFFFFFFFFFFFF;
+        let rightBits = FloatBits(right) & 0x7FFFFFFFFFFFFFFF;
+        if SignBit(left) == SignBit(right) {
+            return if leftBits > rightBits { leftBits - rightBits } else { rightBits - leftBits };
+        }
+        // Opposite signs: cross at zero, which both sides share, so the two halves simply add.
+        return leftBits + rightBits;
     }
-    return leftBits + rightBits;
+
+    /// Counts the representable `float32` values between `left` and `right`.
+    /// @param left first value
+    /// @param right second value
+    /// @returns their distance in representable values, or the largest `uint64` when either is a NaN
+    /// @see https://rux-lang.dev/docs/api/math/float-representation#ulp-distance
+    pub func UlpDistance(left: float32, right: float32) -> uint64 {
+        if IsNan(left) || IsNan(right) { return uint64::Max; }
+        let leftBits = (Float32Bits(left) & 0x7FFFFFFF) as uint64;
+        let rightBits = (Float32Bits(right) & 0x7FFFFFFF) as uint64;
+        if SignBit(left) == SignBit(right) {
+            return if leftBits > rightBits { leftBits - rightBits } else { rightBits - leftBits };
+        }
+        return leftBits + rightBits;
+    }
 }

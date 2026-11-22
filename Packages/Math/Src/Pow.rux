@@ -8,6 +8,7 @@
 import Core::Primitives::*;
 
 // log2 of the argument, as an unevaluated sum hi + lo of two doubles.
+import Math::Classification::SignBit;
 struct Log2Pair {
     hi: float64;
     lo: float64;
