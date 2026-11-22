@@ -211,6 +211,20 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
                                   (leftType->inner.front().IsOptional() || leftType->inner.front().IsFallible()))) {
         static_cast<void>(CheckExpr(*expression.right));
         const bool reference = leftType->kind == TypeRef::Kind::Reference;
+        // An error is replaced with `!!`; a success that is itself optional is coalesced once the error is handled.
+        std::string help;
+        if (reference) {
+            help = "match the borrowed value, or coalesce an owned optional";
+        }
+        else if (leftType.FallibleSuccess().IsOptional()) {
+            help = "pass the error on with '!' first, as in 'value! ?"
+                   "? fallback', or replace it with absence, as "
+                   "in '(value !! none) ?"
+                   "? fallback'";
+        }
+        else {
+            help = "replace the error with '!!', as in 'value !! fallback', or pass it on with '!'";
+        }
         EmitError(expression.location,
                   std::format("operator '{}' cannot take '{}'",
                               "?"
@@ -219,8 +233,7 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
                   {reference ? std::string("coalescing consumes its operand, and a reference owns nothing to consume")
                              : std::string("coalescing tests one optional level and would silently discard an "
                                            "error")},
-                  reference ? std::string("match the borrowed value, or coalesce an owned optional")
-                            : std::string("recover the error with 'catch', or propagate it with '?'"));
+                  std::move(help));
         return TypeRef::MakeUnknown();
     }
 

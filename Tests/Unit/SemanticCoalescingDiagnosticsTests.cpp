@@ -187,3 +187,24 @@ TEST_CASE("coalescing an optional reference borrows, and a generic payload is ne
     )");
     CHECK(HasCoalescingError(prohibited, "cannot extract payload type 'Pinned' because moving it is prohibited"));
 }
+
+TEST_CASE("coalescing a fallible points at the error forms") {
+    // An error is replaced with `!!`, and an optional success is coalesced once the error is handled.
+    const auto diagnostics = AnalyzeCoalescing(R"(
+        enum Failure: int32 { Bad }
+        func Parse() -> int32 ! Failure { return 1i32; }
+        func Next() -> int32? ! Failure { return none; }
+        func Plain() -> int32 { return Parse() ?? 0i32; }
+        func Nested() -> int32 ! Failure { return Next() ?? 0i32; }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "operator '?"
+                                     "?' cannot take 'int32 ! Failure'");
+    CHECK_EQ(diagnostics[0].help, "replace the error with '!!', as in 'value !! fallback', or pass it on with '!'");
+    CHECK_EQ(diagnostics[1].message, "operator '?"
+                                     "?' cannot take 'int32? ! Failure'");
+    CHECK_EQ(diagnostics[1].help, "pass the error on with '!' first, as in 'value! ?"
+                                  "? fallback', or replace it "
+                                  "with absence, as in '(value !! none) ?"
+                                  "? fallback'");
+}
