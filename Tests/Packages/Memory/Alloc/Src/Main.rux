@@ -1,5 +1,6 @@
 import Core::Diagnostics::Assert;
-import Memory::{ Alloc, Free, Set };
+import Memory::Block::Set;
+import Memory::Heap::{ Alloc, Free };
 
 func Main() -> int {
     let buffer = Alloc(1024);

@@ -16,7 +16,7 @@
 // wraps it in a diagnostic type of its own.
 
 import Allocator::AllocError;
-import Memory::PageError;
+import Memory::Pages::PageError;
 
 // Whether the specification is one an error description can answer. Neither a style nor a precision is: a
 // description has one form, and truncating it produces a sentence that says something else.

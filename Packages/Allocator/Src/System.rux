@@ -13,7 +13,8 @@
 import Core::Primitives::*;
 import Allocator::{ AllocError, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Core::Diagnostics::Assert;
-import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
+import Memory::Access::{ AlignUp, AlignUpChecked };
+import Memory::Pages::{ PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 
 /// What a system allocation records about itself, immediately before the address the caller sees.
 /// Never constructed by a caller. The magic is checked on release, which is what turns a mismatched or foreign

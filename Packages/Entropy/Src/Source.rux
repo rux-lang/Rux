@@ -14,7 +14,7 @@
 import Core::Compilation::#target;
 import Core::Diagnostics::#Error;
 import Entropy::EntropyError;
-import Memory::ZeroizeBlock;
+import Memory::Access::ZeroizeBlock;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ EAGAIN, EINTR, ENOSYS, Errno, GetRandom, IsError },

@@ -12,7 +12,7 @@
 // room it took allocate nothing.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Memory::Copy;
+import Memory::Block::Copy;
 
 /// The room a builder takes when it first needs any.
 /// Small enough that a builder for a short string wastes little, large enough that short strings never grow twice.

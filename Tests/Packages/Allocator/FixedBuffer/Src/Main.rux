@@ -1,7 +1,7 @@
 import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout };
 import Allocator::Strategies::FixedBuffer;
 import Core::Diagnostics::{ Assert, Panic };
-import Memory::IsPointerAligned;
+import Memory::Access::IsPointerAligned;
 
 // A fixed-buffer allocator never asks anyone for storage, so what is checked is that it hands out exactly what the
 // buffer holds, that it aligns what it hands out and counts the padding, that it says `OutOfMemory` rather than

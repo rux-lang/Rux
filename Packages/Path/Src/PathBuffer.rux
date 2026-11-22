@@ -4,7 +4,7 @@
 // it; the buffer is where segments accumulate on the way to a system call.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Memory::Copy;
+import Memory::Block::Copy;
 
 /// An owning, growable path.
 /// Move-only: it prohibits copying and gives its block back in its destructor.

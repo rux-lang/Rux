@@ -9,7 +9,8 @@
 // arena.
 
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
-import Memory::{ AlignUp, Copy };
+import Memory::Access::AlignUp;
+import Memory::Block::Copy;
 
 pub module Strategies {
     /// An allocator that advances a pointer through storage it does not own.

@@ -5,7 +5,7 @@
 
 import Core::Diagnostics::Panic;
 import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
-import Memory::{ Alloc, Free };
+import Memory::Heap::{ Alloc, Free };
 import Sync::{
     AllocateBlock, DestroyBlock, DiscardValue, LockWord, LockWordContended, ReleaseBlock, RetainBlock, UnlockWord,
     WaitWhile, WakeAll, WakeOne

@@ -5,7 +5,7 @@
 import Core::Ownership::Copyable;
 import Allocator::{ Allocator, Layout };
 import Io::{ IoError, IoErrorKind };
-import Memory::Copy;
+import Memory::Block::Copy;
 
 struct Buffer<T: Copyable> {
     data: *var T;

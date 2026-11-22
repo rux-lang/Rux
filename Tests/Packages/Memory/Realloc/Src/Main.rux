@@ -1,5 +1,6 @@
 import Core::Diagnostics::Assert;
-import Memory::{ Alloc, Equal, Free, Realloc, Set };
+import Memory::Block::{ Equal, Set };
+import Memory::Heap::{ Alloc, Free, Realloc };
 
 func Main() -> int {
     // A null pointer makes Realloc behave like Alloc.

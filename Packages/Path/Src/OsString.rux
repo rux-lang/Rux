@@ -10,7 +10,7 @@
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 import Core::Compilation::#target;
 import Core::Ownership::Cloneable;
-import Memory::Copy;
+import Memory::Block::Copy;
 import Text::{ DecodeAt, String, StringBuilder, TextError };
 
 when #target.os == .Windows {

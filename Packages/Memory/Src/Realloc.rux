@@ -6,47 +6,50 @@
 
 import Core::Compilation::#target;
 import Core::Diagnostics::#Error;
+import Memory::Block::Copy;
 
 when #target.os == .Windows {
     import Windows::{ GetProcessHeap, HeapAlloc, HeapFree, HeapReAlloc };
 }
 
-/// Resizes an allocation to `size` bytes, preserving the bytes that still fit.
-/// A null `ptr` behaves as `Alloc(size)`. A zero size releases a non-null allocation and returns null. On failure,
-/// returns null and leaves the original allocation valid; on success, the original address is invalid even when the
-/// returned address has the same numeric value.
-/// Safety: a non-null `ptr` must be the live base address returned by `Alloc` or an earlier `Realloc`. Interior,
-/// released, or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
-/// @param ptr the allocation to resize, or null to allocate
-/// @param size the wanted size; zero releases and returns null
-/// @returns the address of the resized allocation, or null on failure
-/// @see https://rux-lang.dev/docs/api/memory/allocation#realloc
-pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
-    when #target.os {
-        .FreeBSD | .Linux | .macOS => {
-            if ptr == null { return Alloc(size); }
-            if size == 0 {
+pub module Heap {
+    /// Resizes an allocation to `size` bytes, preserving the bytes that still fit.
+    /// A null `ptr` behaves as `Alloc(size)`. A zero size releases a non-null allocation and returns null. On failure,
+    /// returns null and leaves the original allocation valid; on success, the original address is invalid even when the
+    /// returned address has the same numeric value.
+    /// Safety: a non-null `ptr` must be the live base address returned by `Alloc` or an earlier `Realloc`. Interior,
+    /// released, or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
+    /// @param ptr the allocation to resize, or null to allocate
+    /// @param size the wanted size; zero releases and returns null
+    /// @returns the address of the resized allocation, or null on failure
+    /// @see https://rux-lang.dev/docs/api/memory/allocation#realloc
+    pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
+        when #target.os {
+            .FreeBSD | .Linux | .macOS => {
+                if ptr == null { return Alloc(size); }
+                if size == 0 {
+                    Free(ptr);
+                    return null;
+                }
+                let header = (ptr as *uint) - 2;
+                let oldSize = *header;
+                let resized = Alloc(size);
+                if resized == null { return null; }
+                let copySize = if oldSize < size { oldSize } else { size };
+                Copy(resized, ptr, copySize);
                 Free(ptr);
-                return null;
-            }
-            let header = (ptr as *uint) - 2;
-            let oldSize = *header;
-            let resized = Alloc(size);
-            if resized == null { return null; }
-            let copySize = if oldSize < size { oldSize } else { size };
-            Copy(resized, ptr, copySize);
-            Free(ptr);
-            return resized;
-        },
-        .Windows => {
-            let heap = GetProcessHeap();
-            if ptr == null { return HeapAlloc(heap, 0, size); }
-            if size == 0 {
-                HeapFree(heap, 0, ptr);
-                return null;
-            }
-            return HeapReAlloc(heap, 0, ptr, size);
-        },
-        _ => #Error("Unsupported operating system")
+                return resized;
+            },
+            .Windows => {
+                let heap = GetProcessHeap();
+                if ptr == null { return HeapAlloc(heap, 0, size); }
+                if size == 0 {
+                    HeapFree(heap, 0, ptr);
+                    return null;
+                }
+                return HeapReAlloc(heap, 0, ptr, size);
+            },
+            _ => #Error("Unsupported operating system")
+        }
     }
 }

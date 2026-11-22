@@ -4,7 +4,7 @@
 // one that produces bytes in memory. Both seek, within what they hold.
 
 import Allocator::{ Allocator, Layout };
-import Memory::{ Copy, Move };
+import Memory::Block::{ Copy, Move };
 
 /// A reader of a slice of bytes, from its start. `Copy`.
 /// Borrows the bytes, which must outlive it.

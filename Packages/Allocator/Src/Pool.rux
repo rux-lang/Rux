@@ -17,7 +17,8 @@
 
 import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
-import Memory::{ AlignUp, Copy };
+import Memory::Access::AlignUp;
+import Memory::Block::Copy;
 
 pub module Strategies {
     /// How many size classes a pool serves.

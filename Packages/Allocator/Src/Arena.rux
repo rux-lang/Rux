@@ -14,7 +14,7 @@
 
 import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
-import Memory::AlignUp;
+import Memory::Access::AlignUp;
 
 pub module Strategies {
     /// The default payload of an arena's first block.

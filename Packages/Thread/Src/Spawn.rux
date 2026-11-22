@@ -9,7 +9,8 @@
 import Core::Diagnostics::Panic;
 import Core::Machine::{ AtomicFetchSub, AtomicStore, MemoryOrder };
 import Core::Ownership::Sendable;
-import Memory::{ AlignUp, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
+import Memory::Access::AlignUp;
+import Memory::Pages::{ PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 import Thread::{ NativeDetach, NativeJoin, NativeStart, ThreadError };
 
 // What both owners of a block need without knowing the thread's types. It starts the block, so the handle reaches it

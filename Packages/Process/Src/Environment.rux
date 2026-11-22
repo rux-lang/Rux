@@ -12,7 +12,7 @@ import Core::Compilation::#target;
 import Core::Iteration::Iterator;
 import Core::Machine::{ AtomicExchange, MemoryOrder, SpinHint };
 import Io::{ IoError, IoErrorKind };
-import Memory::{ Alloc, Realloc };
+import Memory::Heap::{ Alloc, Realloc };
 import Path::{ OsStringView, OsUnit };
 
 when #target.os == .Windows {

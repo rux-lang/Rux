@@ -10,7 +10,7 @@
 
 
 import Core::Primitives::*;
-import Memory::Copy;
+import Memory::Block::Copy;
 
 /// A byte order: which end of a multi-byte value comes first.
 /// @see https://rux-lang.dev/docs/api/io/binary#endian

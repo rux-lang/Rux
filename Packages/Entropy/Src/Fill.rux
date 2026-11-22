@@ -9,7 +9,7 @@
 // code in the test and in production, which is the only way to know it works.
 
 import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
-import Memory::ZeroizeBlock;
+import Memory::Access::ZeroizeBlock;
 
 /// Something that can fill a buffer with unpredictable bytes.
 /// Implemented by `SystemEntropy` for the operating system's generator, and by a test for a source that fails on

@@ -12,7 +12,7 @@
 
 import Allocator::{ AllocError, Allocator, Layout };
 
-import Memory::Copy;
+import Memory::Block::Copy;
 
 /// The room a buffered stream takes when the caller expresses no preference.
 /// @see https://rux-lang.dev/docs/api/io/buffered-reader#default-buffer-capacity

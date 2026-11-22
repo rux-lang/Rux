@@ -9,7 +9,7 @@
 // holding the first part of an identifier that a careless caller might use anyway.
 
 import Entropy::{ EntropyError, EntropySource, FillFrom, SystemEntropy };
-import Memory::ZeroizeBlock;
+import Memory::Access::ZeroizeBlock;
 
 // How many random bytes one batch holds. A default identifier needs twenty-one, and a custom alphabet of any size
 // needs on average fewer than twice its length, so this covers the common cases in one request.

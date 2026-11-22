@@ -1,6 +1,7 @@
 import Core::Compare::Ordering;
 import Core::Diagnostics::Assert;
-import Memory::{ Alloc, Compare, Copy, Equal, Find, Free, MismatchOffset, Move, Set, Zero };
+import Memory::Block::{ Compare, Copy, Equal, Find, MismatchOffset, Move, Set, Zero };
+import Memory::Heap::{ Alloc, Free };
 
 // The three things a block operation gets wrong quietly: touching a byte past its length, taking the wrong direction
 // through an overlap, and treating an empty range as an error. Each is checked here rather than assumed.

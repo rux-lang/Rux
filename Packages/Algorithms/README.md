@@ -295,7 +295,7 @@ Ordering and search algorithms require `func <` in the same form. A missing oper
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
 - **Caller-provided stability.** `StableSort` requires a scratch `var T[..]` as long as the input, preserving the package's zero-allocation property.
-- `Algorithms::Modify::CopyTo` copies typed elements, while [`Memory::Copy`](../Memory) copies raw bytes.
+- `Algorithms::Modify::CopyTo` copies typed elements, while [`Memory::Block::Copy`](../Memory) copies raw bytes.
 
 `T[..]` and `var T[..]` are borrowed views and copy only their pointer and length, never their elements. Internal pointers used for indexing and pointer arithmetic remain raw. The few scalar output parameters also remain raw pointers; pass writable addresses such as `@smallest` and never pass null unless the function documents it.
 

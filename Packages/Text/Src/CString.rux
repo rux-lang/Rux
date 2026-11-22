@@ -11,7 +11,7 @@
 // appends is never visible through anything else, and a `String` never holds one.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Memory::Copy;
+import Memory::Block::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.
 /// Move-only: it explicitly prohibits copying, owns its block, and gives it back when it dies. The terminator is

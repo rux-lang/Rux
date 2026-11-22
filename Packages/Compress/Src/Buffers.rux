@@ -6,7 +6,7 @@
 import Allocator::{ Allocator, Layout };
 import Collections::Vector;
 import Io::{ IoError, IoErrorKind, Reader, Writer };
-import Memory::Copy;
+import Memory::Block::Copy;
 import Compress::{ CompressWriter, DecompressReader, Format, Level };
 
 // A reader over a slice of bytes.

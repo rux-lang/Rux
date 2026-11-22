@@ -17,43 +17,45 @@ when #target.os {
     .Windows => import Windows::{ GetProcessHeap, HeapAlloc }
 }
 
-/// Allocates `size` uninitialized bytes.
-/// Returns the base address, or null when the size overflows the platform bookkeeping or the system cannot satisfy
-/// the request. A zero size is permitted, but the returned address is platform-dependent and must not be touched.
-/// The allocation is owned by the caller until `Free` releases it or `Realloc` replaces it. The address is aligned
-/// to at least 16 bytes on every supported target.
-/// The bytes are uninitialized. Reading any byte before writing it, accessing beyond `size`, or using the address
-/// after it is released is invalid.
-/// @param size how many bytes to take; zero returns null
-/// @returns the address of the allocation, or null when the system refused
-/// @see https://rux-lang.dev/docs/api/memory/allocation#alloc
-pub func Alloc(size: uint) -> *var opaque {
-    when #target.os {
-        .FreeBSD | .Linux | .macOS => {
-            // Two machine words keep the returned address aligned to 16 bytes.
-            const HeaderSize: uint = 16;
-            let total = size + HeaderSize;
-            if total < size { return null; }
-            // Safety: a fresh private anonymous mapping at no fixed address replaces nothing the program uses.
-            let mapping = {
-                Mmap(null, total, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
-            };
-            if IsError(mapping) { return null; }
-            // Safety: `mapping` is the fresh, writable, page-aligned mapping of `total` bytes, so its first word holds
-            // the size header and the block after the 16-byte header lies inside it.
-            {
-                let header = mapping as *var uint;
-                *header = size;
-                return (header + 2) as *var opaque;
-            }
-        },
-        .Windows => {
-            // Safety: `GetProcessHeap` takes nothing and returns the process heap, which lives as long as the
-            // process.
-            let heap = GetProcessHeap();
-            // Safety: `heap` is the process heap just returned, and no flags are passed.
-            return HeapAlloc(heap, 0, size);
-        },
-        _ => #Error("Unsupported operating system")
+pub module Heap {
+    /// Allocates `size` uninitialized bytes.
+    /// Returns the base address, or null when the size overflows the platform bookkeeping or the system cannot satisfy
+    /// the request. A zero size is permitted, but the returned address is platform-dependent and must not be touched.
+    /// The allocation is owned by the caller until `Free` releases it or `Realloc` replaces it. The address is aligned
+    /// to at least 16 bytes on every supported target.
+    /// The bytes are uninitialized. Reading any byte before writing it, accessing beyond `size`, or using the address
+    /// after it is released is invalid.
+    /// @param size how many bytes to take; zero returns null
+    /// @returns the address of the allocation, or null when the system refused
+    /// @see https://rux-lang.dev/docs/api/memory/allocation#alloc
+    pub func Alloc(size: uint) -> *var opaque {
+        when #target.os {
+            .FreeBSD | .Linux | .macOS => {
+                // Two machine words keep the returned address aligned to 16 bytes.
+                const HeaderSize: uint = 16;
+                let total = size + HeaderSize;
+                if total < size { return null; }
+                // Safety: a fresh private anonymous mapping at no fixed address replaces nothing the program uses.
+                let mapping = {
+                    Mmap(null, total, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0)
+                };
+                if IsError(mapping) { return null; }
+                // Safety: `mapping` is the fresh, writable, page-aligned mapping of `total` bytes, so its first word
+                // holds the size header and the block after the 16-byte header lies inside it.
+                {
+                    let header = mapping as *var uint;
+                    *header = size;
+                    return (header + 2) as *var opaque;
+                }
+            },
+            .Windows => {
+                // Safety: `GetProcessHeap` takes nothing and returns the process heap, which lives as long as the
+                // process.
+                let heap = GetProcessHeap();
+                // Safety: `heap` is the process heap just returned, and no flags are passed.
+                return HeapAlloc(heap, 0, size);
+            },
+            _ => #Error("Unsupported operating system")
+        }
     }
 }

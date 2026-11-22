@@ -8,7 +8,7 @@
 
 import Core::Diagnostics::Panic;
 import Core::Machine::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchSub, MemoryOrder };
-import Memory::{ Alloc, Free };
+import Memory::Heap::{ Alloc, Free };
 import Sync::{ WaitWhile, WakeOne };
 
 // Takes the lock in `word`, sleeping while another thread holds it.

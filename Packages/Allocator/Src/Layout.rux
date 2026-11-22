@@ -8,7 +8,7 @@
 // `ForValue<T>` and `ForArray<T>` describe storage without constructing a value and use the type's actual alignment.
 
 import Core::Primitives::*;
-import Memory::AlignUpChecked;
+import Memory::Access::AlignUpChecked;
 
 /// A validated allocation request: a size, and the alignment its address must satisfy.
 /// Copy and owns nothing. Every instance is valid, because `Of` refuses to build an invalid one: the alignment is a

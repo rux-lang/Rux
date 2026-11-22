@@ -6,7 +6,7 @@
 // from the path.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Memory::Copy;
+import Memory::Block::Copy;
 import Url::UrlError;
 
 // A growable run of bytes, which the path is assembled in before it joins the URL.

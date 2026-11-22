@@ -12,22 +12,24 @@ when #target.os {
     .Windows => import Windows::{ GetProcessHeap, HeapFree }
 }
 
-/// Releases an allocation. A null pointer is accepted and does nothing.
-/// Safety: a non-null `ptr` must be the live base address returned by `Alloc` or `Realloc`. Every pointer into the
-/// block becomes invalid immediately; releasing an interior, foreign, or already released address is invalid.
-/// @param ptr an address `Alloc` or `Realloc` returned, or null
-/// @see https://rux-lang.dev/docs/api/memory/allocation#free
-pub func Free(ptr: *opaque) {
-    when #target.os {
-        .FreeBSD | .Linux | .macOS => {
-            if ptr == null { return; }
-            const HeaderSize: uint = 16;
-            let header = (ptr as *uint) - 2;
-            Munmap(header as *opaque, *header + HeaderSize);
-        },
-        .Windows => {
-            let heap = GetProcessHeap();
-            HeapFree(heap, 0, ptr);
+pub module Heap {
+    /// Releases an allocation. A null pointer is accepted and does nothing.
+    /// Safety: a non-null `ptr` must be the live base address returned by `Alloc` or `Realloc`. Every pointer into the
+    /// block becomes invalid immediately; releasing an interior, foreign, or already released address is invalid.
+    /// @param ptr an address `Alloc` or `Realloc` returned, or null
+    /// @see https://rux-lang.dev/docs/api/memory/allocation#free
+    pub func Free(ptr: *opaque) {
+        when #target.os {
+            .FreeBSD | .Linux | .macOS => {
+                if ptr == null { return; }
+                const HeaderSize: uint = 16;
+                let header = (ptr as *uint) - 2;
+                Munmap(header as *opaque, *header + HeaderSize);
+            },
+            .Windows => {
+                let heap = GetProcessHeap();
+                HeapFree(heap, 0, ptr);
+            }
         }
     }
 }

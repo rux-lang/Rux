@@ -1,5 +1,5 @@
 import Core::Diagnostics::Assert;
-import Memory::{ Alloc, Free, Realloc };
+import Memory::Heap::{ Alloc, Free, Realloc };
 
 func Main() -> int {
     // Freeing null is documented as a no-op, so callers need no guard.

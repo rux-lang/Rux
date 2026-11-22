@@ -17,7 +17,7 @@
 
 import Algorithms::Modify::Rotate;
 import Allocator::{ AllocationFailed, Allocator };
-import Memory::Copy;
+import Memory::Block::Copy;
 
 /// The capacity a deque takes when it first has to allocate.
 /// Four slots, and a power of two like every capacity after it.

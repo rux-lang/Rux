@@ -1,7 +1,8 @@
 import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, NaturalAlignment, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
-import Memory::{ IsPointerAligned, Set };
+import Memory::Access::IsPointerAligned;
+import Memory::Block::Set;
 
 // What an allocator gets wrong quietly: handing back an address that does not satisfy the alignment, accepting a
 // release that does not match its allocation, and losing the original block when a reallocation fails. Each is

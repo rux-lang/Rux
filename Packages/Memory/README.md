@@ -57,7 +57,8 @@ Every function that reads or writes through an address it is given — `Copy`, `
 ## Example
 
 ```rux
-import Memory::{ Alloc, Free, Zero };
+import Memory::Block::Zero;
+import Memory::Heap::{ Alloc, Free };
 
 var buffer = Alloc(1024);
 if buffer != null {

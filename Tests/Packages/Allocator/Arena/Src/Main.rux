@@ -1,7 +1,7 @@
 import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout, SystemAllocator };
 import Allocator::Strategies::Arena;
 import Core::Diagnostics::Assert;
-import Memory::IsPointerAligned;
+import Memory::Access::IsPointerAligned;
 
 // An arena hands out storage by advancing a pointer, so what is checked is that the pointer advances by what was
 // asked for, that a request too large for the current block gets a new one, that a reset makes the space available

@@ -7,7 +7,7 @@
 // destroyed or cloned, and each check appends a 0 where it stands, so the log is the exact order of events.
 
 import Core::Diagnostics::Assert;
-import Memory::{ Alloc, Free };
+import Memory::Heap::{ Alloc, Free };
 
 struct Log {
     count: int32;

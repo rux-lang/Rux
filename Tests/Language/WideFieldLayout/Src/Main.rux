@@ -1,5 +1,5 @@
 import Core::Diagnostics::Assert;
-import Memory::{ Alloc, Free };
+import Memory::Heap::{ Alloc, Free };
 
 // Where a field wider than a doubleword lands. Every primitive of 128 bits or more is sixteen-byte aligned, as the C
 // ABIs align `__int128` and `long double`, and `sizeof`, `alignof`, a `when` condition, a field's address, an array's
