@@ -14,6 +14,7 @@ rux add Rux/Windows
 | ----------- | ------------------------------------------------------------------------------------ |
 | `Types`     | `Handle`, `ModuleHandle`, `Bool`, `Dword`, `WideChar`, `NtStatus`, `FileTime`, `SystemTime`, and `InvalidHandleValue` |
 | `Constants` | the code pages and the file-creation dispositions                                      |
+| `Errors`            | the error codes `GetLastError` reports, and the three ways Win32 reports a failure |
 | `Kernel`    | the Kernel32 entry points, including the `A` forms kept for compatibility              |
 | `File`      | the Unicode `W` file, directory and console entry points, with the access, share and move flags |
 | `Memory`    | `VirtualAlloc`, `VirtualFree`, `VirtualProtect`, `VirtualLock`, and the state and protection flags |
@@ -30,7 +31,7 @@ rux add Rux/Windows
 | `Version`   | `RtlGetVersion` and `OsVersionInfoEx`, the true version of the running system |
 | `SystemInformation` | `GlobalMemoryStatusEx` with `MemoryStatusEx`, `GetPhysicallyInstalledSystemMemory`, `GetNativeSystemInfo`, and `GetLogicalProcessorInformationEx` for counting cores |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+Every declaration lives in the module of its row, and the module is part of the import path: `import Windows::Kernel::{ CloseHandle, GetLastError };`.
 
 **Prefer the `W` entry points.** The `A` forms convert through the process code page, which cannot express every name a file system can hold and differs between machines — so a path that works on one system fails on another for reasons the program cannot see. A path is text a user or a file system chose, not text the program chose. The `A` forms stay declared because existing callers use them, and each is now marked.
 
@@ -68,7 +69,8 @@ Windows only. Guard use behind a compile-time check, so a build for another targ
 import Core::Compilation::#target;
 
 when #target.os == .Windows {
-    import Windows::{ GetStdHandle, StdOutputHandle, WriteConsoleA };
+    import Windows::Kernel::{ GetStdHandle, WriteConsoleA };
+    import Windows::Types::StdOutputHandle;
 }
 ```
 

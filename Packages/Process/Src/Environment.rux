@@ -16,7 +16,7 @@ import Memory::Heap::{ Alloc, Realloc };
 import Path::{ OsStringView, OsUnit };
 
 when #target.os == .Windows {
-    import Windows::SetEnvironmentVariableW;
+    import Windows::ProcessControl::SetEnvironmentVariableW;
 }
 
 /// One environment variable: its name and its value.

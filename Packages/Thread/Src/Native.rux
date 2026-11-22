@@ -27,9 +27,10 @@ when #target.os {
                                 pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach,
                                 pthread_join, pthread_threadid_np, sched_yield, sysconf };
     },
-    .Windows => import Windows::{
-        ALL_PROCESSOR_GROUPS, CloseHandle, CreateThread, GetActiveProcessorCount, GetCurrentThreadId, INFINITE,
-        STACK_SIZE_PARAM_IS_A_RESERVATION, SwitchToThread, WaitForSingleObject
+    .Windows => {
+        import Windows::Constants::{ ALL_PROCESSOR_GROUPS, INFINITE, STACK_SIZE_PARAM_IS_A_RESERVATION };
+        import Windows::Kernel::{ CloseHandle, CreateThread, GetActiveProcessorCount, GetCurrentThreadId,
+                                  SwitchToThread, WaitForSingleObject };
     },
     _ => #Error("Unsupported operating system")
 }

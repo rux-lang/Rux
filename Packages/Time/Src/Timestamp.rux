@@ -25,8 +25,11 @@ when #target.os {
         import macOS::Clock::{ ClockGetTime, ClockRealtime };
         import macOS::Types::Timespec;
     },
-    .Windows => import Windows::{ FileTime, FileTimeTicks, FileTimeTicksPerSecond, FileTimeToUnixEpochSeconds,
-                                  GetSystemTimePreciseAsFileTime },
+    .Windows => {
+        import Windows::Clock::{ FileTimeTicks, FileTimeTicksPerSecond, FileTimeToUnixEpochSeconds,
+                                 GetSystemTimePreciseAsFileTime };
+        import Windows::Types::FileTime;
+    },
     _ => #Error("Unsupported operating system")
 }
 

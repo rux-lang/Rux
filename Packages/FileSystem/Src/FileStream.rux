@@ -14,8 +14,10 @@ when #target.os {
     .FreeBSD => import FreeBSD::File::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
     .Linux => import Linux::File::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
     .macOS => import macOS::File::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
-    .Windows => import Windows::{ FlushFileBuffers, GetFileSizeEx, GetLastError, ReadFile, SetEndOfFile,
-                                  SetFilePointerEx, WriteFile }
+    .Windows => {
+        import Windows::File::{ FlushFileBuffers, SetEndOfFile };
+        import Windows::Kernel::{ GetFileSizeEx, GetLastError, ReadFile, SetFilePointerEx, WriteFile };
+    }
 }
 
 // The one closed-handle answer, so every operation refuses the same way.

@@ -15,7 +15,7 @@ import Core::Compare::Ordering;
 import Core::Compilation::#target;
 
 when #target.os == .Windows {
-    import Windows::{ RtlCompareMemory, RtlCopyMemory, RtlFillMemory, RtlZeroMemory };
+    import Windows::Kernel::{ RtlCompareMemory, RtlCopyMemory, RtlFillMemory, RtlZeroMemory };
 }
 
 pub module Block {

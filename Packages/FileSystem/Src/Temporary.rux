@@ -16,7 +16,8 @@ import Io::{ IoError, IoErrorKind };
 import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer };
 
 when #target.os == .Windows {
-    import Windows::{ GetLastError, GetTempPathW };
+    import Windows::File::GetTempPathW;
+    import Windows::Kernel::GetLastError;
 }
 
 /// How many names are tried before a temporary file gives up.

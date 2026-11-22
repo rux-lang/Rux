@@ -22,7 +22,10 @@ when #target.os {
         import macOS::Errors::ETIMEDOUT;
         import macOS::Ulock::{ ULF_NO_ERRNO, ULF_WAKE_ALL, UL_COMPARE_AND_WAIT, __ulock_wait, __ulock_wake };
     },
-    .Windows => import Windows::{ INFINITE, WaitOnAddress, WakeByAddressAll, WakeByAddressSingle },
+    .Windows => {
+        import Windows::Constants::INFINITE;
+        import Windows::Synch::{ WaitOnAddress, WakeByAddressAll, WakeByAddressSingle };
+    },
     _ => #Error("Unsupported operating system")
 }
 

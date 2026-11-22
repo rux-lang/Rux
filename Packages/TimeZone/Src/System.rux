@@ -15,7 +15,7 @@ import Process::Variable;
 import TimeZone::{ NoRule, Rule, RuleDate, TimeZone, TimeZoneError, ZoneType };
 
 when #target.os == .Windows {
-    import Windows::{ GetTimeZoneInformation, TimeZoneInformation, TimeZoneRuleDate };
+    import Windows::TimeZone::{ GetTimeZoneInformation, TimeZoneInformation, TimeZoneRuleDate };
 }
 
 // Where the Unix systems keep the tz database, in the order they are tried.

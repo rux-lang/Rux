@@ -19,8 +19,11 @@ when #target.os {
     .FreeBSD => import FreeBSD::File::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
     .Linux => import Linux::File::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
     .macOS => import macOS::File::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
-    .Windows => import Windows::{ CloseHandle, GetCurrentDirectoryW, GetFinalPathNameByHandleW, GetLastError,
-                                  InvalidHandleValue, SetCurrentDirectoryW }
+    .Windows => {
+        import Windows::File::{ GetCurrentDirectoryW, GetFinalPathNameByHandleW, SetCurrentDirectoryW };
+        import Windows::Kernel::{ CloseHandle, GetLastError };
+        import Windows::Types::InvalidHandleValue;
+    }
 }
 
 /// How many symbolic links one canonicalization will follow before giving up.

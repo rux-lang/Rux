@@ -18,12 +18,16 @@ when #target.os {
     .FreeBSD => import FreeBSD::File::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .Linux => import Linux::File::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .macOS => import macOS::File::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
-    .Windows => import Windows::{ CloseHandle, CreateFileW, CreationDisposition, FILE_ATTRIBUTE_DIRECTORY,
-                                  FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT,
-                                  FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
-                                  FILE_SHARE_READ, FILE_SHARE_WRITE, FileTime, FileTimeToUnixEpochSeconds,
-                                  GetFileAttributesW, GetFileInformationByHandle, GetLastError, INVALID_FILE_ATTRIBUTES,
-                                  InvalidHandleValue, SetFileAttributesW, SetFileTime }
+    .Windows => {
+        import Windows::Clock::FileTimeToUnixEpochSeconds;
+        import Windows::Constants::CreationDisposition;
+        import Windows::File::{ CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY,
+                                FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+                                FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileAttributesW,
+                                GetFileInformationByHandle, INVALID_FILE_ATTRIBUTES, SetFileAttributesW, SetFileTime };
+        import Windows::Kernel::{ CloseHandle, GetLastError };
+        import Windows::Types::{ FileTime, InvalidHandleValue };
+    }
 }
 
 /// What kind of thing a name refers to.

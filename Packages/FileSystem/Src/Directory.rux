@@ -16,8 +16,12 @@ when #target.os {
                                     RemoveDirectory, UnlinkAt },
     .macOS => import macOS::File::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                                     RemoveDirectory, UnlinkAt },
-    .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
-                                  FindNextFileW, GetLastError, InvalidHandleValue, RemoveDirectoryW }
+    .Windows => {
+        import Windows::Errors::ERROR_NO_MORE_FILES;
+        import Windows::File::{ CreateDirectoryW, DeleteFileW, FindFirstFileW, FindNextFileW, RemoveDirectoryW };
+        import Windows::Kernel::{ FindClose, GetLastError };
+        import Windows::Types::InvalidHandleValue;
+    }
 }
 
 /// Creates the directory `path` names. Its parent must already exist; `AlreadyExists` if the name is taken.

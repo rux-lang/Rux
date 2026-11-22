@@ -1,10 +1,13 @@
 import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
-    import Windows::{ FileTime, FileTimeTicks, FileTimeTicksPerSecond, FileTimeToUnixEpochSeconds, GetFileAttributesW,
-                      GetRandom, GetSystemTimePreciseAsFileTime, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_NOACCESS,
-                      PAGE_READWRITE, QueryPerformanceCounter, QueryPerformanceFrequency, VirtualAlloc, VirtualFree,
-                      VirtualProtect };
+    import Windows::Clock::{ FileTimeTicks, FileTimeTicksPerSecond, FileTimeToUnixEpochSeconds,
+                             GetSystemTimePreciseAsFileTime, QueryPerformanceCounter, QueryPerformanceFrequency };
+    import Windows::Entropy::GetRandom;
+    import Windows::File::GetFileAttributesW;
+    import Windows::Memory::{ MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_NOACCESS, PAGE_READWRITE, VirtualAlloc,
+                              VirtualFree, VirtualProtect };
+    import Windows::Types::FileTime;
 
     // Each declaration is called, so a wrong symbol name, a wrong argument order, or a library that does not export
     // it fails here rather than at some caller's expense. The reserve-then-commit split and the two different

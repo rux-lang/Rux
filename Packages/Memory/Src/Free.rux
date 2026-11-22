@@ -9,7 +9,7 @@ when #target.os {
     .FreeBSD => import FreeBSD::Memory::Munmap,
     .Linux => import Linux::Memory::Munmap,
     .macOS => import macOS::Memory::Munmap,
-    .Windows => import Windows::{ GetProcessHeap, HeapFree }
+    .Windows => import Windows::Kernel::{ GetProcessHeap, HeapFree }
 }
 
 pub module Heap {

@@ -25,9 +25,10 @@ when #target.os {
         import macOS::File::{ Close, Read, Write };
         import macOS::Spawn::{ SIGKILL, WNOHANG, kill, waitpid };
     },
-    .Windows => import Windows::{
-        CloseHandle, ERROR_BROKEN_PIPE, GetExitCodeProcess, GetLastError, INFINITE, ReadFile, TerminateProcess,
-        WAIT_TIMEOUT, WaitForSingleObject, WriteFile
+    .Windows => {
+        import Windows::Constants::INFINITE;
+        import Windows::Kernel::{ CloseHandle, GetLastError, ReadFile, WaitForSingleObject, WriteFile };
+        import Windows::ProcessControl::{ ERROR_BROKEN_PIPE, GetExitCodeProcess, TerminateProcess, WAIT_TIMEOUT };
     },
     _ => #Error("Unsupported operating system")
 }

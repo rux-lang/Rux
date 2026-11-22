@@ -19,7 +19,7 @@ when #target.os {
         import FreeBSD::Process::QueryExecutablePath;
     },
     .macOS => import macOS::LibSystem::_NSGetExecutablePath,
-    .Windows => import Windows::{ GetLastError, GetModuleFileNameW },
+    .Windows => import Windows::Kernel::{ GetLastError, GetModuleFileNameW },
     _ => #Error("Unsupported operating system")
 }
 

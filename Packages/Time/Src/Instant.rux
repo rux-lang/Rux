@@ -22,7 +22,7 @@ when #target.os {
         import macOS::Clock::{ ClockGetTime, ClockMonotonic };
         import macOS::Types::Timespec;
     },
-    .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency },
+    .Windows => import Windows::Clock::{ QueryPerformanceCounter, QueryPerformanceFrequency },
     _ => #Error("Unsupported operating system")
 }
 

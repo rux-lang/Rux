@@ -1,10 +1,12 @@
 import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
-    import Windows::{ CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateWindowExW, DEFAULT_CHARSET,
-                      DEFAULT_PITCH, DefWindowProcW, DeleteObject, DestroyWindow, FW_NORMAL, GetDpiForWindow,
-                      GetModuleHandleW, HWND_MESSAGE, IDC_ARROW, LoadCursorW, OUT_DEFAULT_PRECIS, RegisterClassExW,
-                      SendMessageW, UnregisterClassW, WM_CREATE, WM_DESTROY, WM_USER, WindowClassEx };
+    import Windows::Gdi::{ CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH,
+                           DeleteObject, FW_NORMAL, OUT_DEFAULT_PRECIS };
+    import Windows::Kernel::GetModuleHandleW;
+    import Windows::Window::{ CreateWindowExW, DefWindowProcW, DestroyWindow, GetDpiForWindow, HWND_MESSAGE, IDC_ARROW,
+                              LoadCursorW, RegisterClassExW, SendMessageW, UnregisterClassW, WM_CREATE, WM_DESTROY,
+                              WM_USER, WindowClassEx };
 
     // A window is the one Win32 object whose code the system calls back, so the test is mostly about that call: the
     // procedure is an ordinary Rux function, and every message that reaches it proves the convention and the four

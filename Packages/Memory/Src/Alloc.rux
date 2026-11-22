@@ -23,7 +23,7 @@ when #target.os {
         import macOS::Errors::IsError;
         import macOS::Memory::{ MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite };
     },
-    .Windows => import Windows::{ GetProcessHeap, HeapAlloc }
+    .Windows => import Windows::Kernel::{ GetProcessHeap, HeapAlloc }
 }
 
 pub module Heap {

@@ -36,11 +36,13 @@ when #target.os {
                                posix_spawn_file_actions_adddup2, posix_spawn_file_actions_addopen,
                                posix_spawn_file_actions_destroy, posix_spawn_file_actions_init, posix_spawnp };
     },
-    .Windows => import Windows::{
-        CREATE_UNICODE_ENVIRONMENT, CloseHandle, CreateFileW, CreatePipe, CreateProcessW, DUPLICATE_SAME_ACCESS,
-        DuplicateHandle, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE, GetCurrentProcess,
-        GetStdHandle, HANDLE_FLAG_INHERIT, InvalidHandleValue, ProcessInformation, STARTF_USESTDHANDLES,
-        SecurityAttributes, SetHandleInformation, StartupInfo, StdErrorHandle, StdInputHandle, StdOutputHandle
+    .Windows => {
+        import Windows::File::{ CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, GENERIC_WRITE };
+        import Windows::Kernel::{ CloseHandle, GetStdHandle };
+        import Windows::ProcessControl::{ CREATE_UNICODE_ENVIRONMENT, CreatePipe, CreateProcessW, DUPLICATE_SAME_ACCESS,
+                                          DuplicateHandle, GetCurrentProcess, HANDLE_FLAG_INHERIT, ProcessInformation,
+                                          STARTF_USESTDHANDLES, SecurityAttributes, SetHandleInformation, StartupInfo };
+        import Windows::Types::{ InvalidHandleValue, StdErrorHandle, StdInputHandle, StdOutputHandle };
     },
     _ => #Error("Unsupported operating system")
 }

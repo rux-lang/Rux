@@ -1,11 +1,14 @@
 import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
-    import Windows::{ ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA, GetLastError,
-                      GetLogicalProcessorInformationEx, GetNativeSystemInfo, GetPhysicallyInstalledSystemMemory,
-                      GlobalMemoryStatusEx, HKEY_LOCAL_MACHINE, MemoryStatusEx, OsVersionInfoEx,
-                      ProcessorRelationshipHeader, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
-                      RelationProcessorCore, RtlGetVersion, SystemInfo, VER_PLATFORM_WIN32_NT };
+    import Windows::Errors::{ ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA };
+    import Windows::Kernel::GetLastError;
+    import Windows::Registry::{ HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW };
+    import Windows::SystemInformation::{ GetLogicalProcessorInformationEx, GetNativeSystemInfo,
+                                         GetPhysicallyInstalledSystemMemory, GlobalMemoryStatusEx, MemoryStatusEx,
+                                         ProcessorRelationshipHeader, RelationProcessorCore };
+    import Windows::Types::SystemInfo;
+    import Windows::Version::{ OsVersionInfoEx, RtlGetVersion, VER_PLATFORM_WIN32_NT };
 
     // Every value a program would show about the machine is read here, and each is checked against another source
     // that must agree with it: the version against the registry, the memory against itself and the firmware, the

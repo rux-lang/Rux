@@ -1,7 +1,8 @@
 import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
-    import Windows::{ CodePage, CreationDisposition, StdErrorHandle, StdInputHandle, StdOutputHandle };
+    import Windows::Constants::{ CodePage, CreationDisposition };
+    import Windows::Types::{ StdErrorHandle, StdInputHandle, StdOutputHandle };
 
     func Main() -> int {
         if CodePage::Utf8 as uint32 != 65001 ||

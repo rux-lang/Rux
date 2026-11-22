@@ -16,7 +16,7 @@ when #target.os {
     .Linux => {},
     .FreeBSD => import FreeBSD::Resolve::{ AddressInfo, freeaddrinfo, getaddrinfo },
     .macOS => import macOS::Sockets::{ AddressInfo, freeaddrinfo, getaddrinfo },
-    .Windows => import Windows::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    .Windows => import Windows::Winsock::{ AddressInfo, freeaddrinfo, getaddrinfo },
     _ => #Error("Unsupported operating system")
 }
 

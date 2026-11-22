@@ -45,8 +45,12 @@ A multi-name import list is laid out by one mechanical rule, so that any two aut
 when #target.os {
     .Linux => import Linux::File::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                                     RemoveDirectory, UnlinkAt },
-    .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
-                                  FindNextFileW, GetLastError, InvalidHandleValue, RemoveDirectoryW }
+    .Windows => {
+        import Windows::Errors::ERROR_NO_MORE_FILES;
+        import Windows::File::{ CreateDirectoryW, DeleteFileW, FindFirstFileW, FindNextFileW, RemoveDirectoryW };
+        import Windows::Kernel::{ FindClose, GetLastError };
+        import Windows::Types::InvalidHandleValue;
+    }
 }
 ```
 

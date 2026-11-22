@@ -9,7 +9,7 @@ import Core::Diagnostics::#Error;
 import Memory::Block::Copy;
 
 when #target.os == .Windows {
-    import Windows::{ GetProcessHeap, HeapAlloc, HeapFree, HeapReAlloc };
+    import Windows::Kernel::{ GetProcessHeap, HeapAlloc, HeapFree, HeapReAlloc };
 }
 
 pub module Heap {

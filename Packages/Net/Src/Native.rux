@@ -34,10 +34,12 @@ when #target.os {
                                  SetSocketOption, Shutdown, Socket };
         import macOS::Spawn::{ FD_CLOEXEC, F_SETFD, fcntl };
     },
-    .Windows => import Windows::{
-        AF_INET, AF_INET6, FIONBIO, HANDLE_FLAG_INHERIT, INVALID_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO, SOL_SOCKET,
-        SetHandleInformation, WSAGetLastError, WSAStartup, WsaData, accept, bind, closesocket, connect, getpeername,
-        getsockname, ioctlsocket, listen, recvfrom, sendto, setsockopt, shutdown, socket
+    .Windows => {
+        import Windows::ProcessControl::{ HANDLE_FLAG_INHERIT, SetHandleInformation };
+        import Windows::Winsock::{ AF_INET, AF_INET6, FIONBIO, INVALID_SOCKET, SOL_SOCKET, SO_RCVTIMEO, SO_SNDTIMEO,
+                                   WSAGetLastError, WSAStartup, WsaData, accept, bind, closesocket, connect,
+                                   getpeername, getsockname, ioctlsocket, listen, recvfrom, sendto, setsockopt,
+                                   shutdown, socket };
     },
     _ => #Error("Unsupported operating system")
 }

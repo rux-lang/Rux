@@ -1,6 +1,6 @@
 // This native ABI fixture provides its own literal view declaration.
 
-import Windows::{ FreeLibrary, GetProcAddress, LoadLibraryA };
+import Windows::Kernel::{ FreeLibrary, GetProcAddress, LoadLibraryA };
 
 func Main() -> int {
     let libraryName = "WindowsAArch64Dll.dll";

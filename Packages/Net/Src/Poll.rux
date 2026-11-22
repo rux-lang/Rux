@@ -36,7 +36,7 @@ when #target.os {
         import macOS::Spawn::{ FD_CLOEXEC, F_SETFD };
         import macOS::Types::Timespec;
     },
-    .Windows => import Windows::{ POLLERR, POLLHUP, POLLNVAL, POLLRDNORM, POLLWRNORM, WSAPoll, WsaPollFd },
+    .Windows => import Windows::Winsock::{ POLLERR, POLLHUP, POLLNVAL, POLLRDNORM, POLLWRNORM, WSAPoll, WsaPollFd },
     _ => #Error("Unsupported operating system")
 }
 

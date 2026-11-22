@@ -34,7 +34,7 @@ when #target.os {
         import macOS::Errors::{ EINTR, Errno, IsError };
         import macOS::Types::Timespec;
     },
-    .Windows => import Windows::Sleep,
+    .Windows => import Windows::Kernel::Sleep,
     _ => #Error("Unsupported operating system")
 }
 

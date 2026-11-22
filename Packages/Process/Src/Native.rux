@@ -17,7 +17,10 @@ when #target.os {
     .Linux => import Core::Machine::ProcessStartFrame,
     .FreeBSD => import Core::Machine::ProcessStartFrame,
     .macOS => import macOS::LibSystem::{ _NSGetArgc, _NSGetArgv, _NSGetEnviron },
-    .Windows => import Windows::{ CommandLineToArgvW, GetCommandLineW, GetEnvironmentStringsW },
+    .Windows => {
+        import Windows::Kernel::{ GetCommandLineW, GetEnvironmentStringsW };
+        import Windows::Shell::CommandLineToArgvW;
+    },
     _ => #Error("Unsupported operating system")
 }
 
