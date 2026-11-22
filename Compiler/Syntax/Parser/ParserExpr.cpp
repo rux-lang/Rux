@@ -486,13 +486,14 @@ ExprPtr Parser::ParseCast() {
         return nullptr;
     }
     // A cast or test target is a postfix type, so it ends before `..`, `|`, and `!`; a sum target is grouped,
-    // `value is (A | B)`. No expression continues with `!`, so one there is the removed fallible spelling.
+    // `value is (A | B)`, and so is a fallible, `value is (T ! E)`. A spaced `!` after the target would read as the
+    // start of `!!`, so one there is a fallible written without its parentheses.
     const auto rejectUngroupedFallible = [this](const std::string_view keyword) {
-        if (!Check(TokenKind::Bang)) {
+        if (!Check(TokenKind::Bang) || CheckReplaceError()) {
             return;
         }
-        EmitError(CurrentLocation(), "'T ! E' is not a type",
-                  std::format("'{}' takes a type; an outcome is stored as 'Result<T, E>'", keyword));
+        EmitError(CurrentLocation(), std::format("a fallible after '{}' is grouped", keyword),
+                  "write it in parentheses, as in '(T ! E)'");
         Advance();
         ParseSumType();
     };
@@ -747,7 +748,7 @@ ExprPtr Parser::ParsePostfix() {
                 continue;
             }
         }
-        // A member named through an instantiation: `Result<int, E>::Failure(e)` is `Result::Failure<int, E>(e)`, the
+        // A member named through an instantiation: `Outcome<int, E>::Failure(e)` is `Outcome::Failure<int, E>(e)`, the
         // type's arguments before any the member adds, and `Maybe<int>::Nothing` keeps them on the path.
         if ((AstCast<const IdentExpr>(left.get()) || AstCast<const PathExpr>(left.get())) &&
             IsTypeQualifiedMemberAhead()) {

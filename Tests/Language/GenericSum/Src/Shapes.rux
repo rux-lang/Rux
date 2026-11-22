@@ -1,7 +1,6 @@
 // The other half of the package: generic producers of native values, compiled as their own module, so every native
 // type crossing between the two modules has to agree on its identity and layout.
 
-import Core::Result;
 
 module GenericSum::Shapes {
     pub struct Box<T> {
@@ -71,15 +70,19 @@ module GenericSum::Shapes {
         return none;
     }
 
-    pub func Nest<T, E>(depth: int32, value: T, error: E) -> Result<T, E>? {
+    func Fail<T, E>(error: E) -> T ! E {
+        throw error;
+    }
+
+    pub func Nest<T, E>(depth: int32, value: T, error: E) -> (T ! E)? {
         if depth == 0i32 {
             return none;
         }
         if depth == 1i32 {
-            let failed: Result<T, E> = .Failure(error);
+            let failed: T ! E = Fail<T, E>(error);
             return .Some(move failed);
         }
-        let succeeded: Result<T, E> = .Success(value);
+        let succeeded: T ! E = value;
         return .Some(move succeeded);
     }
 

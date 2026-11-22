@@ -1,4 +1,3 @@
-import Core::Result;
 import Core::Diagnostics::Assert;
 import Format::WriteFormat;
 import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToIoError, WriteFormatLine, WriteValueLine,

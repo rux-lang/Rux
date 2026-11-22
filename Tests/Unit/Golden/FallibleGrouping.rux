@@ -1,0 +1,12 @@
+// The target of `is` or `as` ends before `!`, so a fallible there is written in parentheses.
+struct Fault {}
+
+func Parse(value: int) -> int ! Fault {
+    return value;
+}
+
+func Main() -> int {
+    let ungrouped = Parse(3) is int ! Fault;
+    let grouped = Parse(3) is (int ! Fault);
+    return 0;
+}

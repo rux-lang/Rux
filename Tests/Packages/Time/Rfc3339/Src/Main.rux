@@ -30,9 +30,7 @@ func CodeOf(error: &TimeParseError) -> int {
 // Zero when `text` fails to parse as RFC 3339 with exactly `code` at exactly `at`; a distinct non-zero value
 // otherwise, so a check cannot pass by failing for another reason or in another place.
 func FailsAt(text: char8[..], code: int, at: uint) -> int {
-    let outcome: Result<OffsetDateTime, TimeParseError> = try .Success(ParseRfc3339(text)) catch {
-        error => .Failure(error),
-    };
+    let outcome: OffsetDateTime ! TimeParseError = ParseRfc3339(text);
     if outcome is .Success(_) { return 1; }
     var found: int = 0;
     var where: uint = 0;
@@ -141,9 +139,7 @@ func Main() -> int {
     PropagationCases();
 
     // The shapes that parse, and what they parse to.
-    let plain: Result<OffsetDateTime, TimeParseError> = try .Success(ParseRfc3339("2024-02-29T12:30:45Z")) catch {
-        error => .Failure(error),
-    };
+    let plain: OffsetDateTime ! TimeParseError = ParseRfc3339("2024-02-29T12:30:45Z");
     Assert(plain is .Success(_), "the plain shape parses");
     let moment = match move plain {
         .Success(value) => value,
@@ -162,9 +158,7 @@ func Main() -> int {
     Assert((ParseRfc3339("2024-01-01T00:00:00.000000000Z") !! none) is .Some(_), "nine fraction digits parse");
 
     // The leap second parses and folds, which is the one lossy acceptance this package makes on purpose.
-    let leap: Result<OffsetDateTime, TimeParseError> = try .Success(ParseRfc3339("2016-12-31T23:59:60Z")) catch {
-        error => .Failure(error),
-    };
+    let leap: OffsetDateTime ! TimeParseError = ParseRfc3339("2016-12-31T23:59:60Z");
     Assert(leap is .Success(_), "the leap second parses");
     let folded = match move leap {
         .Success(value) => value,
@@ -210,8 +204,8 @@ func Main() -> int {
            "and refuses one with an offset, having nowhere to keep it");
 
     // The round trip: what Display writes, ParseRfc3339 reads back to the same moment.
-    let source: Result<OffsetDateTime, TimeParseError> =
-        try .Success(ParseRfc3339("2024-02-29T12:30:45.5-08:00")) catch { error => .Failure(error) };
+    let source: OffsetDateTime ! TimeParseError =
+        ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(source is .Success(_), "the round-trip source parses");
     let original = match move source {
         .Success(value) => value,
@@ -219,8 +213,8 @@ func Main() -> int {
                  UtcOffset::Utc()),
     };
     Assert(Rendered(original, "2024-02-29T12:30:45.5-08:00"), "and renders back to the text it came from");
-    let again: Result<OffsetDateTime, TimeParseError> =
-        try .Success(ParseRfc3339("2024-02-29T12:30:45.5-08:00")) catch { error => .Failure(error) };
+    let again: OffsetDateTime ! TimeParseError =
+        ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(again is .Success(_), "which parses again");
     let second = match move again {
         .Success(value) => value,

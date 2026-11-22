@@ -4,7 +4,6 @@
 // and a document written, read and written again is the same the second time.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::ByteCursor;
 import Text::{ BufferWriter, FormatError, StringView, TextError, TextWriter };

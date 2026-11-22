@@ -1,4 +1,3 @@
-import Core::Result;
 import Core::Compare::Ordering;
 import Core::Diagnostics::Assert;
 
@@ -21,17 +20,21 @@ func Checked(value: int32) -> int32 ! Failure {
     return value;
 }
 
-func Main() -> int {
-    // Which case a result holds, asked without unwrapping it.
-    let success: Result<int32, Failure> = .Success(13);
-    Assert(success is .Success(_) && !(success is .Failure(_)), "Success channel inspection");
-    let failure: Result<int32, Failure> = .Failure(Failure::Invalid);
-    Assert(failure is .Failure(_) && !(failure is .Success(_)), "Failure channel inspection");
-    let completed: Result<(), Failure> = .Success(());
-    Assert(completed is .Success(_), "Unit success inspection");
+func Refuse() -> !Failure {
+    throw Failure::Invalid;
+}
 
-    // Asking borrows, so a result whose payload cannot be copied is still there to be matched afterwards.
-    let held: Result<Handle, Failure> = .Success(Handle { value: 23 });
+func Main() -> int {
+    // Which side a fallible holds, asked without unwrapping it.
+    let success: int32 ! Failure = 13;
+    Assert(success is .Success(_) && !(success is .Failure(_)), "Success channel inspection");
+    let failure: int32 ! Failure = Checked(-3);
+    Assert(failure is .Failure(_) && !(failure is .Success(_)), "Failure channel inspection");
+    let completed: !Failure = ();
+    Assert(completed is .Success(_) && Refuse() is Failure, "Unit success inspection");
+
+    // Asking borrows, so a fallible whose payload cannot be copied is still there to be matched afterwards.
+    let held: Handle ! Failure = Handle { value: 23 };
     Assert(held is .Success(_), "A move-only outcome is asked without consuming it");
     let heldValue = match move held {
         .Success(handle) => handle.value,
@@ -39,16 +42,16 @@ func Main() -> int {
     };
     Assert(heldValue == 23, "and is still there to be matched");
 
-    // An outcome kept as a value is a `Result`, an ordinary variant built from what a `try` produced.
-    let kept: Result<int32, Failure> = try .Success(Checked(5)) catch { error => .Failure(error) };
-    Assert(kept is .Success(5), "A success kept as a result");
-    let refused: Result<int32, Failure> = try .Success(Checked(-1)) catch { error => .Failure(error) };
-    Assert(refused is .Failure(Failure::Invalid), "A failure kept as a result");
-    let owned: Result<Handle, Failure> = .Success(Handle { value: 31 });
-    Assert(owned is .Success(_) && !(owned is .Failure(_)), "Asking a result borrows it");
+    // A call that can fail, kept as a value and asked by side or by type.
+    let kept: int32 ! Failure = Checked(5);
+    Assert(kept is .Success(5) && kept is int32, "A success kept as a value");
+    let refused: int32 ! Failure = Checked(-1);
+    Assert(refused is .Failure(Failure::Invalid) && refused is Failure, "A failure kept as a value");
+    let owned: Handle ! Failure = Handle { value: 31 };
+    Assert(owned is .Success(_) && !(owned is .Failure(_)), "Asking a fallible borrows it");
     let ownedValue = match move owned {
-        .Success(handle) => handle.value,
-        .Failure(_) => 0
+        handle: Handle => handle.value,
+        _: Failure => 0
     };
     Assert(ownedValue == 31, "so it can still be matched");
 

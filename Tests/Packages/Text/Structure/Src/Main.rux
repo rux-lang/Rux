@@ -1,7 +1,6 @@
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, StringView, TextWriter, WriteAscii,
-               WriteBytes, WriteResultDebug, WriteOptionalDebug, WriteSliceDebug };
+               WriteBytes, WriteOptionalDebug, WriteSliceDebug };
 
 // Showing an outcome or a run of elements without taking it apart.
 // Three writers, and one property runs through all of them: they borrow. `??` and a match on a moved optional
@@ -89,13 +88,6 @@ func ShownOptional(value: &(StringView?), spec: FormatSpec, expected: char8[..])
     return Same(writer.Written(), expected);
 }
 
-func ShownResult(value: &Result<StringView, StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
-    var storage: char8[128];
-    var writer = BufferWriter::New(storage[..128]);
-    if (WriteResultDebug<StringView, StringView>(writer, value, spec) !! none) is none { return false; }
-    return Same(writer.Written(), expected);
-}
-
 func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
@@ -117,12 +109,6 @@ func Main() -> int {
     // The empty payload is where a wrapper that wrote nothing would be indistinguishable from one that worked.
     var empty: StringView? = .Some(StringView::FromValidated(""));
     Assert(ShownOptional(empty, plain, "Some(\"\")"), "an empty payload is still visibly a payload");
-
-    // A result names the case a reader would branch on, on both sides.
-    var success: Result<StringView, StringView> = .Success(hello);
-    var failure: Result<StringView, StringView> = .Failure(StringView::FromValidated("nope"));
-    Assert(ShownResult(success, plain, "Success(\"hello\")"), "a result names its success case");
-    Assert(ShownResult(failure, plain, "Failure(\"nope\")"), "and its failure case");
 
     // A run of elements, including the two edges: none at all, and exactly one, which is where a separator written
     // one position out would show.
@@ -173,8 +159,8 @@ func Main() -> int {
     var small: char8[11];
     var tight = BufferWriter::New(small[..11]);
     let tightSink: &var TextWriter = tight;
-    let refused: Result<(), FormatError> =
-        try .Success(WriteSliceDebug<Tracked>(tightSink, elements[..], plain)) catch { error => .Failure(error) };
+    let refused: !FormatError =
+        WriteSliceDebug<Tracked>(tightSink, elements[..], plain);
     let overflowed = match refused {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }

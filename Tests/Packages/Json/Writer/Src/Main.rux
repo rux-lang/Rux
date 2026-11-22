@@ -2,7 +2,6 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
 import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextWriter };
@@ -25,14 +24,12 @@ func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome:
 func RefusedAs(allocator: Allocator, value: &JsonValue, style: JsonStyle, expected: &FormatError) -> bool {
     var builder = StringBuilder::New(allocator);
     let sink: &var TextWriter = builder;
-    let outcome: Result<(), FormatError> = try .Success(WriteValue(sink, value, style)) catch {
-        error => .Failure(error),
-    };
+    let outcome: !FormatError = WriteValue(sink, value, style);
     var discarded = builder.TakeString();
     return SameFailure(outcome, expected);
 }
 
-func SameFailure(outcome: &Result<(), FormatError>, expected: &FormatError) -> bool {
+func SameFailure(outcome: &(!FormatError), expected: &FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
         .Failure(reason) => CaseOf(reason) == CaseOf(expected)
@@ -130,8 +127,8 @@ func Main() -> int {
     var room: char8[8];
     var bounded = BufferWriter::New(room[..8]);
     let boundedSink: &var TextWriter = bounded;
-    let overflowed: Result<(), FormatError> =
-        try .Success(WriteValue(boundedSink, wholeDocument, JsonStyle::Compact())) catch { error => .Failure(error) };
+    let overflowed: !FormatError =
+        WriteValue(boundedSink, wholeDocument, JsonStyle::Compact());
     let full = FormatError::InsufficientCapacity;
     Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
     Assert(bounded.Length() <= 8, "having written no more than it had");

@@ -2,7 +2,7 @@
 // The old parser answered `bool` and wrote through output slots, which made every failure the same failure. A
 // caller could not tell a typo from a February the thirtieth, and could not point at the character: both are
 // "false", and both leave the caller re-reading its own input to guess.
-// So every parser here answers a `Result` and every failure carries a zero-based byte offset into the text it was
+// So every parser here can fail with a `TimeParseError`, and every failure carries a zero-based byte offset into the text it was
 // given. The categories are the ones a caller acts on differently. A malformed shape is the writer's mistake and
 // the offset is where the shape stopped matching. An invalid month, a nonexistent day and an out-of-range time are
 // well-formed text naming something that does not exist, which is a different mistake and usually a different
@@ -16,7 +16,7 @@ import Text::ParseFailure;
 
 /// Why text could not be read as a calendar value.
 /// Failure-only: every case is a failure, and each carries the zero-based UTF-8 byte offset into the text where it
-/// was found. Success is `Result::Success`.
+/// was found. Success is the parsed value itself.
 /// Copy, carrying one offset.
 /// @see https://rux-lang.dev/docs/api/time/time-parse-error
 pub variant TimeParseError {

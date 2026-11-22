@@ -1,5 +1,4 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::Result;
 import Core::Diagnostics::Assert;
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
@@ -206,9 +205,7 @@ func PropagationCases(allocator: Allocator) {
     var room: char8[64];
     var writer = BufferWriter::New(room[..64]);
     let sink: &var TextWriter = writer;
-    let failed: Result<(), FormatError> = try .Success(WriteFormat(sink, "head {} tail", refusing)) catch {
-        error => .Failure(error),
-    };
+    let failed: !FormatError = WriteFormat(sink, "head {} tail", refusing);
     Assert(failed is .Failure(_) && calls == 2 && writer.Length() == 12,
            "writer failure stops after the accepted prefix");
     let written = StringView::FromValidated(writer.Written());
@@ -404,8 +401,8 @@ func Main() -> int {
     var room: char8[8];
     var writer = BufferWriter::New(room[..8]);
     let sink: &var TextWriter = writer;
-    let overflowed: Result<(), FormatError> =
-        try .Success(WriteFormat(sink, "12345{}<end>", Filler { count: 1 })) catch { error => .Failure(error) };
+    let overflowed: !FormatError =
+        WriteFormat(sink, "12345{}<end>", Filler { count: 1 });
     let capacity = match overflowed {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }

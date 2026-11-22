@@ -1,8 +1,7 @@
 // A case written without its type takes it from the type its context expects. Inside `.Some(...)` that is the
 // optional's payload. Passed to a generic function, it is the parameter's type once the type arguments written at the
-// call and the arguments before it decide that type; a `try` marking such a case passes the type on to it.
+// call and the arguments before it decide that type. A success value converts to a fallible parameter the same way.
 
-import Core::Result;
 import Core::Diagnostics::Assert;
 
 variant Shape {
@@ -17,7 +16,7 @@ func Radius(shape: Shape?) -> int {
     };
 }
 
-func ValueOr<T, E>(outcome: Result<T, E>, fallback: T) -> T {
+func ValueOr<T, E>(outcome: T ! E, fallback: T) -> T {
     return match outcome {
         .Success(value) => value,
         .Failure(_) => fallback,
@@ -33,7 +32,7 @@ func Half(value: int) -> int ! bool {
     return value / 2;
 }
 
-func Succeeded(outcome: Result<int, bool>) -> bool {
+func Succeeded(outcome: int ! bool) -> bool {
     return outcome is .Success(_);
 }
 
@@ -42,14 +41,13 @@ func Main() -> int {
     Assert(Radius(maybe) == 4, "an annotated optional");
     Assert(Radius(.Some(.Circle(5))) == 5 && Radius(.Some(.Dot)) == 0, "an optional parameter");
 
-    Assert(ValueOr<int, bool>(.Success(4), 0) == 4, "written type arguments");
-    Assert(ValueOr<int, bool>(.Failure(true), 7) == 7, "a failure");
-    Assert(ValueOr<int, bool>(try .Success(Half(8)) catch { error => .Failure(error) }, 0) == 4, "through 'try'");
-    Assert(ValueOr<int, bool>(try .Success(Half(3)) catch { error => .Failure(error) }, 9) == 9, "its failure");
+    Assert(ValueOr<int, bool>(4, 0) == 4, "a success converts to the written type arguments");
+    Assert(ValueOr<int, bool>(Half(8), 0) == 4, "a fallible argument");
+    Assert(ValueOr<int, bool>(Half(3), 9) == 9, "its failure");
     let dot = Shape::Dot;
     Assert(Second(dot, .Circle(3)) is .Circle(3), "an argument before it");
 
-    Assert(Succeeded(.Success(3)) && !Succeeded(.Failure(true)), "a parameter of an ordinary function");
-    Assert(Succeeded(try .Success(Half(2)) catch { error => .Failure(error) }), "through 'try' there too");
+    Assert(Succeeded(3) && !Succeeded(Half(3)), "a parameter of an ordinary function");
+    Assert(Succeeded(Half(2)), "a fallible argument there too");
     return 0;
 }

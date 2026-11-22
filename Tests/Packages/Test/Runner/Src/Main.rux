@@ -2,14 +2,13 @@
 // passing case and the message of its failing one, a skip, a test that returns nothing, a test inside a module, and
 // how a run filters and counts.
 
-import Core::Result;
 import Test::{
     Expect, ExpectEqual, ExpectFailure, ExpectNear, ExpectNone, ExpectNotEqual, ExpectSome, ExpectSuccess, ExpectText,
     RunTestsWith, TestCase, TestFailure, TestOptions
 };
 
 // The message of the failure `outcome` holds, or a failure of the test when it passed.
-func MessageOf(outcome: Result<(), TestFailure>) -> TestFailure ! TestFailure {
+func MessageOf(outcome: !TestFailure) -> TestFailure ! TestFailure {
     return ExpectFailure(move outcome, "the check should have failed")!;
 }
 
@@ -28,26 +27,28 @@ func ChecksThatHold() -> !TestFailure {
 
 #Test
 func FailureMessages() -> !TestFailure {
-    let flag: Result<(), TestFailure> = try .Success(Expect(false, "the flag is set")) catch { f => .Failure(f) };
+    let flag: !TestFailure = Expect(false, "the flag is set");
     ExpectText(MessageOf(flag)!.Message(), "the flag is set")!;
-    let equal: Result<(), TestFailure> = try .Success(ExpectEqual(1, 2)) catch { f => .Failure(f) };
+    let equal: !TestFailure = ExpectEqual(1, 2);
     ExpectText(MessageOf(equal)!.Message(), "expected 2, but got 1")!;
-    let unequal: Result<(), TestFailure> = try .Success(ExpectNotEqual(5, 5)) catch { f => .Failure(f) };
+    let unequal: !TestFailure = ExpectNotEqual(5, 5);
     ExpectText(MessageOf(unequal)!.Message(), "expected anything but 5")!;
-    let near: Result<(), TestFailure> = try .Success(ExpectNear(1.0, 2.0, 0.5)) catch { f => .Failure(f) };
+    let near: !TestFailure = ExpectNear(1.0, 2.0, 0.5);
     ExpectText(MessageOf(near)!.Message(), "expected 2.0 within 0.5, but got 1.0")!;
-    let text: Result<(), TestFailure> = try .Success(ExpectText("hello world", "hello there")) catch {
-        f => .Failure(f),
-    };
+    let text: !TestFailure = ExpectText("hello world", "hello there");
     ExpectText(MessageOf(text)!.Message(),
                    "texts differ at byte 6 (expected 11 bytes, got 11)\n  expected \"hello there\"\n  but got  \"hello world\"")!;
 }
 
+func Broken() -> int32 ! TestFailure {
+    throw TestFailure::Of("broken");
+}
+
 #Test
 func OutcomeChecks() -> !TestFailure {
-    let good: Result<int32, TestFailure> = .Success(3);
+    let good: int32 ! TestFailure = 3;
     ExpectEqual(ExpectSuccess(good, "succeeds")!, 3)!;
-    let bad: Result<int32, TestFailure> = .Failure(TestFailure::Of("broken"));
+    let bad = Broken();
     ExpectText(ExpectFailure(bad, "fails")!.Message(), "broken")!;
     let skip = TestFailure::Skip("later");
     Expect(skip.IsSkip() && !TestFailure::Of("x").IsSkip(), "skips are told apart")!;

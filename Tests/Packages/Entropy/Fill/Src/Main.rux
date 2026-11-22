@@ -1,4 +1,3 @@
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Entropy::{ EntropyError, EntropySource, Fill, FillFrom, FillWithRetries, NextUint64, SystemEntropy };
 

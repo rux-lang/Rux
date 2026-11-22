@@ -17,6 +17,10 @@ struct NativeSelection {
         /// One outer presence level of an optional subject. `members` holds the selected members of a sum payload in
         /// canonical order, or is empty when the annotation is the whole payload.
         Presence,
+        /// The success side of a fallible subject, with `members` as for `Presence`.
+        Success,
+        /// The error side of a fallible subject, with `members` as for `Presence`.
+        Failure,
         /// The annotation selects nothing from this subject.
         Invalid,
     };
@@ -31,7 +35,8 @@ struct NativeSelection {
 ///
 /// An annotation identical to the subject is the whole subject on every form. Otherwise a sum subject selects an exact
 /// member or a subset of its members, and an optional subject selects its outer presence when the annotation is the
-/// payload or a member or subset of a sum payload. Nothing reaches through a fallible channel, past more than one
-/// optional level, or into a plain type.
+/// payload or a member or subset of a sum payload. A fallible subject selects its success or its error side the same
+/// way, and an annotation that both sides would take selects nothing. Nothing reaches past more than one optional level
+/// or into a plain type.
 [[nodiscard]] NativeSelection ClassifyNativeSelection(const TypeRef &subject, const TypeRef &annotation);
 } // namespace Rux

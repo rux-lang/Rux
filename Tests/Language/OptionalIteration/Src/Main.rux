@@ -4,7 +4,6 @@
 // its `Iterate`, which borrows the container and hands out an independent iterator; a temporary iterator lives exactly
 // as long as its loop, and items the loop owns are destroyed once each.
 
-import Core::Result;
 import Core::Diagnostics::Assert;
 
 struct Missing {}
@@ -63,22 +62,26 @@ extend Sparse {
     }
 }
 
+func Lose() -> int32 ! Missing {
+    throw Missing {};
+}
+
 // Reports fallible items: a failed item is data, and iteration continues past it.
 struct Checked {
     index: int32;
 }
 
 extend Checked {
-    func Next(&var self) -> Result<int32, Missing>? {
+    func Next(&var self) -> (int32 ! Missing)? {
         self.index = self.index + 1i32;
         if self.index > 3i32 {
             return none;
         }
         if self.index == 2i32 {
-            let missing: Result<int32, Missing> = .Failure(Missing {});
+            let missing = Lose();
             return .Some(move missing);
         }
-        let found: Result<int32, Missing> = .Success(self.index);
+        let found: int32 ! Missing = self.index;
         return .Some(move found);
     }
 }
@@ -151,10 +154,10 @@ func Main() -> int {
     var failed = 0i32;
     for item in (Checked { index: 0i32 }) {
         match item {
-            .Success(value) => {
+            value: int32 => {
                 succeeded = succeeded + value;
             },
-            .Failure(_) => {
+            _: Missing => {
                 failed = failed + 1i32;
             }
         }

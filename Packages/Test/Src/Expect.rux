@@ -2,7 +2,6 @@
 // Each check declares `throws TestFailure`, so a test marks it with `try` and stops at the first check that does not
 // hold.
 
-import Core::Result;
 import Format::WriteFormat;
 import Test::TestFailure;
 import Text::Display;
@@ -132,25 +131,22 @@ pub func ExpectNone<T>(value: T?, message: char8[..]) -> !TestFailure {
 /// The success an outcome holds, failing when it holds a failure.
 /// @typeParam T the success's type
 /// @typeParam E the failure's type
-/// @param outcome what the code gave, kept as a `Result`
+/// @param outcome what the code gave, kept as a fallible value
 /// @param message what its failure means, for the test's failure
 /// @returns the success, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-success
-pub func ExpectSuccess<T, E>(outcome: Result<T, E>, message: char8[..]) -> T ! TestFailure {
-    match move outcome {
-        .Success(value) => return value,
-        .Failure(_) => throw TestFailure::Of(message)
-    }
+pub func ExpectSuccess<T, E>(outcome: T ! E, message: char8[..]) -> T ! TestFailure {
+    return outcome catch { _ => throw TestFailure::Of(message) };
 }
 
 /// The failure an outcome holds, failing the test when it holds a success.
 /// @typeParam T the success's type
 /// @typeParam E the failure's type
-/// @param outcome what the code gave, kept as a `Result`
+/// @param outcome what the code gave, kept as a fallible value
 /// @param message what its success means, for the test's failure
 /// @returns the failure the code gave, or the test's failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-failure
-pub func ExpectFailure<T, E>(outcome: Result<T, E>, message: char8[..]) -> E ! TestFailure {
+pub func ExpectFailure<T, E>(outcome: T ! E, message: char8[..]) -> E ! TestFailure {
     match move outcome {
         .Success(_) => throw TestFailure::Of(message),
         .Failure(error) => return error

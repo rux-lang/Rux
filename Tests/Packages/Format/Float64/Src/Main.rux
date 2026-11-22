@@ -1,5 +1,4 @@
 
-import Core::Result;
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
 import Format::{ ByteCursor, IsFinite, IsInfinite, IsNan, ParseError, ParseFloat64 };
@@ -30,7 +29,7 @@ func Check(value: float64, expected: char8[..], code: int) -> int {
 }
 
 func CheckParse(str: char8[..], expected: float64, code: int) -> int {
-    let result: Result<float64, ParseError> = try .Success(ParseFloat64(str)) catch { error => .Failure(error) };
+    let result: float64 ! ParseError = ParseFloat64(str);
     return match result {
         .Success(value) => if value == expected { 0 } else { code },
         .Failure(_) => code
@@ -38,7 +37,7 @@ func CheckParse(str: char8[..], expected: float64, code: int) -> int {
 }
 
 func CheckParseError(str: char8[..], expected: ParseError, code: int) -> int {
-    let result: Result<float64, ParseError> = try .Success(ParseFloat64(str)) catch { error => .Failure(error) };
+    let result: float64 ! ParseError = ParseFloat64(str);
     return match result {
         .Success(_) => code,
         .Failure(error) => if error == expected { 0 } else { code }
@@ -67,7 +66,7 @@ func CheckParseErrors() -> int {
 
 func CheckParseOverloads() -> int {
     var text = StringView::FromBytes("3.5") ?? StringView::New();
-    let parsed: Result<float64, ParseError> = try .Success(ParseFloat64(text)) catch { error => .Failure(error) };
+    let parsed: float64 ! ParseError = ParseFloat64(text);
     let code = match parsed {
         .Success(value) => if value == 3.5 { 0 } else { 120 },
         .Failure(_) => 120

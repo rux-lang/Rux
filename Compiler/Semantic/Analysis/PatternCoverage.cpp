@@ -699,6 +699,24 @@ void AnalysisContext::CheckAlternativePattern(const AlternativePattern &pattern,
     }
 }
 
+AnalysisContext::PatternIssue AnalysisContext::FallibleSelectionIssue(const TypeRef &subject, const TypeRef &annotation,
+                                                                      const SourceLocation location) const {
+    const auto takes = [&](const TypeRef &side) {
+        return side == annotation ||
+               (side.IsSum() && ClassifyNativeSelection(side, annotation).kind == NativeSelection::Kind::Members);
+    };
+    if (takes(subject.FallibleSuccess()) && takes(subject.FallibleError())) {
+        return PatternIssue{location,
+                            std::format("cannot match '{}' by type, because both sides are '{}'",
+                                        subject.DisplayString(), annotation.DisplayString()),
+                            "handle the error with 'catch { ... }', which sees only the error side"};
+    }
+    return PatternIssue{location,
+                        std::format("type '{}' is neither the success nor an error of '{}'", annotation.DisplayString(),
+                                    subject.DisplayString()),
+                        std::nullopt};
+}
+
 std::optional<AnalysisContext::PatternIssue> AnalysisContext::TypedSelectionIssue(const TypedPattern &pattern,
                                                                                   const TypeRef &subjectType,
                                                                                   const TypeRef &annotation) const {
@@ -708,10 +726,7 @@ std::optional<AnalysisContext::PatternIssue> AnalysisContext::TypedSelectionIssu
     const std::string &written = annotation.ToString();
     const std::string &subject = subjectType.ToString();
     if (subjectType.IsFallible()) {
-        return PatternIssue{
-            pattern.location, std::format("typed pattern '{}' cannot select from fallible '{}'", written, subject),
-            std::format("match a channel with '.Success(v: {})' or '.Failure(e: {})'",
-                        subjectType.FallibleSuccess().ToString(), subjectType.FallibleError().ToString())};
+        return FallibleSelectionIssue(subjectType, annotation, pattern.location);
     }
     if (subjectType.IsSum()) {
         return PatternIssue{pattern.location,
@@ -751,12 +766,11 @@ void AnalysisContext::CheckMembershipTest(const IsExpr &expression, const TypeRe
 
 std::optional<AnalysisContext::PatternIssue>
 AnalysisContext::MembershipIssue(const TypeRef &subject, const TypeRef &tested, const SourceLocation location) const {
-    if (subject.IsFallible()) {
-        return PatternIssue{location, std::format("'is' cannot test the channel of fallible '{}'", subject.ToString()),
-                            "match '.Success(...)' or '.Failure(...)' instead"};
-    }
     if (ClassifyNativeSelection(subject, tested).kind != NativeSelection::Kind::Invalid) {
         return std::nullopt;
+    }
+    if (subject.IsFallible()) {
+        return FallibleSelectionIssue(subject, tested, location);
     }
     if (subject.IsSum()) {
         return PatternIssue{
@@ -937,7 +951,10 @@ private:
         case NativeSelection::Kind::Members:
             return memberChoice(selection.members);
         case NativeSelection::Kind::Presence:
+        case NativeSelection::Kind::Failure:
             return Space::Of(1, {selection.members.empty() ? Space{} : memberChoice(selection.members)});
+        case NativeSelection::Kind::Success:
+            return Space::Of(0, {selection.members.empty() ? Space{} : memberChoice(selection.members)});
         case NativeSelection::Kind::Invalid:
             break;
         }
@@ -1034,8 +1051,10 @@ std::string NativePatternTranslator::Describe(const Witness &witness, const Type
         return witness.constructor == 0 ? std::string("none") : ".Some(" + field(0, type->inner.front()) + ")";
     }
     if (type.IsFallible()) {
-        return witness.constructor == 0 ? ".Success(" + field(0, type.FallibleSuccess()) + ")"
-                                        : ".Failure(" + field(0, type.FallibleError()) + ")";
+        // A side is spelled as the typed pattern that takes it, or as what is missing inside it.
+        const TypeRef &side = witness.constructor == 0 ? type.FallibleSuccess() : type.FallibleError();
+        const std::string inner = field(0, side);
+        return inner == "_" ? "_: " + side.DisplayString() : inner;
     }
     if (type.IsSum()) {
         const TypeRef &member = type->inner[witness.constructor];

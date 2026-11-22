@@ -474,6 +474,14 @@ HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, 
         HirPatternPtr inner = selection.members.empty() ? binding(payload) : members(payload, selection.members);
         return NativeCasePattern(subjectType, NativePresentTag, payload, std::move(inner), location);
     }
+    case NativeSelection::Kind::Success:
+    case NativeSelection::Kind::Failure: {
+        const bool failure = selection.kind == NativeSelection::Kind::Failure;
+        const TypeRef &payload = failure ? subjectType.FallibleError() : subjectType.FallibleSuccess();
+        HirPatternPtr inner = selection.members.empty() ? binding(payload) : members(payload, selection.members);
+        return NativeCasePattern(subjectType, failure ? NativeFailureTag : NativeSuccessTag, payload, std::move(inner),
+                                 location);
+    }
     case NativeSelection::Kind::Invalid:
         // A generic body is also lowered in its own terms, where `n: int32` on a `T | U` subject selects nothing until
         // the type parameters are substituted. That body only gives the instances their shape, so the arm is one no

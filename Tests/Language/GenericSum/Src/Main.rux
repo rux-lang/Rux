@@ -4,7 +4,6 @@
 // stays valid at every instantiation by ending in `else`. Native values built in one module are read in another with
 // the same identity and layout, aliases name exactly their members, and a named error wrapper keeps its cause.
 
-import Core::Result;
 import Core::Diagnostics::Assert;
 import GenericSum::Shapes::{ Box, Boxes, Choose, Complete, IoError, Load, LoadError, Lookup, Nest, ParseError, Read,
                              ReadError, Timeout, WithTimeout };
@@ -112,8 +111,8 @@ func Main() -> int {
 
     // A whole-subject typed pattern binds the whole value whatever the parameter stands for.
     Assert(Size<int32?>(none) == 1i32, "an optional argument");
-    let stored: Result<int32, IoError> = .Success(1i32);
-    Assert(Size<Result<int32, IoError>>(stored) == 1i32, "a stored result argument");
+    let stored: int32 ! IoError = 1i32;
+    Assert(Size<int32 ! IoError>(stored) == 1i32, "a stored fallible argument");
 
     // A pointer to an optional and an optional pointer are different things.
     var slot: int32? = 6i32;

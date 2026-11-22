@@ -995,6 +995,9 @@ private:
     void DefinePatternBindings(const Pattern &pattern);
     [[nodiscard]] std::optional<PatternIssue>
     TypedSelectionIssue(const TypedPattern &pattern, const TypeRef &subjectType, const TypeRef &annotation) const;
+    /// Why `annotation` selects nothing from fallible `subject`: it is on both sides, or on neither.
+    [[nodiscard]] PatternIssue FallibleSelectionIssue(const TypeRef &subject, const TypeRef &annotation,
+                                                      SourceLocation location) const;
     void CheckMembershipTest(const IsExpr &expression, const TypeRef &operandType, const TypeRef &testedType);
     [[nodiscard]] std::optional<PatternIssue> MembershipIssue(const TypeRef &subject, const TypeRef &tested,
                                                               SourceLocation location) const;
@@ -1667,7 +1670,7 @@ private:
     /// case of the same name may take over, or a `try` marking one.
     [[nodiscard]] static bool IsContextualCaseExpression(const Expr &expression) noexcept;
     /// The type arguments an alias of an instantiation of `declaration` supplies to a case named through it, as
-    /// `Kept::Success(...)` with `type Kept = Result<int, Error>`; nullopt for any other type name.
+    /// `Kept::Success(...)` with `type Kept = Outcome<int, Error>`; nullopt for any other type name.
     [[nodiscard]] std::optional<std::vector<TypeRef>> AliasCaseTypeArguments(const Symbol &type,
                                                                              const EnumDecl &declaration);
     /// Gives each argument that names a case without its type the parameter type it is passed as.

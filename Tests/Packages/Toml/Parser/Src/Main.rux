@@ -4,7 +4,6 @@
 // writer to work out which of the three they had broken.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
@@ -29,7 +28,7 @@ func Accepts(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValu
 
 // The rendering of whatever refused a document: the case, whatever it carries, and where it happened. One string
 // covering all three, since checking them apart would be three assertions saying one thing.
-func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..]) -> uint {
+func Refusal(outcome: &(TomlValue ! TomlParseFailure), into: var char8[..]) -> uint {
     return match outcome {
         .Success(_) => 0u,
         .Failure(failure) => {
@@ -44,9 +43,7 @@ func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..])
 // Which rule a document met, without its position. The table below is about the rules, and four of them describe
 // the same-looking mistake with four different fixes, so what it checks is which one was reported.
 func Refuses(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool {
-    let outcome: Result<TomlValue, TomlParseFailure> = try .Success(TomlParse(allocator, text)) catch {
-        error => .Failure(error),
-    };
+    let outcome: TomlValue ! TomlParseFailure = TomlParse(allocator, text);
     var storage: char8[128];
     let length = Refusal(outcome, storage[..128]);
     // Everything up to " at " is the case and whatever it carries; the position follows.
@@ -65,18 +62,14 @@ func Refuses(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool
 // Whether a document is accepted, which is what the two cases below assert about rules that look like the ones
 // above and are not.
 func Allowed(allocator: Allocator, text: char8[..]) -> bool {
-    let outcome: Result<TomlValue, TomlParseFailure> = try .Success(TomlParse(allocator, text)) catch {
-        error => .Failure(error),
-    };
+    let outcome: TomlValue ! TomlParseFailure = TomlParse(allocator, text);
     var storage: char8[128];
     return Refusal(outcome, storage[..128]) == 0;
 }
 
 // The whole rendering, position and all.
 func RefusedAt(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool {
-    let outcome: Result<TomlValue, TomlParseFailure> = try .Success(TomlParse(allocator, text)) catch {
-        error => .Failure(error),
-    };
+    let outcome: TomlValue ! TomlParseFailure = TomlParse(allocator, text);
     var storage: char8[128];
     let length = Refusal(outcome, storage[..128]);
     return Same(storage[..length], expected);
@@ -236,9 +229,7 @@ func Main() -> int {
     // is right; a reader wanting the key itself has the line to look along.
     Assert(RefusedAt(allocator, "a = 1\nb = 2\na = 3", "TomlParseError::DuplicateKey at 3:6"),
            "the duplicate is found on the line it is written on");
-    let refused: Result<TomlValue, TomlParseFailure> = try .Success(TomlParse(allocator, "a = 1\nb = 2\na = 3")) catch {
-        error => .Failure(error),
-    };
+    let refused: TomlValue ! TomlParseFailure = TomlParse(allocator, "a = 1\nb = 2\na = 3");
     Assert(move refused is .Failure(_), "and the document does not come back beside the reason");
 
     // A bad scalar is reported at the character inside it, which takes two positions added together: the token's

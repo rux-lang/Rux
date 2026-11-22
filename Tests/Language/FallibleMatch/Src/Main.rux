@@ -1,0 +1,66 @@
+// A fallible kept as a value: built from a call that can fail or from a success, which converts, and taken apart by
+// `match` and `is`. A typed pattern selects the side its type is on, or a member of an error sum; `.Success(...)` and
+// `.Failure(...)` name a side whatever its type, which generic code needs. A fallible may itself be the success of
+// another, grouped as `(int ! int) ! bool`.
+
+import Core::Diagnostics::Assert;
+
+struct Odd {
+    value: int;
+}
+
+struct Negative {}
+
+func Half(value: int) -> int ! Odd {
+    if value % 2 != 0 { throw Odd { value }; }
+    return value / 2;
+}
+
+func Checked(value: int) -> int ! Odd | Negative {
+    if value < 0 { throw Negative {}; }
+    return Half(value)!;
+}
+
+// The inner fallible is the value this function returns; only `bool` leaves through its own error side.
+func Nested(value: int) -> (int ! Odd) ! bool {
+    if value < 0 { throw true; }
+    return Half(value);
+}
+
+func Main() -> int {
+    let stored: int ! Odd = 42;
+    let failed = Half(5);
+
+    Assert(stored is int && !(stored is Odd), "a success is on the success side");
+    Assert(failed is Odd && !(failed is int), "an error is on the error side");
+    Assert(stored is .Success(_) && failed is .Failure(_), "the sides by name");
+
+    let value = match stored {
+        v: int => v,
+        _: Odd => 0,
+    };
+    Assert(value == 42, "a typed pattern takes the success");
+    let odd = match failed {
+        _: int => 0,
+        e: Odd => e.value,
+    };
+    Assert(odd == 5, "a typed pattern takes the error");
+
+    let negative = match Checked(-4) {
+        v: int => v,
+        _: Odd => 1,
+        _: Negative => 2,
+    };
+    Assert(negative == 2, "a member of the error sum");
+    let either = match Checked(3) {
+        _: int => 0,
+        _: Odd | Negative => 3,
+    };
+    Assert(either == 3, "a subset of the error sum");
+
+    let inner = Nested(6) !! Half(1);
+    Assert((inner !! 0) == 3, "a fallible success");
+    Assert(((Nested(5) !! Half(1)) !! 9) == 9, "its own failure");
+    Assert((Nested(-1) !! none) is none, "the outer error");
+    return 0;
+}

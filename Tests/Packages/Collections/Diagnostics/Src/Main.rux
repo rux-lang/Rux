@@ -1,7 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::{ CollectionError, CompareInt32, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed, TreeMap,
                       TreeSet, WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii,
@@ -287,8 +286,8 @@ func Main() -> int {
     // Safety: `small` is a local array of six elements.
     var tight = BufferWriter::New((@small[0])[..6]);
     let tightSink: &var TextWriter = tight;
-    let refused: Result<(), FormatError> =
-        try .Success(WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain)) catch { error => .Failure(error) };
+    let refused: !FormatError =
+        WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain);
     let overflowed = match refused {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
@@ -298,8 +297,8 @@ func Main() -> int {
     // Safety: `small` is a local array of six elements.
     var tighter = BufferWriter::New((@small[0])[..6]);
     let tighterSink: &var TextWriter = tighter;
-    let alsoRefused: Result<(), FormatError> =
-        try .Success(WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain)) catch { error => .Failure(error) };
+    let alsoRefused: !FormatError =
+        WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain);
     let alsoOverflowed = match alsoRefused {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }
@@ -322,9 +321,7 @@ func Main() -> int {
     var refusalWriter = BufferWriter::New((@refusalStorage[0])[..128]);
     let refusalSink: &var TextWriter = refusalWriter;
     let described = CollectionError::IndexOutOfRange;
-    let truncated: Result<(), FormatError> = try .Success(described.WriteDisplay(refusalSink, Spec(".3"))) catch {
-        error => .Failure(error),
-    };
+    let truncated: !FormatError = described.WriteDisplay(refusalSink, Spec(".3"));
     let unsupported = match truncated {
         .Success(_) => false,
         .Failure(reason) => match reason { .UnsupportedRequest => true, _ => false }

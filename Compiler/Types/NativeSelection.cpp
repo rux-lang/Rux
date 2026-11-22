@@ -44,6 +44,27 @@ NativeSelection ClassifyNativeSelection(const TypeRef &subject, const TypeRef &a
         }
         return {};
     }
+    if (subject.IsFallible()) {
+        const auto side = [&](const TypeRef &payload) -> std::optional<std::vector<std::size_t>> {
+            if (payload == annotation) {
+                return std::vector<std::size_t>{};
+            }
+            return payload.IsSum() ? SelectedMembers(payload, annotation) : std::nullopt;
+        };
+        std::optional<std::vector<std::size_t>> success = side(subject.FallibleSuccess());
+        std::optional<std::vector<std::size_t>> failure = side(subject.FallibleError());
+        // A type on both sides cannot say which side it means.
+        if (success && failure) {
+            return {};
+        }
+        if (success) {
+            return {NativeSelection::Kind::Success, std::move(*success)};
+        }
+        if (failure) {
+            return {NativeSelection::Kind::Failure, std::move(*failure)};
+        }
+        return {};
+    }
     if (subject.IsOptional() && !subject->inner.empty()) {
         const TypeRef &payload = subject->inner[0];
         if (payload == annotation) {

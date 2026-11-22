@@ -1,8 +1,7 @@
 // Members named through a type: `Self::Capacity` inside `extend Buffer<T>`, `Buffer<int>::Capacity` and
-// `Buffer<int>::Make(...)` through an instantiation, `Result<int, E>::Failure(...)` with the type's arguments written
+// `Buffer<int>::Make(...)` through an instantiation, `Outcome<int, E>::Failure(...)` with the type's arguments written
 // before the member's, and `Kept::Success(...)` through an alias of an instantiation, whose arguments the case takes.
 
-import Core::Result;
 import Core::Diagnostics::Assert;
 
 struct Buffer<T> {
@@ -21,17 +20,22 @@ extend Buffer<T> {
     }
 }
 
+variant Outcome<T, E> {
+    Success(T),
+    Failure(E),
+}
+
 variant Maybe<T> {
     Some(T),
     Nothing,
 }
 
-type Kept = Result<int, bool>;
+type Kept = Outcome<int, bool>;
 type MaybeInt = Maybe<int>;
 type IntBuffer = Buffer<int>;
 
-func Refuse<E>(error: E) -> Result<int, E> {
-    return Result<int, E>::Failure(error);
+func Refuse<E>(error: E) -> Outcome<int, E> {
+    return Outcome<int, E>::Failure(error);
 }
 
 func Main() -> int {
@@ -46,7 +50,7 @@ func Main() -> int {
     let nothing = MaybeInt::Nothing;
     Assert(nothing is .Nothing, "a unit case through an alias");
 
-    let written = Result<int, bool>::Success(5);
+    let written = Outcome<int, bool>::Success(5);
     Assert(written is .Success(5), "a case through an instantiation");
     Assert(Refuse(true) is .Failure(true), "with a type parameter");
     let empty = Maybe<uint8>::Nothing;

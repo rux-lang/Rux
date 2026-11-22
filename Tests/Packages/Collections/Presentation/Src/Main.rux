@@ -1,6 +1,5 @@
 import Allocator::SystemAllocator;
 import Collections::{ Array, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
@@ -182,9 +181,7 @@ func Main() -> int {
     // Safety: `small` is a local array of six elements.
     var tight = BufferWriter::New((@small[0])[..6]);
     let tightSink: &var TextWriter = tight;
-    let refused: Result<(), FormatError> = try .Success(WriteVectorDebug<Tracked>(tightSink, owned, plain)) catch {
-        error => .Failure(error),
-    };
+    let refused: !FormatError = WriteVectorDebug<Tracked>(tightSink, owned, plain);
     let overflowed = match refused {
         .Success(_) => false,
         .Failure(reason) => match reason { .InsufficientCapacity => true, _ => false }

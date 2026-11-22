@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "Result"
+Name = "FallibleMatch"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: Result"
+Description = "Language test: a fallible kept as a value and taken apart by side"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

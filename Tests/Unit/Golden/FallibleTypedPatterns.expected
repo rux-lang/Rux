@@ -1,0 +1,3 @@
+16:9: error: cannot match 'int ! int' by type, because both sides are 'int'
+19:28: error: type 'bool8' is neither the success nor an error of 'int ! Fault'
+21:9: error: match on 'int ! Fault' is not exhaustive; missing _: Fault

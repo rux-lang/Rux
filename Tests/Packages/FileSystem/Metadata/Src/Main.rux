@@ -3,7 +3,6 @@
 // the running system cannot answer are checked to be reported as unanswerable rather than quietly zero.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Result;
 import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsString, Path };
@@ -76,9 +75,7 @@ func Main() -> int ! IoError {
     SetPermissions(allocator, file, Permissions::FromReadOnly(true))!;
     let locked = MetadataOf(allocator, file, true)!;
     Assert(!locked.permissions.IsWritable(), "and reads back without owner-write permission");
-    let opening: Result<File, IoError> = try .Success(File::Open(allocator, file, OpenOptions::Writing())) catch {
-        error => .Failure(error)
-    };
+    let opening: File ! IoError = File::Open(allocator, file, OpenOptions::Writing());
     match move opening {
         .Success(opened) => {
             var probe = move opened;

@@ -1,0 +1,24 @@
+// A typed pattern or `is` over a fallible selects the side its type is on. A type on both sides, or on neither, selects
+// nothing, and a `match` that leaves a side out names the typed pattern that would take it.
+struct Fault {}
+
+func Half(value: int) -> int ! int {
+    if value % 2 != 0 { throw value; }
+    return value / 2;
+}
+
+func Parse(value: int) -> int ! Fault {
+    return value;
+}
+
+func Main() -> int {
+    let both = match Half(3) {
+        v: int => v,
+        _ => 0,
+    };
+    let neither = Parse(1) is bool;
+    let partial = match Parse(2) {
+        v: int => v,
+    };
+    return both + partial;
+}

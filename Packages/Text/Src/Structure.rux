@@ -19,11 +19,8 @@
 // Sequential containers are in `Rux/Collections`, which borrows a run of elements out of a vector, an array or a
 // deque and calls `WriteSliceDebug` with it. Nothing here knows those types exist.
 
-import Core::Result;
 
-import Core::Result;
 
-import Core::Result;
 
 /// Writes a borrowed optional as `Some(value)` or `none`.
 /// The optional is borrowed and its payload with it, so this can be called on an optional holding a value that
@@ -47,34 +44,6 @@ pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
         },
         none => {
             return WriteBytes(writer, "none")!;
-        }
-    }
-}
-
-/// Writes a borrowed `Result` as `Success(value)` or `Failure(reason)`.
-/// Both payloads are borrowed, so neither case is consumed by being shown. The names are the case names, so what
-/// is written names the case a reader would branch on.
-/// `spec` is handed to whichever payload is present and describes it rather than the wrapper.
-/// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal.
-/// @typeParam T the success payload type, which must know how to show itself
-/// @typeParam E the failure payload type, which must know how to show itself
-/// @param writer the destination
-/// @param value the result to show, borrowed for the call
-/// @param spec what to show the payload under
-/// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/debug#write-result-debug
-pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &Result<T, E>,
-                                              spec: FormatSpec) -> !FormatError {
-    match value {
-        .Success(payload) => {
-            WriteBytes(writer, "Success(")!;
-            payload.WriteDebug(writer, spec)!;
-            return WriteAscii(writer, c8')')!;
-        },
-        .Failure(reason) => {
-            WriteBytes(writer, "Failure(")!;
-            reason.WriteDebug(writer, spec)!;
-            return WriteAscii(writer, c8')')!;
         }
     }
 }
