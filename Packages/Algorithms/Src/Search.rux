@@ -15,245 +15,246 @@
 import Core::Ownership::Copyable;
 import Core::Compare::Ordering;
 
-/// Whether `items` is in non-decreasing order.
-/// `items` is borrowed and read. An empty slice and a single element are sorted, there being no pair to be out of
-/// order. Equal neighbours are in order: this asks for non-decreasing, not strictly increasing.
-/// Requires `<` on the element type.
-/// Cannot fail. Runs in time proportional to the length, stopping at the first pair out of order, and allocates
-/// nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @returns whether the sequence is in non-descending order
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted
-pub func IsSorted<T>(items: T[..]) -> bool {
-    return IsSortedUntil<T>(items) == items.length;
-}
-
-/// How far `items` is in non-decreasing order.
-/// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, which is the
-/// whole length when the slice is sorted, and the index of the first element smaller than the one before it
-/// otherwise. An empty slice gives zero and a single element gives one.
-/// Requires `<` on the element type.
-/// Cannot fail. Runs in time proportional to the answer and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @returns how many leading elements are in non-descending order
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-until
-pub func IsSortedUntil<T>(items: T[..]) -> uint {
-    if items.length == 0 { return 0; }
-    var index: uint = 1;
-    while index < items.length {
-        // Safety: `index` is below `items.length`, the loop condition, and at least one, so `index - 1` is in range
-        // too.
-        if (items.data[index] < items.data[index - 1]) { return index; }
-        index++;
+pub module Sorting {
+    /// Whether `items` is in non-decreasing order.
+    /// `items` is borrowed and read. An empty slice and a single element are sorted, there being no pair to be out of
+    /// order. Equal neighbours are in order: this asks for non-decreasing, not strictly increasing.
+    /// Requires `<` on the element type.
+    /// Cannot fail. Runs in time proportional to the length, stopping at the first pair out of order, and allocates
+    /// nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @returns whether the sequence is in non-descending order
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted
+    pub func IsSorted<T>(items: T[..]) -> bool {
+        return IsSortedUntil<T>(items) == items.length;
     }
-    return items.length;
-}
 
-/// The first position where `value` could be inserted without breaking the order.
-/// `items` is borrowed and read; `value` is read by value. This is the index of the first element not less than
-/// `value` — the first equal one when there are equals, and where it would go when there are none. A value larger
-/// than everything gives the length.
-/// Requires `<` on the element type, and requires `items` to be sorted by that order.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to place
-/// @returns the first index where `value` could be inserted and keep the order
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound
-pub func LowerBound<T>(items: T[..], value: T) -> uint {
-    var low: uint = 0;
-    var high = items.length;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if items.data[middle] < value {
-            low = middle + 1;
+    /// How far `items` is in non-decreasing order.
+    /// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, which is the
+    /// whole length when the slice is sorted, and the index of the first element smaller than the one before it
+    /// otherwise. An empty slice gives zero and a single element gives one.
+    /// Requires `<` on the element type.
+    /// Cannot fail. Runs in time proportional to the answer and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @returns how many leading elements are in non-descending order
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-until
+    pub func IsSortedUntil<T>(items: T[..]) -> uint {
+        if items.length == 0 { return 0; }
+        var index: uint = 1;
+        while index < items.length {
+            // Safety: `index` is below `items.length`, the loop condition, and at least one, so `index - 1` is in range
+            // too.
+            if (items.data[index] < items.data[index - 1]) { return index; }
+            index++;
         }
-        else {
-            high = middle;
-        }
+        return items.length;
     }
-    return low;
-}
 
-/// The last position where `value` could be inserted without breaking the order.
-/// `items` is borrowed and read; `value` is read by value. This is the index of the first element greater than
-/// `value` — one past the last equal one when there are equals, and the same as `LowerBound` when there are none.
-/// Requires `<` on the element type, and requires `items` to be sorted by that order.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to place
-/// @returns the last index where `value` could be inserted and keep the order
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound
-pub func UpperBound<T>(items: T[..], value: T) -> uint {
-    var low: uint = 0;
-    var high = items.length;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if value < items.data[middle] {
-            high = middle;
+    /// The first position where `value` could be inserted without breaking the order.
+    /// `items` is borrowed and read; `value` is read by value. This is the index of the first element not less than
+    /// `value` — the first equal one when there are equals, and where it would go when there are none. A value larger
+    /// than everything gives the length.
+    /// Requires `<` on the element type, and requires `items` to be sorted by that order.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to place
+    /// @returns the first index where `value` could be inserted and keep the order
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound
+    pub func LowerBound<T>(items: T[..], value: T) -> uint {
+        var low: uint = 0;
+        var high = items.length;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
+            if items.data[middle] < value {
+                low = middle + 1;
+            }
+            else {
+                high = middle;
+            }
         }
-        else {
-            low = middle + 1;
-        }
+        return low;
     }
-    return low;
-}
 
-/// The index of an element of `items` equal to `value`.
-/// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal. When several
-/// are, the one reported is the first of them, which makes the answer depend on the sequence rather than on how the
-/// search happened to divide it.
-/// Requires `<` on the element type, and requires `items` to be sorted by that order. Equality is decided by the
-/// ordering rather than by `==`: two elements neither of which is less than the other are equal here, whatever `==`
-/// would say about them.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to look for
-/// @returns the index of a matching element, or `none`; which one is unspecified when several match
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search
-pub func BinarySearch<T: Copyable>(items: T[..], value: T) -> uint? {
-    let at = LowerBound<T>(items, value);
-    // Safety: `at` is below `items.length`, checked just before.
-    if at < items.length && !(value < items.data[at]) { return at; }
-    return none;
-}
-
-/// The range of positions in `items` holding elements equal to `value`.
-/// `items` is borrowed and read; `value` is read by value. The range runs from `LowerBound` to `UpperBound`, so it
-/// is empty when no element is equal — and its `start` is then where the value would be inserted, which is the
-/// answer a caller inserting into a sorted sequence wants.
-/// Requires `<` on the element type, and requires `items` to be sorted by that order.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to bracket
-/// @returns the range of indices holding elements equal to `value`, empty when none does
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range
-pub func EqualRange<T: Copyable>(items: T[..], value: T) -> uint..uint {
-    return LowerBound<T>(items, value)..UpperBound<T>(items, value);
-}
-
-/// Whether `items` is in non-decreasing order under `compare`.
-/// `items` is borrowed and read; `compare` is called once per neighbouring pair until one is out of order. An empty
-/// slice and a single element are sorted, and equal neighbours are in order.
-/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param compare how two elements order against each other
-/// @returns whether the sequence is in non-descending order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-by
-pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
-    return IsSortedUntilBy<T>(items, compare) == items.length;
-}
-
-/// How far `items` is in non-decreasing order under `compare`.
-/// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, exactly as
-/// `IsSortedUntil` does for the element type's own order.
-/// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param compare how two elements order against each other
-/// @returns how many leading elements are in non-descending order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-until-by
-pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
-    if items.length == 0 { return 0; }
-    var index: uint = 1;
-    while index < items.length {
-        // Safety: `index` is below `items.length`, the loop condition, and at least one, so `index - 1` is in range
-        // too.
-        if compare(items.data[index], items.data[index - 1]).IsLess() { return index; }
-        index++;
+    /// The last position where `value` could be inserted without breaking the order.
+    /// `items` is borrowed and read; `value` is read by value. This is the index of the first element greater than
+    /// `value` — one past the last equal one when there are equals, and the same as `LowerBound` when there are none.
+    /// Requires `<` on the element type, and requires `items` to be sorted by that order.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to place
+    /// @returns the last index where `value` could be inserted and keep the order
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound
+    pub func UpperBound<T>(items: T[..], value: T) -> uint {
+        var low: uint = 0;
+        var high = items.length;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
+            if value < items.data[middle] {
+                high = middle;
+            }
+            else {
+                low = middle + 1;
+            }
+        }
+        return low;
     }
-    return items.length;
-}
 
-/// The first position where `value` could be inserted into `items` under `compare` without breaking the order.
-/// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
-/// `compare` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to place
-/// @param compare how two elements order against each other
-/// @returns the first index where `value` could be inserted and keep the order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound-by
-pub func LowerBoundBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
-    var low: uint = 0;
-    var high = items.length;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if compare(items.data[middle], value).IsLess() {
-            low = middle + 1;
-        }
-        else {
-            high = middle;
-        }
+    /// The index of an element of `items` equal to `value`.
+    /// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal. When several
+    /// are, the one reported is the first of them, which makes the answer depend on the sequence rather than on how the
+    /// search happened to divide it.
+    /// Requires `<` on the element type, and requires `items` to be sorted by that order. Equality is decided by the
+    /// ordering rather than by `==`: two elements neither of which is less than the other are equal here, whatever `==`
+    /// would say about them.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to look for
+    /// @returns the index of a matching element, or `none`; which one is unspecified when several match
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search
+    pub func BinarySearch<T: Copyable>(items: T[..], value: T) -> uint? {
+        let at = LowerBound<T>(items, value);
+        // Safety: `at` is below `items.length`, checked just before.
+        if at < items.length && !(value < items.data[at]) { return at; }
+        return none;
     }
-    return low;
-}
 
-/// The last position where `value` could be inserted into `items` under `compare` without breaking the order.
-/// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
-/// `compare` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to place
-/// @param compare how two elements order against each other
-/// @returns the last index where `value` could be inserted and keep the order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound-by
-pub func UpperBoundBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
-    var low: uint = 0;
-    var high = items.length;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
-        if compare(value, items.data[middle]).IsLess() {
-            high = middle;
-        }
-        else {
-            low = middle + 1;
-        }
+    /// The range of positions in `items` holding elements equal to `value`.
+    /// `items` is borrowed and read; `value` is read by value. The range runs from `LowerBound` to `UpperBound`, so it
+    /// is empty when no element is equal — and its `start` is then where the value would be inserted, which is the
+    /// answer a caller inserting into a sorted sequence wants.
+    /// Requires `<` on the element type, and requires `items` to be sorted by that order.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to bracket
+    /// @returns the range of indices holding elements equal to `value`, empty when none does
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range
+    pub func EqualRange<T: Copyable>(items: T[..], value: T) -> uint..uint {
+        return LowerBound<T>(items, value)..UpperBound<T>(items, value);
     }
-    return low;
-}
 
-/// The index of an element of `items` that `compare` calls equal to `value`.
-/// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal, and the first of
-/// them when several are. `compare` must be the order `items` was sorted by.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
-/// `compare` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to look for
-/// @param compare how two elements order against each other
-/// @returns the index of a matching element under `compare`, or `none`
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search-by
-pub func BinarySearchBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
-    let at = LowerBoundBy<T>(items, value, compare);
-    // Safety: `at` is below `items.length`, checked just before.
-    if at < items.length && !compare(value, items.data[at]).IsLess() { return at; }
-    return none;
-}
+    /// Whether `items` is in non-decreasing order under `compare`.
+    /// `items` is borrowed and read; `compare` is called once per neighbouring pair until one is out of order. An empty
+    /// slice and a single element are sorted, and equal neighbours are in order.
+    /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param compare how two elements order against each other
+    /// @returns whether the sequence is in non-descending order under `compare`
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-by
+    pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
+        return IsSortedUntilBy<T>(items, compare) == items.length;
+    }
 
-/// The range of positions in `items` holding elements `compare` calls equal to `value`.
-/// `items` is borrowed and read; `value` is read by value. Empty when no element is equal, with its `start` at the
-/// position the value would be inserted. `compare` must be the order `items` was sorted by.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
-/// `compare` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to bracket
-/// @param compare how two elements order against each other
-/// @returns the range of indices holding elements equal to `value` under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range-by
-pub func EqualRangeBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
-    return LowerBoundBy<T>(items, value, compare)..UpperBoundBy<T>(items, value, compare);
+    /// How far `items` is in non-decreasing order under `compare`.
+    /// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, exactly as
+    /// `IsSortedUntil` does for the element type's own order.
+    /// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param compare how two elements order against each other
+    /// @returns how many leading elements are in non-descending order under `compare`
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-until-by
+    pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
+        if items.length == 0 { return 0; }
+        var index: uint = 1;
+        while index < items.length {
+            // Safety: `index` is below `items.length`, the loop condition, and at least one, so `index - 1` is in range
+            // too.
+            if compare(items.data[index], items.data[index - 1]).IsLess() { return index; }
+            index++;
+        }
+        return items.length;
+    }
+
+    /// The first position where `value` could be inserted into `items` under `compare` without breaking the order.
+    /// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+    /// `compare` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to place
+    /// @param compare how two elements order against each other
+    /// @returns the first index where `value` could be inserted and keep the order under `compare`
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound-by
+    pub func LowerBoundBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
+        var low: uint = 0;
+        var high = items.length;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
+            if compare(items.data[middle], value).IsLess() {
+                low = middle + 1;
+            }
+            else {
+                high = middle;
+            }
+        }
+        return low;
+    }
+
+    /// The last position where `value` could be inserted into `items` under `compare` without breaking the order.
+    /// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+    /// `compare` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to place
+    /// @param compare how two elements order against each other
+    /// @returns the last index where `value` could be inserted and keep the order under `compare`
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound-by
+    pub func UpperBoundBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
+        var low: uint = 0;
+        var high = items.length;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            // Safety: `middle` lies in `[low, high)`, and `high` never exceeds `items.length`.
+            if compare(value, items.data[middle]).IsLess() {
+                high = middle;
+            }
+            else {
+                low = middle + 1;
+            }
+        }
+        return low;
+    }
+
+    /// The index of an element of `items` that `compare` calls equal to `value`.
+    /// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal, and the first
+    /// of them when several are. `compare` must be the order `items` was sorted by. Cannot fail. Runs in time
+    /// proportional to the logarithm of the length and allocates nothing beyond whatever `compare` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to look for
+    /// @param compare how two elements order against each other
+    /// @returns the index of a matching element under `compare`, or `none`
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search-by
+    pub func BinarySearchBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
+        let at = LowerBoundBy<T>(items, value, compare);
+        // Safety: `at` is below `items.length`, checked just before.
+        if at < items.length && !compare(value, items.data[at]).IsLess() { return at; }
+        return none;
+    }
+
+    /// The range of positions in `items` holding elements `compare` calls equal to `value`.
+    /// `items` is borrowed and read; `value` is read by value. Empty when no element is equal, with its `start` at the
+    /// position the value would be inserted. `compare` must be the order `items` was sorted by.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+    /// `compare` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to bracket
+    /// @param compare how two elements order against each other
+    /// @returns the range of indices holding elements equal to `value` under `compare`
+    /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range-by
+    pub func EqualRangeBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
+        return LowerBoundBy<T>(items, value, compare)..UpperBoundBy<T>(items, value, compare);
+    }
 }

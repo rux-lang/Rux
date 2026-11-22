@@ -11,243 +11,268 @@
 
 import Core::Ownership::Copyable;
 
-/// Exchanges the values at two locations.
-/// Both are borrowed mutably and both are written. Passing the same location twice is legal and leaves it alone.
-/// Cannot fail. Runs in constant time and allocates nothing.
-/// Safety: both pointers must be non-null and writable.
-/// @typeParam T the element type
-/// @param left one of the two elements
-/// @param right the other
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#swap
-pub func Swap<T>(left: *var T, right: *var T) {
-    let held = *left;
-    *left = *right;
-    *right = held;
-}
-
-/// Reverses the order of `items` in place.
-/// `items` is borrowed mutably and rewritten. An empty slice and a single element are already reversed, so neither
-/// is a special case.
-/// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#reverse
-pub func Reverse<T>(items: var T[..]) {
-    if items.length < 2 { return; }
-    var low: uint = 0;
-    var high = items.length - 1;
-    while low < high {
-        // Safety: `low < high < items.length`, so both pointers address distinct live elements of `items`.
-        Swap<T>(@items[low], @items[high]);
-        low = low + 1;
-        high = high - 1;
+pub module Modify {
+    /// Exchanges the values at two locations.
+    /// Both are borrowed mutably and both are written. Passing the same location twice is legal and leaves it alone.
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    /// Safety: both pointers must be non-null and writable.
+    /// @typeParam T the element type
+    /// @param left one of the two elements
+    /// @param right the other
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#swap
+    pub func Swap<T>(left: *var T, right: *var T) {
+        let held = *left;
+        *left = *right;
+        *right = held;
     }
-}
 
-/// Rotates `items` left so that the element at `middle` becomes the first.
-/// `items` is borrowed mutably and rewritten. A `middle` of zero or of the whole length leaves the order alone;
-/// anything past the length is refused, since there is no such element to bring to the front.
-/// Done as three reversals — the front, the back, then the whole — which needs no scratch storage and touches
-/// every element at most twice.
-/// Reports false only for a `middle` past the length.
-/// Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param middle the index that becomes the new first element
-/// @returns whether `middle` was a usable index
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#rotate
-pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
-    if middle > items.length { return false; }
-    if middle == 0 || middle == items.length { return true; }
-    Reverse<T>(items[..middle]);
-    Reverse<T>(items[middle..]);
-    Reverse<T>(items);
-    return true;
-}
-
-/// Writes `value` into every position of `items`.
-/// `items` is borrowed mutably and rewritten; `value` is read by value and copied into each position. An empty slice
-/// writes nothing.
-/// Cannot fail. Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to write to every element
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#fill
-pub func Fill<T: Copyable>(items: var T[..], value: T) {
-    var index: uint = 0;
-    while index < items.length {
-        items[index] = value;
-        index++;
-    }
-}
-
-/// Copies `source` into `destination`, front to back.
-/// `destination` is borrowed mutably and written; `source` is borrowed and read. Reports false when the two lengths
-/// differ, having written nothing: a partial copy is worse than a refused one, since the caller cannot tell how far
-/// it got.
-/// The two must not overlap, unless `destination` begins at or before `source`. Use `MoveTo` where they might.
-/// Runs in time proportional to the length and allocates nothing.
-/// Overlapping the wrong way silently copies elements that were already overwritten.
-/// @typeParam T the element type
-/// @param destination where the results go
-/// @param source where the elements come from
-/// @returns whether `destination` was long enough
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#copy-to
-pub func CopyTo<T: Copyable>(destination: var T[..], source: T[..]) -> bool {
-    if destination.length != source.length { return false; }
-    var index: uint = 0;
-    while index < source.length {
-        destination[index] = source[index];
-        index++;
-    }
-    return true;
-}
-
-/// Copies `source` into `destination`, correctly however the two overlap.
-/// `destination` is borrowed mutably and written; `source` is borrowed and read. Reports false when the two lengths
-/// differ, having written nothing.
-/// Copies back to front when `destination` starts after `source`, and front to back otherwise, which is what makes
-/// shifting a run of elements along its own storage safe in either direction.
-/// Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param destination where the results go
-/// @param source where the elements come from
-/// @returns whether `destination` was long enough
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#move-to
-pub func MoveTo<T: Copyable>(destination: var T[..], source: T[..]) -> bool {
-    if destination.length != source.length { return false; }
-    if (destination.data as uint) <= (source.data as uint) { return CopyTo<T>(destination, source); }
-    var remaining = source.length;
-    while remaining > 0 {
-        remaining = remaining - 1;
-        destination[remaining] = source[remaining];
-    }
-    return true;
-}
-
-/// Collapses each run of adjacent equal elements in `items` to one, and reports how many are left.
-/// `items` is borrowed mutably and rewritten. Only *adjacent* duplicates go: on a sorted slice that removes every
-/// duplicate, and on an unsorted one it removes only the runs, which is the useful behaviour rather than a
-/// compromise — it makes this the second half of sort-then-unique without paying for a second sort.
-/// Relative order among the survivors is preserved, nothing is resized, and what lies past the reported length is
-/// unspecified.
-/// Requires `==` on the element type.
-/// Cannot fail. Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @returns how many elements are left after collapsing each run of equal neighbours to one
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#unique
-pub func Unique<T: Copyable>(items: var T[..]) -> uint {
-    if items.length < 2 { return items.length; }
-    var kept: uint = 1;
-    var index: uint = 1;
-    while index < items.length {
-        if !(items[index] == items[kept - 1]) {
-            items[kept] = items[index];
-            kept = kept + 1;
-        }
-        index++;
-    }
-    return kept;
-}
-
-/// Removes every element of `items` equal to `value`, and reports how many are left.
-/// `items` is borrowed mutably and rewritten; `value` is read by value. Survivors are compacted toward the front in
-/// their original order, nothing is resized, and what lies past the reported length is unspecified.
-/// Requires `==` on the element type.
-/// Cannot fail. Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param value the value to remove every occurrence of
-/// @returns how many elements are left
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-value
-pub func RemoveValue<T: Copyable>(items: var T[..], value: T) -> uint {
-    var kept: uint = 0;
-    var index: uint = 0;
-    while index < items.length {
-        if !(items[index] == value) {
-            items[kept] = items[index];
-            kept = kept + 1;
-        }
-        index++;
-    }
-    return kept;
-}
-
-/// Removes every element of `items` that `predicate` accepts, and reports how many are left.
-/// `items` is borrowed mutably and rewritten; `predicate` is called once per element. Survivors are compacted toward
-/// the front in their original order, nothing is resized, and what lies past the reported length is unspecified.
-/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param predicate the test each element is put to
-/// @returns how many elements are left
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-where
-pub func RemoveWhere<T: Copyable>(items: var T[..], predicate: func(T) -> bool) -> uint {
-    var kept: uint = 0;
-    var index: uint = 0;
-    while index < items.length {
-        if !predicate(items[index]) {
-            items[kept] = items[index];
-            kept = kept + 1;
-        }
-        index++;
-    }
-    return kept;
-}
-
-/// Moves every element `predicate` accepts to the front of `items`, and reports how many there were.
-/// `items` is borrowed mutably and rewritten; `predicate` is called once per element. Everything before the reported
-/// index satisfies the predicate and everything from it on does not.
-/// Order within each group is *not* preserved: this exchanges elements from both ends inward, which is what keeps it
-/// to one pass and no scratch storage. A caller that needs the original order within each group needs a stable
-/// partition, which needs somewhere to put things.
-/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param predicate the test each element is put to
-/// @returns the index of the first element that fails `predicate`
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition
-pub func Partition<T: Copyable>(items: var T[..], predicate: func(T) -> bool) -> uint {
-    var low: uint = 0;
-    var high = items.length;
-    while low < high {
-        if predicate(items[low]) {
-            low = low + 1;
-        }
-        else {
-            high = high - 1;
-            // Safety: `low <= high < items.length`, so both pointers address live elements of `items`.
+    /// Reverses the order of `items` in place.
+    /// `items` is borrowed mutably and rewritten. An empty slice and a single element are already reversed, so neither
+    /// is a special case.
+    /// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#reverse
+    pub func Reverse<T>(items: var T[..]) {
+        if items.length < 2 { return; }
+        var low: uint = 0;
+        var high = items.length - 1;
+        while low < high {
+            // Safety: `low < high < items.length`, so both pointers address distinct live elements of `items`.
             Swap<T>(@items[low], @items[high]);
+            low = low + 1;
+            high = high - 1;
         }
     }
-    return low;
-}
 
-/// Where the accepted elements of an already-partitioned `items` end.
-/// `items` is borrowed and read; `predicate` is called about as many times as the logarithm of the length. Requires
-/// that every element the predicate accepts comes before every element it rejects — which is what `Partition`
-/// leaves behind, and what a sorted slice is with respect to any threshold predicate.
-/// A slice that is not partitioned this way does not fail; it answers, and the answer is meaningless.
-/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
-/// `predicate` does.
-/// @typeParam T the element type
-/// @param items the sequence to work on
-/// @param predicate the test each element is put to
-/// @returns the index of the first element that fails `predicate`, assuming the sequence is partitioned
-/// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition-point
-pub func PartitionPoint<T: Copyable>(items: T[..], predicate: func(T) -> bool) -> uint {
-    var low: uint = 0;
-    var high = items.length;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        if predicate(items[middle]) {
-            low = middle + 1;
-        }
-        else {
-            high = middle;
+    /// Rotates `items` left so that the element at `middle` becomes the first.
+    /// `items` is borrowed mutably and rewritten. A `middle` of zero or of the whole length leaves the order alone;
+    /// anything past the length is refused, since there is no such element to bring to the front.
+    /// Done as three reversals — the front, the back, then the whole — which needs no scratch storage and touches
+    /// every element at most twice.
+    /// Reports false only for a `middle` past the length.
+    /// Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param middle the index that becomes the new first element
+    /// @returns whether `middle` was a usable index
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#rotate
+    pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
+        if middle > items.length { return false; }
+        if middle == 0 || middle == items.length { return true; }
+        Reverse<T>(items[..middle]);
+        Reverse<T>(items[middle..]);
+        Reverse<T>(items);
+        return true;
+    }
+
+    /// Writes `value` into every position of `items`.
+    /// `items` is borrowed mutably and rewritten; `value` is read by value and copied into each position. An empty
+    /// slice writes nothing. Cannot fail. Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to write to every element
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#fill
+    pub func Fill<T: Copyable>(items: var T[..], value: T) {
+        var index: uint = 0;
+        while index < items.length {
+            items[index] = value;
+            index++;
         }
     }
-    return low;
-}
 
+    /// Copies `source` into `destination`, front to back.
+    /// `destination` is borrowed mutably and written; `source` is borrowed and read. Reports false when the two lengths
+    /// differ, having written nothing: a partial copy is worse than a refused one, since the caller cannot tell how far
+    /// it got.
+    /// The two must not overlap, unless `destination` begins at or before `source`. Use `MoveTo` where they might.
+    /// Runs in time proportional to the length and allocates nothing.
+    /// Overlapping the wrong way silently copies elements that were already overwritten.
+    /// @typeParam T the element type
+    /// @param destination where the results go
+    /// @param source where the elements come from
+    /// @returns whether `destination` was long enough
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#copy-to
+    pub func CopyTo<T: Copyable>(destination: var T[..], source: T[..]) -> bool {
+        if destination.length != source.length { return false; }
+        var index: uint = 0;
+        while index < source.length {
+            destination[index] = source[index];
+            index++;
+        }
+        return true;
+    }
+
+    /// Copies `source` into `destination`, correctly however the two overlap.
+    /// `destination` is borrowed mutably and written; `source` is borrowed and read. Reports false when the two lengths
+    /// differ, having written nothing.
+    /// Copies back to front when `destination` starts after `source`, and front to back otherwise, which is what makes
+    /// shifting a run of elements along its own storage safe in either direction.
+    /// Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param destination where the results go
+    /// @param source where the elements come from
+    /// @returns whether `destination` was long enough
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#move-to
+    pub func MoveTo<T: Copyable>(destination: var T[..], source: T[..]) -> bool {
+        if destination.length != source.length { return false; }
+        if (destination.data as uint) <= (source.data as uint) { return CopyTo<T>(destination, source); }
+        var remaining = source.length;
+        while remaining > 0 {
+            remaining = remaining - 1;
+            destination[remaining] = source[remaining];
+        }
+        return true;
+    }
+
+    /// Collapses each run of adjacent equal elements in `items` to one, and reports how many are left.
+    /// `items` is borrowed mutably and rewritten. Only *adjacent* duplicates go: on a sorted slice that removes every
+    /// duplicate, and on an unsorted one it removes only the runs, which is the useful behaviour rather than a
+    /// compromise — it makes this the second half of sort-then-unique without paying for a second sort.
+    /// Relative order among the survivors is preserved, nothing is resized, and what lies past the reported length is
+    /// unspecified.
+    /// Requires `==` on the element type.
+    /// Cannot fail. Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @returns how many elements are left after collapsing each run of equal neighbours to one
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#unique
+    pub func Unique<T: Copyable>(items: var T[..]) -> uint {
+        if items.length < 2 { return items.length; }
+        var kept: uint = 1;
+        var index: uint = 1;
+        while index < items.length {
+            if !(items[index] == items[kept - 1]) {
+                items[kept] = items[index];
+                kept = kept + 1;
+            }
+            index++;
+        }
+        return kept;
+    }
+
+    /// Removes every element of `items` equal to `value`, and reports how many are left.
+    /// `items` is borrowed mutably and rewritten; `value` is read by value. Survivors are compacted toward the front in
+    /// their original order, nothing is resized, and what lies past the reported length is unspecified.
+    /// Requires `==` on the element type.
+    /// Cannot fail. Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param value the value to remove every occurrence of
+    /// @returns how many elements are left
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-value
+    pub func RemoveValue<T: Copyable>(items: var T[..], value: T) -> uint {
+        var kept: uint = 0;
+        var index: uint = 0;
+        while index < items.length {
+            if !(items[index] == value) {
+                items[kept] = items[index];
+                kept = kept + 1;
+            }
+            index++;
+        }
+        return kept;
+    }
+
+    /// Removes every element of `items` that `predicate` accepts, and reports how many are left.
+    /// `items` is borrowed mutably and rewritten; `predicate` is called once per element. Survivors are compacted
+    /// toward the front in their original order, nothing is resized, and what lies past the reported length is
+    /// unspecified. Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever
+    /// `predicate` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param predicate the test each element is put to
+    /// @returns how many elements are left
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-where
+    pub func RemoveWhere<T: Copyable>(items: var T[..], predicate: func(T) -> bool) -> uint {
+        var kept: uint = 0;
+        var index: uint = 0;
+        while index < items.length {
+            if !predicate(items[index]) {
+                items[kept] = items[index];
+                kept = kept + 1;
+            }
+            index++;
+        }
+        return kept;
+    }
+
+    /// Moves every element `predicate` accepts to the front of `items`, and reports how many there were.
+    /// `items` is borrowed mutably and rewritten; `predicate` is called once per element. Everything before the
+    /// reported index satisfies the predicate and everything from it on does not. Order within each group is *not*
+    /// preserved: this exchanges elements from both ends inward, which is what keeps it to one pass and no scratch
+    /// storage. A caller that needs the original order within each group needs a stable partition, which needs
+    /// somewhere to put things. Cannot fail. Runs in time proportional to the length and allocates nothing beyond
+    /// whatever `predicate` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param predicate the test each element is put to
+    /// @returns the index of the first element that fails `predicate`
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition
+    pub func Partition<T: Copyable>(items: var T[..], predicate: func(T) -> bool) -> uint {
+        var low: uint = 0;
+        var high = items.length;
+        while low < high {
+            if predicate(items[low]) {
+                low = low + 1;
+            }
+            else {
+                high = high - 1;
+                // Safety: `low <= high < items.length`, so both pointers address live elements of `items`.
+                Swap<T>(@items[low], @items[high]);
+            }
+        }
+        return low;
+    }
+
+    /// Where the accepted elements of an already-partitioned `items` end.
+    /// `items` is borrowed and read; `predicate` is called about as many times as the logarithm of the length. Requires
+    /// that every element the predicate accepts comes before every element it rejects — which is what `Partition`
+    /// leaves behind, and what a sorted slice is with respect to any threshold predicate.
+    /// A slice that is not partitioned this way does not fail; it answers, and the answer is meaningless.
+    /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+    /// `predicate` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to work on
+    /// @param predicate the test each element is put to
+    /// @returns the index of the first element that fails `predicate`, assuming the sequence is partitioned
+    /// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition-point
+    pub func PartitionPoint<T: Copyable>(items: T[..], predicate: func(T) -> bool) -> uint {
+        var low: uint = 0;
+        var high = items.length;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if predicate(items[middle]) {
+                low = middle + 1;
+            }
+            else {
+                high = middle;
+            }
+        }
+        return low;
+    }
+
+    /// Writes `transform` of each element of `source` into `destination`.
+    /// `source` is borrowed and read; `destination` is borrowed mutably and written; `transform` is called once per
+    /// element. The two sequences may have different element types, and may be the same storage when they do not.
+    /// Reports false, having written nothing, when the two lengths differ — for the same reason `CopyTo` does: a
+    /// partial result is worse than a refused one when the caller cannot tell how far it got.
+    /// Runs in time proportional to the length and allocates nothing beyond whatever `transform` does.
+    /// @typeParam T the element type
+    /// @typeParam U the destination element type
+    /// @param destination where the results go
+    /// @param source where the elements come from
+    /// @param transform how to turn a source element into a destination one
+    /// @returns whether `destination` was long enough to hold every result
+    /// @see https://rux-lang.dev/docs/api/algorithms/folding#transform
+    pub func Transform<T, U>(destination: var U[..], source: T[..], transform: func(T) -> U) -> bool {
+        if destination.length != source.length { return false; }
+        var index: uint = 0;
+        while index < source.length {
+            // Safety: `index` is below `source.length`, which equals `destination.length`, checked above.
+            destination.data[index] = transform(source.data[index]);
+            index++;
+        }
+        return true;
+    }
+}

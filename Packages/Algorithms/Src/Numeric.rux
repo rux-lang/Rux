@@ -8,154 +8,158 @@
 import Core::Ownership::Copyable;
 import Core::Primitives::*;
 
-
-/// Writes the running sums of `items` into `into`: element `i` becomes the sum of the first `i + 1` elements.
-/// `into` may be `items` itself. Requires `+` on the element type, with whatever overflow it has.
-/// Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param items the sequence to sum
-/// @param into where the sums go, at least as long as `items`
-/// @returns whether `into` was long enough; nothing is written when it was not
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#partial-sum
-pub func PartialSum<T: Copyable>(items: T[..], into: var T[..]) -> bool {
-    if into.length < items.length { return false; }
-    if items.length == 0 { return true; }
-    // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    var total = items.data[0];
-    // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    into.data[0] = total;
-    var index: uint = 1;
-    while index < items.length {
-        // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        total = total + items.data[index];
-        into.data[index] = total;
-        index++;
+pub module Numeric {
+    /// Writes the running sums of `items` into `into`: element `i` becomes the sum of the first `i + 1` elements.
+    /// `into` may be `items` itself. Requires `+` on the element type, with whatever overflow it has.
+    /// Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param items the sequence to sum
+    /// @param into where the sums go, at least as long as `items`
+    /// @returns whether `into` was long enough; nothing is written when it was not
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#partial-sum
+    pub func PartialSum<T: Copyable>(items: T[..], into: var T[..]) -> bool {
+        if into.length < items.length { return false; }
+        if items.length == 0 { return true; }
+        // Safety: `items` is not empty and `into` is at least as long, both checked above.
+        var total = items.data[0];
+        // Safety: `items` is not empty and `into` is at least as long, both checked above.
+        into.data[0] = total;
+        var index: uint = 1;
+        while index < items.length {
+            // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked
+            // above.
+            total = total + items.data[index];
+            into.data[index] = total;
+            index++;
+        }
+        return true;
     }
-    return true;
-}
 
-/// Writes the running combination of `items` into `into`: element `i` becomes the first `i + 1` elements combined
-/// left to right with `combine`. `PartialSum` is this scan with `+`.
-/// `into` may be `items` itself.
-/// Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
-/// @typeParam T the element type
-/// @param items the sequence to scan
-/// @param into where the results go, at least as long as `items`
-/// @param combine how two values combine
-/// @returns whether `into` was long enough; nothing is written when it was not
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#inclusive-scan
-pub func InclusiveScan<T: Copyable>(items: T[..], into: var T[..], combine: func(T, T) -> T) -> bool {
-    if into.length < items.length { return false; }
-    if items.length == 0 { return true; }
-    // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    var total = items.data[0];
-    // Safety: `items` is not empty and `into` is at least as long, both checked above.
-    into.data[0] = total;
-    var index: uint = 1;
-    while index < items.length {
-        // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        total = combine(total, items.data[index]);
-        into.data[index] = total;
-        index++;
+    /// Writes the running combination of `items` into `into`: element `i` becomes the first `i + 1` elements combined
+    /// left to right with `combine`. `PartialSum` is this scan with `+`.
+    /// `into` may be `items` itself.
+    /// Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to scan
+    /// @param into where the results go, at least as long as `items`
+    /// @param combine how two values combine
+    /// @returns whether `into` was long enough; nothing is written when it was not
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#inclusive-scan
+    pub func InclusiveScan<T: Copyable>(items: T[..], into: var T[..], combine: func(T, T) -> T) -> bool {
+        if into.length < items.length { return false; }
+        if items.length == 0 { return true; }
+        // Safety: `items` is not empty and `into` is at least as long, both checked above.
+        var total = items.data[0];
+        // Safety: `items` is not empty and `into` is at least as long, both checked above.
+        into.data[0] = total;
+        var index: uint = 1;
+        while index < items.length {
+            // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked
+            // above.
+            total = combine(total, items.data[index]);
+            into.data[index] = total;
+            index++;
+        }
+        return true;
     }
-    return true;
-}
 
-/// Writes the running combination of `items` before each element into `into`: element `i` becomes `initial`
-/// combined with the first `i` elements, so the first result is `initial` and the last element of `items` takes part
-/// in none.
-/// `into` may be `items` itself.
-/// Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
-/// @typeParam T the element type
-/// @param items the sequence to scan
-/// @param into where the results go, at least as long as `items`
-/// @param initial the value before anything is combined
-/// @param combine how two values combine
-/// @returns whether `into` was long enough; nothing is written when it was not
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#exclusive-scan
-pub func ExclusiveScan<T: Copyable>(items: T[..], into: var T[..], initial: T, combine: func(T, T) -> T) -> bool {
-    if into.length < items.length { return false; }
-    var total = initial;
-    var index: uint = 0;
-    while index < items.length {
-        // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        let element = items.data[index];
-        // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked above.
-        into.data[index] = total;
-        total = combine(total, element);
-        index++;
+    /// Writes the running combination of `items` before each element into `into`: element `i` becomes `initial`
+    /// combined with the first `i` elements, so the first result is `initial` and the last element of `items` takes
+    /// part in none. `into` may be `items` itself. Runs in time proportional to the length and allocates nothing beyond
+    /// whatever `combine` does.
+    /// @typeParam T the element type
+    /// @param items the sequence to scan
+    /// @param into where the results go, at least as long as `items`
+    /// @param initial the value before anything is combined
+    /// @param combine how two values combine
+    /// @returns whether `into` was long enough; nothing is written when it was not
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#exclusive-scan
+    pub func ExclusiveScan<T: Copyable>(items: T[..], into: var T[..], initial: T, combine: func(T, T) -> T) -> bool {
+        if into.length < items.length { return false; }
+        var total = initial;
+        var index: uint = 0;
+        while index < items.length {
+            // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked
+            // above.
+            let element = items.data[index];
+            // Safety: `index` is below `items.length`, the loop condition, and `into` is at least as long, checked
+            // above.
+            into.data[index] = total;
+            total = combine(total, element);
+            index++;
+        }
+        return true;
     }
-    return true;
-}
 
-/// Fills `into` with `start`, `start + step`, `start + 2 * step` and so on.
-/// Requires `+` on the element type, with whatever overflow it has.
-/// Runs in time proportional to the length and allocates nothing.
-/// @typeParam T the element type
-/// @param into the sequence to fill
-/// @param start the first value
-/// @param step what each value adds to the one before
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#iota
-pub func Iota<T: Copyable>(into: var T[..], start: T, step: T) {
-    var value = start;
-    var index: uint = 0;
-    while index < into.length {
-        // Safety: `index` is below `into.length`, the loop condition.
-        into.data[index] = value;
-        if index + 1 < into.length { value = value + step; }
-        index++;
+    /// Fills `into` with `start`, `start + step`, `start + 2 * step` and so on.
+    /// Requires `+` on the element type, with whatever overflow it has.
+    /// Runs in time proportional to the length and allocates nothing.
+    /// @typeParam T the element type
+    /// @param into the sequence to fill
+    /// @param start the first value
+    /// @param step what each value adds to the one before
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#iota
+    pub func Iota<T: Copyable>(into: var T[..], start: T, step: T) {
+        var value = start;
+        var index: uint = 0;
+        while index < into.length {
+            // Safety: `index` is below `into.length`, the loop condition.
+            into.data[index] = value;
+            if index + 1 < into.length { value = value + step; }
+            index++;
+        }
     }
-}
 
-/// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
-/// @param a one end
-/// @param b the other end
-/// @returns the midpoint
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
-pub func Midpoint(a: int64, b: int64) -> int64 {
-    if a <= b { return a + ((b.Truncate<uint64>() -% a.Truncate<uint64>()) / 2u64) as int64; }
-    return a - ((a.Truncate<uint64>() -% b.Truncate<uint64>()) / 2u64) as int64;
-}
+    /// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
+    /// @param a one end
+    /// @param b the other end
+    /// @returns the midpoint
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
+    pub func Midpoint(a: int64, b: int64) -> int64 {
+        if a <= b { return a + ((b.Truncate<uint64>() -% a.Truncate<uint64>()) / 2u64) as int64; }
+        return a - ((a.Truncate<uint64>() -% b.Truncate<uint64>()) / 2u64) as int64;
+    }
 
-/// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
-/// @param a one end
-/// @param b the other end
-/// @returns the midpoint
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
-pub func Midpoint(a: int32, b: int32) -> int32 {
-    if a <= b { return a + ((b.Truncate<uint32>() -% a.Truncate<uint32>()) / 2u32) as int32; }
-    return a - ((a.Truncate<uint32>() -% b.Truncate<uint32>()) / 2u32) as int32;
-}
+    /// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
+    /// @param a one end
+    /// @param b the other end
+    /// @returns the midpoint
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
+    pub func Midpoint(a: int32, b: int32) -> int32 {
+        if a <= b { return a + ((b.Truncate<uint32>() -% a.Truncate<uint32>()) / 2u32) as int32; }
+        return a - ((a.Truncate<uint32>() -% b.Truncate<uint32>()) / 2u32) as int32;
+    }
 
-/// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
-/// @param a one end
-/// @param b the other end
-/// @returns the midpoint
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
-pub func Midpoint(a: uint64, b: uint64) -> uint64 {
-    if a <= b { return a + (b - a) / 2u64; }
-    return a - (a - b) / 2u64;
-}
+    /// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
+    /// @param a one end
+    /// @param b the other end
+    /// @returns the midpoint
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
+    pub func Midpoint(a: uint64, b: uint64) -> uint64 {
+        if a <= b { return a + (b - a) / 2u64; }
+        return a - (a - b) / 2u64;
+    }
 
-/// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
-/// @param a one end
-/// @param b the other end
-/// @returns the midpoint
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
-pub func Midpoint(a: uint32, b: uint32) -> uint32 {
-    if a <= b { return a + (b - a) / 2u32; }
-    return a - (a - b) / 2u32;
-}
+    /// Halfway between `a` and `b`, rounded toward `a`, without overflowing however far apart they are.
+    /// @param a one end
+    /// @param b the other end
+    /// @returns the midpoint
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
+    pub func Midpoint(a: uint32, b: uint32) -> uint32 {
+        if a <= b { return a + (b - a) / 2u32; }
+        return a - (a - b) / 2u32;
+    }
 
-/// Halfway between `a` and `b`, without overflowing to infinity when both are near the largest finite value.
-/// @param a one end
-/// @param b the other end
-/// @returns the midpoint
-/// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
-pub func Midpoint(a: float64, b: float64) -> float64 {
-    let large = 8.98846567431158e307;
-    let absoluteA = if a < 0.0 { -a } else { a };
-    let absoluteB = if b < 0.0 { -b } else { b };
-    if absoluteA <= large && absoluteB <= large { return (a + b) / 2.0; }
-    return a / 2.0 + b / 2.0;
+    /// Halfway between `a` and `b`, without overflowing to infinity when both are near the largest finite value.
+    /// @param a one end
+    /// @param b the other end
+    /// @returns the midpoint
+    /// @see https://rux-lang.dev/docs/api/algorithms/numeric#midpoint
+    pub func Midpoint(a: float64, b: float64) -> float64 {
+        let large = 8.98846567431158e307;
+        let absoluteA = if a < 0.0 { -a } else { a };
+        let absoluteB = if b < 0.0 { -b } else { b };
+        if absoluteA <= large && absoluteB <= large { return (a + b) / 2.0; }
+        return a / 2.0 + b / 2.0;
+    }
 }

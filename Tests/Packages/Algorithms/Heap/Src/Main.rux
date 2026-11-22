@@ -1,5 +1,8 @@
-import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap,
-                     Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
+import Algorithms::Modify::Transform;
+import Algorithms::Numeric::{ Fold, FoldRight, Product, Sum };
+import Algorithms::Query::MaxIndex;
+import Algorithms::Sorting::{ IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, PopHeap, PushHeap,
+                              PushHeapBy, SortHeap, SortHeapBy };
 import Core::Compare::Ordering;
 import Core::Diagnostics::{ Assert, Panic };
 

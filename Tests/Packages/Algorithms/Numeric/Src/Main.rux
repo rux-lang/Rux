@@ -1,4 +1,5 @@
-import Algorithms::{ ExclusiveScan, InclusiveScan, Iota, Midpoint, PartialSum, SequenceEqual };
+import Algorithms::Numeric::{ ExclusiveScan, InclusiveScan, Iota, Midpoint, PartialSum };
+import Algorithms::Query::SequenceEqual;
 import Core::Diagnostics::Assert;
 
 // Running totals, written beside the input or over it; scans with any combining function; counting sequences; and

@@ -1,4 +1,5 @@
-import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex, MinMaxIndexBy };
+import Algorithms::Query::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex,
+                            MinMaxIndexBy };
 import Core::Compare::Ordering;
 import Core::Diagnostics::{ Assert, Panic };
 

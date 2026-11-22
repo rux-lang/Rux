@@ -1,5 +1,6 @@
-import Algorithms::{ CopyTo, Fill, MoveTo, Partition, PartitionPoint, RemoveValue, RemoveWhere, Reverse, Rotate,
-                     SequenceEqual, Swap, Unique };
+import Algorithms::Modify::{ CopyTo, Fill, MoveTo, Partition, PartitionPoint, RemoveValue, RemoveWhere, Reverse, Rotate,
+                             Swap, Unique };
+import Algorithms::Query::SequenceEqual;
 import Core::Diagnostics::Assert;
 
 // Rearranging in place. Two things run through all of it: nothing resizes anything, and a removal reports how many

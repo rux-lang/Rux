@@ -1,6 +1,6 @@
 
-import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil,
-                     IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
+import Algorithms::Sorting::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy,
+                              IsSortedUntil, IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
 import Core::Compare::Ordering;
 import Core::Diagnostics::{ Assert, Panic };
 

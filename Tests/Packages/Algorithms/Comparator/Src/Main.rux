@@ -1,7 +1,8 @@
-import Algorithms::{ NthElementBy, PartialSortBy, SortBy, SortDescendingBy };
-import Algorithms::{ IsSorted, IsSortedBy };
+import Algorithms::Sorting::{ NthElementBy, PartialSortBy, SortBy, SortDescendingBy };
+import Algorithms::Sorting::{ IsSorted, IsSortedBy };
 import Core::Compare::Ordering;
-import Algorithms::{ CopyTo, Reverse, SequenceEqual };
+import Algorithms::Modify::{ CopyTo, Reverse };
+import Algorithms::Query::SequenceEqual;
 
 // Declares no operators at all. Every ordering below has to come from the
 // comparator, which is the point: a comparator is enough on its own.

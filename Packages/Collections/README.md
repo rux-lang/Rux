@@ -200,7 +200,7 @@ Growth doubles from a floor of four slots, so a run of additions costs an amorti
 Algorithms takes a pointer and a length, so a container passes the fields of a view straight in. The compacting functions return a surviving length without resizing anything, and `Vector::Truncate` is what accepts it:
 
 ```rux
-import Algorithms::Unique;
+import Algorithms::Modify::Unique;
 
 let view = numbers.AsMutableSlice();
 let kept = Unique<int32>(view);

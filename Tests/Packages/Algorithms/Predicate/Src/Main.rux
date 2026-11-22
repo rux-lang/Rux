@@ -1,5 +1,7 @@
-import Algorithms::{ Fold, Partition, PartitionPoint, RemoveWhere, Transform };
-import Algorithms::{ AllOf, IsSorted, NoneOf, SequenceEqual };
+import Algorithms::Modify::{ Partition, PartitionPoint, RemoveWhere, Transform };
+import Algorithms::Numeric::Fold;
+import Algorithms::Query::{ AllOf, NoneOf, SequenceEqual };
+import Algorithms::Sorting::IsSorted;
 
 pub struct Record {
     key: int32;

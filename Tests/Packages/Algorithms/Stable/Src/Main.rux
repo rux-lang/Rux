@@ -1,4 +1,4 @@
-import Algorithms::{ IsSorted, IsSortedBy, RequiredScratch, StableSort, StableSortBy };
+import Algorithms::Sorting::{ IsSorted, IsSortedBy, RequiredScratch, StableSort, StableSortBy };
 import Core::Compare::Ordering;
 import Core::Diagnostics::Assert;
 

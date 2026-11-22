@@ -1,4 +1,6 @@
-import Algorithms::{ CopyTo, IsSorted, NthElement, PartialSort, SequenceEqual };
+import Algorithms::Modify::CopyTo;
+import Algorithms::Query::SequenceEqual;
+import Algorithms::Sorting::{ IsSorted, NthElement, PartialSort };
 
 pub struct Ranked {
     key: int32;

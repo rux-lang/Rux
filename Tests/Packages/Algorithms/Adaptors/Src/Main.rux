@@ -1,4 +1,4 @@
-import Algorithms::{ Chain, Enumerate, Filter, Map, Skip, Take, Walk, Zip };
+import Algorithms::Adaptors::{ Chain, Enumerate, Filter, Map, Skip, Take, Walk, Zip };
 import Allocator::SystemAllocator;
 import Collections::Vector;
 import Core::Diagnostics::Assert;

@@ -12,21 +12,17 @@ rux add Rux/Algorithms
 
 ## Status
 
-| Module   | Takes       | Requires on `T` | Provides                                                   |
-| -------- | ----------- | --------------- | ---------------------------------------------------------- |
-| `Find`   | `T[..]`     | — or `==`       | Linear queries, sequence comparison, by value or predicate |
-| `MinMax` | `T[..]`     | — or `<`        | Sequence extremes and clamping                             |
-| `Search` | `T[..]`     | `<`             | Sortedness checks, bounds and binary search                |
-| `Modify` | `var T[..]` | — or `==`       | Reordering, bulk movement, removal and partitioning        |
-| `Sort`   | `var T[..]` | `<`             | Introsort, selection, and partial sorting                  |
-| `Stable` | `var T[..]` | `<`             | Merge sort, with scratch the caller supplies               |
-| `Heap`   | `var T[..]` | `<`             | Max-heap arrangement, push, pop and heapsort               |
-| `Fold`   | `T[..]`     | — or `+`/`*`    | Folds in both directions, sum, product and transform       |
-| `Numeric`| `var T[..]` | — or `+`        | Running sums and scans, counting sequences, midpoints      |
+| Module     | Takes                    | Requires on `T` | Provides                                                                              |
+| ---------- | ------------------------ | --------------- | ------------------------------------------------------------------------------------- |
+| `Query`    | `T[..]`                  | — or `==`/`<`   | Linear queries, sequence comparison, extremes and clamping                            |
+| `Sorting`  | `T[..]` or `var T[..]`   | `<`             | Introsort, selection, partial and stable sorting, heaps, bounds and binary search     |
+| `Modify`   | `var T[..]`              | — or `==`       | Reordering, bulk movement, removal, partitioning and transform                        |
+| `Numeric`  | `T[..]` or `var T[..]`   | — or `+`/`*`    | Folds in both directions, sum and product, running sums and scans, counting, midpoints |
+| `Adaptors` | a `Cursor<T>`            | —               | Lazy map, filter, take, skip, enumerate, zip and chain                                |
 
 Everything takes a view: a `T[..]` where it only reads, and a `var T[..]` where it writes.
 
-Modules are split by what they ask of the element type, so a type that defines only one of the two comparison operators can still use the modules that need it, and a missing operator is reported against one module rather than the whole package.
+Every function is imported from its module, as in `import Algorithms::Sorting::{ Sort, StableSort };`. A function asks only for the operator it uses, so a type that defines one of the two comparison operators can still use every function that needs only that one, and a missing operator is reported against the function that needs it rather than the whole package.
 
 A **predicate-taking** function asks nothing of `T` at all — the caller's function supplies the test — so those work on any element type whatsoever.
 
@@ -91,7 +87,7 @@ Sorting is **not stable**: equal elements may come out in a different order than
 Type arguments are always explicit — Rux does not infer them for free functions.
 
 ```rux
-import Algorithms::{ Reverse, Unique };
+import Algorithms::Modify::{ Reverse, Unique };
 
 var numbers: int32[3] = [3, 1, 1];
 let view = numbers[..3];
@@ -105,7 +101,7 @@ let kept = Unique<int32>(view);
 A fixed array supplies a writable view directly through range indexing:
 
 ```rux
-import Algorithms::Rotate;
+import Algorithms::Modify::Rotate;
 
 var values: int32[5] = [1, 2, 3, 4, 5];
 let view = values[..5];
@@ -158,7 +154,9 @@ An empty sequence satisfies `All` vacuously and `Any` never, so `All` and `None`
 `Transform` and `Fold` let the result type differ from the element type, so `Fold` both sums a sequence and builds something else entirely out of one:
 
 ```rux
-import Algorithms::{ CountWhere, Fold, Partition };
+import Algorithms::Modify::Partition;
+import Algorithms::Numeric::Fold;
+import Algorithms::Query::CountWhere;
 
 func IsEven(value: int32) -> bool { return value % 2 == 0; }
 func Add(total: int32, value: int32) -> int32 { return total + value; }
@@ -177,7 +175,7 @@ Every ordering function has a `*By` counterpart taking an explicit comparator: `
 The comparator answers "does `a` come strictly before `b`" — the same question `<` answers — and must be a strict weak ordering. Equivalence is derived from it alone, so **a comparator is enough on its own**: the element type need not define any operator at all.
 
 ```rux
-import Algorithms::SortBy;
+import Algorithms::Sorting::SortBy;
 import Core::Compare::Ordering;
 
 struct Task {
@@ -297,7 +295,7 @@ Ordering and search algorithms require `func <` in the same form. A missing oper
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
 - **Caller-provided stability.** `StableSort` requires a scratch `var T[..]` as long as the input, preserving the package's zero-allocation property.
-- `Algorithms::CopyTo` copies typed elements, while [`Memory::Copy`](../Memory) copies raw bytes.
+- `Algorithms::Modify::CopyTo` copies typed elements, while [`Memory::Copy`](../Memory) copies raw bytes.
 
 `T[..]` and `var T[..]` are borrowed views and copy only their pointer and length, never their elements. Internal pointers used for indexing and pointer arithmetic remain raw. The few scalar output parameters also remain raw pointers; pass writable addresses such as `@smallest` and never pass null unless the function documents it.
 

@@ -15,7 +15,7 @@
 // from `AllocateBlock` with room for `capacity` elements, a power of two; `head < capacity`, `length <= capacity`, and
 // the `length` slots from `head` onward, wrapping, are initialized, so `SlotOf(i)` names one of them for `i < length`.
 
-import Algorithms::Rotate;
+import Algorithms::Modify::Rotate;
 import Allocator::{ AllocationFailed, Allocator };
 import Memory::Copy;
 
