@@ -1,0 +1,20 @@
+// A fallible is spelled as the language reference writes it in every message: '!E' when the function returns nothing,
+// and an error sum without parentheses, since '!' binds loosest.
+enum IoError { Closed }
+enum ParseError { Invalid }
+
+struct Value {
+    x: int;
+}
+
+func Flush() -> !IoError {}
+
+func Load() -> Value ! IoError | ParseError { return Value { x: 1 }; }
+
+func Use() -> int {
+    let flushed = Flush();
+    let covered = match flushed { _: IoError => 1 };
+    let stored: int = Load();
+    let sum = Load() + 1;
+    return 0;
+}

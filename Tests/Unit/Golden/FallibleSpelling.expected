@@ -1,0 +1,3 @@
+16:35: error: match on '!IoError' is not exhaustive; missing _: ()
+17:5: error: cannot assign 'Value ! IoError | ParseError' to 'int'
+18:22: error: operator '+' cannot combine left operand 'Value ! IoError | ParseError' with right operand 'int'

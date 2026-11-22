@@ -501,8 +501,10 @@ void ForEachTopLevelCharacter(const std::string_view text, Visitor &&visit) {
 } // namespace
 
 std::optional<TypeRef::NativeSpelling> TypeRef::SplitNativeSpelling(const std::string_view text) {
-    if (text.starts_with("! ")) {
-        return NativeSpelling{NativeSpelling::Form::Fallible, {"", std::string(text.substr(2))}};
+    // A fallible of the unit is spelled `!E`; a type expression written in source may still read `! E`.
+    if (text.starts_with('!')) {
+        return NativeSpelling{NativeSpelling::Form::Fallible,
+                              {"", std::string(text.substr(text.starts_with("! ") ? 2 : 1))}};
     }
     std::optional<std::size_t> bang;
     std::vector<std::size_t> pipes;
@@ -669,17 +671,16 @@ std::string Spell(const TypeNode &type) {
         }
         const TypeRef &success = inner[0];
         const TypeRef &error = inner[1];
-        // One unparenthesized `!` per type: a nested fallible on either side is grouped, as is a function type, whose
-        // return would otherwise extend over the `!`. A directly written optional error is grouped too, `T ! (E?)`.
-        // A sum on either side binds tighter than `!` and needs no parentheses, but is grouped anyway, as the language
-        // reference writes it, because `int ! A | B` reads as a different grouping.
-        const std::string errorSpelling = Grouped(error.ToString(), error.IsFallible() || error.IsOptional() ||
-                                                                        error->kind == Kind::Func || error.IsSum());
+        // The spelling the language reference writes. One unparenthesized `!` per type: a nested fallible on either
+        // side is grouped, as is a function type, whose return would otherwise extend over the `!`. A directly written
+        // optional error is grouped too, `T ! (E?)`. `!` binds loosest, so a sum on either side needs no parentheses,
+        // `int ! A | B`, and a function that returns nothing fails with `!E`.
+        const std::string errorSpelling =
+            Grouped(error.ToString(), error.IsFallible() || error.IsOptional() || error->kind == Kind::Func);
         if (success.IsUnit()) {
-            return "! " + errorSpelling;
+            return "!" + errorSpelling;
         }
-        return Grouped(success.ToString(), success.IsFallible() || success->kind == Kind::Func || success.IsSum()) +
-               " ! " + errorSpelling;
+        return Grouped(success.ToString(), success.IsFallible() || success->kind == Kind::Func) + " ! " + errorSpelling;
     }
     case Kind::Tuple: {
         std::string s = "(";

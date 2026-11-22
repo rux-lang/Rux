@@ -634,10 +634,15 @@ inline std::string TypeRef::DisplayString() const {
     if (node->kind == Kind::Optional && node->inner.size() == 1 && node->inner[0].IsOpaque()) {
         return "none";
     }
-    // A fallible reads as source writes it: `T ! E`, or `!E` for a function that returns nothing.
+    // A fallible reads as source writes it: `T ! E`, or `!E` for a function that returns nothing, grouping a side
+    // as the canonical spelling does.
     if (node->kind == Kind::Fallible && node->inner.size() == 2) {
-        const std::string error = node->inner[1].DisplayString();
-        return node->inner[0].IsUnit() ? "!" + error : node->inner[0].DisplayString() + " ! " + error;
+        const auto grouped = [](const TypeRef &side, const bool optional) {
+            const bool group = side.IsFallible() || side->kind == Kind::Func || (optional && side.IsOptional());
+            return group ? "(" + side.DisplayString() + ")" : side.DisplayString();
+        };
+        const std::string error = grouped(node->inner[1], true);
+        return node->inner[0].IsUnit() ? "!" + error : grouped(node->inner[0], false) + " ! " + error;
     }
     return ToString();
 }

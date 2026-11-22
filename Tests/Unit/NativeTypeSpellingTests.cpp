@@ -47,9 +47,13 @@ TEST_CASE("the native spelling split finds only the loosest operator outside bra
     CHECK(fallible->form == TypeRef::NativeSpelling::Form::Fallible);
     CHECK_EQ(fallible->parts, std::vector<std::string>{"A | B", "E | F"});
 
-    const auto unitSuccess = TypeRef::SplitNativeSpelling("! IoError");
+    const auto unitSuccess = TypeRef::SplitNativeSpelling("!IoError");
     REQUIRE(unitSuccess.has_value());
     CHECK_EQ(unitSuccess->parts, std::vector<std::string>{"", "IoError"});
+    // A type expression written in source may still be spelled with a space.
+    const auto spacedUnitSuccess = TypeRef::SplitNativeSpelling("! IoError");
+    REQUIRE(spacedUnitSuccess.has_value());
+    CHECK_EQ(spacedUnitSuccess->parts, std::vector<std::string>{"", "IoError"});
 
     const auto sum = TypeRef::SplitNativeSpelling("A | Box<B | C> | (D ! E)");
     REQUIRE(sum.has_value());
