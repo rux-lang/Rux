@@ -1,0 +1,24 @@
+// 'x !!;' drops the error and the success with it, so it is a statement on its own. Anywhere a value is used, the
+// error is replaced with '!! fallback' or passed on with '!'.
+variant Fault {
+    Bad
+}
+
+func Make(value: int) -> int ! Fault {
+    if value < 0 {
+        throw .Bad;
+    }
+    return value;
+}
+
+func Pick() -> int {
+    return Make(3) !!;
+}
+
+func Main() -> int {
+    let lost = Make(1) !!;
+    Make(2) !!;
+    defer Make(4) !!;
+    let kept = Make(5) !! 0;
+    return kept + Pick();
+}

@@ -352,6 +352,11 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
 TypeRef AnalysisContext::CheckErrorForm(const ErrorFormExpr &expression) {
     const bool handles = expression.form == ErrorFormExpr::Form::Catch;
     const bool asStatement = std::exchange(statementHandler, nullptr) == &expression;
+    // `x !!;` drops the success along with the error, so nothing is left for an enclosing expression to use.
+    if (expression.ignoresError && !asStatement) {
+        EmitError(expression.location, "'!!' with no replacement drops the value, so it is a statement on its own", {},
+                  "replace the error with a value, as in 'x !! fallback', or pass it on with 'x!'");
+    }
     TypeRef expected = TypeRef::MakeUnknown();
     if (const auto found = expectedExpressionTypes.find(&expression); found != expectedExpressionTypes.end()) {
         expected = found->second;

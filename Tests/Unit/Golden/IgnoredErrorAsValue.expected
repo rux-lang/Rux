@@ -1,0 +1,2 @@
+15:20: error: '!!' with no replacement drops the value, so it is a statement on its own
+19:24: error: '!!' with no replacement drops the value, so it is a statement on its own
