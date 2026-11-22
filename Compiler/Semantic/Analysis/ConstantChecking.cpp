@@ -464,8 +464,7 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     // message names the choice the source has to make.
     if (const auto sourceType = expressionTypes.find(&expr); sourceType != expressionTypes.end()) {
         if (ClassifyNativeConversion(sourceType->second, targetType).outcome == NativeConversion::Outcome::Ambiguous) {
-            return std::format("conversion from '{}' to '{}' is ambiguous; write '.Success(...)', '.Some(...)', or '?' "
-                               "to choose one, or annotate an intermediate type",
+            return std::format("conversion from '{}' to '{}' is ambiguous; annotate an intermediate type to choose one",
                                sourceType->second.ToString(), targetType.ToString());
         }
         if (IsUnsuffixedIntegerLiteral(expr) && targetType.IsSum() &&

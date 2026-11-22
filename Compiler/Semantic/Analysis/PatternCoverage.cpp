@@ -422,7 +422,7 @@ void AnalysisContext::CheckGuardKeepsBindings(const GuardedPattern &pattern) {
             EmitError(pattern.guard ? pattern.guard->location : location,
                       std::format("pattern guard cannot move '{}'", name),
                       {"a guard that fails falls through to later arms, which still need the payload"},
-                      "move the binding in the arm body instead");
+                      "give the binding away in the arm body instead");
         }
     }
 }
@@ -652,10 +652,25 @@ void AnalysisContext::CheckNativeCasePattern(const EnumPattern &pattern, const T
                       std::format("'.None' matches a variant case; use 'none' for native optional '{}'", subject), {},
                       "write 'none'");
         }
-        else if (name == "Success" || name == "Failure" || name == "Some") {
+        else if (name == "Some" && pattern.presence) {
+            // A fallible whose success is optional is opened by handling its error first.
+            const bool optionalSuccess = subjectType.FallibleSuccess().IsOptional();
             EmitError(pattern.location,
-                      std::format("'.{}(...)' matches a native {}, but the matched value has type '{}'", name,
-                                  name == "Some" ? "optional" : "fallible", subject));
+                      std::format("a presence pattern needs an optional subject, but the matched value has type '{}'",
+                                  subjectType.DisplayString()),
+                      {},
+                      optionalSuccess ? std::string("handle the error first: pass it on with '!' after the subject, or "
+                                                    "replace it with '!!'")
+                                      : std::string(HandleErrorHelp));
+        }
+        else if (name == "Some") {
+            EmitError(pattern.location, "an optional has no case '.Some'", {},
+                      "match a present value with 'name?', as in 'value? => ...'");
+        }
+        else if (name == "Success" || name == "Failure") {
+            EmitError(pattern.location,
+                      std::format("'.{}(...)' matches a native fallible, but the matched value has type '{}'", name,
+                                  subject));
         }
         else {
             EmitError(
@@ -755,7 +770,8 @@ std::optional<AnalysisContext::PatternIssue> AnalysisContext::TypedSelectionIssu
         return PatternIssue{pattern.location,
                             std::format("typed pattern '{}' cannot select from optional '{}'", written, subject),
                             std::format("a typed pattern selects one presence level by its payload '{}', or a "
-                                        "member of it; use '.Some(...)' to match deeper levels",
+                                        "member of it; a nested presence pattern, as in 'value?"
+                                        "?', matches deeper levels",
                                         subjectType->inner.front().ToString())};
     }
     return PatternIssue{pattern.location,
@@ -804,7 +820,8 @@ AnalysisContext::MembershipIssue(const TypeRef &subject, const TypeRef &tested, 
         return PatternIssue{location,
                             std::format("type '{}' is neither the payload of optional '{}' nor a member of it",
                                         tested.ToString(), subject.ToString()),
-                            "'is' tests one presence level; match '.Some(...)' to inspect deeper levels"};
+                            "'is' tests one presence level; bind deeper levels with 'if let value?"
+                            "? = ...'"};
     }
     return PatternIssue{
         location,

@@ -43,7 +43,8 @@ TEST_CASE("function parameters are immutable") {
     REQUIRE_EQ(diagnostics.size(), 2);
     // A parameter has no `var` form, so the fix offered is a reference parameter or a local, never `var`.
     CHECK_EQ(diagnostics[0].message, "cannot modify parameter 'x'");
-    CHECK_EQ(diagnostics[0].help, "take 'x' as '&var int' to change the caller's value, or move it into a 'var' local");
+    CHECK_EQ(diagnostics[0].help,
+             "take 'x' as '&var int' to change the caller's value, or declare a 'var' local from it");
     CHECK_EQ(diagnostics[1].message, "cannot modify parameter 'ptr'");
 }
 
@@ -671,4 +672,33 @@ TEST_CASE("constant ranges reject a start greater than the end") {
                                        return diagnostic.message == "range start cannot be greater than its end";
                                    }),
              2);
+}
+
+TEST_CASE("a generic copy of an owning field offers a bound, never a transfer") {
+    // A field read by value is copied, so an owning instantiation is answered with the bounds that make the copy.
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Owner { v: int; }
+        extend Owner {
+            destructor {}
+            func Clone(&self) -> Owner { return Owner { v: self.v }; }
+        }
+        struct Plain { v: int; }
+        extend Plain { destructor {} }
+        struct Box<T> { v: T; }
+        func Get<T>(b: &Box<T>) -> T {
+            return b.v;
+        }
+        func Use() {
+            let owner = Box<Owner> { v: Owner { v: 1 } };
+            let first = Get(&owner);
+            let plain = Box<Plain> { v: Plain { v: 2 } };
+            let second = Get(&plain);
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "cannot copy 'Owner', which owns resources");
+    CHECK_EQ(diagnostics[0].help, "bound the type parameter by 'Copyable', or by 'Cloneable' and copy it with "
+                                  "'b.v.Clone()'");
+    CHECK_EQ(diagnostics[1].message, "cannot copy 'Plain', which owns resources");
+    CHECK_EQ(diagnostics[1].help, "bound the type parameter by 'Copyable'");
 }

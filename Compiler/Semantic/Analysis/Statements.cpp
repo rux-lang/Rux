@@ -399,7 +399,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                                   isNone ? "'none'" : "a native constructor with an unknown channel"),
                       {},
                       isNone ? "annotate the optional type, as in 'let value: int32? = none;'"
-                             : "annotate the type the value should have, as in 'let value: int32? = .Some(1i32);'");
+                             : "annotate the type the value should have");
             declarationType = TypeRef::MakeUnknown();
         }
         if (!HoldsBorrow(declarationType)) {
@@ -1280,8 +1280,25 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         std::string variantName;
         const EnumDecl *enumDeclaration = nullptr;
 
+        if (enumPattern->presence) {
+            // A presence pattern opens an optional level, and an optional or a fallible subject was handled above.
+            if (!subjectType.IsUnknown()) {
+                EmitError(
+                    enumPattern->location,
+                    std::format("a presence pattern needs an optional subject, but the matched value has type '{}'",
+                                subjectType.DisplayString()),
+                    {}, "match the value itself, without '?'");
+            }
+            DefinePatternBindings(pattern);
+            return;
+        }
         if (enumPattern->path.size() == 1) {
             variantName = enumPattern->path[0];
+            // A subject that failed to resolve was reported where it is written.
+            if (subjectType.IsUnknown()) {
+                DefinePatternBindings(pattern);
+                return;
+            }
             if (subjectType->kind != TypeRef::Kind::Named) {
                 EmitError(enumPattern->location,
                           std::format("cannot infer enum or variant type for shorthand pattern '.{}' from type '{}'",

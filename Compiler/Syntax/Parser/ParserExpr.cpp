@@ -1015,8 +1015,9 @@ ExprPtr Parser::ParsePrimary() {
     // A diverging form in a position that needs a value. It is parsed anyway so the rest of the expression recovers.
     if (CheckDivergingKeyword()) {
         EmitError(loc, std::format("'{}' cannot be used as a value here", Peek().text),
-                  "write it as a whole match or catch arm, an error mapping body, or the right side of ?? , or put "
-                  "it in a block");
+                  "write it as a whole 'match' or 'catch' arm or as the right side of '?"
+                  "?' or '!!', or put it in "
+                  "a block");
         return ParseDivergingExpr();
     }
     // null literal
@@ -1609,7 +1610,8 @@ PatternPtr Parser::ParseSinglePattern() {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
         RejectEllipsisRange();
-        constexpr std::string_view rangeSuffixHelp = "write '.Some(lo..hi)' to match a present value in a range";
+        constexpr std::string_view rangeSuffixHelp =
+            "group the range, as in '(lo..hi)?', to match a present value in it";
         const std::string operatorText = Advance().text;
         auto hi = ParsePrimaryPattern();
         if (!hi) {

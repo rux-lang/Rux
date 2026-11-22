@@ -60,7 +60,8 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
     // A native constructor a user case took over is a value of that variant, converted as any other value is.
     if (const auto *construct = AstCast<const NativeConstructExpr>(&expr);
         construct && !contextualCases.contains(&expr)) {
-        return CanConstructNative(*construct, targetType);
+        // `.Some(...)` is no constructor and was reported where it is written, so it converts to nothing further.
+        return construct->kind == NativeConstructExpr::Kind::Some || CanConstructNative(*construct, targetType);
     }
     // An optional reference holds a borrow of a place or a reference, present, or another optional reference whose
     // referent it may only make read-only; a native conversion would copy the value instead of borrowing it.

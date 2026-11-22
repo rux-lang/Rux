@@ -608,7 +608,8 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
             }
             else if (IsCopyableMarker(*bound.interface)) {
                 // No extension makes a type copyable: a destructor or '#NoCopy' decides, so the help points at moving.
-                help = "pass a type that is plain data, or move the value and call 'Clone' under a 'Cloneable' bound";
+                help = "pass a type that is plain data, or bound the parameter by 'Cloneable' and call 'Clone' where a "
+                       "copy is needed";
             }
             else if (IsNumericMarker(*bound.interface)) {
                 // No extension makes a type a number: the kind of the type decides, so the help names one.

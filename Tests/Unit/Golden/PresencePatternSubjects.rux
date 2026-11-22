@@ -1,0 +1,45 @@
+// A presence pattern opens an optional level. On a value that is not optional it is reported as such, never as a
+// case written without its type, and a subject that failed to resolve reports nothing more about its patterns.
+enum ReadError { Bad }
+
+variant State { Running(int), Ended }
+
+struct Reader {
+    n: int;
+}
+
+extend Reader {
+    func Next(&var self) -> int? ! ReadError {
+        if self.n == 0 { return none; }
+        self.n -= 1;
+        return self.n;
+    }
+}
+
+func Plain(n: uint) -> int {
+    return match n { at? => 1, _ => 0 };
+}
+
+func Bound(n: int) -> int {
+    if let score? = n { return score; }
+    return 0;
+}
+
+func Unresolved() -> int {
+    if let score? = missing { return score; }
+    return match unknown { .Running(n) => n, .Ended => 0 };
+}
+
+func Fallible() -> int {
+    var reader = Reader { n: 3 };
+    var total = 0;
+    while let event? = reader.Next() { total += event; }
+    return total;
+}
+
+// '.Some(...)' is reported once, and the value inside it is read as written.
+func Constructed() -> int {
+    let plain: int = .Some(1);
+    let optional: int? = .Some(2);
+    return plain;
+}

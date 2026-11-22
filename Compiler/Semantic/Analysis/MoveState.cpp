@@ -11,30 +11,6 @@
 #include <utility>
 
 namespace Rux::SemanticDetail {
-namespace {
-/// How the context spells the transfer of `place`: a `move` written where the value is used.
-std::string TransferSpelling(const ValueConsumptionKind kind, const std::string &place) {
-    switch (kind) {
-    case ValueConsumptionKind::Receiver:
-        return std::format("(move {}).Method()", place);
-    case ValueConsumptionKind::FieldShorthand:
-        // The shorthand never moves on its own, so the transfer writes the field out with the move.
-        return std::format("{}: move {}", place, place);
-    case ValueConsumptionKind::PropagationOperand:
-        return std::format("(move {})?", place);
-    case ValueConsumptionKind::CoalescingOperand:
-        return std::format("(move {}) ?? fallback", place);
-    case ValueConsumptionKind::MatchSubject:
-        return std::format("match move {}", place);
-    case ValueConsumptionKind::CatchSubject:
-        return std::format("(move {}) catch {{ ... }}", place);
-    default:
-        break;
-    }
-    return std::format("move {}", place);
-}
-} // namespace
-
 Symbol *AnalysisContext::Define(Symbol symbol) {
     const std::string name = symbol.name;
     if (!currentScope->Define(std::move(symbol), diags, currentFile)) {
@@ -1205,19 +1181,23 @@ bool AnalysisContext::RejectImplicitMove(const Expr &expression, const TypeRef &
     }
     notes.push_back(std::format("a named value used by value in {} position is copied, and only plain data copies",
                                 ValueConsumptionKindName(kind)));
-    std::string help = std::format("write '{}' to transfer it", TransferSpelling(kind, display));
-    // A copy is offered only where the type has a `Clone` to make one; many owning types, such as a buffer of fixed
-    // capacity, have none.
+    // A field, an element or a borrowed place is never given away on its own, so the help offers a copy: the
+    // `Copyable` bound in generic code, or a `Clone` where the type has one; many owning types, such as a buffer of
+    // fixed capacity, have none.
+    std::optional<std::string> help;
     if (owning) {
         const std::size_t diagnosticCount = diags.size();
         const bool clones = LookupMethod(type, "Clone", {}, true) != nullptr;
         diags.resize(diagnosticCount);
         if (clones) {
-            help += std::format(", or '{}.Clone()' to copy it", display);
+            help = generic ? std::format("bound the type parameter by 'Copyable', or by 'Cloneable' and copy it with "
+                                         "'{}.Clone()'",
+                                         display)
+                           : std::format("copy it with '{}.Clone()'", display);
         }
     }
-    if (generic) {
-        help += ", or bound the type parameter by 'Copyable'";
+    if (generic && !help) {
+        help = "bound the type parameter by 'Copyable'";
     }
     EmitError(location,
               owning ? std::format("cannot copy '{}', which owns resources", type.ToString())

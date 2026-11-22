@@ -8,6 +8,7 @@
 #include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
+#include <algorithm>
 #include <format>
 #include <functional>
 
@@ -1325,16 +1326,26 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                     compared = right;
                 }
                 else {
+                    // A member of a sum compared with the sum is bound out of it first, and then compared.
+                    const auto memberOf = [](const TypeRef &sum, const TypeRef &member) {
+                        return sum.IsSum() && std::ranges::find(sum->inner, member) != sum->inner.end();
+                    };
+                    std::string help = "bind the member with a typed pattern, or match the value";
+                    if (left.IsFallible() || right.IsFallible()) {
+                        help = std::string(HandleErrorHelp);
+                    }
+                    else if (memberOf(left, right) || memberOf(right, left)) {
+                        help = std::format("bind the member with a typed pattern and compare that, as in 'if let "
+                                           "value: {} = ...', or match the value",
+                                           memberOf(left, right) ? right.ToString() : left.ToString());
+                    }
                     EmitError(location,
                               std::format("operator '{}' cannot compare '{}' with '{}'", operatorName,
                                           left.IsIncompleteNative() ? std::string("none") : left.ToString(),
                                           right.IsIncompleteNative() ? std::string("none") : right.ToString()),
                               {"both operands of a native comparison have the same type; a comparison never injects, "
                                "widens, or wraps an operand"},
-                              left.IsFallible() || right.IsFallible()
-                                  ? std::string(HandleErrorHelp)
-                                  : std::string("write '.Some(...)' or another constructor, bind the member with a "
-                                                "typed pattern, or match the value"));
+                              std::move(help));
                     return TypeRef::MakeBool();
                 }
             }
@@ -1827,7 +1838,7 @@ std::optional<std::string> AnalysisContext::ImmutableBindingHelp(const Symbol &b
     if (binding.name == "self") {
         return "take the receiver as '&var self' to change the caller's value";
     }
-    return std::format("take '{}' as '{}' to change the caller's value, or move it into a 'var' local", binding.name,
+    return std::format("take '{}' as '{}' to change the caller's value, or declare a 'var' local from it", binding.name,
                        writable);
 }
 

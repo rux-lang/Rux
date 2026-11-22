@@ -241,9 +241,11 @@ TEST_CASE("a write to a parameter never suggests declaring it with 'var'") {
     CHECK_EQ(errors[1].message, "cannot modify 'pair' through immutable reference '&Pair'");
     CHECK_EQ(errors[1].help, "declare 'pair' as '&var Pair' to write through it");
     CHECK_EQ(errors[2].message, "cannot modify parameter 'pair'");
-    CHECK_EQ(errors[2].help, "take 'pair' as '&var Pair' to change the caller's value, or move it into a 'var' local");
+    CHECK_EQ(errors[2].help,
+             "take 'pair' as '&var Pair' to change the caller's value, or declare a 'var' local from it");
     CHECK_EQ(errors[3].message, "cannot call 'Reset' on immutable 'pair'");
-    CHECK_EQ(errors[3].help, "take 'pair' as '&var Pair' to change the caller's value, or move it into a 'var' local");
+    CHECK_EQ(errors[3].help,
+             "take 'pair' as '&var Pair' to change the caller's value, or declare a 'var' local from it");
 }
 
 TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {

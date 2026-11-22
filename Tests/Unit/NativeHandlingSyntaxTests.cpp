@@ -184,3 +184,11 @@ TEST_CASE("throw is a statement that names its error") {
     CHECK_EQ(Shape(second->value.get()), "()");
     CHECK(ReportsContaining("func F() { throw; }", "expected an expression after 'throw'"));
 }
+
+TEST_CASE("a diverging form used as a value names the places it may stand") {
+    const ParseResult parsed = ParseSource("func F() { let a = return; }");
+    REQUIRE_FALSE(parsed.diagnostics.empty());
+    CHECK_EQ(parsed.diagnostics.front().message, "'return' cannot be used as a value here");
+    CHECK_EQ(parsed.diagnostics.front().help, "write it as a whole 'match' or 'catch' arm or as the right side of '?"
+                                              "?' or '!!', or put it in a block");
+}

@@ -1,0 +1,7 @@
+20:22: error: a presence pattern needs an optional subject, but the matched value has type 'uint'
+24:12: error: a presence pattern needs an optional subject, but the matched value has type 'int'
+29:21: error: name 'missing' is not defined in this scope
+30:18: error: name 'unknown' is not defined in this scope
+36:15: error: a presence pattern needs an optional subject, but the matched value has type 'int? ! ReadError'
+42:22: error: an optional has no case '.Some'
+43:26: error: an optional has no case '.Some'

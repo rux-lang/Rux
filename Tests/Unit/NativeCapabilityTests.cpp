@@ -66,3 +66,15 @@ TEST_CASE("equality needs every payload a native value can hold to compare") {
     )");
     CHECK_FALSE(errors.empty());
 }
+
+TEST_CASE("a member compared with its sum is bound out of it first") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Compare(value: bool8 | int32) -> bool {
+            return value == true;
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "operator '==' cannot compare 'bool8 | int32' with 'bool8'");
+    CHECK_EQ(diagnostics[0].help, "bind the member with a typed pattern and compare that, as in 'if let value: bool8 = "
+                                  "...', or match the value");
+}
