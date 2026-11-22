@@ -52,7 +52,7 @@ func AllocateBlock<B>(value: B) -> *var B {
     let block = Alloc(sizeof(B)) as *var B;
     if block == null { Panic("out of memory for a synchronization object"); }
     // Safety: `block` is non-null, checked above, and holds room for one `B` that nothing has written yet.
-    block[0] = move value;
+    block[0] = value;
     return block;
 }
 
@@ -81,5 +81,5 @@ func DestroyBlock<B>(block: *var B) {
 // Destroys the value at `slot` by moving it out.
 // Safety: `slot` must address a live, initialized `T` that nothing reads afterwards.
 func DiscardValue<T>(slot: *var T) {
-    let taken = move slot[0];
+    let taken = slot[0];
 }

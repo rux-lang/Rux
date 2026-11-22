@@ -72,5 +72,5 @@ func Main() -> int {
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success.
 func Rendered(allocator: Allocator, outcome: String?) -> String {
-    return (move outcome) ?? String::New(allocator);
+    return (outcome) ?? String::New(allocator);
 }

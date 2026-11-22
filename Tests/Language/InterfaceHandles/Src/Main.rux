@@ -108,7 +108,7 @@ func Build(allocator: Allocator, drops: *var int, count: int) -> Vector<Tracked>
         values.Push(Tracked { drops, id });
         id += 1;
     }
-    return move values;
+    return values;
 }
 
 // Containers made from copies of one handle all allocate through the counting allocator it addresses.
@@ -157,7 +157,7 @@ func Main() -> int {
     var drops = 0;
     var values = Build(SystemAllocator::New(), @drops, 3);
     Assert(values.Length() == 3, "the container returned from its helper keeps its elements");
-    var moved = move values;
+    var moved = values;
     Assert(drops == 0, "moving the container destroys nothing");
     moved = Build(SystemAllocator::New(), @drops, 2);
     Assert(drops == 3, "replacing it destroys each old element once");

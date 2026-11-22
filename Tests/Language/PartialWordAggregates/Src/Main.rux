@@ -1,3 +1,4 @@
+import Core::Ownership::Copyable;
 import Core::Compilation::#target;
 
 struct Bytes9 { bytes: uint8[9]; }
@@ -9,7 +10,7 @@ struct Bytes14 { bytes: uint8[14]; }
 struct Bytes15 { bytes: uint8[15]; }
 
 func Echo<T>(value: T) -> T { return value; }
-func Spill<T>(a: int, b: int, c: int, d: int, e: int, value: T, tail: int, last: int) -> bool {
+func Spill<T: Copyable>(a: int, b: int, c: int, d: int, e: int, value: T, tail: int, last: int) -> bool {
     return a == 1 && b == 2 && c == 3 && d == 4 && e == 5 && tail == 6 && last == 7 && Echo(value) == value;
 }
 
@@ -19,7 +20,7 @@ when #target.arch {
         func SysVEcho<T>(value: T) -> T { return value; }
 
         #Abi(.SysV)
-        func SysVSpill<T>(a: int, b: int, c: int, d: int, e: int, value: T, tail: int, last: int) -> bool {
+        func SysVSpill<T: Copyable>(a: int, b: int, c: int, d: int, e: int, value: T, tail: int, last: int) -> bool {
             return a == 1 && b == 2 && c == 3 && d == 4 && e == 5 && tail == 6 && last == 7 &&
                 SysVEcho(value) == value;
         }
@@ -29,7 +30,7 @@ when #target.arch {
             return a == b && b == c && c == d && tail == 41;
         }
 
-        func CheckSysV<T>(value: T) -> bool {
+        func CheckSysV<T: Copyable>(value: T) -> bool {
             return SysVEcho(value) == value && SysVSpill(1, 2, 3, 4, 5, value, 6, 7) &&
                 SysVPairs(value, value, value, value, 41);
         }

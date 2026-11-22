@@ -74,7 +74,7 @@ func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneE
             bytes.PushSlice(read);
         }
     }
-    return move bytes;
+    return bytes;
 }
 
 // A native string as text: its bytes on the Unix systems, its UTF-16 narrowed when every unit is ASCII on Windows.
@@ -118,7 +118,7 @@ extend TimeZone {
             while index < 4u {
                 match Self::LoadFrom(allocator, SystemDirectory(index), name) {
                     .Success(zone) => {
-                        return move zone;
+                        return zone;
                     },
                     .Failure(error) => {
                         if error != TimeZoneError::NotFound { throw error; }
@@ -171,7 +171,7 @@ extend TimeZone {
             }
             match Self::Load(allocator, text) {
                 .Success(zone) => {
-                    return move zone;
+                    return zone;
                 },
                 .Failure(_) => {},
             }
@@ -208,7 +208,7 @@ extend TimeZone {
                 rule.end = WindowsDate(information.standardDate);
             }
             zone.rule = rule;
-            return move zone;
+            return zone;
         }
         else {
             throw .NotFound;

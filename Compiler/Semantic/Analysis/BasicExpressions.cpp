@@ -444,11 +444,6 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
     if (const auto *destroy = AstCast<const DestroyExpr>(&expression)) {
         return CheckDestroy(*destroy);
     }
-    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
-        const TypeRef operandType = CheckExpr(*move->operand);
-        ConsumeExplicitValue(*move->operand, operandType, move->location);
-        return operandType;
-    }
     if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         return CheckTryExpression(*tryExpression);
     }
@@ -528,14 +523,6 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         if (simpleAssignment) {
             ExpectContextualCaseArgument(assignment->value.get(), target);
         }
-        // `a = move b` is the same transfer as the older `a <- b`: the destination is replaced and never copied into.
-        // Moving a place into itself is caught before the operand is consumed, so it is reported once.
-        const auto *movedValue =
-            assignment->op == TokenKind::Assign ? AstCast<const MoveExpr>(assignment->value.get()) : nullptr;
-        if (movedValue && movedValue->operand &&
-            RejectSelfMove(*assignment->target, *movedValue->operand, assignment->location)) {
-            return TypeRef::MakeOpaque();
-        }
         TypeRef value = CheckExpr(*assignment->value);
         // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
         if (const auto *inner = AstCast<const AssignExpr>(assignment->value.get())) {
@@ -588,28 +575,20 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                           refusedInterface ? std::optional(InterfaceValueHelp(target)) : std::nullopt);
             }
             else if (simpleAssignment) {
-                const bool arrowMove = assignment->op == TokenKind::MoveArrow;
-                const bool explicitMove = arrowMove || movedValue;
-                if (explicitMove && target->kind == TypeRef::Kind::Reference) {
-                    EmitError(assignment->location, "cannot move ownership into a reference",
-                              {"a reference target stores a non-owning alias"},
-                              "write '=' to assign or reborrow the reference");
+                // Giving an owning place to itself would destroy the value it is about to receive.
+                const TypeProperties assigned = ClassifyTypeProperties(value);
+                if (target->kind != TypeRef::Kind::Reference &&
+                    (assigned.IsMoveOnly() || (!assigned.IsResolved() && !CopiesUnderBound(value))) &&
+                    RejectSelfMove(*assignment->target, *assignment->value, assignment->location)) {
                     return TypeRef::MakeOpaque();
                 }
-                if (arrowMove && RejectSelfMove(*assignment->target, *assignment->value, assignment->location)) {
-                    return TypeRef::MakeOpaque();
-                }
-                if (arrowMove) {
-                    ConsumeExplicitValue(*assignment->value, value, assignment->location);
-                }
-                else if (target->kind != TypeRef::Kind::Reference) {
-                    // A `move` operand recorded its own transfer, which this leaves alone.
+                if (target->kind != TypeRef::Kind::Reference) {
                     ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 }
                 if (!writtenReference) {
                     MarkTrackedAssignment(*assignment->target, assignment->location);
                 }
-                if (!explicitMove && target->kind == TypeRef::Kind::Reference) {
+                if (target->kind == TypeRef::Kind::Reference) {
                     RegisterReferenceAssignment(*assignment->target, *assignment->value, target);
                 }
             }

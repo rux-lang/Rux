@@ -51,7 +51,7 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
         key = key + 1;
     }
 
-    var walker = (move map).IntoIterator();
+    var walker = (map).IntoIterator();
     var taken: int32 = 0;
     while taken < take {
         match walker.Next() {
@@ -192,7 +192,7 @@ func Main() -> int {
     Assert(reused.Length() == 1 && (reused.First() ?? missing).key == 3, "holding only what came after");
 
     // The consuming walk hands out ownership one entry at a time, in the same order.
-    var consuming = (move map).IntoIterator();
+    var consuming = (map).IntoIterator();
     var consumed: uint = 0;
     var last: int32 = -1;
     var draining = true;

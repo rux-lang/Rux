@@ -62,7 +62,7 @@ TEST_CASE("'?' on an optional removes one presence level") {
             let first = First<int32?>(nested);
         }
         func Transfer(owned: Owned?) -> int32? {
-            let value = (move owned)?;
+            let value = (owned)?;
             return value.handle;
         }
     )")
@@ -95,7 +95,7 @@ TEST_CASE("coalescing takes the payload or a fallback that converts or leaves") 
             return count ?? 0i32;
         }
         func Pinned(value: Pinned?, fallback: Pinned) -> int32 {
-            let pinned = (move value) ?? move fallback;
+            let pinned = (value) ?? fallback;
             return 0i32;
         }
     )");
@@ -107,7 +107,7 @@ TEST_CASE("coalescing takes the payload or a fallback that converts or leaves") 
 TEST_CASE("coalescing moves its operand and only possibly its fallback") {
     CHECK(ErrorsIn(R"(
         func Take(value: Owned?, fallback: Owned) -> int32 {
-            let owned = (move value) ?? move fallback;
+            let owned = (value) ?? fallback;
             return owned.handle;
         }
     )")
@@ -115,8 +115,8 @@ TEST_CASE("coalescing moves its operand and only possibly its fallback") {
     const auto errors = ErrorsIn(R"(
         func Keep(owned: Owned) {}
         func Reuse(value: Owned?, fallback: Owned) {
-            let owned = (move value) ?? move fallback;
-            Keep(move fallback);
+            let owned = (value) ?? fallback;
+            Keep(fallback);
         }
     )");
     CHECK(AnyContains(errors, "'fallback'"));

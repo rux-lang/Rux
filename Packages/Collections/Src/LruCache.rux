@@ -4,13 +4,14 @@
 // front, and putting a new key into a full cache reuses the entry at the back, so a cache never allocates once it has
 // held as many entries as it may.
 
+import Core::Ownership::Copyable;
 import Allocator::Allocator;
 
 // The end of the recency list.
 const NoEntry: uint = 0xFFFFFFFFFFFFFFFF;
 
 // One entry, linked to its neighbours in recency order.
-struct CacheEntry<K, V> {
+struct CacheEntry<K: Copyable, V> {
     key: K;
     value: V;
     newer: uint;
@@ -21,7 +22,7 @@ struct CacheEntry<K, V> {
 /// @typeParam K the key type, which the hash and equality functions take
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/lru-cache
-pub struct LruCache<K, V> {
+pub struct LruCache<K: Copyable, V> {
     entries: Vector<CacheEntry<K, V>>;
     index: HashMap<K, uint>;
     capacity: uint;
@@ -127,8 +128,8 @@ extend LruCache<K, V> {
                 // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and
                 // the vector does not change while it is used; the value moved out is refilled at once.
                 {
-                    let replaced = move entry.value;
-                    entry.value = move value;
+                    let replaced = entry.value;
+                    entry.value = value;
                 }
                 if at != self.newest {
                     self.Unlink(at);
@@ -141,7 +142,7 @@ extend LruCache<K, V> {
         if self.entries.Length() < self.capacity {
             let at = self.entries.Length();
             self.index.Insert(key, at);
-            self.entries.Push(CacheEntry<K, V> { key, value: move value, newer: NoEntry, older: NoEntry });
+            self.entries.Push(CacheEntry<K, V> { key, value: value, newer: NoEntry, older: NoEntry });
             self.LinkNewest(at);
             return none;
         }
@@ -156,8 +157,8 @@ extend LruCache<K, V> {
         // Safety: `entry` addresses element `at` of `entries`, taken through a bounds-checked slice index, and the
         // vector does not change while it is used; the value moved out is refilled at once.
         {
-            let displaced = move entry.value;
-            entry.value = move value;
+            let displaced = entry.value;
+            entry.value = value;
         }
         self.LinkNewest(at);
         return evicted;

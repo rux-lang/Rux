@@ -31,7 +31,7 @@ extend Span {
 func SumIterator(limit: int32) -> int32 {
     var counter = Counter { value: 0i32, limit };
     var total = 0i32;
-    for item in counter {
+    for item in &var counter {
         total = total + item;
     }
     return total;
@@ -62,7 +62,7 @@ func SumTwice(limit: int32) -> int32 {
 func Selective(limit: int32) -> int32 {
     var counter = Counter { value: 0i32, limit };
     var total = 0i32;
-    for item in counter {
+    for item in &var counter {
         if item >= 4i32 {
             break;
         }
@@ -77,9 +77,9 @@ func Selective(limit: int32) -> int32 {
 func Nested(limit: int32) -> int32 {
     var count = 0i32;
     var outer = Counter { value: 0i32, limit };
-    for first in outer {
+    for first in &var outer {
         var inner = Counter { value: 0i32, limit };
-        for second in inner {
+        for second in &var inner {
             count = count + 1i32;
         }
     }
@@ -103,14 +103,14 @@ func SumArray() -> int32 {
 func Resume() -> int32 {
     var counter = Counter { value: 0i32, limit: 6i32 };
     var first = 0i32;
-    for item in counter {
+    for item in &var counter {
         first = first + item;
         if item == 2i32 {
             break;
         }
     }
     var rest = 0i32;
-    for item in counter {
+    for item in &var counter {
         rest = rest + item;
     }
     Assert(first == 3i32, "Expected the first loop to stop after 0, 1 and 2");
@@ -125,7 +125,7 @@ struct Holder {
 // A field is advanced in place as well.
 func AdvanceField() -> int32 {
     var holder = Holder { counter: Counter { value: 0i32, limit: 3i32 } };
-    for item in holder.counter {
+    for item in &var holder.counter {
         if item == 1i32 {
             break;
         }

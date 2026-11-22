@@ -15,7 +15,7 @@ func Fails() -> int32 ! Handle {
 }
 
 func SplitNamed(handle: Handle) -> int32 {
-    return match move handle { Handle { code: code } => code };
+    return match handle { Handle { code: code } => code };
 }
 
 func SplitTemporary() -> int32 {
@@ -23,7 +23,7 @@ func SplitTemporary() -> int32 {
 }
 
 func SplitTupleMember(pair: (Handle, int32)) -> int32 {
-    return match move pair { (Handle { code: code }, extra) => code + extra };
+    return match pair { (Handle { code: code }, extra) => code + extra };
 }
 
 func SplitCaught() -> int32 {
@@ -31,7 +31,7 @@ func SplitCaught() -> int32 {
 }
 
 func TestWithoutSplitting(pair: (Handle, int32)) -> int32 {
-    return match move pair { (Handle { code: 1 }, extra) => extra, (_, extra) => -extra };
+    return match pair { (Handle { code: 1 }, extra) => extra, (_, extra) => -extra };
 }
 
 func ReadBorrowed(handle: &Handle) -> int32 {
@@ -39,7 +39,7 @@ func ReadBorrowed(handle: &Handle) -> int32 {
 }
 
 func SplitHolder(holder: Holder) -> int32 {
-    return match move holder { Holder { handle: handle, extra: extra } => extra };
+    return match holder { Holder { handle: handle, extra: extra } => extra };
 }
 
 struct Counter { count: int32; }

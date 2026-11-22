@@ -1,6 +1,6 @@
-// Generic code copies a value of its type parameter only under 'T: Copyable'. Without the bound the copy is checked
-// for each instantiation and reported where the generic code copies; with it, a move-only type argument is refused
-// where it is passed, and the copies in the body are not reported again.
+// A value of a type parameter is owning inside generic code, so a bare one is given away and a second use of it is
+// an error for every type argument. Under 'T: Copyable' it copies, and a move-only type argument is refused where it
+// is passed.
 interface Copyable {}
 
 struct Owner {

@@ -66,10 +66,10 @@ extend Vector<T> {
     pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
         var vector = Vector<T>::New(allocator);
         if capacity == 0 {
-            return move vector;
+            return vector;
         }
         vector.Grow(capacity);
-        return move vector;
+        return vector;
     }
 
     /// A vector holding a copy of every element of `items`, in order.
@@ -82,7 +82,7 @@ extend Vector<T> {
     pub func FromSlice(allocator: Allocator, items: T[..]) -> Self {
         var vector = Vector<T>::New(allocator);
         if items.length == 0 {
-            return move vector;
+            return vector;
         }
 
         vector.Grow(items.length);
@@ -94,7 +94,7 @@ extend Vector<T> {
             index++;
         }
         vector.length = items.length;
-        return move vector;
+        return vector;
     }
 
     /// An independent vector holding a copy of every element of this one.
@@ -117,7 +117,7 @@ extend Vector<T> {
         var vector = Vector<T>::New(self.allocator);
         vector.TryReserve(self.length)!;
         vector.PushSlice(self.AsSlice());
-        return move vector;
+        return vector;
     }
 
     /// How many elements the vector holds.
@@ -235,7 +235,7 @@ extend Vector<T> {
             // uses, and the only one a container has for an element it does not know is droppable.
             // Safety: the vector invariant: `index < self.length`, checked by the loop, so the element is
             // initialized; each is moved out once, and the length drops below all of them right after.
-            { let taken = move self.data[index]; }
+            { let taken = self.data[index]; }
             index++;
         }
         self.length = length;
@@ -262,7 +262,7 @@ extend Vector<T> {
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/vector#push
     pub func Push(&var self, value: T) {
-        self.TryPush(move value) catch { error => AllocationFailed(error) };
+        self.TryPush(value) catch { error => AllocationFailed(error) };
     }
 
     /// Appends one element, growing the storage when it is full, or throws why the storage could not grow.
@@ -278,7 +278,7 @@ extend Vector<T> {
         }
         // Safety: the vector invariant: `length < capacity` now, checked or grown above, so the slot is allocated and
         // holds nothing yet.
-        self.data[self.length] = move value;
+        self.data[self.length] = value;
         self.length = self.length + 1;
     }
 
@@ -311,8 +311,8 @@ extend Vector<T> {
         self.length = self.length - 1;
         // Safety: the vector invariant: the element at the old last index is initialized, and it is now outside
         // `length`, so nothing destroys it again once it is moved out.
-        let removed = move self.data[self.length];
-        return move removed;
+        let removed = self.data[self.length];
+        return removed;
     }
 
     /// The element at `index`, or `none` when there is no such index.
@@ -363,8 +363,8 @@ extend Vector<T> {
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized; the
         // slot emptied by the move is refilled at once.
         {
-            let previous = move self.data[index];
-            self.data[index] = move value;
+            let previous = self.data[index];
+            self.data[index] = value;
         }
         return;
     }
@@ -382,9 +382,9 @@ extend Vector<T> {
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized; the
         // slot emptied by the move is refilled at once.
         {
-            let previous = move self.data[index];
-            self.data[index] = move value;
-            return move previous;
+            let previous = self.data[index];
+            self.data[index] = value;
+            return previous;
         }
     }
 
@@ -447,7 +447,7 @@ extend Vector<T> {
     pub func Insert(&var self, index: uint, value: T) -> !CollectionError {
         if index > self.length { throw .IndexOutOfRange; }
         if index == self.length {
-            self.Push(move value);
+            self.Push(value);
             return;
         }
 
@@ -457,11 +457,11 @@ extend Vector<T> {
         while position > index {
             // Safety: the vector invariant: `position <= self.length < capacity` after `Reserve(1)`, so both slots
             // are allocated and `position - 1` holds an initialized element, moved one place along.
-            self.data[position] = move self.data[position - 1];
+            self.data[position] = self.data[position - 1];
             position = position - 1;
         }
         // Safety: `index < self.length`, checked above, and its element has just moved one place along.
-        self.data[index] = move value;
+        self.data[index] = value;
         self.length = self.length + 1;
         return;
     }
@@ -477,16 +477,16 @@ extend Vector<T> {
     pub func RemoveAt(&var self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
-        let removed = move self.data[index];
+        let removed = self.data[index];
         var position = index;
         while position + 1 < self.length {
             // Safety: the vector invariant: `position + 1 < self.length`, checked by the loop, so the element there
             // is initialized; it moves back into the slot emptied by the previous move.
-            self.data[position] = move self.data[position + 1];
+            self.data[position] = self.data[position + 1];
             position = position + 1;
         }
         self.length = self.length - 1;
-        return move removed;
+        return removed;
     }
 
     /// Takes the element at `index` out and moves the last one into its place.
@@ -501,15 +501,15 @@ extend Vector<T> {
     pub func SwapRemoveAt(&var self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
-        let removed = move self.data[index];
+        let removed = self.data[index];
         let last = self.length - 1;
         if index != last {
             // Safety: the vector invariant: `last` is the final initialized element, moved into the slot emptied
             // above.
-            self.data[index] = move self.data[last];
+            self.data[index] = self.data[last];
         }
         self.length = last;
-        return move removed;
+        return removed;
     }
 
     /// The first element, borrowed where it sits, or `none` for an empty vector.
@@ -579,7 +579,7 @@ extend Vector<T> {
         // Into a local first, and emptied before it goes out of scope. The receiver is a live binding until the
         // function ends, so a vector left holding the pointer would have its destructor release the very storage the
         // iterator was just handed.
-        var vector = move self;
+        var vector = self;
         let taken = VectorIntoIterator<T> {
             data: vector.data,
             length: vector.length,
@@ -590,7 +590,7 @@ extend Vector<T> {
         vector.data = null;
         vector.length = 0;
         vector.capacity = 0;
-        return move taken;
+        return taken;
     }
 
     /// Copies the elements into a fixed-length array.
@@ -611,14 +611,14 @@ extend Vector<T> {
     /// @returns an array taking the vector's storage rather than copying it
     /// @see https://rux-lang.dev/docs/api/collections/vector#into-array
     pub func IntoArray(self) -> Array<T> {
-        var vector = move self;
+        var vector = self;
         vector.ShrinkToFit();
 
         let taken = Array<T> { data: vector.data, length: vector.length, allocator: vector.allocator };
         vector.data = null;
         vector.length = 0;
         vector.capacity = 0;
-        return move taken;
+        return taken;
     }
 }
 
@@ -652,7 +652,7 @@ extend VectorIntoIterator<T> {
         while index < self.length {
             // Safety: the vector invariant carried over from the vector: elements from `position` to `length` are
             // initialized and not yet yielded; each is moved out once, and the block is released right after.
-            { let taken = move self.data[index]; }
+            { let taken = self.data[index]; }
             index++;
         }
         if self.data != null {
@@ -676,9 +676,9 @@ extend VectorIntoIterator<T> : Iterator {
         // Safety: the vector invariant carried over from the vector: `position < length`, checked above, so the
         // element is initialized and not yet yielded; `position` moves past it at once.
         {
-            let taken = move self.data[self.position];
+            let taken = self.data[self.position];
             self.position = self.position + 1;
-            return move taken;
+            return taken;
         }
     }
 }

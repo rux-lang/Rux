@@ -48,12 +48,12 @@ struct Drain {
 
 // Reads a pipe to its end, and gives back its bytes, or none when reading failed.
 func DrainPipe(drain: Drain) -> Buffer<char8>? {
-    var source = move drain;
+    var source = drain;
     var bytes = Buffer<char8>::New(source.allocator);
     let read = ReadAll(&var source.reader, &var bytes);
     source.reader.Close();
     if !read { return none; }
-    return move bytes;
+    return bytes;
 }
 
 // Reads `reader` to its end into `bytes`, and says whether that worked.
@@ -81,7 +81,7 @@ extend Command {
         var child = self.Launch(self.input, Stdio::Pipe, Stdio::Pipe)!;
         var output = child.TakeOutput() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
         let error = child.TakeError() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
-        var reader = Spawn(DrainPipe, Drain { reader: move error, allocator })
+        var reader = Spawn(DrainPipe, Drain { reader: error, allocator })
             catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
         var outputBytes = Buffer<char8>::New(allocator);
         let outputRead = ReadAll(&var output, &var outputBytes);
@@ -89,9 +89,9 @@ extend Command {
         var drained = reader.Join();
         let status = child.Wait()!;
         if !outputRead { throw IoError::Of(IoErrorKind::Other); }
-        match move drained {
+        match drained {
             errorBytes? => {
-                return CapturedOutput { status, output: move outputBytes, error: move errorBytes };
+                return CapturedOutput { status, output: outputBytes, error: errorBytes };
             },
             none => throw IoError::Of(IoErrorKind::Other)
         }

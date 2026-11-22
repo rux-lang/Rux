@@ -33,7 +33,7 @@ extend UdpSocket {
         let handle = OpenSocket(address, false)!;
         var udp = Self { handle };
         BindSocket(handle, address, false)!;
-        return move udp;
+        return udp;
     }
 
     /// Sends `bytes` as one datagram to `target`.

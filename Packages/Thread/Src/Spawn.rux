@@ -86,12 +86,12 @@ extend JoinHandle<R> {
         // has finished, so the result it left there is live and nothing else reads it.
         let result = {
             let header = block as *var PacketHeader;
-            move (((block as uint) + header.resultOffset) as *var R)[0]
+            (((block as uint) + header.resultOffset) as *var R)[0]
         };
         // The thread let go before it finished, so this is the last owner.
         // Safety: the thread has finished and let go, and the result was moved out above, so nobody holds `block`.
         Release(block);
-        return move result;
+        return result;
     }
 
     /// Lets the thread run on without anyone waiting for it. It releases itself, and its result, when it finishes.
@@ -138,7 +138,7 @@ extend JoinHandle<R> {
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn
 pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
-    return SpawnWith<T, R>(ThreadOptions::New(), entry, move context)!;
+    return SpawnWith<T, R>(ThreadOptions::New(), entry, context)!;
 }
 
 /// Starts a thread running `entry(context)` as `options` say.
@@ -163,7 +163,7 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
         packet.header.resultOffset = resultOffset;
         packet.entry = entry;
         AtomicStore(@packet.header.owners, 2u32, MemoryOrder::Release);
-        (((block as uint) + contextOffset) as *var T)[0] = move context;
+        (((block as uint) + contextOffset) as *var T)[0] = context;
     }
     let start: func(*var Packet<T, R>) -> *var opaque = Start;
     {
@@ -202,11 +202,11 @@ func Start<T, R>(packet: *var Packet<T, R>) -> *var opaque {
     let entry = packet.entry;
     // Safety: the context slot of this thread's block holds the context `SpawnWith` moved in, which only this thread
     // takes.
-    let context = move (((block as uint) + ContextOffset<T, R>()) as *var T)[0];
+    let context = (((block as uint) + ContextOffset<T, R>()) as *var T)[0];
     // Safety: the result slot lies inside this thread's block, aligned for `R`, by `ResultOffset`.
     let result = ((block as uint) + ResultOffset<T, R>()) as *var R;
     // Safety: `result` addresses the empty result slot of the block this thread still holds.
-    result[0] = entry(move context);
+    result[0] = entry(context);
     // Safety: this thread holds one of the block's two owner counts.
     if LetGo(block) {
         // The handle was dropped while this thread ran, so nobody will take the result.
@@ -235,5 +235,5 @@ func Release(block: *var opaque) {
 // Destroys the value in a slot by moving it out.
 // Safety: `slot` must address a live `T` that nothing reads afterwards.
 func DiscardSlot<T>(slot: *var T) {
-    let taken = move slot[0];
+    let taken = slot[0];
 }

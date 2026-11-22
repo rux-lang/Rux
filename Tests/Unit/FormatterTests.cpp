@@ -18,9 +18,9 @@ TEST_CASE("formatter preserves ownership and lifecycle syntax") {
     func ~(&var self) {}
 }
 func Transfer(source: Cell) -> Cell {
-    let destination = move source;
-    let older = move destination;
-    return move older;
+    let destination = source;
+    let older = destination;
+    return older;
 }
 )";
     const auto result = Rux::Formatting::Format(source);

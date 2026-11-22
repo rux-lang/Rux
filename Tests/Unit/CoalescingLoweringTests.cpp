@@ -142,7 +142,7 @@ TEST_CASE("coalescing moves a move-only payload out as a plain read of its bindi
         }
         func Fallback() -> Handle { return Handle { value: 9i32 }; }
         func Pick(option: Handle?) -> int32 {
-            let value = (move option) ?? Fallback();
+            let value = (option) ?? Fallback();
             return value.value;
         }
     )");

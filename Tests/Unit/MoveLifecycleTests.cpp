@@ -16,12 +16,12 @@ TEST_CASE("named moves read their source as it stands and run no code") {
         struct Wrapper { cell: Cell; tag: int32; }
 
         func Move(source: Wrapper) -> Wrapper {
-            let local = move source;
-            return move local;
+            let local = source;
+            return local;
         }
         func Older(source: Wrapper) -> Wrapper {
-            let local = move source;
-            return move local;
+            let local = source;
+            return local;
         }
     )";
 
@@ -39,7 +39,7 @@ TEST_CASE("named moves read their source as it stands and run no code") {
         const auto *returnRead = dynamic_cast<const HirVarExpr *>((*returned->value).get());
         REQUIRE(localRead != nullptr);
         REQUIRE(returnRead != nullptr);
-        CHECK_EQ(localRead->consumption, ValueConsumptionKind::ExplicitMove);
+        CHECK_EQ(localRead->consumption, ValueConsumptionKind::Initialization);
         CHECK_EQ(localRead->consumedBindingId, move.params[0].bindingId);
         CHECK_EQ(returnRead->consumedBindingId, local->bindingId);
     }
@@ -53,16 +53,16 @@ TEST_CASE("move assignment destroys the replaced destination through its conditi
         }
 
         func Replace(destination: Cell, source: Cell) {
-            var target = move destination;
-            target = move source;
+            var target = destination;
+            target = source;
         }
         func Initialize(source: Cell) {
             var destination: Cell;
-            destination = move source;
+            destination = source;
         }
         func Older(destination: Cell, source: Cell) {
-            var target = move destination;
-            target = move source;
+            var target = destination;
+            target = source;
         }
     )";
 
@@ -79,7 +79,7 @@ TEST_CASE("move assignment destroys the replaced destination through its conditi
         CHECK_NE(assignment->overwriteCleanup->bindingId, 0);
         const auto *read = dynamic_cast<const HirVarExpr *>(assignment->value.get());
         REQUIRE(read != nullptr);
-        CHECK_EQ(read->consumption, ValueConsumptionKind::ExplicitMove);
+        CHECK_EQ(read->consumption, ValueConsumptionKind::Assignment);
         CHECK_NE(read->consumedBindingId, 0);
     }
 }
@@ -91,8 +91,8 @@ TEST_CASE("custom move hooks are rejected and the type keeps its generated move"
             func <-(&var self, other: Cursor) { self.position = other.position; }
         }
         func Transfer(source: Cursor) -> Cursor {
-            let moved = move source;
-            return move moved;
+            let moved = source;
+            return moved;
         }
     )");
 
@@ -117,7 +117,7 @@ TEST_CASE("'#NoMove' values are built in place and never moved") {
             return 0;
         }
         func Moves(node: Node) {
-            let moved = move node;
+            let moved = node;
         }
         func Copies(node: Node) {
             let copied = node;
@@ -129,7 +129,7 @@ TEST_CASE("'#NoMove' values are built in place and never moved") {
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0], "a '#NoMove' type, or one holding a '#NoMove' value, stays where it was built");
     CHECK_EQ(diagnostics[0].help, "borrow the value or construct a distinct replacement instead");
-    CHECK_EQ(diagnostics[1].message, "cannot copy 'Node', which owns resources");
+    CHECK_EQ(diagnostics[1].message, "moving type 'Node' is prohibited");
 }
 
 TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
@@ -138,9 +138,9 @@ TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
         func Uses(source: Handle) -> int32 {
             var target = Make();
             target = Make();
-            target = move source;
+            target = source;
             let copied = target;
-            return 0;
+            return target.value;
         }
     )";
     const std::vector<SemanticDiagnostic> attribute = AnalyzeConsumptionDiagnostics(R"(
@@ -155,8 +155,7 @@ TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
 
     for (const auto *diagnostics : {&attribute, &operation}) {
         REQUIRE_EQ(diagnostics->size(), 1);
-        CHECK_EQ(diagnostics->front().message, "cannot copy 'Handle', which prohibits copying");
-        CHECK_EQ(diagnostics->front().help, "write 'move target' to transfer it");
+        CHECK_EQ(diagnostics->front().message, "value 'target' is used after it was moved");
     }
 }
 
@@ -169,7 +168,7 @@ TEST_CASE("prohibited move operations reject explicit ownership transfer") {
         }
 
         func Transfer(source: Pinned) {
-            let destination = move source;
+            let destination = source;
         }
     )");
 
@@ -223,7 +222,7 @@ TEST_CASE("a copy of plain data reads its source as it stands and runs no code")
                                     [](const LirBlock &block) { return block.label.starts_with("copy.variant"); }));
 }
 
-TEST_CASE("a custom copy hook is rejected and copying stays a byte copy or a move-only error") {
+TEST_CASE("a custom copy hook is rejected and copying stays a byte copy") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Plain { value: int32; }
         extend Plain {
@@ -242,13 +241,12 @@ TEST_CASE("a custom copy hook is rejected and copying stays a byte copy or a mov
         }
     )");
 
-    REQUIRE_EQ(diagnostics.size(), 3);
+    // The owning value is given away, which needs no copy.
+    REQUIRE_EQ(diagnostics.size(), 2);
     CHECK_EQ(diagnostics[0].message, "custom copy hooks are not supported");
     CHECK_EQ(diagnostics[0].help,
              "implement 'func Clone(&self) -> Self' on 'Plain' and call it where a copy is needed");
     CHECK_EQ(diagnostics[1].message, "custom copy hooks are not supported");
-    CHECK_EQ(diagnostics[2].message, "cannot copy 'Owning', which owns resources");
-    CHECK_EQ(diagnostics[2].help, "write 'move owning' to transfer it");
 }
 
 TEST_CASE("an explicit Clone replaces a destination with the value it returns") {
@@ -304,11 +302,11 @@ TEST_CASE("variant moves are byte copies with no per-case dispatch") {
 
         func Take(value: Choice) {}
         func Transfer(source: Choice) {
-            let moved = move source;
-            Take(move moved);
+            let moved = source;
+            Take(moved);
         }
         func Nested(source: Envelope<Handle>) {
-            let moved = move source;
+            let moved = source;
         }
     )";
 
@@ -321,7 +319,7 @@ TEST_CASE("variant moves are byte copies with no per-case dispatch") {
         REQUIRE(binding != nullptr);
         const auto *read = dynamic_cast<const HirVarExpr *>(binding->init.get());
         REQUIRE(read != nullptr);
-        CHECK_EQ(read->consumption, ValueConsumptionKind::ExplicitMove);
+        CHECK_EQ(read->consumption, ValueConsumptionKind::Initialization);
     }
 }
 
@@ -359,7 +357,7 @@ TEST_CASE("consuming a move-only variant reports later use while borrowed inspec
         variant Held { Empty, Full(Handle) }
 
         func Consume(value: Held) {
-            match move value { .Empty => {}, .Full(handle) => {} }
+            match value { .Empty => {}, .Full(handle) => {} }
             value;
         }
 

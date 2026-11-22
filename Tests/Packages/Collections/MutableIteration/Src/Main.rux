@@ -34,7 +34,7 @@ func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
     }
     Assert(total == 44 && tails == 300, "only the selected fields changed in the vector");
 
-    var array = (move vector).IntoArray();
+    var array = (vector).IntoArray();
     for element in array.MutableReferences() {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
         element.value = element.value * 2;
@@ -74,7 +74,7 @@ func Main() -> int {
     // Safety: the cursor yielded the address of the first element of `values`, which is still alive.
     Assert(*readable == 11, "read-only iteration sees the same storage");
     var copied = MutableReferenceIterator<int32>::New(view);
-    for element in copied {
+    for element in &var copied {
         // Safety: the cursor yields addresses inside `values`, which outlives the loop.
         *element = *element * 2;
     }

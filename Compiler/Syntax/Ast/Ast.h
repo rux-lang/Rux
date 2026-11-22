@@ -349,12 +349,6 @@ struct UnaryExpr : Expr {
     ExprPtr operand;
 };
 
-/// `move value` (or the older `<-value`) -- an explicit ownership transfer used where the destination is supplied by
-/// the surrounding expression.
-struct MoveExpr : Expr {
-    ExprPtr operand;
-};
-
 /// `place.~()`: destroys the value where it lies. On a local or a parameter it ends the value's life; through a raw
 /// pointer it destroys what is there and leaves the slot empty.
 struct DestroyExpr : Expr {

@@ -9,7 +9,7 @@ import Test::{
 
 // The message of the failure `outcome` holds, or a failure of the test when it passed.
 func MessageOf(outcome: !TestFailure) -> TestFailure ! TestFailure {
-    return ExpectFailure(move outcome, "the check should have failed")!;
+    return ExpectFailure(outcome, "the check should have failed")!;
 }
 
 #Test

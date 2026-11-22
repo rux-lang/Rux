@@ -87,7 +87,7 @@ Containers talk to the allocator in elements rather than bytes, through three he
 
 ## Ownership
 
-Every owning container prohibits copying. Hand one to a consuming function with `move`, as in `Consume(move values)`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
+Every owning container prohibits copying. A named container written bare is given away, as in `Consume(values)`; the compiler rejects later reads of the source, and `Show(&values)` lends it instead. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
 
 Canonical empty construction is `Vector<T>::New(allocator)`, `Deque<T>::New(allocator)`, `HashMap<K, V>::New(...)`, `HashSet<T>::New(...)`, `TreeMap<K, V>::New(...)`, and `TreeSet<T>::New(...)`. Descriptive factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
@@ -99,7 +99,7 @@ A container destroys an element it does not know is droppable by relocating it f
 
 ## Elements that own something
 
-`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. Pass a named move-only element explicitly, for example `values.Push(move value)`. Each element is destroyed exactly once, when it is removed without being returned or when its container dies. `Pop`, removals, and consuming iterators move elements back out.
+`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. A named move-only element written bare is given away, for example `values.Push(value)`. Each element is destroyed exactly once, when it is removed without being returned or when its container dies. `Pop`, removals, and consuming iterators move elements back out.
 
 `Array`'s constructors copy, so an array of owning elements has to be built through a vector first.
 
@@ -111,7 +111,7 @@ Whether handing a value to a generic container consumes it depends on what its e
 
 All three borrow their storage. The storage must outlive the iterator and every pointer it yields. Array and Vector provide `References()` and `MutableReferences()`; the writable form borrows the container mutably when the cursor is created and visits only initialized elements.
 
-`IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(move values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
+`IntoIterator` is the owning alternative for vectors, maps, and sets: `for value in values` over a named owner calls it and takes the container, `values.IntoIterator()` does the same by hand, and `for value in &values` lends the container instead. Whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
 
 A `for` loop over an iterator _variable_ advances that variable, so a loop that stops early leaves it where the walk stopped and a later loop or `Next` call resumes there. Iterate over a fresh iterator, or over the container, to walk from the start without touching the caller's.
 

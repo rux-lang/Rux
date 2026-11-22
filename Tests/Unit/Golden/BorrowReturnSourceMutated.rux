@@ -28,7 +28,7 @@ func Main() -> int {
     }
 
     let held = pair.First();
-    Consume(move pair);
+    Consume(pair);
     let last: int32 = held;
     return 0;
 }

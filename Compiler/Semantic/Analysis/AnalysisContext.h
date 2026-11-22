@@ -689,6 +689,10 @@ private:
     [[nodiscard]] bool IsFreshTemporarySource(const Expr &expression, const TypeRef &type,
                                               const TypeRef &targetType) const;
     void ConsumeExplicitValue(const Expr &expression, const TypeRef &type, SourceLocation location);
+    /// Whether a value of `type` copies in generic code: a type parameter bound by `Copyable`.
+    [[nodiscard]] bool CopiesUnderBound(const TypeRef &type) const;
+    /// Whether a place is reached through a raw pointer, where a read takes the value out.
+    [[nodiscard]] bool ReachedThroughRawPointer(const Expr &expression) const;
     /// Reports a move of a value whose type, or a part of it, is `#NoMove`.
     void ReportProhibitedMove(const TypeRef &type, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
@@ -1074,7 +1078,7 @@ private:
     };
 
     [[nodiscard]] const FuncDecl *LookupIteratorAdvance(const TypeRef &type) const;
-    [[nodiscard]] const FuncDecl *LookupIterableEntry(const TypeRef &type) const;
+    [[nodiscard]] const FuncDecl *LookupIterableEntry(const TypeRef &type, std::string_view method = "Iterate") const;
 
     /// What one `Next` reports: the item it carries and the native optional it is wrapped in.
     struct ReportedItem {
@@ -1083,7 +1087,7 @@ private:
     };
 
     [[nodiscard]] std::optional<ReportedItem> ReportedItemOf(const TypeRef &iteratorType, const FuncDecl &advance);
-    [[nodiscard]] std::optional<IterationShape> IterationShapeOf(const TypeRef &subject);
+    [[nodiscard]] std::optional<IterationShape> IterationShapeOf(const TypeRef &subject, bool takes = false);
     void EmitNotIterable(SourceLocation location, const TypeRef &subject) const;
     void ValidateIteratorConvention(const FuncDecl &declaration, bool isMethod);
     void RecordIteration(const ForStmt &statement, const IterationShape &shape);

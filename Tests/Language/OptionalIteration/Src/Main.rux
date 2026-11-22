@@ -80,10 +80,10 @@ extend Checked {
         }
         if self.index == 2i32 {
             let missing = Lose();
-            return move missing;
+            return missing;
         }
         let found: int32 ! Missing = self.index;
-        return move found;
+        return found;
     }
 }
 

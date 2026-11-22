@@ -8,6 +8,7 @@
 // The plain forms need `<` on the element type. The `By` forms take a three-way comparison instead, which is what to
 // use when the element has no ordering of its own, or when the wanted order is not its own.
 
+import Core::Ownership::Copyable;
 import Core::Compare::Ordering;
 
 /// The index of the smallest element of `items`.
@@ -231,7 +232,7 @@ pub func Clamp<T>(value: T, low: T, high: T) -> T {
 /// @param compare how two elements order against each other
 /// @returns `value` brought into `[low, high]` under `compare`
 /// @see https://rux-lang.dev/docs/api/algorithms/min-max#clamp-by
-pub func ClampBy<T>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
+pub func ClampBy<T: Copyable>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
     if compare(high, low).IsLess() { return low; }
     if compare(value, low).IsLess() { return low; }
     if compare(high, value).IsLess() { return high; }

@@ -68,7 +68,7 @@ func Run() -> int ! IoError {
     var count: uint = 0;
     while true {
         let next = iterator.Next() catch { _ => Panic("the enumeration ends rather than fails") };
-        match move next {
+        match next {
             entry? => {
                 count = count + 1;
                 let view = entry.View();

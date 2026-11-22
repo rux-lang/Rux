@@ -57,7 +57,7 @@ func Counted() -> int {
     Assert(Keep(second.Clone()) == 3u && first.Count() == 2u, "a clone passed by value counts while it lives");
     second = Rc<Tracked>::New(SystemAllocator::New(), Tracked { value: 9 });
     Assert(first.Count() == 1u && !second.SameAs(&first) && Destroys() == 0, "reassigning releases one count");
-    let moved = move first;
+    let moved = first;
     Assert(moved.Count() == 1u && Destroys() == 0, "moving a handle does not count");
     return 0;
 }

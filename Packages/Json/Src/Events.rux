@@ -135,7 +135,7 @@ extend JsonEventReader {
         // Safety: `block` was just allocated with `JsonStreamChunk` bytes, and `char8` has size and alignment 1.
         reader.data = block as *var char8;
         reader.capacity = JsonStreamChunk;
-        return move reader;
+        return reader;
     }
 
     // The error a stopped reader throws, built once from the parts it kept. The offset counts bytes from the start

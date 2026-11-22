@@ -192,7 +192,7 @@ TEST_CASE("a refutable tuple element branches out before the bindings are set") 
 TEST_CASE("a destructuring let records the drop glue of each droppable part it discards") {
     const std::string source = std::string(kTag) + R"(
         func Keep(pair: (Tag, int32, Tag)) -> int32 {
-            let (_, _, kept) = move pair;
+            let (_, _, kept) = pair;
             return kept.id;
         }
     )";
@@ -215,11 +215,11 @@ TEST_CASE("a structure pattern in let binds substituted fields and discards the 
     const std::string source = std::string(kTag) + R"(
         struct Parcel<T> { label: Tag; contents: T; count: int32; }
         func Keep(parcel: Parcel<Tag>) -> int32 {
-            let Parcel { contents: kept, label: _ } = move parcel;
+            let Parcel { contents: kept, label: _ } = parcel;
             return kept.id;
         }
         func Whole(tag: Tag) {
-            let Tag { id: _ } = move tag;
+            let Tag { id: _ } = tag;
         }
     )";
     const HirPackage package = LowerSource(source);
@@ -255,7 +255,7 @@ TEST_CASE("a structure pattern in let binds substituted fields and discards the 
 TEST_CASE("an arm over a consumed tuple destroys the elements it leaves unbound") {
     const LirPackage lir = LowerToLir(LowerSource(std::string(kTag) + R"(
         func Second(pair: (Tag, Tag)) -> int32 {
-            return match move pair { (_, second) => second.id };
+            return match pair { (_, second) => second.id };
         }
         func Borrowed(pair: &(Tag, Tag)) -> int32 {
             return match pair { (_, second) => second.id };
@@ -281,13 +281,13 @@ constexpr const char *kCounted = R"(
 )";
 } // namespace
 
-TEST_CASE("a match of a named move-only value handed over with move owns it") {
+TEST_CASE("a match takes a named move-only subject and owns it") {
     const std::string source = std::string(kCounted) + R"(
         func First(pair: (Counted, int32)) -> int32 {
-            return match move pair { (item, _) => item.id };
+            return match pair { (item, _) => item.id };
         }
         func Count(pair: (Counted, int32)) -> int32 {
-            return match move pair { (_, count) => count };
+            return match pair { (_, count) => count };
         }
         func Look(pair: (Counted, int32)) -> int32 {
             return match pair { (_, 2) => 1i32, _ => 0i32 };
@@ -308,16 +308,16 @@ TEST_CASE("a match of a named move-only value handed over with move owns it") {
         throw std::runtime_error("no returned match");
     };
 
-    // The arms own the value handed over, so the binding is destroyed with its arm.
+    // The arms own the subject the match took, so the binding is destroyed with its arm.
     const HirExpr &moved = subjectOf("First");
     REQUIRE(moved.consumption.has_value());
     const auto &arms = ReturnedMatchArms(RequireFunction(package, "First"));
     REQUIRE_EQ(arms.size(), 1);
     CHECK_EQ(arms.front().cleanups.size(), 1);
 
-    // Nothing is bound from the subject, so it stays with its owner: nothing is owned.
-    const HirExpr &kept = subjectOf("Look");
-    CHECK_FALSE(kept.consumption.has_value());
+    // A match takes its subject even when no arm binds from it.
+    const HirExpr &taken = subjectOf("Look");
+    CHECK(taken.consumption.has_value());
 
     // The element an arm leaves is destroyed at the top of that arm.
     const LirPackage lir = LowerToLir(LowerSource(source));
@@ -331,19 +331,19 @@ TEST_CASE("a match of a named move-only value handed over with move owns it") {
 TEST_CASE("a default arm destroys an owned subject the other arms leave") {
     const LirPackage lir = LowerToLir(LowerSource(std::string(kCounted) + R"(
         func Guarded(pair: (Counted, int32)) {
-            match move pair {
+            match pair {
                 (item, count) if count > 5 => {}
                 _ => {}
             }
         }
         func Moved(pair: (Counted, int32)) {
-            match move pair {
+            match pair {
                 (item, 7) => {}
                 _ => {}
             }
         }
         func Covered(pair: (Counted, int32)) {
-            match move pair {
+            match pair {
                 (item, count) => {}
             }
         }

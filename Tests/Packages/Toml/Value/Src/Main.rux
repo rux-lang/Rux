@@ -58,11 +58,11 @@ func Main() -> int {
     // recognisably rather than alphabetically.
     var table = TomlValue::Table(allocator);
     var zebra = String::FromBytes(allocator, "zebra") catch { _ => Panic("the key is made") };
-    table.Insert(move zebra, TomlValue::Integer(allocator, 1)) catch { _ => Panic("the kind is right") };
+    table.Insert(zebra, TomlValue::Integer(allocator, 1)) catch { _ => Panic("the kind is right") };
     var apple = String::FromBytes(allocator, "apple") catch { _ => Panic("the key is made") };
-    table.Insert(move apple, TomlValue::Integer(allocator, 2)) catch { _ => Panic("the kind is right") };
+    table.Insert(apple, TomlValue::Integer(allocator, 2)) catch { _ => Panic("the kind is right") };
     var middle = String::FromBytes(allocator, "middle") catch { _ => Panic("the key is made") };
-    table.Insert(move middle, TomlValue::Integer(allocator, 3)) catch { _ => Panic("the kind is right") };
+    table.Insert(middle, TomlValue::Integer(allocator, 3)) catch { _ => Panic("the kind is right") };
     Assert(table.Length() == 3, "a table holds what it was given");
     let first = table.EntryAt(0) ?? Panic("the table holds three entries");
     Assert(first.key.View().Length() == 5, "the first entry is the first one added");
@@ -96,7 +96,7 @@ func Main() -> int {
     Assert(table.At(0) == none, "and a table has no elements");
     Assert((table.Push(TomlValue::Integer(allocator, 1)) !! none) == none, "pushing onto a table is refused");
     var stray = String::FromBytes(allocator, "stray") catch { _ => Panic("the key is made") };
-    Assert((array.Insert(move stray, TomlValue::Integer(allocator, 1)) !! none) == none,
+    Assert((array.Insert(stray, TomlValue::Integer(allocator, 1)) !! none) == none,
            "and inserting into an array is too");
 
     // Ownership is the whole difficulty of a document tree: a table holding a table holding an array must
@@ -107,9 +107,9 @@ func Main() -> int {
     nested.Push(TomlValue::Text(allocator, "held") !! Panic("the text is made")) !! Panic("the kind is right");
     nested.Push(TomlValue::Text(allocator, "also held") !! Panic("the text is made")) !! Panic("the kind is right");
     var nestedKey = String::FromBytes(allocator, "list") catch { _ => Panic("the key is made") };
-    inner.Insert(move nestedKey, move nested) catch { _ => Panic("the kind is right") };
+    inner.Insert(nestedKey, nested) catch { _ => Panic("the kind is right") };
     var innerKey = String::FromBytes(allocator, "inner") catch { _ => Panic("the key is made") };
-    outer.Insert(move innerKey, move inner) catch { _ => Panic("the kind is right") };
+    outer.Insert(innerKey, inner) catch { _ => Panic("the kind is right") };
     let list = (outer.Find(View("inner")) ?? Panic("the outer table holds the inner one")).Find(View("list"));
     Assert(if let held? = list && held.Length() == 2 { true } else { false }, "a nested tree is reachable all the way down");
 

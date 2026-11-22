@@ -76,7 +76,7 @@ func Run() -> !AllocError {
 
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
     var source = Box<int64>::New(allocator, 7);
-    var destination = move source;
+    var destination = source;
     let movedValue: int64 = destination.Get() ?? Panic("the destination took over the filled box");
     Assert(movedValue == 7, "the destination holds the value");
     Assert(if let emptied? = destination.Take() && emptied == 7 { true } else { false }, "and it is still takeable from there");

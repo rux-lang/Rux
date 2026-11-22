@@ -58,7 +58,7 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: uint) -> uint 
         vector.Push(Tracked { counter, value: index as int32 });
         index++;
     }
-    var taken = (move vector).IntoIterator();
+    var taken = (vector).IntoIterator();
     var yielded: uint = 0;
     // A fresh binding each round, so each element is owned by exactly one of them and destroyed when that round
     // ends. Reusing one binding would overwrite the previous element instead, and assignment destroys nothing.
@@ -86,7 +86,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAft
         vector.Push(Tracked { counter, value: index as int32 });
         index++;
     }
-    var taken = (move vector).IntoIterator();
+    var taken = (vector).IntoIterator();
     var yielded: uint = 0;
     var draining = true;
     while draining && yielded < stopAfter {
@@ -189,7 +189,7 @@ func Run() -> !CollectionError {
 
     // Iteration reads what is there and stops at the length rather than the capacity.
     var total: int32 = 0;
-    for element in copied {
+    for element in &copied {
         total = total + element;
     }
     Assert(total == 18, "iterating covers every element and no spare capacity");
@@ -220,7 +220,7 @@ func Run() -> !CollectionError {
     destroyed = 0;
     var tracked = Vector<Tracked>::New(allocator);
     var explicitlyMoved = Tracked { counter: @destroyed, value: 41 };
-    tracked.Push(move explicitlyMoved);
+    tracked.Push(explicitlyMoved);
     Assert(destroyed == 0, "the transfer does not destroy the element");
     tracked.Clear();
     Assert(destroyed == 1, "the vector becomes the element's sole owner");
@@ -334,7 +334,7 @@ func Run() -> !CollectionError {
         index++;
     }
     var sum: int32 = 0;
-    var taken = (move drained).IntoIterator();
+    var taken = (drained).IntoIterator();
     while true {
         let element = taken.Next() ?? break;
         sum = sum + element;
@@ -356,7 +356,7 @@ func Run() -> !CollectionError {
     var moving = Vector<int32>::New(allocator);
     moving.Push(3);
     moving.Push(4);
-    var fixed = (move moving).IntoArray();
+    var fixed = (moving).IntoArray();
     Assert(fixed.Length() == 2, "with every element");
     Assert(fixed.Get(0) == 3 && fixed.Get(1) == 4, "in order");
     // The block itself is handed over rather than the elements copied, though the trim that precedes the handover

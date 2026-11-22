@@ -90,7 +90,7 @@ extend Channel<T> {
             throw value;
         }
         // Safety: this thread holds the lock on `block`, which `Push` releases, and the ring has room, checked above.
-        self.Push(move value);
+        self.Push(value);
     }
 
     /// Sends `value` if there is room, without waiting.
@@ -109,7 +109,7 @@ extend Channel<T> {
             throw value;
         }
         // Safety: this thread holds the lock on `block`, which `Push` releases, and the ring has room, checked above.
-        self.Push(move value);
+        self.Push(value);
     }
 
     /// Receives the oldest value, waiting while the channel is empty.
@@ -213,7 +213,7 @@ extend Channel<T> {
     // Safety: the calling thread must hold the lock on `self.block`, and the ring must have room for one more value.
     func Push(&self, value: T) {
         let block = self.block;
-        Slot<T>(block, (block.head + block.length) % block.capacity)[0] = move value;
+        Slot<T>(block, (block.head + block.length) % block.capacity)[0] = value;
         block.length = block.length + 1u;
         AtomicFetchAdd(@block.arrivals, 1u32, MemoryOrder::Relaxed);
         UnlockWord(@block.word);
@@ -224,13 +224,13 @@ extend Channel<T> {
     // Safety: the calling thread must hold the lock on `self.block`, and the ring must hold at least one value.
     func Pop(&self) -> T? {
         let block = self.block;
-        let value = move Slot<T>(block, block.head)[0];
+        let value = Slot<T>(block, block.head)[0];
         block.head = (block.head + 1u) % block.capacity;
         block.length = block.length - 1u;
         AtomicFetchAdd(@block.departures, 1u32, MemoryOrder::Relaxed);
         UnlockWord(@block.word);
         WakeOne(@block.departures);
-        return move value;
+        return value;
     }
 
     func ~(&var self) {

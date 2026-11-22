@@ -1,2 +1,1 @@
-13:17: error: cannot move a non-owning reference
-19:17: error: cannot move 'buffer' while it is immutably borrowed
+19:5: error: cannot move 'buffer' while it is immutably borrowed

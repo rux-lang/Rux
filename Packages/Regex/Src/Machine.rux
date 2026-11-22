@@ -6,6 +6,7 @@
 // backtracking matcher would give. Each list is a sparse set, so a thread already on it is never added twice and an
 // empty loop cannot go round forever.
 
+import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Collections::Vector;
 import Regex::{
@@ -40,7 +41,7 @@ struct Scratch {
 }
 
 // A vector of `count` copies of `value`.
-func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> {
+func Filled<T: Copyable>(allocator: Allocator, count: uint, value: T) -> Vector<T> {
     var items = Vector<T>::New(allocator);
     items.Reserve(count);
     var index: uint = 0;
@@ -48,7 +49,7 @@ func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> {
         items.Push(value);
         index = index + 1;
     }
-    return move items;
+    return items;
 }
 
 extend Scratch {

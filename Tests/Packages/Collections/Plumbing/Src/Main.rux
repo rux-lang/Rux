@@ -29,7 +29,7 @@ func Main() -> int {
     var byValue = ValueIterator<int32>::New(items);
     var seen: uint = 0;
     var total: int32 = 0;
-    for value in byValue {
+    for value in &var byValue {
         total = total + value;
         seen = seen + 1;
     }
@@ -48,12 +48,12 @@ func Main() -> int {
     // A `for` loop over an iterator variable advances the variable itself, so a loop that stops early leaves it
     // where the walk stopped and the next read resumes there.
     var resumed = ValueIterator<int32>::New(items);
-    for value in resumed {
+    for value in &var resumed {
         seen = seen + 1;
         break;
     }
     Assert(resumed.Next() != none, "a loop that stops early leaves the iterator after the item it read");
-    for value in resumed {
+    for value in &var resumed {
         seen = seen + 1;
     }
     Assert(resumed.Next() == none, "a loop that runs to the end leaves the iterator exhausted");
@@ -66,7 +66,7 @@ func Main() -> int {
     var byReference = ReferenceIterator<int32>::New(items);
     seen = 0;
     var readBack: int32 = 0;
-    for element in byReference {
+    for element in &var byReference {
         // Safety: the iterator yields addresses inside `values`, which outlives the loop.
         readBack = readBack + *element;
         seen = seen + 1;

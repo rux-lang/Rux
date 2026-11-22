@@ -102,7 +102,7 @@ func Shift(point: &var (Point | int32)) {
 
 // Generic members normalize after substitution: `T | U` with `T = U` is `T`, and `else` stays valid there.
 func Pick<T, U>(value: T | U) -> int32 {
-    return match value {
+    return match &value {
         x: T => 1i32,
         _ => 2i32
     };
@@ -129,12 +129,12 @@ func HoldInactive(counter: *var Counter) {
 
 func HoldWidened(counter: *var Counter) {
     let narrow: Tracked | int32 = Make(counter, 1i32);
-    let wide: Tracked | int32 | bool = move narrow;
+    let wide: Tracked | int32 | bool = narrow;
 }
 
 func TakeMember(counter: *var Counter) -> int32 {
     let held: Tracked | int32 = Make(counter, 5i32);
-    return match move held {
+    return match held {
         tracked: Tracked => tracked.id,
         number: int32 => number
     };
@@ -142,7 +142,7 @@ func TakeMember(counter: *var Counter) -> int32 {
 
 func DiscardMember(counter: *var Counter) {
     let held: Tracked | int32 | bool = Make(counter, 1i32);
-    match move held {
+    match held {
         _: Tracked | bool => {},
         number: int32 => {}
     }
@@ -152,7 +152,7 @@ func Keep(value: Tracked | int32) {}
 
 func Pass(counter: *var Counter) {
     let held: Tracked | int32 = Make(counter, 1i32);
-    Keep(move held);
+    Keep(held);
 }
 
 func Replace(counter: *var Counter) {

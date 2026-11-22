@@ -76,9 +76,9 @@ func Run() -> int ! IoError {
     let locked = MetadataOf(allocator, file, true)!;
     Assert(!locked.permissions.IsWritable(), "and reads back without owner-write permission");
     let opening: File ! IoError = File::Open(allocator, file, OpenOptions::Writing());
-    match move opening {
+    match opening {
         .Success(opened) => {
-            var probe = move opened;
+            var probe = opened;
             Assert(able.unixPermissions, "only a privileged Unix writer may bypass read-only");
             probe.Close() catch { _ => Panic("and the privileged probe closes") };
         },

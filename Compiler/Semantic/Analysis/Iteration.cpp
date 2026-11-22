@@ -74,7 +74,7 @@ std::optional<AnalysisContext::ReportedItem> AnalysisContext::ReportedItemOf(con
     return std::nullopt;
 }
 
-const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const {
+const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type, const std::string_view method) const {
     const std::string typeName = NamedBaseTypeName(type);
     if (typeName.empty()) {
         return nullptr;
@@ -83,7 +83,7 @@ const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const 
     if (methods == methodsByType.end()) {
         return nullptr;
     }
-    const auto named = methods->second.find(std::string(kIterateMethod));
+    const auto named = methods->second.find(std::string(method));
     if (named == methods->second.end()) {
         return nullptr;
     }
@@ -95,7 +95,8 @@ const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const 
     return nullptr;
 }
 
-std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf(const TypeRef &subject) {
+std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf(const TypeRef &subject,
+                                                                                 const bool takes) {
     IterationShape shape;
     if (subject.IsIterableRange() && !subject->inner.empty()) {
         shape.kind = IterationShape::Kind::Range;
@@ -126,7 +127,9 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
 
     // A container hands out an iterator rather than being one, which is what keeps two loops over the same container
     // independent of each other.
-    if (const FuncDecl *entry = LookupIterableEntry(subject)) {
+    // A loop that takes a container takes its elements too, through `IntoIterator`; one that lends it walks it with
+    // `Iterate`.
+    if (const FuncDecl *entry = takes ? LookupIterableEntry(subject, "IntoIterator") : LookupIterableEntry(subject)) {
         const TypeRef iteratorType = ResolveMethodReturnType(subject, *entry);
         if (const FuncDecl *advance = LookupIteratorAdvance(iteratorType)) {
             if (auto reported = ReportedItemOf(iteratorType, *advance)) {

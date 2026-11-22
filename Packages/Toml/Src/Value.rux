@@ -127,7 +127,7 @@ extend TomlValue {
     pub func Array(allocator: Allocator) -> Self {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Array;
-        return move held;
+        return held;
     }
 
     /// A string value, whose bytes are copied and validated as UTF-8.
@@ -139,7 +139,7 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Text;
         held.text = String::FromBytes(allocator, value)!;
-        return move held;
+        return held;
     }
 
     /// A string value copying an already-built string.
@@ -151,8 +151,8 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Text;
         held.text.Clear();
-        held.text = move value;
-        return move held;
+        held.text = value;
+        return held;
     }
 
     /// An integer value.
@@ -164,7 +164,7 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Integer;
         held.integer = value;
-        return move held;
+        return held;
     }
 
     /// A float value, which TOML — unlike JSON — allows to be an infinity or a NaN.
@@ -176,7 +176,7 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Float;
         held.number = value;
-        return move held;
+        return held;
     }
 
     /// A boolean value.
@@ -188,7 +188,7 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Boolean;
         held.boolean = value;
-        return move held;
+        return held;
     }
 
     /// A date and time with a known offset, which names a moment on the timeline.
@@ -204,7 +204,7 @@ extend TomlValue {
         held.date = date;
         held.time = time;
         held.offset = offset;
-        return move held;
+        return held;
     }
 
     /// A date and time with no offset, which names a wall clock reading rather than a moment.
@@ -218,7 +218,7 @@ extend TomlValue {
         held.kind = TomlKind::LocalDateTime;
         held.date = date;
         held.time = time;
-        return move held;
+        return held;
     }
 
     /// A date with no time.
@@ -230,7 +230,7 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::LocalDate;
         held.date = date;
-        return move held;
+        return held;
     }
 
     /// A time with no date.
@@ -242,7 +242,7 @@ extend TomlValue {
         var held = Self::Table(allocator);
         held.kind = TomlKind::LocalTime;
         held.time = time;
-        return move held;
+        return held;
     }
 
     /// Which kind this value is.
@@ -334,7 +334,7 @@ extend TomlValue {
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#push
     pub func Push(&var self, value: Self) -> !TomlError {
         if self.kind != TomlKind::Array { throw .WrongKind; }
-        self.elements.Push(move value);
+        self.elements.Push(value);
     }
 
     /// Appends an entry to a table, copying the key and taking ownership of the value.
@@ -348,8 +348,8 @@ extend TomlValue {
     /// @see https://rux-lang.dev/docs/api/toml/toml-value#insert
     pub func Insert(&var self, key: String, value: Self) -> !TomlError {
         if self.kind != TomlKind::Table { throw .WrongKind; }
-        var entry = TomlEntry { key: move key, value: move value };
-        self.entries.Push(move entry);
+        var entry = TomlEntry { key: key, value: value };
+        self.entries.Push(entry);
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.

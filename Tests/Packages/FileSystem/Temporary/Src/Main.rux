@@ -41,7 +41,7 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     };
     var remembered = PathBuffer::FromPath(allocator, scratch.AsPath());
     Assert(Exists(allocator, scratch.AsPath()), "and it exists while it is held");
-    return move remembered;
+    return remembered;
 }
 
 func Run() -> int ! IoError {

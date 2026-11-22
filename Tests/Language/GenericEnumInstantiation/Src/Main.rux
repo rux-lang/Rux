@@ -29,13 +29,13 @@ struct Shelf<K, V> {
 
 extend Shelf<K, V> {
     func New(label: K, value: V) -> Self {
-        return Self { held: Option::Some<V>(move value), label };
+        return Self { held: Option::Some<V>(value), label };
     }
 }
 
 func Hold(counter: *var int32) {
     let shelf = Shelf<int32, Tracked>::New(1i32, Tracked { counter });
-    match shelf.held {
+    match &shelf.held {
         .Some(_) => {
         },
         .None => {

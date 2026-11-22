@@ -88,7 +88,7 @@ extend Command {
         };
         if program.length == 0 { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
         command.Argument(program);
-        return move command;
+        return command;
     }
 
     /// A command to start `program` given in native form, such as this process's own first argument.
@@ -102,7 +102,7 @@ extend Command {
         command.wordCount = 0;
         if program.IsEmpty() { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
         command.NativeArgument(program);
-        return move command;
+        return command;
     }
 
     /// Adds an argument, as UTF-8 text.
@@ -257,7 +257,7 @@ extend Command {
             }
             at = end + 1;
         }
-        return move entries;
+        return entries;
     }
 
     // Starts the child with the given streams.

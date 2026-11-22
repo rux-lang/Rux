@@ -20,7 +20,7 @@ struct SharedBlock<T> {
 // Destroys the block's value by moving it out, before its storage is released. The count needs no destruction.
 // Safety: `value` must address a live `T` that nothing reads or destroys afterwards.
 func DestroySharedValue<T>(value: *var T) {
-    let taken = move value[0];
+    let taken = value[0];
 }
 
 /// A shared, counted handle to one value, for use on one thread. A handle is move-only; `Clone` makes another handle
@@ -42,7 +42,7 @@ extend Rc<T> {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-create
     pub func New(allocator: Allocator, value: T) -> Self {
-        return Rc::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
+        return Rc::TryCreate<T>(allocator, value) catch { error => AllocationFailed(error) };
     }
 
     /// The first handle to `value`, moved onto the heap, or why there was no storage.
@@ -56,7 +56,7 @@ extend Rc<T> {
         // for one, and nothing else holds it or has written to it.
         let block = storage as *var SharedBlock<T>;
         // Safety: as above, `block` addresses fresh storage for one block with nothing in it to overwrite.
-        *block = SharedBlock<T> { count: 1, value: move value };
+        *block = SharedBlock<T> { count: 1, value: value };
         return Self { block, allocator };
     }
 
@@ -145,7 +145,7 @@ extend Arc<T> {
     /// @returns the handle
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-create
     pub func New(allocator: Allocator, value: T) -> Self {
-        return Arc::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
+        return Arc::TryCreate<T>(allocator, value) catch { error => AllocationFailed(error) };
     }
 
     /// The first handle to `value`, moved onto the heap, or why there was no storage.
@@ -159,7 +159,7 @@ extend Arc<T> {
         // for one, and nothing else holds it or has written to it.
         let block = storage as *var SharedBlock<T>;
         // Safety: as above, `block` addresses fresh storage for one block with nothing in it to overwrite.
-        *block = SharedBlock<T> { count: 1, value: move value };
+        *block = SharedBlock<T> { count: 1, value: value };
         return Self { block, allocator };
     }
 

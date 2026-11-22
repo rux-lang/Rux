@@ -62,7 +62,7 @@ func MakeParcel(log: *var Log) -> Parcel {
 
 func BindsFields() {
     let point = Point { x: 3i32, y: 4i32 };
-    let Point { x: a, y: b } = move point;
+    let Point { x: a, y: b } = point;
     Assert(a == 3i32 && b == 4i32, "a moving destructure binds each field");
 }
 
@@ -92,21 +92,21 @@ func BindsNested() {
 
 func BindsEveryField(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { label, contents, extra } = move parcel;
+    let Parcel { label, contents, extra } = parcel;
     Mark(log);
     Assert(label.id == 1 && contents.id == 2 && extra.id == 3, "every field is bound");
 }
 
 func DiscardsWildcardField(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { label: _, contents, extra } = move parcel;
+    let Parcel { label: _, contents, extra } = parcel;
     Mark(log);
     Assert(contents.id == 2 && extra.id == 3, "the other fields are bound");
 }
 
 func DiscardsOmittedFields(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { contents } = move parcel;
+    let Parcel { contents } = parcel;
     Mark(log);
     Assert(contents.id == 2, "the named field is bound");
 }
@@ -114,7 +114,7 @@ func DiscardsOmittedFields(log: *var Log) {
 // The written `_` field goes first, then the omitted one.
 func DiscardsInPatternOrder(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { extra: _, label } = move parcel;
+    let Parcel { extra: _, label } = parcel;
     Mark(log);
     Assert(label.id == 1, "the label is bound");
 }
@@ -128,20 +128,20 @@ func DiscardsFromTemporary(log: *var Log) {
 // A pattern that binds nothing destroys the value whole, in the structure's own reverse field order.
 func BindsNothing(log: *var Log) {
     let parcel = MakeParcel(log);
-    let Parcel { label: _ } = move parcel;
+    let Parcel { label: _ } = parcel;
     Mark(log);
 }
 
 // A structure that declares its own destructor can still be discarded whole by a pattern that binds none of it.
 func DiscardsWholeTracked(log: *var Log) {
     let tracked = Track(log, 4);
-    let Tracked { id: _ } = move tracked;
+    let Tracked { id: _ } = tracked;
     Mark(log);
 }
 
 func BindsGeneric(log: *var Log) {
     let boxed = Boxed<Tracked> { value: Track(log, 5), count: 2i32 };
-    let Boxed { value, count } = move boxed;
+    let Boxed { value, count } = boxed;
     Mark(log);
     Assert(value.id == 5 && count == 2i32, "a generic structure binds its substituted field types");
 

@@ -228,10 +228,10 @@ struct Plain { code: int32; }
 
 func Main(holder: Holder) {
     var empty: Holder;
-    empty.handle = move Handle { code: 1 };
-    var moved = move holder;
-    let taken = move moved;
-    moved.handle = move Handle { code: 2 };
+    empty.handle = Handle { code: 1 };
+    var moved = holder;
+    let taken = moved;
+    moved.handle = Handle { code: 2 };
     var plain: Plain;
     plain.code = 3;
     let read = plain.code;
@@ -264,7 +264,7 @@ func Main(holder: Holder) {
     CHECK_EQ(moved.location.line, 12);
     CHECK_EQ(moved.message, "cannot write field 'handle' of 'moved', which holds no value");
     REQUIRE_FALSE(moved.notes.empty());
-    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:17");
+    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:5");
     REQUIRE(moved.help.has_value());
     CHECK_EQ(*moved.help, "initialize 'moved' whole, as in 'moved = Holder { ... }'");
 }

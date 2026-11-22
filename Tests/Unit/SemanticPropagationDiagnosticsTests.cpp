@@ -186,9 +186,9 @@ TEST_CASE("propagation records an explicit operand transfer for later reads") {
         struct Token { value: int32; }
         extend Token { }
         func Forward(input: Token?) -> Token? {
-            let value = (move input)?;
-            let again = (move input)?;
-            return move value;
+            let value = (input)?;
+            let again = (input)?;
+            return value;
         }
     )");
     RequireDiagnostic(diagnostics, "value 'input' is used after it was moved");
@@ -197,8 +197,8 @@ TEST_CASE("propagation records an explicit operand transfer for later reads") {
 TEST_CASE("propagation validates hidden payload transfers at generic instantiation") {
     const auto diagnostics = AnalyzeSource(R"(
         func Forward<T>(input: T?) -> T? {
-            let value = (move input)?;
-            return move value;
+            let value = (input)?;
+            return value;
         }
         #NoCopy
         #NoMove

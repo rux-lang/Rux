@@ -143,7 +143,7 @@ func ReferenceField(log: *var Log) {
 }
 
 func PutValue<T>(box: &var Box<T>, value: T) {
-    box.value = move value;
+    box.value = value;
 }
 
 func GenericField(log: *var Log) {

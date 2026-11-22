@@ -1,7 +1,8 @@
 // `#NoCopy` and `#NoMove` take a capability away from every value of a type. A `#NoCopy` value is never duplicated,
 // so it moves instead, even when it is plain data with no destructor. A `#NoMove` value stays where it was built,
 // which is what a value pointing into itself needs; it implies `#NoCopy`, and it is created in place from a
-// temporary and shared through a pointer. The bodyless `func =(...);` and `func <-(...);` are older spellings.
+// temporary and shared through a pointer. The bodyless `func =(...);` and `func <-(...);` are older spellings of the
+// attributes.
 
 import Core::Diagnostics::Assert;
 
@@ -60,7 +61,7 @@ func Close(handle: RawHandle) -> int {
 }
 
 func Take(slot: Slot) -> int {
-    return match move slot {
+    return match slot {
         .Held(value) => value,
         .Empty => 0,
     };
@@ -86,14 +87,14 @@ func GuardScope() {
 
 func Main() -> int {
     let handle = RawHandle { fd: 3 };
-    let moved = move handle;
-    Assert(Close(move moved) == 3, "a '#NoCopy' value moves");
+    let moved = handle;
+    Assert(Close(moved) == 3, "a '#NoCopy' value moves");
 
     let slot: Slot = .Held(4);
-    Assert(Take(move slot) == 4, "a '#NoCopy' variant moves");
+    Assert(Take(slot) == 4, "a '#NoCopy' variant moves");
 
     let pair = Pair<int> { first: 1, second: 2 };
-    Assert(Sum(move pair) == 3, "a generic '#NoCopy' type moves");
+    Assert(Sum(pair) == 3, "a generic '#NoCopy' type moves");
 
     var node = MakeNode(5);
     node.next = @node;
@@ -104,7 +105,7 @@ func Main() -> int {
     Assert(bits.word == 0x01020304u32, "a '#NoMove' union is built in place");
 
     let older = Older { value: 6 };
-    let olderMoved = move older;
+    let olderMoved = older;
     Assert(olderMoved.value == 6, "a bodyless copy operator still makes the type move-only");
 
     GuardScope();

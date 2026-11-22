@@ -5,6 +5,7 @@
 // `Midpoint` is defined per numeric type rather than generically, because the overflow-free formula depends on the
 // representation: integers take the difference in the unsigned type of their width, and floats halve before they add.
 
+import Core::Ownership::Copyable;
 import Core::Primitives::*;
 
 
@@ -16,7 +17,7 @@ import Core::Primitives::*;
 /// @param into where the sums go, at least as long as `items`
 /// @returns whether `into` was long enough; nothing is written when it was not
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#partial-sum
-pub func PartialSum<T>(items: T[..], into: var T[..]) -> bool {
+pub func PartialSum<T: Copyable>(items: T[..], into: var T[..]) -> bool {
     if into.length < items.length { return false; }
     if items.length == 0 { return true; }
     // Safety: `items` is not empty and `into` is at least as long, both checked above.
@@ -43,7 +44,7 @@ pub func PartialSum<T>(items: T[..], into: var T[..]) -> bool {
 /// @param combine how two values combine
 /// @returns whether `into` was long enough; nothing is written when it was not
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#inclusive-scan
-pub func InclusiveScan<T>(items: T[..], into: var T[..], combine: func(T, T) -> T) -> bool {
+pub func InclusiveScan<T: Copyable>(items: T[..], into: var T[..], combine: func(T, T) -> T) -> bool {
     if into.length < items.length { return false; }
     if items.length == 0 { return true; }
     // Safety: `items` is not empty and `into` is at least as long, both checked above.
@@ -72,7 +73,7 @@ pub func InclusiveScan<T>(items: T[..], into: var T[..], combine: func(T, T) -> 
 /// @param combine how two values combine
 /// @returns whether `into` was long enough; nothing is written when it was not
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#exclusive-scan
-pub func ExclusiveScan<T>(items: T[..], into: var T[..], initial: T, combine: func(T, T) -> T) -> bool {
+pub func ExclusiveScan<T: Copyable>(items: T[..], into: var T[..], initial: T, combine: func(T, T) -> T) -> bool {
     if into.length < items.length { return false; }
     var total = initial;
     var index: uint = 0;
@@ -95,7 +96,7 @@ pub func ExclusiveScan<T>(items: T[..], into: var T[..], initial: T, combine: fu
 /// @param start the first value
 /// @param step what each value adds to the one before
 /// @see https://rux-lang.dev/docs/api/algorithms/numeric#iota
-pub func Iota<T>(into: var T[..], start: T, step: T) {
+pub func Iota<T: Copyable>(into: var T[..], start: T, step: T) {
     var value = start;
     var index: uint = 0;
     while index < into.length {

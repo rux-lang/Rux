@@ -1,5 +1,5 @@
 // Discarding a whole value with `let _`.
-// `_` names nothing, so `let _ <- value;` and `let _ = value;` keep nothing: the value is destroyed at the statement,
+// `_` names nothing, so `let _ = value;` keeps nothing: the value is destroyed at the statement,
 // before the next one runs, like a temporary nobody kept. A clone discarded this way leaves its source with its owner.
 // Each tracked value appends its id to a log as it is destroyed and each check appends a 0 where it stands, so the log
 // is the exact order of events.
@@ -53,7 +53,7 @@ func Track(log: *var Log, id: int32) -> Tracked {
 
 func DiscardsMoved(log: *var Log) {
     let tracked = Track(log, 1);
-    let _ = move tracked;
+    let _ = tracked;
     Mark(log);
 }
 
@@ -72,7 +72,7 @@ func DiscardsClone(log: *var Log) {
 
 func DiscardsHandle(log: *var Log) {
     let handle = Handle { log, id: 4 };
-    let _ = move handle;
+    let _ = handle;
     Mark(log);
 }
 

@@ -47,7 +47,7 @@ func Thrown(value: int) -> int ! int {
 
 func Moved(value: int) -> int ! int {
     let kept = Tracked { value: 1 };
-    return Take(move kept, Parse(value)!);
+    return Take(kept, Parse(value)!);
 }
 
 func Receiver(value: int) -> int ! int {

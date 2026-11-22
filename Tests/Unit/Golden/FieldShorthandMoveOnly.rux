@@ -1,5 +1,5 @@
-// A field written as a name alone is an ordinary use of that binding. It never moves on its own, so a move-only
-// binding is reported with the field written out and moved, and a copyable one is copied as it would be in full.
+// A field written as a name alone is an ordinary use of that binding: a move-only binding is given away, as it would
+// be written in full, and a copyable one is copied.
 
 struct Buffer {
     size: int32;
@@ -27,6 +27,11 @@ func Hold(buffer: Buffer) -> Holder {
 
 func Fill(buffer: Buffer) -> Slot {
     return Slot::Full { buffer };
+}
+
+func Twice(buffer: Buffer) -> Holder {
+    let first = Holder { buffer, size: 1 };
+    return Holder { buffer, size: 2 };
 }
 
 func Main() -> int {

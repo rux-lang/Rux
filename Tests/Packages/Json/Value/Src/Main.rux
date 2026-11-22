@@ -132,7 +132,7 @@ func Main() -> int {
     var index: uint = 0;
     while index < 5 {
         var element = JsonValue::Boolean(allocator, (index % 2) == 0);
-        array.Push(move element) catch { _ => Panic("elements append") };
+        array.Push(element) catch { _ => Panic("elements append") };
         index = index + 1;
     }
     Assert(array.Length() == 5, "and the array grows");
@@ -152,13 +152,13 @@ func Main() -> int {
     Assert(object.Kind() == JsonKind::Object && object.Length() == 0, "a new object is empty");
     var zetaName = String::FromBytes(allocator, "zeta") catch { _ => Panic("a name is built") };
     var zetaValue = JsonValue::Number(allocator, "1") catch { _ => Panic("1 is stored") };
-    object.Insert(move zetaName, move zetaValue) catch { _ => Panic("a member inserts") };
+    object.Insert(zetaName, zetaValue) catch { _ => Panic("a member inserts") };
     var alphaName = String::FromBytes(allocator, "alpha") catch { _ => Panic("a name is built") };
     var alphaValue = JsonValue::Number(allocator, "2") catch { _ => Panic("2 is stored") };
-    object.Insert(move alphaName, move alphaValue) catch { _ => Panic("and another") };
+    object.Insert(alphaName, alphaValue) catch { _ => Panic("and another") };
     var muName = String::FromBytes(allocator, "mu") catch { _ => Panic("a name is built") };
     var muValue = JsonValue::Text(allocator, "found") catch { _ => Panic("a string is stored") };
-    object.Insert(move muName, move muValue) catch { _ => Panic("and a third") };
+    object.Insert(muName, muValue) catch { _ => Panic("and a third") };
     Assert(object.Length() == 3, "and the object grows");
 
     let zeta = View("zeta");
@@ -187,7 +187,7 @@ func Main() -> int {
     Assert(nullValue.Length() == none && text.Length() == none, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
     var pushWrongKind = false;
-    match nullValue.Push(move pushRefused) {
+    match nullValue.Push(pushRefused) {
         .Success(_) => {},
         .Failure(error) => { pushWrongKind = error == JsonError::WrongKind; },
     }
@@ -195,7 +195,7 @@ func Main() -> int {
     var memberName = String::FromBytes(allocator, "late") catch { _ => Panic("a name is built") };
     var insertRefused = JsonValue::Null(allocator);
     var insertWrongKind = false;
-    match array.Insert(move memberName, move insertRefused) {
+    match array.Insert(memberName, insertRefused) {
         .Success(_) => {},
         .Failure(error) => { insertWrongKind = error == JsonError::WrongKind; },
     }

@@ -58,7 +58,7 @@ func Main() -> int {
     while turns < 2 {
         let seen = looped.x;
         looped.y = seen;
-        let moved = move looped;
+        let moved = looped;
         turns += 1;
     }
 

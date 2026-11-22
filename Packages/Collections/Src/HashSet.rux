@@ -7,6 +7,7 @@
 // Running out of memory terminates the program, as everywhere in this package, and so does a run of elements
 // colliding so badly that no table could place them.
 
+import Core::Ownership::Copyable;
 import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Core::Iteration::Iterator;
 
@@ -14,7 +15,7 @@ import Core::Iteration::Iterator;
 /// Move-only: it owns its elements and its storage.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/hash-set
-pub struct HashSet<T> {
+pub struct HashSet<T: Copyable> {
     /// The slots and the elements. The value side carries nothing, which is what makes this a set.
     table: Table<T, ()>;
     /// What an element's hash is, given the table's seed.
@@ -58,7 +59,7 @@ extend HashSet<T> {
                       equals: func(T, T) -> bool) -> Self {
         var set = HashSet<T>::New(allocator, hash, equals);
         set.Reserve(capacity);
-        return move set;
+        return set;
     }
 
     /// How many elements the set holds.
@@ -107,7 +108,7 @@ extend HashSet<T> {
         // The table has room and the probe can still run past what a distance byte holds, when the elements collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `EnsureRoom` returned, so the capacity is nonzero.
-        if self.table.PlaceHashed(move value, (), hashed) == none {
+        if self.table.PlaceHashed(value, (), hashed) == none {
             AllocationFailed(AllocError::Unsupported);
         }
         return true;
@@ -124,9 +125,9 @@ extend HashSet<T> {
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key is
         // initialized; it is moved out before `Vacate` closes the slot.
         {
-            let taken = move self.table.keys[slot];
+            let taken = self.table.keys[slot];
             self.table.Vacate(slot);
-            return move taken;
+            return taken;
         }
     }
 
@@ -192,7 +193,7 @@ extend HashSet<T> {
     /// @returns a cursor that consumes the set as it goes
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#into-iterator
     pub func IntoIterator(self) -> HashSetIntoIterator<T> {
-        var set = move self;
+        var set = self;
         let taken = HashSetIntoIterator<T> {
             table: Table<T, ()> {
                 keys: set.table.keys,
@@ -212,7 +213,7 @@ extend HashSet<T> {
         set.table.tags = null;
         set.table.length = 0;
         set.table.capacity = 0;
-        return move taken;
+        return taken;
     }
 
     /// Whether every element of this set is also in `other`.
@@ -336,7 +337,7 @@ extend HashSet<T> {
                 if self.table.IsOccupied(index) && !other.Contains(self.table.keys[index]) {
                     // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
                     {
-                        let taken = move self.table.keys[index];
+                        let taken = self.table.keys[index];
                         self.table.Vacate(index);
                     }
                     sweeping = true;
@@ -366,7 +367,7 @@ extend HashSet<T> {
                 if self.table.IsOccupied(index) && other.Contains(self.table.keys[index]) {
                     // Safety: the same occupied slot; its key is moved out before `Vacate` closes it.
                     {
-                        let taken = move self.table.keys[index];
+                        let taken = self.table.keys[index];
                         self.table.Vacate(index);
                     }
                     sweeping = true;
@@ -399,7 +400,7 @@ extend HashSet<T> {
                             // Safety: the table invariant: `Find` names only an occupied slot below the capacity; its
                             // key is moved out before `Vacate` closes the slot.
                             {
-                                let taken = move self.table.keys[slot];
+                                let taken = self.table.keys[slot];
                                 self.table.Vacate(slot);
                             }
                         },
@@ -440,7 +441,7 @@ extend HashSet<T> {
                 }
             }
         }
-        return move copy;
+        return copy;
     }
 }
 
@@ -448,7 +449,7 @@ extend HashSet<T> {
 /// Borrows the set, so the set must outlive it and must not be inserted into or removed from while it is alive.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/hash-set#hash-set-iterator
-pub struct HashSetIterator<T> {
+pub struct HashSetIterator<T: Copyable> {
     /// Raw borrowed table storage. Kept raw because references cannot be fields.
     keys: *T;
     states: *uint8;
@@ -484,7 +485,7 @@ extend HashSetIterator<T> : Iterator {
 /// Move-only: it owns the storage the set owned. Whatever is left when its life ends is destroyed with it.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/hash-set#hash-set-into-iterator
-pub struct HashSetIntoIterator<T> {
+pub struct HashSetIntoIterator<T: Copyable> {
     /// The table taken from the set.
     table: Table<T, ()>;
     /// The slot to look at next.
@@ -507,11 +508,11 @@ extend HashSetIntoIterator<T> : Iterator {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its key
                 // is initialized; it is moved out and the slot is marked empty at once.
                 {
-                    let taken = move self.table.keys[index];
+                    let taken = self.table.keys[index];
                     self.table.states[index] = SlotEmpty;
                     self.table.length = self.table.length - 1;
                     self.cursor = index + 1;
-                    return move taken;
+                    return taken;
                 }
             }
             index++;

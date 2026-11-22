@@ -1,3 +1,4 @@
+import Core::Ownership::Copyable;
 import Core::Bits::{ BitAt, BitWidthOf, CountOnes, CountZeros, FromBigEndian, FromLittleEndian, IsPowerOfTwo,
                      LeadingOnes, LeadingZeros, LoadBigEndian, LoadLittleEndian, ReverseBits, ReverseBytes, RotateLeft,
                      RotateRight, ShiftRightLogical, StoreBigEndian, StoreLittleEndian, ToBigEndian, ToLittleEndian,
@@ -8,7 +9,7 @@ import Core::Diagnostics::Assert;
 // `int512` is caught rather than averaged away. The signed checks matter most: `>>` is arithmetic on a signed type,
 // and every operation that reads bits as bits has to see the same thing at either signedness.
 
-func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
+func CheckWidth<T: Copyable>(zero: T, one: T, allOnes: T) -> int32 {
     let bits = BitWidthOf<T>(zero);
     let two = one + one;
 
@@ -88,7 +89,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     return 0;
 }
 
-func CheckBytes<T>(value: T, zero: T) -> int32 {
+func CheckBytes<T: Copyable>(value: T, zero: T) -> int32 {
     var buffer: byte[64] = [0; 64];
     var restored = zero;
 

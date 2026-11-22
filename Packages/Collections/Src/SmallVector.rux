@@ -115,7 +115,7 @@ extend SmallVector<T> {
         while index < self.length {
             // Safety: the small-vector invariant: `index < self.length`, checked by the loop, and the length fits the
             // inline room it is read from and the fresh block, sized above the current capacity, it moves into.
-            block[index] = move inline[index];
+            block[index] = inline[index];
             index++;
         }
         self.heap = block;
@@ -133,7 +133,7 @@ extend SmallVector<T> {
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `length < Capacity()`, checked or grown above, so the slot is room the
         // storage has and holds nothing yet.
-        items[self.length] = move value;
+        items[self.length] = value;
         self.length = self.length + 1;
     }
 
@@ -146,8 +146,8 @@ extend SmallVector<T> {
         let items = self.WritableItems();
         // Safety: the small-vector invariant: the old last element is initialized and now outside `length`, so
         // nothing destroys it again once it is moved out.
-        let removed = move items[self.length];
-        return move removed;
+        let removed = items[self.length];
+        return removed;
     }
 
     /// A copy of the element at `index`.
@@ -189,7 +189,7 @@ extend SmallVector<T> {
         while index < self.length {
             // Safety: the small-vector invariant: `index < self.length`, checked by the loop, so the element is
             // initialized; each is moved out once, and the length drops below all of them right after.
-            { let taken = move items[index]; }
+            { let taken = items[index]; }
             index++;
         }
         self.length = length;

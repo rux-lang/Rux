@@ -9,6 +9,8 @@
 // layer: a rotation is three reversals, and that is the whole of it.
 
 
+import Core::Ownership::Copyable;
+
 /// Exchanges the values at two locations.
 /// Both are borrowed mutably and both are written. Passing the same location twice is legal and leaves it alone.
 /// Cannot fail. Runs in constant time and allocates nothing.
@@ -71,7 +73,7 @@ pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
 /// @param items the sequence to work on
 /// @param value the value to write to every element
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#fill
-pub func Fill<T>(items: var T[..], value: T) {
+pub func Fill<T: Copyable>(items: var T[..], value: T) {
     var index: uint = 0;
     while index < items.length {
         items[index] = value;
@@ -91,7 +93,7 @@ pub func Fill<T>(items: var T[..], value: T) {
 /// @param source where the elements come from
 /// @returns whether `destination` was long enough
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#copy-to
-pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
+pub func CopyTo<T: Copyable>(destination: var T[..], source: T[..]) -> bool {
     if destination.length != source.length { return false; }
     var index: uint = 0;
     while index < source.length {
@@ -112,7 +114,7 @@ pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
 /// @param source where the elements come from
 /// @returns whether `destination` was long enough
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#move-to
-pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
+pub func MoveTo<T: Copyable>(destination: var T[..], source: T[..]) -> bool {
     if destination.length != source.length { return false; }
     if (destination.data as uint) <= (source.data as uint) { return CopyTo<T>(destination, source); }
     var remaining = source.length;
@@ -135,7 +137,7 @@ pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
 /// @param items the sequence to work on
 /// @returns how many elements are left after collapsing each run of equal neighbours to one
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#unique
-pub func Unique<T>(items: var T[..]) -> uint {
+pub func Unique<T: Copyable>(items: var T[..]) -> uint {
     if items.length < 2 { return items.length; }
     var kept: uint = 1;
     var index: uint = 1;
@@ -159,7 +161,7 @@ pub func Unique<T>(items: var T[..]) -> uint {
 /// @param value the value to remove every occurrence of
 /// @returns how many elements are left
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-value
-pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
+pub func RemoveValue<T: Copyable>(items: var T[..], value: T) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -181,7 +183,7 @@ pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
 /// @param predicate the test each element is put to
 /// @returns how many elements are left
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-where
-pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
+pub func RemoveWhere<T: Copyable>(items: var T[..], predicate: func(T) -> bool) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -206,7 +208,7 @@ pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// @param predicate the test each element is put to
 /// @returns the index of the first element that fails `predicate`
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition
-pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
+pub func Partition<T: Copyable>(items: var T[..], predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -234,7 +236,7 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// @param predicate the test each element is put to
 /// @returns the index of the first element that fails `predicate`, assuming the sequence is partitioned
 /// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition-point
-pub func PartitionPoint<T>(items: T[..], predicate: func(T) -> bool) -> uint {
+pub func PartitionPoint<T: Copyable>(items: T[..], predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {

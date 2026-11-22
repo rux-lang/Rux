@@ -60,7 +60,7 @@ func Main() -> int {
     let first = cursor.Read();
     // Safety: `pointer` is `cursor.data`, which addresses `values[0]`, a live local.
     match first { .Some(pointer) => { if *pointer != 1 { return 1; } }, .None => { return 2; } }
-    for pointer in cursor { Change<int32>(pointer, Inspect<int32>(pointer) + 10); }
+    for pointer in &var cursor { Change<int32>(pointer, Inspect<int32>(pointer) + 10); }
     if values[0] != 11 || values[1] != 12 || values[2] != 13 { return 3; }
     // The for loop advances the cursor itself, so it is exhausted; a fresh one walks the changed values again.
     var again = Cursor<int32> { data: @values[0], length: 3, position: 0 };

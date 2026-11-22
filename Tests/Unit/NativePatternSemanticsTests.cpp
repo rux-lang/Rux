@@ -739,8 +739,8 @@ TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred o
         struct Token { id: int32; }
         extend Token { func ~(&var self) {} }
         func Use(entry: Token?) -> int32 {
-            var held = move entry;
-            if let token? = move held {
+            var held = entry;
+            if let token? = held {
                 return token.id;
             }
             if held != none {

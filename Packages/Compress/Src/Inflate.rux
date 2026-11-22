@@ -73,7 +73,7 @@ extend DecompressReader {
         // Safety: `window` was just allocated as `WindowSize` bytes, so viewing it as `uint8` reinterprets nothing.
         let windowBytes = window as *var uint8;
         return Self {
-            source: move source, format, allocator, input: inputBytes, inputLength: 0,
+            source: source, format, allocator, input: inputBytes, inputLength: 0,
             inputAt: 0, bits: 0, bitCount: 0, window: windowBytes, windowAt: 0, written: 0,
             state: if format == Format::Raw {
                 AtBlockHeader

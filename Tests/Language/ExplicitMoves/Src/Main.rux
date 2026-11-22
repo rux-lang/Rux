@@ -31,7 +31,7 @@ func Consume(value: MoveOnly) -> int32 {
 
 func MoveNamed() -> int32 {
     let source = MoveOnly { value: 17i32 };
-    let moved = move source;
+    let moved = source;
     return moved.value;
 }
 
@@ -45,10 +45,10 @@ func CopyFrom(source: CopyOnly) -> int32 {
 
 func Main() -> int {
     let first = 40i32;
-    let second = move first;
+    let second = first;
     var destination = 0i32;
-    destination = move second;
-    if Take(move destination) != 40i32 {
+    destination = second;
+    if Take(destination) != 40i32 {
         return 1;
     }
 

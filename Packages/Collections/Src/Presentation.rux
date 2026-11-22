@@ -29,6 +29,7 @@
 // `Display` is the description a reader is shown and `Debug` names the case, exactly as for the errors Text
 // presents. The descriptions are stable and are not a parsing contract: a program branches on the case.
 
+import Core::Ownership::Copyable;
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes,
                WriteSliceDebug };
 
@@ -123,7 +124,7 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
 /// @param spec what to show each key and value under
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/hash-map#write-hash-map-debug
-pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
+pub func WriteHashMapDebug<K: Debug + Copyable, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
                                                spec: FormatSpec) -> !FormatError {
     WriteAscii(writer, c8'{')!;
     var index: uint = 0;
@@ -158,7 +159,7 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/hash-set#write-hash-set-debug
-pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>,
+pub func WriteHashSetDebug<T: Debug + Copyable>(writer: &var TextWriter, value: &HashSet<T>,
                                      spec: FormatSpec) -> !FormatError {
     WriteAscii(writer, c8'{')!;
     var index: uint = 0;
@@ -192,7 +193,7 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
 /// @param spec what to show each key and value under
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/tree-map#write-tree-map-debug
-pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
+pub func WriteTreeMapDebug<K: Debug + Copyable, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
                                                spec: FormatSpec) -> !FormatError {
     WriteAscii(writer, c8'{')!;
     // Safety: the tree invariant: the map's `root` is null or a live node of its tree.
@@ -226,7 +227,7 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/tree-set#write-tree-set-debug
-pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
+pub func WriteTreeSetDebug<T: Debug + Copyable>(writer: &var TextWriter, value: &TreeSet<T>,
                                      spec: FormatSpec) -> !FormatError {
     WriteAscii(writer, c8'{')!;
     // Safety: the tree invariant: the set's `root` is null or a live node of its tree.

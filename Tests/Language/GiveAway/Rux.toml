@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "MoveExpression"
+Name = "GiveAway"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: MoveExpression"
+Description = "Language test: GiveAway"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

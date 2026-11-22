@@ -57,7 +57,7 @@ extend StringBuilder {
     pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
         var builder = StringBuilder::New(allocator);
         builder.Reserve(capacity);
-        return move builder;
+        return builder;
     }
 
     /// How many bytes are in use.
@@ -235,7 +235,7 @@ extend StringBuilder {
         self.data = null;
         self.length = 0;
         self.capacity = 0;
-        return move taken;
+        return taken;
     }
 
     /// Gives the block back.

@@ -1,3 +1,4 @@
+import Core::Ownership::Copyable;
 import Core::Diagnostics::Assert;
 
 // A function type names its type parameters like any other type does, so
@@ -69,7 +70,7 @@ func CountIf<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
 
 // A callback that actually drives an ordering, so the call is exercised many
 // times rather than once.
-func SortBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
+func SortBy<T: Copyable>(data: *var T, length: uint, less: func(T, T) -> bool) {
     if length < 2 {
         return;
     }

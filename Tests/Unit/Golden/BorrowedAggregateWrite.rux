@@ -1,6 +1,5 @@
-// A whole value is written through '&var T' with '=' or '<-' under the rules
-// for 'T'; '&T' refuses it, a parameter is never rebound, and a write is an
-// exclusive access.
+// A whole value is written through '&var T' with '=' under the rules for 'T'; '&T' refuses it, a parameter is never
+// rebound, and a write is an exclusive access.
 struct Pair {
     a: int32;
     b: int32;
@@ -27,7 +26,7 @@ func Copy<T>(slot: &var T, value: T) {
 }
 
 func CopyGeneric(slot: &var Token, token: Token) {
-    Copy(slot, move token);
+    Copy(slot, token);
 }
 
 func Rebind(pair: &var Pair) {

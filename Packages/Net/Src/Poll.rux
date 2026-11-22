@@ -148,7 +148,7 @@ extend Poller {
             // Safety: `F_SETFD` takes an integer argument, not an address.
             FcntlInt(created as int32, F_SETFD, FD_CLOEXEC as int64);
         }
-        return move poller;
+        return poller;
     }
 
     /// Watches `source` for `interest`, reporting it with `token`.

@@ -1,8 +1,8 @@
 // Replacing a whole value through a mutable reference.
-// `=` and `= move` through a parameter, receiver, or `let` alias of type `&var T` store into the caller's value, for a
-// struct, tuple, array, or generic referent alike. The assignment follows the rules for `T` that an assignment to a
+// `=` through a parameter, receiver, or `let` alias of type `&var T` stores into the caller's value, for a struct,
+// tuple, array, or generic referent alike. The assignment follows the rules for `T` that an assignment to a
 // `var` local of type `T` follows: the new value is produced, the old value is destroyed, and the result is installed;
-// a move-only value needs `move` or a `Clone`. Each tracked value appends its id to a log as it is destroyed or cloned,
+// a move-only value is given away bare or copied with a `Clone`. Each tracked value appends its id to a log as it is destroyed or cloned,
 // and each check appends a 0 where it stands, so the log is the exact order of events.
 
 import Core::Diagnostics::Assert;
@@ -55,7 +55,7 @@ extend Copied {
     }
 }
 
-// Move-only: copying is prohibited, so it can only be handed over with `move`.
+// Move-only: copying is prohibited, so it can only be given away.
 struct Token {
     log: *var Log;
     id: int32;
@@ -86,8 +86,8 @@ func ReplaceArray(values: &var int32[3]) { values = [7i32, 8i32, 9i32]; }
 func ReplaceNarrowArray(values: &var int32[2]) { values = [5i32, 6i32]; }
 func ReplaceTracked(slot: &var Tracked, log: *var Log) { slot = Tracked { log, id: 2i32 }; }
 func CopyInto(slot: &var Copied, source: &Copied) { slot = source.Clone(); }
-func MoveInto(slot: &var Token, token: Token) { slot = move token; }
-func Put<T>(slot: &var T, value: T) { slot = move value; }
+func MoveInto(slot: &var Token, token: Token) { slot = token; }
+func Put<T>(slot: &var T, value: T) { slot = value; }
 
 func ReplaceInScope(log: *var Log) {
     var tracked = Tracked { log, id: 1i32 };

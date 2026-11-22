@@ -145,7 +145,7 @@ func Main() -> int {
     // The shapes that parse, and what they parse to.
     let plain: OffsetDateTime ! TimeParseError = ParseRfc3339("2024-02-29T12:30:45Z");
     Assert(plain is .Success(_), "the plain shape parses");
-    let moment = match move plain {
+    let moment = match plain {
         .Success(value) => value,
         .Failure(_) => OffsetDateTime::New(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() },
                  UtcOffset::Utc()),
@@ -164,7 +164,7 @@ func Main() -> int {
     // The leap second parses and folds, which is the one lossy acceptance this package makes on purpose.
     let leap: OffsetDateTime ! TimeParseError = ParseRfc3339("2016-12-31T23:59:60Z");
     Assert(leap is .Success(_), "the leap second parses");
-    let folded = match move leap {
+    let folded = match leap {
         .Success(value) => value,
         .Failure(_) => OffsetDateTime::New(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() },
                  UtcOffset::Utc()),
@@ -211,7 +211,7 @@ func Main() -> int {
     let source: OffsetDateTime ! TimeParseError =
         ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(source is .Success(_), "the round-trip source parses");
-    let original = match move source {
+    let original = match source {
         .Success(value) => value,
         .Failure(_) => OffsetDateTime::New(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() },
                  UtcOffset::Utc()),
@@ -220,7 +220,7 @@ func Main() -> int {
     let again: OffsetDateTime ! TimeParseError =
         ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(again is .Success(_), "which parses again");
-    let second = match move again {
+    let second = match again {
         .Success(value) => value,
         .Failure(_) => original,
     };

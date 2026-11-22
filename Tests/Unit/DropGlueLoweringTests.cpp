@@ -88,7 +88,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             variant Option<T> { Some(T), None }
             func Inspect(input: Option<Handle>) -> int32 {
-                return match move input {
+                return match input {
                     .Some(held) => held.slot,
                     .None => 0i32
                 };
@@ -102,7 +102,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let held = Handle { slot: 1i32 };
-                let copied = move held;
+                let copied = held;
                 return 0;
             }
         )");
@@ -170,7 +170,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let first = Handle { slot: 1i32 };
-                let second = move first;
+                let second = first;
                 return 0;
             }
         )");

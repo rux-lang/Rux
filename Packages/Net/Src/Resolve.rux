@@ -32,7 +32,7 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
     match IpAddress::Parse(host) {
         ip? => {
             addresses.Push(SocketAddress { ip, port });
-            return move addresses;
+            return addresses;
         },
         none => {}
     }
@@ -46,7 +46,7 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
         return ResolveOnLinux(allocator, host, port)!;
     }
     else {
-        return ResolveWithSystem(allocator, host, port, move addresses)!;
+        return ResolveWithSystem(allocator, host, port, addresses)!;
     }
 }
 
@@ -54,7 +54,7 @@ when #target.os != .Linux {
     // Asks the system's resolver, `getaddrinfo`, for `host`'s addresses, adding each once to those in `addresses`.
     func ResolveWithSystem(allocator: Allocator, host: char8[..], port: uint16, addresses: Vector<SocketAddress>)
         -> Vector<SocketAddress> ! IoError {
-        var results = move addresses;
+        var results = addresses;
         StartNetworking();
         var name = Vector<char8>::New(allocator);
         name.PushSlice(host);
@@ -94,6 +94,6 @@ when #target.os != .Linux {
         // Safety: `first` is the head `getaddrinfo` returned, freed once, here.
         freeaddrinfo(first);
         if results.Length() == 0u { throw IoError::Of(IoErrorKind::NotFound); }
-        return move results;
+        return results;
     }
 }

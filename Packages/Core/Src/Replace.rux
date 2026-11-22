@@ -17,10 +17,10 @@ pub module Ownership {
         let address = @place;
         // Safety: `address` is the address of the caller's live `T`; its value is taken out and the slot refilled at
         // once.
-        let previous = move address[0];
+        let previous = address[0];
         // Safety: the slot was emptied on the line above, so writing it destroys nothing.
-        address[0] = move value;
-        return move previous;
+        address[0] = value;
+        return previous;
     }
 
     /// Exchanges the values of two places.
@@ -35,10 +35,10 @@ pub module Ownership {
         let left = @first;
         let right = @second;
         // Safety: both are addresses of the caller's live values; each slot is emptied and refilled before returning.
-        let held = move left[0];
+        let held = left[0];
         // Safety: the same.
-        left[0] = move right[0];
+        left[0] = right[0];
         // Safety: the same.
-        right[0] = move held;
+        right[0] = held;
     }
 }

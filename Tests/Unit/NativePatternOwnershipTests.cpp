@@ -88,7 +88,7 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
     CHECK(AnyContains(written, "cannot modify immutable variable 'options'"));
 }
 
-TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
+TEST_CASE("a subset view is never borrowed, addressed, or stored") {
     const auto errors = ErrorsIn(R"(
         func Views(value: &(Options | Defaults | Count)) {
             match value {
@@ -96,7 +96,6 @@ TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
                     InspectAny(any);
                     let address = @any;
                     let stored: &(Options | Defaults) = any;
-                    let moved = move any;
                 },
                 _ => {}
             }
@@ -105,7 +104,6 @@ TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
     CHECK(AnyContains(errors, "subset view 'any' cannot be passed to a reference parameter"));
     CHECK(AnyContains(errors, "subset view 'any' cannot have its address taken"));
     CHECK(AnyContains(errors, "subset view 'any' cannot be stored as a reference"));
-    CHECK(AnyContains(errors, "subset view 'any' cannot be moved"));
 
     // Copying a view into an owned destination of its type materializes it, and a view can be matched and tested.
     CHECK(ErrorsIn(R"(
@@ -131,8 +129,8 @@ TEST_CASE("a subset view is never borrowed, addressed, stored, or moved") {
 TEST_CASE("an owned subject is consumed once by a match that binds") {
     CHECK(ErrorsIn(R"(
         func Transfer(value: Owned?) {
-            match move value {
-                owned? => Keep(move owned),
+            match value {
+                owned? => Keep(owned),
                 none => {}
             }
         }
@@ -147,16 +145,16 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
             }
         }
         func Inspects(value: Owned?) -> bool {
-            let present = match value {
+            let present = match &value {
                 _? => true,
                 none => false
             };
-            let typed = match value {
+            let typed = match &value {
                 _: Owned => true,
                 none => false
             };
-            match move value {
-                owned? => Keep(move owned),
+            match value {
+                owned? => Keep(owned),
                 none => {}
             }
             return present && typed;
@@ -164,24 +162,14 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
     )")
               .empty());
 
-    const auto implicit = ErrorsIn(R"(
-        func Implicit(value: Owned?) {
-            match value {
-                owned? => Keep(move owned),
-                none => {}
-            }
-        }
-    )");
-    CHECK(AnyContains(implicit, "cannot copy 'Owned?', which prohibits copying"));
-
     const auto twice = ErrorsIn(R"(
         func Twice(value: Owned?) {
-            match move value {
-                owned? => Keep(move owned),
+            match value {
+                owned? => Keep(owned),
                 none => {}
             }
-            match move value {
-                owned? => Keep(move owned),
+            match value {
+                owned? => Keep(owned),
                 none => {}
             }
         }
@@ -194,9 +182,9 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
     const auto errors = ErrorsIn(R"(
         func Consume(owned: Owned) -> bool { return true; }
         func Guarded(value: Owned?) {
-            match move value {
-                owned? if Consume(move owned) => {},
-                owned? => Keep(move owned),
+            match value {
+                owned? if Consume(owned) => {},
+                owned? => Keep(owned),
                 none => {}
             }
         }
@@ -205,9 +193,9 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
 
     CHECK(ErrorsIn(R"(
         func Guarded(value: Owned?) {
-            match move value {
-                owned? if Look(&owned) => Keep(move owned),
-                owned? => Keep(move owned),
+            match value {
+                owned? if Look(&owned) => Keep(owned),
+                owned? => Keep(owned),
                 none => {}
             }
         }
@@ -219,10 +207,10 @@ TEST_CASE("arms merge the ownership states they leave") {
     const auto errors = ErrorsIn(R"(
         func Merge(value: int32 | bool, owned: Owned) {
             match value {
-                number: int32 => Keep(move owned),
+                number: int32 => Keep(owned),
                 flag: bool => {}
             }
-            Keep(move owned);
+            Keep(owned);
         }
     )");
     CHECK(AnyContains(errors, "'owned'"));

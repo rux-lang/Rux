@@ -8,6 +8,7 @@
 // intrinsics need their order written as a case, so a `With` method selects among them with a `match`; the plain
 // methods involve no such choice.
 
+import Core::Ownership::Copyable;
 import Core::Machine::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr,
                         AtomicFetchSub, AtomicFetchXor, AtomicLoad, AtomicStore, MemoryOrder };
 
@@ -17,7 +18,7 @@ import Core::Machine::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, A
 /// Copying an `Atomic` copies its current value into a new, unrelated one.
 /// @typeParam T the value's type: an integer of 8 to 64 bits, `bool`, or a pointer
 /// @see https://rux-lang.dev/docs/api/atomic/atomic
-pub struct Atomic<T> {
+pub struct Atomic<T: Copyable> {
     value: T;
 }
 

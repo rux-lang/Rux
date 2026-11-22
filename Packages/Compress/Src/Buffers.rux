@@ -85,7 +85,7 @@ func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byte> ! Io
         result.PushSlice((gathered.data as *byte)[..gathered.length]);
     }
     Release(gathered);
-    return move result;
+    return result;
 }
 
 // Gives the gathered block back to its allocator.

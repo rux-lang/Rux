@@ -19,6 +19,7 @@
 // link reachable from it is either null or a live node this tree allocated with `AllocateBlock` and has not yet given
 // back. Only `Attach` links nodes in and only `Detach` and `Clear` release them, so the invariant holds between calls.
 
+import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Core::Compare::Ordering;
 
@@ -27,7 +28,7 @@ import Core::Compare::Ordering;
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree#tree-node
-pub struct TreeNode<K, V> {
+pub struct TreeNode<K: Copyable, V> {
     /// The key this node is ordered by.
     pub key: K;
     /// The value stored under that key.
@@ -47,7 +48,7 @@ pub struct TreeNode<K, V> {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree
-pub struct Tree<K, V> {
+pub struct Tree<K: Copyable, V> {
     /// The topmost node, or null for an empty tree. Always black.
     root: *var TreeNode<K, V>;
     /// How many nodes the tree holds.
@@ -390,9 +391,9 @@ extend Tree<K, V> {
                 // Safety: the tree invariant: `walk` is still that live node, and its value is refilled right after
                 // it is moved out.
                 {
-                    let displaced = move walk.value;
-                    walk.value = move value;
-                    return move displaced;
+                    let displaced = walk.value;
+                    walk.value = value;
+                    return displaced;
                 }
             }
         }
@@ -403,8 +404,8 @@ extend Tree<K, V> {
         // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.
         // Safety: `fresh` comes from `AllocateBlock` with room for one node, and this is its first write.
         *fresh = TreeNode<K, V> {
-            key: move key,
-            value: move value,
+            key: key,
+            value: value,
             left: null,
             right: null,
             parent: above,
@@ -589,10 +590,10 @@ extend Tree<K, V> {
             self.RemoveFixup(risen, risenParent);
         }
 
-        let key = move node.key;
-        let value = move node.value;
+        let key = node.key;
+        let value = node.value;
         ReleaseBlock<TreeNode<K, V>>(self.allocator, node, 1);
-        return KeyValue<K, V> { key: move key, value: move value };
+        return KeyValue<K, V> { key: key, value: value };
     }
 
     /// Destroys every entry and gives every node back to the allocator, leaving an empty tree.
@@ -627,8 +628,8 @@ extend Tree<K, V> {
                 }
                 // Reading the key and the value out gives them to locals, and the locals dying here is what
                 // destroys them. Nothing else in a generic container can reach a destructor.
-                let key = move walk.key;
-                let value = move walk.value;
+                let key = walk.key;
+                let value = walk.value;
                 ReleaseBlock<TreeNode<K, V>>(self.allocator, walk, 1);
                 walk = above;
             }

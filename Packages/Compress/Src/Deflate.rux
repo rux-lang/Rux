@@ -100,7 +100,7 @@ extend CompressWriter {
             index = index + 1;
         }
         return Self {
-            sink: move sink, format, level, allocator, data, dataLength: 0,
+            sink: sink, format, level, allocator, data, dataLength: 0,
             blockStart: 0, head, previous, tokens, tokenCount: 0, output,
             outputLength: 0, bits: 0, bitCount: 0, started: false, finished: false, crc: Crc32::New(), adler: Adler32::New(),
             size: 0

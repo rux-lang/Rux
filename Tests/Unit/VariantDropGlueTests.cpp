@@ -201,7 +201,7 @@ TEST_CASE("tuple variant construction records reverse partial cleanup with varia
     const HirPackage package = DropHir(kOwner + R"(
         variant Choice { Empty, Pair(Handle, Handle, int32) }
         func Build(first: Handle, second: Handle) -> Choice {
-            return Choice::Pair(move first, move second, 7i32);
+            return Choice::Pair(first, second, 7i32);
         }
     )");
     const HirFunc &build = HirFunction(package, "Build");
@@ -226,7 +226,7 @@ TEST_CASE("named variant construction records completed payload cleanup by field
     const HirPackage package = DropHir(kOwner + R"(
         variant Record { Empty, Value { first: Handle; count: int32; second: Handle; } }
         func Build(first: Handle, second: Handle) -> Record {
-            return Record::Value { first: move first, count: 7i32, second: move second };
+            return Record::Value { first: first, count: 7i32, second: second };
         }
     )");
     const HirFunc &build = HirFunction(package, "Build");
@@ -247,7 +247,7 @@ TEST_CASE("named variant construction records completed payload cleanup by field
 TEST_CASE("variant values in returns and loops keep one flag-guarded glue call per binding") {
     const LirPackage package = DropLir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
-        func Make(value: Handle) -> Held { return Held::Full(move value); }
+        func Make(value: Handle) -> Held { return Held::Full(value); }
         func Run(flag: bool) {
             loop {
                 let held = Make(Handle { value: 1i32 });

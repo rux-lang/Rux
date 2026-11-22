@@ -49,7 +49,7 @@ extend RotatingFile {
         var owned = PathBuffer::FromPath(allocator, path);
         var file = File::Open(allocator, owned.AsPath(), OpenOptions::Appending())!;
         let size = file.Size()!;
-        return Self { file: move file, path: move owned, limit, keep, size, allocator };
+        return Self { file: file, path: owned, limit, keep, size, allocator };
     }
 
     /// How many bytes the current file holds.
@@ -75,7 +75,7 @@ extend RotatingFile {
             MoveAside(self.allocator, self.path.AsPath(), 0, 1)!;
         }
         var reopened = File::Open(self.allocator, self.path.AsPath(), OpenOptions::Writing())!;
-        self.file = move reopened;
+        self.file = reopened;
         self.size = 0;
     }
 

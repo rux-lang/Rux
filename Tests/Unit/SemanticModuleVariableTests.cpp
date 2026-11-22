@@ -153,11 +153,12 @@ TEST_CASE("a module variable cannot hold a value that needs destruction or a bor
 
 TEST_CASE("nothing moves out of a module variable") {
     const auto diagnostics = AnalyzeSource(R"(
-        struct Pair { left: int; right: int; }
-        var Shared: Pair = Pair { left: 1, right: 2 };
+        #NoCopy
+        struct Token { id: int; }
+        var Shared: Token = Token { id: 1 };
         func Main() -> int {
-            let taken = move Shared;
-            return taken.left;
+            let taken = Shared;
+            return taken.id;
         }
     )");
     CHECK(HasMessage(diagnostics, "cannot move out of module variable 'Shared'"));

@@ -230,7 +230,7 @@ func Main() -> int {
     Assert(RefusedAt(allocator, "a = 1\nb = 2\na = 3", "TomlParseError::DuplicateKey at 3:6"),
            "the duplicate is found on the line it is written on");
     let refused: TomlValue ! TomlParseFailure = TomlParse(allocator, "a = 1\nb = 2\na = 3");
-    Assert(move refused is .Failure(_), "and the document does not come back beside the reason");
+    Assert(refused is .Failure(_), "and the document does not come back beside the reason");
 
     // A bad scalar is reported at the character inside it, which takes two positions added together: the token's
     // own place in the document, and the failure's place inside the token's text. Neither alone is any use — the

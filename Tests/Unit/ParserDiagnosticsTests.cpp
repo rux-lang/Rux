@@ -481,7 +481,7 @@ TEST_CASE("removed mutable parameters provide final binding and reference syntax
     CHECK_EQ(parsed.diagnostics[0].message, "mutable parameter syntax 'var value: T' has been removed");
     REQUIRE(parsed.diagnostics[0].help.has_value());
     CHECK(parsed.diagnostics[0].help->contains("value: T"));
-    CHECK(parsed.diagnostics[0].help->contains("var local = move value"));
+    CHECK(parsed.diagnostics[0].help->contains("var local = value"));
     CHECK(parsed.diagnostics[0].help->contains("value: &var T"));
 
     CHECK_EQ(parsed.diagnostics[1].message, "mutable parameter syntax 'var self: T' has been removed");
@@ -898,9 +898,9 @@ TEST_CASE("removed spellings report the form that replaced them") {
         {"#Test() func F() {}", "'#Test' is written without parentheses", "write '#Test'"},
         {"func F() -> int { return c ? 1 : 2; }", "the conditional operator 'c ? a : b' is not supported",
          "write 'if c { a } else { b }'"},
-        {"func F() { let a <- b; }", "'<-' is not a binding operator", "write 'let name = move source'"},
-        {"func F() { a <- b; }", "'<-' is not an assignment operator", "write 'target = move source'"},
-        {"func F() { G(<-b); }", "'<-' is not an operator", "write 'move value' to transfer ownership"},
+        {"func F() { let a <- b; }", "'<-' is not a binding operator", "write 'let name = source'"},
+        {"func F() { a <- b; }", "'<-' is not an assignment operator", "write 'target = source'"},
+        {"func F() { G(<-b); }", "'<-' is not an operator", "remove it: a bare value is given away"},
     };
     for (const auto &testCase : cases) {
         CAPTURE(testCase.source);

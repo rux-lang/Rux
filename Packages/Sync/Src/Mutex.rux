@@ -40,7 +40,7 @@ extend Mutex<T> {
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/mutex#mutex-new
     pub func New(value: T) -> Self {
-        return Self { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: move value }) };
+        return Self { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: value }) };
     }
 
     /// Another handle to the same value.

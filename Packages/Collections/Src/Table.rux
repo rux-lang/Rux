@@ -27,6 +27,7 @@
 // and its key, value and tag are initialized exactly when that byte is not `SlotEmpty`. Since the capacity is a power
 // of two, `HomeOf` and `NextOf` always name a slot below it.
 
+import Core::Ownership::Copyable;
 import Allocator::{ AllocError, AllocationFailed };
 import Core::Primitives::*;
 import Allocator::Allocator;
@@ -97,7 +98,7 @@ extend TableSeed {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/table
-pub struct Table<K, V> {
+pub struct Table<K: Copyable, V> {
     /// The keys, one per slot. Only the slots whose distance byte is not `SlotEmpty` hold one.
     keys: *var K;
     /// The values, one per slot, occupied exactly where the keys are.
@@ -250,16 +251,16 @@ extend Table<K, V> {
     func PlaceHashed(&var self, key: K, value: V, hashed: uint64) -> uint? {
         var index = self.HomeOf(hashed);
         var distance: uint = 0;
-        var carriedKey = move key;
-        var carriedValue = move value;
+        var carriedKey = key;
+        var carriedValue = value;
         var carriedTag = HashTag(hashed);
         var landed = self.capacity;
 
         while distance <= MaximumProbeDistance {
             let state = self.states[index];
             if state == SlotEmpty {
-                self.keys[index] = move carriedKey;
-                self.values[index] = move carriedValue;
+                self.keys[index] = carriedKey;
+                self.values[index] = carriedValue;
                 self.states[index] = (distance + 1) as uint8;
                 self.tags[index] = carriedTag;
                 self.length = self.length + 1;
@@ -271,18 +272,18 @@ extend Table<K, V> {
                 // The occupant is closer to home than what is being carried, so it gives up the slot and travels on.
                 // Taking the richer entry's place is the whole of Robin Hood: it is the one that can best afford the
                 // extra step.
-                let displacedKey = move self.keys[index];
-                let displacedValue = move self.values[index];
+                let displacedKey = self.keys[index];
+                let displacedValue = self.values[index];
                 let displacedTag = self.tags[index];
-                self.keys[index] = move carriedKey;
-                self.values[index] = move carriedValue;
+                self.keys[index] = carriedKey;
+                self.values[index] = carriedValue;
                 self.states[index] = (distance + 1) as uint8;
                 self.tags[index] = carriedTag;
                 if landed == self.capacity {
                     landed = index;
                 }
-                carriedKey = move displacedKey;
-                carriedValue = move displacedValue;
+                carriedKey = displacedKey;
+                carriedValue = displacedValue;
                 carriedTag = displacedTag;
                 distance = occupantDistance;
             }
@@ -307,8 +308,8 @@ extend Table<K, V> {
                 // Nothing follows, or what follows is already home and would be wrong to move back past it.
                 break;
             }
-            self.keys[hole] = move self.keys[next];
-            self.values[hole] = move self.values[next];
+            self.keys[hole] = self.keys[next];
+            self.values[hole] = self.values[next];
             self.states[hole] = (state as uint8) - 1;
             self.tags[hole] = self.tags[next];
             hole = next;
@@ -412,7 +413,7 @@ extend Table<K, V> {
             if oldStates[index] != SlotEmpty {
                 // Relocated rather than copied: each entry has exactly one home afterwards, in the new run.
                 let hashed = hash(oldKeys[index], self.seed.low, self.seed.high);
-                self.PlaceHashed(move oldKeys[index], move oldValues[index], hashed);
+                self.PlaceHashed(oldKeys[index], oldValues[index], hashed);
             }
             index++;
         }
@@ -496,8 +497,8 @@ extend Table<K, V> {
             if self.states[index] != SlotEmpty {
                 // Moving each into a local destroys it when the local's life ends, which is the only way a
                 // container has to destroy something it does not know is droppable.
-                let takenKey = move self.keys[index];
-                let takenValue = move self.values[index];
+                let takenKey = self.keys[index];
+                let takenValue = self.values[index];
                 self.states[index] = SlotEmpty;
             }
             index++;

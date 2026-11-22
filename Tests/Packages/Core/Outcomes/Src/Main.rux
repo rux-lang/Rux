@@ -36,7 +36,7 @@ func Main() -> int {
     // Asking borrows, so a fallible whose payload cannot be copied is still there to be matched afterwards.
     let held: Handle ! Failure = Handle { value: 23 };
     Assert(held is .Success(_), "A move-only outcome is asked without consuming it");
-    let heldValue = match move held {
+    let heldValue = match held {
         .Success(handle) => handle.value,
         .Failure(_) => 0
     };
@@ -49,7 +49,7 @@ func Main() -> int {
     Assert(refused is .Failure(Failure::Invalid) && refused is Failure, "A failure kept as a value");
     let owned: Handle ! Failure = Handle { value: 31 };
     Assert(owned is .Success(_) && !(owned is .Failure(_)), "Asking a fallible borrows it");
-    let ownedValue = match move owned {
+    let ownedValue = match owned {
         handle: Handle => handle.value,
         _: Failure => 0
     };

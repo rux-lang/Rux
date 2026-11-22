@@ -1,5 +1,5 @@
-// 'move' consumes an owning value, so a name that only borrows cannot be moved, and an owner cannot be moved while a
-// borrow of it is still in use.
+// A bare owning value is given away, so a name that only borrows passes the loan on, and an owner cannot be given away
+// while a loan of it is still in use.
 struct Buffer {
     size: int32;
 }
@@ -10,13 +10,13 @@ extend Buffer {
 }
 
 func FromReference(buffer: &Buffer) -> int32 {
-    let local = move buffer;
+    let local = buffer;
     return local.size;
 }
 
 func WhileBorrowed(buffer: Buffer) -> int32 {
     let view: &Buffer = buffer;
-    let moved = move buffer;
+    let moved = buffer;
     return view.size;
 }
 

@@ -12,6 +12,7 @@
 // the slice was sorted by; a different one gives a meaningless answer just as an unsorted slice does.
 // Nothing here allocates or writes.
 
+import Core::Ownership::Copyable;
 import Core::Compare::Ordering;
 
 /// Whether `items` is in non-decreasing order.
@@ -116,7 +117,7 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 /// @param value the value to look for
 /// @returns the index of a matching element, or `none`; which one is unspecified when several match
 /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search
-pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
+pub func BinarySearch<T: Copyable>(items: T[..], value: T) -> uint? {
     let at = LowerBound<T>(items, value);
     // Safety: `at` is below `items.length`, checked just before.
     if at < items.length && !(value < items.data[at]) { return at; }
@@ -134,7 +135,7 @@ pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
 /// @param value the value to bracket
 /// @returns the range of indices holding elements equal to `value`, empty when none does
 /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range
-pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
+pub func EqualRange<T: Copyable>(items: T[..], value: T) -> uint..uint {
     return LowerBound<T>(items, value)..UpperBound<T>(items, value);
 }
 
@@ -182,7 +183,7 @@ pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> ui
 /// @param compare how two elements order against each other
 /// @returns the first index where `value` could be inserted and keep the order under `compare`
 /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound-by
-pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
+pub func LowerBoundBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -208,7 +209,7 @@ pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// @param compare how two elements order against each other
 /// @returns the last index where `value` could be inserted and keep the order under `compare`
 /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound-by
-pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
+pub func UpperBoundBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -235,7 +236,7 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// @param compare how two elements order against each other
 /// @returns the index of a matching element under `compare`, or `none`
 /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search-by
-pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
+pub func BinarySearchBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
     let at = LowerBoundBy<T>(items, value, compare);
     // Safety: `at` is below `items.length`, checked just before.
     if at < items.length && !compare(value, items.data[at]).IsLess() { return at; }
@@ -253,6 +254,6 @@ pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Orderi
 /// @param compare how two elements order against each other
 /// @returns the range of indices holding elements equal to `value` under `compare`
 /// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range-by
-pub func EqualRangeBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
+pub func EqualRangeBy<T: Copyable>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
     return LowerBoundBy<T>(items, value, compare)..UpperBoundBy<T>(items, value, compare);
 }

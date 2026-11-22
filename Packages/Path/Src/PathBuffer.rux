@@ -40,7 +40,7 @@ extend PathBuffer {
     pub func FromPath(allocator: Allocator, path: Path) -> Self {
         var buffer = PathBuffer::New(allocator);
         buffer.AppendUnits(path.AsView().Units());
-        return move buffer;
+        return buffer;
     }
 
     /// How many units the buffer holds.
@@ -183,7 +183,7 @@ extend PathBuffer {
 pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBuffer {
     var buffer = PathBuffer::FromPath(allocator, base);
     buffer.Push(segment);
-    return move buffer;
+    return buffer;
 }
 
 /// A fresh buffer holding `path` lexically simplified: separator runs collapsed to the preferred separator, `.`
@@ -261,7 +261,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
             }
         }
     }
-    return move buffer;
+    return buffer;
 }
 
 // Whether a segment is exactly `.` or exactly `..`, in native units.

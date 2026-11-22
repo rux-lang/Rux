@@ -45,20 +45,20 @@ func MakePair(log: *var Log) -> (Tracked, Tracked) {
 
 func LetDiscardsFirst(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    let (_, second) = move pair;
+    let (_, second) = pair;
     Mark(log);
     Assert(second.id == 2, "the bound element is the second one");
 }
 
 func LetDiscardsBoth(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    let (_, _) = move pair;
+    let (_, _) = pair;
     Mark(log);
 }
 
 func LetDiscardsNested(log: *var Log) {
     let nested = ((Track(log, 1), Track(log, 2)), Track(log, 3));
-    let ((first, _), _) = move nested;
+    let ((first, _), _) = nested;
     Mark(log);
     Assert(first.id == 1, "the nested bound element is the first one");
 }
@@ -71,7 +71,7 @@ func LetDiscardsFromTemporary(log: *var Log) {
 
 func MatchDiscardsFirst(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match move pair {
+    match pair {
         (_, second) => {
             Mark(log);
             Assert(second.id == 2, "the arm binds the second element");
@@ -81,7 +81,7 @@ func MatchDiscardsFirst(log: *var Log) {
 
 func MatchBindsEveryField(log: *var Log) {
     let parcel = Parcel { label: Track(log, 1), contents: Track(log, 2) };
-    match move parcel {
+    match parcel {
         Parcel { label, contents } => {
             Mark(log);
             Assert(label.id == 1 && contents.id == 2, "the arm binds both fields");
@@ -91,7 +91,7 @@ func MatchBindsEveryField(log: *var Log) {
 
 func MatchOmitsField(log: *var Log) {
     let parcel = Parcel { label: Track(log, 1), contents: Track(log, 2) };
-    match move parcel {
+    match parcel {
         Parcel { label } => {
             Mark(log);
             Assert(label.id == 1, "the arm binds the label");
@@ -102,7 +102,7 @@ func MatchOmitsField(log: *var Log) {
 // The first arm tests the first element and fails, so only the arm that is taken destroys anything.
 func MatchAfterRefutedArm(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match move pair {
+    match pair {
         (Tracked { id: 9 }, second) => {
             Assert(second.id < 0, "an arm whose test failed was taken");
         },
@@ -119,7 +119,7 @@ func MatchAfterRefutedArm(log: *var Log) {
 // An arm that binds nothing leaves the whole subject to be destroyed as one value.
 func MatchArmBindsNothing(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match move pair {
+    match pair {
         (Tracked { id: 1 }, _) => {
             Mark(log);
         },
@@ -136,7 +136,7 @@ func MatchTemporary(log: *var Log) -> int32 {
 // A match that takes nothing leaves its subject with its owner, which destroys it at the end of its scope.
 func MatchKeepsSubject(log: *var Log) {
     let pair = (Track(log, 1), Track(log, 2));
-    match pair {
+    match &pair {
         (Tracked { id: 1 }, _) => {
             Mark(log);
         },

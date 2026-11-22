@@ -20,7 +20,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 func Compiled(pattern: char8[..]) -> Regex {
     match Regex::New(SystemAllocator::New(), pattern) {
         .Success(regex) => {
-            return move regex;
+            return regex;
         },
         .Failure(_) => {},
     }
@@ -127,7 +127,7 @@ func Main() -> int {
     Assert(date.GroupCount() == 3u && (date.GroupIndex("month") ?? 0u) == 2u && date.GroupIndex("day") == none,
            "groups");
     let captured = date.Capture("date: 2026-10-10.");
-    match move captured {
+    match captured {
         groups? => {
             Assert(groups.Count() == 4u && GroupIs(groups.Group(0), 6, 16), "the whole match is group 0");
             Assert(GroupIs(groups.Named("year"), 6, 10) && GroupIs(groups.Named("month"), 11, 13) &&
@@ -233,7 +233,7 @@ func Main() -> int {
     Assert(Finds("x*", pad, 0, 0) && Finds("\\.*?", pad, 0, 0), "empty matches through the DFA");
     let long = Compiled("(?<word>[a-z]+)(?<digits>[0-9]+)");
     let groups = long.Capture("................................................................................abc123.");
-    let found = (move groups) ?? return 1;
+    let found = (groups) ?? return 1;
     let wordMatch = found.Named("word") ?? return 2;
     let digitMatch = found.Named("digits") ?? return 3;
     Assert(wordMatch.start == 80u && wordMatch.end == 83u && digitMatch.start == 83u && digitMatch.end == 86u,

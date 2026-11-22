@@ -1,6 +1,4 @@
-18:5: error: cannot modify 'pair' through immutable reference '&Pair'
-22:10: error: cannot copy 'Token', which prohibits copying
-35:5: error: 'var' binding 'alias' cannot hold reference '&var Pair'
-41:5: error: cannot modify 'pair' while it is immutably borrowed
-46:5: error: cannot modify parameter 'pair'
-26:10: error: cannot copy 'Token', which prohibits copying
+17:5: error: cannot modify 'pair' through immutable reference '&Pair'
+34:5: error: 'var' binding 'alias' cannot hold reference '&var Pair'
+40:5: error: cannot modify 'pair' while it is immutably borrowed
+45:5: error: cannot modify parameter 'pair'

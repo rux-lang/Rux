@@ -112,7 +112,7 @@ extend TemporaryFile {
             candidate.Push(name.View());
             match File::Open(allocator, candidate.AsPath(), options) {
                 .Success(opened) => {
-                    return Self { file: move opened, path: move candidate, owned: true };
+                    return Self { file: opened, path: candidate, owned: true };
                 },
                 .Failure(error) => {
                     // Anything but a collision is the caller's problem, not something another name would fix.
@@ -201,7 +201,7 @@ extend TemporaryDirectoryHandle {
             // MakeDirectory already refuses a name that is taken, which is the claim this needs.
             match MakeDirectory(allocator, candidate.AsPath()) {
                 .Success(_) => {
-                    return Self { path: move candidate, owned: true };
+                    return Self { path: candidate, owned: true };
                 },
                 .Failure(error) => {
                     if error.kind != IoErrorKind::AlreadyExists { throw error; }

@@ -424,27 +424,27 @@ TEST_CASE("private capability prohibitions apply across packages") {
     // A private destructor still makes the type move-only wherever it is used.
     const auto owning = AnalyzePackages({{"main.rux", R"(
         import Library::OwningValue;
-        func Main() { let value = OwningValue(); let copied = value; }
+        func Main() { let value = OwningValue(); let given = value; let again = value; }
     )"}},
                                         {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(owning, "cannot copy 'Owning', which owns resources"), Messages(owning));
+    CHECK_MESSAGE(HasMessage(owning, "value 'value' is used after it was moved"), Messages(owning));
     CHECK_FALSE(HasMessage(owning, "private to package"));
 
     const auto prohibited = AnalyzePackages({{"main.rux", R"(
         import Library::NoCopyValue;
-        func Main() { let value = NoCopyValue(); let copied = value; }
+        func Main() { let value = NoCopyValue(); let given = value; let again = value; }
     )"}},
                                             {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(prohibited, "cannot copy 'NoCopy', which prohibits copying"), Messages(prohibited));
+    CHECK_MESSAGE(HasMessage(prohibited, "value 'value' is used after it was moved"), Messages(prohibited));
     CHECK_FALSE(HasMessage(prohibited, "private to package"));
 
     // An attribute belongs to the type, so it applies wherever the type is used.
     const auto marked = AnalyzePackages({{"main.rux", R"(
         import Library::MarkedValue;
-        func Main() { let value = MarkedValue(); let copied = value; let moved = move value; }
+        func Main() { let value = MarkedValue(); let given = value; let again = value; }
     )"}},
                                         {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(marked, "cannot copy 'Marked', which prohibits copying"), Messages(marked));
+    CHECK_MESSAGE(HasMessage(marked, "value 'value' is used after it was moved"), Messages(marked));
     CHECK_FALSE(HasMessage(marked, "private to package"));
 }
 

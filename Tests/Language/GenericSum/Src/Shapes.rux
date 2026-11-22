@@ -80,10 +80,10 @@ module GenericSum::Shapes {
         }
         if depth == 1i32 {
             let failed: T ! E = Fail<T, E>(error);
-            return move failed;
+            return failed;
         }
         let succeeded: T ! E = value;
-        return move succeeded;
+        return succeeded;
     }
 
     pub func Complete(ok: bool) -> !IoError {

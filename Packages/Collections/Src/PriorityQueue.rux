@@ -43,7 +43,7 @@ extend PriorityQueue<T> {
     /// @param value the element
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#push
     pub func Push(&var self, value: T) {
-        self.items.Push(move value);
+        self.items.Push(value);
         let items = self.items.AsMutableSlice();
         var index = items.length - 1;
         while index > 0 {
@@ -108,7 +108,7 @@ extend PriorityQueue<T> {
 func SwapElements<T>(items: var T[..], left: uint, right: uint) {
     if left == right { return; }
     let data = items.data;
-    let held = move data[left];
-    data[left] = move data[right];
-    data[right] = move held;
+    let held = data[left];
+    data[left] = data[right];
+    data[right] = held;
 }

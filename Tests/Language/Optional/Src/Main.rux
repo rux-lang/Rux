@@ -83,7 +83,7 @@ func Hold(counter: *var Counter) {
 }
 
 func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
-    let tracked = (move value) ?? Tracked { counter: counter, id: 0i32 };
+    let tracked = (value) ?? Tracked { counter: counter, id: 0i32 };
     return tracked.id;
 }
 

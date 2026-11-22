@@ -23,7 +23,7 @@ TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration ord
                 first;
             }
             let last = Handle { value: 3 };
-            Take(move last);
+            Take(last);
         }
     )");
 
@@ -81,9 +81,9 @@ TEST_CASE("returns evaluate their value before conditionally destroying every li
             let outer = Handle { value: 1 };
             if selectNested {
                 let nested = Handle { value: 2 };
-                return move nested;
+                return nested;
             }
-            return move parameter;
+            return parameter;
         }
     )");
 
@@ -175,18 +175,18 @@ TEST_CASE("move assignment schedules conditional destruction before replacing dr
         struct Owner { handle: Handle; }
 
         func Replace(destination: Handle, source: Handle) {
-            var target = move destination;
-            target = move source;
+            var target = destination;
+            target = source;
         }
 
         func ReplaceField(owner: Owner, source: Handle) {
-            var target = move owner;
-            target.handle = move source;
+            var target = owner;
+            target.handle = source;
         }
 
         func Initialize(source: Handle) {
             var destination: Handle;
-            destination = move source;
+            destination = source;
         }
     )");
 
@@ -242,13 +242,13 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
         variant Choice { Both(Handle, Handle) }
 
         func Build(first: Handle, last: Handle) -> Owner {
-            return Owner { first: move first, copy: 1, last: move last };
+            return Owner { first: first, copy: 1, last: last };
         }
 
         func Aggregate(a: Handle, b: Handle, c: Handle, d: Handle, e: Handle, f: Handle) {
-            let array = [move a, move b];
-            let tuple = (move c, 1, move d);
-            let choice = Choice::Both(move e, move f);
+            let array = [a, b];
+            let tuple = (c, 1, d);
+            let choice = Choice::Both(e, f);
         }
     )");
 
@@ -301,25 +301,25 @@ constexpr const char *kPlaceReplacementSource = R"(
     }
 
     func Local(owner: Owner, a: Handle, b: Handle, c: Handle) {
-        var target = move owner;
-        target.handle = move a;
-        target.pair.0 = move b;
-        target.items[1] = move c;
+        var target = owner;
+        target.handle = a;
+        target.pair.0 = b;
+        target.items[1] = c;
     }
-    func Borrowed(owner: &var Owner, a: Handle) { owner.handle = move a; }
-    func Viewed(items: var Handle[..], a: Handle) { items[0] = move a; }
+    func Borrowed(owner: &var Owner, a: Handle) { owner.handle = a; }
+    func Viewed(items: var Handle[..], a: Handle) { items[0] = a; }
     // Safety: `slot` must address a live, writable `Owner`
-    func Raw(slot: *var Owner, a: Handle) { slot.handle = move a; }
+    func Raw(slot: *var Owner, a: Handle) { slot.handle = a; }
     // Safety: `slots` must address writable `Handle` elements at every index the body uses
     func RawElements(slots: *var Handle, a: Handle, b: Handle) {
-        slots[1] = move a;
-        *slots = move b;
+        slots[1] = a;
+        *slots = b;
     }
     func Whole(a: Handle, b: Handle) {
-        var target = move a;
-        target = move b;
+        var target = a;
+        target = b;
     }
-    func Indexer(grid: &var Grid, a: Handle) { grid[0] = move a; }
+    func Indexer(grid: &var Grid, a: Handle) { grid[0] = a; }
 )";
 
 const FuncDecl &RequireFuncDecl(const Module &module, const std::string_view name) {

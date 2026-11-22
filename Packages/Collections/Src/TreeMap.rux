@@ -8,6 +8,7 @@
 // arrive replaces the first's value. `Comparing` has ready-made ones for the usual key types.
 // The balancing, the node ownership and the ordered walk are `Tree`'s; this is the map's shape over them.
 
+import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Core::Compare::Ordering;
 
@@ -16,7 +17,7 @@ import Core::Compare::Ordering;
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree-map
-pub struct TreeMap<K, V> {
+pub struct TreeMap<K: Copyable, V> {
     /// The nodes, and the balancing that keeps them shallow.
     tree: Tree<K, V>;
     /// The order the keys are kept in. Fixed when the map is made.
@@ -105,7 +106,7 @@ extend TreeMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#insert
     pub func Insert(&var self, key: K, value: V) {
         // The displaced value, if any, is destroyed when the discarded optional's life ends.
-        let replaced = self.tree.Attach(move key, move value, self.compare);
+        let replaced = self.tree.Attach(key, value, self.compare);
     }
 
     /// Stores `value` under `key` and hands back the value it displaced, or `none` for a key that was not there.
@@ -115,7 +116,7 @@ extend TreeMap<K, V> {
     /// @returns the value that was there, or `none` when the key was absent
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#replace
     pub func Replace(&var self, key: K, value: V) -> V? {
-        return self.tree.Attach(move key, move value, self.compare);
+        return self.tree.Attach(key, value, self.compare);
     }
 
     /// Takes the entry stored under `key` out of the map and hands its value back, or `none`.
@@ -142,7 +143,7 @@ extend TreeMap<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
         let entry = self.tree.Detach(node);
-        return move entry;
+        return entry;
     }
 
     /// Destroys every entry, leaving an empty map that is still usable.
@@ -281,13 +282,13 @@ extend TreeMap<K, V> {
         // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
         // function ends, and a map left holding the nodes would have its destructor free the very nodes the iterator
         // was handed.
-        var map = move self;
+        var map = self;
         let taken = TreeMapIntoIterator<K, V> {
             tree: Tree<K, V> { root: map.tree.root, length: map.tree.length, allocator: map.tree.allocator }
         };
         map.tree.root = null;
         map.tree.length = 0;
-        return move taken;
+        return taken;
     }
 }
 
@@ -296,7 +297,7 @@ extend TreeMap<K, V> {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree-map#tree-map-iterator
-pub struct TreeMapIterator<K, V> {
+pub struct TreeMapIterator<K: Copyable, V> {
     /// The node to hand back next, or null when the walk is done.
     next: *var TreeNode<K, V>;
 }
@@ -320,7 +321,7 @@ extend TreeMapIterator<K, V> {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree-map#tree-map-range-iterator
-pub struct TreeMapRangeIterator<K, V> {
+pub struct TreeMapRangeIterator<K: Copyable, V> {
     /// The node to hand back next, or null when the walk is done.
     next: *var TreeNode<K, V>;
     /// The first key the walk will not hand back.
@@ -354,7 +355,7 @@ extend TreeMapRangeIterator<K, V> {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree-map#tree-map-into-iterator
-pub struct TreeMapIntoIterator<K, V> {
+pub struct TreeMapIntoIterator<K: Copyable, V> {
     /// What is left of the map.
     tree: Tree<K, V>;
 }
@@ -372,6 +373,6 @@ extend TreeMapIntoIterator<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Minimum` of a live subtree is a live node of it.
         let entry = self.tree.Detach(node);
-        return move entry;
+        return entry;
     }
 }

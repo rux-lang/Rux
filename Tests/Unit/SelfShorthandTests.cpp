@@ -286,7 +286,7 @@ TEST_CASE("a read-only shorthand receiver refuses writes as the long form does")
     CHECK_MESSAGE(!diagnostics.empty(), Messages(diagnostics));
 }
 
-TEST_CASE("field shorthand of a move-only binding asks for the move written out") {
+TEST_CASE("field shorthand gives a move-only binding away") {
     const auto diagnostics = Analyze(R"(
         struct Buffer { size: int32; }
         extend Buffer {
@@ -298,11 +298,7 @@ TEST_CASE("field shorthand of a move-only binding asks for the move written out"
         }
         func Main() -> int { return 0; }
     )");
-    CAPTURE(Messages(diagnostics));
-    REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "cannot copy 'Buffer', which owns resources");
-    REQUIRE(diagnostics.front().help.has_value());
-    CHECK_EQ(*diagnostics.front().help, "write 'buffer: move buffer' to transfer it");
+    CHECK_MESSAGE(diagnostics.empty(), Messages(diagnostics));
 }
 
 TEST_CASE("field shorthand of an unknown name reports the name") {

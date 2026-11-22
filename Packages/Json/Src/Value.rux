@@ -242,7 +242,7 @@ extend JsonValue {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Boolean;
         held.boolean = value;
-        return move held;
+        return held;
     }
 
     /// A number, from the text it is written with, checked against JSON's number grammar as `JsonNumber` does.
@@ -255,7 +255,7 @@ extend JsonValue {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Number;
         held.number = JsonNumber::New(allocator, text)!;
-        return move held;
+        return held;
     }
 
     // A number value from a token the lexer has already held to the grammar, which the parser builds its numbers
@@ -264,7 +264,7 @@ extend JsonValue {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Number;
         held.number = JsonNumber::Lexed(allocator, text);
-        return move held;
+        return held;
     }
 
     /// A string value.
@@ -276,7 +276,7 @@ extend JsonValue {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Text;
         held.text = String::FromBytes(allocator, value)!;
-        return move held;
+        return held;
     }
 
     /// An empty array.
@@ -286,7 +286,7 @@ extend JsonValue {
     pub func Array(allocator: Allocator) -> Self {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Array;
-        return move held;
+        return held;
     }
 
     /// An empty object.
@@ -296,7 +296,7 @@ extend JsonValue {
     pub func Object(allocator: Allocator) -> Self {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Object;
-        return move held;
+        return held;
     }
 
     /// Which kind this value is.
@@ -353,7 +353,7 @@ extend JsonValue {
     /// @see https://rux-lang.dev/docs/api/json/json-value#push
     pub func Push(&var self, value: Self) -> !JsonError {
         if self.kind != JsonKind::Array { throw .WrongKind; }
-        self.elements.Push(move value);
+        self.elements.Push(value);
     }
 
     /// Appends a member to an object, taking ownership of both name and value.
@@ -367,8 +367,8 @@ extend JsonValue {
     /// @see https://rux-lang.dev/docs/api/json/json-value#insert
     pub func Insert(&var self, name: String, value: Self) -> !JsonError {
         if self.kind != JsonKind::Object { throw .WrongKind; }
-        var member = JsonMember { name: move name, value: move value };
-        self.members.Push(move member);
+        var member = JsonMember { name: name, value: value };
+        self.members.Push(member);
     }
 
     /// The element at `index`, borrowed, or `none` when there is none.

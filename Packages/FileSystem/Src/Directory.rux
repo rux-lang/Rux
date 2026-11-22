@@ -190,7 +190,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         iterator.handle = found;
         iterator.pending = true;
         iterator.open = true;
-        return move iterator;
+        return iterator;
     }
     else {
         let native = NativePath::New(allocator, path)!;
@@ -199,7 +199,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         if opened < 0 { throw TranslateNative((0 - opened) as int32); }
         iterator.handle = opened as int32;
         iterator.open = true;
-        return move iterator;
+        return iterator;
     }
 }
 
@@ -237,7 +237,7 @@ extend DirectoryIterator {
                 if !IsDotEntry16(entry) {
                     let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view);
-                    return move name;
+                    return name;
                 }
             }
         }
@@ -319,7 +319,7 @@ extend DirectoryIterator {
                 if !IsDotEntry8(entry) {
                     let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view);
-                    return move name;
+                    return name;
                 }
             }
         }

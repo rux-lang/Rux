@@ -272,8 +272,6 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanExpress
     }
     if (const auto *unary = AstCast<const UnaryExpr>(&expression))
         return scan(unary->operand.get());
-    if (const auto *move = AstCast<const MoveExpr>(&expression))
-        return scan(move->operand.get());
     if (const auto *attempt = AstCast<const TryExpr>(&expression))
         return scan(attempt->operand.get());
     if (const auto *postfix = AstCast<const PostfixExpr>(&expression))

@@ -6,6 +6,8 @@
 // `for value in Take(Filter(Map(Walk(numbers), Square), IsEven), 3) { ... }`.
 // An adaptor owns the cursor it was given; give it a copy, or move the cursor in, as with any argument.
 
+import Core::Ownership::Copyable;
+
 /// Anything that yields items of type `T` one at a time through `Next`, which `for` and every adaptor here drive.
 /// A type conforms by having the method, whether or not it says `extend X : Cursor<T>`. Only usable as a bound.
 /// @typeParam T the item type
@@ -20,7 +22,7 @@ pub interface Cursor<T> {
 /// A cursor over the elements of a slice, by copy. `Copy`.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/algorithms/adaptors#slice-cursor
-pub struct SliceCursor<T> {
+pub struct SliceCursor<T: Copyable> {
     items: T[..];
     at: uint;
 }
@@ -41,7 +43,7 @@ extend SliceCursor<T> {
 /// @param items the elements, which must outlive the cursor
 /// @returns the cursor
 /// @see https://rux-lang.dev/docs/api/algorithms/adaptors#walk
-pub func Walk<T>(items: T[..]) -> SliceCursor<T> {
+pub func Walk<T: Copyable>(items: T[..]) -> SliceCursor<T> {
     return SliceCursor<T> { items, at: 0 };
 }
 
@@ -81,7 +83,7 @@ pub func Map<I: Cursor<T>, T, U>(source: I, transform: func(T) -> U) -> Mapped<I
 /// @typeParam I the wrapped cursor
 /// @typeParam T what it yields
 /// @see https://rux-lang.dev/docs/api/algorithms/adaptors#filtered
-pub struct Filtered<I: Cursor<T>, T> {
+pub struct Filtered<I: Cursor<T>, T: Copyable> {
     source: I;
     keep: func(T) -> bool;
 }
@@ -106,7 +108,7 @@ extend Filtered<I, T> {
 /// @param keep the test each item must pass
 /// @returns the adaptor
 /// @see https://rux-lang.dev/docs/api/algorithms/adaptors#filter
-pub func Filter<I: Cursor<T>, T>(source: I, keep: func(T) -> bool) -> Filtered<I, T> {
+pub func Filter<I: Cursor<T> + Copyable, T: Copyable>(source: I, keep: func(T) -> bool) -> Filtered<I, T> {
     return Filtered<I, T> { source, keep };
 }
 

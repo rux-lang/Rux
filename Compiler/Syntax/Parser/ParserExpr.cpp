@@ -134,7 +134,7 @@ ExprPtr Parser::ParseAssign() {
             const auto loc = CurrentLocation();
             const std::string opText = Advance().text;
             if (op == TokenKind::MoveArrow) {
-                EmitError(loc, "'<-' is not an assignment operator", "write 'target = move source'");
+                EmitError(loc, "'<-' is not an assignment operator", "write 'target = source'");
             }
             auto right = ParseExprImpl(); // right-associative
             if (!right) {
@@ -629,22 +629,20 @@ ExprPtr Parser::ParseUnary() {
         binding->operand = ParseBitOr();
         return binding;
     }
-    // `move value` transfers ownership out of its operand, and binds as tightly as any other prefix operator: `move
-    // a.b` moves the field and `move a + b` is `(move a) + b`. The removed prefix `<-` is reported and read as `move`.
+    // A bare value is given away, so the removed `move` and the older prefix `<-` are reported and the value after them
+    // is read as it is.
     if (CheckAny({TokenKind::MoveKeyword, TokenKind::MoveArrow})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
-        if (opToken.kind == TokenKind::MoveArrow) {
-            EmitError(loc, "'<-' is not an operator", "write 'move value' to transfer ownership");
-        }
+        EmitError(loc,
+                  opToken.kind == TokenKind::MoveArrow ? std::string("'<-' is not an operator")
+                                                       : std::string("'move' is not supported"),
+                  "remove it: a bare value is given away");
         auto operand = ParseUnary();
         if (!operand) {
             EmitMissingExpression(std::format("after '{}'", opToken.text));
         }
-        auto expression = std::make_unique<MoveExpr>();
-        expression->location = loc;
-        expression->operand = std::move(operand);
-        return expression;
+        return operand;
     }
 
     // `&place` lends a place for reading and `&var place` for writing. It binds as tightly as any other prefix

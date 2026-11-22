@@ -143,14 +143,14 @@ func Main() -> int {
     // value that was moved into the call is the one that arrives.
     var drops: int32 = 0;
     let guard = Guard { value: 5, drops: @drops };
-    Assert(Spend(move guard) == 5, "A droppable value is passed by consuming it");
+    Assert(Spend(guard) == 5, "A droppable value is passed by consuming it");
     Assert(drops == 1, "The consumed value is destroyed in the callee");
 
     // Reinitializing after a complete move gives a fresh value to consume.
     var reused = Guard { value: 7, drops: @drops };
-    Assert(Spend(move reused) == 7, "A move-only value can be consumed once");
+    Assert(Spend(reused) == 7, "A move-only value can be consumed once");
     reused = Guard { value: 11, drops: @drops };
-    Assert(Spend(move reused) == 11, "And consumed again after being reinitialized");
+    Assert(Spend(reused) == 11, "And consumed again after being reinitialized");
     Assert(drops == 3, "Each owned value is destroyed exactly once");
 
     return 0;

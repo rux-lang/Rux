@@ -412,7 +412,7 @@ extend TomlParser {
             if bad {
                 self.Stop(TomlStop::BadText);
             }
-            return TomlValue::FromString(self.allocator, move decoded);
+            return TomlValue::FromString(self.allocator, decoded);
         }
         if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4); }
         if token.kind == TomlTokenKind::Integer {
@@ -458,7 +458,7 @@ extend TomlParser {
             }
             var element = self.ParseValue();
             if self.Failed() { break; }
-            array.elements.Push(move element);
+            array.elements.Push(element);
             self.SkipNewlines();
             if self.ahead.kind == TomlTokenKind::Comma {
                 self.Advance();
@@ -476,7 +476,7 @@ extend TomlParser {
             break;
         }
         self.depth = self.depth - 1;
-        return move array;
+        return array;
     }
 
     // An inline table. TOML 1.1 allows newlines and a trailing comma inside one, which 1.0 did not; a document
@@ -521,7 +521,7 @@ extend TomlParser {
             break;
         }
         self.depth = self.depth - 1;
-        return move table;
+        return table;
     }
 
     // One key part: a bare key, or a quoted one in either single-line string form. A multi-line string is not a
@@ -564,7 +564,7 @@ extend TomlParser {
                 part.Clear();
                 return false;
             }
-            parts.Push(move part);
+            parts.Push(part);
             if self.ahead.kind != TomlTokenKind::Dot { return true; }
             self.Advance();
         }
@@ -611,7 +611,7 @@ extend TomlParser {
             return;
         }
         var owned = String::FromView(self.allocator, finalName);
-        (*target).entries.Push(TomlEntry { key: move owned, value: move value });
+        (*target).entries.Push(TomlEntry { key: owned, value: value });
         parts.Clear();
     }
 
@@ -625,7 +625,7 @@ extend TomlParser {
             var fresh = TomlValue::Table(self.allocator);
             fresh.dotted = true;
             var owned = String::FromView(self.allocator, copy);
-            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
+            (*target).entries.Push(TomlEntry { key: owned, value: fresh });
             return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
@@ -713,7 +713,7 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             var owned = String::FromView(self.allocator, name);
-            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
+            (*target).entries.Push(TomlEntry { key: owned, value: fresh });
             return (*target).FindAddress(name);
         }
         if existing.kind == TomlKind::Array {
@@ -749,7 +749,7 @@ extend TomlParser {
             var fresh = TomlValue::Table(self.allocator);
             fresh.defined = true;
             var owned = String::FromView(self.allocator, name);
-            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
+            (*target).entries.Push(TomlEntry { key: owned, value: fresh });
             return (*target).FindAddress(name);
         }
         if existing.kind != TomlKind::Table {
@@ -783,7 +783,7 @@ extend TomlParser {
             var fresh = TomlValue::Array(self.allocator);
             fresh.tableArray = true;
             var owned = String::FromView(self.allocator, name);
-            (*target).entries.Push(TomlEntry { key: move owned, value: move fresh });
+            (*target).entries.Push(TomlEntry { key: owned, value: fresh });
             existing = (*target).FindAddress(name);
         }
         else if existing.kind != TomlKind::Array || !existing.tableArray {
@@ -794,7 +794,7 @@ extend TomlParser {
         }
         var element = TomlValue::Table(self.allocator);
         element.defined = true;
-        (*existing).elements.Push(move element);
+        (*existing).elements.Push(element);
         return (*existing).LastAddress();
     }
 
@@ -842,7 +842,7 @@ extend TomlParser {
             // some defaulted, which is a state nobody wrote down and nobody tested.
             throw BuiltFailure(self.outcome);
         }
-        return move root;
+        return root;
     }
 }
 

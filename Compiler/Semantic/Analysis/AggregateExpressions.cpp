@@ -164,12 +164,7 @@ void AnalysisContext::FinishIndexedAssignment(const AssignExpr &assignment, cons
     }
     // The new value reaches the setter as an ordinary by-value argument, so it transfers under the argument rules
     // rather than the rules for overwriting a place: nothing here is being replaced.
-    if (assignment.op == TokenKind::MoveArrow) {
-        ConsumeExplicitValue(*assignment.value, valueType, assignment.location);
-    }
-    else {
-        ConsumeValue(*assignment.value, valueType, ValueConsumptionKind::Argument, assignment.location);
-    }
+    ConsumeValue(*assignment.value, valueType, ValueConsumptionKind::Argument, assignment.location);
 }
 
 MovePlace AnalysisContext::AnalyzeMovePlace(const Expr &expression) const {

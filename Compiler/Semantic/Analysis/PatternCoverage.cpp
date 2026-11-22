@@ -349,9 +349,6 @@ void AnalysisContext::RecordPatternBinding(const Pattern &pattern, Symbol &symbo
 bool AnalysisContext::RejectSubsetViewUse(const Expr &expression, const SourceLocation location,
                                           const std::string_view use) {
     const Expr *named = &expression;
-    if (const auto *move = AstCast<const MoveExpr>(named)) {
-        named = move->operand.get();
-    }
     const auto *identifier = AstCast<const IdentExpr>(named);
     const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     if (!symbol || !symbol->isSubsetView) {

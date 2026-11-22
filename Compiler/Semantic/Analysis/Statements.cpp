@@ -616,7 +616,31 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             EmitError(forStatement->iterable->location,
                       std::format("range type '{}' has no initial value and is not iterable", iterableType.ToString()));
         }
-        else if (auto shape = IterationShapeOf(iterableType)) {
+        else if (auto lent = IterationShapeOf(iterableType)) {
+            // A named owning container written bare is taken, with its elements, through `IntoIterator`.
+            const Expr &subject = *forStatement->iterable;
+            const MovePlace place = AnalyzeMovePlace(subject);
+            const auto *name = AstCast<const IdentExpr>(&subject);
+            const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
+            const TypeProperties properties = ClassifyTypeProperties(iterableType);
+            const bool takes = lent->kind == IterationShape::Kind::Iterable && place.IsNamedStorage() &&
+                               iterableType->kind != TypeRef::Kind::Reference &&
+                               !(symbol && symbol->isBorrowedBinding) && properties.IsResolved() &&
+                               properties.IsMoveOnly();
+            std::optional<IterationShape> shape = lent;
+            if (takes) {
+                shape = IterationShapeOf(iterableType, true);
+                if (!shape) {
+                    EmitError(subject.location,
+                              std::format("'for' takes '{}' and its elements, and '{}' declares no 'IntoIterator'",
+                                          place.Display(), iterableType.DisplayString()),
+                              {}, std::format("lend them with '&{}'", place.Display()));
+                    shape = lent;
+                }
+                else {
+                    ConsumeValue(subject, iterableType, ValueConsumptionKind::Argument, subject.location);
+                }
+            }
             elementType = shape->itemType;
             RecordIteration(*forStatement, *shape);
             // A direct loop over an array or a slice copies each element into the loop variable, leaving the sequence

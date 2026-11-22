@@ -618,8 +618,6 @@ std::optional<ValuePlace> ConstantCallEvaluator::Follow(ValuePlace place) {
 std::optional<ValuePlace> ConstantCallEvaluator::EvaluatePlace(const Expr &expression) {
     if (failure)
         return std::nullopt;
-    if (const auto *move = AstCast<const MoveExpr>(&expression))
-        return EvaluatePlace(*move->operand);
     const IdentExpr *identifier = AstCast<const IdentExpr>(&expression);
     if (identifier || AstCast<const SelfExpr>(&expression)) {
         if (!context.constantReferences.contains(&expression) && !context.globalReferences.contains(&expression))
@@ -692,8 +690,6 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateExpression(const Ex
     if (AstCast<const IdentExpr>(&expression) || AstCast<const PathExpr>(&expression) ||
         AstCast<const SelfExpr>(&expression))
         return EvaluateName(expression);
-    if (const auto *move = AstCast<const MoveExpr>(&expression))
-        return EvaluateExpression(*move->operand);
     if (const auto *unary = AstCast<const UnaryExpr>(&expression))
         return EvaluateUnary(*unary);
     if (const auto *postfix = AstCast<const PostfixExpr>(&expression))

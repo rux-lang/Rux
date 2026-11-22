@@ -62,10 +62,10 @@ extend Deque<T> {
     pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
         var deque = Deque<T>::New(allocator);
         if capacity == 0 {
-            return move deque;
+            return deque;
         }
         deque.Grow(capacity);
-        return move deque;
+        return deque;
     }
 
     /// A deque holding a copy of every element of `items`, front to back.
@@ -78,7 +78,7 @@ extend Deque<T> {
     pub func FromSlice(allocator: Allocator, items: T[..]) -> Self {
         var deque = Deque<T>::New(allocator);
         if items.length == 0 {
-            return move deque;
+            return deque;
         }
 
         deque.Grow(items.length);
@@ -90,7 +90,7 @@ extend Deque<T> {
             index++;
         }
         deque.length = items.length;
-        return move deque;
+        return deque;
     }
 
     /// An independent deque holding a copy of every element of this one, in order.
@@ -103,14 +103,14 @@ extend Deque<T> {
     pub func Clone(&self) -> Self {
         var copy = Self { data: null, head: 0, length: 0, capacity: 0, allocator: self.allocator };
         if self.length == 0 {
-            return move copy;
+            return copy;
         }
         copy.Grow(self.length);
         // Safety: `Grow` gave `copy.data` room for `self.length` elements, and it is a fresh block apart from this
         // ring.
         self.CopyInto(copy.data);
         copy.length = self.length;
-        return move copy;
+        return copy;
     }
 
     /// How many elements the deque holds.
@@ -234,7 +234,7 @@ extend Deque<T> {
             // container has to destroy an element it does not know is droppable.
             // Safety: the ring invariant: `index < self.length`, checked by the loop, so the slot is initialized;
             // each is moved out once, and the length drops to zero right after.
-            { let taken = move self.data[self.SlotOf(index)]; }
+            { let taken = self.data[self.SlotOf(index)]; }
             index++;
         }
         self.head = 0;
@@ -266,7 +266,7 @@ extend Deque<T> {
         self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
         // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot one step before the old head is
         // allocated and holds nothing.
-        self.data[self.head] = move value;
+        self.data[self.head] = value;
         self.length = self.length + 1;
     }
 
@@ -280,7 +280,7 @@ extend Deque<T> {
 
         // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot just past the last element is
         // allocated and holds nothing.
-        self.data[self.SlotOf(self.length)] = move value;
+        self.data[self.SlotOf(self.length)] = value;
         self.length = self.length + 1;
     }
 
@@ -294,10 +294,10 @@ extend Deque<T> {
         if self.length == 0 { return none; }
         // Safety: the ring invariant: the deque is not empty, checked above, so the slot at `head` is initialized; the
         // head moves past it at once.
-        let taken = move self.data[self.head];
+        let taken = self.data[self.head];
         self.head = (self.head + 1) & (self.capacity - 1);
         self.length = self.length - 1;
-        return move taken;
+        return taken;
     }
 
     /// Takes the back element out.
@@ -310,7 +310,7 @@ extend Deque<T> {
         self.length = self.length - 1;
         // Safety: the ring invariant: the slot of the old last element is initialized, and the length has just
         // dropped below it.
-        return move self.data[self.SlotOf(self.length)];
+        return self.data[self.SlotOf(self.length)];
     }
 
     /// The front element, borrowed where it sits, or `none` for an empty deque.
@@ -382,8 +382,8 @@ extend Deque<T> {
         // Safety: the ring invariant: `index < self.length`, checked above, so the slot is initialized; the slot
         // emptied by the move is refilled at once.
         {
-            let previous = move self.data[slot];
-            self.data[slot] = move value;
+            let previous = self.data[slot];
+            self.data[slot] = value;
         }
         return;
     }
@@ -402,9 +402,9 @@ extend Deque<T> {
         // Safety: the ring invariant: `index < self.length`, checked above, so the slot is initialized; the slot
         // emptied by the move is refilled at once.
         {
-            let previous = move self.data[slot];
-            self.data[slot] = move value;
-            return move previous;
+            let previous = self.data[slot];
+            self.data[slot] = value;
+            return previous;
         }
     }
 

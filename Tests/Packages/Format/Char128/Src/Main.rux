@@ -66,7 +66,7 @@ func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
 func Rendered(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return match move outcome {
+    return match outcome {
         text? => text.View().Equals(wanted),
         none => false
     };

@@ -114,8 +114,8 @@ func Main() -> int {
     let a = String::FromBytes(SystemAllocator::New(), "hello") catch { _ => return 1 };
     let b = String::FromBytes(SystemAllocator::New(), "world") catch { _ => return 2 };
     var texts = Vector<String>::New(SystemAllocator::New());
-    texts.Push(move a);
-    texts.Push(move b);
+    texts.Push(a);
+    texts.Push(b);
     var bytes: uint = 0;
     for text in texts.References() {
         // Safety: the vector's reference iterator yields pointers to its live elements while `texts` is unchanged.

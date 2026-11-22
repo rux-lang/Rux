@@ -178,9 +178,9 @@ func TupleIntoLocal(log: *var Log) {
 func MovedSource(log: *var Log) {
     var item = Track(log, 1i32);
     var source = Track(log, 2i32);
-    item = move source;
+    item = source;
     Mark(log);
-    Assert(item.id == 2i32, "a source handed over with '<-' is installed as it stands");
+    Assert(item.id == 2i32, "a named source given away is installed as it stands");
 }
 
 func NamedSource(log: *var Log) {

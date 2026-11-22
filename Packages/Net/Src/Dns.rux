@@ -156,7 +156,7 @@ extend Resolver {
         var resolver = Self { servers: Vector<SocketAddress>::New(allocator), timeout: Duration::FromSeconds(5),
                                   attempts: 2 };
         resolver.servers.PushSlice(servers);
-        return move resolver;
+        return resolver;
     }
 
     /// A resolver configured as the C library's would be: the name servers, and the `timeout` and `attempts`
@@ -198,7 +198,7 @@ extend Resolver {
                 let first = Ask(server, host, TypeA, NextQueryId(), port, self.timeout, &var found);
                 if first == Outcome::NoSuchName { throw IoError::Of(IoErrorKind::NotFound); }
                 let second = Ask(server, host, TypeAaaa, NextQueryId(), port, self.timeout, &var found);
-                if found.Length() > 0u { return move found; }
+                if found.Length() > 0u { return found; }
                 if first == Outcome::Found || second == Outcome::Found { throw IoError::Of(IoErrorKind::NotFound); }
             }
             attempt = attempt + 1;
@@ -250,7 +250,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
         let local = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port: 53 };
         configuration.servers.Push(local);
     }
-    return move configuration;
+    return configuration;
 }
 
 // The number `text` spells in decimal, or zero when it is not one.
@@ -444,12 +444,12 @@ func NextQueryId() -> uint16 {
 func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
     var found = Vector<SocketAddress>::New(allocator);
     FromHostsFile(allocator, host, port, &var found);
-    if found.Length() > 0u { return move found; }
+    if found.Length() > 0u { return found; }
     // `localhost` and the names under it are this machine, whatever the hosts file says.
     if SameName(host, "localhost") || (host.length > 10u && SameName(host[host.length - 10..], ".localhost")) {
         AddOnce(&var found, SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Localhost()), port });
         AddOnce(&var found, SocketAddress { ip: IpAddress::FromIpv6(Ipv6Address::Localhost()), port });
-        return move found;
+        return found;
     }
     let resolver = Resolver::FromSystem(allocator);
     return resolver.Lookup(allocator, host, port)!;

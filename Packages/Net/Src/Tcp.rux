@@ -44,7 +44,7 @@ extend TcpListener {
         var listener = Self { handle };
         BindSocket(handle, address, true)!;
         ListenSocket(handle)!;
-        return move listener;
+        return listener;
     }
 
     /// Waits for a connection and accepts it.
@@ -95,7 +95,7 @@ extend TcpStream {
         let handle = OpenSocket(address, true)!;
         var stream = Self { handle };
         ConnectSocket(handle, address)!;
-        return move stream;
+        return stream;
     }
 
     /// The address of this end of the connection.

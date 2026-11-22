@@ -59,7 +59,7 @@ extend BufferedReader {
         // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
         reader.data = block as *var char8;
         reader.capacity = wanted;
-        return move reader;
+        return reader;
     }
 
     /// How many buffered bytes wait unread.
@@ -195,7 +195,7 @@ extend BufferedWriter {
         // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
         writer.data = block as *var char8;
         writer.capacity = wanted;
-        return move writer;
+        return writer;
     }
 
     /// How many bytes wait unsent.

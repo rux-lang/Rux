@@ -131,8 +131,6 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "intrinsic";
     if (AstCast<const UnaryExpr>(&expression))
         return "unary";
-    if (AstCast<const MoveExpr>(&expression))
-        return "move";
     if (AstCast<const TryExpr>(&expression))
         return "propagation";
     if (AstCast<const PostfixExpr>(&expression))

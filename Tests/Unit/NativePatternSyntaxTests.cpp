@@ -311,9 +311,7 @@ TEST_CASE("a 'for' pattern takes the element apart in the body, and refutable pa
     const auto *destructure = dynamic_cast<const LetStmt *>(loop->body->stmts.front().get());
     REQUIRE(destructure != nullptr);
     CHECK_EQ(Shape(destructure->pattern.get()), "(key, value)");
-    const auto *transfer = dynamic_cast<const MoveExpr *>(destructure->init.get());
-    REQUIRE(transfer != nullptr);
-    const auto *item = dynamic_cast<const IdentExpr *>(transfer->operand.get());
+    const auto *item = dynamic_cast<const IdentExpr *>(destructure->init.get());
     REQUIRE(item != nullptr);
     CHECK_EQ(item->name, loop->variable);
 

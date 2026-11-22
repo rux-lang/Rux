@@ -269,12 +269,6 @@ TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {
         )");
         CHECK(HasErrorContaining(diagnostics, "cannot escape through a return"));
     }
-    SUBCASE("explicit reference move") {
-        const auto diagnostics = AnalyzeReferences(R"(
-            func Move(value: &int) -> int { return move value; }
-        )");
-        CHECK(HasErrorContaining(diagnostics, "cannot move a non-owning reference"));
-    }
     SUBCASE("mutable reborrow") {
         const auto diagnostics = AnalyzeReferences(R"(
             func Mutate(value: &var int) {}
@@ -485,11 +479,12 @@ TEST_CASE("references cannot transfer borrowed ownership") {
         }
         func Consume(value: Resource) {}
         func Test(shared: &Holder) {
-            Consume(move shared.resource);
-            (move shared).Take();
+            Consume(shared.resource);
+            (shared).Take();
         }
     )");
 
     CHECK(HasErrorContaining(diagnostics, "out of borrowed reference storage"));
-    CHECK(HasErrorContaining(diagnostics, "cannot move a non-owning reference"));
+    CHECK(
+        HasErrorContaining(diagnostics, "cannot pass value behind reference '&Holder' to by-value receiver of 'Take'"));
 }

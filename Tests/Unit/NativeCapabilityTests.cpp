@@ -26,7 +26,8 @@ bool AnyContains(const std::vector<std::string> &errors, const std::string_view 
 
 TEST_CASE("unit is copyable wherever a type parameter can be") {
     CHECK(Errors(R"(
-        func Twice<T>(value: T) -> (T, T) { return (value, value); }
+        interface Copyable {}
+        func Twice<T: Copyable>(value: T) -> (T, T) { return (value, value); }
         func Use() {
             let pair = Twice<()>(());
             let optional: ()? = ();

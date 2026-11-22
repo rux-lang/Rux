@@ -12,6 +12,8 @@
 
 
 
+import Core::Ownership::Copyable;
+
 /// The most blocks `Expand` can produce, since its counter is one byte.
 /// @see https://rux-lang.dev/docs/api/crypto/hkdf#hkdf-maximum-blocks
 pub const HkdfMaximumBlocks: uint = 255;
@@ -25,7 +27,7 @@ pub const HkdfMaximumBlocks: uint = 255;
 /// @param material the input keying material
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/hkdf#hkdf-extract
-pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {
+pub func HkdfExtract<D: Digest + Copyable>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {
     var probe = prototype;
     let digestLength = probe.DigestLength();
     if salt.length > 0 {
@@ -54,7 +56,7 @@ pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[.
 /// @param into receives the output
 /// @returns whether `into` was a length this construction can produce
 /// @see https://rux-lang.dev/docs/api/crypto/hkdf#hkdf-expand
-pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
+pub func HkdfExpand<D: Digest + Copyable>(prototype: D, key: char8[..], info: char8[..],
                            into: var char8[..]) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();
@@ -97,7 +99,7 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
 /// @param into receives the output
 /// @returns whether `into` was a length this construction can produce
 /// @see https://rux-lang.dev/docs/api/crypto/hkdf
-pub func Hkdf<D: Digest>(prototype: D, salt: char8[..], material: char8[..], info: char8[..],
+pub func Hkdf<D: Digest + Copyable>(prototype: D, salt: char8[..], material: char8[..], info: char8[..],
                      into: var char8[..]) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();

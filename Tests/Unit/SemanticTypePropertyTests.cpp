@@ -639,18 +639,18 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
         }
 
         func Make<T>(first: T, second: T) {
-            let pair = Pair<T> { first: move first, second: move second };
+            let pair = Pair<T> { first: first, second: second };
         }
 
         // Safety: `pair` must address a live `Pair<T>` that the caller gives up
         func Take<T>(pair: *var Pair<T>) {
-            let taken = move pair[0];
+            let taken = pair[0];
         }
 
         struct Triple<T> { value: T; }
 
         func Keep<T>(value: T) {
-            let triple = Triple<T> { value: move value };
+            let triple = Triple<T> { value: value };
         }
 
         func Main() -> int {

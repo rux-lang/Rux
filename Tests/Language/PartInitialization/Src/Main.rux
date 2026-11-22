@@ -89,7 +89,7 @@ func PlainParts() {
     Assert(values[0] == 0i32 && values[2] == 4i32, "a plain array is initialized element by element");
 
     var moved = Point { x: 7i32, y: 8i32 };
-    let taken = move moved;
+    let taken = moved;
     moved.x = 9i32;
     moved.y = 10i32;
     Assert(taken.x == 7i32 && moved.x == 9i32 && moved.y == 10i32, "a plain struct moved from is initialized again");
@@ -134,7 +134,7 @@ func WholeThenPart(log: *var Log) {
 // A moved-from local assigned whole again owns that value, and its parts are replaced as usual.
 func ReinitializedAfterMove(log: *var Log) {
     var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
-    let taken = move holder;
+    let taken = holder;
     holder = Holder { tracked: Make(log, 2i32), count: 0i32 };
     holder.tracked = Make(log, 3i32);
     Mark(log);

@@ -7,6 +7,8 @@
 
 
 
+import Core::Ownership::Copyable;
+
 /// Shuffles `items` into a uniformly random order.
 /// Fisher and Yates' method, walking from the end and swapping each position with one at or below it. The bound
 /// is what makes it uniform: swapping with a position anywhere in the collection is the version that is subtly
@@ -17,7 +19,7 @@
 /// @param generator where the bits come from
 /// @param items the sequence to shuffle in place
 /// @see https://rux-lang.dev/docs/api/random/sampling#shuffle
-pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
+pub func Shuffle<G: RandomGenerator + Copyable, T: Copyable>(generator: &var G, items: var T[..]) {
     if items.length < 2 { return; }
     var index = items.length - 1u;
     while index > 0 {

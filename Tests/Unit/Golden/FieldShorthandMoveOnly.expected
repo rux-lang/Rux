@@ -1,2 +1,1 @@
-25:21: error: cannot copy 'Buffer', which owns resources
-29:25: error: cannot copy 'Buffer', which owns resources
+34:21: error: value 'buffer' is used after it was moved

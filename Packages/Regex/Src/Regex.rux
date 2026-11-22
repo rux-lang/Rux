@@ -260,7 +260,7 @@ extend Regex {
         let root = parser.ParseAlternation(&var regex, 0)!;
         if parser.at < pattern.length { throw RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
         regex.CompileProgram(parser.nodes.AsSlice(), root)!;
-        return move regex;
+        return regex;
     }
 
     func Program(&self) -> Program {
@@ -390,7 +390,7 @@ extend Regex {
             matched = scratch.Run(program, text, start, false, false, slots.AsMutableSlice());
         }
         if !matched { return none; }
-        return Captures { slots: move slots, nameBytes: self.nameBytes.AsSlice(), names: self.names.AsSlice() };
+        return Captures { slots: slots, nameBytes: self.nameBytes.AsSlice(), names: self.names.AsSlice() };
     }
 
     /// Every match in `text`, leftmost first and never overlapping. An empty match right after another match is

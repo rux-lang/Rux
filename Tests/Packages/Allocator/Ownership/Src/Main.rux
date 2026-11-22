@@ -263,7 +263,7 @@ func Run() -> !AllocError {
     // An arena is move-only: it owns its blocks and copying would give two owners of each. A handle holds the
     // arena's address, so it does not survive the move — the rule `Arena::Handle` documents. What a caller does
     // instead is take a handle from the arena where it now is, which is what this checks works.
-    var relocated = move counted;
+    var relocated = counted;
     Assert(relocated.BytesUsed() == afterFirst, "a moved arena carries its accounting with it");
     Assert(relocated.BlockCount() == 1, "and the block it holds");
 
@@ -282,7 +282,7 @@ func Run() -> !AllocError {
     let early = beforeMoveAllocator.Allocate(unit)!;
     let earlyUsed = moving.BytesUsed();
 
-    var carried = move moving;
+    var carried = moving;
     Assert(carried.BytesUsed() == earlyUsed, "a moved fixed buffer carries its accounting");
     // Safety: `carried` is a local that outlives `lateAllocator` and is not moved again.
     let lateAllocator = carried.Handle();

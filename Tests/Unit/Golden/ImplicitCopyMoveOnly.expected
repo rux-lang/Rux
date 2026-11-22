@@ -1,7 +1,3 @@
-35:5: error: cannot copy 'Text', which owns resources
-36:10: error: cannot copy 'Text', which owns resources
-37:28: error: cannot copy 'Text', which owns resources
-38:5: error: cannot copy 'Labeled', which owns resources
-39:5: error: cannot copy 'Ticket', which prohibits copying
-40:5: error: cannot copy '(Text, int32)', which owns resources
-41:5: error: cannot copy 'Text', which owns resources
+36:10: error: value 'text' is used after it was moved
+37:28: error: value 'text' is used after it was moved
+41:12: error: value 'text' is used after it was moved

@@ -28,6 +28,7 @@
 // nearly ordered, which is insertion sort's best case.
 const InsertionSortThreshold: uint = 16;
 
+import Core::Ownership::Copyable;
 import Core::Compare::Ordering;
 
 /// Puts `items` into non-decreasing order.
@@ -406,7 +407,7 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @see https://rux-lang.dev/docs/api/algorithms/sorting#sort-by
-pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
+pub func SortBy<T: Copyable>(items: var T[..], compare: func(T, T) -> Ordering) {
     let data = items.data;
     let length = items.length;
     if length < 2 { return; }
@@ -428,7 +429,7 @@ pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @see https://rux-lang.dev/docs/api/algorithms/sorting#sort-descending-by
-pub func SortDescendingBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
+pub func SortDescendingBy<T: Copyable>(items: var T[..], compare: func(T, T) -> Ordering) {
     SortBy<T>(items, compare);
     Reverse<T>(items);
 }
@@ -444,7 +445,7 @@ pub func SortDescendingBy<T>(items: var T[..], compare: func(T, T) -> Ordering) 
 /// @param compare how two elements order against each other
 /// @returns whether `n` was a usable index
 /// @see https://rux-lang.dev/docs/api/algorithms/sorting#nth-element-by
-pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Ordering) -> bool {
+pub func NthElementBy<T: Copyable>(items: var T[..], n: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
     if n >= length { return false; }
@@ -549,7 +550,7 @@ func MedianOfThreeBy<T>(data: *T, first: uint, middle: uint, last: uint,
 // Internal helper; not part of the package API.
 // Safety: `data` must address the live, writable elements `[low, high)`, and `lessEnd` and `greaterStart`
 // must be writable.
-func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
+func PartitionThreeWayBy<T: Copyable>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
                             greaterStart: *var uint, compare: func(T, T) -> Ordering) {
     var lower = low;
     var index = low;
@@ -578,7 +579,7 @@ func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessE
 
 // Internal helper; not part of the package API.
 // Safety: `data` must address the live, writable elements `[low, high)`.
-func InsertionSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
+func InsertionSortRangeBy<T: Copyable>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
     if high - low < 2 { return; }
 
     var i = low + 1;
@@ -639,7 +640,7 @@ func HeapSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T)
 
 // Internal helper; not part of the package API.
 // Safety: `data` must address the live, writable elements `[low, high)`.
-func IntroSortRangeBy<T>(data: *var T, low: uint, high: uint, depth: uint, compare: func(T, T) -> Ordering) {
+func IntroSortRangeBy<T: Copyable>(data: *var T, low: uint, high: uint, depth: uint, compare: func(T, T) -> Ordering) {
     var lo = low;
     var hi = high;
     var budget = depth;

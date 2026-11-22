@@ -85,7 +85,7 @@ func Main() -> int {
     poller.Modify(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("and changes back") };
 
     // The peer closing is reported as readable, and the read then finds the end.
-    Close(move client);
+    Close(client);
     let ended = WaitFor(&var poller, 2);
     Assert(ended.readable || ended.closed, "a closed peer is reported");
     match server.Read(buffer[..]) {

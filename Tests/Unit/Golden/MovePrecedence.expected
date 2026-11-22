@@ -1,2 +1,1 @@
-18:20: error: value 'a' is used after it was moved
-23:18: error: cannot move field 'buffer' out of 'holder', which is destroyed as a whole
+23:5: error: cannot move field 'buffer' out of 'holder', which is destroyed as a whole

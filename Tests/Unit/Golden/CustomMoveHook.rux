@@ -28,6 +28,6 @@ extend Pinned {
 
 func Main() -> int {
     let cursor = Cursor { position: 1i32 };
-    let moved = move cursor;
+    let moved = cursor;
     return moved.position as int;
 }

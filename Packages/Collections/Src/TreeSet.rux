@@ -16,6 +16,7 @@
 // comparison that borrows, and there is no way to spell one that also works for the copyable case; until there is,
 // put the owning values in a `TreeMap` under keys that are copyable.
 
+import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Core::Compare::Ordering;
 import Core::Iteration::Iterator;
@@ -24,7 +25,7 @@ import Core::Iteration::Iterator;
 /// Move-only: it owns every node and every element in them.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set
-pub struct TreeSet<T> {
+pub struct TreeSet<T: Copyable> {
     /// The elements, as the keys of a tree carrying no values.
     tree: Tree<T, ()>;
     /// The order the elements are kept in. Fixed when the set is made.
@@ -76,7 +77,7 @@ extend TreeSet<T> {
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#insert
     pub func Insert(&var self, value: T) -> bool {
-        let replaced = self.tree.Attach(move value, (), self.compare);
+        let replaced = self.tree.Attach(value, (), self.compare);
         return replaced == none;
     }
 
@@ -180,13 +181,13 @@ extend TreeSet<T> {
         // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
         // function ends, and a set left holding the nodes would have its destructor free the very nodes the
         // iterator was handed.
-        var set = move self;
+        var set = self;
         let taken = TreeSetIntoIterator<T> {
             tree: Tree<T, ()> { root: set.tree.root, length: set.tree.length, allocator: set.tree.allocator }
         };
         set.tree.root = null;
         set.tree.length = 0;
-        return move taken;
+        return taken;
     }
 
     /// Whether every element of this set is in `other`.
@@ -368,14 +369,14 @@ extend TreeSet<T> {
     pub func Clone(&self) -> Self {
         var copy = TreeSet<T>::New(self.tree.allocator, self.compare);
         copy.UnionWith(self);
-        return move copy;
+        return copy;
     }
 }
 
 /// A walk over a borrowed set, smallest element first.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-iterator
-pub struct TreeSetIterator<T> {
+pub struct TreeSetIterator<T: Copyable> {
     /// The node to hand back next, or null when the walk is done.
     next: *var TreeNode<T, ()>;
 }
@@ -398,7 +399,7 @@ extend TreeSetIterator<T> : Iterator {
 /// A walk over a borrowed set that stops at a bound.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-range-iterator
-pub struct TreeSetRangeIterator<T> {
+pub struct TreeSetRangeIterator<T: Copyable> {
     /// The node to hand back next, or null when the walk is done.
     next: *var TreeNode<T, ()>;
     /// The first element the walk will not hand back.
@@ -431,7 +432,7 @@ extend TreeSetRangeIterator<T> : Iterator {
 /// rest exactly once, and nothing already handed out is destroyed twice.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set#tree-set-into-iterator
-pub struct TreeSetIntoIterator<T> {
+pub struct TreeSetIntoIterator<T: Copyable> {
     /// What is left of the set.
     tree: Tree<T, ()>;
 }

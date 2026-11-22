@@ -469,23 +469,18 @@ bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &su
 
 bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const bool armsBind,
                                           const SourceLocation location) {
-    // `<-value` records its transfer on the moved operand rather than on itself.
-    if (const auto *move = AstCast<const MoveExpr>(&subject)) {
-        const bool handedOver = valueConsumptions.contains(move->operand.get());
-        if (handedOver) {
-            ownedMatchSubjects.insert(&subject);
-        }
-        return handedOver;
-    }
     const MovePlace place = AnalyzeMovePlace(subject);
     if (subjectType->kind == TypeRef::Kind::Reference || place.IsBorrowedStorage()) {
         return false;
     }
-    // A named subject that no arm takes anything from stays with its owner; a temporary has no other owner, so its
-    // match takes it whole and destroys whatever the selected arm leaves.
-    if (!armsBind && place.IsNamedStorage()) {
-        return false;
+    // A binding a pattern made over a borrowed subject is a loan already, matched where it lies. A named owning subject
+    // is taken, as a temporary is, and the match destroys whatever the selected arm leaves.
+    if (const auto *name = AstCast<const IdentExpr>(&subject)) {
+        if (const Symbol *symbol = currentScope->Lookup(name->name); symbol && symbol->isBorrowedBinding) {
+            return false;
+        }
     }
+    static_cast<void>(armsBind);
     if (!trackedFlowReachable) {
         return false;
     }
@@ -876,9 +871,6 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
 
 std::optional<MoveStateTracker::Issue> AnalysisContext::MoveTrackedExpression(const Expr &expression,
                                                                               const SourceLocation location) {
-    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
-        return MoveTrackedExpression(*move->operand, location);
-    }
     if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         if (Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
             return moveStates.Move(MoveStateTracker::Local(symbol), location);
@@ -890,6 +882,27 @@ std::optional<MoveStateTracker::Issue> AnalysisContext::MoveTrackedExpression(co
         }
     }
     return moveStates.Move(MoveStateTracker::Temporary(&expression), location);
+}
+
+bool AnalysisContext::ReachedThroughRawPointer(const Expr &expression) const {
+    const Expr *object = nullptr;
+    if (const auto *field = AstCast<const FieldExpr>(&expression)) {
+        object = field->object.get();
+    }
+    else if (const auto *index = AstCast<const IndexExpr>(&expression); index && !IsIndexOperatorCall(*index)) {
+        object = index->object.get();
+    }
+    else if (const auto *unary = AstCast<const UnaryExpr>(&expression); unary && unary->op == TokenKind::Star) {
+        object = unary->operand.get();
+    }
+    if (!object) {
+        return false;
+    }
+    if (const auto found = expressionTypes.find(object);
+        found != expressionTypes.end() && found->second->kind == TypeRef::Kind::Pointer) {
+        return true;
+    }
+    return ReachedThroughRawPointer(*object);
 }
 
 bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLocation location) {
@@ -949,27 +962,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         }
         return self(*object);
     };
-    const auto usesRawPointerStorage = [&](this auto &&self, const Expr &candidate) -> bool {
-        const Expr *object = nullptr;
-        if (const auto *field = AstCast<const FieldExpr>(&candidate)) {
-            object = field->object.get();
-        }
-        else if (const auto *index = AstCast<const IndexExpr>(&candidate); index && !IsIndexOperatorCall(*index)) {
-            object = index->object.get();
-        }
-        else if (const auto *unary = AstCast<const UnaryExpr>(&candidate); unary && unary->op == TokenKind::Star) {
-            object = unary->operand.get();
-        }
-        if (!object) {
-            return false;
-        }
-        if (const auto found = expressionTypes.find(object);
-            found != expressionTypes.end() && found->second->kind == TypeRef::Kind::Pointer) {
-            return true;
-        }
-        return self(*object);
-    };
-    const bool rawPointerStorage = usesRawPointerStorage(expression);
+    const bool rawPointerStorage = ReachedThroughRawPointer(expression);
     if (usesReferenceStorage(expression) && !rawPointerStorage) {
         const MovePlace place = AnalyzeMovePlace(expression);
         EmitError(location, std::format("cannot move '{}' out of borrowed reference storage", place.Display()),
@@ -977,11 +970,9 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
                   "move the owning value or clone the borrowed value explicitly");
         return false;
     }
-    if (rawPointerStorage && currentFunctionDecl && !currentTypeParams.empty()) {
-        // Generic owning containers cannot encode ownership in `*var T`. Requiring `move` makes the raw transfer
-        // visible, and restricting the exception to a generic body keeps concrete raw pointers borrowed by default.
-        // An extend block contributes its aggregate's parameters to `currentTypeParams`; they are not repeated on
-        // every method declaration.
+    // A read through a raw pointer takes the value out and leaves the storage empty: a pointer cannot say whether its
+    // storage holds a value, so what it addresses is the code's own business, as a write through it is.
+    if (rawPointerStorage) {
         return true;
     }
     const MovePlace place = AnalyzeMovePlace(expression);
@@ -1055,14 +1046,20 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     if (!trackedFlowReachable) {
         return;
     }
-    // A `<-value` node performs and records its transfer while it is checked. The surrounding by-value context must
-    // not try to consume the same source a second time.
-    if (AstCast<const MoveExpr>(&expression)) {
-        return;
-    }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
-        // Plain by-value use means copy, but whether a symbolic type permits that is known only at instantiation.
-        // Record the question so a move-only argument gets the copy diagnostic at the generic source location.
+        // A value of a type parameter is owning inside generic code, so a local or a parameter written bare is given
+        // away and the body is correct for every type argument. Only a parameter bound by `Copyable` copies. Nothing
+        // else can be given away (a field or an element is read, which copies it), and a temporary is built where it
+        // lands, so those keep the question for the instantiation, as an array repeat does.
+        // A read through a raw pointer takes the value out, as it does for a concrete type.
+        const auto *name = AstCast<const IdentExpr>(&expression);
+        const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
+        const bool whole = symbol && !symbol->isBorrowedBinding && AnalyzeMovePlace(expression).IsNamedStorage();
+        if (kind != ValueConsumptionKind::ArrayRepeat && type->kind != TypeRef::Kind::Reference &&
+            (whole || ReachedThroughRawPointer(expression)) && !CopiesUnderBound(type)) {
+            ConsumeExplicitValue(expression, type, location);
+            return;
+        }
         deferredConsumptions[currentFunctionDecl].push_back({&expression, kind, type, location});
         return;
     }
@@ -1080,7 +1077,11 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     if (!properties.IsMoveOnly()) {
         return;
     }
-    if (RejectImplicitMove(expression, type, kind, location)) {
+    // A named value written bare is given away. A value whose move is prohibited stays where it is: only a temporary of
+    // that type, which nothing has taken the address of, is built where it lands.
+    const MovePlace source = AnalyzeMovePlace(expression);
+    if ((source.IsNamedStorage() || source.IsBorrowedStorage()) && !properties.IsMovable()) {
+        ReportProhibitedMove(type, location);
         return;
     }
     // A fresh temporary has no named source whose later use could hide an ownership transfer, but lowering still
@@ -1094,6 +1095,20 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     }
 }
 
+bool AnalysisContext::CopiesUnderBound(const TypeRef &type) const {
+    if (type->kind != TypeRef::Kind::TypeParam) {
+        return false;
+    }
+    const auto bounds = currentTypeParamBounds.find(type->name);
+    if (bounds == currentTypeParamBounds.end()) {
+        return false;
+    }
+    return std::ranges::any_of(bounds->second, [](const ResolvedTypeBound &bound) {
+        return bound.interface && bound.interface->name == "Copyable" && bound.interface->methods.empty() &&
+               bound.interface->typeParams.empty();
+    });
+}
+
 void AnalysisContext::ReportProhibitedMove(const TypeRef &type, const SourceLocation location) {
     EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
               {"a '#NoMove' type, or one holding a '#NoMove' value, stays where it was built"},
@@ -1104,10 +1119,6 @@ bool AnalysisContext::IsFreshTemporarySource(const Expr &expression, const TypeR
                                              const TypeRef &targetType) const {
     if (type.IsUnknown() || type->kind == TypeRef::Kind::Reference || !(type == targetType)) {
         return false;
-    }
-    // `<-value` records its own transfer, which leaves nothing for a copy to read afterwards.
-    if (AstCast<const MoveExpr>(&expression)) {
-        return true;
     }
     const MovePlace place = AnalyzeMovePlace(expression);
     return !place.IsNamedStorage() && !place.IsBorrowedStorage();
@@ -1123,7 +1134,7 @@ void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef
     if (type->kind == TypeRef::Kind::Reference) {
         EmitError(location, "cannot move a non-owning reference",
                   {"references borrow storage but do not own the value they address"},
-                  "pass or assign the reference without 'move', or move the owning value instead");
+                  "lend the value it refers to, or give away the owning value instead");
         return;
     }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {

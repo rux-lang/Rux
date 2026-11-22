@@ -134,16 +134,17 @@ asm func Raw() {
     CHECK_EQ(output, expected);
 }
 
-TEST_CASE("AST dumps spell references, destructors and moves canonically") {
+TEST_CASE("AST dumps spell references, destructors and loans canonically") {
     constexpr std::string_view source = R"(
 #NoMove
 struct Cell { value: int32; }
 extend Cell {
     func ~(&var self) {}
 }
+func Read(cell: &Cell) {}
 func Transfer(source: Cell) -> Cell {
-    let result = move source;
-    return move result;
+    Read(&source);
+    return source;
 }
 )";
 
@@ -162,9 +163,8 @@ func Transfer(source: Cell) -> Cell {
     std::filesystem::remove(path);
 
     CHECK(output.contains("FuncDecl '~' (self: &var Cell)"));
-    const std::size_t firstMove = output.find("MoveExpr move");
-    REQUIRE_NE(firstMove, std::string::npos);
-    CHECK_NE(output.find("MoveExpr move", firstMove + 1), std::string::npos);
+    CHECK(output.contains("LoanExpr"));
+    CHECK_FALSE(output.contains("MoveExpr"));
 }
 
 TEST_CASE("AST dumps spell slices and ranges with the punctuation they are written in") {

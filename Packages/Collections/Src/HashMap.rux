@@ -15,6 +15,7 @@
 // the allocator's `AllocError` instead and leave the map exactly as it was. So does a run of keys colliding so badly
 // that no table could place them, which only a broken hash produces; that is reported as `Unsupported`.
 
+import Core::Ownership::Copyable;
 import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Core::Iteration::Iterator;
 
@@ -23,7 +24,7 @@ import Core::Iteration::Iterator;
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/hash-map
-pub struct HashMap<K, V> {
+pub struct HashMap<K: Copyable, V> {
     /// The slots, the probing and the entries.
     table: Table<K, V>;
     /// What a key's hash is, given the table's seed.
@@ -74,7 +75,7 @@ extend HashMap<K, V> {
                       equals: func(K, K) -> bool) -> Self {
         var map = HashMap<K, V>::New(allocator, hash, equals);
         map.Reserve(capacity);
-        return move map;
+        return map;
     }
 
     /// How many entries the map holds.
@@ -157,7 +158,7 @@ extend HashMap<K, V> {
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#insert
     pub func Insert(&var self, key: K, value: V) {
-        self.TryInsert(move key, move value) catch { error => AllocationFailed(error) };
+        self.TryInsert(key, value) catch { error => AllocationFailed(error) };
     }
 
     /// Stores `value` under `key`, replacing whatever was there, or throws why the table could not grow.
@@ -177,14 +178,14 @@ extend HashMap<K, V> {
                 // Safety: the table invariant: `FindHashed` names only an occupied slot below the capacity, and its
                 // value is refilled right after it is moved out.
                 {
-                    let replaced = move self.table.values[slot];
-                    self.table.values[slot] = move value;
+                    let replaced = self.table.values[slot];
+                    self.table.values[slot] = value;
                 }
                 return;
             },
             none => {}
         }
-        self.Place(move key, move value, hashed)!;
+        self.Place(key, value, hashed)!;
     }
 
     // Places an entry whose key is absent, growing the table first when it is full, and reports the slot it took.
@@ -194,7 +195,7 @@ extend HashMap<K, V> {
         // The table has room and the probe can still run past what a distance byte holds, when the keys collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `TryEnsureRoom` succeeded, so the capacity is nonzero.
-        return self.table.PlaceHashed(move key, move value, hashed) ?? throw .Unsupported;
+        return self.table.PlaceHashed(key, value, hashed) ?? throw .Unsupported;
     }
 
     /// Takes the entry for `key` out and hands back its value.
@@ -210,10 +211,10 @@ extend HashMap<K, V> {
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key and value
         // are initialized; both are moved out before `Vacate` closes the slot.
         {
-            let takenKey = move self.table.keys[slot];
-            let takenValue = move self.table.values[slot];
+            let takenKey = self.table.keys[slot];
+            let takenValue = self.table.values[slot];
             self.table.Vacate(slot);
-            return move takenValue;
+            return takenValue;
         }
     }
 
@@ -292,7 +293,7 @@ extend HashMap<K, V> {
             slot = present;
         }
         else {
-            slot = self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
+            slot = self.Place(key, value, hashed) catch { error => AllocationFailed(error) };
         }
         // Safety: by the table invariant `FindHashed` and `Place` name only an occupied slot below the capacity, and
         // the reference borrows `self`, so nothing can move the slot while it is in use.
@@ -315,15 +316,15 @@ extend HashMap<K, V> {
                 // Safety: the table invariant: `FindHashed` names only an occupied slot below the capacity, and its
                 // value is refilled right after it is moved out.
                 {
-                    let previous = move self.table.values[slot];
-                    self.table.values[slot] = move value;
-                    return move previous;
+                    let previous = self.table.values[slot];
+                    self.table.values[slot] = value;
+                    return previous;
                 }
             },
             none => {}
         }
 
-        self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
+        self.Place(key, value, hashed) catch { error => AllocationFailed(error) };
         return none;
     }
 
@@ -341,10 +342,10 @@ extend HashMap<K, V> {
         // Safety: the table invariant: `Find` names only an occupied slot below the capacity, so its key and value
         // are initialized; both are moved out before `Vacate` closes the slot.
         {
-            let takenKey = move self.table.keys[slot];
-            let takenValue = move self.table.values[slot];
+            let takenKey = self.table.keys[slot];
+            let takenValue = self.table.values[slot];
             self.table.Vacate(slot);
-            return KeyValue<K, V> { key: move takenKey, value: move takenValue };
+            return KeyValue<K, V> { key: takenKey, value: takenValue };
         }
     }
 
@@ -375,7 +376,7 @@ extend HashMap<K, V> {
         // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
         // function ends, and a map left holding the runs would have its destructor release the very storage the
         // iterator was handed.
-        var map = move self;
+        var map = self;
         let taken = HashMapIntoIterator<K, V> {
             table: Table<K, V> {
                 keys: map.table.keys,
@@ -395,7 +396,7 @@ extend HashMap<K, V> {
         map.table.tags = null;
         map.table.length = 0;
         map.table.capacity = 0;
-        return move taken;
+        return taken;
     }
 }
 
@@ -418,7 +419,7 @@ pub struct KeyValue<K, V> {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-iterator
-pub struct HashMapIterator<K, V> {
+pub struct HashMapIterator<K: Copyable, V> {
     /// Raw borrowed table storage. Kept raw because references cannot be fields.
     keys: *K;
     values: *V;
@@ -457,7 +458,7 @@ extend HashMapIterator<K, V> : Iterator {
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/hash-map#hash-map-into-iterator
-pub struct HashMapIntoIterator<K, V> {
+pub struct HashMapIntoIterator<K: Copyable, V> {
     /// The table taken from the map.
     table: Table<K, V>;
     /// The slot to look at next.
@@ -480,12 +481,12 @@ extend HashMapIntoIterator<K, V> : Iterator {
                 // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its key
                 // and value are initialized; both are moved out and the slot is marked empty at once.
                 {
-                    let takenKey = move self.table.keys[index];
-                    let takenValue = move self.table.values[index];
+                    let takenKey = self.table.keys[index];
+                    let takenValue = self.table.values[index];
                     self.table.states[index] = SlotEmpty;
                     self.table.length = self.table.length - 1;
                     self.cursor = index + 1;
-                    return KeyValue<K, V> { key: move takenKey, value: move takenValue };
+                    return KeyValue<K, V> { key: takenKey, value: takenValue };
                 }
             }
             index++;

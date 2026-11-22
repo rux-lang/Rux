@@ -17,7 +17,7 @@ func Radius(shape: Shape?) -> int {
 }
 
 func ValueOr<T, E>(outcome: T ! E, fallback: T) -> T {
-    return match outcome {
+    return match &outcome {
         .Success(value) => value,
         .Failure(_) => fallback,
     };

@@ -364,11 +364,8 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     }
     else if (Match(TokenKind::MoveArrow)) {
         const SourceLocation moveLocation = Previous().location;
-        EmitError(moveLocation, "'<-' is not a binding operator", "write 'let name = move source'");
-        auto move = std::make_unique<MoveExpr>();
-        move->location = moveLocation;
-        move->operand = ParseRequiredExpr("after '<-' in the binding");
-        s->init = std::move(move);
+        EmitError(moveLocation, "'<-' is not a binding operator", "write 'let name = source'");
+        s->init = ParseRequiredExpr("after '<-' in the binding");
     }
     else if (!s->type) {
         EmitExpected(CurrentLocation(), "'=' before the binding initializer",
@@ -749,13 +746,10 @@ std::unique_ptr<ForStmt> Parser::ParseForStmt() {
         auto item = std::make_unique<IdentExpr>();
         item->location = pattern->location;
         item->name = s->variable;
-        auto transfer = std::make_unique<MoveExpr>();
-        transfer->location = pattern->location;
-        transfer->operand = std::move(item);
         auto destructure = std::make_unique<LetStmt>();
         destructure->location = pattern->location;
         destructure->pattern = std::move(pattern);
-        destructure->init = std::move(transfer);
+        destructure->init = std::move(item);
         s->body->stmts.insert(s->body->stmts.begin(), std::move(destructure));
     }
     return s;

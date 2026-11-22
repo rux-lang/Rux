@@ -36,7 +36,7 @@ func Run() -> int ! IoError {
 
     // Now that it exists: reading finds it, and a creation claim is refused.
     var opened = File::Open(allocator, scratch, OpenOptions::Reading())!;
-    var readable = move opened;
+    var readable = opened;
     Assert(readable.IsOpen(), "the created file reads");
     readable.Close()!;
     var claimed = OpenOptions::New();

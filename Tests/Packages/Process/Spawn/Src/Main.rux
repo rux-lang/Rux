@@ -108,7 +108,7 @@ const NotAChild: int = -1;
 func NewSelf(program: OsStringView, mode: char8[..]) -> Command {
     var command = Command::FromNative(SystemAllocator::New(), program);
     command.Argument(mode);
-    return move command;
+    return command;
 }
 
 // Whether bytes a child wrote are the text `text`.

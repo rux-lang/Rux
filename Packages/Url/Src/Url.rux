@@ -184,7 +184,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         none => {}
     }
     url.text = String::FromValidated(allocator, out.View());
-    return move url;
+    return url;
 }
 
 // Whether an optional piece of text is there.
@@ -371,7 +371,7 @@ extend Url {
         if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/'); }
         rooted.PushAll(path);
         pieces.path = rooted.View();
-        self = move Compose(self.allocator, pieces)!;
+        self = Compose(self.allocator, pieces)!;
     }
 
     /// Replaces the query, or removes it with none.
@@ -381,7 +381,7 @@ extend Url {
     pub func SetQuery(&var self, query: char8[..]?) -> !UrlError {
         var pieces = self.Pieces();
         pieces.query = query;
-        self = move Compose(self.allocator, pieces)!;
+        self = Compose(self.allocator, pieces)!;
     }
 
     /// Replaces the fragment, or removes it with none.
@@ -391,7 +391,7 @@ extend Url {
     pub func SetFragment(&var self, fragment: char8[..]?) -> !UrlError {
         var pieces = self.Pieces();
         pieces.fragment = fragment;
-        self = move Compose(self.allocator, pieces)!;
+        self = Compose(self.allocator, pieces)!;
     }
 
     /// Whether two URLs are the same, which after normalization means the same text.

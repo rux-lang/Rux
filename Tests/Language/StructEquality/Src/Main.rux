@@ -50,7 +50,7 @@ extend Tracked {
 variant Owners { Both(Tracked, Tracked) }
 func DropPayloads(drops: *var int32) {
     let value = Owners::Both(Tracked { value: 1, drops }, Tracked { value: 2, drops });
-    let moved = move value;
+    let moved = value;
 }
 
 struct Copied { value: int64; source: *var int32; }
@@ -59,7 +59,7 @@ variant Transfers { Both(Copied, Copied) }
 func TransferPayloads(source: *var int32) -> bool {
     let value = Transfers::Both(Copied { value: 1, source }, Copied { value: 2, source });
     let copied = value;
-    let moved = move copied;
+    let moved = copied;
     if value != moved { return false; }
     return match moved { .Both(first, second) => first.value == 1 && second.value == 2 && first.source == source };
 }

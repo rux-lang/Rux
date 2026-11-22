@@ -418,8 +418,8 @@ extend JsonParser {
         }
         var value = JsonValue::Null(self.allocator);
         value.kind = JsonKind::Text;
-        value.text = move held;
-        return move value;
+        value.text = held;
+        return value;
     }
 
     func ParseArray(&var self) -> JsonValue {
@@ -431,19 +431,19 @@ extend JsonParser {
         var token = self.lexer.Next();
         if token.kind == JsonTokenKind::ArrayEnd {
             self.depth = self.depth - 1;
-            return move array;
+            return array;
         }
         var entries: uint = 0;
         while true {
             var element = self.ParseValue(token);
-            if self.stop != JsonStop::None { return move array; }
+            if self.stop != JsonStop::None { return array; }
             entries = entries + 1;
             if entries > self.limits.maximumEntries { return self.Stop(JsonStop::TooManyEntries); }
-            array.elements.Push(move element);
+            array.elements.Push(element);
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
                 self.depth = self.depth - 1;
-                return move array;
+                return array;
             }
             if token.kind != JsonTokenKind::Comma {
                 // A trailing comma lands here, since after one the next token is the closing bracket.
@@ -455,7 +455,7 @@ extend JsonParser {
             }
             token = self.lexer.Next();
         }
-        return move array;
+        return array;
     }
 
     func ParseObject(&var self) -> JsonValue {
@@ -465,7 +465,7 @@ extend JsonParser {
         var token = self.lexer.Next();
         if token.kind == JsonTokenKind::ObjectEnd {
             self.depth = self.depth - 1;
-            return move object;
+            return object;
         }
         var entries: uint = 0;
         while true {
@@ -502,7 +502,7 @@ extend JsonParser {
             var value = self.ParseValue(self.lexer.Next());
             if self.stop != JsonStop::None {
                 name.Clear();
-                return move object;
+                return object;
             }
 
             if object.Find(name.View()) != none {
@@ -517,7 +517,7 @@ extend JsonParser {
                     token = self.lexer.Next();
                     if token.kind == JsonTokenKind::ObjectEnd {
                         self.depth = self.depth - 1;
-                        return move object;
+                        return object;
                     }
                     if token.kind != JsonTokenKind::Comma { return self.StopAt(JsonStop::Unexpected, token.start); }
                     token = self.lexer.Next();
@@ -534,12 +534,12 @@ extend JsonParser {
                 name.Clear();
                 return self.Stop(JsonStop::TooManyEntries);
             }
-            object.members.Push(JsonMember { name: move name, value: move value });
+            object.members.Push(JsonMember { name: name, value: value });
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
                 self.depth = self.depth - 1;
-                return move object;
+                return object;
             }
             if token.kind != JsonTokenKind::Comma {
                 return self.StopAt(if token.kind == JsonTokenKind::End {
@@ -550,7 +550,7 @@ extend JsonParser {
             }
             token = self.lexer.Next();
         }
-        return move object;
+        return object;
     }
 
     /// Parses the whole document and returns its top-level value, or why it could not.
@@ -576,7 +576,7 @@ extend JsonParser {
             // a document and is being told there is none.
             throw BuiltFailure(self.stop, self.lexical, self.position);
         }
-        return move value;
+        return value;
     }
 }
 

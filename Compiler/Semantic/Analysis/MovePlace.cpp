@@ -13,9 +13,6 @@ std::string ReadableCanonical(const std::string &value) {
 }
 
 std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
-    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
-        return CanonicalIndex(*move->operand, isOperatorCall);
-    }
     if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
         return CanonicalIndex(*loan->operand, isOperatorCall);
     }
@@ -67,9 +64,6 @@ std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &is
 }
 
 MovePlace AnalyzeImpl(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
-    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
-        return AnalyzeImpl(*move->operand, isOperatorCall);
-    }
     // A written loan reaches the place it lends.
     if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
         return AnalyzeImpl(*loan->operand, isOperatorCall);

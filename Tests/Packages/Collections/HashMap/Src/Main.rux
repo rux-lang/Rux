@@ -43,7 +43,7 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint
         map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
-    var taken = (move map).IntoIterator();
+    var taken = (map).IntoIterator();
     var yielded: uint = 0;
     var draining = true;
     while draining {
@@ -67,7 +67,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAf
         map.Insert(key, Tracked { counter, value: key });
         key = key + 1;
     }
-    var taken = (move map).IntoIterator();
+    var taken = (map).IntoIterator();
     var yielded: uint = 0;
     var draining = true;
     while draining && yielded < stopAfter {
@@ -394,7 +394,7 @@ func Main() -> int {
     }
     var iterated: uint = 0;
     var sum: int64 = 0;
-    for pair in loops {
+    for pair in &loops {
         Assert(pair.value == pair.key * 2, "every entry a loop yields is one that was put in");
         sum = sum + (pair.key as int64);
         iterated = iterated + 1;
@@ -409,7 +409,7 @@ func Main() -> int {
         drained.Insert(key, key + 100);
         key = key + 1;
     }
-    var moving = (move drained).IntoIterator();
+    var moving = (drained).IntoIterator();
     var moved: uint = 0;
     var movedSum: int64 = 0;
     var draining = true;

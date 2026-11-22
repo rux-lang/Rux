@@ -36,7 +36,7 @@ func Fox() -> Vector<byte> {
         value = value + 1;
     }
     text.PushSlice(AsBytes("end"));
-    return move text;
+    return text;
 }
 
 func SameBytes(left: byte[..], right: byte[..]) -> bool {
@@ -76,7 +76,7 @@ func Noise(count: uint) -> Vector<byte> {
         bytes.Push((state >> 16).Truncate<byte>());
         index = index + 1;
     }
-    return move bytes;
+    return bytes;
 }
 
 // Text with repeats far apart and close together, longer than the window and than one block.
@@ -92,7 +92,7 @@ func Prose(count: uint) -> Vector<byte> {
         if index % 1000u < 500u { bytes.Push(words[index % words.length] as byte); }
         index = index + 1;
     }
-    return move bytes;
+    return bytes;
 }
 
 func Main() -> int {

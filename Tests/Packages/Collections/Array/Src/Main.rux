@@ -29,7 +29,7 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     var items = Vector<Tracked>::New(allocator);
     items.Push(Tracked { counter: destroyed, value: 1 });
     items.Push(Tracked { counter: destroyed, value: 2 });
-    var array = (move items).IntoArray();
+    var array = (items).IntoArray();
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(*destroyed == 0, "moving the elements into the array destroys none of them");
     array.Set(0, Tracked { counter: replacements, value: 10 }) catch { _ => Panic("setting an element succeeds") };
@@ -63,7 +63,7 @@ func SumOf(allocator: Allocator) -> int32 {
     var array = Array::FromSlice<int32>(allocator, (@values[0])[..4]);
 
     var total: int32 = 0;
-    for value in array {
+    for value in &array {
         total = total + value;
     }
     return total;

@@ -9,14 +9,14 @@ import GenericSum::Shapes::{ Box, Boxes, Choose, Complete, IoError, Load, LoadEr
                              ReadError, Timeout, WithTimeout };
 
 func Left<T, U>(value: T | U) -> bool {
-    return match value {
+    return match &value {
         left: T => true,
         _ => false
     };
 }
 
 func Size<T>(value: T) -> int32 {
-    return match value {
+    return match &value {
         whole: T => 1i32
     };
 }
@@ -30,7 +30,7 @@ func Describe(error: ReadError) -> int32 {
 
 // A typed arm may name a concrete member of a sum of type parameters; it selects that member after substitution.
 func PickInt32<T, U>(value: T | U) -> int32 {
-    return match value {
+    return match &value {
         n: int32 => n,
         _ => -1i32
     };

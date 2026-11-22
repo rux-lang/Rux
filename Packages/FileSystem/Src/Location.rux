@@ -103,7 +103,7 @@ pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     joined.Push(path.name);
     var simplified = Normalize(allocator, joined.AsPath());
     joined.Release();
-    return move simplified;
+    return simplified;
 }
 
 when #target.os != .Windows {
@@ -130,7 +130,7 @@ when #target.os != .Windows {
         }
         let view = OsStringView::FromUnits(units[0..written as uint]);
         var target = OsString::FromView(allocator, view);
-        return move target;
+        return target;
     }
 
     func SegmentIs(segment: OsStringView, length: uint) -> bool {
@@ -248,6 +248,6 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".
         MetadataOf(allocator, resolved.AsPath(), true)!;
-        return move resolved;
+        return resolved;
     }
 }

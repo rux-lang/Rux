@@ -1,3 +1,4 @@
+import Core::Ownership::Copyable;
 import Core::Convert::{ ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN,
                         IsNegativeZero, IsSignNegative, IsSignPositive, IsSignedType, IsZero, SignOf };
 import Core::Diagnostics::Assert;
@@ -8,7 +9,7 @@ import Core::Diagnostics::Assert;
 // apart.
 
 // A value that fits converts exactly and reports nothing lost.
-func CheckExact<From, To>(value: From, expected: To, zero: To) -> int32 {
+func CheckExact<From: Copyable, To: Copyable>(value: From, expected: To, zero: To) -> int32 {
     var result = zero;
     if ConvertChecked<From, To>(value, @result) { return 1; }
     if result != expected { return 2; }
@@ -26,7 +27,7 @@ func CheckExact<From, To>(value: From, expected: To, zero: To) -> int32 {
 }
 
 // A value that does not fit is reported, and each spelling then disposes of it differently.
-func CheckLost<From, To>(value: From, wrapped: To, saturated: To, zero: To) -> int32 {
+func CheckLost<From: Copyable, To: Copyable>(value: From, wrapped: To, saturated: To, zero: To) -> int32 {
     var result = zero;
     if !ConvertChecked<From, To>(value, @result) { return 1; }
     // The lossy answer is written even when the loss is reported, so a caller who wants it does not convert twice.
@@ -42,7 +43,7 @@ func CheckLost<From, To>(value: From, wrapped: To, saturated: To, zero: To) -> i
     return 0;
 }
 
-func CheckFloat<T>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int32 {
+func CheckFloat<T: Copyable>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int32 {
     // Nothing is a NaN but a NaN.
     if !IsNaN<T>(nan) { return 1; }
     if IsNaN<T>(zero) { return 2; }

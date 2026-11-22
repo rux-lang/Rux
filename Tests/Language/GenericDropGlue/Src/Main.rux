@@ -22,13 +22,13 @@ struct Counted<T> {
 
 // `Pair<T>` is spelled only here, so only the instantiation knows it holds two `Tracked`.
 func MakeAndDrop<T>(first: T, second: T) {
-    let pair = Pair<T> { first: move first, second: move second };
+    let pair = Pair<T> { first: first, second: second };
 }
 
 // Moving the whole block out of the pointer destroys what it held at the end of the scope.
 // Safety: `block` must point at a live `Counted<T>` that the caller refills or never reads again.
 func TakeOut<T>(block: *var Counted<T>) {
-    let taken = move block[0];
+    let taken = block[0];
 }
 
 // A generic type whose destructor reaches another generic function, which is where `Counted<T>` is spelled.

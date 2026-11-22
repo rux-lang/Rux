@@ -1108,9 +1108,6 @@ std::vector<const Symbol *> AnalysisContext::LocalArraysViewed(const Expr &expre
             AddUnique(viewed, symbol);
         }
     };
-    if (const auto *move = AstCast<const MoveExpr>(&expression)) {
-        return LocalArraysViewed(*move->operand, targetType);
-    }
     const TypeRef type = typeOf(expression);
     // A fixed array where a view is expected is viewed in place, as `return buffer` from a function returning a slice.
     if (type->kind == TypeRef::Kind::Array && targetType.IsSlice()) {

@@ -202,15 +202,6 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *move = AstCast<const MoveExpr>(&expression)) {
-        Pad();
-        out << "MoveExpr move\n";
-        ++indent;
-        if (move->operand) {
-            Print(*move->operand);
-        }
-        --indent;
-    }
     else if (const auto *tryExpression = AstCast<const TryExpr>(&expression)) {
         Pad();
         out << "TryExpr\n";

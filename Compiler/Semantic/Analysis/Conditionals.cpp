@@ -435,9 +435,14 @@ TypeRef AnalysisContext::CheckIsPattern(const IsExpr &expression, const bool rec
     // owns it, so its bindings take what they bind; a named or borrowed subject stays with its owner and its bindings
     // borrow from it.
     const MovePlace place = AnalyzeMovePlace(*expression.operand);
-    const bool transferred = AstCast<const MoveExpr>(expression.operand.get()) != nullptr;
     const bool binds = PatternBindsValue(*expression.pattern);
-    const bool owned = transferred || (!reference && !place.IsNamedStorage() && !place.IsBorrowedStorage());
+    // `if let` takes a named owning subject, as `match` does, and `if let p = &x` lends it; a test only inspects.
+    const auto *subjectName = AstCast<const IdentExpr>(expression.operand.get());
+    const Symbol *subjectSymbol = subjectName ? currentScope->Lookup(subjectName->name) : nullptr;
+    const bool takesNamed = expression.binds && !reference && place.IsNamedStorage() &&
+                            !(subjectSymbol && subjectSymbol->isBorrowedBinding) &&
+                            ClassifyTypeProperties(subjectType).IsMoveOnly();
+    const bool owned = takesNamed || (!reference && !place.IsNamedStorage() && !place.IsBorrowedStorage());
     bool takesParts = false;
     PatternBorrow borrow = PatternBorrow::Owned;
     if (owned) {

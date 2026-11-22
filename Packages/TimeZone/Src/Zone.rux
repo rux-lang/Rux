@@ -82,7 +82,7 @@ extend TimeZone {
             transitionTypes: Vector<uint8>::New(allocator), types: Vector<ZoneType>::New(allocator), rule: NoRule()
         };
         zone.name.PushSlice(name);
-        return move zone;
+        return zone;
     }
 
     /// UTC, which has no offset and never changes.
@@ -93,7 +93,7 @@ extend TimeZone {
     pub func Utc(allocator: Allocator) -> Self {
         var zone = Self::Empty(allocator, "UTC");
         zone.rule = ParseRule("UTC0", &var zone.names) catch { _ => Panic("the UTC rule is refused") };
-        return move zone;
+        return zone;
     }
 
     /// A zone kept by the POSIX `TZ` rule `rule`, such as `EST5EDT,M3.2.0,M11.1.0`.
@@ -105,7 +105,7 @@ extend TimeZone {
     pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> Self ! TimeZoneError {
         var zone = Self::Empty(allocator, name);
         zone.rule = ParseRule(rule, &var zone.names)!;
-        return move zone;
+        return zone;
     }
 
     /// A zone read from TZif data, the format of the files in a time-zone directory.
@@ -186,7 +186,7 @@ extend TimeZone {
                 zone.rule = ParseRule(text, &var zone.names) catch { _ => throw .InvalidData };
             }
         }
-        return move zone;
+        return zone;
     }
 
     /// The zone's name.

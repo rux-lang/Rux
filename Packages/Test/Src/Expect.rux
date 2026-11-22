@@ -121,7 +121,7 @@ pub func ExpectSome<T>(value: T?, message: char8[..]) -> T ! TestFailure {
 /// @returns nothing, or the failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-none
 pub func ExpectNone<T>(value: T?, message: char8[..]) -> !TestFailure {
-    match value {
+    match &value {
         _? => throw TestFailure::Of(message),
         none => {}
     }
@@ -146,7 +146,7 @@ pub func ExpectSuccess<T, E>(outcome: T ! E, message: char8[..]) -> T ! TestFail
 /// @returns the failure the code gave, or the test's failure
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-failure
 pub func ExpectFailure<T, E>(outcome: T ! E, message: char8[..]) -> E ! TestFailure {
-    match move outcome {
+    match outcome {
         .Success(_) => throw TestFailure::Of(message),
         .Failure(error) => return error
     }

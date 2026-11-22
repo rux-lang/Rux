@@ -88,7 +88,7 @@ func Main() -> int {
     let allocator = SystemAllocator::New();
     let server = UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the name server binds") };
     let address = server.LocalAddress() catch { _ => Panic("it has an address") };
-    var serving = Spawn(Serve, move server) catch { _ => Panic("the name server starts") };
+    var serving = Spawn(Serve, server) catch { _ => Panic("the name server starts") };
 
     let servers: SocketAddress[1] = [address];
     var resolver = Resolver::WithServers(allocator, servers[..]);
