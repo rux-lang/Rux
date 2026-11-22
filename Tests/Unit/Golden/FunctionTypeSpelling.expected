@@ -1,0 +1,5 @@
+25:15: error: argument 1 to 'Call' has type 'func(int)', but parameter 'initialize' requires 'func()'
+26:15: error: argument 1 to 'Call' has type 'func() -> int', but parameter 'initialize' requires 'func()'
+27:5: error: cannot assign 'func(int) -> ()' to 'func(int)'
+28:5: error: cannot assign 'func(int)' to 'func(int) -> ()'
+29:5: error: cannot assign 'func() -> int' to 'func() -> func(int)'

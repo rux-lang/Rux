@@ -1,0 +1,31 @@
+// A function type is written as its declaration writes it: one without a result has no arrow, 'func(int)', and one
+// that returns '()' says so, 'func(int) -> ()'. A void function is not a unit-returning one, so the two differ.
+struct Once {
+    done: bool;
+}
+
+extend Once {
+    func Call(&self, initialize: func()) {
+        initialize();
+    }
+}
+
+func Work(value: int) {
+}
+
+func Unit(value: int) -> () {
+}
+
+func Value() -> int {
+    return 1;
+}
+
+func Main() -> int {
+    let once = Once { done: false };
+    once.Call(Work);
+    once.Call(Value);
+    let plain: func(int) = Unit;
+    let unit: func(int) -> () = Work;
+    let nested: func() -> func(int) = Value;
+    return 0;
+}

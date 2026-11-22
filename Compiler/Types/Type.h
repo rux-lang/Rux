@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -640,21 +639,7 @@ inline std::string TypeRef::DisplayString() const {
         const std::string error = node->inner[1].DisplayString();
         return node->inner[0].IsUnit() ? "!" + error : node->inner[0].DisplayString() + " ! " + error;
     }
-    // A function without a return type is written without an arrow, `func(T)`, and reads that way wherever it appears
-    // in the spelling; `opaque` after an arrow is only ever that placeholder, since a written one sits behind a
-    // pointer.
-    std::string spelling = ToString();
-    constexpr std::string_view placeholder = " -> opaque";
-    for (std::size_t at = spelling.find(placeholder); at != std::string::npos; at = spelling.find(placeholder, at)) {
-        const std::size_t end = at + placeholder.size();
-        if (end < spelling.size() &&
-            (std::isalnum(static_cast<unsigned char>(spelling[end])) || spelling[end] == '_')) {
-            at = end;
-            continue;
-        }
-        spelling.erase(at, placeholder.size());
-    }
-    return spelling;
+    return ToString();
 }
 } // namespace Rux
 

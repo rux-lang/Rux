@@ -702,8 +702,11 @@ std::string Spell(const TypeNode &type) {
             }
             s += inner[i].ToString();
         }
-        s += ") -> ";
-        s += inner.empty() ? "opaque" : inner.back().ToString();
+        s += ")";
+        // A function with no result is written without an arrow, as its declaration writes it.
+        if (!inner.empty() && !inner.back().IsOpaque()) {
+            s += " -> " + inner.back().ToString();
+        }
         return s;
     }
     default:
