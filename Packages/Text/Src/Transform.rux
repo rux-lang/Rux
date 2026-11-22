@@ -10,7 +10,7 @@
 // how text stops round-tripping.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator };
-import Unicode::{ Fold, ToLowerFull, ToUpperFull };
+import Unicode::Case::{ Fold, ToLowerFull, ToUpperFull };
 
 /// The text of every part of `parts` in order, with `separator` between each two.
 /// No parts give empty text and one part gives that part, so the separator count is always one less than the parts.

@@ -10,7 +10,8 @@ import Regex::{
     PosixWord, PosixXdigit, PropertyAlphabetic, PropertyAny, PropertyAscii, PropertyWhiteSpace, PropertyWord, Regex,
     RegexError, RegexErrorKind, StartLine, StartText, WordBoundary
 };
-import Unicode::{ Script, ToLowerSimple, ToUpperSimple };
+import Unicode::Case::{ ToLowerSimple, ToUpperSimple };
+import Unicode::Scripts::Script;
 
 // No node: what a flag group such as `(?i)` gives, and the end of a list of children.
 const NoNode: uint32 = 0xFFFFFFFF;

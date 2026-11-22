@@ -4,9 +4,9 @@
 // consuming anything: to another instruction (`Jump`), to two at once with the first preferred (`Split`), by recording
 // the position in a capture slot (`Save`), or by checking where in the text it is (`Assert`). `Match` ends a match.
 
-import Unicode::{
-    CategoryOf, Fold, IsAlphabetic, IsNumeric, IsWhiteSpace, NextInCaseOrbit, ScriptOf, ToLowerSimple, ToUpperSimple
-};
+import Unicode::Case::{ Fold, NextInCaseOrbit, ToLowerSimple, ToUpperSimple };
+import Unicode::Properties::{ CategoryOf, IsAlphabetic, IsNumeric, IsWhiteSpace };
+import Unicode::Scripts::ScriptOf;
 
 // What an instruction does.
 enum Op: uint8 {

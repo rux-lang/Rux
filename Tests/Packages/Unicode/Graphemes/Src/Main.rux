@@ -1,5 +1,6 @@
 import Core::Diagnostics::Assert;
-import Unicode::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoints, IsGraphemeBoundary };
+import Unicode::Conformance::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoints };
+import Unicode::Graphemes::IsGraphemeBoundary;
 
 // Every row of the official GraphemeBreakTest, boundary by boundary. Each row is a run of code points and a mask
 // saying where the boundaries fall — bit N for the position before point N, the bit past the last for the end --

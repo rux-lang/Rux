@@ -1,7 +1,8 @@
 import Core::Diagnostics::Assert;
 import Io::{ Print, PrintLine };
-import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVectorElements, NormalizationVectorIndex,
-                  NormalizeCanonical, NormalizeCompatibility };
+import Unicode::Conformance::{ NormalizationVectorElements, NormalizationVectorIndex };
+import Unicode::Normalization::{ DecomposeCanonical, DecomposeCompatibility, NormalizeCanonical,
+                                 NormalizeCompatibility };
 
 // The committed rows of the official NormalizationTest, each carrying five columns c1..c5 and the invariants the
 // standard states: c2 is the NFC of the first three columns, c3 their NFD, c4 the NFKC of all five and c5 their

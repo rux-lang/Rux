@@ -25,7 +25,7 @@ Unicode scalar values, `GeneralCategory`, and `GraphemeBreak` are structural `Co
 ## Example
 
 ```rux
-import Unicode::ToUpperFull;
+import Unicode::Case::ToUpperFull;
 
 var output: char32[3];
 var written: uint = 0;

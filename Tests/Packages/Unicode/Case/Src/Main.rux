@@ -1,5 +1,5 @@
 import Core::Diagnostics::Assert;
-import Unicode::{ Fold, NextInCaseOrbit, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
+import Unicode::Case::{ Fold, NextInCaseOrbit, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
 
 // The cases that separate the three kinds of mapping from each other: the sharp s, whose uppercase is two letters
 // no simple mapping can spell; the sigmas, three of which fold to one; and the dotted I, whose full lowercase

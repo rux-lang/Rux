@@ -1,7 +1,6 @@
 import Core::Diagnostics::Assert;
-import Unicode::{
-    CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, IsNumeric, IsWhiteSpace, Script, ScriptCount, ScriptOf
-};
+import Unicode::Properties::{ CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, IsNumeric, IsWhiteSpace };
+import Unicode::Scripts::{ Script, ScriptCount, ScriptOf };
 
 // Whether `scalar` is in the script called `name`.
 func InScript(scalar: uint32, name: char8[..]) -> bool {
