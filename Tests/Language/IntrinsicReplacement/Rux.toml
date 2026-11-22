@@ -6,6 +6,7 @@ Name = "IntrinsicReplacement"
 Version = "0.1.0"
 Type = "Executable"
 Description = "A renamed replacement provider without Core"
+Intrinsics = "Foundation"
 
 [Dependencies]
 Foundation = { Package = "Replacement", Path = "../../Fixtures/IntrinsicProvider" }

@@ -69,6 +69,7 @@ CheckedArithmetic = "true"
 | `Repository`  | Optional                              | Absolute `http`/`https` URL with a host and no credentials                |
 | `Homepage`    | Optional                              | Absolute `http`/`https` URL with a host and no credentials                |
 | `ReadmeFile`  | Optional                              | Package-relative path                                                     |
+| `Intrinsics`  | Optional, defaults to `Core`          | The dependency, by its name in `[Dependencies]`, or this package's own `Name`, that may declare `intrinsic` functions and values for the build |
 
 The scalar legacy form of `Authors` is invalid.
 

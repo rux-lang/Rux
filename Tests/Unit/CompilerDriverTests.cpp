@@ -26,6 +26,25 @@ func Main() -> int {
     CHECK_EQ(executed->exitCode, 0);
 }
 
+TEST_CASE("compiler driver rejects an intrinsic outside the bound intrinsics package") {
+    DependencyFixture fixture;
+    fixture.SetDependencySource(R"(
+pub struct Target { pub bits: uint; }
+pub intrinsic #target: Target;
+)");
+    fixture.SetApplicationSource(R"(
+func Main() -> int {
+    return 0;
+}
+)");
+    std::vector<Diagnostic> diagnostics;
+    const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+    CHECK_FALSE(result.ok);
+    CHECK(std::ranges::any_of(diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message == "'intrinsic' is allowed only in the intrinsics package";
+    }));
+}
+
 TEST_CASE("compiler driver obtains primitive extensions and intrinsic values from an ordinary dependency") {
     DependencyFixture fixture;
     fixture.SetDependencySource(R"(
@@ -44,7 +63,10 @@ when int8::Min == -128i8 {
 } else { import Missing::NotSelected; }
 )");
     std::vector<Diagnostic> diagnostics;
-    const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+    auto options = fixture.Options(false, diagnostics);
+    // The dependency declares an intrinsic, so the build binds it as the intrinsics package.
+    options.manifest.package.intrinsics = "Dependency";
+    const auto result = CompilerDriver(std::move(options)).Compile();
     REQUIRE(result.ok);
     const auto executed = RunCaptured(result.primaryArtifactPath);
     REQUIRE(executed);
@@ -450,6 +472,8 @@ when #config.Has("allocator") &&
     auto options = fixture.Options(false, diagnostics);
     options.defines["allocator"] = "mimalloc";
     options.isTest = true;
+    // The application declares its own intrinsic values, so it binds itself as the intrinsics package.
+    options.manifest.package.intrinsics = options.manifest.package.name.Text();
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 

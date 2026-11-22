@@ -176,6 +176,10 @@ struct Package {
 
     /// Package-relative path to a readme file.
     std::string readmeFile;
+
+    /// The dependency, by the name this manifest gives it, or this package itself, that may declare `intrinsic`
+    /// functions and values for the build. Empty means `Core`.
+    std::string intrinsics;
 };
 
 /**

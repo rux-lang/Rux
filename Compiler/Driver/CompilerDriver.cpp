@@ -973,6 +973,52 @@ bool CompilerDriver::Impl::LoadDependencies() {
     return true;
 }
 
+namespace {
+/// Where a module first declares an intrinsic function, value or constant, at any depth of its modules, extensions
+/// and conditional branches.
+std::optional<SourceLocation> FirstIntrinsicDeclaration(const std::vector<DeclPtr> &items);
+
+std::optional<SourceLocation> FirstIntrinsicIn(const Decl &declaration) {
+    if (const auto *function = AstCast<const FuncDecl>(&declaration); function && !function->intrinsicName.empty()) {
+        return function->location;
+    }
+    if (const auto *constant = AstCast<const ConstDecl>(&declaration); constant && !constant->intrinsicName.empty()) {
+        return constant->location;
+    }
+    if (const auto *extension = AstCast<const ImplDecl>(&declaration)) {
+        for (const auto &method : extension->methods) {
+            if (!method->intrinsicName.empty()) {
+                return method->location;
+            }
+        }
+        for (const auto &constant : extension->constants) {
+            if (!constant->intrinsicName.empty()) {
+                return constant->location;
+            }
+        }
+    }
+    if (const auto *module = AstCast<const ModuleDecl>(&declaration)) {
+        return FirstIntrinsicDeclaration(module->items);
+    }
+    return std::nullopt;
+}
+
+std::optional<SourceLocation> FirstIntrinsicDeclaration(const std::vector<DeclPtr> &items) {
+    for (const DeclPtr &item : items) {
+        if (item) {
+            if (const std::optional<SourceLocation> found = FirstIntrinsicIn(*item)) {
+                return found;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<SourceLocation> FirstIntrinsicDeclaration(const Module &module) {
+    return FirstIntrinsicDeclaration(module.items);
+}
+} // namespace
+
 bool CompilerDriver::Impl::Analyze() {
     const auto semanticStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::Analyzing, opts.manifest.package.name.Text());
@@ -997,6 +1043,59 @@ bool CompilerDriver::Impl::Analyze() {
                 depPackages.push_back({pkgName, {}, std::move(displayName)});
             }
             depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
+        }
+    }
+    // Exactly one package of the build declares what the compiler provides: the one the root manifest binds (N3).
+    {
+        const std::string &rootId = dependencyGraph->Root().id;
+        const std::string bound =
+            opts.manifest.package.intrinsics.empty() ? std::string("Core") : opts.manifest.package.intrinsics;
+        // The name is the root manifest's own, a dependency it names, or the name a package of the build declares,
+        // which is how a package that reaches Core only through its dependencies finds it.
+        std::string boundId = bound == opts.manifest.package.name.Text()
+                                ? rootId
+                                : ResolvePackageImport(dependencyGraph->Bindings(), rootId, bound);
+        if (boundId != rootId &&
+            std::ranges::none_of(depPackages, [&](const DepPackage &package) { return package.name == boundId; })) {
+            for (const DepPackage &package : depPackages) {
+                const std::string &display = package.displayName.empty() ? package.name : package.displayName;
+                const std::size_t slash = display.rfind('/');
+                if ((slash == std::string::npos ? display : display.substr(slash + 1)) == bound) {
+                    boundId = package.name;
+                    break;
+                }
+            }
+        }
+        std::vector<Diagnostic> misplaced;
+        const auto check = [&](const std::string &packageId, const std::string &display, const Module &module) {
+            if (packageId == boundId) {
+                return;
+            }
+            if (const std::optional<SourceLocation> location = FirstIntrinsicDeclaration(module)) {
+                Diagnostic diagnostic;
+                diagnostic.sourceName = module.name;
+                diagnostic.location = *location;
+                diagnostic.message = "'intrinsic' is allowed only in the intrinsics package";
+                diagnostic.notes.push_back(
+                    std::format("this build binds the intrinsics package to '{}', not '{}'", bound, display));
+                diagnostic.help = std::format("give the declaration a body, or bind '{}' with 'Intrinsics' in "
+                                              "[Package]",
+                                              display);
+                misplaced.push_back(std::move(diagnostic));
+            }
+        };
+        for (Module *module : userModules) {
+            check(rootId, opts.manifest.package.name.Text(), *module);
+        }
+        for (const DepPackage &package : depPackages) {
+            for (const DepPackage::ModuleEntry &entry : package.modules) {
+                check(package.name, package.displayName.empty() ? package.name : package.displayName, *entry.module);
+            }
+        }
+        if (!misplaced.empty()) {
+            EmitAll(misplaced);
+            hadErrors = true;
+            return false;
         }
     }
     SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), dependencyGraph->Root().id,

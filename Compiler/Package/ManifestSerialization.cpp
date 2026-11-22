@@ -124,6 +124,9 @@ std::string Manifest::Serialize() const {
     if (!package.readmeFile.empty()) {
         out << "ReadmeFile = " << Quoted(package.readmeFile) << '\n';
     }
+    if (!package.intrinsics.empty()) {
+        out << "Intrinsics = " << Quoted(package.intrinsics) << '\n';
+    }
 
     if (!dependencies.empty()) {
         std::vector<const ManifestDependency *> ordered;

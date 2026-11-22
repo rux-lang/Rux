@@ -299,9 +299,9 @@ private:
     }
 
     void ReadPackage(const Table &table, Package &package) {
-        static constexpr std::string_view known[] = {"Namespace",   "Name",       "Version",  "Type",
-                                                     "Description", "Authors",    "Keywords", "License",
-                                                     "LicenseFile", "Repository", "Homepage", "ReadmeFile"};
+        static constexpr std::string_view known[] = {
+            "Namespace", "Name",        "Version",    "Type",     "Description", "Authors",   "Keywords",
+            "License",   "LicenseFile", "Repository", "Homepage", "ReadmeFile",  "Intrinsics"};
         RejectUnknownKeys(table, known);
 
         if (const Value *ns = Lookup(table, "Namespace")) {
@@ -399,6 +399,9 @@ private:
         }
         if (const Value *homepage = Lookup(table, "Homepage")) {
             Try([&] { package.homepage = ReadUrl(*homepage, "[Package].Homepage"); });
+        }
+        if (const Value *intrinsics = Lookup(table, "Intrinsics")) {
+            Try([&] { package.intrinsics = Typed(*intrinsics, Value::Kind::String, "[Package].Intrinsics").text; });
         }
         if (const Value *readmeFile = Lookup(table, "ReadmeFile")) {
             Try([&] { package.readmeFile = ReadPath(*readmeFile, "[Package].ReadmeFile", false); });

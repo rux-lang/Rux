@@ -173,3 +173,9 @@ TEST_CASE("Manifest Version 1 enforces collection limits") {
         CHECK(error.message == "[Build.Defines] allows at most 128 entries");
     }
 }
+
+TEST_CASE("the package that may declare intrinsics is bound by name and defaults to Core") {
+    CHECK(Validated(PackageWith("")).package.intrinsics.empty());
+    CHECK_EQ(Validated(PackageWith("Intrinsics = \"Foundation\"\n")).package.intrinsics, "Foundation");
+    CHECK(Rejected(PackageWith("Intrinsics = 1\n")).message.contains("[Package].Intrinsics"));
+}
