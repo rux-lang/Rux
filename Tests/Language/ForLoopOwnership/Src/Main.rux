@@ -1,0 +1,111 @@
+// A loop that takes a container takes its elements: each one is destroyed once, by the pass that received it, and
+// whatever the loop does not reach is destroyed with the iterator. An iterator the loop makes, or one a temporary hands
+// it, is the loop's own and is destroyed where the loop ends. A lent array lends its elements: a move-only element is
+// visited where it lies, through a reference, and stays with the array.
+
+import Allocator::SystemAllocator;
+import Collections::Vector;
+import Core::Diagnostics::Assert;
+
+var drops: int = 0;
+var iteratorDrops: int = 0;
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    destructor { drops += 1; }
+}
+
+struct Countdown {
+    left: int;
+}
+
+extend Countdown {
+    func Next(&var self) -> int? {
+        if self.left == 0 { return none; }
+        self.left -= 1;
+        return self.left;
+    }
+
+    destructor { iteratorDrops += 1; }
+}
+
+func Make() -> Vector<Token> {
+    var tokens = Vector<Token>::New(SystemAllocator::New());
+    tokens.Push(Token { id: 1 });
+    tokens.Push(Token { id: 2 });
+    tokens.Push(Token { id: 3 });
+    return tokens;
+}
+
+func ReturnFromLoop() -> int {
+    let tokens = Make();
+    for token in tokens {
+        if token.id == 2 { return token.id; }
+    }
+    return 0;
+}
+
+func SumLent(batons: &(Token[3])) -> int {
+    var sum = 0;
+    for baton in batons { sum += baton.id; }
+    return sum;
+}
+
+func Main() -> int {
+    {
+        let tokens = Make();
+        var sum = 0;
+        for token in tokens { sum += token.id; }
+        Assert(sum == 6, "the loop takes every element");
+        Assert(drops == 3, "each element is destroyed once, by its pass");
+    }
+    Assert(drops == 3, "the container was taken, so nothing is left to destroy");
+    drops = 0;
+    {
+        let tokens = Make();
+        for token in tokens {
+            if token.id == 1 { break; }
+        }
+    }
+    Assert(drops == 3, "the elements a loop leaves behind are destroyed with its iterator");
+    drops = 0;
+    Assert(ReturnFromLoop() == 2, "a return leaves the loop");
+    Assert(drops == 3, "returning from the loop destroys the rest once");
+    drops = 0;
+    {
+        let tokens = Make();
+        var walk = tokens.IntoIterator();
+        for token in walk { }
+    }
+    Assert(drops == 3, "a named iterator is advanced in place and destroyed by its owner");
+    drops = 0;
+
+    var total = 0;
+    for value in (Countdown { left: 3 }) { total += value; }
+    Assert(total == 3 && iteratorDrops == 1, "an iterator the loop holds as a temporary is destroyed once");
+    {
+        var countdown = Countdown { left: 2 };
+        for value in countdown { total += value; }
+        Assert(iteratorDrops == 1, "an iterator the loop names is left to its owner");
+    }
+    Assert(iteratorDrops == 2, "the owner destroys the named iterator");
+
+    var plain: int[3] = [1, 2, 3];
+    var plainSum = 0;
+    for value in &plain { plainSum += value; }
+    Assert(plainSum == 6, "a lent array of plain data is visited");
+
+    var batons: Token[3] = [Token { id: 1 }, Token { id: 2 }, Token { id: 3 }];
+    var lentSum = 0;
+    for baton in &batons {
+        lentSum += baton.id;
+        if baton.id == 2 { break; }
+    }
+    Assert(lentSum == 3 && drops == 0, "a lent array lends its elements and destroys none");
+    for baton in &var batons { baton.id *= 10; }
+    Assert(SumLent(&batons) == 60 && drops == 0, "an element lent for writing is written in place");
+    return 0;
+}

@@ -380,14 +380,26 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         return;
     }
 
-    const bool borrowedSlice = s.iterable->type->kind == TypeRef::Kind::Reference && !s.iterable->type->inner.empty() &&
-                               IsSliceType(s.iterable->type->inner.front());
-    const TypeRef &sequenceType = borrowedSlice ? s.iterable->type->inner.front() : s.iterable->type;
+    const bool borrowedSequence =
+        s.iterable->type->kind == TypeRef::Kind::Reference && !s.iterable->type->inner.empty() &&
+        (IsSliceType(s.iterable->type->inner.front()) || IsArrayType(s.iterable->type->inner.front()));
+    const TypeRef &sequenceType = borrowedSequence ? s.iterable->type->inner.front() : s.iterable->type;
     if (IsSliceType(sequenceType) || IsArrayType(sequenceType)) {
-        const TypeRef dataType = TypeRef::MakePointer(elemType);
-        // A borrowed slice parameter already points to the descriptor. Reading its local slot would add another
-        // level of indirection; treating the reference as a non-sequence used to omit the loop altogether.
-        LirReg iterSlot = borrowedSlice ? LowerExpr(*s.iterable) : LowerLValue(*s.iterable);
+        // A lent sequence of move-only elements binds each pass a reference to its element rather than a copy.
+        // A reference variable over a sequence of anything but references, such as the views a variadic `&I...`
+        // holds, is one to the element.
+        const bool lendsElements = s.varType->kind == TypeRef::Kind::Reference && !s.varType->inner.empty() &&
+                                   !sequenceType->inner.empty() &&
+                                   sequenceType->inner.front()->kind != TypeRef::Kind::Reference;
+        TypeRef elementType = elemType;
+        if (lendsElements) {
+            elementType = s.varType->inner.front();
+            elementType.isMut = false;
+        }
+        const TypeRef dataType = TypeRef::MakePointer(elementType);
+        // A borrowed slice or array already points to the descriptor or the elements. Reading its local slot would add
+        // another level of indirection; treating the reference as a non-sequence used to omit the loop altogether.
+        LirReg iterSlot = borrowedSequence ? LowerExpr(*s.iterable) : LowerLValue(*s.iterable);
 
         // The iterable has been lowered in the enclosing scope; now bind the
         // loop variable name to its induction slot for the loop body.
@@ -433,10 +445,13 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         }
 
         SetBlock(bodyBlock);
-        LirReg elemPtr = EmitIndexPtr(dataPtr, idx, elemType);
+        LirReg elemPtr = EmitIndexPtr(dataPtr, idx, elementType);
         // The loop variable holds a copy of the element, which is plain data and so its bytes. An interface view or
         // handle is the two words of its data and method table, which a register is too narrow for.
-        if (IsInterfaceType(elemType)) {
+        if (lendsElements) {
+            EmitStore(elemPtr, slot, s.varType);
+        }
+        else if (IsInterfaceType(elemType)) {
             const TypeRef word = TypeRef::MakeUInt64();
             for (const char *half : {"0", "1"}) {
                 const LirReg offset = EmitConst(half, word);

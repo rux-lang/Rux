@@ -621,6 +621,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         TypeRef iterableType = CheckExpr(*forStatement->iterable);
         const TrackedFlow loopEntry = SaveTrackedFlow();
         TypeRef elementType = TypeRef::MakeUnknown();
+        bool lendsElements = false;
         if (iterableType.IsRange() && !iterableType.IsIterableRange()) {
             EmitError(forStatement->iterable->location,
                       std::format("range type '{}' has no initial value and is not iterable", iterableType.ToString()));
@@ -651,15 +652,27 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                 }
             }
             elementType = shape->itemType;
+            // A lent array or slice lends its elements too: a move-only element is visited where it lies, through a
+            // reference of the loan's own kind, and stays with the sequence's owner.
+            lendsElements = shape->kind == IterationShape::Kind::Indexed &&
+                            iterableType->kind == TypeRef::Kind::Reference && !iterableType->inner.empty() &&
+                            ClassifyTypeProperties(elementType).IsMoveOnly();
+            if (lendsElements) {
+                elementType = TypeRef::MakeReference(elementType).WithWritableInner(iterableType->inner.front().isMut);
+                shape->itemType = elementType;
+            }
             RecordIteration(*forStatement, *shape);
             // A direct loop over an array or a slice copies each element into the loop variable, leaving the sequence
             // its own, so an element that cannot be copied cannot be visited this way.
-            if (shape->kind == IterationShape::Kind::Indexed && ClassifyTypeProperties(elementType).IsMoveOnly()) {
+            if (shape->kind == IterationShape::Kind::Indexed && !lendsElements &&
+                ClassifyTypeProperties(elementType).IsMoveOnly()) {
                 EmitError(forStatement->iterable->location,
                           std::format("'for' cannot copy elements of move-only type '{}' out of '{}'",
                                       elementType.DisplayString(), iterableType.DisplayString()),
                           {"a direct loop over an array or a slice gives each pass a copy of its element"},
-                          "loop over the indices and borrow each element in place");
+                          place.IsNamedStorage()
+                              ? std::format("lend them with '&{}'", place.Display())
+                              : std::string("loop over the indices and borrow each element in place"));
             }
         }
         else if (!iterableType.IsUnknown()) {
@@ -680,6 +693,10 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             variable.type = elementType;
             variable.isMut = false;
             loopVariable = DefineTrackedLocal(std::move(variable), true);
+            // Each element it lends keeps the sequence borrowed while the variable is in use.
+            if (lendsElements && loopVariable && trackedFlowReachable) {
+                RegisterReferenceBinding(*loopVariable, *forStatement->iterable, elementType);
+            }
         }
         if (!forStatement->label.empty()) {
             EnterLoopLabel(forStatement->label, forStatement->location);

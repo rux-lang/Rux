@@ -1,0 +1,21 @@
+// A lent array lends its move-only elements: each pass binds a reference to the element where it lies, which is not
+// given away, writes nothing through a read-only loan, and keeps the array borrowed while it is in use.
+struct Baton { id: int; }
+
+extend Baton {
+    destructor {}
+}
+
+func Keep(baton: Baton) -> int { return baton.id; }
+
+func Main() -> int {
+    var batons: Baton[2] = [Baton { id: 1 }, Baton { id: 2 }];
+    for baton in &batons { Keep(baton); }
+    for baton in &batons {
+        batons[0] = Baton { id: 3 };
+        let id = baton.id;
+    }
+    for baton in &batons { baton.id = 3; }
+    for baton in &var batons { baton.id = 3; }
+    return 0;
+}

@@ -54,11 +54,15 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
             iterator->init = std::move(subject);
         }
         iteratorSlotType = iterator->type;
+        // The loop owns an iterator it made, or one a temporary handed it, and destroys it where the loop ends, by
+        // any exit: whatever the walk did not reach goes with it.
+        iterator->bindingId = RegisterCleanupBinding(iteratorName, iteratorSlotType, statement.location);
         HirSymbol iteratorSymbol;
         iteratorSymbol.kind = HirSymbol::Kind::Var;
         iteratorSymbol.name = iteratorName;
         iteratorSymbol.type = iteratorSlotType;
         iteratorSymbol.isMut = true;
+        iteratorSymbol.bindingId = iterator->bindingId;
         Define(iteratorSymbol);
         scope->block.stmts.push_back(std::move(iterator));
     }

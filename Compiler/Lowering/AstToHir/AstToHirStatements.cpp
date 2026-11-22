@@ -352,6 +352,12 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         if (lowered->iterable->type.IsIterableRange() && !lowered->iterable->type->inner.empty()) {
             elementType = lowered->iterable->type->inner[0];
         }
+        else if (const ResolvedIteration *iteration = model.TryGetIteration(*statement);
+                 iteration && !iteration->itemType.IsUnknown()) {
+            // What each pass binds, as analysis decided it: a copy of the element, or a reference to an element that
+            // a lent sequence lends.
+            elementType = SubstituteCurrentType(iteration->itemType);
+        }
         else if (const auto sliceElement = IndexElementType(lowered->iterable->type)) {
             elementType = *sliceElement;
         }

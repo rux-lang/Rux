@@ -167,8 +167,31 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
-    // A loop over an iterator variable walks the variable itself, so `Next` writes it, and it has to be writable.
     const Expr &subject = *statement.iterable;
+    // The loop calls `Iterate` or `IntoIterator` and `Next` as a call written in the source would, so a method of a
+    // generic container or iterator is instantiated here: its body's questions about the type arguments, above all
+    // whether handing a `T` over gives it away, are answered only by an instantiation.
+    if (shape.entry) {
+        if (const auto found = expressionTypes.find(&subject); found != expressionTypes.end()) {
+            QueueGenericInstantiation(*shape.entry, MethodTypeSubstitutions(found->second), subject.location);
+        }
+    }
+    if (shape.advance) {
+        QueueGenericInstantiation(*shape.advance, MethodTypeSubstitutions(shape.iteratorType), subject.location);
+    }
+    // The iterator a container hands out lives in a local of the loop that destroys it, though no expression in the
+    // source has its type, so its drop glue is asked for here.
+    if (shape.kind == IterationShape::Kind::Iterable && !shape.iteratorType.IsUnknown()) {
+        if (MentionsTypeParameter(shape.iteratorType)) {
+            NoteGenericBodyType(shape.iteratorType);
+        }
+        else if (ClassifyTypeProperties(shape.iteratorType).IsDroppable()) {
+            LayoutOfTypeRef(shape.iteratorType);
+            QueueDropMethodInstantiation(shape.iteratorType);
+            instantiatedTypes.push_back(shape.iteratorType);
+        }
+    }
+    // A loop over an iterator variable walks the variable itself, so `Next` writes it, and it has to be writable.
     const auto *index = AstCast<const IndexExpr>(&subject);
     const auto *unary = AstCast<const UnaryExpr>(&subject);
     const bool place = AstCast<const IdentExpr>(&subject) || AstCast<const SelfExpr>(&subject) ||
