@@ -4,6 +4,7 @@
 
 import Core::Primitives::*;
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Format::Digits::WriteIntegerSpec;
 
 extend int8 : Display {
     /// Writes this value's digits.

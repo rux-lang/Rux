@@ -3,6 +3,8 @@
 // still checked here, because raw storage can contain one and the writer must preserve valid UTF-8.
 
 import Text::{ Debug, Display, IsScalarValue, RejectStyle, TextError };
+import Format::Characters::WriteCharacterDebug;
+import Format::Digits::FormatScalar;
 
 extend char32 : Display {
     /// Writes this character, or the replacement character when the value is not one.

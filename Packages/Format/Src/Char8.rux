@@ -6,6 +6,8 @@
 // reader of the result together.
 
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAligned };
+import Format::Characters::WriteCharacterDebug;
+import Format::Digits::FormatScalar;
 
 /// The character written in place of anything that is not one.
 /// @see https://rux-lang.dev/docs/api/format/character-text#replacement-character

@@ -18,6 +18,7 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter,
 // Answers false for a low half first and for a high half with no partner after it, leaving `scalar` holding the
 // unit itself so a caller that preserves rather than replaces has it. `index` must be below `units.length`, and
 // `scalar` and `width` must be non-null and writable.
+import Format::Characters::{ IsWideScalarValue, MeasurePadding, WriteEscapedScalar, WriteInvalidEscape };
 func DecodeUtf16(units: char16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
     let unit = units[index] as uint32;
     // Safety: the documented contract makes `scalar` and `width` non-null pointers to the caller's writable values.

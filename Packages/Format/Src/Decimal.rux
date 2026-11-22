@@ -6,226 +6,231 @@
 // The digits of a finite, non-zero magnitude, and the point placed by the
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
-/// Provides the public `WriteDecimal` operation.
-/// @param cursor the buffer the digits are written into
-/// @param value the value to act on
-/// @param significant how many significant digits to write
-/// @see https://rux-lang.dev/docs/api/format/float-text#write-decimal
-pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
-    var abs = value;
-    if value < 0.0 {
-        cursor.Push(c8'-');
-        abs = -value;
-    }
 
-    // A first guess at the decimal exponent, walking the value into
-    // [1, 10). Every step rounds, so what this settles on is an estimate,
-    // and the mantissa it leaves behind is thrown away.
-    var exp10: int = 0;
-    var mantissa = abs;
-    while mantissa >= 10.0 {
-        mantissa /= 10.0;
-        exp10++;
-    }
-    while mantissa < 1.0 {
-        mantissa *= 10.0;
-        exp10--;
-    }
+import Format::Characters::ByteCursor;
 
-    // The mantissa the digits really come from, rebuilt from the original
-    // value in exactly representable steps. The bounds are checked once more
-    // because the drift above may have left the estimate one out.
-    mantissa = ScaleByPow10(abs, -exp10);
-    if mantissa >= 10.0 {
-        mantissa /= 10.0;
-        exp10++;
-    }
-    if mantissa < 1.0 {
-        mantissa *= 10.0;
-        exp10--;
-    }
-
-    // Every digit at once, as an integer. Peeling them off one at a time in
-    // floating point would feed the rounding error of each step into every
-    // digit after it. The mantissa is in [1, 10), so the scaled value is in
-    // [10^(n-1), 10^n) and sits far inside a uint64 for any n this is asked
-    // for.
-    let scale = Pow10(significant - 1);
-    var scaled = (mantissa * scale + 0.5) as uint64;
-
-    // Rounding up can carry the whole way: 9.999... scales to 10^n, one digit
-    // too many. Dropping the zero the carry created puts it right.
-    let limit = (scale * 10.0) as uint64;
-    if scaled >= limit {
-        scaled /= 10;
-        exp10++;
-    }
-
-    var digits: char8[20];
-    var count = significant;
-    var index = count;
-    var rest = scaled;
-    while index > 0 {
-        index--;
-        digits[index] = (rest % 10 + 48) as char8;
-        rest /= 10;
-    }
-
-    // Trailing zeros carry nothing: half comes out of the loop as
-    // 5.00000000000000e-1, and what should be printed is 0.5. At least one
-    // digit always survives.
-    while count > 1 && digits[count - 1] == c8'0' {
-        count--;
-    }
-
-    // Fixed notation while it stays readable, which is the rule the printf
-    // %g family follows: an exponent below -4 would spend more width on
-    // leading zeros than on digits, and one at or above the digit count
-    // would spend it on trailing ones.
-    if exp10 < -4 || exp10 >= significant as int {
-        WriteScientific(cursor, digits, count, exp10);
-    } else {
-        WriteFixed(cursor, digits, count, exp10);
-    }
-}
-
-// The digits with the point dropped in where the exponent puts it, and no
-// exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
-// written, so the text still reads as a float when the value has no fraction
-// of its own to show.
-func WriteFixed(cursor: &var ByteCursor, digits: char8[..], count: uint, exp10: int) {
-    if exp10 < 0 {
-        // Below one, so the text opens with a zero and the point, then as
-        // many more zeros as the exponent calls for: -1 puts the first digit
-        // straight after the point, -3 leaves two zeros in front of it.
-        cursor.PushBytes("0.");
-        var pad = exp10 + 1;
-        while pad < 0 {
-            cursor.Push(c8'0');
-            pad++;
+pub module Digits {
+    /// Provides the public `WriteDecimal` operation.
+    /// @param cursor the buffer the digits are written into
+    /// @param value the value to act on
+    /// @param significant how many significant digits to write
+    /// @see https://rux-lang.dev/docs/api/format/float-text#write-decimal
+    pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
+        var abs = value;
+        if value < 0.0 {
+            cursor.Push(c8'-');
+            abs = -value;
         }
 
-        for i in 0..count {
-            cursor.Push(digits[i]);
+        // A first guess at the decimal exponent, walking the value into
+        // [1, 10). Every step rounds, so what this settles on is an estimate,
+        // and the mantissa it leaves behind is thrown away.
+        var exp10: int = 0;
+        var mantissa = abs;
+        while mantissa >= 10.0 {
+            mantissa /= 10.0;
+            exp10++;
         }
-        return;
-    }
+        while mantissa < 1.0 {
+            mantissa *= 10.0;
+            exp10--;
+        }
 
-    // The integer part is the leading exp10 + 1 digits, padded with zeros
-    // when the value has more magnitude than it has digits to fill it with:
-    // 1.2e4 holds two digits and five places, and prints as 12000.
-    let length = (exp10 as uint) + 1;
-    var i: uint = 0;
-    while i < length {
-        if i < count {
-            cursor.Push(digits[i]);
+        // The mantissa the digits really come from, rebuilt from the original
+        // value in exactly representable steps. The bounds are checked once more
+        // because the drift above may have left the estimate one out.
+        mantissa = ScaleByPow10(abs, -exp10);
+        if mantissa >= 10.0 {
+            mantissa /= 10.0;
+            exp10++;
+        }
+        if mantissa < 1.0 {
+            mantissa *= 10.0;
+            exp10--;
+        }
+
+        // Every digit at once, as an integer. Peeling them off one at a time in
+        // floating point would feed the rounding error of each step into every
+        // digit after it. The mantissa is in [1, 10), so the scaled value is in
+        // [10^(n-1), 10^n) and sits far inside a uint64 for any n this is asked
+        // for.
+        let scale = Pow10(significant - 1);
+        var scaled = (mantissa * scale + 0.5) as uint64;
+
+        // Rounding up can carry the whole way: 9.999... scales to 10^n, one digit
+        // too many. Dropping the zero the carry created puts it right.
+        let limit = (scale * 10.0) as uint64;
+        if scaled >= limit {
+            scaled /= 10;
+            exp10++;
+        }
+
+        var digits: char8[20];
+        var count = significant;
+        var index = count;
+        var rest = scaled;
+        while index > 0 {
+            index--;
+            digits[index] = (rest % 10 + 48) as char8;
+            rest /= 10;
+        }
+
+        // Trailing zeros carry nothing: half comes out of the loop as
+        // 5.00000000000000e-1, and what should be printed is 0.5. At least one
+        // digit always survives.
+        while count > 1 && digits[count - 1] == c8'0' {
+            count--;
+        }
+
+        // Fixed notation while it stays readable, which is the rule the printf
+        // %g family follows: an exponent below -4 would spend more width on
+        // leading zeros than on digits, and one at or above the digit count
+        // would spend it on trailing ones.
+        if exp10 < -4 || exp10 >= significant as int {
+            WriteScientific(cursor, digits, count, exp10);
         } else {
-            cursor.Push(c8'0');
+            WriteFixed(cursor, digits, count, exp10);
         }
-        i++;
     }
 
-    cursor.Push(c8'.');
-    if count <= length {
-        cursor.Push(c8'0');
-        return;
-    }
+    // The digits with the point dropped in where the exponent puts it, and no
+    // exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
+    // written, so the text still reads as a float when the value has no fraction
+    // of its own to show.
+    func WriteFixed(cursor: &var ByteCursor, digits: char8[..], count: uint, exp10: int) {
+        if exp10 < 0 {
+            // Below one, so the text opens with a zero and the point, then as
+            // many more zeros as the exponent calls for: -1 puts the first digit
+            // straight after the point, -3 leaves two zeros in front of it.
+            cursor.PushBytes("0.");
+            var pad = exp10 + 1;
+            while pad < 0 {
+                cursor.Push(c8'0');
+                pad++;
+            }
 
-    var j = length;
-    while j < count {
-        cursor.Push(digits[j]);
-        j++;
-    }
-}
+            for i in 0..count {
+                cursor.Push(digits[i]);
+            }
+            return;
+        }
 
-// One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
-// exponent carries a sign and at least two digits, so the tail keeps a
-// steady width across the range.
-func WriteScientific(cursor: &var ByteCursor, digits: char8[..], count: uint, exp10: int) {
-    cursor.Push(digits[0]);
-    cursor.Push(c8'.');
-    if count == 1 {
-        cursor.Push(c8'0');
-    } else {
-        var i: uint = 1;
-        while i < count {
-            cursor.Push(digits[i]);
+        // The integer part is the leading exp10 + 1 digits, padded with zeros
+        // when the value has more magnitude than it has digits to fill it with:
+        // 1.2e4 holds two digits and five places, and prints as 12000.
+        let length = (exp10 as uint) + 1;
+        var i: uint = 0;
+        while i < length {
+            if i < count {
+                cursor.Push(digits[i]);
+            } else {
+                cursor.Push(c8'0');
+            }
             i++;
         }
+
+        cursor.Push(c8'.');
+        if count <= length {
+            cursor.Push(c8'0');
+            return;
+        }
+
+        var j = length;
+        while j < count {
+            cursor.Push(digits[j]);
+            j++;
+        }
     }
 
-    cursor.Push(c8'e');
-    var exp = exp10;
-    if exp < 0 {
-        cursor.Push(c8'-');
-        exp = -exp;
-    } else {
-        cursor.Push(c8'+');
+    // One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
+    // exponent carries a sign and at least two digits, so the tail keeps a
+    // steady width across the range.
+    func WriteScientific(cursor: &var ByteCursor, digits: char8[..], count: uint, exp10: int) {
+        cursor.Push(digits[0]);
+        cursor.Push(c8'.');
+        if count == 1 {
+            cursor.Push(c8'0');
+        } else {
+            var i: uint = 1;
+            while i < count {
+                cursor.Push(digits[i]);
+                i++;
+            }
+        }
+
+        cursor.Push(c8'e');
+        var exp = exp10;
+        if exp < 0 {
+            cursor.Push(c8'-');
+            exp = -exp;
+        } else {
+            cursor.Push(c8'+');
+        }
+
+        // The digits come out least significant first and go back reversed.
+        // A float64's exponent stops at three digits, but the wide widths share
+        // this writer and a float512's reaches 1262611: seven digits, and a
+        // buffer that held three wrote its fourth past the end. The exponent
+        // never reaches zero, since this notation is only chosen for a value
+        // whose exponent falls outside [-4, significant).
+        var expDigits: char8[8];
+        var length: uint = 0;
+        var rest = exp as uint;
+        while rest > 0 {
+            expDigits[length] = (rest % 10 + 48) as char8;
+            length++;
+            rest /= 10;
+        }
+
+        if length < 2 {
+            cursor.Push(c8'0');
+        }
+
+        var i = length;
+        while i > 0 {
+            i--;
+            cursor.Push(expDigits[i]);
+        }
     }
 
-    // The digits come out least significant first and go back reversed.
-    // A float64's exponent stops at three digits, but the wide widths share
-    // this writer and a float512's reaches 1262611: seven digits, and a
-    // buffer that held three wrote its fourth past the end. The exponent
-    // never reaches zero, since this notation is only chosen for a value
-    // whose exponent falls outside [-4, significant).
-    var expDigits: char8[8];
-    var length: uint = 0;
-    var rest = exp as uint;
-    while rest > 0 {
-        expDigits[length] = (rest % 10 + 48) as char8;
-        length++;
-        rest /= 10;
+    // 10^exp. The powers of ten up to 10^22 are the ones a float64 holds without
+    // rounding, and each is reached here by a chain of exact multiplications, so
+    // within that range this is exact. It is never asked for more.
+    func Pow10(exp: uint) -> float64 {
+        var result = 1.0;
+        var i: uint = 0;
+        while i < exp {
+            result *= 10.0;
+            i++;
+        }
+        return result;
     }
 
-    if length < 2 {
-        cursor.Push(c8'0');
-    }
+    // value * 10^exp, for a value on its way into [1, 10). The scaling walks in
+    // steps of the exactly representable 10^22 rather than going through a single
+    // 10^exp, which would be rounded once when it was built and again when it was
+    // applied — and which, for the exponent a subnormal needs, would have
+    // overflowed to infinity before it could be used at all.
+    func ScaleByPow10(value: float64, exp: int) -> float64 {
+        let step = Pow10(22);
+        var result = value;
+        var rest = exp;
 
-    var i = length;
-    while i > 0 {
-        i--;
-        cursor.Push(expDigits[i]);
-    }
-}
+        while rest >= 22 {
+            result *= step;
+            rest -= 22;
+        }
+        while rest <= -22 {
+            result /= step;
+            rest += 22;
+        }
 
-// 10^exp. The powers of ten up to 10^22 are the ones a float64 holds without
-// rounding, and each is reached here by a chain of exact multiplications, so
-// within that range this is exact. It is never asked for more.
-func Pow10(exp: uint) -> float64 {
-    var result = 1.0;
-    var i: uint = 0;
-    while i < exp {
-        result *= 10.0;
-        i++;
+        if rest > 0 {
+            result *= Pow10(rest as uint);
+        }
+        if rest < 0 {
+            result /= Pow10((-rest) as uint);
+        }
+        return result;
     }
-    return result;
-}
-
-// value * 10^exp, for a value on its way into [1, 10). The scaling walks in
-// steps of the exactly representable 10^22 rather than going through a single
-// 10^exp, which would be rounded once when it was built and again when it was
-// applied — and which, for the exponent a subnormal needs, would have
-// overflowed to infinity before it could be used at all.
-func ScaleByPow10(value: float64, exp: int) -> float64 {
-    let step = Pow10(22);
-    var result = value;
-    var rest = exp;
-
-    while rest >= 22 {
-        result *= step;
-        rest -= 22;
-    }
-    while rest <= -22 {
-        result /= step;
-        rest += 22;
-    }
-
-    if rest > 0 {
-        result *= Pow10(rest as uint);
-    }
-    if rest < 0 {
-        result /= Pow10((-rest) as uint);
-    }
-    return result;
 }

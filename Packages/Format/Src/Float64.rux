@@ -9,6 +9,9 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned
 
 // The largest finite float64. Anything past it is an infinity, which is how
 // the tests below classify a value without reading its bits.
+import Format::Characters::ByteCursor;
+import Format::Digits::{ DecomposeFloat64, ScientificMark, WriteDecimal, WriteNonFinite, WritePrecision,
+                         WriteScientificNotation, WriteShortestFloat };
 const MaxFinite64 = 1.7976931348623157e308;
 
 // The decimal exponent at or above which a float64 renders in scientific notation. Seventeen is the digit count

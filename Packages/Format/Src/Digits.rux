@@ -5,50 +5,53 @@
 // twenty digits, which is known before the loop starts, so there is nothing to grow and nothing that can fail.
 
 import Core::Primitives::*;
+import Format::Characters::ByteCursor;
 
-/// The most digits a `uint64` ever needs, for 18446744073709551615.
-/// @see https://rux-lang.dev/docs/api/format/integer-text#max-decimal-digits
-pub const MaxDecimalDigits: uint = 20;
+pub module Digits {
+    /// The most digits a `uint64` ever needs, for 18446744073709551615.
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#max-decimal-digits
+    pub const MaxDecimalDigits: uint = 20;
 
-/// Writes the decimal digits of an unsigned value.
-/// A division loop produces them least significant first, so they land in a small buffer and go back reversed.
-/// @param cursor the buffer the digits are written into
-/// @param value the value to act on
-/// @see https://rux-lang.dev/docs/api/format/integer-text#write-uint
-pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
-    if value == 0 {
-        cursor.Push(c8'0');
-        return;
+    /// Writes the decimal digits of an unsigned value.
+    /// A division loop produces them least significant first, so they land in a small buffer and go back reversed.
+    /// @param cursor the buffer the digits are written into
+    /// @param value the value to act on
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#write-uint
+    pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
+        if value == 0 {
+            cursor.Push(c8'0');
+            return;
+        }
+
+        var digits: char8[20];
+        var length: uint = 0;
+        var rest = value;
+        while rest > 0 {
+            digits[length] = (rest % 10 + 48) as char8;
+            length++;
+            rest /= 10;
+        }
+
+        var index = length;
+        while index > 0 {
+            index--;
+            cursor.Push(digits[index]);
+        }
     }
 
-    var digits: char8[20];
-    var length: uint = 0;
-    var rest = value;
-    while rest > 0 {
-        digits[length] = (rest % 10 + 48) as char8;
-        length++;
-        rest /= 10;
+    /// Writes the sign, then the magnitude.
+    /// The magnitude is taken in `uint64` rather than by negating within `int64`, because the most negative `int64` has
+    /// no positive counterpart there: negating it overflows straight back to itself. Two's complement gives the right
+    /// answer for that value and for every other one.
+    /// @param cursor the buffer the digits are written into
+    /// @param value the value to act on
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#write-int
+    pub func WriteInt(cursor: &var ByteCursor, value: int64) {
+        if value < 0 {
+            cursor.Push(c8'-');
+            WriteUint(cursor, ~value.Truncate<uint64>() + 1);
+            return;
+        }
+        WriteUint(cursor, value as uint64);
     }
-
-    var index = length;
-    while index > 0 {
-        index--;
-        cursor.Push(digits[index]);
-    }
-}
-
-/// Writes the sign, then the magnitude.
-/// The magnitude is taken in `uint64` rather than by negating within `int64`, because the most negative `int64` has
-/// no positive counterpart there: negating it overflows straight back to itself. Two's complement gives the right
-/// answer for that value and for every other one.
-/// @param cursor the buffer the digits are written into
-/// @param value the value to act on
-/// @see https://rux-lang.dev/docs/api/format/integer-text#write-int
-pub func WriteInt(cursor: &var ByteCursor, value: int64) {
-    if value < 0 {
-        cursor.Push(c8'-');
-        WriteUint(cursor, ~value.Truncate<uint64>() + 1);
-        return;
-    }
-    WriteUint(cursor, value as uint64);
 }

@@ -4,6 +4,8 @@
 // ill-formed sequence.
 
 import Text::{ Debug, Display, IsScalarValue, RejectStyle, TextError };
+import Format::Characters::WriteCharacterDebug;
+import Format::Digits::FormatScalar;
 
 extend char16 : Display {
     /// Writes this code unit's character, or the replacement character when it is half of one.

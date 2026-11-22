@@ -15,263 +15,266 @@
 // propagated rather than applied to the last digit alone.
 
 import Text::{ FormatError, WriteAligned };
+import Format::Characters::ByteCursor;
 
-/// The largest precision a narrow float renders at.
-/// Eleven hundred, which is exactly enough rather than round: the smallest `float64` subnormal is `2^-1074` and
-/// its exact decimal has 1,074 fractional digits, the largest finite value has 309 integer ones, and no `float64`
-/// has anything to say past that. A request beyond this is refused rather than clamped, because a caller asking
-/// for five thousand digits has miscalculated something and answering with 3,900 zeros would hide it.
-/// @see https://rux-lang.dev/docs/api/format/float-text#maximum-precision
-pub const MaximumPrecision: uint = 1100;
+pub module Digits {
+    /// The largest precision a narrow float renders at.
+    /// Eleven hundred, which is exactly enough rather than round: the smallest `float64` subnormal is `2^-1074` and
+    /// its exact decimal has 1,074 fractional digits, the largest finite value has 309 integer ones, and no `float64`
+    /// has anything to say past that. A request beyond this is refused rather than clamped, because a caller asking
+    /// for five thousand digits has miscalculated something and answering with 3,900 zeros would hide it.
+    /// @see https://rux-lang.dev/docs/api/format/float-text#maximum-precision
+    pub const MaximumPrecision: uint = 1100;
 
-/// The longest a fixed rendering can be: sign, integer digits, point and fraction.
-/// @see https://rux-lang.dev/docs/api/format/float-text#maximum-fixed-length
-pub const MaximumFixedLength: uint = 1424;
+    /// The longest a fixed rendering can be: sign, integer digits, point and fraction.
+    /// @see https://rux-lang.dev/docs/api/format/float-text#maximum-fixed-length
+    pub const MaximumFixedLength: uint = 1424;
 
-// The value as an exact ratio, without the neighbour gaps the shortest form needs: fixed precision stops on a
-// count and never asks where the neighbours are.
-struct Quotient {
-    numerator: FixedNat;
-    denominator: FixedNat;
-}
-
-// Sets up `significand * 2^exponent` as a ratio and scales it so the first digit generated is the first
-// significant one, reporting the power of ten that scaling implies: the value is `0.d1d2... * 10^power`. `power`
-// must be non-null and writable.
-func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, power: *var int) -> bool {
-    state.numerator = FixedNat::FromUint64(significand);
-    state.denominator = FixedNat::New();
-    if exponent >= 0 {
-        if !state.numerator.ShiftLeft(exponent as uint) { return false; }
-        if !state.denominator.SetPowerOfTwo(0) { return false; }
-    }
-    else {
-        if !state.denominator.SetPowerOfTwo((0 - exponent) as uint) { return false; }
+    // The value as an exact ratio, without the neighbour gaps the shortest form needs: fixed precision stops on a
+    // count and never asks where the neighbours are.
+    struct Quotient {
+        numerator: FixedNat;
+        denominator: FixedNat;
     }
 
-    var scaled: int = 0;
-    while state.numerator.Compare(state.denominator) >= 0 {
-        if !state.denominator.MultiplySmall(10) { return false; }
-        scaled = scaled + 1;
-    }
-    // Ten times the value still below one means the first significant digit is further down, so the numerator
-    // climbs until it is not.
-    var reach = FixedNat::New();
-    reach.Assign(state.numerator);
-    if !reach.MultiplySmall(10) { return false; }
-    while reach.Compare(state.denominator) < 0 {
-        if !state.numerator.MultiplySmall(10) { return false; }
-        scaled = scaled - 1;
-        reach.Assign(state.numerator);
-        if !reach.MultiplySmall(10) { return false; }
-    }
-    // Safety: the documented contract makes `power` a non-null pointer to the caller's writable `int`.
-    *power = scaled;
-    return true;
-}
-
-// One digit off the front of the ratio, by subtraction: the scaling keeps the quotient under ten, so nine
-// subtractions is the whole of the division.
-func TakeDigit(state: &var Quotient) -> uint64 {
-    var digit: uint64 = 0;
-    while state.numerator.Compare(state.denominator) >= 0 {
-        state.numerator.Subtract(state.denominator);
-        digit = digit + 1;
-    }
-    return digit;
-}
-
-/// Writes the digits of `significand * 2^exponent` down to the place `precision` names, rounded to nearest with
-/// ties to even.
-/// The digits are the significant ones with no point and no sign, and `power` receives the exponent that places
-/// them: the value is `0.d1d2...dn * 10^power`, so the last digit written stands for `10^-precision`. A value
-/// small enough that nothing reaches that place produces no digits and a power of zero, which the caller writes
-/// as a zero and a tail of zeros.
-/// Answers false when `precision` is past `MaximumPrecision`, when `into` is too short for the digits the value
-/// needs, or when the exact arithmetic could not run in the fixed workspace — which Docs/NarrowFloat.md proves the
-/// narrow widths do not reach.
-/// `count` and `power` must be non-null and writable.
-/// @param significand the integer significand, which must not be zero
-/// @param exponent the power of two it is scaled by
-/// @param precision how many digits after the decimal point are wanted
-/// @param into where the digits go
-/// @param count receives how many digits were written
-/// @param power receives the power of ten that places them
-/// @returns true when the digits were produced
-/// @see https://rux-lang.dev/docs/api/format/float-text#precision-digits
-pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, into: var char8[..], count: *var uint,
-                         power: *var int) -> bool {
-    // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
-    *count = 0;
-    *power = 0;
-    if precision > MaximumPrecision || significand == 0 { return false; }
-
-    var state = Quotient { numerator: FixedNat::New(), denominator: FixedNat::New() };
-    var scaled: int = 0;
-    if !PrepareQuotient(&var state, significand, exponent, @scaled) { return false; }
-
-    // How many digits run from the first significant one down to the place the precision names. A value whose
-    // first significant digit is already below that place has none, and rounding decides whether the last place
-    // becomes a one.
-    let wanted = scaled + (precision as int);
-    var produced: uint = 0;
-    if wanted > 0 {
-        if (wanted as uint) > into.length { return false; }
-        while produced < (wanted as uint) {
-            if !state.numerator.MultiplySmall(10) { return false; }
-            let digit = (TakeDigit(&var state) + 0x30) as char8;
-            // Safety: `produced` is below `wanted`, the loop condition, which is at most `into.length`, checked
-            // above.
-            into.data[produced] = digit;
-            produced = produced + 1;
-        }
-    }
-
-    // Safety: `produced` is zero or `wanted`, which is at most `into.length`, checked above; `produced` and `scaled`
-    // are locals.
-    if !RoundGenerated(state, into, @produced, @scaled) { return false; }
-    // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
-    *count = produced;
-    *power = scaled;
-    return true;
-}
-
-// Rounds the `produced` digits at the front of `into` on the remainder left in `state`, to nearest with ties to
-// even, adjusting the count and the power when a carry runs off the front.
-// Safety: `produced` and `scaled` must be non-null and writable, and `*produced` must not exceed `into.length`.
-func RoundGenerated(state: &Quotient, into: var char8[..], produced: *var uint, scaled: *var int) -> bool {
-    // Round on what is left. Twice the remainder against the denominator is the exact "more than half", and a tie
-    // goes to the even digit, which is what reading the result back would do with it. With no digits produced the
-    // implicit last digit is a zero, which is even, so a tie stays down.
-    var twice = FixedNat::New();
-    twice.Assign(state.numerator);
-    if !twice.ShiftLeft(1) { return false; }
-    let order = twice.Compare(state.denominator);
-    var roundUp = order > 0;
-    if order == 0 && *produced > 0 {
-        roundUp = ((into.data[*produced - 1] as uint32) - 0x30) % 2 == 1;
-    }
-    if !roundUp { return true; }
-
-    var index = *produced;
-    var carry = true;
-    while carry && index > 0 {
-        index = index - 1;
-        if into.data[index] == c8'9' {
-            into.data[index] = c8'0';
+    // Sets up `significand * 2^exponent` as a ratio and scales it so the first digit generated is the first
+    // significant one, reporting the power of ten that scaling implies: the value is `0.d1d2... * 10^power`. `power`
+    // must be non-null and writable.
+    func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, power: *var int) -> bool {
+        state.numerator = FixedNat::FromUint64(significand);
+        state.denominator = FixedNat::New();
+        if exponent >= 0 {
+            if !state.numerator.ShiftLeft(exponent as uint) { return false; }
+            if !state.denominator.SetPowerOfTwo(0) { return false; }
         }
         else {
-            into.data[index] = ((into.data[index] as uint32) + 1) as char8;
-            carry = false;
+            if !state.denominator.SetPowerOfTwo((0 - exponent) as uint) { return false; }
         }
-    }
-    if carry {
-        // The carry ran off the front: every digit was a nine, so the value rounds up to a one in the place above
-        // them. 9.99 at one decimal is 10.0.
-        if *produced + 1 > into.length { return false; }
-        var back = *produced;
-        while back > 0 {
-            into.data[back] = into.data[back - 1];
-            back = back - 1;
-        }
-        into.data[0] = c8'1';
-        *produced = *produced + 1;
-        *scaled = *scaled + 1;
-    }
-    return true;
-}
 
-/// Writes a finite float in fixed notation with exactly `precision` digits after the decimal point.
-/// Always fixed notation, because that is the only notation in which "digits after the decimal point" has one
-/// meaning. A large value therefore renders with every integer digit it has and then the fraction — which is what
-/// was asked for, and why the precision is bounded rather than the output.
-/// Answers false when the precision is past `MaximumPrecision`, or when the exact arithmetic could not run in the
-/// fixed workspace. There is no fallback to another rendering: a refused request is refused.
-/// @param cursor the destination
-/// @param parts the value taken apart
-/// @param precision how many digits after the decimal point
-/// @returns true when the whole rendering was written
-/// @see https://rux-lang.dev/docs/api/format/float-text#write-precision-float
-pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precision: uint) -> bool {
-    if precision > MaximumPrecision { return false; }
-    if parts.negative { cursor.Push(c8'-'); }
-    if parts.significand == 0 {
-        cursor.Push(c8'0');
-        if precision > 0 {
-            cursor.Push(c8'.');
-            var zeros: uint = 0;
-            while zeros < precision {
-                cursor.Push(c8'0');
-                zeros = zeros + 1;
+        var scaled: int = 0;
+        while state.numerator.Compare(state.denominator) >= 0 {
+            if !state.denominator.MultiplySmall(10) { return false; }
+            scaled = scaled + 1;
+        }
+        // Ten times the value still below one means the first significant digit is further down, so the numerator
+        // climbs until it is not.
+        var reach = FixedNat::New();
+        reach.Assign(state.numerator);
+        if !reach.MultiplySmall(10) { return false; }
+        while reach.Compare(state.denominator) < 0 {
+            if !state.numerator.MultiplySmall(10) { return false; }
+            scaled = scaled - 1;
+            reach.Assign(state.numerator);
+            if !reach.MultiplySmall(10) { return false; }
+        }
+        // Safety: the documented contract makes `power` a non-null pointer to the caller's writable `int`.
+        *power = scaled;
+        return true;
+    }
+
+    // One digit off the front of the ratio, by subtraction: the scaling keeps the quotient under ten, so nine
+    // subtractions is the whole of the division.
+    func TakeDigit(state: &var Quotient) -> uint64 {
+        var digit: uint64 = 0;
+        while state.numerator.Compare(state.denominator) >= 0 {
+            state.numerator.Subtract(state.denominator);
+            digit = digit + 1;
+        }
+        return digit;
+    }
+
+    /// Writes the digits of `significand * 2^exponent` down to the place `precision` names, rounded to nearest with
+    /// ties to even.
+    /// The digits are the significant ones with no point and no sign, and `power` receives the exponent that places
+    /// them: the value is `0.d1d2...dn * 10^power`, so the last digit written stands for `10^-precision`. A value
+    /// small enough that nothing reaches that place produces no digits and a power of zero, which the caller writes
+    /// as a zero and a tail of zeros.
+    /// Answers false when `precision` is past `MaximumPrecision`, when `into` is too short for the digits the value
+    /// needs, or when the exact arithmetic could not run in the fixed workspace — which Docs/NarrowFloat.md proves the
+    /// narrow widths do not reach.
+    /// `count` and `power` must be non-null and writable.
+    /// @param significand the integer significand, which must not be zero
+    /// @param exponent the power of two it is scaled by
+    /// @param precision how many digits after the decimal point are wanted
+    /// @param into where the digits go
+    /// @param count receives how many digits were written
+    /// @param power receives the power of ten that places them
+    /// @returns true when the digits were produced
+    /// @see https://rux-lang.dev/docs/api/format/float-text#precision-digits
+    pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, into: var char8[..], count: *var uint,
+                             power: *var int) -> bool {
+        // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
+        *count = 0;
+        *power = 0;
+        if precision > MaximumPrecision || significand == 0 { return false; }
+
+        var state = Quotient { numerator: FixedNat::New(), denominator: FixedNat::New() };
+        var scaled: int = 0;
+        if !PrepareQuotient(&var state, significand, exponent, @scaled) { return false; }
+
+        // How many digits run from the first significant one down to the place the precision names. A value whose
+        // first significant digit is already below that place has none, and rounding decides whether the last place
+        // becomes a one.
+        let wanted = scaled + (precision as int);
+        var produced: uint = 0;
+        if wanted > 0 {
+            if (wanted as uint) > into.length { return false; }
+            while produced < (wanted as uint) {
+                if !state.numerator.MultiplySmall(10) { return false; }
+                let digit = (TakeDigit(&var state) + 0x30) as char8;
+                // Safety: `produced` is below `wanted`, the loop condition, which is at most `into.length`, checked
+                // above.
+                into.data[produced] = digit;
+                produced = produced + 1;
             }
+        }
+
+        // Safety: `produced` is zero or `wanted`, which is at most `into.length`, checked above; `produced` and
+        // `scaled` are locals.
+        if !RoundGenerated(state, into, @produced, @scaled) { return false; }
+        // Safety: the documented contract makes `count` and `power` non-null pointers to the caller's writable values.
+        *count = produced;
+        *power = scaled;
+        return true;
+    }
+
+    // Rounds the `produced` digits at the front of `into` on the remainder left in `state`, to nearest with ties to
+    // even, adjusting the count and the power when a carry runs off the front.
+    // Safety: `produced` and `scaled` must be non-null and writable, and `*produced` must not exceed `into.length`.
+    func RoundGenerated(state: &Quotient, into: var char8[..], produced: *var uint, scaled: *var int) -> bool {
+        // Round on what is left. Twice the remainder against the denominator is the exact "more than half", and a tie
+        // goes to the even digit, which is what reading the result back would do with it. With no digits produced the
+        // implicit last digit is a zero, which is even, so a tie stays down.
+        var twice = FixedNat::New();
+        twice.Assign(state.numerator);
+        if !twice.ShiftLeft(1) { return false; }
+        let order = twice.Compare(state.denominator);
+        var roundUp = order > 0;
+        if order == 0 && *produced > 0 {
+            roundUp = ((into.data[*produced - 1] as uint32) - 0x30) % 2 == 1;
+        }
+        if !roundUp { return true; }
+
+        var index = *produced;
+        var carry = true;
+        while carry && index > 0 {
+            index = index - 1;
+            if into.data[index] == c8'9' {
+                into.data[index] = c8'0';
+            }
+            else {
+                into.data[index] = ((into.data[index] as uint32) + 1) as char8;
+                carry = false;
+            }
+        }
+        if carry {
+            // The carry ran off the front: every digit was a nine, so the value rounds up to a one in the place above
+            // them. 9.99 at one decimal is 10.0.
+            if *produced + 1 > into.length { return false; }
+            var back = *produced;
+            while back > 0 {
+                into.data[back] = into.data[back - 1];
+                back = back - 1;
+            }
+            into.data[0] = c8'1';
+            *produced = *produced + 1;
+            *scaled = *scaled + 1;
         }
         return true;
     }
 
-    var digits: char8[1424];
-    var count: uint = 0;
-    var power: int = 0;
-    if !PrecisionDigits(parts.significand, parts.exponent, precision, digits[..MaximumFixedLength], @count,
-                        @power) {
-        return false;
-    }
-
-    // The integer part is the digits whose place is at or above one; there are `power` of them, and none at all
-    // when the value is below one.
-    if power <= 0 {
-        cursor.Push(c8'0');
-    }
-    else {
-        var index: uint = 0;
-        while index < (power as uint) {
-            cursor.Push(if index < count { digits[index] } else { c8'0' });
-            index = index + 1;
+    /// Writes a finite float in fixed notation with exactly `precision` digits after the decimal point.
+    /// Always fixed notation, because that is the only notation in which "digits after the decimal point" has one
+    /// meaning. A large value therefore renders with every integer digit it has and then the fraction — which is what
+    /// was asked for, and why the precision is bounded rather than the output.
+    /// Answers false when the precision is past `MaximumPrecision`, or when the exact arithmetic could not run in the
+    /// fixed workspace. There is no fallback to another rendering: a refused request is refused.
+    /// @param cursor the destination
+    /// @param parts the value taken apart
+    /// @param precision how many digits after the decimal point
+    /// @returns true when the whole rendering was written
+    /// @see https://rux-lang.dev/docs/api/format/float-text#write-precision-float
+    pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precision: uint) -> bool {
+        if precision > MaximumPrecision { return false; }
+        if parts.negative { cursor.Push(c8'-'); }
+        if parts.significand == 0 {
+            cursor.Push(c8'0');
+            if precision > 0 {
+                cursor.Push(c8'.');
+                var zeros: uint = 0;
+                while zeros < precision {
+                    cursor.Push(c8'0');
+                    zeros = zeros + 1;
+                }
+            }
+            return true;
         }
-    }
-    if precision == 0 { return true; }
 
-    cursor.Push(c8'.');
-    // The fraction opens with a zero for every place between the point and the first digit, then the digits that
-    // fall below the point, then zeros for any place the value did not reach.
-    var written: uint = 0;
-    var leading = if power < 0 { (0 - power) as uint } else { 0 };
-    while written < leading && written < precision {
-        cursor.Push(c8'0');
-        written = written + 1;
-    }
-    var from = if power > 0 { power as uint } else { 0 };
-    while written < precision {
-        cursor.Push(if from < count { digits[from] } else { c8'0' });
-        from = from + 1;
-        written = written + 1;
-    }
-    return true;
-}
+        var digits: char8[1424];
+        var count: uint = 0;
+        var power: int = 0;
+        if !PrecisionDigits(parts.significand, parts.exponent, precision, digits[..MaximumFixedLength], @count,
+                            @power) {
+            return false;
+        }
 
-/// Renders `parts` under a specification that carries a precision, and applies the specification's sign, width,
-/// fill and alignment to the result.
-/// The large fixed buffer a precision can need lives in this function rather than in the callers', so a
-/// placeholder with no precision never pays for it.
-/// Reports `UnsupportedRequest` for a precision past `MaximumPrecision`, and whatever the writer reported
-/// otherwise. There is no fallback: a refused precision produces no output.
-/// @param writer the destination
-/// @param spec what the placeholder asked for, carrying a precision
-/// @param parts the value taken apart
-/// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/float-text#write-precision
-pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) -> !FormatError {
-    if spec.Precision() > MaximumPrecision {
-        throw .UnsupportedRequest;
+        // The integer part is the digits whose place is at or above one; there are `power` of them, and none at all
+        // when the value is below one.
+        if power <= 0 {
+            cursor.Push(c8'0');
+        }
+        else {
+            var index: uint = 0;
+            while index < (power as uint) {
+                cursor.Push(if index < count { digits[index] } else { c8'0' });
+                index = index + 1;
+            }
+        }
+        if precision == 0 { return true; }
+
+        cursor.Push(c8'.');
+        // The fraction opens with a zero for every place between the point and the first digit, then the digits that
+        // fall below the point, then zeros for any place the value did not reach.
+        var written: uint = 0;
+        var leading = if power < 0 { (0 - power) as uint } else { 0 };
+        while written < leading && written < precision {
+            cursor.Push(c8'0');
+            written = written + 1;
+        }
+        var from = if power > 0 { power as uint } else { 0 };
+        while written < precision {
+            cursor.Push(if from < count { digits[from] } else { c8'0' });
+            from = from + 1;
+            written = written + 1;
+        }
+        return true;
     }
-    var storage: char8[1426];
-    var cursor = ByteCursor::New(storage[2..MaximumFixedLength + 2]);
-    if !WritePrecisionFloat(&var cursor, parts, spec.Precision()) {
-        throw .UnsupportedRequest;
+
+    /// Renders `parts` under a specification that carries a precision, and applies the specification's sign, width,
+    /// fill and alignment to the result.
+    /// The large fixed buffer a precision can need lives in this function rather than in the callers', so a
+    /// placeholder with no precision never pays for it.
+    /// Reports `UnsupportedRequest` for a precision past `MaximumPrecision`, and whatever the writer reported
+    /// otherwise. There is no fallback: a refused precision produces no output.
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for, carrying a precision
+    /// @param parts the value taken apart
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float-text#write-precision
+    pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) -> !FormatError {
+        if spec.Precision() > MaximumPrecision {
+            throw .UnsupportedRequest;
+        }
+        var storage: char8[1426];
+        var cursor = ByteCursor::New(storage[2..MaximumFixedLength + 2]);
+        if !WritePrecisionFloat(&var cursor, parts, spec.Precision()) {
+            throw .UnsupportedRequest;
+        }
+        var rendered = cursor.Written();
+        if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
+            storage[1] = c8'+';
+            rendered = storage[1..rendered.length + 2];
+        }
+        return WriteAligned(writer, spec, rendered, true)!;
     }
-    var rendered = cursor.Written();
-    if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
-        storage[1] = c8'+';
-        rendered = storage[1..rendered.length + 2];
-    }
-    return WriteAligned(writer, spec, rendered, true)!;
 }

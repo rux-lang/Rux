@@ -11,6 +11,7 @@ import Core::Primitives::*;
 import Text::{ Debug, Display, FormatBase, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
 // The digits of a `uint128`, least significant first, in the spec's base.
+import Format::Digits::WriteIntegerDigits;
 func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint128, negative: bool) -> !FormatError {
     var digits: char8[128];
     var count: uint = 0;

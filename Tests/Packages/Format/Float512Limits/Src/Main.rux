@@ -1,7 +1,8 @@
 import Text::{ FormatSpec, TextWriter };
 import Allocator::SystemAllocator;
 import Core::Diagnostics::Assert;
-import Format::{ ByteCursor, FloatLayout, WriteWideFloat };
+import Format::Characters::ByteCursor;
+import Format::Digits::{ FloatLayout, WriteWideFloat };
 
 func Check(bits: uint512, expected: char8[..]) {
     let allocator = SystemAllocator::New();

@@ -9,8 +9,9 @@ import Allocator::SystemAllocator;
 import Core::Compilation::#config;
 import Core::Diagnostics::{ Assert, Panic };
 import Core::Primitives::*;
-import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, InfinityBits, PackWide,
-                 ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80 };
+import Format::Characters::ByteCursor;
+import Format::Digits::{ Float128, Float256, Float512, Float80, FloatLayout, InfinityBits, PackWide };
+import Format::Parsing::{ ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80 };
 
 func Add80(left: float80, right: float80) -> float80 {
     return left + right;

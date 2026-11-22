@@ -13,7 +13,7 @@
 import Allocator::Allocator;
 import Collections::Vector;
 import Core::Compare::Ordering;
-import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
+import Format::Parsing::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
 /// Why a JSON value could not be built or changed.

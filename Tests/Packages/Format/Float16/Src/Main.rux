@@ -1,7 +1,9 @@
 
 
 import Text::{ Debug, Display, FormatSpec, TextWriter };
-import Format::{ BitsOfFloat16, ByteCursor, IsFinite, IsInfinite, IsNan, WriteFormat };
+import Format::{ IsFinite, IsInfinite, IsNan, WriteFormat };
+import Format::Characters::ByteCursor;
+import Format::Digits::BitsOfFloat16;
 
 // Every float16 is rendered and held to the table Tools/FloatVectors wrote for it: the shortest decimal that reads
 // back as the same float16, at this width's own neighbours. A failed check returns its numbered exit code for

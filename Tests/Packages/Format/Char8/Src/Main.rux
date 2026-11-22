@@ -1,7 +1,7 @@
 
 
 import Text::{ Display, FormatSpec, TextWriter };
-import Format::{ ByteCursor };
+import Format::Characters::ByteCursor;
 
 // A failed check returns its numbered exit code for `rux test`.
 func Check(value: char8, expected: char8[..], code: int) -> int {

@@ -1,6 +1,7 @@
 // The decimal text of a `uint8`.
 
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Format::Digits::WriteIntegerSpec;
 
 extend uint8 : Display {
     /// Writes this value's digits.

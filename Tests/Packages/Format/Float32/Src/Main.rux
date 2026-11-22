@@ -1,7 +1,8 @@
 
 
 import Text::{ Display, FormatSpec, TextWriter };
-import Format::{ ByteCursor, IsFinite, IsInfinite, IsNan };
+import Format::{ IsFinite, IsInfinite, IsNan };
+import Format::Characters::ByteCursor;
 
 // A failed check returns its numbered exit code for `rux test`.
 // Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract

@@ -14,137 +14,141 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned
 // Which formatting failure a digit generator's stop is. An allocator that refused terminates the program, as every
 // allocation in the text packages does; a buffer too small for the digits is a value that cannot be written in the
 // form asked for, which will go the same way every time.
-func FailureOf(reason: WideDigitFailure) -> FormatError {
-    if reason == WideDigitFailure::OutOfMemory { AllocationFailed(AllocError::OutOfMemory); }
-    return FormatError::ValueOutOfRange;
-}
+import Format::Characters::ByteCursor;
 
-/// Writes `bits`, read under `layout`, as text under `spec`.
-/// @param allocator where the working storage comes from
-/// @param writer the destination
-/// @param spec what the placeholder asked for
-/// @param bits the value's bit pattern
-/// @param layout which wide floating-point format the bits are in
-/// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/float-layout#write-wide-float
-pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
-                    layout: &FloatLayout) -> !FormatError {
-    let value = UnpackWide(bits, layout);
-    if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true)!; }
-    if value.class == WideClass::Infinity { return WriteAligned(writer, spec, if value.negative {
-        "-Inf"
-    } else {
-        "Inf"
-    }, true)!; }
-    if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout)!; }
-    var storage: char8[256];
-    var digits: char8[160];
-    var cursor = ByteCursor::New(storage[2..256]);
-    if value.class == WideClass::Zero {
-        if value.negative {
-            cursor.Push(c8'-');
-        }
-        cursor.PushBytes("0.0");
+pub module Digits {
+    func FailureOf(reason: WideDigitFailure) -> FormatError {
+        if reason == WideDigitFailure::OutOfMemory { AllocationFailed(AllocError::OutOfMemory); }
+        return FormatError::ValueOutOfRange;
     }
-    else {
-        var count: uint = 0;
-        var exponent10: int = 0;
-        let room = digits[..];
-        var reason = WideDigitFailure::None;
-        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10, @reason) {
-            throw FailureOf(reason);
-        }
-        if value.negative {
-            cursor.Push(c8'-');
-        }
-        let produced = digits[..count];
-        if exponent10 < -4 || exponent10 >= layout.DecimalDigits() as int {
-            WriteScientific(&var cursor, produced, count, exponent10);
-        }
-        else {
-            WriteFixed(&var cursor, produced, count, exponent10);
-        }
-    }
-    var rendered = cursor.Written();
-    if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
-        storage[1] = c8'+';
-        rendered = storage[1..rendered.length + 2];
-    }
-    return WriteAligned(writer, spec, rendered, true)!;
-}
 
-// Fixed notation with exactly the requested precision in digits after the point. The text can be as long as the
-// exponent is large, so it is built in storage from the allocator rather than on the stack.
-func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, value: &UnpackedWide,
+    /// Writes `bits`, read under `layout`, as text under `spec`.
+    /// @param allocator where the working storage comes from
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @param bits the value's bit pattern
+    /// @param layout which wide floating-point format the bits are in
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float-layout#write-wide-float
+    pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
                         layout: &FloatLayout) -> !FormatError {
-    let fraction = spec.Precision();
-    let integerRoom = ((layout.bias as uint) * 30103u) / 100000u + 4u;
-    let digitRoom = integerRoom + fraction + 4u;
-    let textRoom = digitRoom + fraction + 8u;
-    let empty = Layout { size: 0, alignment: 1 };
-    let blockLayout = Layout::Of(digitRoom + textRoom, 1u) ?? (empty);
-    if blockLayout.size == 0 { AllocationFailed(AllocError::Unsupported); }
-    let block = allocator.Allocate(blockLayout) catch { error => AllocationFailed(error) };
-    // Safety: `block` came from `Allocate` above with `digitRoom + textRoom` bytes at alignment one, every bit
-    // pattern is a valid `char8`, and the block stays live until the `Deallocate` at the end; the first `digitRoom`
-    // bytes hold the digits.
-    let digits = (block as *var char8)[..digitRoom];
-    // Safety: the same live block; the `textRoom` bytes after the first `digitRoom` are the rest of it.
-    let text = ((block as *var char8) + digitRoom)[..textRoom];
-    var count: uint = 0;
-    var exponent10: int = 0;
-    // A block was allocated above and must be released on every path, so failure is accumulated and thrown at
-    // the end rather than at the call that met it, which would leave the block behind.
-    var failure: FormatError? = none;
-    if value.class != WideClass::Zero {
-        let room = digits;
-        var reason = WideDigitFailure::None;
-        if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10, @reason) {
-            failure = FailureOf(reason);
-        }
-    }
-    if failure == none {
-        var cursor = ByteCursor::New(text[1u..textRoom]);
-        if value.negative && value.class != WideClass::Zero {
-            cursor.Push(c8'-');
-        }
-        // The digits before the point, or a lone zero when there are none.
-        if count == 0 || exponent10 < 0 {
-            cursor.Push(c8'0');
+        let value = UnpackWide(bits, layout);
+        if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true)!; }
+        if value.class == WideClass::Infinity { return WriteAligned(writer, spec, if value.negative {
+            "-Inf"
+        } else {
+            "Inf"
+        }, true)!; }
+        if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout)!; }
+        var storage: char8[256];
+        var digits: char8[160];
+        var cursor = ByteCursor::New(storage[2..256]);
+        if value.class == WideClass::Zero {
+            if value.negative {
+                cursor.Push(c8'-');
+            }
+            cursor.PushBytes("0.0");
         }
         else {
-            var index: uint = 0;
-            while index <= exponent10 as uint {
-                cursor.Push(if index < count { digits[index] } else { c8'0' });
-                index = index + 1u;
+            var count: uint = 0;
+            var exponent10: int = 0;
+            let room = digits[..];
+            var reason = WideDigitFailure::None;
+            if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10, @reason) {
+                throw FailureOf(reason);
             }
-        }
-        if fraction > 0 {
-            cursor.Push(c8'.');
-            var place: uint = 0;
-            while place < fraction {
-                let position = exponent10 + 1 + place as int;
-                if count == 0 || position < 0 || position >= count as int {
-                    cursor.Push(c8'0');
-                }
-                else {
-                    cursor.Push(digits[position as uint]);
-                }
-                place = place + 1u;
+            if value.negative {
+                cursor.Push(c8'-');
+            }
+            let produced = digits[..count];
+            if exponent10 < -4 || exponent10 >= layout.DecimalDigits() as int {
+                WriteScientific(&var cursor, produced, count, exponent10);
+            }
+            else {
+                WriteFixed(&var cursor, produced, count, exponent10);
             }
         }
         var rendered = cursor.Written();
         if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
-            text[0] = c8'+';
-            rendered = text[..rendered.length + 1u];
+            storage[1] = c8'+';
+            rendered = storage[1..rendered.length + 2];
         }
-        if cursor.Overran() {
-            failure = FormatError::ValueOutOfRange;
-        }
-        else {
-            WriteAligned(writer, spec, rendered, true) catch { error => { failure = error; } };
-        }
+        return WriteAligned(writer, spec, rendered, true)!;
     }
-    allocator.Deallocate(block, blockLayout) catch { _ => {} };
-    if let error? = failure { throw error; }
+
+    // Fixed notation with exactly the requested precision in digits after the point. The text can be as long as the
+    // exponent is large, so it is built in storage from the allocator rather than on the stack.
+    func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, value: &UnpackedWide,
+                            layout: &FloatLayout) -> !FormatError {
+        let fraction = spec.Precision();
+        let integerRoom = ((layout.bias as uint) * 30103u) / 100000u + 4u;
+        let digitRoom = integerRoom + fraction + 4u;
+        let textRoom = digitRoom + fraction + 8u;
+        let empty = Layout { size: 0, alignment: 1 };
+        let blockLayout = Layout::Of(digitRoom + textRoom, 1u) ?? (empty);
+        if blockLayout.size == 0 { AllocationFailed(AllocError::Unsupported); }
+        let block = allocator.Allocate(blockLayout) catch { error => AllocationFailed(error) };
+        // Safety: `block` came from `Allocate` above with `digitRoom + textRoom` bytes at alignment one, every bit
+        // pattern is a valid `char8`, and the block stays live until the `Deallocate` at the end; the first `digitRoom`
+        // bytes hold the digits.
+        let digits = (block as *var char8)[..digitRoom];
+        // Safety: the same live block; the `textRoom` bytes after the first `digitRoom` are the rest of it.
+        let text = ((block as *var char8) + digitRoom)[..textRoom];
+        var count: uint = 0;
+        var exponent10: int = 0;
+        // A block was allocated above and must be released on every path, so failure is accumulated and thrown at
+        // the end rather than at the call that met it, which would leave the block behind.
+        var failure: FormatError? = none;
+        if value.class != WideClass::Zero {
+            let room = digits;
+            var reason = WideDigitFailure::None;
+            if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10, @reason) {
+                failure = FailureOf(reason);
+            }
+        }
+        if failure == none {
+            var cursor = ByteCursor::New(text[1u..textRoom]);
+            if value.negative && value.class != WideClass::Zero {
+                cursor.Push(c8'-');
+            }
+            // The digits before the point, or a lone zero when there are none.
+            if count == 0 || exponent10 < 0 {
+                cursor.Push(c8'0');
+            }
+            else {
+                var index: uint = 0;
+                while index <= exponent10 as uint {
+                    cursor.Push(if index < count { digits[index] } else { c8'0' });
+                    index = index + 1u;
+                }
+            }
+            if fraction > 0 {
+                cursor.Push(c8'.');
+                var place: uint = 0;
+                while place < fraction {
+                    let position = exponent10 + 1 + place as int;
+                    if count == 0 || position < 0 || position >= count as int {
+                        cursor.Push(c8'0');
+                    }
+                    else {
+                        cursor.Push(digits[position as uint]);
+                    }
+                    place = place + 1u;
+                }
+            }
+            var rendered = cursor.Written();
+            if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
+                text[0] = c8'+';
+                rendered = text[..rendered.length + 1u];
+            }
+            if cursor.Overran() {
+                failure = FormatError::ValueOutOfRange;
+            }
+            else {
+                WriteAligned(writer, spec, rendered, true) catch { error => { failure = error; } };
+            }
+        }
+        allocator.Deallocate(block, blockLayout) catch { _ => {} };
+        if let error? = failure { throw error; }
+    }
 }

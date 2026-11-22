@@ -1,7 +1,9 @@
 
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
-import Format::{ ByteCursor, IsFinite, IsInfinite, IsNan, ParseError, ParseFloat64 };
+import Format::{ IsFinite, IsInfinite, IsNan };
+import Format::Characters::ByteCursor;
+import Format::Parsing::{ ParseError, ParseFloat64 };
 
 
 

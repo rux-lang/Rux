@@ -6,6 +6,8 @@
 // anything is narrowed.
 
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Format::Characters::{ IsWideScalarValue, WriteCharacterDebug };
+import Format::Digits::FormatScalar;
 
 extend char64 : Display {
     /// Writes this character, or the replacement character when the value is not one.

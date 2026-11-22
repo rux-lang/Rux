@@ -21,7 +21,9 @@
 // which is what that case is for: the document is good and the form asked for cannot hold it.
 
 import Core::Primitives::*;
-import Format::{ ByteCursor, ParseFloat64, WriteDecimal };
+import Format::Characters::ByteCursor;
+import Format::Digits::WriteDecimal;
+import Format::Parsing::ParseFloat64;
 import Text::{ FormatError, TextWriter };
 
 /// How long a table's header path may be, in bytes.

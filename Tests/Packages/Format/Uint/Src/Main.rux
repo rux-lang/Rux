@@ -2,7 +2,7 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
 
-import Format::{ ByteCursor };
+import Format::Characters::ByteCursor;
 
 // A failed check returns its numbered exit code for `rux test`.
 // Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract

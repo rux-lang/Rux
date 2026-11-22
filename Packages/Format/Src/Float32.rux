@@ -8,6 +8,9 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
+import Format::Characters::ByteCursor;
+import Format::Digits::{ DecomposeFloat32, ScientificMark, WriteDecimal, WriteNonFinite, WritePrecision,
+                         WriteScientificNotation, WriteShortestFloat };
 const MaxFinite32 = 3.4028234663852886e38;
 
 // The decimal exponent at or above which a float32 renders in scientific notation. Nine is the digit count at

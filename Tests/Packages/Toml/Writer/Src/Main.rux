@@ -5,7 +5,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
-import Format::ByteCursor;
+import Format::Characters::ByteCursor;
 import Text::{ BufferWriter, FormatError, StringView, TextError, TextWriter };
 import Time::UtcOffset;
 import Toml::{ TomlKind, TomlParse, TomlValue, TomlWriteDocument };

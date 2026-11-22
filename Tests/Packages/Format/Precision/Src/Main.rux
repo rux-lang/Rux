@@ -1,6 +1,7 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::Assert;
-import Format::{ MaximumPrecision, Render };
+import Format::Render;
+import Format::Digits::MaximumPrecision;
 import Text::{ FormatError, String, StringView };
 
 // A precision means digits after the decimal point, exactly that many, rounded to nearest with ties to even.

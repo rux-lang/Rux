@@ -1,4 +1,4 @@
-import Format::ParseBool;
+import Format::Parsing::ParseBool;
 variant ParseError { Local(uint64) }
 func Main() -> int {
     let local = ParseError::Local(1234567890123);

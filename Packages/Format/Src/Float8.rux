@@ -12,6 +12,9 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The exponent field and the stored significand field of a float8, and the sign bit.
+import Format::Characters::ByteCursor;
+import Format::Digits::{ BitsOfFloat8, DecomposeFloat8, ScientificMark, WriteDecimal, WriteNonFinite, WritePrecision,
+                         WriteScientificNotation, WriteShortestFloat };
 const ExponentMask8: uint8 = 0x78;
 const MagnitudeMask8: uint8 = 0x7F;
 const SignBit8: uint8 = 0x80;

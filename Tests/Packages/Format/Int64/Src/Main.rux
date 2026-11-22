@@ -1,7 +1,8 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Core::Primitives::*;
 import Text::StringView;
-import Format::{ ByteCursor, ParseError, ParseInt64 };
+import Format::Characters::ByteCursor;
+import Format::Parsing::{ ParseError, ParseInt64 };
 
 
 // A failed check returns its numbered exit code for `rux test`.

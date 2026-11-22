@@ -8,7 +8,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
-import Format::ByteCursor;
+import Format::Characters::ByteCursor;
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
                TomlWriteDocument };
 import Text::TextWriter;

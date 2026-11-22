@@ -11,6 +11,9 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAligned };
 
 // The exponent field and the stored significand field of a float16, and the sign bit.
+import Format::Characters::ByteCursor;
+import Format::Digits::{ BitsOfFloat16, DecomposeFloat16, ScientificMark, WriteDecimal, WriteNonFinite, WritePrecision,
+                         WriteScientificNotation, WriteShortestFloat };
 const ExponentMask16: uint16 = 0x7C00;
 const MagnitudeMask16: uint16 = 0x7FFF;
 const SignBit16: uint16 = 0x8000;
