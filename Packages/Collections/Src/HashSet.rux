@@ -10,6 +10,7 @@
 import Core::Ownership::Copyable;
 import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Core::Iteration::Iterator;
+import Collections::Storage::{ SlotEmpty, Table, TableSeed };
 
 /// A hash table of distinct values.
 /// Move-only: it owns its elements and its storage.

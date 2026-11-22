@@ -23,626 +23,631 @@ import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Core::Compare::Ordering;
 
-/// One node of a red-black tree.
-/// Its own allocation, so its address survives any rearrangement of the tree around it.
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/tree#tree-node
-pub struct TreeNode<K: Copyable, V> {
-    /// The key this node is ordered by.
-    pub key: K;
-    /// The value stored under that key.
-    pub value: V;
-    /// The subtree of smaller keys, or null.
-    pub left: *var TreeNode<K, V>;
-    /// The subtree of larger keys, or null.
-    pub right: *var TreeNode<K, V>;
-    /// The node this one hangs from, null only for the root.
-    pub parent: *var TreeNode<K, V>;
-    /// Whether this node is red. A missing child counts as black, which is what makes null a colour and not a gap.
-    pub red: bool;
-}
-
-/// An ordered collection of entries, kept balanced by colouring.
-/// Owns every node and everything in them, so it prohibits copying and destroys them in its destructor.
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/tree
-pub struct Tree<K: Copyable, V> {
-    /// The topmost node, or null for an empty tree. Always black.
-    root: *var TreeNode<K, V>;
-    /// How many nodes the tree holds.
-    length: uint;
-    /// Where nodes come from, and where they go back to.
-    allocator: Allocator;
-}
-
-extend Tree<K, V> {
-    /// An empty tree that has allocated nothing.
-    /// `allocator` is borrowed for the call and kept for the tree's life.
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    /// @param allocator where the storage comes from
-    /// @returns an empty tree that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/collections/tree#new
-    pub func New(allocator: Allocator) -> Self {
-        return Self { root: null, length: 0, allocator };
+pub module Storage {
+    /// One node of a red-black tree.
+    /// Its own allocation, so its address survives any rearrangement of the tree around it.
+    /// @typeParam K the key type
+    /// @typeParam V the value type
+    /// @see https://rux-lang.dev/docs/api/collections/tree#tree-node
+    pub struct TreeNode<K: Copyable, V> {
+        /// The key this node is ordered by.
+        pub key: K;
+        /// The value stored under that key.
+        pub value: V;
+        /// The subtree of smaller keys, or null.
+        pub left: *var TreeNode<K, V>;
+        /// The subtree of larger keys, or null.
+        pub right: *var TreeNode<K, V>;
+        /// The node this one hangs from, null only for the root.
+        pub parent: *var TreeNode<K, V>;
+        /// Whether this node is red. A missing child counts as black, which is what makes null a colour and not a gap.
+        pub red: bool;
     }
 
-    /// How many entries the tree holds.
-    /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns how many nodes it holds
-    /// @see https://rux-lang.dev/docs/api/collections/tree#length
-    pub func Length(&self) -> uint {
-        return self.length;
+    /// An ordered collection of entries, kept balanced by colouring.
+    /// Owns every node and everything in them, so it prohibits copying and destroys them in its destructor.
+    /// @typeParam K the key type
+    /// @typeParam V the value type
+    /// @see https://rux-lang.dev/docs/api/collections/tree
+    pub struct Tree<K: Copyable, V> {
+        /// The topmost node, or null for an empty tree. Always black.
+        root: *var TreeNode<K, V>;
+        /// How many nodes the tree holds.
+        length: uint;
+        /// Where nodes come from, and where they go back to.
+        allocator: Allocator;
     }
 
-    /// The topmost node, or null for an empty tree, for code that walks the shape itself.
-    /// `self` is borrowed. The pointer is valid until the tree next changes;
-    /// the field it reads stays private, so only the tree's own operations can move it.
-    /// @returns the root node, or null when the tree is empty
-    /// @see https://rux-lang.dev/docs/api/collections/tree#root
-    pub func Root(&self) -> *var TreeNode<K, V> {
-        return self.root;
-    }
+    extend Tree<K, V> {
+        /// An empty tree that has allocated nothing.
+        /// `allocator` is borrowed for the call and kept for the tree's life.
+        /// Cannot fail. Runs in constant time and allocates nothing.
+        /// @param allocator where the storage comes from
+        /// @returns an empty tree that has taken no storage yet
+        /// @see https://rux-lang.dev/docs/api/collections/tree#new
+        pub func New(allocator: Allocator) -> Self {
+            return Self { root: null, length: 0, allocator };
+        }
 
-    /// Whether the tree holds no entries.
-    /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
-    /// @returns whether it holds nothing
-    /// @see https://rux-lang.dev/docs/api/collections/tree#is-empty
-    pub func IsEmpty(&self) -> bool {
-        return self.length == 0;
-    }
+        /// How many entries the tree holds.
+        /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns how many nodes it holds
+        /// @see https://rux-lang.dev/docs/api/collections/tree#length
+        pub func Length(&self) -> uint {
+            return self.length;
+        }
 
-    // Whether a node is red. A missing child is black, which is what lets the fix-ups ask about a colour without
-    // first asking whether there is a node.
-    // Safety: `node` must be null or a live node of a tree.
-    func IsRed(node: *TreeNode<K, V>) -> bool {
-        return node != null && node.red;
-    }
+        /// The topmost node, or null for an empty tree, for code that walks the shape itself.
+        /// `self` is borrowed. The pointer is valid until the tree next changes;
+        /// the field it reads stays private, so only the tree's own operations can move it.
+        /// @returns the root node, or null when the tree is empty
+        /// @see https://rux-lang.dev/docs/api/collections/tree#root
+        pub func Root(&self) -> *var TreeNode<K, V> {
+            return self.root;
+        }
 
-    // Turns the subtree at `pivot` so its right child takes its place, which the right child must therefore have.
-    //       x                 y
-    //      / \               / \
-    //     a   y     ->      x   c
-    //        / \           / \
-    //       b   c         a   b
-    // Every key stays on the correct side of every other, which is why a rotation can be used to fix a colour
-    // without touching the order.
-    // Safety: `pivot` must be a live node of this tree with a right child.
-    func RotateLeft(&var self, pivot: *var TreeNode<K, V>) {
-        let risen = pivot.right;
-        pivot.right = risen.left;
-        if risen.left != null {
-            risen.left.parent = pivot;
+        /// Whether the tree holds no entries.
+        /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
+        /// @returns whether it holds nothing
+        /// @see https://rux-lang.dev/docs/api/collections/tree#is-empty
+        pub func IsEmpty(&self) -> bool {
+            return self.length == 0;
         }
-        risen.parent = pivot.parent;
-        if pivot.parent == null {
-            self.root = risen;
-        }
-        else if pivot == pivot.parent.left {
-            pivot.parent.left = risen;
-        }
-        else {
-            pivot.parent.right = risen;
-        }
-        risen.left = pivot;
-        pivot.parent = risen;
-    }
 
-    // The mirror of `RotateLeft`, which the left child must therefore exist for.
-    // Safety: `pivot` must be a live node of this tree with a left child.
-    func RotateRight(&var self, pivot: *var TreeNode<K, V>) {
-        let risen = pivot.left;
-        pivot.left = risen.right;
-        if risen.right != null {
-            risen.right.parent = pivot;
+        // Whether a node is red. A missing child is black, which is what lets the fix-ups ask about a colour without
+        // first asking whether there is a node.
+        // Safety: `node` must be null or a live node of a tree.
+        func IsRed(node: *TreeNode<K, V>) -> bool {
+            return node != null && node.red;
         }
-        risen.parent = pivot.parent;
-        if pivot.parent == null {
-            self.root = risen;
-        }
-        else if pivot == pivot.parent.right {
-            pivot.parent.right = risen;
-        }
-        else {
-            pivot.parent.left = risen;
-        }
-        risen.right = pivot;
-        pivot.parent = risen;
-    }
 
-    /// The node holding `key`, or null when the tree does not have it.
-    /// `self` is borrowed. `compare` must impose the same order every call, and the same one every earlier
-    /// insertion used — a tree searched by a different order than it was built with misses entries it holds.
-    /// Runs in time proportional to the height, which the colouring holds to at most twice the logarithm of the
-    /// length. Allocates nothing.
-    /// @param key the key to look up
-    /// @param compare how two keys order against each other
-    /// @returns the node with that key, or null when it is absent
-    /// @see https://rux-lang.dev/docs/api/collections/tree#find
-    pub func Find(&self, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
-        var walk = self.root;
-        while walk != null {
-            // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            let order = compare(key, walk.key);
-            if order.IsLess() {
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.left;
+        // Turns the subtree at `pivot` so its right child takes its place, which the right child must therefore have.
+        //       x                 y
+        //      / \               / \
+        //     a   y     ->      x   c
+        //        / \           / \
+        //       b   c         a   b
+        // Every key stays on the correct side of every other, which is why a rotation can be used to fix a colour
+        // without touching the order.
+        // Safety: `pivot` must be a live node of this tree with a right child.
+        func RotateLeft(&var self, pivot: *var TreeNode<K, V>) {
+            let risen = pivot.right;
+            pivot.right = risen.left;
+            if risen.left != null {
+                risen.left.parent = pivot;
             }
-            else if order.IsGreater() {
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.right;
+            risen.parent = pivot.parent;
+            if pivot.parent == null {
+                self.root = risen;
+            }
+            else if pivot == pivot.parent.left {
+                pivot.parent.left = risen;
             }
             else {
-                return walk;
+                pivot.parent.right = risen;
             }
+            risen.left = pivot;
+            pivot.parent = risen;
         }
-        return null;
-    }
 
-    /// The node holding the smallest key strictly above `key`, or null when no key is above it.
-    /// `key` need not be in the tree. The descent keeps the last node it passed on the high side, which is the
-    /// answer wherever it ends: once it has gone left of a key, nothing further down is larger than that key.
-    /// This is what lets a walk survive removing what it is standing on. `Successor` needs its node still linked
-    /// into the tree, and removal relinks nodes around it; asking by key instead needs nothing to have stayed put,
-    /// at the price of a descent per step rather than an edge.
-    /// Runs in time proportional to the height and allocates nothing.
-    /// @param key the key to look up
-    /// @param compare how two keys order against each other
-    /// @returns the node with the smallest key above this one, or null
-    /// @see https://rux-lang.dev/docs/api/collections/tree#above
-    pub func Above(&self, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
-        var best: *var TreeNode<K, V> = null;
-        var walk = self.root;
-        while walk != null {
-            // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            if compare(key, walk.key).IsLess() {
-                best = walk;
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.left;
+        // The mirror of `RotateLeft`, which the left child must therefore exist for.
+        // Safety: `pivot` must be a live node of this tree with a left child.
+        func RotateRight(&var self, pivot: *var TreeNode<K, V>) {
+            let risen = pivot.left;
+            pivot.left = risen.right;
+            if risen.right != null {
+                risen.right.parent = pivot;
+            }
+            risen.parent = pivot.parent;
+            if pivot.parent == null {
+                self.root = risen;
+            }
+            else if pivot == pivot.parent.right {
+                pivot.parent.right = risen;
             }
             else {
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.right;
+                pivot.parent.left = risen;
             }
+            risen.right = pivot;
+            pivot.parent = risen;
         }
-        return best;
-    }
 
-    /// The node holding the largest key strictly below `key`, or null when no key is below it.
-    /// The mirror of `Above`, with the same costs and the same use.
-    /// @param key the key to look up
-    /// @param compare how two keys order against each other
-    /// @returns the node with the largest key below this one, or null
-    /// @see https://rux-lang.dev/docs/api/collections/tree#below
-    pub func Below(&self, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
-        var best: *var TreeNode<K, V> = null;
-        var walk = self.root;
-        while walk != null {
-            // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            if compare(key, walk.key).IsGreater() {
-                best = walk;
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.right;
-            }
-            else {
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.left;
-            }
-        }
-        return best;
-    }
-
-    /// The node holding the smallest key of the subtree at `from`, or null when `from` is null.
-    /// Runs in time proportional to the height and allocates nothing.
-    /// Safety: `from` must be null or a live node of a tree whose links all point at live nodes of it.
-    /// @param from the subtree to search
-    /// @returns the leftmost node of that subtree, or null when it is empty
-    /// @see https://rux-lang.dev/docs/api/collections/tree#minimum
-    pub func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
-        var walk = from;
-        while walk != null && walk.left != null {
-            walk = walk.left;
-        }
-        return walk;
-    }
-
-    /// The node holding the largest key of the subtree at `from`, or null when `from` is null.
-    /// Runs in time proportional to the height and allocates nothing.
-    /// Safety: `from` must be null or a live node of a tree whose links all point at live nodes of it.
-    /// @param from the subtree to search
-    /// @returns the rightmost node of that subtree, or null when it is empty
-    /// @see https://rux-lang.dev/docs/api/collections/tree#maximum
-    pub func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
-        var walk = from;
-        while walk != null && walk.right != null {
-            walk = walk.right;
-        }
-        return walk;
-    }
-
-    /// The node holding the next key after `node`'s, or null when `node` holds the largest or is itself null.
-    /// Descends into the right subtree where there is one, and otherwise climbs past every ancestor `node` is the
-    /// right child of — arriving at the first ancestor reached from the left, whose key is the next one up.
-    /// Runs in time proportional to the height for a single step, but a walk of the whole tree by successor is
-    /// linear in the length: every edge is crossed exactly twice across the walk. Allocates nothing.
-    /// Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
-    /// @param node the node to act on
-    /// @returns the node with the next key in order, or null after the last
-    /// @see https://rux-lang.dev/docs/api/collections/tree#successor
-    pub func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
-        if node == null { return null; }
-        if node.right != null { return Tree::Minimum<K, V>(node.right); }
-        var walk = node;
-        var above = node.parent;
-        while above != null && walk == above.right {
-            walk = above;
-            above = above.parent;
-        }
-        return above;
-    }
-
-    /// The node holding the key before `node`'s, or null when `node` holds the smallest or is itself null.
-    /// The mirror of `Successor`, with the same costs.
-    /// Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
-    /// @param node the node to act on
-    /// @returns the node with the previous key in order, or null before the first
-    /// @see https://rux-lang.dev/docs/api/collections/tree#predecessor
-    pub func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
-        if node == null { return null; }
-        if node.left != null { return Tree::Maximum<K, V>(node.left); }
-        var walk = node;
-        var above = node.parent;
-        while above != null && walk == above.left {
-            walk = above;
-            above = above.parent;
-        }
-        return above;
-    }
-
-    // Restores the colouring after a fresh red node was hung below a parent that may itself be red.
-    // Only one rule can be broken here — a red node with a red parent — and only at the node just linked. There
-    // are two ways out. When the uncle is red, repainting the parent and uncle black and the grandparent red fixes
-    // this level and moves the same question up two levels, which is why this is a loop and not a step. When the
-    // uncle is black, a rotation moves the black grandparent down between the two reds and ends it: at most two
-    // rotations run per insertion, however tall the tree.
-    // Safety: `node` must be a live node of this tree, just linked in below its parent or as the root.
-    func InsertFixup(&var self, node: *var TreeNode<K, V>) {
-        var walk = node;
-        while walk.parent != null && walk.parent.red {
-            // A red parent is never the root, so the grandparent exists.
-            let grand = walk.parent.parent;
-            if walk.parent == grand.left {
-                let uncle = grand.right;
-                if Tree::IsRed<K, V>(uncle) {
-                    walk.parent.red = false;
-                    uncle.red = false;
-                    grand.red = true;
-                    walk = grand;
+        /// The node holding `key`, or null when the tree does not have it.
+        /// `self` is borrowed. `compare` must impose the same order every call, and the same one every earlier
+        /// insertion used — a tree searched by a different order than it was built with misses entries it holds.
+        /// Runs in time proportional to the height, which the colouring holds to at most twice the logarithm of the
+        /// length. Allocates nothing.
+        /// @param key the key to look up
+        /// @param compare how two keys order against each other
+        /// @returns the node with that key, or null when it is absent
+        /// @see https://rux-lang.dev/docs/api/collections/tree#find
+        pub func Find(&self, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+            var walk = self.root;
+            while walk != null {
+                // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this
+                // tree.
+                let order = compare(key, walk.key);
+                if order.IsLess() {
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.left;
+                }
+                else if order.IsGreater() {
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.right;
                 }
                 else {
-                    if walk == walk.parent.right {
-                        // Bent the wrong way for a single rotation. One turn at the parent straightens it into the
-                        // case below, which is why this is not an else.
-                        walk = walk.parent;
-                        self.RotateLeft(walk);
-                    }
-                    walk.parent.red = false;
-                    walk.parent.parent.red = true;
-                    self.RotateRight(walk.parent.parent);
+                    return walk;
                 }
             }
-            else {
-                let uncle = grand.left;
-                if Tree::IsRed<K, V>(uncle) {
-                    walk.parent.red = false;
-                    uncle.red = false;
-                    grand.red = true;
-                    walk = grand;
+            return null;
+        }
+
+        /// The node holding the smallest key strictly above `key`, or null when no key is above it.
+        /// `key` need not be in the tree. The descent keeps the last node it passed on the high side, which is the
+        /// answer wherever it ends: once it has gone left of a key, nothing further down is larger than that key.
+        /// This is what lets a walk survive removing what it is standing on. `Successor` needs its node still linked
+        /// into the tree, and removal relinks nodes around it; asking by key instead needs nothing to have stayed put,
+        /// at the price of a descent per step rather than an edge.
+        /// Runs in time proportional to the height and allocates nothing.
+        /// @param key the key to look up
+        /// @param compare how two keys order against each other
+        /// @returns the node with the smallest key above this one, or null
+        /// @see https://rux-lang.dev/docs/api/collections/tree#above
+        pub func Above(&self, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+            var best: *var TreeNode<K, V> = null;
+            var walk = self.root;
+            while walk != null {
+                // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this
+                // tree.
+                if compare(key, walk.key).IsLess() {
+                    best = walk;
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.left;
                 }
                 else {
-                    if walk == walk.parent.left {
-                        walk = walk.parent;
-                        self.RotateRight(walk);
-                    }
-                    walk.parent.red = false;
-                    walk.parent.parent.red = true;
-                    self.RotateLeft(walk.parent.parent);
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.right;
                 }
             }
-        }
-        // Repainting the root black is what discharges the one case the loop cannot: the walk reaching the top
-        // still red. It costs nothing, since it raises every path's black count by the same one.
-        self.root.red = false;
-    }
-
-    /// Puts `key` and `value` into the tree, replacing the value already stored under an equal key.
-    /// Takes ownership of both. Hands back the value an equal key already had, or `none` when the key is new — so a
-    /// caller learns whether anything was displaced without a lookup first, and gets the displaced value rather than
-    /// having it quietly destroyed. When the key is already present the new key is destroyed rather than stored, since
-    /// the one in the tree is equal to it and is what everything already hanging below it was ordered against.
-    /// Terminates the program when the node cannot be allocated.
-    /// Runs in time proportional to the height, with at most two rotations. Allocates one node for a new key and
-    /// nothing at all for one already present.
-    /// @param key the key to look up
-    /// @param value the value to act on
-    /// @param compare how two keys order against each other
-    /// @returns the value an equal key already held, or `none` when the key is new
-    /// @see https://rux-lang.dev/docs/api/collections/tree#attach
-    pub func Attach(&var self, key: K, value: V, compare: func(K, K) -> Ordering) -> V? {
-        var above: *var TreeNode<K, V> = null;
-        var walk = self.root;
-        var descendedLeft = false;
-        while walk != null {
-            // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this tree.
-            let order = compare(key, walk.key);
-            above = walk;
-            if order.IsLess() {
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.left;
-                descendedLeft = true;
-            }
-            else if order.IsGreater() {
-                // Safety: the tree invariant: `walk` is still that live node.
-                walk = walk.right;
-                descendedLeft = false;
-            }
-            else {
-                // Safety: the tree invariant: `walk` is still that live node, and its value is refilled right after
-                // it is moved out.
-                {
-                    let displaced = walk.value;
-                    walk.value = value;
-                    return displaced;
-                }
-            }
+            return best;
         }
 
-        let fresh = AllocateBlock<TreeNode<K, V>>(self.allocator, 1);
-
-        // Red is what a fresh node is coloured, because red is the colour that cannot break the black-count rule.
-        // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.
-        // Safety: `fresh` comes from `AllocateBlock` with room for one node, and this is its first write.
-        *fresh = TreeNode<K, V> {
-            key: key,
-            value: value,
-            left: null,
-            right: null,
-            parent: above,
-            red: true
-        };
-        if above == null {
-            self.root = fresh;
-        }
-        else if descendedLeft {
-            // Safety: the tree invariant: `above` is non-null, checked above, so it is the live node the descent
-            // stopped at.
-            above.left = fresh;
-        }
-        else {
-            // Safety: the tree invariant: `above` is non-null, checked above, so it is the live node the descent
-            // stopped at.
-            above.right = fresh;
-        }
-        self.length = self.length + 1;
-        // Safety: `fresh` is a live node of this tree now, linked in below `above` or as the root.
-        self.InsertFixup(fresh);
-        return none;
-    }
-
-    // Puts `replacement` where `hollow` was. Only the link downward from the parent and the link upward from the
-    // replacement are moved; `hollow`'s own children are left pointing where they did, for the caller to deal with.
-    // Safety: `hollow` must be a live node of this tree, and `replacement` null or a live node of it.
-    func Transplant(&var self, hollow: *var TreeNode<K, V>, replacement: *var TreeNode<K, V>) {
-        if hollow.parent == null {
-            self.root = replacement;
-        }
-        else if hollow == hollow.parent.left {
-            hollow.parent.left = replacement;
-        }
-        else {
-            hollow.parent.right = replacement;
-        }
-        if replacement != null {
-            replacement.parent = hollow.parent;
-        }
-    }
-
-    // Restores the colouring after a black node left the tree.
-    // Removing a black node takes one black off every path through where it was, and nothing local can put it back:
-    // the deficit has to be paid by a sibling that can spare one, or pushed up to the parent and paid there. That is
-    // what the loop does. `node` is what took the removed node's place and may be null, which is why the parent is
-    // passed rather than read from it — a missing child has a colour but no pointer back up.
-    // Four shapes, mirrored on each side. A red sibling is turned black by a rotation that produces one of the other
-    // three. A sibling with two black children can give up its own black by turning red, which pays the deficit at
-    // this level and moves it to the parent — the only case that loops. A sibling with a red child pays in full
-    // with one rotation, or two when the red child is on the near side and has to be turned to the far one first.
-    // So at most three rotations run per removal, however tall the tree.
-    // Safety: `node` must be null or a live node of this tree, and `parent` the live node it hangs from, or null when
-    // `node` is the root: the pair `Detach` computes for what took the removed node's place.
-    func RemoveFixup(&var self, node: *var TreeNode<K, V>, parent: *var TreeNode<K, V>) {
-        var walk = node;
-        var above = parent;
-        while walk != self.root && !Tree::IsRed<K, V>(walk) {
-            if above == null { break; }
-            if walk == above.left {
-                var sibling = above.right;
-                if Tree::IsRed<K, V>(sibling) {
-                    sibling.red = false;
-                    above.red = true;
-                    self.RotateLeft(above);
-                    sibling = above.right;
-                }
-                if sibling == null {
-                    // Unreachable in a tree that held the rules: the side that lost a black must still have one.
-                    break;
-                }
-                if !Tree::IsRed<K, V>(sibling.left) && !Tree::IsRed<K, V>(sibling.right) {
-                    sibling.red = true;
-                    walk = above;
-                    above = walk.parent;
+        /// The node holding the largest key strictly below `key`, or null when no key is below it.
+        /// The mirror of `Above`, with the same costs and the same use.
+        /// @param key the key to look up
+        /// @param compare how two keys order against each other
+        /// @returns the node with the largest key below this one, or null
+        /// @see https://rux-lang.dev/docs/api/collections/tree#below
+        pub func Below(&self, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+            var best: *var TreeNode<K, V> = null;
+            var walk = self.root;
+            while walk != null {
+                // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this
+                // tree.
+                if compare(key, walk.key).IsGreater() {
+                    best = walk;
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.right;
                 }
                 else {
-                    if !Tree::IsRed<K, V>(sibling.right) {
-                        sibling.left.red = false;
-                        sibling.red = true;
-                        self.RotateRight(sibling);
-                        sibling = above.right;
-                    }
-                    sibling.red = above.red;
-                    above.red = false;
-                    if sibling.right != null {
-                        sibling.right.red = false;
-                    }
-                    self.RotateLeft(above);
-                    walk = self.root;
-                    above = null;
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.left;
                 }
             }
-            else {
-                var sibling = above.left;
-                if Tree::IsRed<K, V>(sibling) {
-                    sibling.red = false;
-                    above.red = true;
-                    self.RotateRight(above);
-                    sibling = above.left;
-                }
-                if sibling == null { break; }
-                if !Tree::IsRed<K, V>(sibling.left) && !Tree::IsRed<K, V>(sibling.right) {
-                    sibling.red = true;
-                    walk = above;
-                    above = walk.parent;
-                }
-                else {
-                    if !Tree::IsRed<K, V>(sibling.left) {
-                        sibling.right.red = false;
-                        sibling.red = true;
-                        self.RotateLeft(sibling);
-                        sibling = above.left;
-                    }
-                    sibling.red = above.red;
-                    above.red = false;
-                    if sibling.left != null {
-                        sibling.left.red = false;
-                    }
-                    self.RotateRight(above);
-                    walk = self.root;
-                    above = null;
-                }
-            }
-        }
-        if walk != null {
-            walk.red = false;
-        }
-    }
-
-    /// Takes `node` out of the tree and hands back what it held.
-    /// The key and value become the caller's, in the pair a hash map hands its entries back in.
-    /// A node with two children is not emptied into: the successor is relinked in its place instead, so the entry
-    /// that stays keeps the address it had and any pointer to it stays good. That is the whole reason the nodes are
-    /// separate allocations, and it is why removal moves six pointers where copying two fields would do.
-    /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
-    /// Safety: `node` must be a live node of this tree, and is freed here — nothing may read through it afterwards.
-    /// @param node the node to act on
-    /// @returns the entry the node held
-    /// @see https://rux-lang.dev/docs/api/collections/tree#detach
-    pub func Detach(&var self, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
-        // Whichever node actually leaves its place, and what moves up into it. A red one leaving costs no path a
-        // black, so the fix-up is only run when a black one goes.
-        var vacatedWasRed = node.red;
-        var risen: *var TreeNode<K, V> = null;
-        var risenParent: *var TreeNode<K, V> = null;
-
-        if node.left == null {
-            risen = node.right;
-            risenParent = node.parent;
-            self.Transplant(node, node.right);
-        }
-        else if node.right == null {
-            risen = node.left;
-            risenParent = node.parent;
-            self.Transplant(node, node.left);
-        }
-        else {
-            // Two children, so the successor is the smallest of the right subtree and has no left child of its own.
-            // It leaves its own place, which is why its colour is the one that matters, and takes the removed
-            // node's — colour included, so that nothing above sees a change.
-            let heir = Tree::Minimum<K, V>(node.right);
-            vacatedWasRed = heir.red;
-            risen = heir.right;
-            if heir.parent == node {
-                risenParent = heir;
-            }
-            else {
-                risenParent = heir.parent;
-                self.Transplant(heir, heir.right);
-                heir.right = node.right;
-                heir.right.parent = heir;
-            }
-            self.Transplant(node, heir);
-            heir.left = node.left;
-            heir.left.parent = heir;
-            heir.red = node.red;
+            return best;
         }
 
-        self.length = self.length - 1;
-        if !vacatedWasRed {
-            self.RemoveFixup(risen, risenParent);
-        }
-
-        let key = node.key;
-        let value = node.value;
-        ReleaseBlock<TreeNode<K, V>>(self.allocator, node, 1);
-        return KeyValue<K, V> { key: key, value: value };
-    }
-
-    /// Destroys every entry and gives every node back to the allocator, leaving an empty tree.
-    /// `self` is borrowed mutably and stays usable: entries may be attached again afterwards, and nothing has been
-    /// kept back to make that cheaper, since a tree has no capacity to keep.
-    /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-    /// @see https://rux-lang.dev/docs/api/collections/tree#clear
-    pub func Clear(&var self) {
-        // Down the left, then the right, then free and step up — every node reached after both its subtrees are
-        // gone. The child link is cut on the way up so the parent does not descend into a node that is already
-        // freed. Walking the links rather than recursing is what keeps a tree of a million entries off the stack.
-        var walk = self.root;
-        while walk != null {
-            // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it and its parent are live nodes
-            // of this tree. A node is released only once both its subtrees are gone and the link down to it is cut,
-            // so no link the walk follows reaches a released node.
-            if walk.left != null {
+        /// The node holding the smallest key of the subtree at `from`, or null when `from` is null.
+        /// Runs in time proportional to the height and allocates nothing.
+        /// Safety: `from` must be null or a live node of a tree whose links all point at live nodes of it.
+        /// @param from the subtree to search
+        /// @returns the leftmost node of that subtree, or null when it is empty
+        /// @see https://rux-lang.dev/docs/api/collections/tree#minimum
+        pub func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+            var walk = from;
+            while walk != null && walk.left != null {
                 walk = walk.left;
             }
-            else if walk.right != null {
+            return walk;
+        }
+
+        /// The node holding the largest key of the subtree at `from`, or null when `from` is null.
+        /// Runs in time proportional to the height and allocates nothing.
+        /// Safety: `from` must be null or a live node of a tree whose links all point at live nodes of it.
+        /// @param from the subtree to search
+        /// @returns the rightmost node of that subtree, or null when it is empty
+        /// @see https://rux-lang.dev/docs/api/collections/tree#maximum
+        pub func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+            var walk = from;
+            while walk != null && walk.right != null {
                 walk = walk.right;
             }
-            else {
-                let above = walk.parent;
-                if above != null {
-                    if above.left == walk {
-                        above.left = null;
+            return walk;
+        }
+
+        /// The node holding the next key after `node`'s, or null when `node` holds the largest or is itself null.
+        /// Descends into the right subtree where there is one, and otherwise climbs past every ancestor `node` is the
+        /// right child of — arriving at the first ancestor reached from the left, whose key is the next one up.
+        /// Runs in time proportional to the height for a single step, but a walk of the whole tree by successor is
+        /// linear in the length: every edge is crossed exactly twice across the walk. Allocates nothing.
+        /// Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
+        /// @param node the node to act on
+        /// @returns the node with the next key in order, or null after the last
+        /// @see https://rux-lang.dev/docs/api/collections/tree#successor
+        pub func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+            if node == null { return null; }
+            if node.right != null { return Tree::Minimum<K, V>(node.right); }
+            var walk = node;
+            var above = node.parent;
+            while above != null && walk == above.right {
+                walk = above;
+                above = above.parent;
+            }
+            return above;
+        }
+
+        /// The node holding the key before `node`'s, or null when `node` holds the smallest or is itself null.
+        /// The mirror of `Successor`, with the same costs.
+        /// Safety: `node` must be null or a live node of a tree whose links all point at live nodes of it.
+        /// @param node the node to act on
+        /// @returns the node with the previous key in order, or null before the first
+        /// @see https://rux-lang.dev/docs/api/collections/tree#predecessor
+        pub func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+            if node == null { return null; }
+            if node.left != null { return Tree::Maximum<K, V>(node.left); }
+            var walk = node;
+            var above = node.parent;
+            while above != null && walk == above.left {
+                walk = above;
+                above = above.parent;
+            }
+            return above;
+        }
+
+        // Restores the colouring after a fresh red node was hung below a parent that may itself be red.
+        // Only one rule can be broken here — a red node with a red parent — and only at the node just linked. There
+        // are two ways out. When the uncle is red, repainting the parent and uncle black and the grandparent red fixes
+        // this level and moves the same question up two levels, which is why this is a loop and not a step. When the
+        // uncle is black, a rotation moves the black grandparent down between the two reds and ends it: at most two
+        // rotations run per insertion, however tall the tree.
+        // Safety: `node` must be a live node of this tree, just linked in below its parent or as the root.
+        func InsertFixup(&var self, node: *var TreeNode<K, V>) {
+            var walk = node;
+            while walk.parent != null && walk.parent.red {
+                // A red parent is never the root, so the grandparent exists.
+                let grand = walk.parent.parent;
+                if walk.parent == grand.left {
+                    let uncle = grand.right;
+                    if Tree::IsRed<K, V>(uncle) {
+                        walk.parent.red = false;
+                        uncle.red = false;
+                        grand.red = true;
+                        walk = grand;
                     }
                     else {
-                        above.right = null;
+                        if walk == walk.parent.right {
+                            // Bent the wrong way for a single rotation. One turn at the parent straightens it into the
+                            // case below, which is why this is not an else.
+                            walk = walk.parent;
+                            self.RotateLeft(walk);
+                        }
+                        walk.parent.red = false;
+                        walk.parent.parent.red = true;
+                        self.RotateRight(walk.parent.parent);
                     }
                 }
-                // Reading the key and the value out gives them to locals, and the locals dying here is what
-                // destroys them. Nothing else in a generic container can reach a destructor.
-                let key = walk.key;
-                let value = walk.value;
-                ReleaseBlock<TreeNode<K, V>>(self.allocator, walk, 1);
-                walk = above;
+                else {
+                    let uncle = grand.left;
+                    if Tree::IsRed<K, V>(uncle) {
+                        walk.parent.red = false;
+                        uncle.red = false;
+                        grand.red = true;
+                        walk = grand;
+                    }
+                    else {
+                        if walk == walk.parent.left {
+                            walk = walk.parent;
+                            self.RotateRight(walk);
+                        }
+                        walk.parent.red = false;
+                        walk.parent.parent.red = true;
+                        self.RotateLeft(walk.parent.parent);
+                    }
+                }
+            }
+            // Repainting the root black is what discharges the one case the loop cannot: the walk reaching the top
+            // still red. It costs nothing, since it raises every path's black count by the same one.
+            self.root.red = false;
+        }
+
+        /// Puts `key` and `value` into the tree, replacing the value already stored under an equal key.
+        /// Takes ownership of both. Hands back the value an equal key already had, or `none` when the key is new — so a
+        /// caller learns whether anything was displaced without a lookup first, and gets the displaced value rather
+        /// than having it quietly destroyed. When the key is already present the new key is destroyed rather than
+        /// stored, since the one in the tree is equal to it and is what everything already hanging below it was ordered
+        /// against. Terminates the program when the node cannot be allocated. Runs in time proportional to the height,
+        /// with at most two rotations. Allocates one node for a new key and nothing at all for one already present.
+        /// @param key the key to look up
+        /// @param value the value to act on
+        /// @param compare how two keys order against each other
+        /// @returns the value an equal key already held, or `none` when the key is new
+        /// @see https://rux-lang.dev/docs/api/collections/tree#attach
+        pub func Attach(&var self, key: K, value: V, compare: func(K, K) -> Ordering) -> V? {
+            var above: *var TreeNode<K, V> = null;
+            var walk = self.root;
+            var descendedLeft = false;
+            while walk != null {
+                // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it is a live node of this
+                // tree.
+                let order = compare(key, walk.key);
+                above = walk;
+                if order.IsLess() {
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.left;
+                    descendedLeft = true;
+                }
+                else if order.IsGreater() {
+                    // Safety: the tree invariant: `walk` is still that live node.
+                    walk = walk.right;
+                    descendedLeft = false;
+                }
+                else {
+                    // Safety: the tree invariant: `walk` is still that live node, and its value is refilled right after
+                    // it is moved out.
+                    {
+                        let displaced = walk.value;
+                        walk.value = value;
+                        return displaced;
+                    }
+                }
+            }
+
+            let fresh = AllocateBlock<TreeNode<K, V>>(self.allocator, 1);
+
+            // Red is what a fresh node is coloured, because red is the colour that cannot break the black-count rule.
+            // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.
+            // Safety: `fresh` comes from `AllocateBlock` with room for one node, and this is its first write.
+            *fresh = TreeNode<K, V> {
+                key: key,
+                value: value,
+                left: null,
+                right: null,
+                parent: above,
+                red: true
+            };
+            if above == null {
+                self.root = fresh;
+            }
+            else if descendedLeft {
+                // Safety: the tree invariant: `above` is non-null, checked above, so it is the live node the descent
+                // stopped at.
+                above.left = fresh;
+            }
+            else {
+                // Safety: the tree invariant: `above` is non-null, checked above, so it is the live node the descent
+                // stopped at.
+                above.right = fresh;
+            }
+            self.length = self.length + 1;
+            // Safety: `fresh` is a live node of this tree now, linked in below `above` or as the root.
+            self.InsertFixup(fresh);
+            return none;
+        }
+
+        // Puts `replacement` where `hollow` was. Only the link downward from the parent and the link upward from the
+        // replacement are moved; `hollow`'s own children are left pointing where they did, for the caller to deal with.
+        // Safety: `hollow` must be a live node of this tree, and `replacement` null or a live node of it.
+        func Transplant(&var self, hollow: *var TreeNode<K, V>, replacement: *var TreeNode<K, V>) {
+            if hollow.parent == null {
+                self.root = replacement;
+            }
+            else if hollow == hollow.parent.left {
+                hollow.parent.left = replacement;
+            }
+            else {
+                hollow.parent.right = replacement;
+            }
+            if replacement != null {
+                replacement.parent = hollow.parent;
             }
         }
-        self.root = null;
-        self.length = 0;
-    }
 
-    /// Destroys every entry and gives every node back.
-    /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
-    /// tree however many times it was passed along.
-    /// @see https://rux-lang.dev/docs/api/collections/tree#destructor
-    destructor {
-        self.Clear();
+        // Restores the colouring after a black node left the tree. Removing a black node takes one black off every path
+        // through where it was, and nothing local can put it back: the deficit has to be paid by a sibling that can
+        // spare one, or pushed up to the parent and paid there. That is what the loop does. `node` is what took the
+        // removed node's place and may be null, which is why the parent is passed rather than read from it — a missing
+        // child has a colour but no pointer back up. Four shapes, mirrored on each side. A red sibling is turned black
+        // by a rotation that produces one of the other three. A sibling with two black children can give up its own
+        // black by turning red, which pays the deficit at this level and moves it to the parent — the only case that
+        // loops. A sibling with a red child pays in full with one rotation, or two when the red child is on the near
+        // side and has to be turned to the far one first. So at most three rotations run per removal, however tall the
+        // tree.
+        // Safety: `node` must be null or a live node of this tree, and `parent` the live node it hangs from, or null
+        // when `node` is the root: the pair `Detach` computes for what took the removed node's place.
+        func RemoveFixup(&var self, node: *var TreeNode<K, V>, parent: *var TreeNode<K, V>) {
+            var walk = node;
+            var above = parent;
+            while walk != self.root && !Tree::IsRed<K, V>(walk) {
+                if above == null { break; }
+                if walk == above.left {
+                    var sibling = above.right;
+                    if Tree::IsRed<K, V>(sibling) {
+                        sibling.red = false;
+                        above.red = true;
+                        self.RotateLeft(above);
+                        sibling = above.right;
+                    }
+                    if sibling == null {
+                        // Unreachable in a tree that held the rules: the side that lost a black must still have one.
+                        break;
+                    }
+                    if !Tree::IsRed<K, V>(sibling.left) && !Tree::IsRed<K, V>(sibling.right) {
+                        sibling.red = true;
+                        walk = above;
+                        above = walk.parent;
+                    }
+                    else {
+                        if !Tree::IsRed<K, V>(sibling.right) {
+                            sibling.left.red = false;
+                            sibling.red = true;
+                            self.RotateRight(sibling);
+                            sibling = above.right;
+                        }
+                        sibling.red = above.red;
+                        above.red = false;
+                        if sibling.right != null {
+                            sibling.right.red = false;
+                        }
+                        self.RotateLeft(above);
+                        walk = self.root;
+                        above = null;
+                    }
+                }
+                else {
+                    var sibling = above.left;
+                    if Tree::IsRed<K, V>(sibling) {
+                        sibling.red = false;
+                        above.red = true;
+                        self.RotateRight(above);
+                        sibling = above.left;
+                    }
+                    if sibling == null { break; }
+                    if !Tree::IsRed<K, V>(sibling.left) && !Tree::IsRed<K, V>(sibling.right) {
+                        sibling.red = true;
+                        walk = above;
+                        above = walk.parent;
+                    }
+                    else {
+                        if !Tree::IsRed<K, V>(sibling.left) {
+                            sibling.right.red = false;
+                            sibling.red = true;
+                            self.RotateLeft(sibling);
+                            sibling = above.left;
+                        }
+                        sibling.red = above.red;
+                        above.red = false;
+                        if sibling.left != null {
+                            sibling.left.red = false;
+                        }
+                        self.RotateRight(above);
+                        walk = self.root;
+                        above = null;
+                    }
+                }
+            }
+            if walk != null {
+                walk.red = false;
+            }
+        }
+
+        /// Takes `node` out of the tree and hands back what it held.
+        /// The key and value become the caller's, in the pair a hash map hands its entries back in.
+        /// A node with two children is not emptied into: the successor is relinked in its place instead, so the entry
+        /// that stays keeps the address it had and any pointer to it stays good. That is the whole reason the nodes are
+        /// separate allocations, and it is why removal moves six pointers where copying two fields would do.
+        /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
+        /// Safety: `node` must be a live node of this tree, and is freed here — nothing may read through it afterwards.
+        /// @param node the node to act on
+        /// @returns the entry the node held
+        /// @see https://rux-lang.dev/docs/api/collections/tree#detach
+        pub func Detach(&var self, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
+            // Whichever node actually leaves its place, and what moves up into it. A red one leaving costs no path a
+            // black, so the fix-up is only run when a black one goes.
+            var vacatedWasRed = node.red;
+            var risen: *var TreeNode<K, V> = null;
+            var risenParent: *var TreeNode<K, V> = null;
+
+            if node.left == null {
+                risen = node.right;
+                risenParent = node.parent;
+                self.Transplant(node, node.right);
+            }
+            else if node.right == null {
+                risen = node.left;
+                risenParent = node.parent;
+                self.Transplant(node, node.left);
+            }
+            else {
+                // Two children, so the successor is the smallest of the right subtree and has no left child of its own.
+                // It leaves its own place, which is why its colour is the one that matters, and takes the removed
+                // node's — colour included, so that nothing above sees a change.
+                let heir = Tree::Minimum<K, V>(node.right);
+                vacatedWasRed = heir.red;
+                risen = heir.right;
+                if heir.parent == node {
+                    risenParent = heir;
+                }
+                else {
+                    risenParent = heir.parent;
+                    self.Transplant(heir, heir.right);
+                    heir.right = node.right;
+                    heir.right.parent = heir;
+                }
+                self.Transplant(node, heir);
+                heir.left = node.left;
+                heir.left.parent = heir;
+                heir.red = node.red;
+            }
+
+            self.length = self.length - 1;
+            if !vacatedWasRed {
+                self.RemoveFixup(risen, risenParent);
+            }
+
+            let key = node.key;
+            let value = node.value;
+            ReleaseBlock<TreeNode<K, V>>(self.allocator, node, 1);
+            return KeyValue<K, V> { key: key, value: value };
+        }
+
+        /// Destroys every entry and gives every node back to the allocator, leaving an empty tree.
+        /// `self` is borrowed mutably and stays usable: entries may be attached again afterwards, and nothing has been
+        /// kept back to make that cheaper, since a tree has no capacity to keep.
+        /// Cannot fail. Runs in time proportional to the length and allocates nothing.
+        /// @see https://rux-lang.dev/docs/api/collections/tree#clear
+        pub func Clear(&var self) {
+            // Down the left, then the right, then free and step up — every node reached after both its subtrees are
+            // gone. The child link is cut on the way up so the parent does not descend into a node that is already
+            // freed. Walking the links rather than recursing is what keeps a tree of a million entries off the stack.
+            var walk = self.root;
+            while walk != null {
+                // Safety: the tree invariant: `walk` is non-null, checked by the loop, so it and its parent are live
+                // nodes of this tree. A node is released only once both its subtrees are gone and the link down to it
+                // is cut, so no link the walk follows reaches a released node.
+                if walk.left != null {
+                    walk = walk.left;
+                }
+                else if walk.right != null {
+                    walk = walk.right;
+                }
+                else {
+                    let above = walk.parent;
+                    if above != null {
+                        if above.left == walk {
+                            above.left = null;
+                        }
+                        else {
+                            above.right = null;
+                        }
+                    }
+                    // Reading the key and the value out gives them to locals, and the locals dying here is what
+                    // destroys them. Nothing else in a generic container can reach a destructor.
+                    let key = walk.key;
+                    let value = walk.value;
+                    ReleaseBlock<TreeNode<K, V>>(self.allocator, walk, 1);
+                    walk = above;
+                }
+            }
+            self.root = null;
+            self.length = 0;
+        }
+
+        /// Destroys every entry and gives every node back.
+        /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
+        /// tree however many times it was passed along.
+        /// @see https://rux-lang.dev/docs/api/collections/tree#destructor
+        destructor {
+            self.Clear();
+        }
     }
 }

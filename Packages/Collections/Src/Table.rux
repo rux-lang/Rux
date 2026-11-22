@@ -33,500 +33,503 @@ import Core::Primitives::*;
 import Allocator::Allocator;
 import Entropy::NextUint64;
 
-/// The state byte of a slot that has never held an entry, and does not now.
-/// Distances are stored one higher than they are, so zero can mean empty and nothing else has to.
-/// @see https://rux-lang.dev/docs/api/collections/table#slot-empty
-pub const SlotEmpty: uint8 = 0;
+pub module Storage {
+    /// The state byte of a slot that has never held an entry, and does not now.
+    /// Distances are stored one higher than they are, so zero can mean empty and nothing else has to.
+    /// @see https://rux-lang.dev/docs/api/collections/table#slot-empty
+    pub const SlotEmpty: uint8 = 0;
 
-/// The furthest an entry may sit from home before the table gives up and grows.
-/// A byte holds the distance plus one, so 254 is what fits. Reaching it means the hash is doing nothing useful for
-/// these keys, and a table that grew would only spread the same collisions over more slots — so the insertion is
-/// refused rather than looped on.
-/// @see https://rux-lang.dev/docs/api/collections/table#maximum-probe-distance
-pub const MaximumProbeDistance: uint = 254;
+    /// The furthest an entry may sit from home before the table gives up and grows.
+    /// A byte holds the distance plus one, so 254 is what fits. Reaching it means the hash is doing nothing useful for
+    /// these keys, and a table that grew would only spread the same collisions over more slots — so the insertion is
+    /// refused rather than looped on.
+    /// @see https://rux-lang.dev/docs/api/collections/table#maximum-probe-distance
+    pub const MaximumProbeDistance: uint = 254;
 
-/// Eight slots is where a table starts.
-/// Below that the load factor rounds away to nothing useful.
-/// @see https://rux-lang.dev/docs/api/collections/table#minimum-table-capacity
-pub const MinimumTableCapacity: uint = 8;
+    /// Eight slots is where a table starts.
+    /// Below that the load factor rounds away to nothing useful.
+    /// @see https://rux-lang.dev/docs/api/collections/table#minimum-table-capacity
+    pub const MinimumTableCapacity: uint = 8;
 
-// The byte of a hash a slot keeps: the top one, since the low ones already chose the slot.
-func HashTag(hashed: uint64) -> uint8 {
-    return (hashed >> 56) as uint8;
-}
-
-/// A hash seed, drawn once and shared by every table that wants one.
-/// Two words, which is what `SipHash` takes as a key. Drawing one per table costs a system call each; a program
-/// making many should draw one and hand it to all of them, which is what this being a value rather than a hidden
-/// global is for.
-/// @see https://rux-lang.dev/docs/api/collections/table-seed
-pub struct TableSeed {
-    low: uint64;
-    high: uint64;
-}
-
-extend TableSeed {
-    /// A seed drawn from the operating system.
-    /// Takes nothing. Falls back to a fixed pair of words when the system has no entropy to give, which keeps a
-    /// table working on a system without a generator at the cost of the protection the seed exists for — a table
-    /// keyed on adversarial input on such a system is as attackable as an unseeded one.
-    /// Runs in constant time and allocates nothing.
-    /// @returns a seed drawn from the system, so two tables in one process iterate differently
-    /// @see https://rux-lang.dev/docs/api/collections/table-seed#random
-    pub func Random() -> Self {
-        let low = NextUint64() catch { _ => 0x9E3779B97F4A7C15 };
-        let high = NextUint64() catch { _ => 0xBF58476D1CE4E5B9 };
-        return Self { low, high };
+    // The byte of a hash a slot keeps: the top one, since the low ones already chose the slot.
+    func HashTag(hashed: uint64) -> uint8 {
+        return (hashed >> 56) as uint8;
     }
 
-    /// A seed with the words a caller chose.
-    /// `low` and `high` are read by value. For a test that needs the same table twice, or a caller drawing one seed
-    /// for many tables.
-    /// @param low the first seed word
-    /// @param high the second
-    /// @returns a seed made of those two words, which makes the iteration order reproducible
-    /// @see https://rux-lang.dev/docs/api/collections/table-seed#of
-    pub func Of(low: uint64, high: uint64) -> Self {
-        return Self { low, high };
-    }
-}
-
-/// The open-addressing table `HashMap` and `HashSet` are both built on.
-/// Holds keys, values, one distance byte and one hash tag per slot in four parallel runs. A set instantiates the value
-/// type with something that occupies nothing worth reading, which is what lets one kernel serve both.
-/// Move-only: it owns its storage and entries, prohibits copying, and destroys both in its destructor.
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/table
-pub struct Table<K: Copyable, V> {
-    /// The keys, one per slot. Only the slots whose distance byte is not `SlotEmpty` hold one.
-    keys: *var K;
-    /// The values, one per slot, occupied exactly where the keys are.
-    values: *var V;
-    /// The distance byte of each slot: `SlotEmpty`, or the entry's distance from home plus one.
-    states: *var uint8;
-    /// The top byte of each occupied slot's key hash, compared before the keys themselves.
-    tags: *var uint8;
-    /// How many slots hold an entry.
-    length: uint;
-    /// How many slots there are. A power of two, or zero.
-    capacity: uint;
-    /// The seed the hash is taken with.
-    seed: TableSeed;
-    /// Where the storage came from, and where it goes back to.
-    allocator: Allocator;
-}
-
-extend Table<K, V> {
-    /// An empty table that has not allocated anything.
-    /// `allocator` is borrowed for the call and kept; `seed` is read by value. Costs nothing: a table nothing is put
-    /// into never allocates.
-    /// @param allocator where the storage comes from
-    /// @param seed the two words that key the hash, which decide the iteration order
-    /// @returns an empty table that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/collections/table#new
-    pub func New(allocator: Allocator, seed: TableSeed) -> Self {
-        return Self {
-            keys: null,
-            values: null,
-            states: null,
-            tags: null,
-            length: 0,
-            capacity: 0,
-            seed,
-            allocator
-        };
+    /// A hash seed, drawn once and shared by every table that wants one.
+    /// Two words, which is what `SipHash` takes as a key. Drawing one per table costs a system call each; a program
+    /// making many should draw one and hand it to all of them, which is what this being a value rather than a hidden
+    /// global is for.
+    /// @see https://rux-lang.dev/docs/api/collections/table-seed
+    pub struct TableSeed {
+        low: uint64;
+        high: uint64;
     }
 
-    /// How many entries the table holds.
-    /// `self` is borrowed.
-    /// @returns how many entries it holds
-    /// @see https://rux-lang.dev/docs/api/collections/table#length
-    pub func Length(&self) -> uint {
-        return self.length;
-    }
-
-    /// How many slots the table has.
-    /// `self` is borrowed. A power of two, or zero. Not how many entries fit: the load factor keeps a quarter of
-    /// them free, because a table run fuller than that spends its time displacing entries rather than storing them.
-    /// @returns how many slots it has
-    /// @see https://rux-lang.dev/docs/api/collections/table#capacity
-    pub func Capacity(&self) -> uint {
-        return self.capacity;
-    }
-
-    /// Whether the table holds no entries.
-    /// `self` is borrowed.
-    /// @returns whether it holds nothing
-    /// @see https://rux-lang.dev/docs/api/collections/table#is-empty
-    pub func IsEmpty(&self) -> bool {
-        return self.length == 0;
-    }
-
-    /// Whether the slot at `index` holds an entry.
-    /// `self` is borrowed. This is what an iteration over the slots asks of each one.
-    /// @param index which one, counting from zero
-    /// @returns whether that slot holds an entry
-    /// @see https://rux-lang.dev/docs/api/collections/table#is-occupied
-    pub func IsOccupied(&self, index: uint) -> bool {
-        // Safety: the table invariant: `index < self.capacity`, checked first, so the state byte is written.
-        return index < self.capacity && self.states[index] != SlotEmpty;
-    }
-
-    // Where a hash starts probing. The capacity is a power of two, so the arithmetic is modular: the mask keeps the low
-    // bits whatever the step before it did.
-    func HomeOf(&self, hashed: uint64) -> uint {
-        return (hashed as uint) & (self.capacity -% 1);
-    }
-
-    // The slot after `index`, wrapping. The mask is why the capacity is a power of two.
-    func NextOf(&self, index: uint) -> uint {
-        return (index +% 1) & (self.capacity -% 1);
-    }
-
-    /// The slot holding `key`, or `none` when the table does not have it.
-    /// `self` is borrowed; `key` is read by value; `hash` and `equals` decide identity and must be the same pair the
-    /// table was filled with. The seed is handed to `hash`, so a table's hashes are its own.
-    /// Stops at the first slot whose occupant is closer to home than the search has travelled: the key would have
-    /// displaced that occupant on its way past, so it cannot be further along.
-    /// Runs in constant expected time and allocates nothing.
-    /// @param key the key to look up
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @param equals whether two keys are the same
-    /// @returns the slot the key belongs in, occupied or not
-    /// @see https://rux-lang.dev/docs/api/collections/table#find
-    pub func Find(&self, key: K, hash: func(K, uint64, uint64) -> uint64,
-              equals: func(K, K) -> bool) -> uint? {
-        if self.capacity == 0 || self.length == 0 { return none; }
-
-        let hashed = hash(key, self.seed.low, self.seed.high);
-        let tag = HashTag(hashed);
-        var index = self.HomeOf(hashed);
-        var distance: uint = 0;
-        while distance < self.capacity {
-            // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
-            let state = self.states[index];
-            if state == SlotEmpty { return none; }
-            let occupantDistance = (state as uint) - 1;
-            if occupantDistance < distance { return none; }
-            // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
-            // and key are initialized.
-            if (self.tags[index] == tag && equals(self.keys[index], key)) { return index; }
-            index = self.NextOf(index);
-            distance = distance + 1;
+    extend TableSeed {
+        /// A seed drawn from the operating system.
+        /// Takes nothing. Falls back to a fixed pair of words when the system has no entropy to give, which keeps a
+        /// table working on a system without a generator at the cost of the protection the seed exists for — a table
+        /// keyed on adversarial input on such a system is as attackable as an unseeded one.
+        /// Runs in constant time and allocates nothing.
+        /// @returns a seed drawn from the system, so two tables in one process iterate differently
+        /// @see https://rux-lang.dev/docs/api/collections/table-seed#random
+        pub func Random() -> Self {
+            let low = NextUint64() catch { _ => 0x9E3779B97F4A7C15 };
+            let high = NextUint64() catch { _ => 0xBF58476D1CE4E5B9 };
+            return Self { low, high };
         }
-        return none;
-    }
 
-    // The hash is keyed with this table's seed, which remains unchanged when capacity changes.
-    // Keep the same owned key parameter as Find, including its ordinary copy/destruction behavior.
-    func FindHashed(&self, key: K, hashed: uint64, equals: func(K, K) -> bool) -> uint? {
-        if self.capacity == 0 || self.length == 0 { return none; }
-
-        let tag = HashTag(hashed);
-        var index = self.HomeOf(hashed);
-        var distance: uint = 0;
-        while distance < self.capacity {
-            // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
-            let state = self.states[index];
-            if state == SlotEmpty { return none; }
-            let occupantDistance = (state as uint) - 1;
-            if occupantDistance < distance { return none; }
-            // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
-            // and key are initialized.
-            if (self.tags[index] == tag && equals(self.keys[index], key)) { return index; }
-            index = self.NextOf(index);
-            distance = distance + 1;
+        /// A seed with the words a caller chose.
+        /// `low` and `high` are read by value. For a test that needs the same table twice, or a caller drawing one seed
+        /// for many tables.
+        /// @param low the first seed word
+        /// @param high the second
+        /// @returns a seed made of those two words, which makes the iteration order reproducible
+        /// @see https://rux-lang.dev/docs/api/collections/table-seed#of
+        pub func Of(low: uint64, high: uint64) -> Self {
+            return Self { low, high };
         }
-        return none;
     }
 
-    // Puts an entry into a table with room for it, displacing whatever is closer to home along the way.
-    // Returns the slot the entry ended up in, or `none` when the probe ran further than a distance byte can hold.
-    // The caller has already made room, so a refusal here means these keys collide badly enough that a larger table
-    // would not help.
+    /// The open-addressing table `HashMap` and `HashSet` are both built on.
+    /// Holds keys, values, one distance byte and one hash tag per slot in four parallel runs. A set instantiates the
+    /// value type with something that occupies nothing worth reading, which is what lets one kernel serve both.
+    /// Move-only: it owns its storage and entries, prohibits copying, and destroys both in its destructor.
+    /// @typeParam K the key type
+    /// @typeParam V the value type
+    /// @see https://rux-lang.dev/docs/api/collections/table
+    pub struct Table<K: Copyable, V> {
+        /// The keys, one per slot. Only the slots whose distance byte is not `SlotEmpty` hold one.
+        keys: *var K;
+        /// The values, one per slot, occupied exactly where the keys are.
+        values: *var V;
+        /// The distance byte of each slot: `SlotEmpty`, or the entry's distance from home plus one.
+        states: *var uint8;
+        /// The top byte of each occupied slot's key hash, compared before the keys themselves.
+        tags: *var uint8;
+        /// How many slots hold an entry.
+        length: uint;
+        /// How many slots there are. A power of two, or zero.
+        capacity: uint;
+        /// The seed the hash is taken with.
+        seed: TableSeed;
+        /// Where the storage came from, and where it goes back to.
+        allocator: Allocator;
+    }
 
-    // Recompute the home from the current capacity; a slot cached before EnsureRoom would be invalid after growth.
-    // Safety: the capacity must be nonzero, as `EnsureRoom` or `Rehash` leaves it, so every probed slot is allocated.
-    func PlaceHashed(&var self, key: K, value: V, hashed: uint64) -> uint? {
-        var index = self.HomeOf(hashed);
-        var distance: uint = 0;
-        var carriedKey = key;
-        var carriedValue = value;
-        var carriedTag = HashTag(hashed);
-        var landed = self.capacity;
+    extend Table<K, V> {
+        /// An empty table that has not allocated anything.
+        /// `allocator` is borrowed for the call and kept; `seed` is read by value. Costs nothing: a table nothing is
+        /// put into never allocates.
+        /// @param allocator where the storage comes from
+        /// @param seed the two words that key the hash, which decide the iteration order
+        /// @returns an empty table that has taken no storage yet
+        /// @see https://rux-lang.dev/docs/api/collections/table#new
+        pub func New(allocator: Allocator, seed: TableSeed) -> Self {
+            return Self {
+                keys: null,
+                values: null,
+                states: null,
+                tags: null,
+                length: 0,
+                capacity: 0,
+                seed,
+                allocator
+            };
+        }
 
-        while distance <= MaximumProbeDistance {
-            let state = self.states[index];
-            if state == SlotEmpty {
-                self.keys[index] = carriedKey;
-                self.values[index] = carriedValue;
-                self.states[index] = (distance + 1) as uint8;
-                self.tags[index] = carriedTag;
-                self.length = self.length + 1;
-                return if landed < self.capacity { landed } else { index };
+        /// How many entries the table holds.
+        /// `self` is borrowed.
+        /// @returns how many entries it holds
+        /// @see https://rux-lang.dev/docs/api/collections/table#length
+        pub func Length(&self) -> uint {
+            return self.length;
+        }
+
+        /// How many slots the table has.
+        /// `self` is borrowed. A power of two, or zero. Not how many entries fit: the load factor keeps a quarter of
+        /// them free, because a table run fuller than that spends its time displacing entries rather than storing them.
+        /// @returns how many slots it has
+        /// @see https://rux-lang.dev/docs/api/collections/table#capacity
+        pub func Capacity(&self) -> uint {
+            return self.capacity;
+        }
+
+        /// Whether the table holds no entries.
+        /// `self` is borrowed.
+        /// @returns whether it holds nothing
+        /// @see https://rux-lang.dev/docs/api/collections/table#is-empty
+        pub func IsEmpty(&self) -> bool {
+            return self.length == 0;
+        }
+
+        /// Whether the slot at `index` holds an entry.
+        /// `self` is borrowed. This is what an iteration over the slots asks of each one.
+        /// @param index which one, counting from zero
+        /// @returns whether that slot holds an entry
+        /// @see https://rux-lang.dev/docs/api/collections/table#is-occupied
+        pub func IsOccupied(&self, index: uint) -> bool {
+            // Safety: the table invariant: `index < self.capacity`, checked first, so the state byte is written.
+            return index < self.capacity && self.states[index] != SlotEmpty;
+        }
+
+        // Where a hash starts probing. The capacity is a power of two, so the arithmetic is modular: the mask keeps the
+        // low bits whatever the step before it did.
+        func HomeOf(&self, hashed: uint64) -> uint {
+            return (hashed as uint) & (self.capacity -% 1);
+        }
+
+        // The slot after `index`, wrapping. The mask is why the capacity is a power of two.
+        func NextOf(&self, index: uint) -> uint {
+            return (index +% 1) & (self.capacity -% 1);
+        }
+
+        /// The slot holding `key`, or `none` when the table does not have it.
+        /// `self` is borrowed; `key` is read by value; `hash` and `equals` decide identity and must be the same pair
+        /// the table was filled with. The seed is handed to `hash`, so a table's hashes are its own. Stops at the first
+        /// slot whose occupant is closer to home than the search has travelled: the key would have displaced that
+        /// occupant on its way past, so it cannot be further along. Runs in constant expected time and allocates
+        /// nothing.
+        /// @param key the key to look up
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @param equals whether two keys are the same
+        /// @returns the slot the key belongs in, occupied or not
+        /// @see https://rux-lang.dev/docs/api/collections/table#find
+        pub func Find(&self, key: K, hash: func(K, uint64, uint64) -> uint64,
+                  equals: func(K, K) -> bool) -> uint? {
+            if self.capacity == 0 || self.length == 0 { return none; }
+
+            let hashed = hash(key, self.seed.low, self.seed.high);
+            let tag = HashTag(hashed);
+            var index = self.HomeOf(hashed);
+            var distance: uint = 0;
+            while distance < self.capacity {
+                // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
+                let state = self.states[index];
+                if state == SlotEmpty { return none; }
+                let occupantDistance = (state as uint) - 1;
+                if occupantDistance < distance { return none; }
+                // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
+                // and key are initialized.
+                if (self.tags[index] == tag && equals(self.keys[index], key)) { return index; }
+                index = self.NextOf(index);
+                distance = distance + 1;
             }
+            return none;
+        }
 
-            let occupantDistance = (state as uint) - 1;
-            if occupantDistance < distance {
-                // The occupant is closer to home than what is being carried, so it gives up the slot and travels on.
-                // Taking the richer entry's place is the whole of Robin Hood: it is the one that can best afford the
-                // extra step.
-                let displacedKey = self.keys[index];
-                let displacedValue = self.values[index];
-                let displacedTag = self.tags[index];
-                self.keys[index] = carriedKey;
-                self.values[index] = carriedValue;
-                self.states[index] = (distance + 1) as uint8;
-                self.tags[index] = carriedTag;
-                if landed == self.capacity {
-                    landed = index;
-                }
-                carriedKey = displacedKey;
-                carriedValue = displacedValue;
-                carriedTag = displacedTag;
-                distance = occupantDistance;
+        // The hash is keyed with this table's seed, which remains unchanged when capacity changes.
+        // Keep the same owned key parameter as Find, including its ordinary copy/destruction behavior.
+        func FindHashed(&self, key: K, hashed: uint64, equals: func(K, K) -> bool) -> uint? {
+            if self.capacity == 0 || self.length == 0 { return none; }
+
+            let tag = HashTag(hashed);
+            var index = self.HomeOf(hashed);
+            var distance: uint = 0;
+            while distance < self.capacity {
+                // Safety: the table invariant: the capacity is nonzero, checked above, so `index` is a slot below it.
+                let state = self.states[index];
+                if state == SlotEmpty { return none; }
+                let occupantDistance = (state as uint) - 1;
+                if occupantDistance < distance { return none; }
+                // Safety: the table invariant: the slot is below the capacity and occupied, checked above, so its tag
+                // and key are initialized.
+                if (self.tags[index] == tag && equals(self.keys[index], key)) { return index; }
+                index = self.NextOf(index);
+                distance = distance + 1;
             }
-
-            index = self.NextOf(index);
-            distance = distance + 1;
+            return none;
         }
-        return none;
-    }
 
-    // Takes the entry at `index` out and closes the gap behind it.
-    // Every following entry that is not already at home moves back one slot, which leaves the table exactly as if
-    // the removed entry had never been inserted. That is what a tombstone would have stood in for, and why there are
-    // none here.
-    // Safety: `index` must be an occupied slot below the capacity whose key and value the caller has moved out.
-    func Vacate(&var self, index: uint) {
-        var hole = index;
-        var next = self.NextOf(hole);
-        while true {
-            let state = self.states[next];
-            if state == SlotEmpty || state == 1 {
-                // Nothing follows, or what follows is already home and would be wrong to move back past it.
-                break;
-            }
-            self.keys[hole] = self.keys[next];
-            self.values[hole] = self.values[next];
-            self.states[hole] = (state as uint8) - 1;
-            self.tags[hole] = self.tags[next];
-            hole = next;
-            next = self.NextOf(hole);
-        }
-        self.states[hole] = SlotEmpty;
-        self.length = self.length - 1;
-    }
+        // Puts an entry into a table with room for it, displacing whatever is closer to home along the way.
+        // Returns the slot the entry ended up in, or `none` when the probe ran further than a distance byte can hold.
+        // The caller has already made room, so a refusal here means these keys collide badly enough that a larger table
+        // would not help.
 
-    /// The smallest power-of-two capacity that holds `length` entries without passing the three-quarter load factor.
-    /// `length` is read by value. Derived from the entry count rather than from the current capacity, so one rule
-    /// covers growing and settling alike.
-    /// @param length how many elements
-    /// @returns the table size that holds that many entries, or throws `Unsupported` when there is none
-    /// @see https://rux-lang.dev/docs/api/collections/table#capacity-for
-    pub func CapacityFor(length: uint) -> uint ! AllocError {
-        if length == 0 {
-            return MinimumTableCapacity;
-        }
-        // ceil(length * 4 / 3) slots, guarded so neither the scaling nor the rounding term can wrap.
-        if length > (uint::Max - 2) / 4 { throw .Unsupported; }
-        let required = (length * 4 + 2) / 3;
-        // An element size of one: this sizes slots, and each parallel run has its own byte size checked where it is
+        // Recompute the home from the current capacity; a slot cached before EnsureRoom would be invalid after growth.
+        // Safety: the capacity must be nonzero, as `EnsureRoom` or `Rehash` leaves it, so every probed slot is
         // allocated.
-        return PowerOfTwoCapacity(required, MinimumTableCapacity, 1)!;
-    }
+        func PlaceHashed(&var self, key: K, value: V, hashed: uint64) -> uint? {
+            var index = self.HomeOf(hashed);
+            var distance: uint = 0;
+            var carriedKey = key;
+            var carriedValue = value;
+            var carriedTag = HashTag(hashed);
+            var landed = self.capacity;
 
-    /// Rebuilds the table at `capacity` slots, reinserting every entry.
-    /// `self` is borrowed mutably; `hash` must be the one the table was filled with. Terminates the program when the
-    /// new runs cannot be had; `TryRehash` reports that instead.
-    /// Runs in time proportional to the capacity.
-    /// Safety: `capacity` must be a power of two no smaller than `MinimumTableCapacity`, as `CapacityFor` returns:
-    /// every slot index is masked by it, so any other value addresses past the runs.
-    /// @param capacity how many elements to make room for
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @see https://rux-lang.dev/docs/api/collections/table#rehash
-    pub func Rehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64) {
-        self.TryRehash(capacity, hash) catch { error => AllocationFailed(error) };
-    }
+            while distance <= MaximumProbeDistance {
+                let state = self.states[index];
+                if state == SlotEmpty {
+                    self.keys[index] = carriedKey;
+                    self.values[index] = carriedValue;
+                    self.states[index] = (distance + 1) as uint8;
+                    self.tags[index] = carriedTag;
+                    self.length = self.length + 1;
+                    return if landed < self.capacity { landed } else { index };
+                }
 
-    /// Rebuilds the table at `capacity` slots, reinserting every entry, or throws why the new runs could not be had.
-    /// `self` is borrowed mutably; `hash` must be the one the table was filled with. A failure leaves the table
-    /// exactly as it was: the new runs are taken and filled before the old ones are released.
-    /// Runs in time proportional to the capacity.
-    /// Safety: `capacity` must be a power of two no smaller than `MinimumTableCapacity`, as `CapacityFor` returns:
-    /// every slot index is masked by it, so any other value addresses past the runs.
-    /// @param capacity how many elements to make room for
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns nothing, or throws the allocator's refusal
-    /// @see https://rux-lang.dev/docs/api/collections/table#try-rehash
-    pub func TryRehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64)
-        -> !AllocError {
-        let keys = TryAllocateBlock<K>(self.allocator, capacity)!;
-        let values = TryAllocateBlock<V>(self.allocator, capacity) catch {
-            error => {
-                ReleaseBlock<K>(self.allocator, keys, capacity);
-                throw error;
-            },
-        };
-        var states = TryAllocateBlock<uint8>(self.allocator, capacity) catch {
-            error => {
-                ReleaseBlock<K>(self.allocator, keys, capacity);
-                ReleaseBlock<V>(self.allocator, values, capacity);
-                throw error;
-            },
-        };
-        let tags = TryAllocateBlock<uint8>(self.allocator, capacity) catch {
-            error => {
-                ReleaseBlock<K>(self.allocator, keys, capacity);
-                ReleaseBlock<V>(self.allocator, values, capacity);
-                ReleaseBlock<uint8>(self.allocator, states, capacity);
-                throw error;
-            },
-        };
+                let occupantDistance = (state as uint) - 1;
+                if occupantDistance < distance {
+                    // The occupant is closer to home than what is being carried, so it gives up the slot and travels
+                    // on. Taking the richer entry's place is the whole of Robin Hood: it is the one that can best
+                    // afford the extra step.
+                    let displacedKey = self.keys[index];
+                    let displacedValue = self.values[index];
+                    let displacedTag = self.tags[index];
+                    self.keys[index] = carriedKey;
+                    self.values[index] = carriedValue;
+                    self.states[index] = (distance + 1) as uint8;
+                    self.tags[index] = carriedTag;
+                    if landed == self.capacity {
+                        landed = index;
+                    }
+                    carriedKey = displacedKey;
+                    carriedValue = displacedValue;
+                    carriedTag = displacedTag;
+                    distance = occupantDistance;
+                }
 
-        var index: uint = 0;
-        while index < capacity {
-            // `states` comes from `AllocateBlock` with room for `capacity` bytes, and the loop stays below that.
-            states[index] = SlotEmpty;
-            index++;
-        }
-
-        let oldKeys = self.keys;
-        let oldValues = self.values;
-        let oldStates = self.states;
-        let oldTags = self.tags;
-        let oldCapacity = self.capacity;
-
-        self.keys = keys;
-        self.values = values;
-        self.states = states;
-        self.tags = tags;
-        self.capacity = capacity;
-        self.length = 0;
-
-        index = 0;
-        while index < oldCapacity {
-            // By the table invariant for the old runs, a slot below `oldCapacity` has its state written, and its key
-            // and value initialized where that is not `SlotEmpty`. The new runs have the nonzero capacity the caller
-            // guarantees, which is what `PlaceHashed` needs.
-            if oldStates[index] != SlotEmpty {
-                // Relocated rather than copied: each entry has exactly one home afterwards, in the new run.
-                let hashed = hash(oldKeys[index], self.seed.low, self.seed.high);
-                self.PlaceHashed(oldKeys[index], oldValues[index], hashed);
+                index = self.NextOf(index);
+                distance = distance + 1;
             }
-            index++;
+            return none;
         }
 
-        if oldKeys != null {
-            ReleaseBlock<K>(self.allocator, oldKeys, oldCapacity);
-            ReleaseBlock<V>(self.allocator, oldValues, oldCapacity);
-            ReleaseBlock<uint8>(self.allocator, oldStates, oldCapacity);
-            ReleaseBlock<uint8>(self.allocator, oldTags, oldCapacity);
+        // Takes the entry at `index` out and closes the gap behind it. Every following entry that is not already at
+        // home moves back one slot, which leaves the table exactly as if the removed entry had never been inserted.
+        // That is what a tombstone would have stood in for, and why there are none here.
+        // Safety: `index` must be an occupied slot below the capacity whose key and value the caller has moved out.
+        func Vacate(&var self, index: uint) {
+            var hole = index;
+            var next = self.NextOf(hole);
+            while true {
+                let state = self.states[next];
+                if state == SlotEmpty || state == 1 {
+                    // Nothing follows, or what follows is already home and would be wrong to move back past it.
+                    break;
+                }
+                self.keys[hole] = self.keys[next];
+                self.values[hole] = self.values[next];
+                self.states[hole] = (state as uint8) - 1;
+                self.tags[hole] = self.tags[next];
+                hole = next;
+                next = self.NextOf(hole);
+            }
+            self.states[hole] = SlotEmpty;
+            self.length = self.length - 1;
         }
-    }
 
-    /// Makes sure one more entry will fit, growing the table when it will not.
-    /// `self` is borrowed mutably; `hash` must be the one the table was filled with. Terminates the program when the
-    /// table cannot grow; `TryEnsureRoom` reports that instead.
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @see https://rux-lang.dev/docs/api/collections/table#ensure-room
-    pub func EnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) {
-        self.TryReserve(1, hash) catch { error => AllocationFailed(error) };
-    }
+        /// The smallest power-of-two capacity that holds `length` entries without passing the three-quarter load
+        /// factor.
+        /// `length` is read by value. Derived from the entry count rather than from the current capacity, so one rule
+        /// covers growing and settling alike.
+        /// @param length how many elements
+        /// @returns the table size that holds that many entries, or throws `Unsupported` when there is none
+        /// @see https://rux-lang.dev/docs/api/collections/table#capacity-for
+        pub func CapacityFor(length: uint) -> uint ! AllocError {
+            if length == 0 {
+                return MinimumTableCapacity;
+            }
+            // ceil(length * 4 / 3) slots, guarded so neither the scaling nor the rounding term can wrap.
+            if length > (uint::Max - 2) / 4 { throw .Unsupported; }
+            let required = (length * 4 + 2) / 3;
+            // An element size of one: this sizes slots, and each parallel run has its own byte size checked where it is
+            // allocated.
+            return PowerOfTwoCapacity(required, MinimumTableCapacity, 1)!;
+        }
 
-    /// Makes sure one more entry will fit, growing the table when it will not, or throws why it could not grow.
-    /// `self` is borrowed mutably; `hash` must be the one the table was filled with. A failure leaves the table
-    /// exactly as it was.
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns nothing, or throws the allocator's refusal
-    /// @see https://rux-lang.dev/docs/api/collections/table#try-ensure-room
-    pub func TryEnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) -> !AllocError {
-        self.TryReserve(1, hash)!;
-    }
+        /// Rebuilds the table at `capacity` slots, reinserting every entry.
+        /// `self` is borrowed mutably; `hash` must be the one the table was filled with. Terminates the program when
+        /// the new runs cannot be had; `TryRehash` reports that instead. Runs in time proportional to the capacity.
+        /// Safety: `capacity` must be a power of two no smaller than `MinimumTableCapacity`, as `CapacityFor` returns:
+        /// every slot index is masked by it, so any other value addresses past the runs.
+        /// @param capacity how many elements to make room for
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @see https://rux-lang.dev/docs/api/collections/table#rehash
+        pub func Rehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64) {
+            self.TryRehash(capacity, hash) catch { error => AllocationFailed(error) };
+        }
 
-    /// Makes room for `additional` more entries on top of those already present.
-    /// `self` is borrowed mutably; the length does not change. Terminates the program when the table cannot grow;
-    /// `TryReserve` reports that instead.
-    /// @param additional how many more elements to make room for
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @see https://rux-lang.dev/docs/api/collections/table#reserve
-    pub func Reserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64) {
-        self.TryReserve(additional, hash) catch { error => AllocationFailed(error) };
-    }
+        /// Rebuilds the table at `capacity` slots, reinserting every entry, or throws why the new runs could not be
+        /// had.
+        /// `self` is borrowed mutably; `hash` must be the one the table was filled with. A failure leaves the table
+        /// exactly as it was: the new runs are taken and filled before the old ones are released.
+        /// Runs in time proportional to the capacity.
+        /// Safety: `capacity` must be a power of two no smaller than `MinimumTableCapacity`, as `CapacityFor` returns:
+        /// every slot index is masked by it, so any other value addresses past the runs.
+        /// @param capacity how many elements to make room for
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @returns nothing, or throws the allocator's refusal
+        /// @see https://rux-lang.dev/docs/api/collections/table#try-rehash
+        pub func TryRehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64)
+            -> !AllocError {
+            let keys = TryAllocateBlock<K>(self.allocator, capacity)!;
+            let values = TryAllocateBlock<V>(self.allocator, capacity) catch {
+                error => {
+                    ReleaseBlock<K>(self.allocator, keys, capacity);
+                    throw error;
+                },
+            };
+            var states = TryAllocateBlock<uint8>(self.allocator, capacity) catch {
+                error => {
+                    ReleaseBlock<K>(self.allocator, keys, capacity);
+                    ReleaseBlock<V>(self.allocator, values, capacity);
+                    throw error;
+                },
+            };
+            let tags = TryAllocateBlock<uint8>(self.allocator, capacity) catch {
+                error => {
+                    ReleaseBlock<K>(self.allocator, keys, capacity);
+                    ReleaseBlock<V>(self.allocator, values, capacity);
+                    ReleaseBlock<uint8>(self.allocator, states, capacity);
+                    throw error;
+                },
+            };
 
-    /// Makes room for `additional` more entries on top of those already present, or throws why it could not.
-    /// `self` is borrowed mutably; the length does not change. A failure leaves the table exactly as it was.
-    /// @param additional how many more elements to make room for
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns nothing, or throws the allocator's refusal
-    /// @see https://rux-lang.dev/docs/api/collections/table#try-reserve
-    pub func TryReserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64)
-        -> !AllocError {
-        let wanted = Table::CapacityFor<K, V>(AddLength(self.length, additional)!)!;
-        if wanted <= self.capacity { return; }
-        // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
-        self.TryRehash(wanted, hash)!;
-    }
+            var index: uint = 0;
+            while index < capacity {
+                // `states` comes from `AllocateBlock` with room for `capacity` bytes, and the loop stays below that.
+                states[index] = SlotEmpty;
+                index++;
+            }
 
-    /// Releases the capacity the entry count does not need.
-    /// `self` is borrowed mutably. An empty table gives up its storage entirely. Terminates the program when the
-    /// allocator refuses the smaller runs.
-    /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @see https://rux-lang.dev/docs/api/collections/table#shrink-to-fit
-    pub func ShrinkToFit(&var self, hash: func(K, uint64, uint64) -> uint64) {
-        if self.length == 0 {
+            let oldKeys = self.keys;
+            let oldValues = self.values;
+            let oldStates = self.states;
+            let oldTags = self.tags;
+            let oldCapacity = self.capacity;
+
+            self.keys = keys;
+            self.values = values;
+            self.states = states;
+            self.tags = tags;
+            self.capacity = capacity;
+            self.length = 0;
+
+            index = 0;
+            while index < oldCapacity {
+                // By the table invariant for the old runs, a slot below `oldCapacity` has its state written, and its
+                // key and value initialized where that is not `SlotEmpty`. The new runs have the nonzero capacity the
+                // caller guarantees, which is what `PlaceHashed` needs.
+                if oldStates[index] != SlotEmpty {
+                    // Relocated rather than copied: each entry has exactly one home afterwards, in the new run.
+                    let hashed = hash(oldKeys[index], self.seed.low, self.seed.high);
+                    self.PlaceHashed(oldKeys[index], oldValues[index], hashed);
+                }
+                index++;
+            }
+
+            if oldKeys != null {
+                ReleaseBlock<K>(self.allocator, oldKeys, oldCapacity);
+                ReleaseBlock<V>(self.allocator, oldValues, oldCapacity);
+                ReleaseBlock<uint8>(self.allocator, oldStates, oldCapacity);
+                ReleaseBlock<uint8>(self.allocator, oldTags, oldCapacity);
+            }
+        }
+
+        /// Makes sure one more entry will fit, growing the table when it will not.
+        /// `self` is borrowed mutably; `hash` must be the one the table was filled with. Terminates the program when
+        /// the table cannot grow; `TryEnsureRoom` reports that instead.
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @see https://rux-lang.dev/docs/api/collections/table#ensure-room
+        pub func EnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) {
+            self.TryReserve(1, hash) catch { error => AllocationFailed(error) };
+        }
+
+        /// Makes sure one more entry will fit, growing the table when it will not, or throws why it could not grow.
+        /// `self` is borrowed mutably; `hash` must be the one the table was filled with. A failure leaves the table
+        /// exactly as it was.
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @returns nothing, or throws the allocator's refusal
+        /// @see https://rux-lang.dev/docs/api/collections/table#try-ensure-room
+        pub func TryEnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) -> !AllocError {
+            self.TryReserve(1, hash)!;
+        }
+
+        /// Makes room for `additional` more entries on top of those already present.
+        /// `self` is borrowed mutably; the length does not change. Terminates the program when the table cannot grow;
+        /// `TryReserve` reports that instead.
+        /// @param additional how many more elements to make room for
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @see https://rux-lang.dev/docs/api/collections/table#reserve
+        pub func Reserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64) {
+            self.TryReserve(additional, hash) catch { error => AllocationFailed(error) };
+        }
+
+        /// Makes room for `additional` more entries on top of those already present, or throws why it could not.
+        /// `self` is borrowed mutably; the length does not change. A failure leaves the table exactly as it was.
+        /// @param additional how many more elements to make room for
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @returns nothing, or throws the allocator's refusal
+        /// @see https://rux-lang.dev/docs/api/collections/table#try-reserve
+        pub func TryReserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64)
+            -> !AllocError {
+            let wanted = Table::CapacityFor<K, V>(AddLength(self.length, additional)!)!;
+            if wanted <= self.capacity { return; }
+            // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
+            self.TryRehash(wanted, hash)!;
+        }
+
+        /// Releases the capacity the entry count does not need.
+        /// `self` is borrowed mutably. An empty table gives up its storage entirely. Terminates the program when the
+        /// allocator refuses the smaller runs.
+        /// @param hash how a key is hashed, taking the key and the two seed words
+        /// @see https://rux-lang.dev/docs/api/collections/table#shrink-to-fit
+        pub func ShrinkToFit(&var self, hash: func(K, uint64, uint64) -> uint64) {
+            if self.length == 0 {
+                self.Release();
+                return;
+            }
+            let wanted = Table::CapacityFor<K, V>(self.length) catch { error => AllocationFailed(error) };
+            if wanted >= self.capacity { return; }
+            // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
+            self.Rehash(wanted, hash);
+        }
+
+        /// Destroys every entry, keeping the storage.
+        /// `self` is borrowed mutably. Runs in time proportional to the capacity.
+        /// @see https://rux-lang.dev/docs/api/collections/table#clear
+        pub func Clear(&var self) {
+            var index: uint = 0;
+            while index < self.capacity {
+                // Safety: the table invariant: `index < self.capacity`, checked by the loop, so the state byte is
+                // written, and the key and value are initialized where it is not `SlotEmpty`. Each is moved out once
+                // and the slot is marked empty at once.
+                if self.states[index] != SlotEmpty {
+                    // Moving each into a local destroys it when the local's life ends, which is the only way a
+                    // container has to destroy something it does not know is droppable.
+                    let takenKey = self.keys[index];
+                    let takenValue = self.values[index];
+                    self.states[index] = SlotEmpty;
+                }
+                index++;
+            }
+            self.length = 0;
+        }
+
+        // Gives back all four runs and leaves the table as a new one.
+        func Release(&var self) {
+            if self.keys == null { return; }
+            ReleaseBlock<K>(self.allocator, self.keys, self.capacity);
+            ReleaseBlock<V>(self.allocator, self.values, self.capacity);
+            ReleaseBlock<uint8>(self.allocator, self.states, self.capacity);
+            ReleaseBlock<uint8>(self.allocator, self.tags, self.capacity);
+            self.keys = null;
+            self.values = null;
+            self.states = null;
+            self.tags = null;
+            self.capacity = 0;
+            self.length = 0;
+        }
+
+        /// Destroys every entry and releases the storage.
+        /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
+        /// storage was released would be read from freed memory.
+        /// @see https://rux-lang.dev/docs/api/collections/table#destructor
+        destructor {
+            self.Clear();
             self.Release();
-            return;
         }
-        let wanted = Table::CapacityFor<K, V>(self.length) catch { error => AllocationFailed(error) };
-        if wanted >= self.capacity { return; }
-        // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
-        self.Rehash(wanted, hash);
-    }
-
-    /// Destroys every entry, keeping the storage.
-    /// `self` is borrowed mutably. Runs in time proportional to the capacity.
-    /// @see https://rux-lang.dev/docs/api/collections/table#clear
-    pub func Clear(&var self) {
-        var index: uint = 0;
-        while index < self.capacity {
-            // Safety: the table invariant: `index < self.capacity`, checked by the loop, so the state byte is written,
-            // and the key and value are initialized where it is not `SlotEmpty`. Each is moved out once and the slot
-            // is marked empty at once.
-            if self.states[index] != SlotEmpty {
-                // Moving each into a local destroys it when the local's life ends, which is the only way a
-                // container has to destroy something it does not know is droppable.
-                let takenKey = self.keys[index];
-                let takenValue = self.values[index];
-                self.states[index] = SlotEmpty;
-            }
-            index++;
-        }
-        self.length = 0;
-    }
-
-    // Gives back all four runs and leaves the table as a new one.
-    func Release(&var self) {
-        if self.keys == null { return; }
-        ReleaseBlock<K>(self.allocator, self.keys, self.capacity);
-        ReleaseBlock<V>(self.allocator, self.values, self.capacity);
-        ReleaseBlock<uint8>(self.allocator, self.states, self.capacity);
-        ReleaseBlock<uint8>(self.allocator, self.tags, self.capacity);
-        self.keys = null;
-        self.values = null;
-        self.states = null;
-        self.tags = null;
-        self.capacity = 0;
-        self.length = 0;
-    }
-
-    /// Destroys every entry and releases the storage.
-    /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
-    /// storage was released would be read from freed memory.
-    /// @see https://rux-lang.dev/docs/api/collections/table#destructor
-    destructor {
-        self.Clear();
-        self.Release();
     }
 }

@@ -1,5 +1,7 @@
 import Allocator::SystemAllocator;
-import Collections::{ EqualsInt32, HashSet, TableSeed };
+import Collections::HashSet;
+import Collections::Hashing::EqualsInt32;
+import Collections::Storage::TableSeed;
 import Core::Diagnostics::{ Assert, Panic };
 
 // A program declaring a name its dependency also declares.

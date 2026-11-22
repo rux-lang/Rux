@@ -1,6 +1,8 @@
 import Core::Primitives::*;
 import Allocator::SystemAllocator;
-import Collections::{ CollectionError, EqualsInt32, HashInt32, HashSet, TableSeed };
+import Collections::{ CollectionError, HashSet };
+import Collections::Hashing::{ EqualsInt32, HashInt32 };
+import Collections::Storage::TableSeed;
 import Core::Diagnostics::{ Assert, Panic };
 
 // A set is the same kernel as a map with nothing stored alongside the key, so what is worth checking here is what a

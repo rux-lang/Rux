@@ -18,6 +18,7 @@
 import Core::Ownership::Copyable;
 import Allocator::{ AllocError, AllocationFailed, Allocator };
 import Core::Iteration::Iterator;
+import Collections::Storage::{ SlotEmpty, Table, TableSeed };
 
 /// A hash table from keys to values.
 /// Move-only: it owns its entries and storage and prohibits copying.

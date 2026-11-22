@@ -1,5 +1,6 @@
 import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout, SystemAllocator };
-import Collections::{ Array, Deque, EqualsInt32, HashInt32, HashMap, Vector };
+import Collections::{ Array, Deque, HashMap, Vector };
+import Collections::Hashing::{ EqualsInt32, HashInt32 };
 import Core::Diagnostics::Assert;
 
 // What the shared storage plumbing does, checked at the surface a caller can reach.

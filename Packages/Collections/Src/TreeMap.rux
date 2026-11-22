@@ -11,6 +11,7 @@
 import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Core::Compare::Ordering;
+import Collections::Storage::{ Tree, TreeNode };
 
 /// An ordered map from keys to values.
 /// Move-only: it owns every node and everything in them.

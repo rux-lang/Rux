@@ -1,5 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CompareInt32, KeyValue, TreeMap };
+import Collections::{ KeyValue, TreeMap };
+import Collections::Comparing::CompareInt32;
 import Core::Diagnostics::{ Assert, Panic };
 
 // What a `TreeMap` has that a `HashMap` does not is order, so that is what this leans on: the walk comes out sorted

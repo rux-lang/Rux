@@ -20,6 +20,7 @@ import Core::Ownership::Copyable;
 import Allocator::Allocator;
 import Core::Compare::Ordering;
 import Core::Iteration::Iterator;
+import Collections::Storage::{ Tree, TreeNode };
 
 /// An ordered set of unique elements.
 /// Move-only: it owns every node and every element in them.

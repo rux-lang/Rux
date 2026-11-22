@@ -213,7 +213,8 @@ numbers.Truncate(kept);
 
 ```rux
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ Vector, WriteVectorDebug };
+import Collections::Vector;
+import Collections::Presentation::WriteVectorDebug;
 import Io::{ ConsoleWriter, IoError };
 import Text::{ FormatError, FormatSpec, TextWriter };
 

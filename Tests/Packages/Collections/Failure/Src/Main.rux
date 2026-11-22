@@ -3,7 +3,7 @@ import Allocator::{ AllocError, SystemAllocator };
 import Collections::CollectionError;
 import Collections::HashMap;
 import Collections::Vector;
-import Collections::{ EqualsInt32, HashInt32 };
+import Collections::Hashing::{ EqualsInt32, HashInt32 };
 
 // The cross-cutting axis: what every container does when an operation cannot
 // be completed. Two things are checked here that the per-type tests do not.

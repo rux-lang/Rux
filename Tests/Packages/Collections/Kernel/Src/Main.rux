@@ -1,5 +1,7 @@
 import Allocator::SystemAllocator;
-import Collections::{ EqualsInt32, HashInt32, HashMap, HashSet, TableSeed };
+import Collections::{ HashMap, HashSet };
+import Collections::Hashing::{ EqualsInt32, HashInt32 };
+import Collections::Storage::TableSeed;
 import Core::Diagnostics::{ Assert, Panic };
 import Core::Primitives::*;
 

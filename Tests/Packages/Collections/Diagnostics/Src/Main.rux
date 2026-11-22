@@ -1,6 +1,9 @@
 import Allocator::SystemAllocator;
-import Collections::{ CollectionError, CompareInt32, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed, TreeMap,
-                      TreeSet, WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
+import Collections::{ CollectionError, HashMap, HashSet, TreeMap, TreeSet };
+import Collections::Comparing::CompareInt32;
+import Collections::Hashing::{ EqualsInt32, HashInt32 };
+import Collections::Presentation::{ WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
+import Collections::Storage::TableSeed;
 import Core::Diagnostics::{ Assert, Panic };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii,

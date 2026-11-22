@@ -1,6 +1,8 @@
 import Core::Primitives::*;
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, EqualsInt32, EqualsSlice, HashInt32, HashMap, HashSet, KeyValue, TableSeed };
+import Collections::{ CollectionError, HashMap, HashSet, KeyValue };
+import Collections::Hashing::{ EqualsInt32, EqualsSlice, HashInt32 };
+import Collections::Storage::TableSeed;
 import Core::Diagnostics::{ Assert, Panic };
 
 // A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked

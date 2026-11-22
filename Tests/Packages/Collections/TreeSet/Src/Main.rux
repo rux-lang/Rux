@@ -1,5 +1,6 @@
 import Allocator::SystemAllocator;
-import Collections::{ CompareInt32, TreeSet };
+import Collections::TreeSet;
+import Collections::Comparing::CompareInt32;
 import Core::Diagnostics::{ Assert, Panic };
 
 // A set whose elements come back in order, and the algebra over it.

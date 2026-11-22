@@ -1,5 +1,6 @@
 import Allocator::SystemAllocator;
-import Collections::{ Array, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
+import Collections::{ Array, Deque, Vector };
+import Collections::Presentation::{ WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
 import Core::Diagnostics::{ Assert, Panic };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
