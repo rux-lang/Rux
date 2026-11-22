@@ -20,7 +20,7 @@ struct Token {
 }
 
 extend Token {
-    func ~(&var self) {
+    destructor {
         drops += 1;
     }
 }

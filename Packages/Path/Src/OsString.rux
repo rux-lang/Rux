@@ -218,7 +218,7 @@ extend OsString {
 
     /// Gives the block back.
     /// @see https://rux-lang.dev/docs/api/path/os-string#destructor
-    func ~(&var self) {
+    destructor {
         self.Clear();
     }
 

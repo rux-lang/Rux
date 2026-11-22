@@ -73,7 +73,7 @@ extend Buffer<T> {
         self.length = 0;
     }
 
-    func ~(&var self) {
+    destructor {
         if self.data == null { return; }
         var allocator = self.allocator;
         let layout = Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>();

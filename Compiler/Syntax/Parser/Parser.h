@@ -224,6 +224,7 @@ private:
                                             CallingConvention callConv = CallingConvention::Default);
     /// Whether a function declaration starts here: `func`, or the removed `unsafe func`.
     [[nodiscard]] bool CheckFuncStart() const noexcept;
+    std::unique_ptr<FuncDecl> ParseDestructorDecl(bool isPublic);
     /// Consumes the removed `unsafe` and reports it; the caller reads what follows as if it were not written.
     void RejectRemovedUnsafe();
     std::unique_ptr<StructDecl> ParseStructDecl(bool isPublic);

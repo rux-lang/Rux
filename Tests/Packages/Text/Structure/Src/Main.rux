@@ -25,7 +25,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         if self.counter != null {
             // Safety: every `Tracked` is built with `counter` at the test's local `destroyed`, which outlives it.
             *self.counter = *self.counter + 1;

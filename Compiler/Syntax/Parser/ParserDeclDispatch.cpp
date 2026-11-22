@@ -108,6 +108,9 @@ DeclPtr Parser::ParseDecl() {
     if (CheckFuncStart()) {
         return AttachDocumentation(ApplyAttrs(ParseFuncDecl(isPublic, false, attrs.callConv), attrs));
     }
+    if (Check(TokenKind::DestructorKeyword)) {
+        return AttachDocumentation(ApplyAttrs(ParseDestructorDecl(isPublic), attrs));
+    }
     if (Check(TokenKind::UnsafeKeyword)) {
         RejectRemovedUnsafe();
         return AttachDocumentation(ParseDecl());
@@ -290,13 +293,13 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
         decl->name = "#" + Advance().text;
     }
     else if (Check(TokenKind::Tilde)) {
-        // `func ~(&var self)` declares the destructor, which the compiler calls and nothing names. The older spelling
-        // repeated the type's name, `func ~Vector(...)`; it is reported and read as the destructor.
+        // The older spellings of the destructor, `func ~(&var self)` and `func ~Vector(&var self)`, are reported and
+        // read as the destructor, so one mistake reports once.
         Advance(); // consume '~'
         decl->name = "~";
+        EmitError(loc, "a destructor is not a function", "write 'destructor { ... }'");
         if (Check(TokenKind::Ident)) {
-            EmitError(Advance().location, "a destructor is written without the type's name",
-                      "write 'func ~(&var self)'");
+            Advance();
         }
     }
     else if (Check(TokenKind::LeftBracket) && Peek(1).Is(TokenKind::RightBracket) && !Peek(1).precededBySpace) {
@@ -358,6 +361,58 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
         ExpectBefore(TokenKind::Semicolon, "'{' for a function body or ';' for a signature");
     }
 
+    return decl;
+}
+
+// `destructor { ... }` declares the destructor, which the compiler calls where a value of the type ends and nothing
+// names. It takes no parameter list: inside it `self` is a `&var` loan of the value, so the declaration carries that
+// receiver as any method does, and every later stage reads it as the method named `~`.
+std::unique_ptr<FuncDecl> Parser::ParseDestructorDecl(const bool isPublic) {
+    const SourceLocation loc = CurrentLocation();
+    Advance(); // 'destructor'
+    auto decl = std::make_unique<FuncDecl>();
+    decl->location = loc;
+    decl->isPublic = isPublic;
+    decl->name = "~";
+    if (selfScope.kind != SelfScope::Kind::Extend) {
+        EmitError(loc, "a destructor is declared in an 'extend' block of its type",
+                  "move it into 'extend Type { ... }'");
+    }
+    if (Check(TokenKind::LeftParen)) {
+        EmitError(CurrentLocation(), "a destructor takes no parameter list", "write 'destructor { ... }'");
+        Advance(); // '('
+        static_cast<void>(ParseParamList(true));
+        ExpectBefore(TokenKind::RightParen, "')' to close the parameter list");
+    }
+    if (Check(TokenKind::Arrow)) {
+        EmitError(CurrentLocation(), "a destructor returns nothing", "remove the result type");
+        Advance(); // '->'
+        static_cast<void>(ParseType("a type after '->'"));
+    }
+
+    Param receiver;
+    receiver.name = "self";
+    receiver.location = loc;
+    receiver.shorthandReceiver = true;
+    auto type = std::make_unique<ReferenceTypeExpr>();
+    type->location = loc;
+    type->pointeeMut = true;
+    if (selfScope.kind == SelfScope::Kind::None) {
+        type->pointee = std::make_unique<SelfTypeExpr>();
+        type->pointee->location = loc;
+    }
+    else {
+        type->pointee = SelfTypeAt(loc);
+    }
+    receiver.type = std::move(type);
+    decl->params.push_back(std::move(receiver));
+
+    if (Check(TokenKind::LeftBrace)) {
+        decl->body = ParseBlock();
+    }
+    else {
+        EmitExpected(CurrentLocation(), "'{' to start the destructor body");
+    }
     return decl;
 }
 

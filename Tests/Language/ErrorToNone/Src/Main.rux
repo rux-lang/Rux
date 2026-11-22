@@ -16,7 +16,7 @@ struct Problem {
 }
 
 extend Problem {
-    func ~(&var self) {
+    destructor {
         // Safety: every `Problem` in this test holds `@counter`, a local of `Main` that outlives it.
         self.counter.count = self.counter.count + 1i32;
     }

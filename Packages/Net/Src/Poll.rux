@@ -402,7 +402,7 @@ extend Poller {
         }
     }
 
-    func ~(&var self) {
+    destructor {
         when #target.os != .Windows {
             if self.handle != NoSocket { Close(self.handle as int32); }
         }

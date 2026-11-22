@@ -6,7 +6,7 @@ struct Buffer {
 
 extend Buffer {
 
-    func ~(&var self) {}
+    destructor {}
 }
 
 func FromReference(buffer: &Buffer) -> int32 {

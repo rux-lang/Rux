@@ -246,7 +246,7 @@ extend Vector<T> {
     /// elements go first and the block second, since an element destroyed after its storage was released would be
     /// read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/vector#destructor
-    func ~(&var self) {
+    destructor {
         self.Truncate(0);
         if self.data != null {
             ReleaseBlock<T>(self.allocator, self.data, self.capacity);
@@ -647,7 +647,7 @@ extend VectorIntoIterator<T> {
     /// Runs when the iterator's life ends. Everything already yielded belongs to whoever took it and is not touched
     /// here, which is what makes stopping part-way through safe.
     /// @see https://rux-lang.dev/docs/api/collections/vector#vector-into-iterator-destructor
-    func ~(&var self) {
+    destructor {
         var index = self.position;
         while index < self.length {
             // Safety: the vector invariant carried over from the vector: elements from `position` to `length` are

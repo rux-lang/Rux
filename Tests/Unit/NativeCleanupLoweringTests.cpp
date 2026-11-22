@@ -49,7 +49,7 @@ const std::string kTracked = R"(
     struct Counter { count: int32; }
     struct Tracked { counter: *var Counter; }
     extend Tracked {
-        func ~(&var self) {
+        destructor {
             // Safety: every `Tracked` the tests build points `counter` at a `Counter` that outlives it
             self.counter.count = self.counter.count + 1;
         }

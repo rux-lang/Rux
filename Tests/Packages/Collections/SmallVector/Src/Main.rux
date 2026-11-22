@@ -13,7 +13,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         Destroyed = Destroyed + 1;
     }
 }

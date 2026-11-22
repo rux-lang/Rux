@@ -198,7 +198,7 @@ extend Arena {
     /// Gives every block back to the backing allocator.
     /// Runs when the arena's life ends. Every pointer the arena handed out becomes invalid.
     /// @see https://rux-lang.dev/docs/api/allocator/arena#destructor
-    func ~(&var self) {
+    destructor {
         var block = self.current;
         while block != null {
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took

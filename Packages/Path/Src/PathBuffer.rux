@@ -167,7 +167,7 @@ extend PathBuffer {
 
     /// Gives the block back.
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#destructor
-    func ~(&var self) {
+    destructor {
         self.Release();
     }
 }

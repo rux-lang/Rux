@@ -307,7 +307,7 @@ bool IsSymbolicOperatorName(const std::string_view name) {
     });
 }
 
-/// A destructor is declared `func ~(&var self)`, so its name is `~`, to which no casing rule applies.
+/// A destructor is declared `destructor { ... }`, and its name is `~`, to which no casing rule applies.
 bool IsDestructorName(const std::string_view name) {
     return name == "~";
 }

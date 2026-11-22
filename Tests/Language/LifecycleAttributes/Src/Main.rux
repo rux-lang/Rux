@@ -51,7 +51,7 @@ struct Guard {
 }
 
 extend Guard {
-    func ~(&var self) {
+    destructor {
         closed += self.id;
     }
 }

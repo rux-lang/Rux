@@ -242,7 +242,7 @@ extend StringBuilder {
     /// Runs when the builder dies. A builder whose block was handed over by `TakeString` owns nothing, so this is
     /// then a no-op rather than a second release.
     /// @see https://rux-lang.dev/docs/api/text/string-builder#destructor
-    func ~(&var self) {
+    destructor {
         self.Release();
     }
 }

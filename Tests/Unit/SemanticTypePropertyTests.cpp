@@ -14,7 +14,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             value: int32;
         }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Wrapper {
@@ -30,7 +30,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             value: T;
         }
         extend GenericOwner<T> {
-            func ~(&var self) {}
+            destructor {}
         }
 
         variant Maybe<T> {
@@ -167,7 +167,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
             value: int32;
         }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Generated {
@@ -182,7 +182,7 @@ TEST_CASE("special operations and lifecycle attributes classify generated and pr
             value: int32;
         }
         extend Owning {
-            func ~(&var self) {}
+            destructor {}
         }
 
         #NoCopy
@@ -301,7 +301,7 @@ TEST_CASE("only plain data is copyable, and a destructor anywhere inside makes a
     Lexer lexer(R"(
         struct Owner { value: int32; }
         extend Owner {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Point { x: int32; y: int32; }
@@ -374,7 +374,7 @@ TEST_CASE("Copyable is decided by the compiler and bounds what generic code may 
 
         struct Owner { value: int32; }
         extend Owner {
-            func ~(&var self) {}
+            destructor {}
         }
         struct Point { x: int32; y: int32; }
         #NoCopy
@@ -461,46 +461,69 @@ TEST_CASE("bodyless lifecycle operators are replaced by attributes") {
     CHECK(hasMessage("special operation '=' may only be declared in an extend block"));
 }
 
-TEST_CASE("destructors require the canonical owning signature and a type has at most one") {
+TEST_CASE("a destructor is a block of its type's extension and a type has at most one") {
     Lexer lexer(R"(
         struct Bad { value: int32; }
         extend Bad {
-            func ~(&var self) {}
-            func ~(&self);
+            destructor {}
+            destructor {}
         }
-        func ~(value: &var Bad) {}
     )",
-                "invalid_destructors.rux");
+                "duplicate_destructors.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
-    Parser parser(std::move(lexed.tokens), "invalid_destructors.rux");
+    Parser parser(std::move(lexed.tokens), "duplicate_destructors.rux");
     auto parsed = parser.Parse();
     REQUIRE_FALSE(parsed.HasErrors());
 
     const auto *implementation = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
     REQUIRE(implementation != nullptr);
     REQUIRE_EQ(implementation->methods.size(), 2);
-    CHECK_EQ(implementation->methods[0]->name, "~");
-    CHECK_EQ(implementation->methods[1]->name, "~");
+    for (const auto &method : implementation->methods) {
+        CHECK_EQ(method->name, "~");
+        REQUIRE_EQ(method->params.size(), 1);
+        CHECK(method->params.front().IsReceiver());
+        const auto *receiver = dynamic_cast<const ReferenceTypeExpr *>(method->params.front().type.get());
+        REQUIRE(receiver != nullptr);
+        CHECK(receiver->pointeeMut);
+    }
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     const SemanticModel model = analyzer.Analyze();
-    REQUIRE(model.HasErrors());
-    const auto hasMessage = [&](const std::string_view message) {
-        return std::ranges::any_of(model.diagnostics,
-                                   [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
+    CHECK(std::ranges::any_of(model.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message == "'Bad' already has a destructor";
+    }));
+
+    const auto parseErrors = [](const std::string &source) {
+        Lexer sourceLexer(source, "destructor_forms.rux");
+        auto tokens = sourceLexer.Tokenize();
+        Parser sourceParser(std::move(tokens.tokens), "destructor_forms.rux");
+        std::vector<std::string> messages;
+        for (const auto &diagnostic : sourceParser.Parse().diagnostics) {
+            messages.push_back(diagnostic.message);
+        }
+        return messages;
     };
-    CHECK(hasMessage("'Bad' already has a destructor"));
-    CHECK(hasMessage("a destructor takes '&var self' and nothing else"));
-    CHECK(hasMessage("the destructor of 'Bad' must have a body"));
-    CHECK(hasMessage("a destructor may only be declared in an extend block"));
+    const std::string type = "struct Bad { value: int32; }\n";
+    CHECK_EQ(parseErrors(type + "extend Bad { func ~(&var self) {} }"),
+             std::vector<std::string>{"a destructor is not a function"});
+    CHECK_EQ(parseErrors(type + "extend Bad { func ~Bad(&var self) {} }"),
+             std::vector<std::string>{"a destructor is not a function"});
+    CHECK_EQ(parseErrors(type + "extend Bad { destructor(&var self) {} }"),
+             std::vector<std::string>{"a destructor takes no parameter list"});
+    CHECK_EQ(parseErrors(type + "extend Bad { destructor -> int {} }"),
+             std::vector<std::string>{"a destructor returns nothing"});
+    CHECK_EQ(parseErrors(type + "extend Bad { pub destructor {} }"),
+             std::vector<std::string>{"a destructor takes no visibility modifier"});
+    CHECK_EQ(parseErrors(type + "destructor {}"),
+             std::vector<std::string>{"a destructor is declared in an 'extend' block of its type"});
 }
 
 TEST_CASE("drop glue expands concrete aggregates in reverse construction order") {
     Lexer lexer(R"(
         struct Leaf { value: int32; }
         extend Leaf {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Pair<T> {
@@ -511,7 +534,7 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
 
         struct Owner { leaf: Leaf; }
         extend Owner {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Unused { leaf: Leaf; }
@@ -622,7 +645,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
     Lexer lexer(R"(
         struct Leaf { value: int32; }
         extend Leaf {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Pair<T> {
@@ -632,7 +655,7 @@ TEST_CASE("drop glue covers a generic type spelled only inside an instantiated g
 
         struct Holder<T> { pair: *var Pair<T>; }
         extend Holder<T> {
-            func ~(&var self) {
+            destructor {
                 // Safety: `pair` addresses the `Pair<T>` this holder owns
                 Take<T>(self.pair);
             }
@@ -686,12 +709,12 @@ TEST_CASE("scalar enums stay trivial while variants combine every payload owners
 
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Copier { value: int32; }
         extend Copier {
-            func ~(&var self) {}
+            destructor {}
         }
 
         variant Units { Empty, Ready, Busy }

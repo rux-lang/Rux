@@ -17,7 +17,7 @@ extend MoveOnly {
         return Self { value };
     }
 
-    func ~(&var self) {}
+    destructor {}
 }
 
 #NoMove

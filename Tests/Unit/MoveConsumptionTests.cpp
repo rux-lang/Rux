@@ -85,7 +85,7 @@ TEST_CASE("a bare owning value records a transfer in every by-value position") {
     const std::string source = R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         func Take(handle: Handle) {}
         func Keyword(source: Handle, other: Handle) {
@@ -141,7 +141,7 @@ TEST_CASE("a bare transfer keeps every ownership guarantee") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         func Take(handle: Handle) {}
         func UseAfter(source: Handle) -> int32 {
@@ -171,7 +171,7 @@ TEST_CASE("only a local, a parameter, a temporary or a read through a raw pointe
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         struct Holder { handle: Handle; count: int32; }
 
@@ -213,7 +213,7 @@ TEST_CASE("bare transfers retain source drop-flag transfers in HIR") {
     const HirPackage package = LowerConsumptionHir(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         func Transfer(source: Handle) -> Handle {
@@ -274,7 +274,7 @@ TEST_CASE("a named owning value written bare is given away in every by-value con
 
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         func Take(value: Handle) {}
@@ -301,7 +301,7 @@ TEST_CASE("a bare owning value is consumed in every by-value context") {
 
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         extend Handle {
             func Consume(self) {}
@@ -384,7 +384,7 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         func ReturnHandle(value: Handle) -> Handle {
@@ -443,7 +443,7 @@ TEST_CASE("a generic store retains ownership transfer for its instantiation") {
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         // Safety: `slot` must address a live, writable `T`
@@ -488,7 +488,7 @@ TEST_CASE("a match takes a named owning subject") {
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         variant Held { Full(Handle), Empty }
 
@@ -628,7 +628,7 @@ TEST_CASE("assignment transfers a temporary or a named owning value and never a 
         extend Counted {
             func New(id: int32) -> Counted { return Counted { id: id }; }
             func Clone(&self) -> Counted { return Counted { id: self.id }; }
-            func ~(&var self) {}
+            destructor {}
         }
         struct Holder { item: Counted; }
         func Make(id: int32) -> Counted { return Counted { id: id }; }
@@ -661,7 +661,7 @@ TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         struct Number { value: int32; }
 
@@ -692,7 +692,7 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         struct Owner { handle: Handle; }
 
@@ -726,7 +726,7 @@ TEST_CASE("complete moved bindings can be reinitialized and consumed again") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         func NewHandle(value: int32) -> Handle { return Handle { value: value }; }

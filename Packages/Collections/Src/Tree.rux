@@ -642,7 +642,7 @@ extend Tree<K, V> {
     /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
     /// tree however many times it was passed along.
     /// @see https://rux-lang.dev/docs/api/collections/tree#destructor
-    func ~(&var self) {
+    destructor {
         self.Clear();
     }
 }

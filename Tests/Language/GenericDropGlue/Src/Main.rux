@@ -5,7 +5,7 @@ pub struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         Destroyed = Destroyed + 1;
     }
 }
@@ -37,7 +37,7 @@ struct Owner<T> {
 }
 
 extend Owner<T> {
-    func ~(&var self) {
+    destructor {
         if self.block != null {
             // Safety: a non-null `block` is `@storage` from `Main`, which refills it after this destructor.
             TakeOut<T>(self.block);

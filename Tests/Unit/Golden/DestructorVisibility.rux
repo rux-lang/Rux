@@ -3,7 +3,7 @@
 struct Handle { slot: int32; }
 
 extend Handle {
-    pub func ~(&var self) {
+    pub destructor {
         self.slot = 0i32;
     }
 }

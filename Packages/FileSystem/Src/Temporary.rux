@@ -162,7 +162,7 @@ extend TemporaryFile {
     /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
     /// is the reason the type exists.
     /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#destructor
-    func ~(&var self) {
+    destructor {
         self.file.Close() catch { _ => {} };
         if self.owned {
             self.owned = false;
@@ -242,7 +242,7 @@ extend TemporaryDirectoryHandle {
 
     /// Removes the directory with the outcome discarded: the safety net, not the contract.
     /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#destructor
-    func ~(&var self) {
+    destructor {
         if self.owned {
             self.owned = false;
             DeleteDirectory(self.path.allocator, self.path.AsPath()) catch { _ => {} };

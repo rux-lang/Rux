@@ -6,7 +6,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {}
+    destructor {}
 }
 
 struct Pair {

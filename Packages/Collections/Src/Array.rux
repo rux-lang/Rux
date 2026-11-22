@@ -233,7 +233,7 @@ extend Array<T> {
     /// an element destroyed after its storage was released would be read from freed memory.
     /// An array that was moved away is not destroyed where it used to live, so this happens exactly once.
     /// @see https://rux-lang.dev/docs/api/collections/array#destructor
-    func ~(&var self) {
+    destructor {
         if self.data == null { return; }
         var index: uint = 0;
         while index < self.length {

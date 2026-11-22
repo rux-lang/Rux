@@ -1,1 +1,1 @@
-6:11: error: a destructor is written without the type's name
+6:5: error: a destructor is not a function

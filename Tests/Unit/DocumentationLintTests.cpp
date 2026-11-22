@@ -137,7 +137,7 @@ struct Item {}
 extend Item {
     /// Destroys an item.
     /// @returns Invalid result.
-    func ~(&var self) {}
+    destructor {}
 }
 
 /// Not callable.

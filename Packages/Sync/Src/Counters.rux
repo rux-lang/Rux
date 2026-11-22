@@ -97,7 +97,7 @@ extend Semaphore {
         return AtomicLoad(@self.block.permits, MemoryOrder::Relaxed);
     }
 
-    func ~(&var self) {
+    destructor {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         if ReleaseBlock(@self.block.references) {
@@ -175,7 +175,7 @@ extend Barrier {
         return false;
     }
 
-    func ~(&var self) {
+    destructor {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         if ReleaseBlock(@self.block.references) {
@@ -249,7 +249,7 @@ extend WaitGroup {
         }
     }
 
-    func ~(&var self) {
+    destructor {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         if ReleaseBlock(@self.block.references) {

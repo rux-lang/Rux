@@ -118,7 +118,7 @@ extend Box<T> {
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
     /// away is not destroyed where it used to live, so the storage is released exactly once.
     /// @see https://rux-lang.dev/docs/api/allocator/box#destructor
-    func ~(&var self) {
+    destructor {
         if self.pointer != null {
             let held = self.pointer;
             self.pointer = null;

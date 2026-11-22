@@ -6,7 +6,7 @@ struct Handle {
 }
 
 extend Handle {
-    func ~(&var self) {}
+    destructor {}
 }
 
 enum Failure: int8 {

@@ -14,7 +14,7 @@ pub struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         // Safety: `Destroyed` is a global `int64`, aligned and live for the whole run, and only touched atomically.
         AtomicFetchAdd<int64>(@Destroyed, 1, MemoryOrder::Relaxed);
     }

@@ -14,7 +14,7 @@ struct Token {
 }
 
 extend Token {
-    func ~(&var self) {
+    destructor {
         drops += 1;
         order = order * 10 + self.id;
     }

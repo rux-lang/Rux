@@ -76,7 +76,7 @@ const char *HandleSource = R"(
     }
 
     extend Handle {
-        func ~(&var self) {
+        destructor {
             self.slot = 0i32;
         }
     }
@@ -116,7 +116,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(R"(
             struct Owner<T> { value: T; }
             extend Owner<T> {
-                func ~(&var self) {}
+                destructor {}
             }
 
             func Main() -> int {

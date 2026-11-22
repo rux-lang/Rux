@@ -3,7 +3,7 @@
 struct Token { id: int; }
 
 extend Token {
-    func ~(&var self) {}
+    destructor {}
 }
 
 func Take(token: Token) -> int { return token.id; }

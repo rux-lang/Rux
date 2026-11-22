@@ -8,7 +8,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         // Safety: every `Tracked` in this test stores `@drops`, a local of `Main` that outlives it.
         *self.drops = *self.drops + self.id;
     }

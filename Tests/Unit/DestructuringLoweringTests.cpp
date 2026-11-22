@@ -119,7 +119,7 @@ bool CallsGlue(const LirBlock &block) {
 constexpr const char *kTag = R"(
     struct Tag { id: int32; }
     extend Tag {
-        func ~(&var self) {}
+        destructor {}
     }
 )";
 } // namespace
@@ -276,7 +276,7 @@ namespace {
 constexpr const char *kCounted = R"(
     struct Counted { id: int32; }
     extend Counted {
-        func ~(&var self) {}
+        destructor {}
     }
 )";
 } // namespace

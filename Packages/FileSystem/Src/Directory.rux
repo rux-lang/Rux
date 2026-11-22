@@ -352,7 +352,7 @@ extend DirectoryIterator {
 
     /// `Release`, as the safety net.
     /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-destructor
-    func ~(&var self) {
+    destructor {
         self.Release();
     }
 }

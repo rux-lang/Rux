@@ -100,7 +100,7 @@ TEST_CASE("linter accepts lifecycle operation names") {
         #NoMove
         struct Cell { value: int32; }
         extend Cell {
-            func ~(&var self) {}
+            destructor {}
         }
     )",
                                      "lifecycle.rux");

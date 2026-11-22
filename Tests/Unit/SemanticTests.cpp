@@ -399,7 +399,7 @@ TEST_CASE("array repeat expressions require copyable elements") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Owner { value: int; }
         extend Owner {
-            func ~(&var self) {}
+            destructor {}
         }
 
         func Main() {

@@ -144,6 +144,9 @@ std::string ShorthandReceiverText(const TypeExpr &type) {
 } // namespace
 
 std::string FunctionSignature(const FuncDecl &function) {
+    if (function.name == "~") {
+        return "destructor";
+    }
     std::string text = function.isPublic ? "pub " : "";
     text += "func " + function.name + TypeParams(function.typeParams) + "(";
     for (std::size_t i = 0; i < function.params.size(); ++i) {

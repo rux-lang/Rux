@@ -245,7 +245,7 @@ extend Deque<T> {
     /// Runs when the deque's life ends. The elements go first and the block second, since an element destroyed after
     /// its storage was released would be read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/deque#destructor
-    func ~(&var self) {
+    destructor {
         self.Clear();
         if self.data != null {
             ReleaseBlock<T>(self.allocator, self.data, self.capacity);

@@ -737,7 +737,7 @@ TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred o
                       "cannot modify 'held' while it is immutably borrowed"));
     CHECK(AnyContains(ErrorsIn(R"(
         struct Token { id: int32; }
-        extend Token { func ~(&var self) {} }
+        extend Token { destructor {} }
         func Use(entry: Token?) -> int32 {
             var held = entry;
             if let token? = held {

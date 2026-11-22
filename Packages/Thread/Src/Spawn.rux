@@ -123,7 +123,7 @@ extend JoinHandle<R> {
         return self.block != null;
     }
 
-    func ~(&var self) {
+    destructor {
         self.Detach();
     }
 }

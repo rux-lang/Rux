@@ -18,7 +18,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         // Safety: every `Tracked` in this test stores the address of a `Counter` local that outlives it.
         self.counter.count = self.counter.count + 1;
     }

@@ -168,7 +168,7 @@ TEST_CASE("a write through a reference names the reference and its writable spel
 TEST_CASE("a whole value written through a reference replaces the referent and destroys the old one") {
     Lexer lexer(R"(
         struct Handle { value: int32; }
-        extend Handle { func ~(&var self) {} }
+        extend Handle { destructor {} }
         func Replace(slot: &var Handle) {
             slot = Handle { value: 2i32 };
         }
@@ -258,7 +258,7 @@ TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {
     SUBCASE("move-only struct") {
         const auto diagnostics = AnalyzeReferences(R"(
             struct Owner { pointer: *var int; }
-            extend Owner { func ~(&var self) {} }
+            extend Owner { destructor {} }
             func Copy(value: &Owner) -> Owner { return value; }
         )");
         CHECK(HasErrorContaining(diagnostics, "reference value '&Owner' cannot escape"));
@@ -471,7 +471,7 @@ TEST_CASE("references cannot transfer borrowed ownership") {
     const auto diagnostics = AnalyzeReferences(R"(
         struct Resource { value: int32; }
         extend Resource {
-            func ~(&var self) {}
+            destructor {}
         }
         struct Holder { resource: Resource; }
         extend Holder {

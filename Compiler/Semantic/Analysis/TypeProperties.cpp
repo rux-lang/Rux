@@ -209,7 +209,7 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
                                                                 destructors->second.size() > 1 &&
                                                                 destructors->second.front() != &method) {
             EmitError(method.location, std::format("'{}' already has a destructor", typeName),
-                      {"a type has at most one destructor"}, "merge the two bodies into one 'func ~(&var self)'");
+                      {"a type has at most one destructor"}, "merge the two bodies into one 'destructor { ... }'");
         }
     }
 
@@ -228,7 +228,7 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
         return receiver->inner.front() == expected;
     }();
     if (!canonical) {
-        EmitError(method.location, "a destructor takes '&var self' and nothing else", {}, "write 'func ~(&var self)'");
+        EmitError(method.location, "a destructor takes '&var self' and nothing else", {}, "write 'destructor { ... }'");
     }
     if (!method.body) {
         EmitError(method.location, std::format("the destructor of '{}' must have a body", typeName));

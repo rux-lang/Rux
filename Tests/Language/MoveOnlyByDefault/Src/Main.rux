@@ -30,7 +30,7 @@ struct Resource {
 }
 
 extend Resource {
-    func ~(&var self) {
+    destructor {
         // Safety: `self.counter` points at the `Counter` local of `Main`, which outlives every `Resource`.
         self.counter.drops = self.counter.drops + 1;
     }

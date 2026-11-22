@@ -222,7 +222,7 @@ TEST_CASE("loop exits preserve only reachable availability states") {
 TEST_CASE("a part written into a droppable local that holds no value names why it holds none") {
     Lexer lexer(R"(
 struct Handle { code: int32; }
-extend Handle { func ~(&var self) {} }
+extend Handle { destructor {} }
 struct Holder { handle: Handle; }
 struct Plain { code: int32; }
 

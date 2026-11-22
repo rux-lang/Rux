@@ -11,7 +11,7 @@ struct Counter {
 }
 
 extend Counter {
-    func ~(&var self) {
+    destructor {
         drops += 1;
     }
 }

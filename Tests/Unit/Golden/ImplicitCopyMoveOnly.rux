@@ -7,7 +7,7 @@ struct Text {
 }
 
 extend Text {
-    func ~(&var self) {}
+    destructor {}
 }
 
 struct Labeled {

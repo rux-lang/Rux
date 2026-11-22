@@ -5,7 +5,7 @@ struct Names {
 }
 
 extend Names {
-    func ~(&var self) {}
+    destructor {}
 }
 
 func Add(total: &var int, amount: int) {

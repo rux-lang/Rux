@@ -4,7 +4,7 @@ struct Token {
 }
 
 extend Token {
-    func ~(&var self) {}
+    destructor {}
 }
 
 struct Holder {

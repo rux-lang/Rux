@@ -23,7 +23,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         if self.counter != null {
             // Safety: a non-null counter points at a local of the test that outlives every element.
             *self.counter = *self.counter + 1;

@@ -13,7 +13,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         drops += 1;
         order = order * 10 + self.id;
     }
@@ -25,7 +25,7 @@ struct Pinned {
 }
 
 extend Pinned {
-    func ~(&var self) {
+    destructor {
         drops += 1;
     }
 }

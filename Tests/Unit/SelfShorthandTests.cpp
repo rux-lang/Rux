@@ -88,7 +88,7 @@ TEST_CASE("each receiver shorthand names the extended type with its type argumen
             func Take(self) {}
             func Peek(*self) {}
             func Poke(*var self, value: T) {}
-            func ~(&var self) {}
+            destructor {}
         }
     )");
     REQUIRE_FALSE(parsed.HasErrors());
@@ -290,7 +290,7 @@ TEST_CASE("field shorthand gives a move-only binding away") {
     const auto diagnostics = Analyze(R"(
         struct Buffer { size: int32; }
         extend Buffer {
-            func ~(&var self) {}
+            destructor {}
         }
         struct Holder { buffer: Buffer; size: int32; }
         func Hold(buffer: Buffer, size: int32) -> Holder {

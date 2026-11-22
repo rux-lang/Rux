@@ -9,7 +9,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         // Safety: `destroyed` points at a local of `Main` that outlives every element.
         *self.destroyed = *self.destroyed + 1;
     }

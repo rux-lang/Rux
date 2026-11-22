@@ -22,7 +22,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         // Safety: `self.log` points at the `Log` local of `Main`, which outlives every value that records into it.
         self.log.count = self.log.count + 1;
         self.log.order = self.log.order * 10 + (self.id as int64);

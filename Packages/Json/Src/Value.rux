@@ -440,7 +440,7 @@ extend JsonValue {
     /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
     /// tree something a reader can check.
     /// @see https://rux-lang.dev/docs/api/json/json-value#destructor
-    func ~(&var self) {
+    destructor {
         self.number.text.Clear();
         self.text.Clear();
         self.elements.Clear();
@@ -451,7 +451,7 @@ extend JsonValue {
 extend JsonMember {
     /// Releases the member's name and value.
     /// @see https://rux-lang.dev/docs/api/json/json-value#json-member-destructor
-    func ~(&var self) {
+    destructor {
         self.name.Clear();
     }
 }

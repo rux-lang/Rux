@@ -370,7 +370,7 @@ extend BigNat {
 
     /// Gives the limbs back.
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-destructor
-    func ~(&var self) {
+    destructor {
         self.Release();
     }
 }

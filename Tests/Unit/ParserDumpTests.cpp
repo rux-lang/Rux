@@ -139,7 +139,7 @@ TEST_CASE("AST dumps spell references, destructors and loans canonically") {
 #NoMove
 struct Cell { value: int32; }
 extend Cell {
-    func ~(&var self) {}
+    destructor {}
 }
 func Read(cell: &Cell) {}
 func Transfer(source: Cell) -> Cell {

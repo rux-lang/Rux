@@ -233,7 +233,7 @@ extend Channel<T> {
         return value;
     }
 
-    func ~(&var self) {
+    destructor {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its count word is reached only
         // atomically.

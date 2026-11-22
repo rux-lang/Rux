@@ -10,7 +10,7 @@ TEST_CASE("named moves read their source as it stands and run no code") {
 
         struct Cell { value: int32; }
         extend Cell {
-            func ~(&var self) {}
+            destructor {}
         }
 
         struct Wrapper { cell: Cell; tag: int32; }
@@ -49,7 +49,7 @@ TEST_CASE("move assignment destroys the replaced destination through its conditi
     const std::string source = R"(
         struct Cell { value: int32; }
         extend Cell {
-            func ~(&var self) {}
+            destructor {}
         }
 
         func Replace(destination: Cell, source: Cell) {
@@ -106,7 +106,7 @@ TEST_CASE("'#NoMove' values are built in place and never moved") {
         #NoMove
         struct Node { next: *var Node; }
         extend Node {
-            func ~(&var self) {}
+            destructor {}
         }
         func Build() -> Node { return Node { next: null }; }
         func Accept(node: Node) {}
@@ -232,7 +232,7 @@ TEST_CASE("a custom copy hook is rejected and copying stays a byte copy") {
         struct Owning { value: int32; }
         extend Owning {
             func =(&var self, other: &Seed) { self.value = other.value; }
-            func ~(&var self) {}
+            destructor {}
         }
         func Copies(plain: Plain, owning: Owning) -> int32 {
             let copied = plain;
@@ -255,7 +255,7 @@ TEST_CASE("an explicit Clone replaces a destination with the value it returns") 
         struct Cell { value: int32; }
         extend Cell {
             func Clone(&self) -> Cell { return Cell { value: self.value }; }
-            func ~(&var self) {}
+            destructor {}
         }
 
         func Replace(named: Cell, slot: &var Cell) {
@@ -288,7 +288,7 @@ TEST_CASE("variant moves are byte copies with no per-case dispatch") {
     const std::string source = R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
 
         variant Choice {
@@ -352,7 +352,7 @@ TEST_CASE("consuming a move-only variant reports later use while borrowed inspec
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }
         extend Handle {
-            func ~(&var self) {}
+            destructor {}
         }
         variant Held { Empty, Full(Handle) }
 

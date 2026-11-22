@@ -42,7 +42,7 @@ struct Floating { leading: int64; value: float64; }
 
 struct Tracked { value: int64; drops: *var int32; }
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         // Safety: `self.drops` points at `Main`'s `drops` local, which outlives every `Tracked`.
         *self.drops = *self.drops * 10 + self.value as int32;
     }

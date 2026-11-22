@@ -396,14 +396,15 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             }
             continue;
         }
-        if (!CheckFuncStart()) {
+        const bool destructor = Check(TokenKind::DestructorKeyword);
+        if (!destructor && !CheckFuncStart()) {
             RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), isIntrinsic ? "'func' after 'intrinsic' in the extension body"
                                                         : "'func' to start a method in the extension body");
             Recover();
             continue;
         }
-        if (auto method = ParseFuncDecl(pub, false, attrs.callConv)) {
+        if (auto method = destructor ? ParseDestructorDecl(pub) : ParseFuncDecl(pub, false, attrs.callConv)) {
             method->documentation = std::move(documentation);
             if (pub && method->name == "~") {
                 // The compiler runs a destructor wherever a value of the type ends, in any package, so nothing about

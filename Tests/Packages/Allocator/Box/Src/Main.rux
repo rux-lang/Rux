@@ -12,7 +12,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func ~(&var self) {
+    destructor {
         if self.destroyed != null {
             // Safety: a non-null `destroyed` is the address of the local counter in `Main`, which outlives the value.
             *self.destroyed += 1;

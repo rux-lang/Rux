@@ -90,7 +90,7 @@ std::size_t Blocks(const LirFunc &function, const std::string_view prefix) {
 const std::string kOwner = R"(
     struct Handle { value: int32; }
     extend Handle {
-        func ~(&var self) { self.value = 0i32; }
+        destructor { self.value = 0i32; }
     }
 )";
 } // namespace
@@ -271,7 +271,7 @@ TEST_CASE("variant direct destructors run before active payload destruction") {
     const HirPackage hir = DropHir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
         extend Held {
-            func ~(&var self) {}
+            destructor {}
         }
         func Use(value: Held) {}
     )");
@@ -285,7 +285,7 @@ TEST_CASE("variant direct destructors run before active payload destruction") {
     const LirPackage lir = DropLir(kOwner + R"(
         variant Held { Empty, Full(Handle) }
         extend Held {
-            func ~(&var self) {}
+            destructor {}
         }
         func Use(value: Held) {}
     )");
@@ -301,7 +301,7 @@ TEST_CASE("scalar enum destruction never enters variant payload dispatch") {
     const LirPackage package = DropLir(R"(
         enum Status: uint8 { Ready = 1, Busy = 2 }
         extend Status {
-            func ~(&var self) {}
+            destructor {}
         }
         func Use(value: Status) {}
     )");

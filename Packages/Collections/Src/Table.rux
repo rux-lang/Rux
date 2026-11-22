@@ -525,7 +525,7 @@ extend Table<K, V> {
     /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
     /// storage was released would be read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/table#destructor
-    func ~(&var self) {
+    destructor {
         self.Clear();
         self.Release();
     }

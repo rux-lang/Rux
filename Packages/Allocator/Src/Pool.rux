@@ -222,7 +222,7 @@ extend Pool {
     /// Runs when the pool's life ends. Every pooled pointer the pool handed out becomes invalid. Blocks that went to
     /// the backing allocator directly are not released here and are still the caller's.
     /// @see https://rux-lang.dev/docs/api/allocator/pool#destructor
-    func ~(&var self) {
+    destructor {
         var chunk = self.chunks;
         while chunk != null {
             // Safety: the chunk invariant: `chunks` and every `previous` link address a live chunk this pool took from

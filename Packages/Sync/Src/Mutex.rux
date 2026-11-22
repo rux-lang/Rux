@@ -78,7 +78,7 @@ extend Mutex<T> {
         return MutexGuard<T> { block: self.block };
     }
 
-    func ~(&var self) {
+    destructor {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle or guard is left to reach the block.
         if ReleaseBlock(@self.block.references) {
@@ -133,7 +133,7 @@ extend MutexGuard<T> {
         }
     }
 
-    func ~(&var self) {
+    destructor {
         self.Unlock();
     }
 }
@@ -227,7 +227,7 @@ extend Condition {
         return notified;
     }
 
-    func ~(&var self) {
+    destructor {
         // Safety: this handle holds a count on `self.block`, so the block is live, and its count word is reached only
         // atomically; when the count reaches zero no handle is left to reach the block.
         if ReleaseBlock(@self.block.references) {

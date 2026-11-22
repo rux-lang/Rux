@@ -414,7 +414,7 @@ extend DecompressReader {
         }
     }
 
-    func ~(&var self) {
+    destructor {
         var allocator = self.allocator;
         if self.input != null {
             let layout = Layout::Of(InputCapacity, 1) ?? Layout::ForValue<char8>();

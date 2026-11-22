@@ -46,7 +46,7 @@ struct Guard {
 }
 
 extend Guard {
-    func ~(&var self) {
+    destructor {
         // Safety: the only `Guard` stores `@log`, a local of `Main` that outlives it.
         self.log.drops += 1;
     }
