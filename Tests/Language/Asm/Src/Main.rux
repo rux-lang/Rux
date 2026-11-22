@@ -1,4 +1,5 @@
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 // The same five functions on both architectures, so that `Main` below is one
 // program rather than two. On x86-64 they carry an explicit Win64 convention,

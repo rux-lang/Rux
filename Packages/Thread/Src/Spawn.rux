@@ -6,7 +6,9 @@
 // nobody took, so a handle dropped while its thread still runs is safe: the thread finishes, finds itself last, and
 // cleans up. Joining takes the result first, then lets go.
 
-import Core::{ AtomicFetchSub, AtomicStore, MemoryOrder, Panic, Sendable };
+import Core::Diagnostics::Panic;
+import Core::Machine::{ AtomicFetchSub, AtomicStore, MemoryOrder };
+import Core::Ownership::Sendable;
 import Memory::{ AlignUp, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 import Thread::{ NativeDetach, NativeJoin, NativeStart, ThreadError };
 

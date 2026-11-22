@@ -65,7 +65,7 @@ Every Win32 function here is declared `extern`; a call is conventionally written
 Windows only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Core::{ #target };
+import Core::Compilation::#target;
 
 when #target.os == .Windows {
     import Windows::{ GetStdHandle, StdOutputHandle, WriteConsoleA };

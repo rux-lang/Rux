@@ -6,7 +6,7 @@
 // redirected stream wants the raw UTF-8 bytes on disk exactly as written — and deciding it per operation would
 // put a system call in front of every one. Elsewhere the bytes are the bytes, console or not.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 import Text::IsBoundary;
 
 when #target.os {

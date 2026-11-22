@@ -5,8 +5,8 @@
 // over: a narrower character widened into one, a literal folded into static data, and a value carried through fields,
 // elements, arguments and returns.
 
-import Core::Assert;
-import Core::{ char128, uint128 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const Face = c128'😀';
 const Last: char128 = c128'\u{10FFFF}';

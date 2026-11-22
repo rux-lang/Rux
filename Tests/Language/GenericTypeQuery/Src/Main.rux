@@ -3,7 +3,9 @@
 // call `T`: Core's `MinimumOf` shifts by `sizeof(T) * 8 - 1`, which for `int16` is 15, whatever this module's own
 // `T` is.
 
-import Core::{ Assert, MaximumOf, MinimumOf, int16 };
+import Core::Arithmetic::{ MaximumOf, MinimumOf };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 struct T {
     wide: int;

@@ -8,9 +8,10 @@ Type = "Executable"
 Description = "Package test for Core: lazy cursor adaptors over slices, containers and each other"
 
 [Dependencies]
+Algorithms = { Path = "../../../../Packages/Algorithms" }
 Allocator = { Path = "../../../../Packages/Allocator" }
 Collections = { Path = "../../../../Packages/Collections" }
 Core = { Path = "../../../../Packages/Core" }
 
 [Build]
-Output = "../../../../Bin/Tests/Packages/Core"
+Output = "../../../../Bin/Tests/Packages/Algorithms"

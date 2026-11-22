@@ -4,7 +4,7 @@
 // offset — inventing one is how a meeting ends up an hour out.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ String, StringView };
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlKind, TomlValue };

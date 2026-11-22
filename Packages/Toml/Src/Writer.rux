@@ -20,7 +20,7 @@
 // larger had no way to know that was the problem. A header path that will not fit the buffer is `ValueOutOfRange`,
 // which is what that case is for: the document is good and the form asked for cannot hold it.
 
-import Core::int64;
+import Core::Primitives::*;
 import Format::{ ByteCursor, ParseFloat64, WriteDecimal };
 import Text::{ FormatError, TextWriter };
 

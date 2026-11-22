@@ -8,7 +8,7 @@
 // than letting each generator supply its own is what makes two generators seeded alike produce the same
 // sequence of *values*, not merely the same sequence of words.
 
-import Core::MinimumOf;
+import Core::Arithmetic::MinimumOf;
 
 /// A source of uniformly distributed 64-bit words.
 /// The single operation every generator supplies. Implementations must advance their own state, so the receiver

@@ -1,5 +1,6 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic, int32, int64, uint8 };
+import Core::Diagnostics::{ Assert, Panic };
+import Core::Primitives::*;
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter,
                WriteDebugValue, WriteValue };

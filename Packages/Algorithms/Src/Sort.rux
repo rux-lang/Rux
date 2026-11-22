@@ -28,7 +28,7 @@
 // nearly ordered, which is insertion sort's best case.
 const InsertionSortThreshold: uint = 16;
 
-import Core::{ Ordering };
+import Core::Compare::Ordering;
 
 /// Puts `items` into non-decreasing order.
 /// `items` is borrowed mutably and rewritten. Fewer than two elements are already sorted, so the data pointer is

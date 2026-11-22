@@ -1,4 +1,5 @@
-import Core::{ Assert, uint64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Aliasing(first: *var int, second: *var int, input: int) -> int {
     // Safety: both pointers address live `int` locals of `Main`; that they may be the same one is what this checks.

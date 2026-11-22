@@ -1,6 +1,6 @@
 import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout, SystemAllocator };
 import Collections::{ Array, Deque, EqualsInt32, HashInt32, HashMap, Vector };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // What the shared storage plumbing does, checked at the surface a caller can reach.
 // Every container in this package talks to its allocator through three helpers, and those helpers are package-

@@ -1,4 +1,6 @@
-import Core::{ Assert, Ordering, Result };
+import Core::Result;
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 
 struct Handle {
     value: int32;

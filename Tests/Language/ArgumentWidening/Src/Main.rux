@@ -6,7 +6,7 @@
 // Each callee below reads the part of its parameter that only a real conversion writes: the sign-extended high words,
 // the zero-extended high words, the exact float64 value, or the whole width of a bool as an integer.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func HighWords(value: int128) -> int128 {
     return value >> 64;

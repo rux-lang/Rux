@@ -1,5 +1,5 @@
-import Core::Assert;
-import Core::{ float80, float128, float256, float512 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const Wide: float64 = 16777216.0f32;
 

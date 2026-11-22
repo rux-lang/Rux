@@ -1,7 +1,7 @@
 // A constructor that can fail declares `throws` after `Self`, and its call is a throw site like any other: it is
 // marked with `try`, `try?` or `try ... catch`, and a value is only made when the constructor returns.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 enum RangeError: int32 {
     Negative = 1

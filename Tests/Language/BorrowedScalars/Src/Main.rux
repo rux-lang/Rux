@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func GenericRead<T>(value: &T) -> T { return value; }
 func Take(value: int32) -> int32 { return value; }

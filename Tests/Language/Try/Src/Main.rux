@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // `?` on an optional leaves through the enclosing optional, and `try` passes an error to the caller.
 

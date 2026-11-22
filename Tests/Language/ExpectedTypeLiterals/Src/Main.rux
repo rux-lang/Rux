@@ -3,8 +3,8 @@
 // can sit inside, not only for a literal written directly as an initializer: a match arm, an array element, a tuple
 // element, a range bound. Each case below writes its literals without a suffix and checks the value that arrived.
 
-import Core::Assert;
-import Core::{ char8, int128, int32, int64, uint128, uint32, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 interface Shape {
     func Area() -> int32;

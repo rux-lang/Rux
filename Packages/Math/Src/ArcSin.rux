@@ -3,7 +3,7 @@
 // is what avoids the derivative going to infinity at the endpoints. The result is in `[-Pi/2, Pi/2]`, and an
 // argument outside `[-1, 1]` is a NaN rather than a clamped answer.
 
-import Core::float64;
+import Core::Primitives::*;
 
 /// Computes the inverse sine of `x` in radians.
 /// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, either endpoint maps to the matching endpoint

@@ -2,7 +2,7 @@
 // IPv6 address, and `missing.test` does not exist. A server that never answers makes a lookup time out.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::IoErrorKind;
 import Net::{ IpAddress, Ipv4Address, Resolver, SocketAddress, UdpSocket };
 import Thread::Spawn;

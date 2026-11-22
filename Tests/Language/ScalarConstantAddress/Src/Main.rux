@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import ScalarConstantProvider::{ Shared, SharedAddress };
 
 const Byte: int8 = -7i8;

@@ -1,4 +1,6 @@
-import Core::{ Assert, Comparable, Equatable, Hashable, Iterable, Iterator, Ordering };
+import Core::Compare::{ Comparable, Equatable, Hashable, Ordering };
+import Core::Diagnostics::Assert;
+import Core::Iteration::{ Iterable, Iterator };
 
 // A resource value declares that copying is prohibited and releases itself with
 // its type-named destructor.

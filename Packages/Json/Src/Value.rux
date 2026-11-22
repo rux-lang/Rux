@@ -12,7 +12,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::Ordering;
+import Core::Compare::Ordering;
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 

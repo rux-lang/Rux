@@ -1,4 +1,5 @@
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 // Every body below is AArch64 machine code, written to exercise the four
 // things an `asm func` can do that the code generator never emits on its own:

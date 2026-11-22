@@ -3,7 +3,7 @@
 // program; and the process-wide settings answer as set.
 
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Io::{ IoError, IoErrorKind, Writer };
 import Log::{ Enabled, Field, Info, Level, LogFormat, Logger, SetLevel };
 

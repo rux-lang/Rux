@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // `option ?? fallback` on a native optional: the payload of one present level, or the fallback evaluated only for
 // absence, with every payload moved exactly once.

@@ -1,6 +1,6 @@
 import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition, RemoveValue,
                      Reverse, Rotate, SequenceEqual, Sort, SortHeap, StableSort, Sum, Unique, UpperBound };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // The phase gate for algorithms: every operation checked against a naive implementation of the same thing, over
 // pseudorandom sequences, at many lengths. A hand-written case checks what its author thought of; this checks what

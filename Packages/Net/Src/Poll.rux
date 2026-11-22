@@ -8,7 +8,9 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ #Error, #target, uint32 };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
+import Core::Primitives::*;
 import Io::{ IoError, IoErrorKind };
 import Net::{ FailureOf, LastFailure, NoSocket };
 import Time::Duration;

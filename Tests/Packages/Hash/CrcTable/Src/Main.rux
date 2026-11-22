@@ -1,7 +1,7 @@
 // The CRC tables are computed by the compiler from their polynomials. This pins them to the tables the package
 // spelled out by hand before, entry by entry, so a change in how constants are computed cannot move a single bit.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Hash::{ Crc32Table, Crc32cTable };
 
 const WrittenCrc32Table: uint32[256] = [

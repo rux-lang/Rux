@@ -6,7 +6,8 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ Panic, uint64 };
+import Core::Diagnostics::Panic;
+import Core::Primitives::*;
 import Time::{ DateTime, OffsetDateTime, Timestamp, UtcOffset };
 import TimeZone::{ NoRule, ParseRule, Rule, RuleTypeAt, TimeZoneError, ZoneType };
 

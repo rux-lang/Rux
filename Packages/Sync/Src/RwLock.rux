@@ -5,7 +5,7 @@
 // before it looked. Readers and writers are not queued in order, so a steady stream of readers can keep a writer
 // waiting.
 
-import Core::{ AtomicCompareExchange, AtomicFetchAdd, AtomicFetchSub, AtomicLoad, AtomicStore, MemoryOrder };
+import Core::Machine::{ AtomicCompareExchange, AtomicFetchAdd, AtomicFetchSub, AtomicLoad, AtomicStore, MemoryOrder };
 import Sync::{ AllocateBlock, DestroyBlock, ReleaseBlock, RetainBlock, WaitWhile, WakeAll };
 
 const Writing: uint32 = 0xFFFFFFFF;

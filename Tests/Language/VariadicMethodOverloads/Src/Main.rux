@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Two methods named alike whose only difference is the element type of their variadic parameter are two functions,
 // each with its own symbol, and a call goes to the one its arguments' type names.

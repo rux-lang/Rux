@@ -1,6 +1,7 @@
 import Allocator::SystemAllocator;
 import Collections::{ EqualsInt32, HashInt32, HashMap, HashSet, TableSeed };
-import Core::{ Assert, Panic, int32 };
+import Core::Diagnostics::{ Assert, Panic };
+import Core::Primitives::*;
 
 // The kernel both tables are built on, exercised where it is hardest: a table run right up against its load factor,
 // and one churned in an order nothing about the hash makes convenient.

@@ -1,4 +1,5 @@
-import Core::{ Assert, Ordering };
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 import Time::{ Date, DateTime, DaysInMonth, IsLeapYear, TimeOfDay, Timestamp, UtcOffset };
 
 // The calendar's own facts, at the corners where the formulas earn their keep: the century years that are not leap

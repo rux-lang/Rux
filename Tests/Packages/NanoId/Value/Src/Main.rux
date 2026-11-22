@@ -1,7 +1,7 @@
 // The NanoId value: generated identifiers differ, parsing accepts exactly the standard form and says where anything
 // else went wrong, and equality, ordering and presentation all read the same twenty-one characters.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 import NanoId::{ NanoId, NanoIdParseError };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFailure, ParseFormatSpec, TextWriter };
 

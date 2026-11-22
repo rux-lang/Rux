@@ -7,7 +7,7 @@
 // facts is the whole platform difference at this layer, and it is confined to two functions.
 
 import Allocator::Allocator;
-import Core::{ #target };
+import Core::Compilation::#target;
 
 /// Whether `unit` separates path segments on this system.
 /// Both slashes on Windows, the forward one alone elsewhere.

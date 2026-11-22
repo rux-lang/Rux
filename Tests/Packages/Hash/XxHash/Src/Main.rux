@@ -1,5 +1,5 @@
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Hash::{ HashBytes, XxBlockSize, XxHash64, XxHash64Of, XxHash64SeededOf };
 
 // The bytes a string spans, which is how a text overload reaches the byte one.

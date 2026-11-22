@@ -1,5 +1,5 @@
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 const Zeros: int[4] = [0; 4];
 

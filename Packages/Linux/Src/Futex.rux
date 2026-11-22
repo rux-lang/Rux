@@ -3,7 +3,8 @@
 // that in the kernel, so a wake that lands between the caller's check and its sleep is never lost. Only the private
 // forms are bound: the word is never shared with another process.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Linux::{ Syscall6, Timespec };
 
 when #target.arch {

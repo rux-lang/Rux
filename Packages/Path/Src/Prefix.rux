@@ -7,7 +7,7 @@
 // exactly as two names differing in case are: which spellings the system treats as one is the system's opinion,
 // and a path library that imitates it bakes today's opinion into tomorrow's comparison.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 
 /// The kind of prefix a path opens with.
 /// @see https://rux-lang.dev/docs/api/path/syntax#prefix-kind

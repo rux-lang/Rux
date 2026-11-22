@@ -3,7 +3,7 @@
 // continuous, so any sequence of reads totalling the same length gives the same bytes. A version that permuted
 // once per call rather than once per exhausted rate would pass the vectors and fail that.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Equal, Sha3Of256, Shake, Shake128Of, Shake256Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

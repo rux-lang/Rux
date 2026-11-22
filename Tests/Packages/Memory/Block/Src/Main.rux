@@ -1,4 +1,5 @@
-import Core::{ Assert, Ordering };
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 import Memory::{ Alloc, Compare, Copy, Equal, Find, Free, MismatchOffset, Move, Set, Zero };
 
 // The three things a block operation gets wrong quietly: touching a byte past its length, taking the wrong direction

@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A generic variant carrying a payload is wider than the word a tag and a payload are packed into, so it is built and
 // read as an aggregate: the tag at offset 0, the payload after it. The type a method returns has to say so as

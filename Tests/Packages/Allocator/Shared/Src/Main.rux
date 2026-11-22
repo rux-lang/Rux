@@ -1,5 +1,6 @@
 import Allocator::{ Arc, Rc, SystemAllocator };
-import Core::{ Assert, AtomicFetchAdd, AtomicLoad, MemoryOrder };
+import Core::Diagnostics::Assert;
+import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
 import Thread::Spawn;
 
 // Clones of a handle share one value and count themselves; the value is destroyed exactly once, when the last handle

@@ -7,7 +7,8 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Io::{ IoError, IoErrorKind };
 import Net::{ Decode, IpAddress, ResolveOnLinux, SocketAddress, StartNetworking };
 

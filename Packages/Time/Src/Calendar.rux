@@ -6,7 +6,7 @@
 // Leap seconds are deliberately absent from `TimeOfDay`: a second is 0 to 59, and what to do about 23:59:60 is a
 // parsing policy decided where text comes in, not a representation question.
 
-import Core::{ AddChecked, MulChecked, Ordering };
+import Core::Compare::Ordering;
 
 /// A calendar date that exists.
 /// `Copy`. Only constructible through the fallible `New` factory, which lets everything downstream assume validity.

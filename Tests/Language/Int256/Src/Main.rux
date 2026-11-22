@@ -4,8 +4,8 @@
 // lanes as well as bits, and the value is large enough that the compiler cannot fall back on anything a register
 // can hold. The sign still lives in the top bit of the top lane, three lanes away from the low one.
 
-import Core::Assert;
-import Core::{ int128, int256, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: int256) -> int256 {
     return value;

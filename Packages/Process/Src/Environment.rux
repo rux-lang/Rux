@@ -8,7 +8,9 @@
 // told of each change, so code that asks the system sees it too; the C library's own environment on the Unix systems
 // is not changed.
 
-import Core::{ #target, AtomicExchange, Iterator, MemoryOrder, SpinHint };
+import Core::Compilation::#target;
+import Core::Iteration::Iterator;
+import Core::Machine::{ AtomicExchange, MemoryOrder, SpinHint };
 import Io::{ IoError, IoErrorKind };
 import Memory::{ Alloc, Realloc };
 import Path::{ OsStringView, OsUnit };

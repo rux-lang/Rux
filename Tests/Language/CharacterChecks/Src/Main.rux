@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Scalar(value: uint128) -> char128 { return value as char128; }
 func Unit(value: uint32) -> char16 { return value as char16; }

@@ -4,7 +4,9 @@
 // ended by its '}'. A block runs exactly as the statements it holds would: its locals are destroyed at its end, a
 // `return` or `break` inside it leaves as it would anywhere, and a `defer` can hold one.
 
-import Core::{ Assert, AtomicFetchAdd, AtomicLoad, MemoryOrder, Zeroize, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::Assert;
+import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder, Zeroize };
 
 when #target.os {
     .FreeBSD => const CLibrary = "libc.so.7";

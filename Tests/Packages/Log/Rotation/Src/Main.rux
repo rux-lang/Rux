@@ -3,7 +3,7 @@
 // ever kept. Every file holds whole records only.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle };
 import Io::{ IoErrorKind };
 import Log::{ LogFormat, Logger, RotatingFile };

@@ -3,8 +3,8 @@
 // whether conversion to another width preserves meaning. This is the width where a source whose low four bytes are
 // zero first exists without needing a wider source type than int64, so that is the cast worth writing down.
 
-import Core::Assert;
-import Core::{ bool32, bool64, bool8, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: bool32) -> bool32 {
     return value;

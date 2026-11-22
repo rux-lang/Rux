@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // `String` is a name like any other.
 // The compiler used to know it: any type so named was sized at sixteen bytes and resolved to a built-in kind, so

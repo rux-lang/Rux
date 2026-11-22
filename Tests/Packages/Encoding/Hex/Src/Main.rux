@@ -4,7 +4,7 @@
 // The refusals check two things together: the reason and offset reported, and that the destination still holds the
 // sentinel it was filled with beforehand, which is what "left exactly as it was" means.
 
-import Core::Panic;
+import Core::Diagnostics::Panic;
 import Encoding::{ DecodeError, HexCase, HexDecode, HexDecodedLength, HexEncode, HexEncodedLength, ViewHex };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter };
 

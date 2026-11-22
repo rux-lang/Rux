@@ -5,7 +5,7 @@
 
 import Allocator::SystemAllocator;
 import Collections::{ ReferenceIterator, Vector };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Text::String;
 
 struct Point {

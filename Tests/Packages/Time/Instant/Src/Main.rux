@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, Instant, SleepFor, TimeError };
 

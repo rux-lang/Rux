@@ -10,7 +10,7 @@
 // **Not suitable for anything that must resist an adversary.** The output function is not invertible in one
 // step, but nothing here is designed against an attacker who is trying.
 
-import Core::uint128;
+import Core::Primitives::*;
 
 /// The multiplier used by both the state step and the output function.
 /// PCG's "cheap" 64-bit multiplier, which the DXSM variant uses in the 128-bit step as well.

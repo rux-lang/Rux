@@ -3,7 +3,8 @@
 // are resolved as such.
 
 import Allocator::SystemAllocator;
-import Core::{ #target, Assert };
+import Core::Compilation::#target;
+import Core::Diagnostics::Assert;
 import Time::{ Date, DateTime, TimeOfDay, Timestamp, UtcOffset };
 import TimeZone::{ LocalTimeKind, TimeZone };
 

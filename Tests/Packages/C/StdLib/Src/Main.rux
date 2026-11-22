@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import C::{ abs, atof, atoi, atol, atoll, calloc, free, labs, llabs, malloc, rand, realloc, srand };
 
 func Main() -> int {

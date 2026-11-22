@@ -1,4 +1,5 @@
-import Core::{ Assert, uint64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Main() -> int {
     let a: uint64 = 1000000000;

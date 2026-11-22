@@ -1,4 +1,4 @@
-import Core::Panic;
+import Core::Diagnostics::Panic;
 
 func Main() {
     Panic("native Windows ARM64 panic fixture");

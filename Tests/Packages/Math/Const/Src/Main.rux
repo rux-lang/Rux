@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::E;
 import Math::Log2E;
 import Math::Log10E;

@@ -3,7 +3,7 @@
 // instance. The value's own type parameters need not be spelled like the function's, and inside a generic function
 // the instance follows that function's own type arguments.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Box<T> {
     value: T;

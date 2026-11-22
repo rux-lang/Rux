@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func divide(a: int, b: int) -> (int, bool) {
     if b == 0 {

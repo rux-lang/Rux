@@ -2,7 +2,7 @@
 // document far larger than the buffer must stream through it without the buffer growing.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError, JsonReadError, Parse };
 import Text::{ BufferWriter, FormatSpec, TextWriter };

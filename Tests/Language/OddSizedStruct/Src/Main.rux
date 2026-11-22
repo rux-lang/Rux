@@ -3,7 +3,7 @@
 // to a register width loses the tail, and one rounded up reads or writes past the object. Sizes one, two, four
 // and eight ride along to pin the widths that always worked.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct B1 {
     f0: bool;

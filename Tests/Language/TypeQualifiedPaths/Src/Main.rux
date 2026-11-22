@@ -2,7 +2,8 @@
 // `Buffer<int>::Make(...)` through an instantiation, `Result<int, E>::Failure(...)` with the type's arguments written
 // before the member's, and `Kept::Success(...)` through an alias of an instantiation, whose arguments the case takes.
 
-import Core::{ Assert, Result };
+import Core::Result;
+import Core::Diagnostics::Assert;
 
 struct Buffer<T> {
     count: uint;

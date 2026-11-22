@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::SmallVector;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // Elements stay inline until 64 bytes are used, then move to the heap with their order; elements that own something
 // are moved, popped and destroyed exactly once; and an element too large for the inline room goes straight to the

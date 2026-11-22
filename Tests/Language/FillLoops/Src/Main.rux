@@ -3,7 +3,7 @@
 // starts at an odd offset so the wide stores are unaligned, uses a value whose bytes differ so a store of the wrong
 // width or order shows, and checks that the elements before and after the filled range keep their sentinels.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var Bytes: uint8[64] = [0u8; 64];
 var Halves: int16[64] = [0i16; 64];

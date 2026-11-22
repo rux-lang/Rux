@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Offsetting a pointer moves it by whole elements, so the byte distance it
 // travels is the size of the pointee. That scaling used to be computed during

@@ -7,7 +7,8 @@
 // above it: `Rux/Allocator` gives a zero-sized request a shared non-null address so that no caller has to
 // branch, and does that itself.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },

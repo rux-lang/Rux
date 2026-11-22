@@ -4,7 +4,7 @@
 // where the expected function type supplies them. A literal is a value like a named function: passed, stored,
 // returned, called on the spot, and handed to a generic function, which deduces its type parameters from it.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 const Limit: int = 100;
 

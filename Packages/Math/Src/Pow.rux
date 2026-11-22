@@ -5,7 +5,7 @@
 // A whole-number exponent should go to `PowInteger`, which is exact wherever an exact answer is representable
 // and does not return 999.9999999999999 for the cube of ten.
 
-import Core::float64;
+import Core::Primitives::*;
 
 // log2 of the argument, as an unevaluated sum hi + lo of two doubles.
 struct Log2Pair {

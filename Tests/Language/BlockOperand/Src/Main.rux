@@ -3,7 +3,7 @@
 // position, so it yields its last expression. A token that could start the next statement, such as `*`, `-` or `(`,
 // ends the block as before.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Pair {
     left: int;

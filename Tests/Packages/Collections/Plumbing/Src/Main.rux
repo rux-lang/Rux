@@ -1,6 +1,6 @@
-import Core::{ uint };
+import Core::Primitives::*;
 import Collections::{ CollectionError, MutableReferenceIterator, ReferenceIterator, ValueIterator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // The plumbing every container shares: what an error means, and what the iterators yield. None of it is
 // interesting on its own, which is exactly why it is worth testing once here rather than discovering it through

@@ -1,6 +1,6 @@
 // How severe a record is, and the least severe level a build keeps.
 
-import Core::#config;
+import Core::Compilation::#config;
 
 /// How severe a record is, from the most detailed to the most serious. `Copy`.
 /// @see https://rux-lang.dev/docs/api/log/level#level

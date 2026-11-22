@@ -24,7 +24,7 @@ TEST_CASE("a configuration value is compared as text while compiling") {
     // Comparing two strings has no runtime meaning and is refused there; in a `when` condition the compiler holds
     // both sides and answers from their contents, which is what selects a branch on a configuration value.
     auto parsed = ParseSource(R"(
-import Core::{ #config };
+import Core::Compilation::#config;
 
 when #config.Get("allocator") == "arena" {
     func Chosen() -> int { return 1; }
@@ -68,7 +68,7 @@ when #config.Get("allocator") != "system" {
 
 TEST_CASE("the conditional evaluator returns typed results without mutating the module") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, #build, #compiler, #source, #config };
+import Core::Compilation::{ #target, #build, #compiler, #source, #config };
 
 when #target.os == .Windows &&
     #build.profile == "Release" &&

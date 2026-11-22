@@ -7,7 +7,7 @@
 // condition to fall out of, `while` re-tests before the body, `do`-`while` re-tests after it, and `for` advances an
 // iterator.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // The plain form: leave the innermost loop at once.

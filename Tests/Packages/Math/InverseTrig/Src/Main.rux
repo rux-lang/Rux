@@ -3,7 +3,7 @@
 // away, and that information lives entirely in special cases — including the signed zeros, which decide which
 // side of the negative axis a point is on.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, ArcCos, ArcCot, ArcSin, ArcTan, ArcTan2, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64, SignBit,
                Sin, Tan, UlpDistance };
 

@@ -1,6 +1,6 @@
 import Allocator::{ AllocError, Allocator, ClassIndexFor, FixedBuffer, IsEmptyBlock, Layout, Pool, PoolAlignment,
                     PoolClassCount, PoolLargestClass, PoolSmallestClass, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Memory::IsPointerAligned;
 
 // A pool rounds a request up to a size class and serves it from that class's free list, so what is checked is that

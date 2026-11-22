@@ -6,7 +6,7 @@
 // names, atomically within a volume, which is what makes it the publishing step of atomic replacement.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target };
+import Core::Compilation::#target;
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsUnit, Path };
 

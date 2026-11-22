@@ -6,7 +6,7 @@
 // Destruction is case-aware. Every check that holds a tracked payload counts destructions, so a value that moved into a
 // wider sum, into a binding, or out through a call is shown to be destroyed exactly once, and an inactive member never.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Counter {
     count: int32;

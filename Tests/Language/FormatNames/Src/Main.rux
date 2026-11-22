@@ -4,7 +4,7 @@
 // way: these checks compare a named call with the positional call it stands for.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::Render;
 import Text::{ FormatError, String, StringView };
 

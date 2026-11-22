@@ -7,7 +7,7 @@
 // the parse of the rest, which was validated with the first.
 
 import Path::{ OsStringView, OsUnit };
-import Core::Iterator;
+import Core::Iteration::Iterator;
 
 /// Arguments that matched a command.
 /// `Copy`, owning nothing: it borrows the specification and the arguments, both of which must outlive it.

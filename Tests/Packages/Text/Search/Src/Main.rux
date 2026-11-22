@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Text::{ IsAsciiSpace, StringView };
 
 // Searching is over bytes, and works out to searching over characters for free: UTF-8 is self-synchronising, so no

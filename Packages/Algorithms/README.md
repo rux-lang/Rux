@@ -112,6 +112,10 @@ let view = values[..5];
 Rotate<int32>(view, 2);
 ```
 
+## Lazy adaptors
+
+`Map`, `Filter`, `Take`, `Skip`, `Enumerate`, `Zip` and `Chain` wrap any `Cursor<T>` — a type whose `Next` returns `T?`, such as a container's iterator, `Walk` over a slice, or another adaptor — and compute each item only when it is asked for. Their item types are deduced from the wrapped cursor, so `Take(Filter(Map(Walk(items), Square), IsEven), 3)` needs no type arguments. They moved here from Core, which declares only what the compiler provides.
+
 ## What it provides
 
 | Function       | Mutates | Returns                       | Complexity | Requires on `T` |
@@ -174,7 +178,7 @@ The comparator answers "does `a` come strictly before `b`" — the same question
 
 ```rux
 import Algorithms::SortBy;
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 struct Task {
     priority: int32;

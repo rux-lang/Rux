@@ -4,7 +4,8 @@
 // stays valid at every instantiation by ending in `else`. Native values built in one module are read in another with
 // the same identity and layout, aliases name exactly their members, and a named error wrapper keeps its cause.
 
-import Core::{ Assert, Result };
+import Core::Result;
+import Core::Diagnostics::Assert;
 import GenericSum::Shapes::{ Box, Boxes, Choose, Complete, IoError, Load, LoadError, Lookup, Nest, ParseError, Read,
                              ReadError, Timeout, WithTimeout };
 

@@ -6,7 +6,8 @@
 // buffer grown until the whole path fits.
 
 import Allocator::Allocator;
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsStringView, OsUnit, Path, PathBuffer };
 import Process::{ Buffer, FailureOf };

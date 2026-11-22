@@ -4,16 +4,18 @@
 // owning type does when it runs out of memory; a type whose callers may need to recover also offers
 // `TryClone() -> Self throws AllocError`, which is not part of this bound.
 
-/// A type whose values can be duplicated by calling `Clone`: the bound generic code writes before it duplicates an
-/// owning value of its type parameter.
-/// A clone is independent of its source: each owns what it holds and releases it on its own, and changing one never
-/// changes the other. A handle that shares one value, such as `Rc`, clones by adding another owner of that value.
-/// @see https://rux-lang.dev/docs/api/core/cloneable
-pub interface Cloneable {
-    /// An independent duplicate of this value.
-    /// Borrows the source and leaves it unchanged. An implementation that allocates terminates the program when its
-    /// allocation fails, because the duplicate it promises cannot be made.
-    /// @returns a value equal to this one that owns its own resources
-    /// @see https://rux-lang.dev/docs/api/core/cloneable#clone
-    func Clone(&self) -> Self;
+pub module Ownership {
+    /// A type whose values can be duplicated by calling `Clone`: the bound generic code writes before it duplicates an
+    /// owning value of its type parameter.
+    /// A clone is independent of its source: each owns what it holds and releases it on its own, and changing one never
+    /// changes the other. A handle that shares one value, such as `Rc`, clones by adding another owner of that value.
+    /// @see https://rux-lang.dev/docs/api/core/cloneable
+    pub interface Cloneable {
+        /// An independent duplicate of this value.
+        /// Borrows the source and leaves it unchanged. An implementation that allocates terminates the program when its
+        /// allocation fails, because the duplicate it promises cannot be made.
+        /// @returns a value equal to this one that owns its own resources
+        /// @see https://rux-lang.dev/docs/api/core/cloneable#clone
+        func Clone(&self) -> Self;
+    }
 }

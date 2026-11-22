@@ -5,7 +5,7 @@
 // it, takes it by value in an `extend` block on a primitive, belongs to a generic type or declares its own type
 // parameter.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Select(values: int32...) -> int32 { return 1i32; }
 func Select(values: float64...) -> int32 { return 2i32; }

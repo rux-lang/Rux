@@ -2,7 +2,7 @@
 // Addresses are passed as the `sockaddr` bytes the kernel reads, built by the caller, so these wrappers stay as thin
 // as the rest of the package. Name resolution is not a system call and lives in `Rux/Net`.
 
-import Core::int32;
+import Core::Primitives::*;
 import FreeBSD::{ FileDescriptor, SignExtendFd, Syscall6 };
 
 const SysReceiveFrom: uint64 = 29;

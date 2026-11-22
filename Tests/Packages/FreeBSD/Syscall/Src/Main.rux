@@ -1,4 +1,4 @@
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::FreeBSD {
     import FreeBSD::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST,

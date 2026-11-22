@@ -6,7 +6,7 @@
 // value appends its id to a log as it is destroyed, while each check appends 00 where it stands, so the log is the
 // exact order of events.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Log {
     copies: int32;

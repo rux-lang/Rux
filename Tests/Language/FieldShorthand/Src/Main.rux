@@ -5,7 +5,7 @@
 // literal reads the same way: `Point { x, y }` is `Point { x: x, y: y }`, and a move-only binding is still moved with
 // `move` written out.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Point {
     x: int32;

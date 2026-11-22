@@ -6,7 +6,8 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::{ #target, uint16, uint32, uint64 };
+import Core::Compilation::#target;
+import Core::Primitives::*;
 import Io::{ IoError, IoErrorKind, ReadExact, WriteAll };
 import Net::{
     IpAddress, Ipv4Address, Ipv6Address, SocketAddress, TcpStream, UdpSocket

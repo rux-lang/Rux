@@ -1,5 +1,5 @@
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Hash::{ Crc32, Crc32Initial, Crc32Of, Crc32Polynomial, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial,
                Crc32cTable, HashBytes };
 

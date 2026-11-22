@@ -1,6 +1,6 @@
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.

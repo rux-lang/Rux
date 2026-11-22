@@ -5,8 +5,8 @@
 // more than all 511 others together, and the exact decoding of a 155-digit literal that has no machine
 // representation to pass through on the way in.
 
-import Core::Assert;
-import Core::{ int512, uint256, uint512 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: uint512) -> uint512 {
     return value;

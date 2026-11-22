@@ -8,7 +8,7 @@
 // colliding so badly that no table could place them.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator };
-import Core::Iterator;
+import Core::Iteration::Iterator;
 
 /// A hash table of distinct values.
 /// Move-only: it owns its elements and its storage.

@@ -7,9 +7,9 @@
 // UTF-8 and required to round-trip anyway.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
-import Core::#target;
+import Core::Compilation::#target;
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import FileSystem::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
 

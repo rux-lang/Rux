@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A conditional expression whose arm holds another one.
 // The value the merge takes comes from whichever arm ran, and which block that value is in is the block the arm

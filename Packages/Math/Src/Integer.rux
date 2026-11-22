@@ -1,15 +1,15 @@
 // Integer arithmetic with a mathematical flavour: magnitude, ordering, and the number-theory pair.
 // Everything here is generic over the integer type in the same way `Core`'s checked arithmetic is, and for the same
-// reason: an integer's zero, its signedness and its two limits all follow from one operand, so `int8` and `uint512`
-// run the same code and no width can be forgotten. Nothing here is written per width.
-// The operations that can fail say so by returning `true`, matching `AddChecked` and its family exactly. That
-// convention reads backwards the first time - `true` means the answer is not the true one - but a family that
-// disagrees with itself about which way the flag points is far worse than one that is uniformly surprising.
-// Where an operation can fail, it is because the two's-complement range is not symmetric: the most negative value of
-// every signed width has no positive counterpart, so its magnitude, its negation and its greatest common divisor with
-// zero are all unrepresentable. That one asymmetry is behind nearly every edge case below.
+// reason: an integer's zero, its signedness and its two limits all follow from one operand, so `int8` and `uint512` run
+// the same code and no width can be forgotten. Nothing here is written per width. The operations that can fail say so
+// by returning `true`, matching the multiplication helper at the end of this file. That convention reads backwards the
+// first time - `true` means the answer is not the true one - but a family that disagrees with itself about which way
+// the flag points is far worse than one that is uniformly surprising. Where an operation can fail, it is because the
+// two's-complement range is not symmetric: the most negative value of every signed width has no positive counterpart,
+// so its magnitude, its negation and its greatest common divisor with zero are all unrepresentable. That one asymmetry
+// is behind nearly every edge case below.
 
-import Core::{ MaximumOf, MinimumOf, MulChecked };
+import Core::Arithmetic::{ MaximumOf, MinimumOf };
 
 /// The magnitude of `value`, reporting whether it is representable.
 /// `result` receives the magnitude the machine produced, which is the true one when this returns `false` and the
@@ -183,4 +183,27 @@ pub func PowChecked<T>(base: T, exponent: uint, result: *var T) -> bool {
     // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
     *result = accumulated;
     return overflowed;
+}
+
+// Multiplies two integers of any width and reports whether the true product is representable, writing the product
+// the machine produced. Core keeps the same helper for its `CheckedMul` methods; generic code here needs it over `T`.
+func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
+    let product = left *% right;
+    // Safety: the documented contract makes `result` a non-null pointer to the caller's writable `T`.
+    *result = product;
+    let zero = left - left;
+    if left == zero {
+        // Nothing to divide by, and zero times anything is exact.
+        return false;
+    }
+    if (zero -% 1) < zero {
+        // Dividing the most negative value by -1 is the one division that has no answer, so that pair is reported
+        // before the check below would attempt it. It does overflow: negating the most negative value cannot fit.
+        let minimum = MinimumOf<T>(left);
+        let negativeOne = zero -% 1;
+        if left == negativeOne && right == minimum { return true; }
+        if right == negativeOne && left == minimum { return true; }
+    }
+    // Recovering the other operand from the product is exact exactly when nothing was lost.
+    return product / left != right;
 }

@@ -4,7 +4,7 @@
 // source: no user code runs, the source's destructor does not run, and the value's last owner destroys it exactly
 // once.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var drops: int = 0;
 var order: int = 0;

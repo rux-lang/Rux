@@ -8,7 +8,8 @@
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Core::{ #target, Cloneable };
+import Core::Compilation::#target;
+import Core::Ownership::Cloneable;
 import Memory::Copy;
 import Text::{ DecodeAt, String, StringBuilder, TextError };
 

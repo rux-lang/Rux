@@ -4,8 +4,8 @@
 // top bit is an ordinary value bit, so a number with it set is the largest rather than the smallest. Those are the
 // assertions worth having here; the shared lane arithmetic is pinned once in the signed case.
 
-import Core::Assert;
-import Core::{ int128, uint128, uint64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: uint128) -> uint128 {
     return value;

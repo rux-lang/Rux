@@ -1,6 +1,6 @@
 // A native optional: a present value or absence, asked about, recovered from, and matched.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     let optSome: int? = .Some(42);

@@ -1,4 +1,5 @@
-import Core::{ Assert, int32, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Main() -> int {
     let a: int32 = 100000;

@@ -61,7 +61,7 @@ The wrappers that take a raw pointer the kernel reads or writes — a buffer and
 Linux only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Core::{ #target };
+import Core::Compilation::#target;
 
 when #target.os == .Linux {
     import Linux::{ StdOut, Write };

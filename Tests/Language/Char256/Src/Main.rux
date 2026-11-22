@@ -4,8 +4,8 @@
 // into one, a literal folded into static data, and a value carried through fields, elements, arguments and returns,
 // all of which a 32-byte value passes and stores in memory rather than in registers.
 
-import Core::Assert;
-import Core::{ char256, uint256 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const Face = c256'😀';
 const Last: char256 = c256'\u{10FFFF}';

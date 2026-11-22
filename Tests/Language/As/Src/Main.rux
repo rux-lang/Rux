@@ -9,9 +9,8 @@
 // code unit of an encoding — widen implicitly to nothing at all. `as` crosses those boundaries anyway, which is
 // what makes it explicit.
 
-import Core::Assert;
-import Core::{ bool8, char16, char32, char64, char8, float32, float64, int16, int32, int64, int8, uint16, uint32,
-               uint64, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Main() -> int {
     // Widening: a signed source sign-extends, an unsigned source brings in zeros. The same bit pattern, -1 as int8

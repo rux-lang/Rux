@@ -28,7 +28,7 @@
 // of two, `HomeOf` and `NextOf` always name a slot below it.
 
 import Allocator::{ AllocError, AllocationFailed };
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::Allocator;
 import Entropy::NextUint64;
 

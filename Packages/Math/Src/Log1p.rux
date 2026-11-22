@@ -4,7 +4,7 @@
 // argument approaches zero. It is the inverse of `Expm1` and the reason the inverse hyperbolic functions can
 // be accurate near zero at all.
 
-import Core::float64;
+import Core::Primitives::*;
 
 /*
     log(1 + x), computed without ever forming that sum.

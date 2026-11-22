@@ -16,7 +16,7 @@
 // that no table could place them, which only a broken hash produces; that is reported as `Unsupported`.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator };
-import Core::Iterator;
+import Core::Iteration::Iterator;
 
 /// A hash table from keys to values.
 /// Move-only: it owns its entries and storage and prohibits copying.

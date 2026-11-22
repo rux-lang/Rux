@@ -7,8 +7,8 @@
 // its stored bits, read through a pointer, so a wrong sign on a zero or a wrong last bit fails rather than comparing
 // equal. A NaN result is only checked to be a NaN, since its sign and payload are unspecified.
 
-import Core::Assert;
-import Core::{ float16, float8, float80, float128, float256, float512 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const Third: float8 = 0.34375f8;
 const Large: float8 = 192.0f8;

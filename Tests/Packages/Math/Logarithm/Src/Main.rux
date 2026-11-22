@@ -2,7 +2,7 @@
 // obvious spelling stops working at all. The exactness claims matter most: Log2 of a power of two and Log10 of
 // a power of ten must be whole numbers, which is precisely what scaling a natural logarithm cannot deliver.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, E, Exp, Expm1, IsNan, Log, Log10, Log1p, Log2, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo,
                SignBit, UlpDistance };
 

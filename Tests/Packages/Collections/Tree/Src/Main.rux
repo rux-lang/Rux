@@ -1,6 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Tree, TreeNode };
-import Core::{ Assert, Ordering, Panic };
+import Core::Compare::Ordering;
+import Core::Diagnostics::{ Assert, Panic };
 
 // The red-black kernel, checked against its own rules rather than against its outputs.
 // A balanced tree that is merely wrong about a colour still answers every lookup correctly, and goes on doing so

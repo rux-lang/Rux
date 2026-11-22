@@ -4,7 +4,8 @@
 import Allocator::SystemAllocator;
 import Collections::Vector;
 import Compress::{ Compress, Decompress, Format, Level };
-import Core::{ Assert, uint32 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 import Io::IoErrorKind;
 
 // Streams made by Python's zlib from the same text, for checking this decoder against zlib's encoder.

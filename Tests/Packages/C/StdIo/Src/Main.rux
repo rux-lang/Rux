@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import C::{ free, malloc, putchar, puts, sprintf, sscanf };
 
 func Main() -> int {

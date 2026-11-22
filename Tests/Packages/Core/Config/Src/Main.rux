@@ -1,4 +1,5 @@
-import Core::{ Assert, #config };
+import Core::Compilation::#config;
+import Core::Diagnostics::Assert;
 
 // Config's whole surface is the #config.Has and #config.Get intrinsics, which
 // take a string literal and are answered while compiling. This test package

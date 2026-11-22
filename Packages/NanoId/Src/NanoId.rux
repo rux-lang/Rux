@@ -5,7 +5,7 @@
 // Parsing is strict about the form: exactly twenty-one characters, each from the default alphabet. An identifier
 // from a custom alphabet or of another length is a different kind of value and stays in a buffer.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 import Entropy::EntropyError;
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter,
                WriteBytes, WriteDisplayAligned };

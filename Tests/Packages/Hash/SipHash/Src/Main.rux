@@ -1,4 +1,5 @@
-import Core::{ Assert, uint };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 import Hash::{ HashBytes, SipHash24, SipHash24Of };
 
 // The SipHash paper publishes the hash of every input from zero to sixty-three bytes under one fixed key, where byte

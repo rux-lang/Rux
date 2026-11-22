@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Max<T>(a: T, b: T) -> T {
     if (a > b) {

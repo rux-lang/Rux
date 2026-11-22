@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Reaching a generic struct's field recovers the struct's type arguments by
 // reading them back out of the receiver's printed name, where `T` the parameter

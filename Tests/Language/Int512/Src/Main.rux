@@ -5,8 +5,8 @@
 // lanes above the low one. This is also where a literal must be decoded exactly, since no intermediate machine
 // representation could hold one on the way in.
 
-import Core::Assert;
-import Core::{ int256, int512, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: int512) -> int512 {
     return value;

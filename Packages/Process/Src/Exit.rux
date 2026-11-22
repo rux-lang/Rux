@@ -3,7 +3,9 @@
 // a buffered writer that has not been flushed loses what it holds, which is why returning from `Main` is the ordinary
 // way to finish and `Exit` is for leaving from somewhere `Main` cannot be returned to.
 
-import Core::{ #Error, #target, int32 };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
+import Core::Primitives::*;
 
 when #target.os {
     .Linux => import Linux::GetPid,
@@ -15,7 +17,7 @@ when #target.os {
 
 // The Unix systems name their exit `Exit`, as this package does, so the system's is reached from a module of its own.
 module SystemExit {
-    import Core::#target;
+    import Core::Compilation::#target;
 
     when #target.os {
         .Linux => import Linux::Exit,

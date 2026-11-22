@@ -1,4 +1,5 @@
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Entropy::{ EntropyError, EntropySource, Fill, FillFrom, FillWithRetries, NextUint64, SystemEntropy };
 
 // The failure paths are what this tests, and they cannot be reached through the real generator: they need a kernel

@@ -7,8 +7,8 @@
 // through memory by hand — and it is also why a union is unlike a `variant`: nothing records which member is live,
 // so reading the wrong one is not an error, it is a reinterpretation.
 
-import Core::Assert;
-import Core::{ float32, int32, uint32, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 union Bits {
     asSigned: int32,

@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ Replace, StringView, ToAsciiLower, ToAsciiUpper };
 
 // Replacement and case conversion make new text out of old, so the questions are about edges: a needle at either

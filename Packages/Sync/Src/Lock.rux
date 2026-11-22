@@ -2,7 +2,7 @@
 // initialization. Neither needs destroying, so either can be a module variable, which every thread names directly,
 // or a field of a value that is itself shared.
 
-import Core::{ AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder };
+import Core::Machine::{ AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder };
 import Sync::{ LockWord, TryLockWord, UnlockWord, WaitWhile, WakeAll };
 
 /// A lock that guards nothing in particular: whatever the code between `Acquire` and `Release` touches.

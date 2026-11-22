@@ -320,8 +320,11 @@ void CollectDecl(const Decl &declaration, const bool inheritedPublic, std::vecto
         return;
     }
     if (const auto *module = dynamic_cast<const ModuleDecl *>(&declaration)) {
-        for (const auto &item : module->items) {
-            CollectDecl(*item, visible, subjects);
+        // A member of a public module is public only when it says so itself, and nothing below a private one is.
+        if (visible) {
+            for (const auto &item : module->items) {
+                CollectDecl(*item, false, subjects);
+            }
         }
         return;
     }

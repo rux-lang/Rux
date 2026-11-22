@@ -2,7 +2,7 @@
 // The FIPS 202 vectors for all four sizes, and the incremental contract. The rate differs per size here, unlike
 // SHA-2's fixed block, so a padding mistake can hide at one size and show at another.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Digest, Equal, Sha3, Sha3Of224, Sha3Of256, Sha3Of384, Sha3Of512 };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

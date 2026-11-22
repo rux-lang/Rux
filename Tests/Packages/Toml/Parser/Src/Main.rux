@@ -4,7 +4,8 @@
 // writer to work out which of the three they had broken.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 

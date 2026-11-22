@@ -5,7 +5,7 @@
 // the classification of `1979` against `1979-05-27` is checked here rather than assumed.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ String };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 

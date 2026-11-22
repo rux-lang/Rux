@@ -12,7 +12,7 @@
 // the 16-byte value instead, so the method read `data` as the address of the pair. The sink at the end checks a
 // slice arrives intact through the vtable.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {

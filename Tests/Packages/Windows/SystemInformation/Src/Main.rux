@@ -1,4 +1,4 @@
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
     import Windows::{ ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER, ERROR_MORE_DATA, GetLastError,

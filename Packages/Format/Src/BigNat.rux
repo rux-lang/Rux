@@ -10,7 +10,7 @@
 // hundred words.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ uint128, uint512 };
+import Core::Primitives::*;
 
 /// A natural number of any size, held as little-endian 64-bit limbs.
 /// The BigNat invariant, which every method keeps and every raw access below rests on: `limbs` is null with

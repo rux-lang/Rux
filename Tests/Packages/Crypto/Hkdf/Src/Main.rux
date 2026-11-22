@@ -2,7 +2,7 @@
 // The RFC 5869 vectors, both stages separately, plus the length limit and the separation properties that are
 // the reason to use HKDF rather than hashing a secret and hoping.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Equal, Hkdf, HkdfExpand, HkdfExtract, Sha256, Sha512 };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

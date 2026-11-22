@@ -1,5 +1,6 @@
 
-import Core::{ Assert, Ordering, Panic };
+import Core::Compare::Ordering;
+import Core::Diagnostics::{ Assert, Panic };
 import Text::StringView;
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.

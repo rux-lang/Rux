@@ -4,8 +4,8 @@
 // character widened into one from every scalar width, a literal folded into static data, and a value carried through
 // fields, elements, arguments and returns, all of which a 64-byte value passes and stores in memory.
 
-import Core::Assert;
-import Core::{ char512, uint512 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const Face = c512'😀';
 const Last: char512 = c512'\u{10FFFF}';

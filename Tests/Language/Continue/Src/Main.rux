@@ -7,7 +7,7 @@
 // terminates. Every loop here therefore advances its counter before continuing.
 // The labelled form is the other half: it resumes the loop it names, abandoning the rest of every loop inside it.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // The rest of the body is skipped; the loop is not left.

@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // An Option-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
 variant Option<T> {

@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec };
 import Time::{ ParseRfc3339, Timestamp };
 

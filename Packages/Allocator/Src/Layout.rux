@@ -7,7 +7,7 @@
 // nothing downstream has to check again.
 // `ForValue<T>` and `ForArray<T>` describe storage without constructing a value and use the type's actual alignment.
 
-import Core::uint;
+import Core::Primitives::*;
 import Memory::AlignUpChecked;
 
 /// A validated allocation request: a size, and the alignment its address must satisfy.

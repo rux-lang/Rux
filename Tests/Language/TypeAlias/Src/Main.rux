@@ -7,8 +7,8 @@
 // interchangeable with each other, so `type Metres = int32` and `type Feet = int32` do not stop the two being
 // added together. A distinct type needs a struct.
 
-import Core::Assert;
-import Core::{ int32, int64, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 type Count = int32;
 type Offset = int32;

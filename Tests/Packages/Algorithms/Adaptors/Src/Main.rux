@@ -1,6 +1,7 @@
+import Algorithms::{ Chain, Enumerate, Filter, Map, Skip, Take, Walk, Zip };
 import Allocator::SystemAllocator;
 import Collections::Vector;
-import Core::{ Assert, Chain, Enumerate, Filter, Map, Skip, Take, Walk, Zip };
+import Core::Diagnostics::Assert;
 
 // Each adaptor changes what a cursor yields and asks it for nothing it does not need; adaptors feed each other with
 // no type arguments written; and a container's own iterator feeds them as well as a slice does.

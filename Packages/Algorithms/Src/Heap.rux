@@ -10,7 +10,7 @@
 // caller to drop. That keeps this package out of the business of owning storage, which it is not in anywhere.
 // Requires `<` on the element type, or a three-way comparison for the `By` forms. Nothing here allocates.
 
-import Core::{ Ordering };
+import Core::Compare::Ordering;
 
 /// Rearranges `items` into a max-heap.
 /// `items` is borrowed mutably and rewritten. Fewer than two elements are already a heap. The arrangement is not an

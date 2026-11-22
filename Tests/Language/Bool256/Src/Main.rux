@@ -7,8 +7,8 @@
 // is far from the low word, `~` flipping the value rather than every bit, and a narrow boolean widened on its way into
 // a parameter.
 
-import Core::Assert;
-import Core::{ bool128, bool16, bool256, bool32, bool512, bool64, bool8, int256, uint256 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const On: bool256 = true;
 const Off: bool256 = false;

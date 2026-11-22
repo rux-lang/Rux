@@ -10,7 +10,7 @@
 // different bytes to a machine, and which pairs count is a Unicode question with a locale attached. `Transform` has
 // the ASCII-only answer, which is the one that is well defined without tables.
 
-import Core::Iterator;
+import Core::Iteration::Iterator;
 
 extend StringView {
     /// Whether this view begins with `prefix`.

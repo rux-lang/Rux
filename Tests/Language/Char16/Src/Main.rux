@@ -1,5 +1,5 @@
-import Core::char16;
-import Core::Assert;
+import Core::Primitives::*;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // Literals. The c16 prefix gives one UTF-16 code unit.

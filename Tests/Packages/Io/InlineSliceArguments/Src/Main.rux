@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::WriteFormat;
 import Io::{ IoError, PrintLine };
 import Text::{ BufferWriter, FormatSpec, WriteValue };

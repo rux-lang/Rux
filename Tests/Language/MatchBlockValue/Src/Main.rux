@@ -3,7 +3,7 @@
 // plain block used as a value. Its arms unify and take the expected type like any match's. Ending a statement's
 // block it stays a statement, whose arms' values are not used.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 variant Shape {
     Dot,

@@ -3,7 +3,7 @@
 // counts that wrap, sums that go negative, a choice between two unrelated values and an update on the else side, so
 // a wrong mask or a condition read the wrong way round changes the result.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var Marks: uint8[1000] = [0u8; 1000];
 var Values: int32[1000] = [0i32; 1000];

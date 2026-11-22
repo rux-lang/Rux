@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // The contextual width must reach the arms before the merge. Widening an int after the merge has already lost
 // every bit above the first word, even when semantic checking accepted the original unsuffixed literal.

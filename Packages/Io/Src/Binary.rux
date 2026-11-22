@@ -9,7 +9,7 @@
 // without conversion.
 
 
-import Core::{ int128, int16, int256, int32, int512, int64, int8, uint512 };
+import Core::Primitives::*;
 import Memory::Copy;
 
 /// A byte order: which end of a multi-byte value comes first.

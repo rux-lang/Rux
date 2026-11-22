@@ -5,7 +5,7 @@
 // level or returns absence, and `option ?? fallback` takes the payload or evaluates the fallback only for absence; the
 // fallback may also leave with `fail`, `return`, `break`, `continue`, or a call to `Panic`.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct NotFound {}
 

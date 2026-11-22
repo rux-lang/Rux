@@ -3,7 +3,7 @@
 // a reader, and for the characters it leaves out. Round trips over every length up to a few groups cover each of the
 // four partial final groups.
 
-import Core::uint;
+import Core::Primitives::*;
 import Encoding::{ Base32Decode, Base32DecodedLength, Base32Encode, Base32EncodedLength, Base32Variant, DecodeError };
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {

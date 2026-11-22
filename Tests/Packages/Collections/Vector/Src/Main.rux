@@ -1,7 +1,7 @@
-import Core::{ uint };
+import Core::Primitives::*;
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, MinimumVectorCapacity, Vector };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // A vector owns its storage and its elements, so the questions are an array's plus the ones growth raises: does
 // capacity survive what length does, does a failed growth leave the vector as it was, and is every element destroyed

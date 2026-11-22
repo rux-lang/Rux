@@ -2,7 +2,7 @@
 // Nothing here tracks what it hands out: an address from `Mmap` is valid until `Munmap` releases exactly the range
 // that was mapped.
 
-import Core::int32;
+import Core::Primitives::*;
 import FreeBSD::{ EINVAL, IsError, SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunmap, SysSysctl,
                   Syscall1, Syscall2, Syscall3, Syscall6 };
 

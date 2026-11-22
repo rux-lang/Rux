@@ -1,7 +1,7 @@
-import Core::{ uint };
+import Core::Primitives::*;
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, Deque, MinimumDequeCapacity };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // A ring buffer is where off-by-one errors live, so what is checked is the wrapping: elements pushed at one end and
 // taken from the other until the ring has wrapped several times over, and the answers compared against what a queue

@@ -3,7 +3,7 @@
 // shape every logarithm here uses. Error at most one ulp. Zero is negative infinity, a negative argument is a
 // NaN, and `Log1p` is the one to use when the argument is near one.
 
-import Core::float64;
+import Core::Primitives::*;
 
 // x = m * 2^k with m in [sqrt(2)/2, sqrt(2)).
 struct LogReduction {

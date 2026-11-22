@@ -11,7 +11,8 @@
 // reported, because a half-filled key looks exactly as random as a whole one, and a caller who ignores a return
 // value should get an obviously wrong buffer rather than a subtly weak one.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Entropy::EntropyError;
 import Memory::ZeroizeBlock;
 

@@ -2,7 +2,7 @@
 // rely on. The rest is consistency: every variable the walk finds has a name, the first variable of each name is the
 // one `Variable` answers with, an empty or absent name is not found, and Windows matches names without regard to case.
 
-import Core::#target;
+import Core::Compilation::#target;
 import Path::OsStringView;
 import Process::{ Environment, Variable };
 

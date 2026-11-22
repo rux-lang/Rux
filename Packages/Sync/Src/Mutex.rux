@@ -3,7 +3,8 @@
 // given its own handle with `Clone` and the storage lasts until the last handle is gone. Locking returns a guard,
 // which is the only way to reach the value and which releases the lock when it is dropped.
 
-import Core::{ AtomicFetchAdd, AtomicLoad, MemoryOrder, Panic };
+import Core::Diagnostics::Panic;
+import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
 import Sync::{
     AllocateBlock, DestroyBlock, LockWordContended, LockWord, ReleaseBlock, RetainBlock, TryLockWord, UnlockWord,
     WaitWhile, WakeAll, WakeOne

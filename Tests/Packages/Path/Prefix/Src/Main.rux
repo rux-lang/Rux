@@ -1,5 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ #target, Assert, Panic };
+import Core::Compilation::#target;
+import Core::Diagnostics::{ Assert, Panic };
 import Path::{ HasRoot, IsAbsolute, OsString, OsStringView, OsUnit, Path, PrefixKind, PrefixLength };
 import Text::{ StringView, TextError };
 

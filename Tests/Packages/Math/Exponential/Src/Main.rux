@@ -2,7 +2,7 @@
 // fitting, what the range reduction does to arguments far from zero, and whether expm1 keeps the precision that
 // exp minus one throws away. Each gets its own section.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, E, Exp, Exp2, Expm1, IsNan, Log, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, SignBit,
                UlpDistance };
 

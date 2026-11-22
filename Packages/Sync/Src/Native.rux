@@ -4,7 +4,8 @@
 // last look and its sleep ends the sleep at once rather than being missed. A sleep may also end for no reason the
 // caller can see, so every caller looks at the word again and decides whether to sleep once more.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 when #target.os {
     .Linux => import Linux::{ ETIMEDOUT, FutexWait, FutexWake, Timespec },

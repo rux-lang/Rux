@@ -3,7 +3,7 @@
 // rest are about the clock and are checked as lower bounds only — a stretch that included a sleep is at least that
 // sleep — because a loaded machine is allowed to be slow and an upper bound would make the test fail under load.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 import Time::{ Duration, SleepFor, Stopwatch };
 
 func Pause(milliseconds: int64) -> bool {

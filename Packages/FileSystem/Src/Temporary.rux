@@ -10,7 +10,7 @@
 // and the Unix trick of unlinking immediately leaves nothing a caller could pass to another process by name.
 
 import Allocator::Allocator;
-import Core::{ #target };
+import Core::Compilation::#target;
 import Entropy::NextUint64;
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer };

@@ -1,6 +1,6 @@
 import Text::{ FormatSpec, TextWriter };
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::{ ByteCursor, FloatLayout, WriteWideFloat };
 
 func Check(bits: uint512, expected: char8[..]) {

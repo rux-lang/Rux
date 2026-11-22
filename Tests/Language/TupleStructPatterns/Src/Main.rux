@@ -4,7 +4,7 @@
 // added whatever the binding slots held. Every check below would pass for one of those wrong answers if the arms were
 // tried in a different order, so each match also has an arm that must not be taken.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Point {
     x: int32;

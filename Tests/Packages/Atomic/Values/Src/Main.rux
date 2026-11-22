@@ -3,7 +3,7 @@
 // arithmetic at every width, and the `With` forms in every order, including the orders they quietly strengthen.
 
 import Atomic::Atomic;
-import Core::MemoryOrder;
+import Core::Machine::MemoryOrder;
 
 // A module variable starts as a constant: each width's `Zero`, reached through an alias of its instantiation.
 type Hits = Atomic<uint64>;

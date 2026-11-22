@@ -8,8 +8,8 @@
 // intrinsics need their order written as a case, so a `With` method selects among them with a `match`; the plain
 // methods involve no such choice.
 
-import Core::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr, AtomicFetchSub,
-               AtomicFetchXor, AtomicLoad, AtomicStore, MemoryOrder };
+import Core::Machine::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr,
+                        AtomicFetchSub, AtomicFetchXor, AtomicLoad, AtomicStore, MemoryOrder };
 
 /// One value that threads read and change without a lock.
 /// `T` must be an integer of 8 to 64 bits, `bool` or a pointer; any other type is refused where the methods are used.

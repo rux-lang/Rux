@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 interface Writer {
     func Put(&var self, value: uint) -> uint;

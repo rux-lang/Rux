@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::{ EqualsInt32, HashInt32, LruCache };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A full cache evicts the entry used least recently, where a lookup and a put both count as a use and a peek does
 // not; removing an entry keeps the rest in order; and a cache of one keeps only the latest.

@@ -5,7 +5,7 @@
 // throws evaluates to its success, so a chain continues on the value, and `try` may also mark the value of an
 // assignment.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Overflow {
     limit: int32;

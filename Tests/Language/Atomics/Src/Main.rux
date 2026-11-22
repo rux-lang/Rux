@@ -3,8 +3,9 @@
 // results come back extended as their type reads them, a compare-exchange writes exactly when it matches, and module
 // storage and stack storage behave alike.
 
-import Core::{ Assert, AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr,
-               AtomicFetchSub, AtomicFetchXor, AtomicLoad, AtomicStore, Fence, MemoryOrder, SpinHint };
+import Core::Diagnostics::Assert;
+import Core::Machine::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchAnd, AtomicFetchOr,
+                        AtomicFetchSub, AtomicFetchXor, AtomicLoad, AtomicStore, Fence, MemoryOrder, SpinHint };
 
 var Shared: int64 = 0;
 var Flag: bool = false;

@@ -3,7 +3,7 @@
 // self-consistent — and the key-longer-than-a-block case, which is where implementations differ from the
 // specification without noticing.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Equal, Hmac, HmacOf, Sha256, Sha512 };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

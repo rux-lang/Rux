@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::{ FixedNat, FixedNatBits, FixedNatLimbs };
 
 // The workspace the narrow float conversion runs in, checked at the three places a fixed-capacity integer goes

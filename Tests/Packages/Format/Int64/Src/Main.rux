@@ -1,5 +1,6 @@
 import Text::{ Display, FormatSpec, TextWriter };
-import Core::{ Result, int64 };
+import Core::Result;
+import Core::Primitives::*;
 import Text::StringView;
 import Format::{ ByteCursor, ParseError, ParseInt64 };
 

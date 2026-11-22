@@ -5,7 +5,7 @@
 // terminates the program, as everywhere in this package.
 
 import Allocator::Allocator;
-import Core::CountOnes;
+import Core::Bits::CountOnes;
 
 /// A growable set of bits. Move-only: it owns its words.
 /// @see https://rux-lang.dev/docs/api/collections/bit-set

@@ -3,7 +3,7 @@
 // give unrelated output, and a mode that quietly ignored its flag would produce identical results here. So most
 // of this test is inequalities, which is unusual and is exactly right for what is being checked.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Blake3, Blake3DeriveKey, Blake3KeyedOf, Blake3Of, Digest, Equal };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.

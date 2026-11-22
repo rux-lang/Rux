@@ -1,6 +1,6 @@
 // A generic extension implements its interface for every instantiation: a `Box<int32>` and a `Box<bool>` become
 // `Named` handles or borrowed views, each through a table of its own instance's methods.
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 interface Named {
     func Id(&self) -> int;

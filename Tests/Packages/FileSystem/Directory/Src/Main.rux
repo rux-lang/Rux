@@ -2,7 +2,7 @@
 // system's own units — refused deletion while full, and deleted once empty.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, Path };
 import FileSystem::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };

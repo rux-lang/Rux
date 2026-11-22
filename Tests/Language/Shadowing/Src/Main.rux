@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A binding in a nested block hides one of the same name outside it until the block ends, and only until then: the
 // outer binding keeps its own storage, its own value, and its own destruction.

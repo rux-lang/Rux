@@ -5,8 +5,8 @@
 // register. Signedness is the part most likely to break: the sign lives in the high lane, so sign extension,
 // arithmetic shift and truncating division all have to reach it.
 
-import Core::Assert;
-import Core::{ int128, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: int128) -> int128 {
     return value;

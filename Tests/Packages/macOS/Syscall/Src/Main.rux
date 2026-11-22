@@ -1,4 +1,4 @@
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::macOS {
     import macOS::{ AtFdCwd, ClockGetResolution, ClockMonotonic, Close, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT,

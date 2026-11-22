@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, FixedBuffer, IsEmptyBlock, Layout };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Memory::IsPointerAligned;
 
 // A fixed-buffer allocator never asks anyone for storage, so what is checked is that it hands out exactly what the

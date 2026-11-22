@@ -3,7 +3,7 @@
 // wrong still produces plausible numbers, and only shows up as a mean or variance that does not match the
 // direct method's.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, IsFinite, Sqrt };
 import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator, Xoshiro256 };
 

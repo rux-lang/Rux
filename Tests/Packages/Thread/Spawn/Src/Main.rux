@@ -2,7 +2,8 @@
 // own copy of a thread-local variable, starting at its initializer; a detached thread finishes on its own; and work
 // spread over several threads adds up to the same answer as the work done on one.
 
-import Core::{ Assert, AtomicFetchAdd, AtomicLoad, MemoryOrder };
+import Core::Diagnostics::Assert;
+import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
 import Thread::{ AvailableParallelism, CurrentId, JoinHandle, Spawn, SpawnWith, ThreadOptions, Yield };
 
 thread var Visits: int64 = 100;

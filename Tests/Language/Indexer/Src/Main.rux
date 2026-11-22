@@ -1,5 +1,5 @@
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A type indexes itself by declaring `[]` in an `extend` block, the same way it
 // declares `==` or `<`. `v[i]` then calls that operator.

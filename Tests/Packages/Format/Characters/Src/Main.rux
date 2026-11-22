@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::Render;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView, TextWriter, WriteDebugValue };
 

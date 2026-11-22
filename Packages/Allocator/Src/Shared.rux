@@ -8,7 +8,8 @@
 // them as raw pointers or indices.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Core::{ AtomicFetchAdd, AtomicFetchSub, AtomicLoad, Cloneable, Fence, MemoryOrder };
+import Core::Machine::{ AtomicFetchAdd, AtomicFetchSub, AtomicLoad, Fence, MemoryOrder };
+import Core::Ownership::Cloneable;
 
 // The count of handles and the value they share, in one allocation.
 struct SharedBlock<T> {

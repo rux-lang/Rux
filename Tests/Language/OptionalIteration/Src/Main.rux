@@ -4,7 +4,8 @@
 // its `Iterate`, which borrows the container and hands out an independent iterator; a temporary iterator lives exactly
 // as long as its loop, and items the loop owns are destroyed once each.
 
-import Core::{ Assert, Result };
+import Core::Result;
+import Core::Diagnostics::Assert;
 
 struct Missing {}
 

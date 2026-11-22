@@ -7,7 +7,7 @@
 // so an overflow is a bug in the caller's arithmetic — and the answer to a bug is a report, not a wrap that turns
 // a timeout into a deadline in the past.
 
-import Core::{ AddChecked, MulChecked, Ordering, SubChecked };
+import Core::Compare::Ordering;
 
 /// How many nanoseconds one second holds.
 /// @see https://rux-lang.dev/docs/api/time/duration#nanoseconds-per-second
@@ -44,8 +44,7 @@ extend Duration {
     /// @returns that many minutes, or `None` when the count does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration#from-minutes
     pub func FromMinutes(minutes: int64) -> Self? {
-        var seconds: int64 = 0;
-        if MulChecked<int64>(minutes, 60, @seconds) { return none; }
+        var seconds = minutes.CheckedMul(60)?;
         return Self::FromSeconds(seconds);
     }
 
@@ -54,8 +53,7 @@ extend Duration {
     /// @returns that many hours, or `None` when the count does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration#from-hours
     pub func FromHours(hours: int64) -> Self? {
-        var seconds: int64 = 0;
-        if MulChecked<int64>(hours, 3600, @seconds) { return none; }
+        var seconds = hours.CheckedMul(3600)?;
         return Self::FromSeconds(seconds);
     }
 
@@ -150,10 +148,8 @@ extend Duration {
     // The count of `scale`-nanosecond units, truncated toward zero, checked.
     func Total(&self, scale: uint32) -> int64? {
         let perSecond = (NanosecondsPerSecond / scale) as int64;
-        var whole: int64 = 0;
-        if MulChecked<int64>(self.seconds, perSecond, @whole) { return none; }
-        var sum: int64 = 0;
-        if AddChecked<int64>(whole, (self.nanoseconds / scale) as int64, @sum) { return none; }
+        var whole = self.seconds.CheckedMul(perSecond)?;
+        var sum = whole.CheckedAdd((self.nanoseconds / scale) as int64)?;
         return sum;
     }
 
@@ -162,12 +158,11 @@ extend Duration {
     /// @returns the sum, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration#plus
     pub func Plus(&self, other: Self) -> Self? {
-        var seconds: int64 = 0;
-        if AddChecked<int64>(self.seconds, other.seconds, @seconds) { return none; }
+        var seconds = self.seconds.CheckedAdd(other.seconds)?;
         var nanoseconds = self.nanoseconds + other.nanoseconds;
         if nanoseconds >= NanosecondsPerSecond {
             nanoseconds = nanoseconds - NanosecondsPerSecond;
-            if AddChecked<int64>(seconds, 1, @seconds) { return none; }
+            seconds = seconds.CheckedAdd(1)?;
         }
         return Self { seconds, nanoseconds };
     }
@@ -177,11 +172,10 @@ extend Duration {
     /// @returns the difference, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration#minus
     pub func Minus(&self, other: Self) -> Self? {
-        var seconds: int64 = 0;
-        if SubChecked<int64>(self.seconds, other.seconds, @seconds) { return none; }
+        var seconds = self.seconds.CheckedSub(other.seconds)?;
         var nanoseconds = self.nanoseconds;
         if nanoseconds < other.nanoseconds {
-            if SubChecked<int64>(seconds, 1, @seconds) { return none; }
+            seconds = seconds.CheckedSub(1)?;
             nanoseconds = nanoseconds + NanosecondsPerSecond;
         }
         return Self { seconds, nanoseconds: nanoseconds - other.nanoseconds };
@@ -202,13 +196,10 @@ extend Duration {
     pub func Times(&self, factor: int64) -> Self? {
         // The fraction times the factor is nanoseconds that may carry whole seconds; the carry rides along
         // checked, so the largest representable spans still refuse rather than wrap.
-        var wholePart: int64 = 0;
-        if MulChecked<int64>(self.seconds, factor, @wholePart) { return none; }
-        var fractionTotal: int64 = 0;
-        if MulChecked<int64>(self.nanoseconds as int64, factor, @fractionTotal) { return none; }
+        var wholePart = self.seconds.CheckedMul(factor)?;
+        var fractionTotal = (self.nanoseconds as int64).CheckedMul(factor)?;
         let scaled = Self::FromScaled(fractionTotal, 1);
-        var seconds: int64 = 0;
-        if AddChecked<int64>(wholePart, scaled.seconds, @seconds) { return none; }
+        var seconds = wholePart.CheckedAdd(scaled.seconds)?;
         return Self { seconds, nanoseconds: scaled.nanoseconds };
     }
 

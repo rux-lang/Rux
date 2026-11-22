@@ -4,7 +4,7 @@
 // end from a parent from the root. So the test walks lengths across several chunk boundaries and checks the
 // incremental contract at each, which exercises every one of those.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Blake3, Blake3Of, Digest, Equal };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

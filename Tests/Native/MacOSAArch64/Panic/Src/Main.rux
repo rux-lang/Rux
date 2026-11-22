@@ -1,4 +1,4 @@
-import Core::Panic;
+import Core::Diagnostics::Panic;
 
 func Main() -> int {
     Panic("native Apple Silicon panic fixture");

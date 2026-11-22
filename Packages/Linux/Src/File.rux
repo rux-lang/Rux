@@ -3,7 +3,9 @@
 // count or a small negative error number. A short count is not an error and not an end of file — a read that returns
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
 
-import Core::{ #Error, #target, int32, int64 };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
+import Core::Primitives::*;
 import Linux::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, SysClose, SysDup3, SysFchmodAt, SysFstat,
                 SysFsync, SysFtruncate, SysGetcwd, SysGetdents64, SysLinkAt, SysLseek, SysMkdirAt, SysNewFstatAt,
                 SysOpenAt, SysPipe2, SysRead, SysReadlinkAt, SysRenameAt, SysSymlinkAt, SysUnlinkAt, SysUtimensAt,

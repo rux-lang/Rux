@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Encoding::{
     Base32Encode, Base32Variant, Base64Encode, Base64Variant, DecodingReader, EncodingWriter, HexCase, HexEncode,
     StreamCodec

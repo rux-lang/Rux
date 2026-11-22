@@ -2,7 +2,7 @@
 // alias -- is the referent's address, typed `*T`, or `*var T` through `&var T`. The reference itself has no address a
 // program can name.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Point {
     x: int;

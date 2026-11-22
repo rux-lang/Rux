@@ -8,7 +8,7 @@
 // finishing leaves a stream a decompressor reports as truncated.
 
 import Allocator::{ Allocator, Layout };
-import Core::{ uint32, uint64 };
+import Core::Primitives::*;
 import Hash::{ Adler32, Crc32, Hasher };
 import Io::{ IoError, IoErrorKind, Writer };
 import Compress::{

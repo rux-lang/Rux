@@ -1,5 +1,6 @@
 import Allocator::SystemAllocator;
-import Core::{ #target, Assert, Panic };
+import Core::Compilation::#target;
+import Core::Diagnostics::{ Assert, Panic };
 import Path::{ OsString, OsStringView, OsUnit };
 
 // The one promise a native string makes is losslessness: whatever units go in come back, whether or not they are

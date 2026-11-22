@@ -7,8 +7,9 @@
 // narrower than `int` as `int` and a float as a double, so the caller has to pass it that way. `sprintf` reads each
 // one back as C sees it, and the text it writes is compared with what C would have written.
 
-import Core::Assert;
-import Core::{ #Error, #target };
+import Core::Diagnostics::Assert;
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 // `sprintf` rather than `snprintf`: the runtime this binds on Windows has the formatted family only under the legacy
 // `msvcrt.dll`, which does not export `snprintf` under that name. Every buffer below is far larger than its text.

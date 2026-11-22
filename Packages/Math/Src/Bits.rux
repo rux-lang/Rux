@@ -3,7 +3,8 @@
 // bit pattern, but which registers those are is the calling convention's business, so each architecture writes
 // its own pair.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 when #target.arch {
     .X86_64 => {

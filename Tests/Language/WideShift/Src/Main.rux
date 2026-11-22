@@ -3,8 +3,8 @@
 // carrying bits across words, so the counts either side of each word boundary take different paths. The reference
 // is the same value shifted one bit at a time, and one-bit shifts are checked against addition and halving.
 
-import Core::Assert;
-import Core::{ int128, int512, uint128, uint512 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func CheckUint128(value: uint128) {
     Assert((value >> 1) << 1 == (value >> 1) + (value >> 1), "a one-bit uint128 left shift doubles");

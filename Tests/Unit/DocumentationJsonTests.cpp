@@ -18,7 +18,7 @@ namespace {
 constexpr std::string_view Fixture = R"rux(// Shapes measured in whole units.
 // The header runs on across lines, as documentation prose does.
 
-import Core::uint32;
+import Core::Primitives::*;
 
 /// The tag every shape file starts with.
 /// @see https://rux-lang.dev/docs/api/shapes/magic

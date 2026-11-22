@@ -1,4 +1,5 @@
-import Core::{ Assert, uint64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 struct Header {
     tag: uint32;

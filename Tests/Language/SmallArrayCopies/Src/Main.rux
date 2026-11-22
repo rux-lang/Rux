@@ -1,7 +1,7 @@
 // Arrays of at most a word copied out of static data into locals. The copy reads through the address of the source,
 // so a back end that stored the address as if it were the value, or wrote a whole word for an odd width, fails here.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 const Bytes3: uint8[3] = [0x11u8, 0x22u8, 0x33u8];
 const Bytes4: uint8[4] = [0x38u8, 0x80u8, 0x77u8, 0x01u8];

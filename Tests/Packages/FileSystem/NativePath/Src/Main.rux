@@ -4,7 +4,7 @@
 // behind, and that nothing is given back twice.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Path::{ OsString, Path };
 import FileSystem::{ DeleteDirectory, MakeDirectory };
 

@@ -4,7 +4,7 @@
 // blocks that run statements before their value, branches that leave, owned values moved out of a branch, and a value
 // block ending a match arm.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 enum Size {
     Small,

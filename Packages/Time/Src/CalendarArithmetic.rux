@@ -8,7 +8,6 @@
 // What is deliberately deferred: IANA time zones and discovering the machine's local zone. Both are a database
 // with a release cycle, not arithmetic, and pretending otherwise is how software is wrong twice a year.
 
-import Core::{ AddChecked, MulChecked };
 
 extend Date {
     /// The date `days` later, negative for earlier, or `None` outside the years the calendar spells.
@@ -17,8 +16,7 @@ extend Date {
     /// @returns the date that many days later, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date#plus-days
     pub func PlusDays(&self, days: int64) -> Self? {
-        var landed: int64 = 0;
-        if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) { return none; }
+        var landed = self.DaysFromEpoch().CheckedAdd(days)?;
         // The four-digit formatting range is the honest bound for the whole package; the arithmetic works further
         // but the answers would be dates nothing else here can speak.
         if landed < -719468i64 || landed > 2932896 { return none; }
@@ -33,7 +31,7 @@ extend Date {
     pub func PlusMonths(&self, months: int64) -> Self? {
         // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
         var flat: int64 = (self.year as int64) * 12 + (self.month as int64) - 1;
-        if AddChecked<int64>(flat, months, @flat) { return none; }
+        flat = flat.CheckedAdd(months)?;
         var year = flat / 12;
         var month = flat % 12;
         if month < 0 {
@@ -51,8 +49,7 @@ extend Date {
     /// @returns the date that many years later, clamped for 29 February, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date#plus-years
     pub func PlusYears(&self, years: int64) -> Self? {
-        var target: int64 = 0;
-        if AddChecked<int64>(self.year as int64, years, @target) { return none; }
+        var target = (self.year as int64).CheckedAdd(years)?;
         if target < 0 || target > 9999 { return none; }
         let cap = DaysInMonth(target as int32, self.month);
         let day = if self.day <= cap { self.day } else { cap };

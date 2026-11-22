@@ -4,9 +4,8 @@
 // Each value is checked twice: once as a constant the compiler can fold, and once read out of an array inside a loop,
 // where nothing about it is known until it runs.
 
-import Core::Assert;
-import Core::{ float128, float256, float32, float512, float64, float80, int128, int16, int256, int32, int512, int64, int8,
-               uint128, uint16, uint256, uint32, uint512, uint64, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Main() -> int {
     let nan = 0.0f64 / 0.0f64;

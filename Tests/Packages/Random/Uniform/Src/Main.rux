@@ -3,7 +3,7 @@
 // is where it is enormous, and the range tests check the ends are reachable, since an off-by-one at either end
 // is the other classic failure.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, PositiveInfinity64 };
 import Random::{ NextFloat64, RandomGenerator, UniformBelow, UniformFloatInRange, UniformInRange, UniformInSignedRange,
                  Xoshiro256 };

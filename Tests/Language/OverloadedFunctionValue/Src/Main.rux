@@ -1,7 +1,7 @@
 // An overloaded function named as a value, rather than called, is the overload whose type its destination expects:
 // an annotated binding, an assignment, a function-typed parameter or a return type chooses it, for a plain name and
 // a module path alike.
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Scale(value: int32) -> int32 {
     return value * 2i32;

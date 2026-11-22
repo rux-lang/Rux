@@ -8,9 +8,10 @@
 // `snprintf` deliberately does not appear — the standard has it, and the runtime this binds on Windows does not,
 // which is exactly the sort of thing a binding test should not step in.
 
-import Core::Assert;
-import Core::{ #Error, #target };
-import Core::{ int32, uint };
+import Core::Diagnostics::Assert;
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
+import Core::Primitives::*;
 
 // `#Link` takes a constant declared in this file, so the runtime is selected while compiling. Each system also has a
 // plain `int` flag that is safe to change and restore, for the extern variable below: `opterr` in the Unix C runtimes,

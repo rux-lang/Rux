@@ -1,4 +1,5 @@
-import Core::{ #build, Assert, DebugAssert };
+import Core::Compilation::#build;
+import Core::Diagnostics::{ Assert, DebugAssert };
 
 func MustNotRun() -> bool {
     var zero = 0;

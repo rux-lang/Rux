@@ -12,7 +12,6 @@
 // room it took allocate nothing.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Core::MulChecked;
 import Memory::Copy;
 
 /// The room a builder takes when it first needs any.
@@ -262,9 +261,10 @@ func TryReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *va
         // Doubling is what makes a run of appends linear rather than quadratic; asking for exactly what is needed
         // would reallocate on nearly every one. Where doubling is not enough, or would overflow, take the
         // requirement itself.
-        var doubled: uint = 0;
+        // An overflowing double reads as zero, which is never above the requirement.
+        let doubled = (*capacity).CheckedMul(2) ?? 0;
         var wanted = required;
-        if !MulChecked<uint>(*capacity, 2, @doubled) && doubled > required {
+        if doubled > required {
             wanted = doubled;
         }
         if wanted < MinimumBuilderCapacity {

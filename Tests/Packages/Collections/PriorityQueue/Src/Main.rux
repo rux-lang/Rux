@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::PriorityQueue;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // The largest element always comes out first, ties and all; a reversed `<` turns the queue into a min-queue; and
 // elements that own something are moved in and out without copies.

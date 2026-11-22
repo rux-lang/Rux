@@ -9,7 +9,7 @@
 // The balancing, the node ownership and the ordered walk are `Tree`'s; this is the map's shape over them.
 
 import Allocator::Allocator;
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 /// An ordered map from keys to values.
 /// Move-only: it owns every node and everything in them.

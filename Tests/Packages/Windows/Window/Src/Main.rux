@@ -1,4 +1,4 @@
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
     import Windows::{ CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateWindowExW, DEFAULT_CHARSET,

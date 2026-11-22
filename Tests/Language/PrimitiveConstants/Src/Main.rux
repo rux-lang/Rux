@@ -1,8 +1,5 @@
-import Core::{ bool, bool128, bool16, bool256, bool32, bool512, bool64, bool8, byte, char, char128, char16, char256,
-               char32, char512, char64, char8, float, float128, float16, float256, float32, float512, float64, float8,
-               float80, int, int16, int32, int64, int8, uint, uint128, uint16, uint256, uint32, uint512, uint64,
-               uint8 };
-import Core::Assert;
+import Core::Primitives::*;
+import Core::Diagnostics::Assert;
 
 // A compile-time condition evaluates floats as host doubles, so of the wide floats' limits it answers only the
 // infinity and the NaN, which a double holds at any width.

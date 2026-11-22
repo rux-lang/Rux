@@ -8,7 +8,7 @@
 // representable as one and quietly saturating would hide that; `ToIntegerChecked` is where the conversion happens, and
 // it reports rather than guesses.
 
-import Core::MaximumOf;
+import Core::Arithmetic::MaximumOf;
 
 /// Which way a value that falls between two integers should go.
 /// `Copy`.

@@ -3,7 +3,7 @@
 // `+` standing for a space. The pairs come out still encoded, so nothing allocates until a caller decodes one.
 
 import Allocator::Allocator;
-import Core::Iterator;
+import Core::Iteration::Iterator;
 import Text::String;
 import Url::{ Bytes, HexDigit, HexValue, IsAlpha, IsDigit, UrlError };
 

@@ -2,7 +2,7 @@
 // A line ends at a line feed, a CR before it belongs to the ending, and the bound is not advice.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ BufferedReader, IoError, IoErrorKind, ReadTextLine, Reader };
 import Text::{ String, StringBuilder, StringView };
 

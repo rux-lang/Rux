@@ -1,5 +1,6 @@
 import Algorithms::{ IsSorted, IsSortedBy, RequiredScratch, StableSort, StableSortBy };
-import Core::{ Assert, Ordering };
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 
 // Stability is the whole reason this exists, and it is invisible unless equal elements carry something the ordering
 // ignores. So every element here has an origin the comparison never reads, and the checks are that equal elements

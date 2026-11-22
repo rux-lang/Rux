@@ -3,19 +3,21 @@
 // rejected, because a scalar value is what this carries. Its literals take the `c128` prefix; there is no `c128`
 // string encoding.
 
-/// One Unicode scalar value, in sixteen bytes.
-/// @see https://rux-lang.dev/docs/api/core/characters#char128
-extend char128 {
-    /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/characters#char128-bits
-    pub const Bits: uint = 128;
-    /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/characters#char128-bytes
-    pub const Bytes: uint = 16;
-    /// The first code unit or Unicode scalar value.
-    /// @see https://rux-lang.dev/docs/api/core/characters#char128-min
-    pub const Min: char128 = 0u32 as char128;
-    /// The last code unit or Unicode scalar value.
-    /// @see https://rux-lang.dev/docs/api/core/characters#char128-max
-    pub const Max: char128 = 1114111u32 as char128;
+pub module Primitives {
+    /// One Unicode scalar value, in sixteen bytes.
+    /// @see https://rux-lang.dev/docs/api/core/characters#char128
+    extend char128 {
+        /// The number of bits in the representation.
+        /// @see https://rux-lang.dev/docs/api/core/characters#char128-bits
+        pub const Bits: uint = 128;
+        /// The number of bytes in the representation.
+        /// @see https://rux-lang.dev/docs/api/core/characters#char128-bytes
+        pub const Bytes: uint = 16;
+        /// The first code unit or Unicode scalar value.
+        /// @see https://rux-lang.dev/docs/api/core/characters#char128-min
+        pub const Min: char128 = 0u32 as char128;
+        /// The last code unit or Unicode scalar value.
+        /// @see https://rux-lang.dev/docs/api/core/characters#char128-max
+        pub const Max: char128 = 1114111u32 as char128;
+    }
 }

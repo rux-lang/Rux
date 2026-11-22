@@ -13,7 +13,7 @@
 // A consuming iterator, which moves elements out of a container and leaves it empty, belongs to the container that
 // can be emptied rather than here.
 
-import Core::Iterator;
+import Core::Iteration::Iterator;
 
 /// An iterator that yields each element of a run by copy.
 /// The element type must be copyable: a move-only element yielded by value would leave the container holding

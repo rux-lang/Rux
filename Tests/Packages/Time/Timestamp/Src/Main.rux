@@ -1,4 +1,5 @@
-import Core::{ Assert, Ordering };
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 import Time::{ Duration, Timestamp };
 
 // A wall clock cannot be tested for what it says — the machine's clock is whatever it is — so what is tested is

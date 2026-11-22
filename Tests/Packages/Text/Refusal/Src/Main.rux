@@ -5,7 +5,8 @@
 // the allocator is willing again.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, uint };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 import Text::{ String, StringBuilder, StringView };
 
 // Everything mutable lives in a state the test keeps, so it reads the refusal afterwards.

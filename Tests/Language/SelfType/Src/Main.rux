@@ -3,7 +3,7 @@
 // `Self::Of(...)`, which passes the block's type arguments first. In a block implementing an interface it is the
 // implementing type. It is an alias for the type written out, so it changes neither dispatch nor layout.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Point {
     x: int32;

@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ FoldCase, Join, StringView, ToLower, ToUpper };
 
 // Joining puts the separator only between parts; a walk over lines drops each break, `\r\n` included, and adds no

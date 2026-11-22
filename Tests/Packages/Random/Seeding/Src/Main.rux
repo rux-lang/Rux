@@ -3,7 +3,7 @@
 // are independent values, so drawing from one cannot disturb another; that is the property a global generator
 // would destroy, and the reason this package does not offer one.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Entropy::EntropyError;
 import Random::{ Pcg64Dxsm, PcgFromEntropy, PcgFromEntropyWithStream, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
 

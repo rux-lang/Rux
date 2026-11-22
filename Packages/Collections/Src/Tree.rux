@@ -20,7 +20,7 @@
 // back. Only `Attach` links nodes in and only `Detach` and `Clear` release them, so the invariant holds between calls.
 
 import Allocator::Allocator;
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 /// One node of a red-black tree.
 /// Its own allocation, so its address survives any rearrangement of the tree around it.

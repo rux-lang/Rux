@@ -8,7 +8,7 @@
 // at the front in big-endian order. That is the whole reason version 7 exists, and it only works if comparison
 // never reorders the bytes.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 /// A universally unique identifier: sixteen bytes in the standard's own order.
 /// @see https://rux-lang.dev/docs/api/uuid/uuid

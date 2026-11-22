@@ -12,7 +12,6 @@
 // than promising only "some hash".
 // https://datatracker.ietf.org/doc/html/draft-eastlake-fnv-21
 
-import Core::MulWrapping;
 import Hash::Hasher;
 
 /// The 32-bit FNV-1a offset basis, which is what an empty input hashes to.
@@ -84,7 +83,7 @@ extend Fnv1a32 : Hasher {
             // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
             // bytes.
             self.state = self.state ^ (*(bytes + index) as uint32);
-            self.state = MulWrapping<uint32>(self.state, FnvPrime32);
+            self.state = self.state *% FnvPrime32;
             index++;
         }
     }
@@ -144,7 +143,7 @@ extend Fnv1a64 : Hasher {
             // Safety: `index` is below `length`, and the `Hasher` contract requires `bytes` to be readable for `length`
             // bytes.
             self.state = self.state ^ (*(bytes + index) as uint64);
-            self.state = MulWrapping<uint64>(self.state, FnvPrime64);
+            self.state = self.state *% FnvPrime64;
             index++;
         }
     }

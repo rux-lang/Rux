@@ -3,7 +3,8 @@
 // each on its own sequence word that the other side advances and wakes. Closing the channel wakes everyone: senders
 // then fail and get their value back, and receivers take what is left and then learn that nothing more will come.
 
-import Core::{ AtomicFetchAdd, AtomicLoad, MemoryOrder, Panic };
+import Core::Diagnostics::Panic;
+import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
 import Memory::{ Alloc, Free };
 import Sync::{
     AllocateBlock, DestroyBlock, DiscardValue, LockWord, LockWordContended, ReleaseBlock, RetainBlock, UnlockWord,

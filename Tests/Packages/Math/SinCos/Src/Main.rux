@@ -2,7 +2,7 @@
 // that is what is checked, at every argument the other tests reach. The rest pins the values and symmetries the
 // three functions are defined by.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, SignBit, Sin, SinCos, Tan,
                UlpDistance };
 

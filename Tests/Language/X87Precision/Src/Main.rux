@@ -5,7 +5,7 @@
 // Every operand passes through a function, so the operation runs rather than folds, and each result is compared by its
 // 80 value bits, read through a pointer cast, against a constant the compiler folds or against a written-out encoding.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Add(left: float80, right: float80) -> float80 {
     return left + right;

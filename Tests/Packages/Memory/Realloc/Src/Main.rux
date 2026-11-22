@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Memory::{ Alloc, Equal, Free, Realloc, Set };
 
 func Main() -> int {

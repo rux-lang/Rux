@@ -1,6 +1,7 @@
 import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap,
                      Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
-import Core::{ Assert, Ordering, Panic };
+import Core::Compare::Ordering;
+import Core::Diagnostics::{ Assert, Panic };
 
 // A heap is an arrangement rather than an order, so what is checked is the arrangement itself — every element at
 // least as large as its children — rather than any particular layout. That way the test does not depend on which of

@@ -1,7 +1,7 @@
 // Each inverse is split into ranges to dodge a cancellation, so the test walks straight across every split it
 // has: a seam that is merely continuous rather than accurate shows up as a round trip that stops closing.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, ArcCosh, ArcSinh, ArcTanh, Cosh, Cotanh, IsNan, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo,
                SignBit, Sinh, Tanh, UlpDistance };
 

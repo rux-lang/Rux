@@ -3,7 +3,7 @@
 // finished record, so threads build their records at the same time and never interleave them.
 
 import Allocator::SystemAllocator;
-import Core::{ AtomicLoad, AtomicStore, MemoryOrder };
+import Core::Machine::{ AtomicLoad, AtomicStore, MemoryOrder };
 import Io::{ StandardError, WriteAll };
 import Log::{ CompiledLevel, Field, Level, LogFormat, NoFields, WriteRecord };
 import Sync::Lock;

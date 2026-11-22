@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Reaching a field of a generic instantiation through a pointer to it.
 // The type arguments are spelled in the name of the type that carries them, and a pointer has no name of its own.

@@ -4,7 +4,8 @@
 // pseudo-random sequence, for unsigned and signed divisors that take each path of the reciprocal, powers of two and
 // negative divisors. No divisor is -1, whose division of the most negative value traps.
 
-import Core::{ Assert, uint32, uint64, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 var Divisor64: uint64 = 1u64;
 var Divisor32: uint32 = 1u32;

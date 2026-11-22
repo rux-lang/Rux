@@ -14,7 +14,7 @@
 // produces a different path, and one that may well exist; a rendering that silently answers about another file is
 // worse than a rendering that refuses.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 import Text::{ Debug, DecodeAt, Display, Encode, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii,
                WriteBytes, WriteEscaped, WriteScalar };
 

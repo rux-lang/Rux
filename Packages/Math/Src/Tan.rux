@@ -3,7 +3,7 @@
 // reduction matters more here than for sine or cosine: near an odd multiple of `Pi/2` the tangent is enormous
 // and its value is decided entirely by the low bits of the reduced argument. An infinite argument is a NaN.
 
-import Core::float64;
+import Core::Primitives::*;
 
 /// Computes the tangent of `x`, where `x` is in radians.
 /// The error is at most one ulp for finite arguments away from poles. Exact argument reduction retains all available

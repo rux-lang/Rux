@@ -20,7 +20,7 @@ The module names describe where each declaration comes from; they are not part o
 
 ```rux
 import Atomic::Atomic;
-import Core::MemoryOrder;
+import Core::Machine::MemoryOrder;
 
 func Count(hits: &Atomic<uint64>) -> uint64 {
     hits.FetchAddWith(1, MemoryOrder::Relaxed);

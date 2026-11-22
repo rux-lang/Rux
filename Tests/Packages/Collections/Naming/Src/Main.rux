@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::{ EqualsInt32, HashSet, TableSeed };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // A program declaring a name its dependency also declares.
 // `Collections` exports `HashInt32`, and this program declares one of its own without importing that one. A call

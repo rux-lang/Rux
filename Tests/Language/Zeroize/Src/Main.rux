@@ -1,4 +1,5 @@
-import Core::{ Assert, Zeroize };
+import Core::Diagnostics::Assert;
+import Core::Machine::Zeroize;
 
 func Sum(bytes: *var uint8, length: uint64) -> uint64 {
     var total = 0u64;

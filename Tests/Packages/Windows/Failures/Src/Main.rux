@@ -10,7 +10,8 @@
 // number in it was read out of a probe rather than out of documentation. Two of them were surprises and are called
 // out where they appear.
 
-import Core::{ #target, Assert, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
+import Core::Diagnostics::Assert;
 
 when #target.os == OperatingSystem::Windows {
     import Windows::{ CloseHandle, CreateFileW, CreationDisposition, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND,

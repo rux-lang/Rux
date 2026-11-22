@@ -4,7 +4,8 @@
 // `CreateThread`, whose handle is joined by waiting on it. Both kinds are kept in one word, so the rest of the package
 // never asks which system it runs on.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Thread::ThreadError;
 
 when #target.os {

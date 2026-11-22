@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 func Fail(message: char8[..]) -> int {
     Panic(message);

@@ -6,7 +6,7 @@
 
 import Allocator::{ AllocError, Allocator, Arena, Layout, SystemAllocator };
 import Collections::Vector;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 interface Counter {
     func Bump(&var self) -> int;

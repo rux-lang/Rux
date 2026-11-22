@@ -1,5 +1,5 @@
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Literal text is a character slice and can be returned directly with static backing storage.
 func PlatformName() -> char8[..] {

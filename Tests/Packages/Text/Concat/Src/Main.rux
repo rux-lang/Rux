@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ Concat, Repeat, String, StringView };
 
 // Joining and repeating are the operations that make new text, so what is worth checking is what they allocate and

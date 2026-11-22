@@ -1,6 +1,6 @@
 // An interface value or view is two words, its data and its method table, wherever it travels: returned from a call,
 // kept in a local, and copied out of a slice into a loop variable.
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 interface Named {
     func Id(&self) -> int;

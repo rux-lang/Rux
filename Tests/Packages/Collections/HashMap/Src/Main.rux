@@ -1,7 +1,7 @@
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, EqualsInt32, EqualsSlice, HashInt32, HashMap, HashSet, KeyValue, TableSeed };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked
 // is the state after churn: every key that should be there is, every key that should not is not, and the table has

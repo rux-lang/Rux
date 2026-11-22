@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ CString, StringView, TextError };
 
 // A C string is a pointer and a promise, and both edges of the boundary need a check nothing else needs. Going out,

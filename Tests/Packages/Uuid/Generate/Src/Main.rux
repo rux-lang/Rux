@@ -2,7 +2,8 @@
 // really does sort by time — which is the entire reason it exists and would be silently lost by any byte
 // reordering.
 
-import Core::{ Assert, Ordering };
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 import Entropy::EntropyError;
 import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid,
                UuidVariant };

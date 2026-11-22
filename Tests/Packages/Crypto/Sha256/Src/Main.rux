@@ -3,7 +3,7 @@
 // wrong about buffering, and a hash that passes short messages can still be wrong about the padding block --
 // so every message length from zero to two hundred is fed in every possible split against the one-shot answer.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Digest, Equal, Sha224Of, Sha256, Sha256Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

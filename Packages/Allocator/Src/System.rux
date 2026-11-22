@@ -10,9 +10,9 @@
 // backing store of an arena or a pool, and the wrong one for a program allocating many small values directly --
 // which is what the arena and pool allocators in this package exist for.
 
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::{ AllocError, EmptyBlockAddress, IsEmptyBlock, Layout };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 
 /// What a system allocation records about itself, immediately before the address the caller sees.

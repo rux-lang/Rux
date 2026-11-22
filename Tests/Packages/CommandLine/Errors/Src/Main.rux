@@ -2,7 +2,7 @@
 // or positional by the name its specification gives, so a program can print one without the arguments at hand.
 
 import CommandLine::CommandLineError;
-import Core::#target;
+import Core::Compilation::#target;
 import Path::{ OsStringView, OsUnit };
 import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
 

@@ -5,7 +5,8 @@
 // of an owning value is an explicit `Clone`, which runs the type's own method exactly once per call. Generic code
 // copies its type parameter under `Copyable` and duplicates it under `Cloneable`.
 
-import Core::{ Assert, Cloneable, Copyable };
+import Core::Diagnostics::Assert;
+import Core::Ownership::{ Cloneable, Copyable };
 
 struct Point {
     x: int32;

@@ -1,7 +1,8 @@
 // The caller names the format's byte order, and the host's own never enters into it: the same value writes to
 // mirrored bytes under the two orders, and each order reads back exactly what it wrote.
 
-import Core::{ Assert, Panic, uint512 };
+import Core::Diagnostics::{ Assert, Panic };
+import Core::Primitives::*;
 import Io::{ Endian, IoError, IoErrorKind, Reader, Writer };
 import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256, ReadUint32,
              ReadUint512, ReadUint64, ReadUint8 };

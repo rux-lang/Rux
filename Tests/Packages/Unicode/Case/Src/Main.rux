@@ -1,4 +1,4 @@
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Unicode::{ Fold, NextInCaseOrbit, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
 
 // The cases that separate the three kinds of mapping from each other: the sharp s, whose uppercase is two letters

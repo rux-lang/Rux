@@ -3,7 +3,7 @@
 // or from the process-wide functions on different threads, never interleave within a line. A message or value that
 // holds a line break or another control character has it escaped, so one record is always one line.
 
-import Core::int64;
+import Core::Primitives::*;
 import Format::WriteFormat;
 import Log::{ Field, Level, Value };
 import Text::StringBuilder;

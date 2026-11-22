@@ -1,5 +1,5 @@
-import Core::char64;
-import Core::Assert;
+import Core::Primitives::*;
+import Core::Diagnostics::Assert;
 
 const Face = c64'😀';
 const Last: char64 = c64'\u{10FFFF}';

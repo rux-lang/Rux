@@ -303,7 +303,7 @@ TEST_CASE("compiler driver never keeps a module that holds the build's time") {
     };
     write(appRoot / "Rux.toml", "[Manifest]\nVersion = 1\n\n[Package]\nName = \"App\"\nVersion = \"0.1.0\"\n"
                                 "Type = \"Executable\"\n\n[Dependencies]\nCore = { Path = \"../Packages/Core\" }\n");
-    write(appRoot / "Src" / "Stamp.rux", "import Core::#build;\n\nmodule App::Stamp {\n"
+    write(appRoot / "Src" / "Stamp.rux", "import Core::Compilation::#build;\n\nmodule App::Stamp {\n"
                                          "    pub func Seconds() -> uint64 {\n        return #build.timestamp;\n"
                                          "    }\n}\n");
     write(appRoot / "Src" / "Main.rux", "import App::Stamp::Seconds;\n\nfunc Main() -> int {\n"

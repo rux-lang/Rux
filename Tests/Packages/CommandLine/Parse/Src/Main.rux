@@ -6,7 +6,7 @@
 
 import CommandLine::{ Command, CommandLineError, CommandSpec, Flag, OptionSpec, Optional, Parse, Parsed,
                       PositionalSpec, Remaining, Required, ValueOption };
-import Core::Panic;
+import Core::Diagnostics::Panic;
 import Path::{ OsStringView, OsUnit };
 
 // Arguments built from ASCII text into native units, so the same test reads the same on every system.

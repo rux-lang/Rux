@@ -4,7 +4,7 @@
 // conversion between widths belong to `Bool8` through `Bool512`, one file each, so a regression at one width has a
 // home rather than being buried in a combined case.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Counts the operands that were evaluated at all, which is how the short-circuit
 // checks below prove that a right-hand side was skipped rather than merely that

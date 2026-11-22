@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::{ SmallVector, Vector };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A fixed array is a type argument like any other. Semantic analysis used to read `int32[2]` back out of
 // `Holder<int32[2]>` as a plain name that only looked like an array, so a field of that type could not be indexed,

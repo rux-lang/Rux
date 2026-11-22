@@ -9,7 +9,8 @@
 // in scalar indices would make indexing linear without saying so; byte indices are constant, and a cut at one that
 // is not a boundary is rejected rather than splitting a character in half.
 
-import Core::{ Iterator, Ordering };
+import Core::Compare::Ordering;
+import Core::Iteration::Iterator;
 
 /// A borrowed run of bytes that has been checked to be UTF-8.
 /// Copy, owning nothing. The bytes it names must outlive it.

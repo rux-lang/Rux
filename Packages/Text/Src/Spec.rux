@@ -10,7 +10,7 @@
 // reachable by anything in Format, and moving it here would otherwise have handed the same reach to every package
 // that renders a value. Reading is what implementations need; writing belongs to the parser alone.
 
-import Core::uint;
+import Core::Primitives::*;
 
 /// Where the padding goes when the rendering is narrower than the width.
 /// Copy, carrying no payload.

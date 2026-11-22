@@ -5,7 +5,7 @@
 // true conditions proves nothing. Every case here starts with a condition that is already false, or checks the
 // count that distinguishes the two.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // The defining property: a condition that is false from the start still runs the body once.

@@ -5,7 +5,7 @@
 // runs every defer and destructor on the way out, as a return does. A deferred statement may handle an error itself
 // with `try?` or `try ... catch`, but no error may leave it.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Failure {
     code: int32;

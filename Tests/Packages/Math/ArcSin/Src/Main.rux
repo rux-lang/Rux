@@ -1,4 +1,5 @@
-import Core::{ #Error, #target, Assert };
+import Core::Compilation::#target;
+import Core::Diagnostics::{ #Error, Assert };
 import Math::ArcSin;
 
 // Reading a float's bits is one register-to-register move, but which registers

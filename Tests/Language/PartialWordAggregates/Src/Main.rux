@@ -1,4 +1,4 @@
-import Core::{ #target };
+import Core::Compilation::#target;
 
 struct Bytes9 { bytes: uint8[9]; }
 struct Bytes10 { bytes: uint8[10]; }

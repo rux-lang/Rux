@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Memory::{ Alloc, Free };
 
 // Where a field wider than a doubleword lands. Every primitive of 128 bits or more is sixteen-byte aligned, as the C

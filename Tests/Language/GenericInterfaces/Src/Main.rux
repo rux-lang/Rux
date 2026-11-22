@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A generic interface names the types its operations work with, and a bound passes them on: `I: Source<T>` lets a
 // generic call `Next` on an `I` and get a `T?` back. A type conforms by having the method, declared outright with

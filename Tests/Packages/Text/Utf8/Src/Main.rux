@@ -1,4 +1,4 @@
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf8Error, Validate };
 
 // UTF-8 is easy to decode wrongly in three specific ways, and every one of them has been a hole in something real:

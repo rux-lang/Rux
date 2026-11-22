@@ -9,7 +9,7 @@
 // that said nothing from one that was not a document.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Json::{
     DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonMember, JsonNumber, JsonParseError, JsonParser,
     JsonValue, Parse, ParseWith

@@ -4,7 +4,10 @@
 // with a length byte and a one-byte family, Linux and Windows with a two-byte family, and every system puts the port
 // in network order. Errors become `IoError`s with the system's own code kept beside the meaning.
 
-import Core::{ #Error, #target, AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder, SpinHint, uint16 };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
+import Core::Machine::{ AtomicCompareExchange, AtomicLoad, AtomicStore, MemoryOrder, SpinHint };
+import Core::Primitives::*;
 import Io::{ IoError, IoErrorKind };
 import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
 

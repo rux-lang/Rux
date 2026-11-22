@@ -1,6 +1,6 @@
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, NaturalAlignment, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Memory::{ IsPointerAligned, Set };
 
 // What an allocator gets wrong quietly: handing back an address that does not satisfy the alignment, accepting a

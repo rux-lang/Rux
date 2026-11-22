@@ -2,7 +2,7 @@
 // is set, and the ones at or above it are still written.
 
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Io::{ IoError, Writer };
 import Log::{ CompiledLevel, Enabled, Level, LogFormat, Logger, SetLevel };
 

@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A type argument that is itself generic ends two argument lists at once, and
 // the lexer hands that over as a single `>>`. Reading it as a right shift left

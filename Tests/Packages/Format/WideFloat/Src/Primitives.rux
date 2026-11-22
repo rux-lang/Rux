@@ -6,7 +6,9 @@
 
 import Text::{ FormatSpec, TextWriter };
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic, #config, float128, float256, float512, float80 };
+import Core::Compilation::#config;
+import Core::Diagnostics::{ Assert, Panic };
+import Core::Primitives::*;
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, InfinityBits, PackWide,
                  ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80 };
 

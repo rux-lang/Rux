@@ -8,7 +8,8 @@
 // the C runtime splits one, so each argument arrives as it was given.
 
 import Allocator::Allocator;
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsStringView, OsUnit };
 import Process::{

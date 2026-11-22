@@ -1,4 +1,4 @@
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 import Linux::{ RTLD_NOW, dlclose, dlerror, dlopen, dlsym };
 
 when #target.os == OperatingSystem::Linux {

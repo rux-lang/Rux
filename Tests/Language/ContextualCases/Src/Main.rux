@@ -5,7 +5,7 @@
 // `.Failure(...)` when it declares those; the type a `try` expression is expected to have is its operand's and its
 // `catch` arms' too.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 
 enum Color {
     Red,

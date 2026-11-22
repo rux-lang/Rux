@@ -2,7 +2,7 @@
 
 First-party Rux packages live under `Packages/` in the repository root. Return to the [main README](../README.md) for the complete documentation index.
 
-Core is an optional declaration provider. Every primitive type is built into the compiler; Core extends them with associated constants. Import those explicitly, for example `import Core::int8;` before using `int8::Min`. A dependency's imports do not expose those APIs to its consumers. Replacement providers can declare the same primitive extensions and context values without using Core's package name or registry identity.
+Core is an optional declaration provider. Every primitive type is built into the compiler; Core extends them with associated constants. Import those explicitly, `import Core::Primitives::*;` before using `int8::Min`, and every other Core name from its module, such as `import Core::Diagnostics::Assert;`. A dependency's imports do not expose those APIs to its consumers. Replacement providers can declare the same primitive extensions and context values without using Core's package name or registry identity.
 
 ## The v0.1.0 Package Set
 

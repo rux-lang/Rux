@@ -918,7 +918,22 @@ TEST_CASE("Core extends every primitive once and declares none") {
         const std::string source((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
         CHECK_FALSE(source.contains("intrinsic type"));
         auto parsed = ParseIntrinsicSource(source, entry.path().filename().string());
+        // Each file holds one `pub module Primitives` whose items are only extensions of primitive types, which is
+        // what lets `import Core::Primitives::*` bring in their members and nothing else.
+        const ModuleDecl *module = nullptr;
         for (const auto &item : parsed.module.items) {
+            if (const auto *candidate = dynamic_cast<const ModuleDecl *>(item.get())) {
+                CHECK_MESSAGE(module == nullptr, "Core's primitive files hold one module");
+                module = candidate;
+            }
+            else {
+                CHECK_MESSAGE(dynamic_cast<const UseDecl *>(item.get()), "only imports stand beside the module");
+            }
+        }
+        REQUIRE_MESSAGE(module, "Core's primitive files hold one module");
+        CHECK_EQ(module->name, "Primitives");
+        CHECK(module->isPublic);
+        for (const auto &item : module->items) {
             const auto *extension = dynamic_cast<const ImplDecl *>(item.get());
             REQUIRE_MESSAGE(extension, "Core's primitive files hold only extensions");
             if (extension->documentation.Present()) {
@@ -942,7 +957,12 @@ TEST_CASE("Core declares exactly the fields the compiler supplies") {
         auto parsed = ParseIntrinsicSource(source, path.filename().string());
         const StructDecl *structure = nullptr;
         bool declared = false;
-        for (const auto &item : parsed.module.items) {
+        // The compiler-supplied values and their types live in Core's `Compilation` module.
+        REQUIRE_EQ(parsed.module.items.size(), 1U);
+        const auto *module = dynamic_cast<const ModuleDecl *>(parsed.module.items.front().get());
+        REQUIRE(module);
+        CHECK_EQ(module->name, "Compilation");
+        for (const auto &item : module->items) {
             if (const auto *candidate = dynamic_cast<const StructDecl *>(item.get());
                 candidate && candidate->name == root.name) {
                 structure = candidate;

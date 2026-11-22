@@ -1,7 +1,7 @@
 // A `for` loop may take each element apart with a pattern that matches every element: a tuple, a structure, `_`, and
 // any nesting of them. The element is moved into the pattern, so an owning part is the loop body's to keep or drop.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Point {
     x: int;

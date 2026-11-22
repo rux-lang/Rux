@@ -6,7 +6,7 @@
 // Every view borrows storage the process owns for its whole life, so arguments may be kept and passed anywhere without
 // copying.
 
-import Core::Iterator;
+import Core::Iteration::Iterator;
 import Path::OsStringView;
 
 /// How many arguments the process was started with, the program itself included.

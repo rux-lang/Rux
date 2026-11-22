@@ -5,7 +5,7 @@
 // dotted-decimal form.
 
 import Allocator::Allocator;
-import Core::uint16;
+import Core::Primitives::*;
 import Text::{ Display, FormatError, FormatSpec, RejectStyle, String, TextError, TextWriter, WriteAligned };
 
 /// An IPv4 address. `Copy`.

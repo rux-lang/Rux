@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // An iterator: `Next` advances the receiver and reports either the next item or, with `none`, the end.
 struct Counter {

@@ -5,7 +5,7 @@
 // equivalent under syntax-based normalization come out as the same text, so comparing them is comparing text.
 
 import Allocator::Allocator;
-import Core::Iterator;
+import Core::Iteration::Iterator;
 import Text::String;
 import Url::{
     AppendIpv6, AppendNormalized, Bytes, Component, IsAlpha, IsDigit, Lower, ParseIpv4, ParseIpv6, Pieces,

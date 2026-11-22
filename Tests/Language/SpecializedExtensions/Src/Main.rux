@@ -1,6 +1,6 @@
 // Extensions of different instantiations of one generic type may declare methods of the same name: each belongs to its
 // own instantiation, so `Pair<int32>` and `Pair<int64>` each call their own, with or without further parameters.
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Pair<T> {
     first: T;

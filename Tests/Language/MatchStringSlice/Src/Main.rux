@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A string literal pattern matches a character slice holding the same characters. The arm used to compare the two
 // views' addresses, so no literal arm was ever taken; it now compares the lengths and then every character.

@@ -1,6 +1,6 @@
 // Two fixed arrays are equal when their elements are, compared one by one with the element type's own equality,
 // whatever their width; an array literal is built as the other operand's type.
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Pair {
     a: int32;

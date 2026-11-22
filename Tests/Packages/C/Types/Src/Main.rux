@@ -1,4 +1,5 @@
-import Core::{ #target, Assert };
+import Core::Compilation::#target;
+import Core::Diagnostics::Assert;
 import C::{ CRuntimeArea, EDOM, EILSEQ, ERANGE, Errno, ErrnoFor, ErrnoLocation, ErrnoLocationFor, FILE,
             SeparateStreamRuntime, c_bool, c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar, c_short,
             c_uchar, c_uint, c_ulong, c_ulonglong, c_ushort, intptr_t, ptrdiff_t, size_t, ssize_t, uintptr_t, wchar_t };

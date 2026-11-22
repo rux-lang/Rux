@@ -5,7 +5,8 @@
 // The strictness cases are the point of a strict decoder: each is a text some other decoder accepts, refused here
 // with the reason and the offset, and with the destination left holding its sentinel.
 
-import Core::{ Panic, uint };
+import Core::Diagnostics::Panic;
+import Core::Primitives::*;
 import Encoding::{ Base64Decode, Base64DecodedLength, Base64Encode, Base64EncodedLength, Base64Variant, DecodeError,
                    ViewBase64 };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };

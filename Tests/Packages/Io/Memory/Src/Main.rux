@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Io::{ ByteReader, ByteWriter, Endian, IoErrorKind, ReadExact, ReadUint32, SeekFrom, WriteAll, WriteUint32 };
 
 // A reader over bytes in memory ends with `EndOfStream`, seeks anywhere within them and refuses beyond; a writer

@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // Basic arithmetic. Every literal carries the f32 suffix: an unsuffixed one

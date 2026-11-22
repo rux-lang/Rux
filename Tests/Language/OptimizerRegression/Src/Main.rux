@@ -1,4 +1,6 @@
-import Core::{ #target, Architecture, Assert, OperatingSystem, int16, int32, int64, int8, uint64 };
+import Core::Compilation::{ #target, Architecture, OperatingSystem };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 import OptimizerRegression::Support::CrossModule;
 
 interface ValueSource {

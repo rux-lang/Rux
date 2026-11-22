@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, Arena, IsEmptyBlock, Layout, SystemAllocator };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Memory::IsPointerAligned;
 
 // An arena hands out storage by advancing a pointer, so what is checked is that the pointer advances by what was

@@ -4,7 +4,7 @@
 // a child sees, a program that does not exist, and killing.
 
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Io::{ IoErrorKind, Reader, StandardError, StandardIn, StandardOut, WriteAll, Writer };
 import Path::OsStringView;
 import Process::{

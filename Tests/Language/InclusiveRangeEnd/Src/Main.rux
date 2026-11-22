@@ -2,8 +2,8 @@
 // stepping past it and wrapping around to the minimum. Each loop also carries a guard, so a regression fails the test
 // instead of hanging it.
 
-import Core::Assert;
-import Core::{ int8, int64, uint64, uint8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Main() -> int {
     let start: uint8 = 250;

@@ -14,7 +14,7 @@
 
 import Allocator::{ AllocError, Allocator, Arena, EmptyBlockAddress, FixedBuffer, IsEmptyBlock, Layout, Pool,
                     SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 /// A recognizable byte for position `index`, chosen so that a block filled with these cannot be mistaken for
 /// zeroed storage, for a run of one repeated value, or for a shifted copy of itself.

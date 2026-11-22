@@ -2,7 +2,7 @@
 // the shuffle is measured by counting where each element lands over many runs — which is what catches the
 // famously biased variant, since that one still produces every permutation, just not equally often.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Math::Abs;
 import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
 

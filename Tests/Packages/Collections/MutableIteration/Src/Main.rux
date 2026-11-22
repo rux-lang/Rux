@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, MutableReferenceIterator, ReferenceIterator, Vector };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 struct Tracked {
     destroyed: *var int32;

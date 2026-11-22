@@ -4,7 +4,7 @@
 // destination must stay sequential, and a schedule that reads back words it wrote two or sixteen elements earlier,
 // or seven, must compute the same words either way.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var Buffer: uint64[96] = [0u64; 96];
 var Expected: uint64[96] = [0u64; 96];

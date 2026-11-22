@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::{ IsInfinite, IsNan, ParseBool, ParseChar, ParseError, ParseFloat32, ParseFloat64, ParseInt128,
                  ParseInt64, ParseInt8, ParseUint128, ParseUint512, ParseUint64, ParseUint8 };
 import Text::ParseFailure;

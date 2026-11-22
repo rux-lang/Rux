@@ -6,9 +6,9 @@
 // So every assertion here is a relationship: to `#target.pointerBits`, to `sizeof`, or between `Min` and `Max`.
 // Both currently supported architectures are 64-bit, and none of these assertions says so.
 
-import Core::Assert;
-import Core::#target;
-import Core::{ int, int64, uint };
+import Core::Diagnostics::Assert;
+import Core::Compilation::#target;
+import Core::Primitives::*;
 
 func Echo(value: int) -> int {
     return value;

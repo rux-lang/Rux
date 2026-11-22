@@ -1,5 +1,5 @@
 // Functions return references that borrow from their receiver or their one reference or slice parameter.
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 struct Pair {
     first: int32;

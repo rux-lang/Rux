@@ -4,8 +4,8 @@
 // through two lanes it neither starts nor ends in, wrapping at zero rather than at the middle of the range, and a
 // top bit that is worth more than every other bit put together rather than making the value negative.
 
-import Core::Assert;
-import Core::{ int256, uint128, uint256 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: uint256) -> uint256 {
     return value;

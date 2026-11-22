@@ -1,5 +1,6 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Ordering, Panic };
+import Core::Compare::Ordering;
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ String, StringView };
 
 // Comparison is by bytes, and for UTF-8 that is also by code point: the encoding is built so that comparing the

@@ -6,7 +6,7 @@
 // code, preserved because the translation is honest about being lossy — many codes fold to `Other`, and the
 // number is how the rest stays diagnosable.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 import Io::{ IoError, IoErrorKind };
 
 /// The meaning of a platform error code on the platform this program was compiled for.

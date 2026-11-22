@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A function type names its type parameters like any other type does, so
 // `func(T, T) -> bool` has to be substituted along with the rest of a generic

@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::{ BitsOfFloat32, BitsOfFloat64, ParseError, ParseFloat32, ParseFloat64 };
 
 // Reading a decimal into the float nearest it, checked as bits rather than as numbers.

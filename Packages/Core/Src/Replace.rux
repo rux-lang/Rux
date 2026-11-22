@@ -1,0 +1,44 @@
+// Taking a value out of a place that keeps living: a field, an element, or the referent of a reference.
+// A plain assignment destroys the value it overwrites, and only a local, a parameter or a temporary can be given away
+// whole, so these two are the way to get the old value of any other place back: `Replace` installs a new value and
+// returns the one that was there, and `Swap` exchanges two places. Neither runs any code of the values it moves.
+
+pub module Ownership {
+    /// Installs `value` in `place` and returns the value that was there.
+    /// `place` is borrowed for writing and holds `value` afterwards; the old value is returned to the caller, who owns
+    /// it. Nothing is copied and nothing is destroyed.
+    /// Cannot fail. Runs in time linear in the size of `T` and allocates nothing.
+    /// @typeParam T the type of the place, deduced from the arguments
+    /// @param place the place to write
+    /// @param value the value it holds afterwards
+    /// @returns the value the place held before
+    /// @see https://rux-lang.dev/docs/api/core/ownership#replace
+    pub func Replace<T>(place: &var T, value: T) -> T {
+        let address = @place;
+        // Safety: `address` is the address of the caller's live `T`; its value is taken out and the slot refilled at
+        // once.
+        let previous = move address[0];
+        // Safety: the slot was emptied on the line above, so writing it destroys nothing.
+        address[0] = move value;
+        return move previous;
+    }
+
+    /// Exchanges the values of two places.
+    /// Both places are borrowed for writing and hold each other's value afterwards. Nothing is copied and nothing is
+    /// destroyed.
+    /// Cannot fail. Runs in time linear in the size of `T` and allocates nothing.
+    /// @typeParam T the type of the places, deduced from the arguments
+    /// @param first one place
+    /// @param second the other place
+    /// @see https://rux-lang.dev/docs/api/core/ownership#swap
+    pub func Swap<T>(first: &var T, second: &var T) {
+        let left = @first;
+        let right = @second;
+        // Safety: both are addresses of the caller's live values; each slot is emptied and refilled before returning.
+        let held = move left[0];
+        // Safety: the same.
+        left[0] = move right[0];
+        // Safety: the same.
+        right[0] = move held;
+    }
+}

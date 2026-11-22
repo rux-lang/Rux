@@ -61,7 +61,7 @@ Sixty-four bits is enough to make collisions unfindable at hash-table scale and 
 
 None of these are cryptographic. They are fast, they are named, and they are documented — but an adversary who gets to choose the input can find collisions in any of them except `SipHash`, and even `SipHash` promises only that doing so is hard without the key. Anything that must resist an adversary belongs in `Rux/Crypto`, which is also where SHA-2, SHA-3, BLAKE3 and the explicitly named legacy MD5 and SHA-1 live.
 
-A hash from this package is stable: FNV-1a here will agree with any other correct implementation, which is what makes it worth naming an algorithm rather than promising only "some hash". `Core::Hashable` makes no such promise — its answers are not stable across runs, versions or targets, and nothing that outlives the process should be keyed on one.
+A hash from this package is stable: FNV-1a here will agree with any other correct implementation, which is what makes it worth naming an algorithm rather than promising only "some hash". `Core::Compare::Hashable` makes no such promise — its answers are not stable across runs, versions or targets, and nothing that outlives the process should be keyed on one.
 
 ## Documentation
 

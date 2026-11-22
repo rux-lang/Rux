@@ -10,7 +10,8 @@
 // move the file, since it owns its handle and prohibits copying, and there would be nothing left to close.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, ReadTextLine, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ File, OpenOptions };

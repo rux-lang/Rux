@@ -9,7 +9,7 @@
 // first `2^64 mod bound` values is the answer possibly from the short block, and only then is a word rejected
 // and another drawn. The rejection test is exact and the expected number of extra draws is far below one.
 
-import Core::{ int64, uint128, uint64 };
+import Core::Primitives::*;
 import Math::{ IsInfinite, NextDown };
 
 /// A uniform value in `[0, bound)`.

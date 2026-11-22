@@ -3,7 +3,7 @@
 // requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, Path };
 import FileSystem::{ File, NativeKind, OpenOptions, TranslateNative };

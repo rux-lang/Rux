@@ -2,7 +2,8 @@
 // optional's payload. Passed to a generic function, it is the parameter's type once the type arguments written at the
 // call and the arguments before it decide that type; a `try` marking such a case passes the type on to it.
 
-import Core::{ Assert, Result };
+import Core::Result;
+import Core::Diagnostics::Assert;
 
 variant Shape {
     Dot,

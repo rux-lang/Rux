@@ -7,8 +7,8 @@
 // Getting that wrong is silent: the value would simply be false, and only a source whose low byte happened to be
 // zero would show it.
 
-import Core::Assert;
-import Core::{ bool, bool64, bool8 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: bool8) -> bool8 {
     return value;

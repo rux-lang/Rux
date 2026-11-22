@@ -393,12 +393,14 @@ Type = "Executable"
                           std::filesystem::copy_options::recursive, copyError);
     CAPTURE(copyError.message());
     REQUIRE(!copyError);
-    WriteTest("RuntimeFail", "import Core::Panic;\nfunc Main() -> int { Panic(\"first line\\nsecond line\"); }\n",
+    WriteTest("RuntimeFail",
+              "import Core::Diagnostics::Panic;\nfunc Main() -> int { Panic(\"first line\\nsecond line\"); }\n",
               "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
-    WriteTest("RuntimeEmpty", "import Core::Panic;\nfunc Main() -> int { Panic(\"\"); }\n",
+    WriteTest("RuntimeEmpty", "import Core::Diagnostics::Panic;\nfunc Main() -> int { Panic(\"\"); }\n",
               "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
     const std::string largeMessage = "Помилка 🚨 " + std::string(128 * 1024, 'x') + " tail";
-    WriteTest("RuntimeLarge", "import Core::Panic;\nfunc Main() -> int { Panic(\"" + largeMessage + "\"); }\n",
+    WriteTest("RuntimeLarge",
+              "import Core::Diagnostics::Panic;\nfunc Main() -> int { Panic(\"" + largeMessage + "\"); }\n",
               "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
     const auto runtimeManifest = Manifest::Load(runtimeRoot / "Rux.toml");
     std::string runtimeManifestErrors;

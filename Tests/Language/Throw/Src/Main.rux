@@ -5,7 +5,7 @@
 // `try` block has seen so far. Inside a `try` block a `throw` goes to the block's `catch` arms; anywhere else it leaves
 // the function. A `throw` needs no `try` of its own, and `fail` is its older spelling.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 variant DigitError {
     Blank,

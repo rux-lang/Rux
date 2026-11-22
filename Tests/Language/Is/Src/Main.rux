@@ -6,8 +6,8 @@
 // The one thing `is` deliberately cannot do is ask whether a value implements an interface. That would be a
 // run-time question, and it is reported as unavailable rather than answered wrongly.
 
-import Core::Assert;
-import Core::{ bool, bool8, char8, float32, float64, int32, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 struct Point {
     x: int32;

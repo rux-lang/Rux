@@ -2,7 +2,7 @@
 // decoded and built.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Url::{ Decode, HostKind, Pairs, QueryBuilder, Url, UrlError };
 
 func Same(left: char8[..], right: char8[..]) -> bool {

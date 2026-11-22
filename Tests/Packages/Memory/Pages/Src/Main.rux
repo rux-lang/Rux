@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Memory::{ MinimumPageSize, PageAlign, PageAllocate, PageError, PageExecute, PageNone, PageProtect, PageRead,
                  PageRelease, PageSize, PageWrite, Set };
 

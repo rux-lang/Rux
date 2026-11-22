@@ -7,7 +7,7 @@
 // Every declaration here reports failure the way C does: `-1` and a positive `errno`. The wrappers elsewhere in this
 // package fold that into one value with `Errors::Normalize`, so nothing above them has to look in two places.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 /// The library every Darwin interface is reached through.
 /// A single dynamic library re-exporting libc, libm, libpthread and the rest; there is no separate `libc.dylib` to
 /// link on Apple platforms.

@@ -3,7 +3,7 @@
 // both ends of that path is what this checks. The inputs live in a module variable, which no optimization reads at
 // compile time, so every conversion here runs in the program.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var Inputs: uint64[10] = [
     0u64,

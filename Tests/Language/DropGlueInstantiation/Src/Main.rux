@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A destructor whose body asks a question only an instantiation can answer.
 // Nothing in a program calls a destructor: the generated glue does. So a destructor's body was never analyzed at the

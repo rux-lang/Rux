@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Complex, Complex32, Pi };
 
 // Arithmetic against values worked by hand, division that keeps its precision for divisors far from one, the polar

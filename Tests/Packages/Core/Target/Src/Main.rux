@@ -1,5 +1,6 @@
-import Core::{ #target, ApplicationBinaryInterface, Architecture, Assert, DataModel, Endianness, ObjectFormat };
-import Core::{ OperatingSystem, TargetFeature };
+import Core::Compilation::{ #target, ApplicationBinaryInterface, Architecture, DataModel, Endianness, ObjectFormat };
+import Core::Diagnostics::Assert;
+import Core::Compilation::{ OperatingSystem, TargetFeature };
 
 func Main() -> int {
     // The #target is fully identified: OS, architecture, data model and object

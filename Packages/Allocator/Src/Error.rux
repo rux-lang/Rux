@@ -8,7 +8,7 @@
 // cannot get storage terminates the program through `AllocationFailed`, and its `Try*` operations hand the
 // `AllocError` back instead to the code that can recover.
 
-import Core::Panic;
+import Core::Diagnostics::Panic;
 
 /// Why an allocation, reallocation or release did not do what was asked.
 /// @see https://rux-lang.dev/docs/api/allocator/alloc-error

@@ -1,5 +1,5 @@
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // A builder exists so that assembling text is linear rather than quadratic, and so that the block it fills can be

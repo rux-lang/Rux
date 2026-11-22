@@ -17,7 +17,8 @@
 // put the owning values in a `TreeMap` under keys that are copyable.
 
 import Allocator::Allocator;
-import Core::{ Iterator, Ordering };
+import Core::Compare::Ordering;
+import Core::Iteration::Iterator;
 
 /// An ordered set of unique elements.
 /// Move-only: it owns every node and every element in them.

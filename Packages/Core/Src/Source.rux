@@ -4,28 +4,30 @@
 // default value. That is what makes it usable for a logging or assertion helper, which wants to name the site that
 // called it.
 
-/// The location of the expression that reads it.
-/// Every field is fixed while compiling, from the read's own position. A field read produces no runtime code beyond
-/// the constant it folds to; the text fields borrow the compiler's own storage, which outlives the program.
-/// @see https://rux-lang.dev/docs/api/core/source
-pub struct Source {
-    /// The one-based line of the reading expression.
-    pub line: uint;
-    /// The one-based column of the reading expression.
-    pub column: uint;
-    /// The source file as the build named it, which is the spelling a diagnostic uses.
-    pub file: char8[..];
-    /// The file's last path component, with its extension.
-    pub fileName: char8[..];
-    /// The file's path, relative to the package root where the file belongs to one.
-    pub filePath: char8[..];
-    /// The enclosing function, qualified with its type for a method.
-    pub function: char8[..];
-    /// The path of the `module` blocks around the read, such as `Tools::Inner`; empty at the top of a file, since a
-    /// file is not a module.
-    pub module: char8[..];
-}
+pub module Compilation {
+    /// The location of the expression that reads it.
+    /// Every field is fixed while compiling, from the read's own position. A field read produces no runtime code beyond
+    /// the constant it folds to; the text fields borrow the compiler's own storage, which outlives the program.
+    /// @see https://rux-lang.dev/docs/api/core/source
+    pub struct Source {
+        /// The one-based line of the reading expression.
+        pub line: uint;
+        /// The one-based column of the reading expression.
+        pub column: uint;
+        /// The source file as the build named it, which is the spelling a diagnostic uses.
+        pub file: char8[..];
+        /// The file's last path component, with its extension.
+        pub fileName: char8[..];
+        /// The file's path, relative to the package root where the file belongs to one.
+        pub filePath: char8[..];
+        /// The enclosing function, qualified with its type for a method.
+        pub function: char8[..];
+        /// The path of the `module` blocks around the read, such as `Tools::Inner`; empty at the top of a file, since a
+        /// file is not a module.
+        pub module: char8[..];
+    }
 
-/// The reading expression's own location, as a compile-time value.
-/// @see https://rux-lang.dev/docs/api/core/source#source-constant
-pub intrinsic #source: Source;
+    /// The reading expression's own location, as a compile-time value.
+    /// @see https://rux-lang.dev/docs/api/core/source#source-constant
+    pub intrinsic #source: Source;
+}

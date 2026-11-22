@@ -1,7 +1,7 @@
 // Benchmarks measured with a cap no fast work reaches the time before, with a short minimum time, and through the
 // runner with a filter. The work sums into a value it hands to `Consume`, so it cannot be optimized away.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Test::{ BenchmarkCase, BenchmarkOptions, BenchmarkResult, Consume, Measure, RunBenchmarksWith };
 import Time::Duration;
 

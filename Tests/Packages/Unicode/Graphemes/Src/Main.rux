@@ -1,4 +1,4 @@
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Unicode::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoints, IsGraphemeBoundary };
 
 // Every row of the official GraphemeBreakTest, boundary by boundary. Each row is a run of code points and a mask

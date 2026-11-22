@@ -1,7 +1,7 @@
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::SystemAllocator;
 import Collections::{ CollectionError, EqualsInt32, HashInt32, HashSet, TableSeed };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // A set is the same kernel as a map with nothing stored alongside the key, so what is worth checking here is what a
 // set adds: that it holds one of each, that adding a duplicate is reported rather than silently doubling the count,

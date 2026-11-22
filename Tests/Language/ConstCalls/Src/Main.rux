@@ -2,7 +2,7 @@
 // literal that spells the same value. The function needs no marker; it only has to use nothing that depends on the
 // running program.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A lookup table built by a loop rather than written out by hand.
 func BuildCrc32Table(polynomial: uint32) -> uint32[256] {

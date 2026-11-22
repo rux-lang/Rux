@@ -10,7 +10,7 @@
 // base does not have is the sixth character and the fourth digit, and the case below would report four if the
 // mapping from stripped text back to written text were dropped.
 
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger, TomlScalarError };

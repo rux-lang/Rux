@@ -7,7 +7,7 @@
 // caller usually wants after writing is `Sync`, which is a different promise — not "handed to the kernel" but
 // "acknowledged by the device", the one that holds through a power failure.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 import Io::{ IoError, IoErrorKind, Reader, SeekFrom, Seeker, Writer };
 
 when #target.os {

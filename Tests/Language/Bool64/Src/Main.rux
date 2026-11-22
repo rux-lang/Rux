@@ -4,8 +4,8 @@
 // wide as a machine register, so it is the one where a boolean is passed at its own width rather than promoted to
 // something narrower, and where a wide non-zero source with every low byte zero can be written down directly.
 
-import Core::Assert;
-import Core::{ bool16, bool32, bool64, bool8, int64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Echo(value: bool64) -> bool64 {
     return value;

@@ -3,7 +3,8 @@
 // wrong width, order or starting byte shows, and one read stores into the buffer between its byte loads, which the
 // wide load must not move past.
 
-import Core::{ Assert, uint };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 var Buffer: uint8[24] = [0u8; 24];
 

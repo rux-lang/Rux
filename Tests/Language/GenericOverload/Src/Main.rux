@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A generic function's monomorphized name is its own name plus its type
 // arguments. Two overloads instantiated at the same type argument therefore

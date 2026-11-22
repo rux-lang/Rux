@@ -2,7 +2,7 @@
 // A negative value opens with a minus sign; a positive one carries no sign, since a sign that is always there is
 // noise and one that is there on request belongs to the placeholder rather than the value.
 
-import Core::int64;
+import Core::Primitives::*;
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int16 : Display {

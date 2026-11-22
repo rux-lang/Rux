@@ -4,7 +4,7 @@
 // right, so `(try? F()) ?? fallback` needs the parentheses. A value that is already optional gains a level, and a
 // thrown error that owns resources is destroyed where it is dropped.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Counter {
     count: int32;

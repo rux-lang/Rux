@@ -3,7 +3,7 @@
 // cost a bit. An exact power of ten in range gives its exponent exactly, which is what a caller counting
 // digits depends on.
 
-import Core::float64;
+import Core::Primitives::*;
 
 /// Computes the base-ten logarithm of `x`.
 /// The error is at most one ulp, and an exact power of ten returns its exact exponent. Either signed zero returns

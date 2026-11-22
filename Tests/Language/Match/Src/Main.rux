@@ -7,7 +7,8 @@
 // subject. A match over a closed set needs no `_` arm when it names every case, and the arms below are written without
 // one wherever that is true, so removing a case from a variant would fail to compile rather than silently fall through.
 
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 
 enum Direction: int32 {
     North = 0,

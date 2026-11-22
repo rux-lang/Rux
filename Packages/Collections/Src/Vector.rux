@@ -21,7 +21,7 @@
 // counting from the front, are initialized.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator };
-import Core::Iterator;
+import Core::Iteration::Iterator;
 
 /// The capacity a vector takes when it first has to allocate.
 /// Four elements rather than one: the first few appends are the common case, and three reallocations to reach four

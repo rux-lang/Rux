@@ -15,7 +15,7 @@
 // `Allocator` handle a container keeps: it addresses the pool, so its caller promises that
 // the pool outlives every copy, stays where it is, and is not reset while a block taken through it is in use.
 
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Memory::{ AlignUp, Copy };
 

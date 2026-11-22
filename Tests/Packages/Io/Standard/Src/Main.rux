@@ -3,7 +3,7 @@
 // the one a program in a pipeline lives on, and these writes must land as the raw bytes they are.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ BufferedWriter, StandardError, StandardIn, StandardOut, WriteAll, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.

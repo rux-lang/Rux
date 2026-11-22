@@ -5,9 +5,9 @@
 // one. That makes its wrapping behavior the interesting part — a length computation that wraps produces a small
 // number rather than a negative one, which is why allocation arithmetic is checked rather than trusted.
 
-import Core::Assert;
-import Core::{ #target };
-import Core::{ int, uint, uint64 };
+import Core::Diagnostics::Assert;
+import Core::Compilation::#target;
+import Core::Primitives::*;
 
 func Echo(value: uint) -> uint {
     return value;

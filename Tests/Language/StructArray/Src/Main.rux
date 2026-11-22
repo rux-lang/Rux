@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A fixed array reserves one element's worth of stack per element. The size of
 // a struct element is only known to the layout map, and the frame planner used

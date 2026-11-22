@@ -3,7 +3,7 @@
 // evaluated belong to nobody, so they are destroyed on the way out, last first, exactly once. A value moved into an
 // argument, a consumed receiver and every argument of a nested call count the same way.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var drops: int = 0;
 var order: int = 0;

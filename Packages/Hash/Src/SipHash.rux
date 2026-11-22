@@ -15,7 +15,7 @@
 // has HMAC for that.
 // https://www.aumasson.jp/siphash/siphash.pdf
 
-import Core::RotateLeft;
+import Core::Bits::RotateLeft;
 import Hash::Hasher;
 
 /// The first initialization constant, mixed with the low half of the key.

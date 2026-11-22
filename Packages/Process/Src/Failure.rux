@@ -1,7 +1,8 @@
 // What a failed system call means, as an `IoError`, and text turned into native units for a command line.
 // The raw code rides along in every error, so a caller who needs the system's own reason still has it.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import Io::{ IoError, IoErrorKind };
 import Path::OsUnit;
 import Process::{ Buffer, NextScalar };

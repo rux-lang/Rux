@@ -2,7 +2,8 @@
 // and a symbolic link is a stored pointer — each proven by mutating one side and watching the other.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory,

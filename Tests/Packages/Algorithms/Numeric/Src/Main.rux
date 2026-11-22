@@ -1,5 +1,5 @@
 import Algorithms::{ ExclusiveScan, InclusiveScan, Iota, Midpoint, PartialSum, SequenceEqual };
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Running totals, written beside the input or over it; scans with any combining function; counting sequences; and
 // midpoints that stay in range however far apart their ends are.

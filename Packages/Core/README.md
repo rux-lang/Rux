@@ -2,7 +2,30 @@
 
 Core declares primitive associated constants, diagnostics, value protocols, and compile-time context.
 
-Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Every primitive type is built into the compiler; Core extends them, and importing a primitive from Core imports its associated constants. Slice and range fields are compiler-owned. A replacement package can provide the same extensions and intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
+Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Every primitive type is built into the compiler; Core extends them in its `Primitives` module, and `import Core::Primitives::*;` imports their associated constants. Slice and range fields are compiler-owned. A replacement package can provide the same extensions and intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
+
+## Modules
+
+Every declaration in Core lives in a module, and nothing stays at the root of the package except `Result`, which leaves with the error model:
+
+| Module | Contents |
+| --- | --- |
+| `Core::Primitives` | Only the `extend` blocks of the primitive types: their constants and methods. `import Core::Primitives::*;` brings in all of them and no other name. |
+| `Core::Diagnostics` | `Assert`, `DebugAssert`, `Panic`, `#Error`, `#Warn` |
+| `Core::Compilation` | `#target`, `#build`, `#compiler`, `#config`, `#source` and their types: `Target`, `OperatingSystem`, `Architecture`, `ApplicationBinaryInterface`, `TargetFeature`, `Endianness`, `DataModel`, `ObjectFormat`, `Build`, `BuildMode`, `OptimizationMode`, `OutputKind`, `Compiler`, `SemanticVersion`, `Config`, `Source` |
+| `Core::Compare` | `Equatable`, `Comparable`, `Hashable`, `Ordering` |
+| `Core::Ownership` | `Copyable`, `Cloneable`, `Sendable`, `Replace`, `Swap` |
+| `Core::Iteration` | `Iterator`, `Iterable` |
+| `Core::Arithmetic` | `MaximumOf`, `MinimumOf` |
+| `Core::Bits` | The bit operations and the byte-order functions |
+| `Core::Convert` | `ConvertChecked`, `ConvertWrapping`, `ConvertSaturating`, `IsSignedType` and the float tests |
+| `Core::Machine` | The intrinsics that stand for a machine operation outside the primitives: `MemoryOrder`, the `Atomic...` operations, `Fence`, `SpinHint`, `Zeroize`, `ProcessStartFrame` |
+
+```rux
+import Core::Compare::Ordering;
+import Core::Compilation::{ #target, OperatingSystem };
+import Core::Diagnostics::{ Assert, Panic };
+```
 
 ## Installation
 
@@ -19,19 +42,18 @@ rux add Rux/Core
 - **Result** — `Result<T, E>` is an ordinary `variant { Success(T), Failure(E) }` for an outcome that has to be kept as a value: stored, put in a container, or decided later. A function that can fail declares `throws E` and is handled at the call with `try`, so nothing is stored there; `let kept: Result<int, E> = try .Success(Read()) catch { e => .Failure(e) };` keeps one when it must be. Which case a result holds is asked with binding `is`, as in `kept is .Success(_)`, which borrows the result rather than consuming it.
 - **Ordering** — the result of a three-way comparison, with `IsLess`, `IsEqual`, `IsGreater`, the derived `IsLessOrEqual` and `IsGreaterOrEqual`, and `Reverse`. Absence is not a library type: it is the native optional `T?`, and a failure travels in a function's `throws` channel, with the native unit `()` for an operation with nothing to report; `Result` is only for a failure kept as a value.
 - **Interfaces for generic code** — `Equatable` and `Comparable` borrow their `Self`-typed operands through non-null references, `Hashable` gives the 64-bit summary a table keys on, and `Iterator`/`Iterable` name the iteration protocol the compiler drives by shape. `Sendable` is the marker the compiler decides for a value that may move to another thread: every type satisfies it except a reference and one holding a type declared `#Unsendable`. `Copyable` is the marker it decides for plain data, which `=` copies byte for byte: a type with a destructor, one holding such a value, or one declared `#NoCopy` does not satisfy it, so generic code copies a `T` only under `T: Copyable`. `Cloneable` is an ordinary interface, `func Clone(&self) -> Self`, for owning types that can be duplicated explicitly. Resource types release themselves in a destructor, `func ~(&var self)`, which also makes them move-only. Bounds such as `func Sort<T: Comparable>(...)` resolve `Self` to each type argument without dynamic dispatch.
-- **Lazy adaptors** — `Map`, `Filter`, `Take`, `Skip`, `Enumerate`, `Zip` and `Chain` wrap any `Cursor<T>` — a type whose `Next` returns `T?`, such as a container's iterator, `Walk` over a slice, or another adaptor — and compute each item only when it is asked for. Their item types are deduced from the wrapped cursor, so `Take(Filter(Map(Walk(items), Square), IsEven), 3)` needs no type arguments.
-- **Integer arithmetic** — `AddChecked`, `SubChecked`, and `MulChecked` report whether the true answer was representable and write the machine's answer either way; `AddWrapping`, `SubWrapping`, and `MulWrapping` name the wrapping that `+%`, `-%`, and `*%` do, where `+`, `-`, and `*` stop the program; `AddSaturating`, `SubSaturating`, and `MulSaturating` clamp to whichever limit the true answer ran past. `MaximumOf` and `MinimumOf` report a type's limits. All are generic over the integer type and work at every width, signed and unsigned, deriving a type's zero, signedness, and limits from one operand rather than being written out per width. The operation comes first in each name because `CheckedAdd`, `CheckedSub`, and `CheckedMul` name the integer methods below, which return `T?`.
+- **Integer limits** — `MaximumOf` and `MinimumOf` report a type's limits from one operand, generic over the integer type at every width, signed and unsigned. Checked and saturating arithmetic is the integer methods below, and wrapping arithmetic is the operators `+%`, `-%` and `*%`.
 - **Bit operations** — `CountOnes`, `CountZeros`, `LeadingZeros`, `TrailingZeros`, `LeadingOnes`, `TrailingOnes`, `RotateLeft`, `RotateRight`, `ReverseBits`, `ReverseBytes`, `BitAt`, `BitWidthOf`, `IsPowerOfTwo`, and `ShiftRightLogical`. All are generic over the integer type and right at every width, signed and unsigned: `>>` copies the sign bit down on a signed type, so everything that reads a value's bits as bits goes through `ShiftRightLogical`, which brings zeros in either way.
 - **Byte order** — `ToLittleEndian`, `FromLittleEndian`, `ToBigEndian`, and `FromBigEndian` convert a value already in a register; `StoreLittleEndian`, `StoreBigEndian`, `LoadLittleEndian`, and `LoadBigEndian` move one through raw bytes at any alignment, which is what a file or wire format needs. `TargetIsLittleEndian` reports this target's own order, established from its storage rather than from a list of known targets.
 - **Checked conversion** — `ConvertChecked` reports whether a primitive value survived the conversion and writes the machine's answer either way; `ConvertWrapping` keeps the low bits where an integer `as` would stop the program, and `ConvertSaturating` clamps to the destination's range. Every check is a round trip in the source type, plus one test for the pair a round trip cannot see — a value and its conversion that disagree in sign, which is how `-1` reaches `uint64`. `IsSignedType` reports whether a type has values below zero.
 - **Float classification** — `IsNaN`, `IsZero`, `IsInfinite`, `IsFinite`, `IsNegativeZero`, `IsSignNegative`, `IsSignPositive`, and `SignOf`. All are arithmetic rather than bit inspection, so one implementation serves every float width including the software-lowered ones, whose storage carries padding no generic function could locate a sign bit inside of. The sign of a zero, which comparison cannot see, is read from the infinity it divides into.
-- **Integer methods** — every integer type, from `int8` to `uint512` with `int` and `uint`, has `CheckedAdd`, `CheckedSub`, and `CheckedMul`, which return `T?` and none where the true answer does not fit; `SaturatingAdd`, `SaturatingSub`, and `SaturatingMul`, which clamp to the limit it ran past; and `Truncate<T>()`, which keeps the low bits at another integer width where `as` would stop the program. Import the type to call them, as for its constants: `import Core::uint64;` makes `count.CheckedMul(size)` available.
+- **Integer methods** — every integer type, from `int8` to `uint512` with `int` and `uint`, has `CheckedAdd`, `CheckedSub`, and `CheckedMul`, which return `T?` and none where the true answer does not fit; `SaturatingAdd`, `SaturatingSub`, and `SaturatingMul`, which clamp to the limit it ran past; and `Truncate<T>()`, which keeps the low bits at another integer width where `as` would stop the program. They need no import; the constants below do.
 - **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for every integer width and every character width from `char8` to `char512`, width metadata for every boolean width from `bool8` to `bool512`, and the finite and special constant set for every float width from `float8` to `float512`. The scalar widths from `char32` to `char512` share one range, U+0000 to U+10FFFF, however many bytes they occupy. The string widths expose none: a string is a view over code units rather than a value with a width, so a width or a limit would describe neither it nor the units.
 
 ## Primitive constants and imports
 
 ```rux
-import Core::int8;
+import Core::Primitives::*;
 
 func Main() -> int {
     let minimum = int8::Min;
@@ -40,9 +62,9 @@ func Main() -> int {
 }
 ```
 
-`int8` is built into the compiler, so it names the scalar type without an import; `import Core::int8;` imports Core's `extend int8` block, which is what makes `int8::Min` available. The built-in aliases import their canonical widths: `import Core::byte;` gives `byte::Max`, the same constant as `uint8::Max`, and `import Core::bool;` gives `bool::Bits`. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
+`int8` is built into the compiler, so it names the scalar type without an import; `import Core::Primitives::*;` imports Core's `extend` blocks of every primitive, which is what makes `int8::Min` available. The built-in aliases reach their canonical widths: `byte::Max` is the same constant as `uint8::Max`, and `bool::Bits` is `bool8::Bits`. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
 
-Core declares no primitive type: each primitive file holds one documented `extend` block. Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. The float limits of `float8` and `float16` are literals — `float8`, the E4M3 format, tops out at 240 and `float16` at 65504 — while `Infinity` and `NaN` at every width, and every limit of `float80`, `float128`, `float256` and `float512`, are bodyless `intrinsic const` declarations whose values the compiler supplies from the format itself.
+Core declares no primitive type: each primitive file holds one documented `extend` block inside `pub module Primitives`, which holds nothing else. Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. The float limits of `float8` and `float16` are literals — `float8`, the E4M3 format, tops out at 240 and `float16` at 65504 — while `Infinity` and `NaN` at every width, and every limit of `float80`, `float128`, `float256` and `float512`, are bodyless `intrinsic const` declarations whose values the compiler supplies from the format itself.
 
 ## Sequence views and ranges
 
@@ -93,7 +115,8 @@ Assertion failed: message
 ## Example
 
 ```rux
-import Core::{ #target, #Error };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 when #target.os {
     .Windows | .Linux | .macOS | .FreeBSD => {},
@@ -102,7 +125,8 @@ when #target.os {
 ```
 
 ```rux
-import Core::{ Assert, SemanticVersion };
+import Core::Compilation::SemanticVersion;
+import Core::Diagnostics::Assert;
 
 func Major(version: &SemanticVersion) -> uint {
     return version.major;

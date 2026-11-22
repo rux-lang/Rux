@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::Sqrt;
 
 func Main() -> int {

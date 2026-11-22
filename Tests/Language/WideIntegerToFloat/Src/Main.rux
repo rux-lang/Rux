@@ -3,7 +3,7 @@
 // converted a uint64 as signed, so every value at or above 2^63 came out negative.
 // Each value passes through a function, so the conversion runs rather than folds.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func FromUint64(value: uint64) -> float64 {
     return value as float64;

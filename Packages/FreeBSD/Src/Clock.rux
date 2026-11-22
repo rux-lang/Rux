@@ -4,7 +4,7 @@
 // FreeBSD numbers its clocks differently from Linux — monotonic is 4 here and 1 there — which is why an identifier
 // must never be carried between the two packages.
 
-import Core::int32;
+import Core::Primitives::*;
 import FreeBSD::{ SysClockGetRes, SysClockGetTime, SysNanosleep, Syscall2, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.

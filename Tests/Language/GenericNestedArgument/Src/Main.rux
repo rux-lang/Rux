@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Passing an instantiation as a type argument, from inside the generic whose parameter it is built from.
 // `Node<T>` is one named type whose arguments live in its name; there is nothing structural to walk to find the `T`.

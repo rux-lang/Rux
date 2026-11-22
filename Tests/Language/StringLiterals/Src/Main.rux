@@ -1,5 +1,5 @@
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // The three encodings a string literal can be written in, and what each one publishes: a pointer to its code units
 // and a length counted in those units. The bare form is UTF-8, which is what an unprefixed literal in a UTF-8

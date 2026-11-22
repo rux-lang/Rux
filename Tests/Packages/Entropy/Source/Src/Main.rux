@@ -1,4 +1,5 @@
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
 
 // Entropy cannot be tested by comparing against an expected answer — the whole point is that there is not one. What

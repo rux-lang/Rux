@@ -1,4 +1,5 @@
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, StringView, TextWriter, WriteAscii,
                WriteBytes, WriteResultDebug, WriteOptionalDebug, WriteSliceDebug };
 

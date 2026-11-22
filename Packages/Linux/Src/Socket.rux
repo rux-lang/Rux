@@ -2,7 +2,9 @@
 // Addresses are passed as the `sockaddr` bytes the kernel reads, built by the caller, so these wrappers stay as thin
 // as the rest of the package. Name resolution is not a system call and lives in `Rux/Net`.
 
-import Core::{ #Error, #target, int32 };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
+import Core::Primitives::*;
 import Linux::{ FileDescriptor, SignExtendFd, Syscall6 };
 
 when #target.arch {

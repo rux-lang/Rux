@@ -2,7 +2,8 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
 import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextWriter };
 

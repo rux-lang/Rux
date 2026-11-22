@@ -5,7 +5,7 @@
 // chooses; nothing here sorts, because a sorted walk is a policy and this is a primitive.
 
 import Allocator::Allocator;
-import Core::{ #target };
+import Core::Compilation::#target;
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path };
 

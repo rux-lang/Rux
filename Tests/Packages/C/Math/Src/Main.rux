@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import C::{ cbrt, ceil, copysign, cos, exp, fabs, fdim, floor, fmax, fmin, fmod, hypot, ldexp, log, log2, pow, round,
             sin, sqrt, sqrtf, tan, trunc };
 

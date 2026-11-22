@@ -2,7 +2,7 @@
 // `Main` does, after every defer and destructor on the way out has run. Here nothing throws, so the program exits with
 // the status `Main` returns. Its calls are marked with `try` like any other.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Fault {
     code: int32;

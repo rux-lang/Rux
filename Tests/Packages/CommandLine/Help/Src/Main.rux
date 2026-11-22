@@ -4,7 +4,8 @@
 
 import CommandLine::{ Command, CommandSpec, Flag, OptionSpec, Optional, Parse, PositionalSpec, Remaining, Required,
                       ValueOption, WriteHelp, WriteUsage, WriteVersion };
-import Core::{ #target, Panic };
+import Core::Compilation::#target;
+import Core::Diagnostics::Panic;
 import Path::OsStringView;
 import Text::{ BufferWriter, TextWriter };
 

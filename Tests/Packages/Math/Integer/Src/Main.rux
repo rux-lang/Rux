@@ -3,7 +3,8 @@
 // unrepresentable. Each of those is checked at the width where it is cheapest to see, and the generic code means
 // what holds for int8 holds for int512.
 
-import Core::{ Assert, MaximumOf, MinimumOf };
+import Core::Arithmetic::{ MaximumOf, MinimumOf };
+import Core::Diagnostics::Assert;
 import Math::{ AbsChecked, AbsWrapping, Clamp, GcdChecked, LcmChecked, Maximum, Minimum, PowChecked };
 
 func Main() -> int {

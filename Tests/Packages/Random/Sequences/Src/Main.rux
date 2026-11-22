@@ -3,7 +3,7 @@
 // an accident. The rest checks the structural properties — the fixed point that must be unreachable, the
 // streams that must not coincide, and the state that must actually advance.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Random::{ Pcg64Dxsm, RandomGenerator, Xoshiro256 };
 
 func Main() -> int {

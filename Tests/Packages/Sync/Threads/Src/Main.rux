@@ -1,7 +1,7 @@
 // Several threads at once take each lock, wait on each condition, count through each counter and pass values through
 // a channel, and the totals come out exactly as if the work had been done on one thread.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Sync::{ Barrier, Channel, Condition, Lock, Mutex, Once, RwLock, Semaphore, WaitGroup };
 import Thread::{ JoinHandle, Spawn };
 import Time::Duration;

@@ -8,7 +8,7 @@
 // The plain forms need `<` on the element type. The `By` forms take a three-way comparison instead, which is what to
 // use when the element has no ordering of its own, or when the wanted order is not its own.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 /// The index of the smallest element of `items`.
 /// `items` is borrowed and read. Reports `none` for an empty slice, and the earliest index when several elements

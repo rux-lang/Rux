@@ -12,7 +12,7 @@
 // Internal helpers; not part of the package API.
 
 import Allocator::AllocError;
-import Core::uint;
+import Core::Primitives::*;
 
 // `count * elementSize`, rejecting a product that does not fit in uint. A zero
 // count or element size is a zero-byte request rather than an error, so a

@@ -5,7 +5,7 @@
 // a move-only value needs `move` or a `Clone`. Each tracked value appends its id to a log as it is destroyed or cloned,
 // and each check appends a 0 where it stands, so the log is the exact order of events.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Pair {
     a: int32;

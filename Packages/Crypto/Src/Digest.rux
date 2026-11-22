@@ -16,7 +16,8 @@
 // Clearing a secret with an ordinary loop is dead code to a compiler, since nothing reads the buffer afterwards,
 // and it is entitled to remove it.
 
-import Core::{ #Error, #target };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 /// An incremental digest.
 /// Take one by generic bound and mutable reference — `func Sum<D: Digest>(digest: &var D)` — so work applies to

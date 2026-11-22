@@ -9,40 +9,44 @@
 
 namespace Rux::Testing {
 namespace {
-// A stand-in intrinsics package so `import Core::{...}` resolves in these tests. The
-// fold resolves these declarations and their enum variants just like any other provider.
+// A stand-in intrinsics package, in the modules the real Core uses, so `import Core::Compilation::{...}` resolves in
+// these tests. The fold resolves these declarations and their enum variants just like any other provider.
 constexpr std::string_view kCorePackageSource = R"(
-pub struct Target {}
-pub struct Build {}
-pub struct Compiler {}
-pub struct SemanticVersion {
-    pub major: uint;
-    pub minor: uint;
-    pub patch: uint;
-}
-extend SemanticVersion {
-    pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
-        return SemanticVersion { major: major, minor: minor, patch: patch };
+pub module Compilation {
+    pub struct Target {}
+    pub struct Build {}
+    pub struct Compiler {}
+    pub struct SemanticVersion {
+        pub major: uint;
+        pub minor: uint;
+        pub patch: uint;
     }
+    extend SemanticVersion {
+        pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
+            return SemanticVersion { major: major, minor: minor, patch: patch };
+        }
+    }
+    pub struct Source {}
+    pub struct Config {}
+    pub intrinsic #target: Target;
+    pub intrinsic #build: Build;
+    pub intrinsic #compiler: Compiler;
+    pub intrinsic #source: Source;
+    pub intrinsic #config: Config;
+    pub enum OperatingSystem { FreeBSD, Linux, macOS, Windows }
+    pub enum Architecture { AArch64, X86_64 }
+    pub enum ApplicationBinaryInterface { AAPCS64, SystemV, WindowsX64 }
+    pub enum Endianness { Big, Little }
+    pub enum DataModel { LLP64, LP64 }
+    pub enum ObjectFormat { COFF, ELF, MachO }
+    pub enum BuildMode { Debug, Release }
+    pub enum OptimizationMode { None, Size, Speed }
+    pub enum OutputKind { Executable, SharedLibrary, StaticLibrary, SourceLibrary }
 }
-pub struct Source {}
-pub struct Config {}
-pub intrinsic #target: Target;
-pub intrinsic #build: Build;
-pub intrinsic #compiler: Compiler;
-pub intrinsic #source: Source;
-pub intrinsic #config: Config;
-pub intrinsic func #Error(message: char8[..]);
-pub intrinsic func #Warn(message: char8[..]);
-pub enum OperatingSystem { FreeBSD, Linux, macOS, Windows }
-pub enum Architecture { AArch64, X86_64 }
-pub enum ApplicationBinaryInterface { AAPCS64, SystemV, WindowsX64 }
-pub enum Endianness { Big, Little }
-pub enum DataModel { LLP64, LP64 }
-pub enum ObjectFormat { COFF, ELF, MachO }
-pub enum BuildMode { Debug, Release }
-pub enum OptimizationMode { None, Size, Speed }
-pub enum OutputKind { Executable, SharedLibrary, StaticLibrary, SourceLibrary }
+pub module Diagnostics {
+    pub intrinsic func #Error(message: char8[..]);
+    pub intrinsic func #Warn(message: char8[..]);
+}
 )";
 
 } // namespace

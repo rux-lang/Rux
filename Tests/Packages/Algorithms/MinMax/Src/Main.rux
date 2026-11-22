@@ -1,5 +1,6 @@
 import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex, MinMaxIndexBy };
-import Core::{ Assert, Ordering, Panic };
+import Core::Compare::Ordering;
+import Core::Diagnostics::{ Assert, Panic };
 
 // The smallest and largest of a sequence. Two things are worth pinning down beyond the obvious: an empty slice has
 // no answer at all rather than a sentinel one, and a tie goes to the earliest index — which is only observable if

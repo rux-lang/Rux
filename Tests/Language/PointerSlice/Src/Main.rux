@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A pointer indexed by a range with an end bound is a slice of the elements it addresses: `p[..n]` views `n` elements
 // from `p`, `p[a..b]` the elements from `a` up to `b`, and `p[..=n]` one more than `n`. The view is writable exactly

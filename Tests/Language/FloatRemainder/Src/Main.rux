@@ -6,9 +6,8 @@
 // Every operand passes through a function, so the operation runs rather than folds, and each result is compared by its
 // bits against a constant the compiler folds.
 
-import Core::Assert;
-import Core::float32;
-import Core::float64;
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 func Remainder32(left: float32, right: float32) -> float32 {
     return left % right;

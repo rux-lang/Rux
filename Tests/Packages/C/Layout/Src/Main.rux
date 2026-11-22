@@ -1,4 +1,6 @@
-import Core::{ #target, Assert, IsInfinite, IsNaN };
+import Core::Compilation::#target;
+import Core::Convert::{ IsInfinite, IsNaN };
+import Core::Diagnostics::Assert;
 import C::{ CLOCKS_PER_SEC, HUGE_VAL, HUGE_VALF, INFINITY, NAN, TIME_UTC, TimespecGet, clock, clock_t, difftime, gmtime,
             mktime, scalbln, scalblnf, time, time_t, timespec, tm };
 

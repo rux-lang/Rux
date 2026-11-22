@@ -10,7 +10,7 @@
 // beyond the element has to be reachable from the function itself.
 // Nothing here allocates, and nothing here writes. Every one of these is a single pass unless it says otherwise.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 /// Whether any element of `items` equals `value`.
 /// `items` is borrowed and read; `value` is read by value. An empty slice contains nothing, so this is false.

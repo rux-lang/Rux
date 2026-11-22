@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     Assert(false, "native Windows ARM64 assertion fixture");

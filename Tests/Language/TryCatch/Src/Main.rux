@@ -6,7 +6,7 @@
 // `try`, goes to the next handler out or to the caller. `break`, `continue` and `return` leave a `try` block as they
 // leave any block.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 variant ParseError {
     Empty,

@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // An operator a struct does not declare is derived from one it does:
 //   a != b  ->  !(a == b)

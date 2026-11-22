@@ -4,7 +4,7 @@
 // missing. Everything runs on one thread, on the loopback interface.
 
 import Allocator::SystemAllocator;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoErrorKind, Reader, WriteAll };
 import Net::{
     Interest, IpAddress, Ipv4Address, PollEvent, Poller, SocketAddress, TcpListener, TcpStream, UdpSocket

@@ -5,9 +5,8 @@
 // operation run, and its bits are read through a pointer, since `==` would call -0 and +0 the same and every NaN
 // different. A NaN result is only checked to be a NaN, because its sign and payload are not specified at run time.
 
-import Core::Assert;
-import Core::{ float128, float256, float32, float512, float64, float80, int128, int256, int512, int64, uint128,
-               uint256, uint512, uint64 };
+import Core::Diagnostics::Assert;
+import Core::Primitives::*;
 
 const Zero: float128 = 0.0f128;
 const NegativeZero: float128 = -0.0f128;

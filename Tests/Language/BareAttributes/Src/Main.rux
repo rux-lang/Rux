@@ -1,7 +1,7 @@
 // Attributes that take no arguments are written without parentheses: `#NoReturn`, `#Unsendable`, and `#Format` before a
 // parameter, as `#Test` is before a test. An attribute with arguments keeps its parentheses.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 #Unsendable
 struct Local {

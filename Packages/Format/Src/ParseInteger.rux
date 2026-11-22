@@ -6,7 +6,7 @@
 // The bound is one larger for a negative value, because the most negative value of every signed width has no
 // positive counterpart: `-128` fits an `int8` whose largest value is `127`.
 
-import Core::{ uint128, uint16, uint256, uint32, uint512, uint64, uint8 };
+import Core::Primitives::*;
 import Text::StringView;
 
 // What the sign and prefix left behind: where the digits start, which base they are in, and whether the value is

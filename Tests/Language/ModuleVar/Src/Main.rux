@@ -3,7 +3,7 @@
 // zero initializer is placed in zero-fill storage and still reads as zero; a non-zero one is placed in initialized
 // data. Wide scalars, arrays and structs are covered because their loads and stores are not a single register move.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import ModuleVarProvider::{ Bump, Counter, CounterAddress, NextHidden, Seed, Table, TableSum };
 
 struct Point {

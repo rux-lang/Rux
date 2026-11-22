@@ -2,7 +2,7 @@
 // tests. The digest contract itself has nothing to check until an algorithm implements it — the first is SHA-256
 // in the next task, and its test is where the incremental promise gets exercised against real vectors.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Equal, Wipe };
 
 func Main() -> int {

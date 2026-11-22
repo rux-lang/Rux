@@ -2,7 +2,7 @@
 // nine rows and wrong in the tenth, so every row is written out here — including the two that surprise
 // everyone: anything to the zeroth power is one even for a NaN, and one to any power is one even for a NaN.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ IsNan, PositiveInfinity64, Pow, PowInteger, QuietNan64, SignBit, UlpDistance };
 
 func Main() -> int {

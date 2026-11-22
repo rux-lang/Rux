@@ -14,7 +14,7 @@
 // Comparisons are O(n log n) for every input — there is no bad case here at all, unlike a quicksort — and the
 // movement is the same. What it costs over `Sort` is the storage and about a constant factor.
 
-import Core::{ Ordering };
+import Core::Compare::Ordering;
 
 /// How much scratch storage a stable sort of `length` elements needs.
 /// `length` is read by value. The answer is `length` itself: a merge writes its output somewhere other than either

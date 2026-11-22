@@ -7,8 +7,9 @@
 // takes a `long double`, which is a different type on every target — 64 bits under the Universal CRT, an 80-bit
 // x87 value on x86-64 Unix, a 128-bit quad on AArch64 — so no one declaration is right everywhere.
 
-import Core::{ float32, float64 };
-import Core::{ #Error, #target };
+import Core::Primitives::*;
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 import C::c_long;
 
 // C's `<math.h>`: the elementary functions, in the `double` form C names plainly and the `float` form it suffixes.

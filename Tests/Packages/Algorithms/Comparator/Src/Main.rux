@@ -1,6 +1,6 @@
 import Algorithms::{ NthElementBy, PartialSortBy, SortBy, SortDescendingBy };
 import Algorithms::{ IsSorted, IsSortedBy };
-import Core::Ordering;
+import Core::Compare::Ordering;
 import Algorithms::{ CopyTo, Reverse, SequenceEqual };
 
 // Declares no operators at all. Every ordering below has to come from the

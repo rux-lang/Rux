@@ -14,7 +14,7 @@
 // The result matches the reference implementation exactly, for every input length and every seed.
 // https://github.com/Cyan4973/xxHash/blob/dev/doc/xxhash_spec.md
 
-import Core::RotateLeft;
+import Core::Bits::RotateLeft;
 import Hash::Hasher;
 
 /// The first xxHash64 prime, which every round multiplies by.

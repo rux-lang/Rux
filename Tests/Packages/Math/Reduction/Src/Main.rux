@@ -9,7 +9,7 @@
 // here, and the sines of near-multiples of Pi, where the answer is almost entirely made of the bits the naive
 // method has thrown away.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Math::{ Abs, Cos, IsNan, Pi, ScaleByPowerOfTwo, Sin, Tan, UlpDistance };
 
 // The exact product of two doubles, as a rounded head and the remainder the rounding dropped.

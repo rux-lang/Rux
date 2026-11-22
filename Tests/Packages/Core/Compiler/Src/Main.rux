@@ -1,4 +1,5 @@
-import Core::{ #compiler, Assert, SemanticVersion };
+import Core::Compilation::{ #compiler, SemanticVersion };
+import Core::Diagnostics::Assert;
 
 const MinimumCompiler = SemanticVersion { major: 0, minor: 0, patch: 0 };
 

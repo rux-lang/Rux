@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A function value has only ever appeared as a parameter or a local in this
 // repository, never as a struct field. A hash table has to hold its hasher and

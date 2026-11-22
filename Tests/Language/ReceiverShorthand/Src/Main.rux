@@ -3,7 +3,7 @@
 // block. In an interface requirement it names the implementing type, so `&var self` is `self: &var Self`. A destructor
 // takes `&var self` like any method, and the long form `self: &T` stays accepted beside the shorthand.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Counter {
     count: int32;

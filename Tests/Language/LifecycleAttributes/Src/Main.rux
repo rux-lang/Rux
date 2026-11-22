@@ -3,7 +3,7 @@
 // which is what a value pointing into itself needs; it implies `#NoCopy`, and it is created in place from a
 // temporary and shared through a pointer. The bodyless `func =(...);` and `func <-(...);` are older spellings.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 #NoCopy
 struct RawHandle {

@@ -7,7 +7,7 @@
 // additive identity is, and inventing one would be wrong for every type that has no such thing. Passing `0` costs a
 // caller nothing and keeps the operation honest about what it does.
 // Overflow is the element type's business. `Sum` adds with `+`, so a sum that does not fit behaves exactly as `+`
-// behaves on that type — these do not check, and a caller who needs checking folds `AddChecked` instead. That is
+// behaves on that type — these do not check, and a caller who needs checking folds `CheckedAdd` instead. That is
 // the fold's whole reason for being general.
 // Nothing here allocates.
 

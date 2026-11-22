@@ -3,8 +3,10 @@
 // `#Unsendable`, such as a handle whose count is not atomic. A raw pointer is sendable: what it shares is the
 // program's to vouch for.
 
-/// A type whose values may move to another thread: the bound a thread's context and result are written with.
-/// Every type satisfies it except a reference and a type that is or holds one declared `#Unsendable`, which is how
-/// a type whose state is not safe to share across threads, such as `Rc`, keeps to the thread that made it.
-/// @see https://rux-lang.dev/docs/api/core/sendable
-pub interface Sendable {}
+pub module Ownership {
+    /// A type whose values may move to another thread: the bound a thread's context and result are written with.
+    /// Every type satisfies it except a reference and a type that is or holds one declared `#Unsendable`, which is how
+    /// a type whose state is not safe to share across threads, such as `Rc`, keeps to the thread that made it.
+    /// @see https://rux-lang.dev/docs/api/core/sendable
+    pub interface Sendable {}
+}

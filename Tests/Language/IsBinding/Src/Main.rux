@@ -4,7 +4,7 @@
 // bindings borrow from it, while a temporary or a subject written with `move` is taken apart. `x is T` still tests a
 // type, and a test that binds nothing is an ordinary `bool`.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 variant Shape {
     Circle(int),

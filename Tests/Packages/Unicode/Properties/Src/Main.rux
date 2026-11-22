@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Unicode::{
     CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, IsNumeric, IsWhiteSpace, Script, ScriptCount, ScriptOf
 };

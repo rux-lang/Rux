@@ -3,7 +3,8 @@
 // Each keeps its count in a word threads sleep on, and registers sleepers where waking them costs a system call, so
 // a release with nobody asleep is one atomic instruction.
 
-import Core::{ AtomicCompareExchange, AtomicFetchAdd, AtomicFetchSub, AtomicLoad, AtomicStore, MemoryOrder, Panic };
+import Core::Diagnostics::Panic;
+import Core::Machine::{ AtomicCompareExchange, AtomicFetchAdd, AtomicFetchSub, AtomicLoad, AtomicStore, MemoryOrder };
 import Sync::{ AllocateBlock, DestroyBlock, ReleaseBlock, RetainBlock, WaitWhile, WakeAll, WakeOne };
 
 struct SemaphoreBlock {

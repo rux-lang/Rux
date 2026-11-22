@@ -11,7 +11,7 @@
 // seed in, and an equality that agrees with it. The one rule is the usual one — two keys that compare equal must
 // hash the same.
 
-import Core::int64;
+import Core::Primitives::*;
 import Hash::{ SipHash24, SipHash24Of, SipWord, WriteUint64 };
 
 /// The seeded hash of a `uint`.

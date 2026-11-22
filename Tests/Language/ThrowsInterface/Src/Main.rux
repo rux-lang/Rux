@@ -4,7 +4,7 @@
 // `try`. A function type may also declare `throws E`, and a call through a function value of that type is a throw site
 // that must be marked with `try` like any other call.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Closed {
     reason: int32;

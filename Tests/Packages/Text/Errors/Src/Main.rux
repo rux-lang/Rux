@@ -1,5 +1,5 @@
 import Allocator::AllocError;
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Memory::PageError;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextError, TextFailureKind,
                TextWriter, Utf8Error };

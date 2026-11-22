@@ -12,7 +12,8 @@
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
-import Core::{ Cloneable, Ordering };
+import Core::Compare::Ordering;
+import Core::Ownership::Cloneable;
 import Memory::Copy;
 
 /// Text that owns its bytes.

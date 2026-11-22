@@ -1,4 +1,5 @@
-import Core::{ #build, Assert, BuildMode, OptimizationMode, OutputKind };
+import Core::Compilation::{ #build, BuildMode, OptimizationMode, OutputKind };
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // This code runs as a test build, so the flag the compiler sets for one is

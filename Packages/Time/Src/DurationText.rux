@@ -9,7 +9,7 @@
 // computed in `uint64` so that the most negative duration — whose magnitude has no positive counterpart in
 // `int64` — comes out right rather than wrapping to itself.
 
-import Core::{ int64, uint64 };
+import Core::Primitives::*;
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes,
                WriteDisplayAligned };
 

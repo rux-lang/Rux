@@ -3,7 +3,7 @@
 // event; reading and writing are separate filters, so a descriptor wanted for both is registered twice. The
 // registrations here are level-triggered: a descriptor is reported for as long as it is ready.
 
-import Core::int32;
+import Core::Primitives::*;
 import FreeBSD::{ FileDescriptor, SignExtendFd, Syscall6, Timespec };
 
 const SysFcntl: uint64 = 92;

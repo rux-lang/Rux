@@ -4,7 +4,7 @@
 // split across reads, the bytes that are not text, and a source that is interrupted or not ready.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, Print, PrintLine, ReadLine, ReadLineFrom, Reader };
 import Text::{ StringBuilder, StringView };
 

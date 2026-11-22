@@ -1,6 +1,6 @@
 // Core's `Result`: an ordinary variant that stores an outcome, built from a throwing call and matched.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Core::Result;
 
 func Half(value: int) -> int throws int {

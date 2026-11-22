@@ -4,7 +4,7 @@
 // wrong; and patterns that take a backtracking matcher exponential time take this one linear time.
 
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Regex::{ Escape, Match, Regex, RegexErrorKind };
 
 func Same(left: char8[..], right: char8[..]) -> bool {

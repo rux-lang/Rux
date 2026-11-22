@@ -6,7 +6,8 @@
 // The shareable types keep their state in a block allocated once and counted: every handle holds one count, and
 // whichever lets go of the last one destroys the block's contents and frees it.
 
-import Core::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchSub, MemoryOrder, Panic };
+import Core::Diagnostics::Panic;
+import Core::Machine::{ AtomicCompareExchange, AtomicExchange, AtomicFetchAdd, AtomicFetchSub, MemoryOrder };
 import Memory::{ Alloc, Free };
 import Sync::{ WaitWhile, WakeOne };
 

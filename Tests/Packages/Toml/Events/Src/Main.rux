@@ -3,7 +3,7 @@
 // It cannot refuse a table defined twice — that needs the tree it is avoiding — and pretending otherwise would
 // be worse than saying so.
 
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader };
 

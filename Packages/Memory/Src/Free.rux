@@ -3,7 +3,7 @@
 // be an address this module's `Alloc` or `Realloc` returned; there is no way to check that here and no
 // attempt to.
 
-import Core::{ #target };
+import Core::Compilation::#target;
 
 when #target.os {
     .FreeBSD => import FreeBSD::Munmap,

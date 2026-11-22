@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Text::{ BufferWriter, Display, FormatSpec };
 import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRfc3339, ParseTimeOfDay, TimeOfDay,
                TimeParseError, UtcOffset };

@@ -331,7 +331,7 @@ func Run() {
 
 TEST_CASE("when selects methods inside an extend block") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 struct Animal {}
 
@@ -372,7 +372,7 @@ extend Animal {
 
 TEST_CASE("when tests the target OS through #target.os") {
     const std::string source = R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::Windows {
@@ -398,7 +398,7 @@ func Do() -> int {
 
 TEST_CASE("#target.os compares against the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os != OperatingSystem::Linux {
@@ -417,7 +417,7 @@ func Do() -> int {
 
 TEST_CASE("an enum shorthand takes its enum from the other side of a when condition") {
     const std::string source = R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os == .Windows {
@@ -442,7 +442,7 @@ func Do() -> int {
 
 TEST_CASE("an enum shorthand in a when condition still validates the variant") {
     auto parsed = ParseSource(R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os == .Wndows {
@@ -459,7 +459,8 @@ func Do() -> int {
 
 TEST_CASE("#Error in a taken branch emits its message as a compile-time error") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, #Error };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 func Do() -> int {
     when #target.os == .Windows {
@@ -475,7 +476,8 @@ func Do() -> int {
 
 TEST_CASE("#Error in a branch that is not taken never fires") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, #Error };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 func Do() -> int {
     when #target.os == .Linux {
@@ -490,7 +492,7 @@ func Do() -> int {
 
 TEST_CASE("#Warn emits a warning, not an error") {
     auto parsed = ParseSource(R"(
-import Core::{ #Warn };
+import Core::Diagnostics::#Warn;
 
 func Do() -> int {
     #Warn("deprecated path");
@@ -529,7 +531,7 @@ func Do() {
 
 TEST_CASE("#Error requires a string-literal message") {
     auto parsed = ParseSource(R"(
-import Core::{ #Error };
+import Core::Diagnostics::#Error;
 
 const Message = "hi";
 
@@ -545,7 +547,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match statement selects the arm for the target") {
     const std::string source = R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os {
@@ -571,7 +573,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match arm may list several patterns") {
     const std::string source = R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os {
@@ -601,7 +603,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match accepts a bare-expression arm and the full enum form") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os {
@@ -622,7 +624,7 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match with no matching arm and no else is an error") {
     auto parsed = ParseSource(R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os {
@@ -639,7 +641,8 @@ func Do() -> int {
 
 TEST_CASE("a compile-time match arm fires #Error only when it is the taken arm") {
     const std::string source = R"(
-import Core::{ #target, #Error };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 func Do() -> int {
     when #target.os {
@@ -662,10 +665,11 @@ func Do() -> int {
 
 TEST_CASE("a declaration-level match groups patterns and takes a semicolon-less import body") {
     const std::string source = R"(
-import Core::{ #target, #Error };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 when #target.os {
-    .Windows | .Linux => import Core::{ OperatingSystem }
+    .Windows | .Linux => import Core::Compilation::OperatingSystem
     _ => #Error("unsupported")
 }
 )";
@@ -685,7 +689,8 @@ when #target.os {
 
 TEST_CASE("a declaration-level compile-time match splices the taken arm") {
     const std::string source = R"(
-import Core::{ #target, #Error };
+import Core::Compilation::#target;
+import Core::Diagnostics::#Error;
 
 when #target.os {
     .Windows => { func Tag() -> int { return 1; } }
@@ -706,7 +711,7 @@ when #target.os {
 
 TEST_CASE("the dropped OS alias no longer names the OperatingSystem enum") {
     auto parsed = ParseSource(R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os == OS::Windows {
@@ -722,7 +727,7 @@ func Do() -> int {
 
 TEST_CASE("a built-in enum named in a condition must be imported from Rux") {
     auto parsed = ParseSource(R"(
-import Core::{ #target };
+import Core::Compilation::#target;
 
 func Do() -> int {
     when #target.os == OperatingSystem::Windows {
@@ -773,7 +778,7 @@ func Do() -> int {
 
 TEST_CASE("#target.os tells the supported systems apart") {
     const std::string source = R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::FreeBSD {
@@ -807,7 +812,7 @@ func Do() -> int {
 
 TEST_CASE("a misspelled OS variant is an error, not a silently false branch") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::Wndows {
@@ -824,7 +829,7 @@ func Do() -> int {
 
 TEST_CASE("the former MacOS spelling is not an OperatingSystem variant") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
 
 func Do() -> int {
     when #target.os == OperatingSystem::MacOS {
@@ -871,7 +876,7 @@ func Do() -> int {
 }
 
 TEST_CASE("compile-time evaluation distinguishes fields operand types values overflow and duplicate branches") {
-    const std::string prefix = "import Core::{ #target };\nfunc Do() -> int {\n";
+    const std::string prefix = "import Core::Compilation::#target;\nfunc Do() -> int {\n";
     const std::string suffix = "return 0;\n}\n";
 
     auto field = ParseSource(prefix + "when #target.cpu { return 1; }\n" + suffix);
@@ -902,7 +907,7 @@ TEST_CASE("compile-time evaluation distinguishes fields operand types values ove
 
 TEST_CASE("compile-time warning and error directives preserve the authored message text") {
     auto parsed = ParseSource(R"(
-        import Core::{ #Error, #Warn };
+        import Core::Diagnostics::{ #Error, #Warn };
         func Do() {
             #Warn("user text: keep 'quotes' and punctuation!");
             #Error("line one\nline two");
@@ -917,7 +922,8 @@ TEST_CASE("compile-time warning and error directives preserve the authored messa
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness, DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
+import Core::Compilation::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface,
+                            Endianness, DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
 
 func Selected() -> int {
     when #target.os == OperatingSystem::Windows &&
@@ -965,7 +971,7 @@ func Selected() -> int {
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
-import Core::{ #config, #compiler, #source, SemanticVersion };
+import Core::Compilation::{ #config, #compiler, #source, SemanticVersion };
 
 const FutureCompiler = SemanticVersion { major: 1, minor: 2, patch: 4 };
 
@@ -1004,7 +1010,7 @@ func Selected() -> int {
 
 TEST_CASE("when includes true declarations and removes false declarations and imports") {
     auto parsed = ParseSource(R"(
-import Core::{ #compiler };
+import Core::Compilation::#compiler;
 
 const Enabled = true;
 
@@ -1043,7 +1049,7 @@ when false {
 
 TEST_CASE("Link resolves a target-selected compile-time string constant") {
     auto parsed = ParseSource(R"(
-import Core::{ OperatingSystem, #target };
+import Core::Compilation::{ OperatingSystem, #target };
 
 when #target.os == OperatingSystem::Windows {
     const LibName = "ucrtbase.dll";
@@ -1090,7 +1096,7 @@ extern func Run();
 
 TEST_CASE("a condition accepts intrinsics imported under the manifest's own alias") {
     auto parsed = ParseSource(R"(
-import Lang::{ #target, OperatingSystem };
+import Lang::Compilation::{ #target, OperatingSystem };
 
 func Which() -> int {
     when #target.os == OperatingSystem::Windows { return 1; }
@@ -1112,7 +1118,7 @@ func Which() -> int {
 
 TEST_CASE("a condition accepts an intrinsic declaration from any package") {
     auto parsed = ParseSource(R"(
-import Other::{ #target, OperatingSystem };
+import Other::Compilation::{ #target, OperatingSystem };
 
 func Which() -> int {
     when #target.os == OperatingSystem::Windows { return 1; }

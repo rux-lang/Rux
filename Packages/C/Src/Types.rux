@@ -10,7 +10,8 @@
 // currently supported target makes it signed, and that is what is declared; a binding that cares should say `c_schar`
 // or `c_uchar` rather than rely on it.
 
-import Core::{ #Error, #target, OperatingSystem };
+import Core::Compilation::{ #target, OperatingSystem };
+import Core::Diagnostics::#Error;
 
 /// C's `signed char`: the smallest addressable signed integer.
 /// @see https://rux-lang.dev/docs/api/c/types#c-schar

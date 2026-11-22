@@ -4,7 +4,7 @@
 // is copied from the template the loader builds every thread's block from. Separate threads are exercised by the
 // Thread package's tests.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import ThreadVarProvider::{ Depth, DepthAddress, Enter, Marker, NextHidden };
 
 struct Point {

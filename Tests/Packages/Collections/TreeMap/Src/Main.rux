@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CompareInt32, KeyValue, TreeMap };
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 
 // What a `TreeMap` has that a `HashMap` does not is order, so that is what this leans on: the walk comes out sorted
 // whatever order the keys arrived in, the nearest key above or below a bound is found without a scan, and a range

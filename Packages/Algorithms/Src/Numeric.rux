@@ -5,7 +5,7 @@
 // `Midpoint` is defined per numeric type rather than generically, because the overflow-free formula depends on the
 // representation: integers take the difference in the unsigned type of their width, and floats halve before they add.
 
-import Core::{ int32, int64 };
+import Core::Primitives::*;
 
 
 /// Writes the running sums of `items` into `into`: element `i` becomes the sum of the first `i + 1` elements.

@@ -8,7 +8,7 @@
 // This case previously reported failures by returning 1, 2 or 3, so a failure said which check but not what it
 // saw. It uses Assert now, like the rest of the language tests.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 func Main() -> int {
     // A package-private type, constructor and method, reached from another file of the same package.

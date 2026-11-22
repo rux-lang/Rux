@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // A generic struct is declared once but laid out once per instantiation. Sizing
 // every instantiation from the unsubstituted declaration charged a pointer's

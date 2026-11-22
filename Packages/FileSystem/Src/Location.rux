@@ -10,7 +10,7 @@
 // programs that genuinely need it and nothing in this package calls it.
 
 import Allocator::Allocator;
-import Core::{ #target };
+import Core::Compilation::#target;
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer, PreferredSeparator };
 import Path::{ IsAbsolute, Normalize };

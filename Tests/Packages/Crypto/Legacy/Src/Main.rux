@@ -2,7 +2,7 @@
 // These exist to read what already exists, so what matters is that they agree with every other implementation
 // of them — which the published vectors establish. Nothing here endorses using them.
 
-import Core::{ Assert };
+import Core::Diagnostics::Assert;
 import Crypto::{ Equal, LegacyMd5, LegacyMd5Of, LegacySha1, LegacySha1Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

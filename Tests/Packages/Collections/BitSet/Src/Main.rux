@@ -1,6 +1,6 @@
 import Allocator::SystemAllocator;
 import Collections::BitSet;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 // Bits set across word boundaries read back, counting and walking find exactly them, the set operations work word by
 // word across sets of different lengths, and shrinking forgets bits for good.

@@ -12,7 +12,7 @@
 // the slice was sorted by; a different one gives a meaningless answer just as an unsorted slice does.
 // Nothing here allocates or writes.
 
-import Core::Ordering;
+import Core::Compare::Ordering;
 
 /// Whether `items` is in non-decreasing order.
 /// `items` is borrowed and read. An empty slice and a single element are sorted, there being no pair to be out of

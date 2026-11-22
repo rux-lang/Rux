@@ -1,4 +1,4 @@
-import Core::{ #target, Architecture, OperatingSystem };
+import Core::Compilation::{ #target, Architecture, OperatingSystem };
 
 // The Linux ABI check only exists on Linux: its inline assembly uses the
 // argument registers the platform ABI names and the Linux getpid syscall,

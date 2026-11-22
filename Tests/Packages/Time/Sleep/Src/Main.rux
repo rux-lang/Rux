@@ -5,7 +5,7 @@
 // how long one wait may be is checked directly. A hundred-day sleep is checked in microseconds.
 // The real wait is exercised too, but only for the small, fast facts a real clock can confirm.
 
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Time::{ Duration, Instant, MaximumWaitAttempts, MaximumWaitMilliseconds, SleepFor, SleepUsing, SystemWaiter,
                TimeError, WaitChunkMilliseconds, Waiter };
 

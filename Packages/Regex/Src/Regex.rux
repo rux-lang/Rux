@@ -5,7 +5,7 @@
 
 import Allocator::Allocator;
 import Collections::Vector;
-import Core::Iterator;
+import Core::Iteration::Iterator;
 import Regex::{
     ClassItem, DecodeAt, Dfa, GroupName, Instruction, NoEnd, Node, NoPosition, NoReverse, Parser, Program, RegexError,
     RegexErrorKind, Scratch, Filled

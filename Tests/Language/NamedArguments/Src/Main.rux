@@ -3,7 +3,7 @@
 // values, which then take their defaults. Arguments are never reordered, so they are evaluated in source order. A
 // label is checked against the declaration the call selected by the ordinary rules; it never chooses an overload.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct Options {
     flags: int;

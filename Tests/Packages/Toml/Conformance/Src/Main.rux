@@ -7,7 +7,8 @@
 // same way, to survive that.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic, Result };
+import Core::Result;
+import Core::Diagnostics::{ Assert, Panic };
 import Format::ByteCursor;
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
                TomlWriteDocument };

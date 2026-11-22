@@ -4,7 +4,7 @@
 // arguments. The descriptions are lower case and unpunctuated, ready to follow a program's own prefix such as
 // `error: `.
 
-import Core::#target;
+import Core::Compilation::#target;
 import Path::{ OsStringView, OsUnit };
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteBytes, WriteScalar };
 

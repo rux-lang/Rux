@@ -7,7 +7,9 @@
 // compiler is entitled to delete. It is the one operation here that rests on a compiler guarantee rather than a
 // library one.
 
-import Core::{ TargetIsLittleEndian, Zeroize, uint };
+import Core::Bits::TargetIsLittleEndian;
+import Core::Machine::Zeroize;
+import Core::Primitives::*;
 import Memory::Copy;
 
 /// Whether `address` is a multiple of `alignment`.

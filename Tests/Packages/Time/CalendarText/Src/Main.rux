@@ -1,4 +1,4 @@
-import Core::{ Assert, Panic };
+import Core::Diagnostics::{ Assert, Panic };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, Timestamp, UtcOffset };
 

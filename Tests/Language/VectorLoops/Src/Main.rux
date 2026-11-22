@@ -4,7 +4,7 @@
 // iteration read what the one before it wrote, which only the scalar loop computes, and the check on entry has to
 // send it there; one element ahead and the same array are read before they are written and may pair.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 var Buffer: float64[48] = [0.0; 48];
 var Expected: int64[48] = [0i64; 48];

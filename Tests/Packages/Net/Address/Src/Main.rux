@@ -3,7 +3,7 @@
 // `{}` like any other value, padded to the placeholder's width.
 
 import Allocator::SystemAllocator;
-import Core::Assert;
+import Core::Diagnostics::Assert;
 import Format::Render;
 import Net::{ IpAddress, Ipv4Address, Ipv6Address, SocketAddress };
 

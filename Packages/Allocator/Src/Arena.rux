@@ -12,7 +12,7 @@
 // that the arena outlives every copy, stays where it is, and is not reset while an allocation made through it is in
 // use.
 
-import Core::uint;
+import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Memory::AlignUp;
 

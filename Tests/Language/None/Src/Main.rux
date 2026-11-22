@@ -4,7 +4,7 @@
 // stands for, and selects the absence of that optional only, never of a level inside it. As a pattern it matches the
 // outer absence of the optional being matched.
 
-import Core::Assert;
+import Core::Diagnostics::Assert;
 
 struct ParseError {}
 

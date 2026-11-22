@@ -1,7 +1,8 @@
 // The value type's job is to be sixteen bytes that never get reordered, so the ordering test is the important
 // one: it must follow the bytes exactly, since that is what makes a version 7 UUID sort chronologically.
 
-import Core::{ Assert, Ordering };
+import Core::Compare::Ordering;
+import Core::Diagnostics::Assert;
 import Uuid::{ Uuid, UuidVariant };
 
 func Main() -> int {

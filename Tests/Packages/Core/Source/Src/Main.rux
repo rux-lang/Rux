@@ -1,5 +1,6 @@
 
-import Core::{ #source, Assert };
+import Core::Compilation::#source;
+import Core::Diagnostics::Assert;
 
 // A dependency-free slice comparison, so the test can check the exact strings
 // the compiler fills in without pulling in Text for its String type.
