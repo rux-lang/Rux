@@ -213,7 +213,6 @@ pub module Kernel {
         /// Retrieves the process identifier of the calling process.
         /// @returns the calling process's identifier
         /// @see https://rux-lang.dev/docs/api/windows/process#get-current-process-id
-        /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocessid
         func GetCurrentProcessId() -> uint32;
 
         /// Retrieves the number of active processors in a processor group, or in all of them.

@@ -98,7 +98,6 @@ pub module SystemInformation {
         /// @param kilobytes receives the fitted memory in kibibytes
         /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
         /// @see https://rux-lang.dev/docs/api/windows/system-information#get-physically-installed-system-memory
-        /// @see https://learn.microsoft.com/windows/win32/api/sysinfoapi/nf-sysinfoapi-getphysicallyinstalledsystemmemory
         func GetPhysicallyInstalledSystemMemory(kilobytes: *var uint64) -> bool32;
     }
 }
