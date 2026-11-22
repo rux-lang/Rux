@@ -17,16 +17,16 @@ The check `Tests/Scripts/CI/Check.sh` runs on every host through CTest as `Scrip
 
 `CI.yml`'s first job runs `.github/Scripts/Scope.sh`, which decides the scope from the event and, for a push or a pull request, from the files that changed.
 
-| Scope      | When                                                       | What runs                                                                                                                                                                       |
-| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs`     | only documentation or community metadata changed           | nothing builds; the `CI` check reports success                                                                                                                                  |
-| `fast`     | a push to a topic branch                                   | policy and formatting, and Linux x86-64: build, C++ and Rux suites, runtime closure, Rux formatting, every cross target checked, the macOS and FreeBSD cross-build inspections  |
-| `full`     | a pull request to `dev` or `main`                          | `fast`, plus clang-tidy, Linux AArch64, macOS AArch64, macOS x86-64 under Rosetta, Windows x86-64, Windows AArch64, FreeBSD x86-64, and FreeBSD AArch64 with its emulated smoke |
-| `extended` | a push to `dev` or `main`, a dispatched run, and a release | `full`, plus everything that runs under emulation: Windows x86-64 on an ARM64 host, the FreeBSD transfer test, and the complete Rux suites on FreeBSD AArch64                   |
+| Scope      | When                                             | What runs                                                                                                                                                                                                                                                    |
+| ---------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `docs`     | only documentation or community metadata changed | nothing builds; the `CI` check reports success                                                                                                                                                                                                               |
+| `fast`     | a push to a topic branch                         | policy and formatting, and Linux x86-64: build, C++ and Rux suites, runtime closure, Rux formatting, every cross target checked, the macOS and FreeBSD cross-build inspections                                                                               |
+| `full`     | a pull request, and a push to `dev` or `main`    | `fast`, plus clang-tidy, Linux AArch64, macOS AArch64, macOS x86-64 under Rosetta, Windows x86-64 and the same compiler on an ARM64 host under emulation, Windows AArch64, FreeBSD x86-64 and its transfer test, and FreeBSD AArch64 with its emulated smoke |
+| `extended` | a dispatched run, and a release                  | `full`, plus the lint and the complete Rux suite on emulated FreeBSD AArch64                                                                                                                                                                                 |
 
 A documentation-only change is one whose every file is Markdown under `Docs/` or at the repository root, or lives under `.github/` as Markdown, an issue template, or the funding file. Markdown anywhere else — a package license, the test-suite guide — is code, because something may read it. When the changed files cannot be listed, the scope never shrinks.
 
-`workflow_dispatch` takes the scope as an input, `extended` by default, so any branch can be verified in full by hand. There is no scheduled run: pushes to `dev` carry the extended scope, and the caches stay warm as long as `dev` sees a push at least weekly.
+`workflow_dispatch` takes the scope as an input, `extended` by default, so any branch can be verified in full by hand. There is no scheduled run: pushes to `dev` carry the full scope and keep the caches warm as long as `dev` sees a push at least weekly. The complete suite on emulated FreeBSD AArch64 is the one job slow enough to keep off every push — about a quarter of an hour under emulation — so it runs when a run is dispatched and before every release.
 
 The `main` branch is GitHub's default branch. Actions caches are visible to the branch that created them, to the base branch of a pull request, and to the default branch, so a pull request restores what `dev` cached and a topic branch's first push restores what `dev` or `main` cached.
 
@@ -34,24 +34,24 @@ The `main` branch is GitHub's default branch. Actions caches are visible to the 
 
 Every job carries an explicit timeout. Nothing can run for hours except the emulated FreeBSD suites, which are scoped so that nothing waits on them.
 
-| Job                             | Runner                       | Waits for       | Scope    | Timeout  |
-| ------------------------------- | ---------------------------- | --------------- | -------- | -------- |
-| Scope                           | ubuntu-26.04                 |                 | every    | 3        |
-| Linux x86-64                    | ubuntu-26.04                 | Scope           | fast     | 25       |
-| Policy and formatting           | ubuntu-26.04                 | Scope           | fast     | 10       |
-| `clang-tidy` × 3 shards         | ubuntu-26.04                 | Scope           | full     | 25       |
-| Linux AArch64                   | ubuntu-26.04-arm             | Scope           | full     | 25       |
-| macOS AArch64                   | macos-26                     | Scope           | full     | 30       |
-| macOS x86-64                    | macos-26, under Rosetta      | Scope           | full     | 35       |
-| Windows x86-64                  | windows-2025                 | Scope           | full     | 30       |
-| Windows AArch64                 | windows-11-arm               | Scope           | full     | 30       |
-| Windows x86-64 under emulation  | windows-11-arm               | Windows x86-64  | extended | 30       |
-| FreeBSD image                   | ubuntu-26.04, KVM guest      | Scope           | full     | 30       |
-| FreeBSD x86-64                  | ubuntu-26.04, KVM guest      | FreeBSD image   | full     | 45       |
-| FreeBSD AArch64                 | ubuntu-26.04, KVM guest      | FreeBSD image   | full     | 45       |
-| FreeBSD AArch64 under emulation | ubuntu-26.04, emulated guest | FreeBSD AArch64 | full     | 60 / 180 |
-| FreeBSD transfer                | ubuntu-26.04, emulated guest | FreeBSD x86-64  | extended | 90       |
-| `CI` — the gate                 | ubuntu-26.04                 | every job       | every    | 5        |
+| Job                             | Runner                       | Waits for       | Scope | Timeout  |
+| ------------------------------- | ---------------------------- | --------------- | ----- | -------- |
+| Scope                           | ubuntu-26.04                 |                 | every | 3        |
+| Linux x86-64                    | ubuntu-26.04                 | Scope           | fast  | 25       |
+| Policy and formatting           | ubuntu-26.04                 | Scope           | fast  | 10       |
+| `clang-tidy` × 3 shards         | ubuntu-26.04                 | Scope           | full  | 25       |
+| Linux AArch64                   | ubuntu-26.04-arm             | Scope           | full  | 25       |
+| macOS AArch64                   | macos-26                     | Scope           | full  | 30       |
+| macOS x86-64                    | macos-26, under Rosetta      | Scope           | full  | 35       |
+| Windows x86-64                  | windows-2025                 | Scope           | full  | 30       |
+| Windows AArch64                 | windows-11-arm               | Scope           | full  | 30       |
+| Windows x86-64 under emulation  | windows-11-arm               | Windows x86-64  | full  | 30       |
+| FreeBSD image                   | ubuntu-26.04, KVM guest      | Scope           | full  | 30       |
+| FreeBSD x86-64                  | ubuntu-26.04, KVM guest      | FreeBSD image   | full  | 45       |
+| FreeBSD AArch64                 | ubuntu-26.04, KVM guest      | FreeBSD image   | full  | 45       |
+| FreeBSD AArch64 under emulation | ubuntu-26.04, emulated guest | FreeBSD AArch64 | full  | 60 / 180 |
+| FreeBSD transfer                | ubuntu-26.04, emulated guest | FreeBSD x86-64  | full  | 90       |
+| `CI` — the gate                 | ubuntu-26.04                 | every job       | every | 5        |
 
 GitHub may annotate the macOS jobs with a notice that macOS arm64 runners can queue longer under capacity constraints. It is informational: it says nothing about the run it appears on, and no workflow setting removes it.
 
@@ -103,7 +103,7 @@ There is no hosted FreeBSD runner, and no hosted runner accelerates an AArch64 g
 
 - **FreeBSD x86-64** runs natively under KVM. The guest is prepared once — the `latest` package branch, the packages above, and the AArch64 base system unpacked as a sysroot — and cached; later runs boot straight into it. The workspace is mirrored at the host's path, each step runs through the guest shell and is synced back, and `.github/Scripts/FreeBSDEnv.sh` exports inside the guest what the toolchain action exports on a host.
 - **FreeBSD AArch64** is cross-compiled in that same x86-64 guest, with the guest's own Clang and lld against the sysroot, through `Compiler/CMake/Toolchains/FreeBSD-AArch64.cmake`, without the C++ unit tests, which no machine in the run could execute (`RUX_BUILD_TESTS=OFF`, which `Verify.sh` turns into `Run.sh build --no-tests`); the host then checks the result is a FreeBSD AArch64 ELF image before uploading it. A separate AArch64 guest with no toolchain installed downloads the compiler and runs it under emulation: in the full scope a bounded smoke — every workspace package checked, the native fixtures, the runtime closure, and one language test built and launched — and in the extended scope the lint and the complete Rux test suite as well. The C++ unit tests are host-agnostic and already run on the seven other hosts, FreeBSD x86-64 included, so they are not repeated under emulation.
-- **The transfer test** is a two-machine contract in the extended scope: the x86-64 guest produces a payload of target binaries and a manifest, and a fresh AArch64 guest with no compiler installed verifies the hashes and ELF identity and executes them.
+- **The transfer test** is a two-machine contract in the full scope: the x86-64 guest produces a payload of target binaries and a manifest, and a fresh AArch64 guest with no compiler installed verifies the hashes and ELF identity and executes them.
 
 ## Runtime closure
 

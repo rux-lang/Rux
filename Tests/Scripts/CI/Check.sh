@@ -359,10 +359,10 @@ Compiler/Main.cpp
 
     [ "$(tier GITHUB_EVENT_NAME=push GITHUB_REF_NAME=feat/x)" = fast ] ||
         fail 'a topic-branch push is not the fast lane'
-    [ "$(tier GITHUB_EVENT_NAME=push GITHUB_REF_NAME=dev)" = extended ] ||
-        fail 'a push to dev is not extended'
-    [ "$(tier GITHUB_EVENT_NAME=push GITHUB_REF_NAME=main)" = extended ] ||
-        fail 'a push to main is not extended'
+    [ "$(tier GITHUB_EVENT_NAME=push GITHUB_REF_NAME=dev)" = full ] ||
+        fail 'a push to dev is not full'
+    [ "$(tier GITHUB_EVENT_NAME=push GITHUB_REF_NAME=main)" = full ] ||
+        fail 'a push to main is not full'
     [ "$(tier GITHUB_EVENT_NAME=pull_request GITHUB_REF_NAME=7/merge)" = full ] ||
         fail 'a pull request is not full'
     [ "$(tier GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF_NAME=dev)" = extended ] ||

@@ -95,7 +95,7 @@ Nine test packages — `Tests/Packages/{Linux,macOS,FreeBSD}/{Descriptors,Mappin
 
 **The eight execution jobs.** Native behavior on Windows, Linux, macOS and FreeBSD across both architectures. The compiler refuses by design to run a foreign target's programs, so seven of the eight cells are compiled here and never executed. Until they run, the syscall numbers, flag values, errno constants and `struct stat` offsets in the four platform binding packages rest on published documentation.
 
-**An extended CI run pinned to a phase commit.** `CI.yml` carries the `extended` scope on a push to `dev`, and `Release.yml` calls `CI.yml` with it. Neither has been run against a commit that a phase record names, so no phase can cite one.
+**An extended CI run pinned to a phase commit.** `CI.yml` carries the `extended` scope on a dispatched run, and `Release.yml` calls `CI.yml` with it. Neither has been run against a commit that a phase record names, so no phase can cite one.
 
 **The independent cryptographic review.** `Rux/Crypto` is blocked twice over: once by the execution gap that blocks everything, and once by [the review checklist](CryptoReview.md), which its own README and digest contract already say is outstanding.
 

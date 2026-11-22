@@ -6,9 +6,12 @@ name: CI
 #
 #   docs      only documentation changed: nothing builds
 #   fast      a push to a topic branch: policy, formatting, Linux x86-64
-#   full      a pull request: every target, clang-tidy, the FreeBSD AArch64 smoke
-#   extended  pushes to dev and main, a dispatched run, and a release: full
-#             plus everything that runs under emulation
+#   full      a pull request and a push to dev or main: every target,
+#             clang-tidy, and the jobs that run under emulation, with a bounded
+#             smoke on emulated FreeBSD AArch64
+#   extended  a dispatched run and a release: full plus the complete Rux suite
+#             on emulated FreeBSD AArch64, the one job slow enough to keep off
+#             every push
 #
 # Each target is one job that lists its steps in the order they run. A step
 # that several jobs share is written once, where it is first used, with a YAML
@@ -307,8 +310,7 @@ jobs:
   # the same boundary inside its x86-64 job, under Rosetta.
   windows-x86_64-emulated:
     name: Windows x86-64 under emulation
-    needs: [scope, windows-x86_64]
-    if: needs.scope.outputs.scope == 'extended'
+    needs: windows-x86_64
     runs-on: windows-11-arm
     timeout-minutes: 30
     steps:
@@ -468,14 +470,12 @@ jobs:
       # The transfer payload is a sealed set of AArch64 binaries this x86-64
       # compiler cross-built, for a guest that has no compiler at all.
       - name: Produce the AArch64 transfer payload
-        if: needs.scope.outputs.scope == 'extended'
         shell: freebsd {0}
         run: |
           set -eu
           sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh ./Bin/rux FreeBSDAArch64Payload
       - *upload
       - name: Upload the transfer payload
-        if: needs.scope.outputs.scope == 'extended'
         uses: actions/upload-artifact@v7
         with:
           name: freebsd-aarch64-payload
@@ -575,8 +575,7 @@ jobs:
   # consumes the payload the x86-64 guest produced. Its emptiness is the point.
   freebsd-transfer:
     name: FreeBSD transfer
-    needs: [scope, freebsd-x86_64]
-    if: needs.scope.outputs.scope == 'extended'
+    needs: freebsd-x86_64
     runs-on: ubuntu-26.04
     timeout-minutes: 90
     steps:

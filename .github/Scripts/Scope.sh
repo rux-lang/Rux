@@ -10,8 +10,8 @@
 # documentation or community metadata; an empty list is code, because a run
 # that cannot tell what changed must verify everything. tier reads the event
 # CI.yml exports through the environment: a requested scope wins, a dispatched
-# run is extended, so are pushes to dev and main, a pull request is full, and
-# any other push is the fast lane. resolve combines the two, asking the GitHub
+# run is extended, a pull request and a push to dev or main are full, and any
+# other push is the fast lane. resolve combines the two, asking the GitHub
 # API which files a push or pull request changed; when it cannot, the tier
 # stands, never a smaller one.
 
@@ -64,7 +64,7 @@ tier() {
     pull_request) printf 'full\n' ;;
     push)
         case "${GITHUB_REF_NAME:-}" in
-        dev | main) printf 'extended\n' ;;
+        dev | main) printf 'full\n' ;;
         *) printf 'fast\n' ;;
         esac
         ;;
