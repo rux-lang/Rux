@@ -108,6 +108,17 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     variable.type = itemType;
     variable.bindingId = RegisterCleanupBinding(variable.name, variable.type, statement.location);
     Define(variable);
+    // The variable's destruction is guarded by a flag only the item arm sets, while the arm that ends the loop runs
+    // the same cleanup on its way out, so the flag starts as "holds nothing" before the first pass: a loop whose first
+    // `Next` reports the end destroys nothing.
+    if (variable.bindingId != 0) {
+        auto declared = std::make_unique<HirLetStmt>();
+        declared->location = statement.location;
+        declared->name = std::format("$iter.variable.{}", ordinal);
+        declared->type = itemType;
+        declared->bindingId = variable.bindingId;
+        scope->block.stmts.push_back(std::move(declared));
+    }
 
     auto item = std::make_unique<HirVarExpr>();
     item->location = statement.location;

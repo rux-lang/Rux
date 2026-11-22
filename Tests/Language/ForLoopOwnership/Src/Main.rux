@@ -1,7 +1,8 @@
 // A loop that takes a container takes its elements: each one is destroyed once, by the pass that received it, and
 // whatever the loop does not reach is destroyed with the iterator. An iterator the loop makes, or one a temporary hands
 // it, is the loop's own and is destroyed where the loop ends. A lent array lends its elements: a move-only element is
-// visited where it lies, through a reference, and stays with the array.
+// visited where it lies, through a reference, and stays with the array. A loop whose first `Next` reports the end
+// destroys no loop variable, whatever its stack held before.
 
 import Allocator::SystemAllocator;
 import Collections::Vector;
@@ -30,6 +31,39 @@ extend Countdown {
     }
 
     destructor { iteratorDrops += 1; }
+}
+
+struct Nothing {
+    calls: int;
+}
+
+extend Nothing {
+    func Next(&var self) -> Token? {
+        self.calls += 1;
+        return none;
+    }
+}
+
+// Fills the stack the next call reuses with bytes that are not zero.
+func Dirty(seed: int) -> int {
+    var junk: int[64] = [0; 64];
+    var index = 0;
+    while index < 64 {
+        junk[index] = seed * (index + 1) + 1;
+        index += 1;
+    }
+    return junk[63];
+}
+
+func WalkNothing() -> int {
+    for token in (Nothing { calls: 0 }) { drops += 100; }
+    return drops;
+}
+
+func WalkEmpty() -> int {
+    let tokens = Vector<Token>::New(SystemAllocator::New());
+    for token in tokens { drops += 100; }
+    return drops;
 }
 
 func Make() -> Vector<Token> {
@@ -82,6 +116,11 @@ func Main() -> int {
     }
     Assert(drops == 3, "a named iterator is advanced in place and destroyed by its owner");
     drops = 0;
+
+    Dirty(-1);
+    Assert(WalkNothing() == 0, "a loop over an iterator that is empty at once destroys nothing");
+    Dirty(-1);
+    Assert(WalkEmpty() == 0, "a loop over an empty vector destroys nothing");
 
     var total = 0;
     for value in (Countdown { left: 3 }) { total += value; }
