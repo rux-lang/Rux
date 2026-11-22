@@ -1081,7 +1081,11 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         if (!elementType.IsUnknown()) {
             ConsumeValue(*repeat->value, elementType, ValueConsumptionKind::ArrayRepeat, repeat->value->location);
         }
-        TypeRef arrayType = TypeRef::MakeArray(elementType, count.value_or(0));
+        // An array whose length is not known has no type to convert, so nothing more is reported about it.
+        if (!count) {
+            return TypeRef::MakeUnknown();
+        }
+        TypeRef arrayType = TypeRef::MakeArray(elementType, *count);
         ValidateStoredType(arrayType, repeat->location, "array value");
         return arrayType;
     }

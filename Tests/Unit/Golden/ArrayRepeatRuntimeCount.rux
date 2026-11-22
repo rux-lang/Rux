@@ -1,0 +1,7 @@
+// A repeat count that is not a compile-time integer is reported once, and the array whose length it would give is
+// not compared with its destination.
+func Fill() -> int {
+    let n = 4;
+    let a: int32[4] = [0; n];
+    return 0;
+}
