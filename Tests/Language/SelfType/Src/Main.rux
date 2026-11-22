@@ -13,12 +13,12 @@ struct Point {
 extend Point {
     const Origin: Self = Self { x: 0, y: 0 };
 
-    func Point(x: int32, y: int32) -> Self {
+    func New(x: int32, y: int32) -> Self {
         return Self { x, y };
     }
 
     func Diagonal(n: int32) -> Self {
-        return Self(n, n);
+        return Self::New(n, n);
     }
 
     func Shifted(&self, by: int32) -> Self {
@@ -48,12 +48,12 @@ struct Pair<T> {
 }
 
 extend Pair<T> {
-    func Pair(first: T, second: T) -> Self {
+    func New(first: T, second: T) -> Self {
         return Self { first, second };
     }
 
     func Of(first: T, second: T) -> Self {
-        return Self(first, second);
+        return Self::New(first, second);
     }
 
     func Swapped(&self) -> Self {
@@ -107,8 +107,8 @@ extend Shape {
 }
 
 func Main() -> int {
-    let p = Point(1, 2);
-    let expected = Point(4, 5);
+    let p = Point::New(1, 2);
+    let expected = Point::New(4, 5);
     Assert(p.Shifted(3).Same(expected), "'Self' is the extended type in a signature and a literal");
     Assert(Point::Diagonal(4).Distance() == 8, "'Self(...)' calls the type-named constructor");
     Assert(Point::Origin.IsOrigin() && !p.IsOrigin(), "'Self { ... }' matches as a structure pattern");

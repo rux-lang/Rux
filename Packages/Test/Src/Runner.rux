@@ -40,7 +40,7 @@ extend TestOptions {
     /// Options that run every test and report each one.
     /// @returns the options
     /// @see https://rux-lang.dev/docs/api/test/runner#test-options-new
-    pub func TestOptions() -> Self {
+    pub func New() -> Self {
         return Self { filter: "", filters: [], exact: false, skip: "", list: false, quiet: false };
     }
 }
@@ -118,7 +118,7 @@ pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
         return 0;
     }
     if !options.quiet { PrintLine("running {} of {} tests", chosen, tests.length); }
-    var failures = Vector<uint>(SystemAllocator());
+    var failures = Vector<uint>::New(SystemAllocator::New());
     var passed: uint = 0;
     var skipped: uint = 0;
     let started = Instant::Now();
@@ -168,18 +168,18 @@ pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
 ///   test
 /// @see https://rux-lang.dev/docs/api/test/runner#run-tests
 pub func RunTests(tests: TestCase[..]) -> int {
-    var options = TestOptions();
-    var texts = Vector<String>(SystemAllocator());
+    var options = TestOptions::New();
+    var texts = Vector<String>::New(SystemAllocator::New());
     var index: uint = 1;
     let count = ArgumentCount();
     while index < count {
         let view = Argument(index) ?? break;
-        let text = try view.ToText(SystemAllocator()) catch { _ => return 2 };
+        let text = try view.ToText(SystemAllocator::New()) catch { _ => return 2 };
         texts.Push(move text);
         index = index + 1;
     }
     let arguments = texts.AsSlice();
-    var filters = Vector<char8[..]>(SystemAllocator());
+    var filters = Vector<char8[..]>::New(SystemAllocator::New());
     index = 0;
     while index < arguments.length {
         let argument = arguments[index].Bytes();

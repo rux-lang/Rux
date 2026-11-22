@@ -17,7 +17,7 @@ import Time::{ Duration, Instant, SleepFor, TimeError };
 // merely contains a number.
 func TicksShown(reading: Instant, ticks: &var uint64) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let shown: Instant = reading;
     if (try? shown.WriteDebug(writer, FormatSpec::Plain())) is none { return false; }
     let text = writer.Written();
@@ -45,7 +45,7 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     var spec = FormatSpec::Plain();
     spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let shown: Instant = reading;
     return (try? shown.WriteDebug(writer, spec)) is none;
 }

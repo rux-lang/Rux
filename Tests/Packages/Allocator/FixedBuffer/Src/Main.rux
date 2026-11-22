@@ -10,7 +10,7 @@ func Main() throws AllocError {
     // The buffer is a local array, so nothing here allocates at all.
     var storage: byte[512];
     // Safety: `storage` is a local array of 512 bytes that outlives `buffer` and is touched only through it.
-    var buffer = FixedBuffer(@storage[0] as *var opaque, 512);
+    var buffer = FixedBuffer::New(@storage[0] as *var opaque, 512);
     Assert(buffer.BytesUsed() == 0, "an unused allocator has handed out nothing");
     Assert(buffer.BytesRemaining() == 512, "and has its whole buffer left");
 
@@ -125,7 +125,7 @@ func Main() throws AllocError {
 
     // An allocator over no storage is a usable allocator that refuses everything.
     // Safety: a null `storage` gives an allocator that refuses every request, so there is no storage to keep valid.
-    var unbacked = FixedBuffer(null, 4096);
+    var unbacked = FixedBuffer::New(null, 4096);
     Assert(unbacked.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
     // Safety: `unbacked` is a local that outlives `empties` and is never moved.
     let empties = unbacked.Handle();

@@ -34,13 +34,13 @@ import Io::PrintLine;
 import Text::{ String, TextError };
 
 func Main() throws TextError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let greeting = try String::FromBytes(allocator, "Hello");
     PrintLine(greeting);
 }
 ```
 
-Use `String(allocator)`, `StringBuilder(allocator)`, and `StringView()` for empty values. `String` and `StringBuilder` keep one storage invariant that their raw accesses rely on: `length <= capacity`, and `data` is null exactly when `capacity` is zero and otherwise addresses a block of `capacity` bytes from the stored allocator whose first `length` bytes are initialized, well-formed UTF-8. The storage fields of `String`, `StringBuilder` and `CString` are private, so only this package's operations can change them: `Bytes`, `View` and `Length` read them, `FromBytes` and `AppendBytes` check bytes on the way in, and `FromValidated` and `AppendValidated` are the trusted paths for bytes the caller has already checked. A `String` owns its block, so it is move-only like builders and C strings: hand one over with `move`, and copy it with `Clone()`, or with `TryClone()`, which throws `AllocError` where a refused allocation must be handled. `Io::Print` and `PrintLine` borrow a `String`, so printing one neither copies nor consumes it.
+Use `String::New(allocator)`, `StringBuilder::New(allocator)`, and `StringView::New()` for empty values. `String` and `StringBuilder` keep one storage invariant that their raw accesses rely on: `length <= capacity`, and `data` is null exactly when `capacity` is zero and otherwise addresses a block of `capacity` bytes from the stored allocator whose first `length` bytes are initialized, well-formed UTF-8. The storage fields of `String`, `StringBuilder` and `CString` are private, so only this package's operations can change them: `Bytes`, `View` and `Length` read them, `FromBytes` and `AppendBytes` check bytes on the way in, and `FromValidated` and `AppendValidated` are the trusted paths for bytes the caller has already checked. A `String` owns its block, so it is move-only like builders and C strings: hand one over with `move`, and copy it with `Clone()`, or with `TryClone()`, which throws `AllocError` where a refused allocation must be handled. `Io::Print` and `PrintLine` borrow a `String`, so printing one neither copies nor consumes it.
 
 ## Documentation
 

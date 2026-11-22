@@ -118,10 +118,10 @@ struct Range {
 
 // The addresses `/etc/hosts` gives `host`.
 func FromHostsFile(allocator: Allocator, host: char8[..], port: uint16, found: &var Vector<SocketAddress>) {
-    var text = Vector<char8>(allocator);
+    var text = Vector<char8>::New(allocator);
     // Safety: the path literal ends in a NUL.
     ReadSmallFile("/etc/hosts\0", text);
-    var lines = Vector<Range>(allocator);
+    var lines = Vector<Range>::New(allocator);
     Lines(text.AsSlice(), lines);
     for range in lines.AsSlice() {
         let line = text.AsSlice()[range.start..range.end];
@@ -153,7 +153,7 @@ extend Resolver {
     /// @returns the resolver
     /// @see https://rux-lang.dev/docs/api/net/resolver#with-servers
     pub func WithServers(allocator: Allocator, servers: SocketAddress[..]) -> Self {
-        var resolver = Self { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
+        var resolver = Self { servers: Vector<SocketAddress>::New(allocator), timeout: Duration::FromSeconds(5),
                                   attempts: 2 };
         resolver.servers.PushSlice(servers);
         return move resolver;
@@ -191,7 +191,7 @@ extend Resolver {
     /// @see https://rux-lang.dev/docs/api/net/resolver#lookup
     pub func Lookup(&self, allocator: Allocator, host: char8[..], port: uint16)
         -> Vector<SocketAddress> throws IoError {
-        var found = Vector<SocketAddress>(allocator);
+        var found = Vector<SocketAddress>::New(allocator);
         var attempt: uint = 0;
         while attempt < self.attempts {
             for server in self.servers.AsSlice() {
@@ -210,12 +210,12 @@ extend Resolver {
 // Reads `/etc/resolv.conf`: its name servers, and its `timeout` and `attempts` options. With no servers, the local
 // one is asked, as the C library does.
 func ReadConfiguration(allocator: Allocator) -> Resolver {
-    var configuration = Resolver { servers: Vector<SocketAddress>(allocator), timeout: Duration::FromSeconds(5),
+    var configuration = Resolver { servers: Vector<SocketAddress>::New(allocator), timeout: Duration::FromSeconds(5),
                                    attempts: 2 };
-    var text = Vector<char8>(allocator);
+    var text = Vector<char8>::New(allocator);
     // Safety: the path literal ends in a NUL.
     ReadSmallFile("/etc/resolv.conf\0", text);
-    var lines = Vector<Range>(allocator);
+    var lines = Vector<Range>::New(allocator);
     Lines(text.AsSlice(), lines);
     for range in lines.AsSlice() {
         let line = text.AsSlice()[range.start..range.end];
@@ -343,7 +343,7 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
         let data = at + 10;
         if data + length > message.length { return Outcome::Failed; }
         if recordType == kind && kind == TypeA && length == 4u {
-            let ip = IpAddress::FromIpv4(Ipv4Address(message[data], message[data + 1], message[data + 2],
+            let ip = IpAddress::FromIpv4(Ipv4Address::New(message[data], message[data + 1], message[data + 2],
                                                           message[data + 3]));
             AddOnce(found, SocketAddress { ip, port });
         }
@@ -442,7 +442,7 @@ func NextQueryId() -> uint16 {
 
 // The addresses of `host` from the hosts file, or else from the name servers: IPv4 addresses first, then IPv6.
 func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> throws IoError {
-    var found = Vector<SocketAddress>(allocator);
+    var found = Vector<SocketAddress>::New(allocator);
     FromHostsFile(allocator, host, port, found);
     if found.Length() > 0u { return move found; }
     // `localhost` and the names under it are this machine, whatever the hosts file says.

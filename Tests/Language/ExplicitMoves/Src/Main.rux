@@ -13,7 +13,7 @@ struct MoveOnly {
 }
 
 extend MoveOnly {
-    func MoveOnly(value: int32) -> Self {
+    func New(value: int32) -> Self {
         return Self { value };
     }
 
@@ -61,7 +61,7 @@ func Main() -> int {
     if MoveNamed() != 17i32 {
         return 3;
     }
-    if Consume(MoveOnly(23i32)) != 23i32 {
+    if Consume(MoveOnly::New(23i32)) != 23i32 {
         return 4;
     }
     if sizeof(Immovable) != sizeof(int32) {

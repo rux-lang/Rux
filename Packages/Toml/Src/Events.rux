@@ -86,8 +86,8 @@ extend TomlEventReader {
     /// @param input the text to read
     /// @returns a reader positioned before the first event
     /// @see https://rux-lang.dev/docs/api/toml/toml-event-reader#new
-    pub func TomlEventReader(input: char8[..]) -> Self {
-        var lexer = TomlLexer(input);
+    pub func New(input: char8[..]) -> Self {
+        var lexer = TomlLexer::New(input);
         let first = lexer.Next();
         return Self {
             lexer,

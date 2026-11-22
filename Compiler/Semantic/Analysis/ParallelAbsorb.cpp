@@ -149,7 +149,6 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.namedFormats = OwnEntries(mine.namedFormats, base.namedFormats);
     own.asmSymbolDeclarations = OwnEntries(mine.asmSymbolDeclarations, base.asmSymbolDeclarations);
     own.interfaceTemporaries = OwnEntries(mine.interfaceTemporaries, base.interfaceTemporaries);
-    own.defaultConstructors = OwnEntries(mine.defaultConstructors, base.defaultConstructors);
     own.symbolIdentities = OwnEntries(mine.symbolIdentities, base.symbolIdentities);
     own.vtableIdentities = OwnEntries(mine.vtableIdentities, base.vtableIdentities);
     own.constraintWitnesses = OwnEntries(mine.constraintWitnesses, base.constraintWitnesses);
@@ -303,10 +302,7 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
             MergeLaterWins(facts.interfaceTemporaries, records,
                            [](R &r) -> auto & { return r.facts.interfaceTemporaries; });
         },
-        [&] {
-            MergeLaterWins(facts.defaultConstructors, records,
-                           [](R &r) -> auto & { return r.facts.defaultConstructors; });
-        },
+        [&] {},
         [&] {
             MergeLaterWins(facts.symbolIdentities, records, [](R &r) -> auto & { return r.facts.symbolIdentities; });
         },

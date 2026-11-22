@@ -19,7 +19,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 
 func Compiled(pattern: char8[..]) -> Regex {
     try {
-        let regex = Regex(SystemAllocator(), pattern);
+        let regex = Regex::New(SystemAllocator::New(), pattern);
         return move regex;
     } catch {
         _ => {},
@@ -48,7 +48,7 @@ func FindsNothing(pattern: char8[..], text: char8[..]) -> bool {
 
 func Refuses(pattern: char8[..], kind: RegexErrorKind, offset: uint) -> bool {
     try {
-        Regex(SystemAllocator(), pattern);
+        Regex::New(SystemAllocator::New(), pattern);
         return false;
     } catch {
         error => return error.kind == kind && error.offset == offset,
@@ -71,7 +71,7 @@ func GroupIs(span: Match?, start: uint, end: uint) -> bool {
 
 func Replaced(pattern: char8[..], text: char8[..], replacement: char8[..], expected: char8[..]) -> bool {
     let regex = Compiled(pattern);
-    let result = regex.Replace(SystemAllocator(), text, replacement);
+    let result = regex.Replace(SystemAllocator::New(), text, replacement);
     return Same(result.Bytes(), expected);
 }
 
@@ -177,11 +177,11 @@ func Main() -> int {
     Assert(Replaced("a", "banana", "$$", "b$n$n$") && Replaced("x*", "abc", "-", "-a-b-c-"), "`$$` and empty matches");
     Assert(Replaced("(a)", "a", "[$0|$2|$9]", "[a||]"), "missing groups stand for nothing");
     let first = Compiled("a");
-    let once = first.ReplaceFirst(SystemAllocator(), "banana", "o");
+    let once = first.ReplaceFirst(SystemAllocator::New(), "banana", "o");
     Assert(Same(once.Bytes(), "bonana"), "only the first match");
 
     // Escaping.
-    let escaped = Escape(SystemAllocator(), "1+1=2? (a.b)*[c]");
+    let escaped = Escape(SystemAllocator::New(), "1+1=2? (a.b)*[c]");
     Assert(Same(escaped.Bytes(), "1\\+1=2\\? \\(a\\.b\\)\\*\\[c\\]"), "metacharacters are escaped");
     Assert(Finds(escaped.Bytes(), "is 1+1=2? (a.b)*[c]", 3, 19), "an escaped pattern matches its text");
 

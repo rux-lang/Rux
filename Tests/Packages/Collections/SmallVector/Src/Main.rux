@@ -23,7 +23,7 @@ struct Large {
 }
 
 func Main() -> int {
-    var small = SmallVector<int32>(SystemAllocator());
+    var small = SmallVector<int32>::New(SystemAllocator::New());
     Assert(small.InlineCapacity() == 16u && small.IsInline() && small.IsEmpty(), "sixteen int32 fit inline");
     var index: int32 = 0;
     while index < 16 {
@@ -45,7 +45,7 @@ func Main() -> int {
     small.Truncate(3);
     Assert(small.Length() == 3u, "truncates");
 
-    var tracked = SmallVector<Tracked>(SystemAllocator());
+    var tracked = SmallVector<Tracked>::New(SystemAllocator::New());
     var count: int32 = 0;
     while count < 20 {
         tracked.Push(Tracked { value: count });
@@ -58,7 +58,7 @@ func Main() -> int {
     tracked.Clear();
     Assert(Destroyed == 19, "clearing destroys each remaining element once");
 
-    var large = SmallVector<Large>(SystemAllocator());
+    var large = SmallVector<Large>::New(SystemAllocator::New());
     Assert(large.InlineCapacity() == 0u, "a 72-byte element has no inline room");
     large.Push(Large { words: [7u64; 9] });
     Assert(!large.IsInline() && (large.Get(0) ?? Large { words: [0u64; 9] }).words[8] == 7u64, "it goes to the heap");

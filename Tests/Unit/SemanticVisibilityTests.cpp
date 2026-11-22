@@ -82,10 +82,10 @@ TEST_CASE("private declarations and members are shared by every file in their pa
         {"first.rux", R"(
             struct Secret { value: int; }
             extend Secret {
-                func Secret(value: int) -> Secret { return Secret { value: value }; }
+                func New(value: int) -> Secret { return Secret { value: value }; }
                 func Read(&self) -> int { return self.value; }
             }
-            func MakeSecret(value: int) -> Secret { return Secret(value); }
+            func MakeSecret(value: int) -> Secret { return Secret::New(value); }
         )"},
         {"second.rux", R"(
             func Main() -> int {
@@ -219,7 +219,7 @@ TEST_CASE("public aggregate members constructors associated functions methods an
     const auto diagnostics = AnalyzePackages({{"main.rux", R"(
         import Library::{ Bits, Counter };
         func Main() -> int {
-            let left = Counter(4);
+            let left = Counter::New(4);
             let right = Counter::Zero();
             let total = left + right;
             let bits = Bits { signed: total.Read() as int32 };
@@ -229,10 +229,10 @@ TEST_CASE("public aggregate members constructors associated functions methods an
                                              {{"api.rux", R"(
         pub struct Counter { pub value: int; hidden: int; }
         extend Counter {
-            pub func Counter(value: int) -> Counter { return Counter { value: value, hidden: 0 }; }
-            pub func Zero() -> Counter { return Counter(0); }
+            pub func New(value: int) -> Counter { return Counter { value: value, hidden: 0 }; }
+            pub func Zero() -> Counter { return Counter::New(0); }
             pub func Read(&self) -> int { return self.value; }
-            pub func +(&self, other: Counter) -> Counter { return Counter(self.value + other.value); }
+            pub func +(&self, other: Counter) -> Counter { return Counter::New(self.value + other.value); }
         }
         pub union Bits { pub signed: int32, raw: uint32 }
     )"}});
@@ -308,7 +308,7 @@ TEST_CASE("private fields methods constructors associated functions and operator
     const std::string dependency = R"(
         pub struct Secret { pub value: int; hidden: int; }
         extend Secret {
-            func Secret(value: int) -> Secret { return Secret { value: value, hidden: 0 }; }
+            func New(value: int) -> Secret { return Secret { value: value, hidden: 0 }; }
             func Make() -> Secret { return Secret { value: 1, hidden: 0 }; }
             func Read(&self) -> int { return self.hidden; }
             func +(&self, other: Secret) -> Secret { return other; }
@@ -327,9 +327,10 @@ TEST_CASE("private fields methods constructors associated functions and operator
         {{"api.rux", dependency}});
     CHECK(HasMessage(method, "method 'Read' is private to package 'Library'"));
 
-    const auto constructor = AnalyzePackages(
-        {{"main.rux", "import Library::Secret;\nfunc Main() { let value = Secret(1); }"}}, {{"api.rux", dependency}});
-    CHECK(HasMessage(constructor, "constructor 'Secret' is private to package 'Library'"));
+    const auto constructor =
+        AnalyzePackages({{"main.rux", "import Library::Secret;\nfunc Main() { let value = Secret::New(1); }"}},
+                        {{"api.rux", dependency}});
+    CHECK(HasMessage(constructor, "associated function 'New' is private to package 'Library'"));
 
     const auto associated =
         AnalyzePackages({{"main.rux", "import Library::Secret;\nfunc Main() { let value = Secret::Make(); }"}},

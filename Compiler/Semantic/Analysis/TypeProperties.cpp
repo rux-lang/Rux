@@ -19,51 +19,10 @@ void AnalysisContext::ValidateConstructor(const FuncDecl &method, const TypeRef 
     if (typeName.empty() || method.name != UnqualifiedNominalName(typeName)) {
         return;
     }
-    if (method.Receiver()) {
-        EmitError(method.location, std::format("constructor '{}' must not declare a 'self' receiver", typeName));
-    }
-    if (!method.typeParams.empty()) {
-        EmitError(method.location, std::format("constructor '{}' cannot declare function type parameters", typeName),
-                  {}, "write type arguments on the constructed type instead");
-    }
-    if (!method.returnType || !ConstructsType(ResolveMethodReturnType(extendedType, method), extendedType)) {
-        EmitError(method.location,
-                  std::format("constructor '{}' must return exactly '{}'", typeName, extendedType.ToString()), {},
-                  "a constructor that can fail declares 'throws' after the type, as in '-> Self throws E'");
-    }
-    if (!method.body) {
-        EmitError(method.location, std::format("constructor '{}' must have a body", typeName));
-    }
-}
-
-bool AnalysisContext::ConstructsType(const TypeRef &returned, const TypeRef &type) {
-    return returned == type || (returned.IsFallible() && returned.FallibleSuccess() == type);
-}
-
-bool AnalysisContext::IsConstructorCandidate(const FuncDecl &method, const TypeRef &type) {
-    const std::string typeName = NamedBaseTypeName(type);
-    return !typeName.empty() && method.name == UnqualifiedNominalName(typeName) && !method.Receiver() &&
-           method.typeParams.empty() && method.body && method.returnType &&
-           ConstructsType(ResolveMethodReturnType(type, method), type);
-}
-
-std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeRef &type) {
-    const std::string typeName = NamedBaseTypeName(type);
-    const auto methods = methodsByType.find(typeName);
-    if (methods == methodsByType.end()) {
-        return {};
-    }
-    const auto named = methods->second.find(std::string(UnqualifiedNominalName(typeName)));
-    if (named == methods->second.end()) {
-        return {};
-    }
-    std::vector<const FuncDecl *> result;
-    for (const FuncDecl *method : named->second) {
-        if (IsAccessible(*method) && IsConstructorCandidate(*method, type)) {
-            result.push_back(method);
-        }
-    }
-    return result;
+    // A constructor is an ordinary static function with a name of its own, so a function named after its type would
+    // read as the removed type-named constructor.
+    EmitError(method.location, std::format("a function named after its type '{}' is not a constructor", typeName), {},
+              "name it for what it does, as in 'func New(...)'");
 }
 
 bool AnalysisContext::ExtensionAppliesTo(const FuncDecl &method, const TypeRef &receiver) const {

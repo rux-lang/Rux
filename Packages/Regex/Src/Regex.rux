@@ -240,15 +240,15 @@ extend Regex {
     /// @param pattern the pattern, in the syntax `Regex` describes
     /// @returns the compiled pattern, or why it could not be compiled and where
     /// @see https://rux-lang.dev/docs/api/regex/regex#new
-    pub func Regex(allocator: Allocator, pattern: char8[..]) -> Self throws RegexError {
+    pub func New(allocator: Allocator, pattern: char8[..]) -> Self throws RegexError {
         var regex = Self {
             allocator,
-            instructions: Vector<Instruction>(allocator),
-            items: Vector<ClassItem>(allocator),
-            nameBytes: Vector<char8>(allocator),
-            names: Vector<GroupName>(allocator),
-            ascii: Vector<uint64>(allocator),
-            literal: Vector<char8>(allocator),
+            instructions: Vector<Instruction>::New(allocator),
+            items: Vector<ClassItem>::New(allocator),
+            nameBytes: Vector<char8>::New(allocator),
+            names: Vector<GroupName>::New(allocator),
+            ascii: Vector<uint64>::New(allocator),
+            literal: Vector<char8>::New(allocator),
             groupCount: 0,
             firstBytes: [0u64, 0u64, 0u64, 0u64],
             skips: false,
@@ -256,7 +256,7 @@ extend Regex {
             forwardLength: 0,
             reverseStart: NoReverse
         };
-        var parser = Parser { pattern, at: 0, flags: 0, nodes: Vector<Node>(allocator) };
+        var parser = Parser { pattern, at: 0, flags: 0, nodes: Vector<Node>::New(allocator) };
         let root = try parser.ParseAlternation(regex, 0);
         if parser.at < pattern.length { throw RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
         try regex.CompileProgram(parser.nodes.AsSlice(), root);
@@ -442,7 +442,7 @@ extend Regex {
         }
         let slotCount = if expands { (self.groupCount as uint + 1) * 2 } else { 2u };
         var searcher = self.Search(text, 0, slotCount);
-        var builder = StringBuilder(allocator);
+        var builder = StringBuilder::New(allocator);
         var last: uint = 0;
         var count: uint = 0;
         while (limit == 0u || count < limit) && searcher.Advance() {
@@ -535,7 +535,7 @@ func IsNameByte(byte: uint8) -> bool {
 /// @returns the pattern
 /// @see https://rux-lang.dev/docs/api/regex/regex#escape
 pub func Escape(allocator: Allocator, text: char8[..]) -> String {
-    var builder = StringBuilder(allocator);
+    var builder = StringBuilder::New(allocator);
     var from: uint = 0;
     var at: uint = 0;
     while at < text.length {

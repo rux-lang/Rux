@@ -86,7 +86,7 @@ func Fails() throws TestFailure {
 #Test
 func Filtering() throws TestFailure {
     let table = [TestCase { name: "Group::Passes", run: Passes }, TestCase { name: "Group::Fails", run: Fails }];
-    var options = TestOptions();
+    var options = TestOptions::New();
     options.quiet = true;
     try ExpectEqual(RunTestsWith(table[..], options), 1);
     options.skip = "Fails";

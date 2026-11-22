@@ -65,7 +65,7 @@ func Failing(state: *var FailureState) -> FailingAllocator {
 }
 
 func Main() throws AllocError {
-    let real = SystemAllocator();
+    let real = SystemAllocator::New();
     let small = Layout::Of(64, 8) ?? Layout { size: 64, alignment: 8 };
 
     // The harness itself: it must refuse when told to and count what it hands out.
@@ -96,7 +96,7 @@ func Main() throws AllocError {
     var unboxed = try Box::TryCreate<int64>(budget, 7) catch {
         error => {
             refused = error;
-            Box<int64>(SystemAllocator(), 0)
+            Box<int64>::New(SystemAllocator::New(), 0)
         },
     };
     Assert(refused == AllocError::OutOfMemory, "a box refused by the allocator reports why");
@@ -105,7 +105,7 @@ func Main() throws AllocError {
 
     // The same box succeeds with a budget, and gives its storage back when its life ends.
     state.allowed = 1;
-    var kept = Box<int64>(budget, 9);
+    var kept = Box<int64>::New(budget, 9);
     Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
     let taken = kept.Take();
@@ -119,14 +119,14 @@ func Main() throws AllocError {
     Assert((try? Arc::TryCreate<int64>(budget, 4)) is none, "and so does an atomically counted one");
     Assert(state.live == 0, "leaving nothing allocated");
     state.allowed = 1;
-    var shared = try Rc::TryCreate<int64>(budget, 5) catch { _ => Rc<int64>(SystemAllocator(), 0) };
+    var shared = try Rc::TryCreate<int64>(budget, 5) catch { _ => Rc<int64>::New(SystemAllocator::New(), 0) };
     let sharedValue: int64 = shared.Get();
     Assert(sharedValue == 5 && state.live == 1, "with a budget the handle is made from it");
 
     // An arena that cannot take its first block fails at the first request and takes nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var arena = Arena(budget, 256);
+    var arena = Arena::New(budget, 256);
     // Safety: `arena` is a local that outlives `handle` and is never moved.
     var handle = arena.Handle();
     let arenaAllocator: Allocator = handle;
@@ -158,7 +158,7 @@ func Main() throws AllocError {
     // A pool that cannot take a chunk refuses, and takes nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var pool = Pool(budget, 4);
+    var pool = Pool::New(budget, 4);
     // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
     let poolAllocator = pool.Handle();
     var fromPool: *var opaque = null;

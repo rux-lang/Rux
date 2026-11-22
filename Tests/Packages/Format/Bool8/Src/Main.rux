@@ -8,7 +8,7 @@ import Format::{ ByteCursor };
 // buys: this test needs no allocator at all.
 func Check(value: bool8, expected: char8[..], code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: bool8 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {

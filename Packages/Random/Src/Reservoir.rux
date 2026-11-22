@@ -22,7 +22,7 @@ extend Reservoir<T> {
     /// @param room how many items the reservoir keeps
     /// @returns an empty reservoir that will keep `room` items
     /// @see https://rux-lang.dev/docs/api/random/reservoir#new
-    pub func Reservoir(room: var T[..]) -> Self {
+    pub func New(room: var T[..]) -> Self {
         return Self { room, seen: 0 };
     }
 

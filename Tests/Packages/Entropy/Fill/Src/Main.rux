@@ -151,7 +151,7 @@ func Main() throws EntropyError {
     Assert(!AllBytesAre(storage[..64], 0x7E), "and something other than the scripted pattern");
 
     // The same source through the interface, which is what generic code will be handed.
-    var system = SystemEntropy();
+    var system = SystemEntropy::New();
     let systemSource: &var EntropySource = system;
     // Safety: `storage` is a local array of exactly 64 bytes.
     try FillFrom(systemSource, @storage[0] as *var opaque, 64);

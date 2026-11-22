@@ -39,7 +39,7 @@ extend Mutex<T> {
     /// @param value the value to guard
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/mutex#mutex-new
-    pub func Mutex(value: T) -> Self {
+    pub func New(value: T) -> Self {
         return Self { block: AllocateBlock(MutexBlock<T> { references: 1, word: 0, value: move value }) };
     }
 
@@ -156,7 +156,7 @@ extend Condition {
     /// A new condition. Running out of memory for it is a program error.
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/mutex#condition-new
-    pub func Condition() -> Self {
+    pub func New() -> Self {
         return Self { block: AllocateBlock(ConditionBlock { references: 1, sequence: 0 }) };
     }
 

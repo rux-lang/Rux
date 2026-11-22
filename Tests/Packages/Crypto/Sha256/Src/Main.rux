@@ -96,7 +96,7 @@ func Main() -> int {
 
         var split: uint = 0;
         while split <= length {
-            var digest = Sha256();
+            var digest = Sha256::New();
             let first = message[..split];
             digest.Update(first);
             let second = message[split..length];
@@ -112,7 +112,7 @@ func Main() -> int {
     }
 
     // Feeding one byte at a time, which exercises the buffering path on every block boundary.
-    var byteAtATime = Sha256();
+    var byteAtATime = Sha256::New();
     index = 0;
     while index < 200 {
         let single = message[index..index + 1];
@@ -130,7 +130,7 @@ func Main() -> int {
            "a byte-at-a-time digest matches the one-shot digest");
 
     // An empty update changes nothing.
-    var withEmpties = Sha256();
+    var withEmpties = Sha256::New();
     withEmpties.Update(TextBytes(""));
     withEmpties.Update(TextBytes("abc"));
     withEmpties.Update(TextBytes(""));
@@ -144,7 +144,7 @@ func Main() -> int {
            "empty updates change nothing");
 
     // Digest states are structural Copy values. Copies branch from one prefix without sharing later mutations.
-    var prefix = Sha256();
+    var prefix = Sha256::New();
     prefix.Update(TextBytes("ab"));
     var abc = prefix;
     var abd = prefix;
@@ -166,7 +166,7 @@ func Main() -> int {
            "and a second copy keeps its own later writes");
 
     // The reported lengths.
-    var lengths = Sha256();
+    var lengths = Sha256::New();
     Assert(lengths.DigestLength() == 32 && lengths.BlockLength() == 64, "SHA-256 reports its own sizes");
     var narrowLengths = Sha256::New224();
     Assert(narrowLengths.DigestLength() == 28, "and SHA-224 reports its shorter digest");

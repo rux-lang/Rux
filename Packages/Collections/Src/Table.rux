@@ -124,7 +124,7 @@ extend Table<K, V> {
     /// @param seed the two words that key the hash, which decide the iteration order
     /// @returns an empty table that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/table#new
-    pub func Table(allocator: Allocator, seed: TableSeed) -> Self {
+    pub func New(allocator: Allocator, seed: TableSeed) -> Self {
         return Self {
             keys: null,
             values: null,

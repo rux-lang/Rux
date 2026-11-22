@@ -18,7 +18,7 @@ struct Line {
 }
 
 func NewLine() -> Line {
-    return Line { units: [0 as OsUnit; 512], views: [OsStringView(); 16], used: 0, count: 0 };
+    return Line { units: [0 as OsUnit; 512], views: [OsStringView::New(); 16], used: 0, count: 0 };
 }
 
 extend Line {
@@ -29,7 +29,7 @@ extend Line {
             self.used = self.used + 1;
         }
         self.views[self.count] = if start == self.used {
-            OsStringView()
+            OsStringView::New()
         } else {
             OsStringView::FromUnits(self.units[start..self.used])
         };

@@ -38,7 +38,7 @@ extend Box<T> {
     /// @param value the value to move into it
     /// @returns the box
     /// @see https://rux-lang.dev/docs/api/allocator/box#create
-    pub func Box(allocator: Allocator, value: T) -> Self {
+    pub func New(allocator: Allocator, value: T) -> Self {
         return try Box::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
     }
 

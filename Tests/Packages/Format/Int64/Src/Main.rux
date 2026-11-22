@@ -8,7 +8,7 @@ import Format::{ ByteCursor, ParseError, ParseInt64 };
 // A failed check returns its numbered exit code for `rux test`.
 func Check(value: int64, expected: char8[..], code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: int64 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
@@ -71,7 +71,7 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    var text = StringView::FromBytes("-123") ?? StringView();
+    var text = StringView::FromBytes("-123") ?? StringView::New();
     let parsed: Result<int64, ParseError> = try .Success(ParseInt64(text)) catch { error => .Failure(error) };
     let code = match parsed {
         .Success(value) => if value == -123i64 { 0 } else { 120 },
@@ -92,7 +92,7 @@ func CheckParseOverloads() -> int {
     if (try? ParseInt64("invalid")) is .Some(_) { return 123; }
     if value != 456 { return 124; }
 
-    text = StringView::FromBytes("-789") ?? StringView();
+    text = StringView::FromBytes("-789") ?? StringView::New();
     try {
         let parsedView = ParseInt64(text);
         value = parsedView;
@@ -101,7 +101,7 @@ func CheckParseOverloads() -> int {
     }
     if value != -789i64 { return 127; }
 
-    text = StringView::FromBytes("bad") ?? StringView();
+    text = StringView::FromBytes("bad") ?? StringView::New();
     if (try? ParseInt64(text)) is .Some(_) { return 128; }
     if value != -789i64 { return 129; }
     return 0;

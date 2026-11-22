@@ -39,7 +39,7 @@ extend FixedBuffer {
     /// @param capacity how many bytes `storage` holds
     /// @returns the buffer, having handed out nothing
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer#new
-    pub func FixedBuffer(storage: *var opaque, capacity: uint) -> Self {
+    pub func New(storage: *var opaque, capacity: uint) -> Self {
         let base = if storage == null { 0u } else { storage as uint };
         return Self {
             start: base,

@@ -76,10 +76,10 @@ func CheckPauses(allocator: Allocator) {
         calls: 0
     };
     var interruptedSource = PausingHandle { state: @interrupted };
-    var first = StringBuilder(allocator);
+    var first = StringBuilder::New(allocator);
     Assert((try? ReadLineFrom(interruptedSource, first)) is .Some(_),
            "an interrupted read is retried within the line");
-    let ab = StringView::FromBytes("ab") ?? StringView();
+    let ab = StringView::FromBytes("ab") ?? StringView::New();
     Assert(first.View().Equals(ab), "which arrives whole");
     Assert(interrupted.calls == 4, "after three bytes and one interruption");
     first.Release();
@@ -93,7 +93,7 @@ func CheckPauses(allocator: Allocator) {
         calls: 0
     };
     var blockedSource = PausingHandle { state: @blocked };
-    var second = StringBuilder(allocator);
+    var second = StringBuilder::New(allocator);
     var kind: IoErrorKind? = none;
     try {
         ReadLineFrom(blockedSource, second);
@@ -111,7 +111,7 @@ func CheckPauses(allocator: Allocator) {
 // Reads the next line of `source` and checks the outcome: success when `expectedKind` is `none`, otherwise a
 // failure of that kind; either way the builder holds `expected`.
 func CheckLine(allocator: Allocator, source: &var Reader, expectedKind: IoErrorKind?, expected: char8[..]) {
-    var builder = StringBuilder(allocator);
+    var builder = StringBuilder::New(allocator);
     var reported: IoErrorKind? = none;
     try {
         ReadLineFrom(source, builder);
@@ -119,7 +119,7 @@ func CheckLine(allocator: Allocator, source: &var Reader, expectedKind: IoErrorK
         error => { reported = error.kind; }
     }
     Assert(reported == expectedKind, "the outcome names the reason");
-    let want = StringView::FromBytes(expected) ?? StringView();
+    let want = StringView::FromBytes(expected) ?? StringView::New();
     Assert(builder.View().Equals(want), "and the builder holds the line, no more and no less");
     builder.Release();
 }
@@ -173,13 +173,13 @@ func CheckScript(allocator: Allocator) {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     CheckScript(allocator);
     CheckPauses(allocator);
 
     var count: uint = 0;
     while count < 8 {
-        var builder = StringBuilder(allocator);
+        var builder = StringBuilder::New(allocator);
         try {
             ReadLine(builder);
             let line = builder.TakeString();

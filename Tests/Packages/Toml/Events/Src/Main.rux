@@ -27,7 +27,7 @@ func Skip(reader: &var TomlEventReader) {
 
 // How many events `text` produces before it ends or is refused.
 func Shape(text: char8[..]) -> uint {
-    var reader = TomlEventReader(text);
+    var reader = TomlEventReader::New(text);
     var count: uint = 0;
     while true {
         let event = try reader.Next() catch { _ => return count };
@@ -41,11 +41,11 @@ func Shape(text: char8[..]) -> uint {
 // case and the position, so one assertion covers both — and it is the same failure the tree parser reports, which
 // is the point of the two agreeing on a vocabulary.
 func FailsWith(text: char8[..], into: var char8[..]) -> uint {
-    var reader = TomlEventReader(text);
+    var reader = TomlEventReader::New(text);
     while true {
         let event = try reader.Next() catch {
             failure => {
-                var writer = BufferWriter(into);
+                var writer = BufferWriter::New(into);
                 let sink: &var TextWriter = writer;
                 Assert((try? failure.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
                 return writer.Length();
@@ -74,7 +74,7 @@ func Stops(text: char8[..], expected: char8[..]) -> bool {
 
 func Main() -> int {
     // A pair arrives as a key and then its value.
-    var pair = TomlEventReader("title = \"TOML\"");
+    var pair = TomlEventReader::New("title = \"TOML\"");
     Assert(Arrives(pair, TomlEvent::KeyStart), "a pair begins with its key");
     Assert(Arrives(pair, TomlEvent::KeyPart), "whose one part follows");
     Assert(pair.Span().length == 5, "spanning the key as written");
@@ -83,7 +83,7 @@ func Main() -> int {
     Assert(Ends(pair), "and then the document is finished");
 
     // A dotted key arrives as one part per name.
-    var dotted = TomlEventReader("a.b.c = 1");
+    var dotted = TomlEventReader::New("a.b.c = 1");
     Skip(dotted);
     Assert(Arrives(dotted, TomlEvent::KeyPart), "the first part");
     Assert(Arrives(dotted, TomlEvent::KeyPart), "the second");
@@ -91,7 +91,7 @@ func Main() -> int {
     Assert(Arrives(dotted, TomlEvent::Integer), "before the value");
 
     // A header opens, names its path, and closes.
-    var header = TomlEventReader("[[a.b]]\nx = 1");
+    var header = TomlEventReader::New("[[a.b]]\nx = 1");
     Assert(Arrives(header, TomlEvent::HeaderStart), "a header opens");
     Assert(header.IsTableArray(), "and this one is the array spelling");
     Assert(Arrives(header, TomlEvent::KeyPart), "with its parts");
@@ -100,7 +100,7 @@ func Main() -> int {
     Assert(Arrives(header, TomlEvent::KeyStart), "and the lines after it follow");
 
     // Containers nest, and the reader says how deep it is.
-    var nested = TomlEventReader("a = [1, [2], { b = 3 }]");
+    var nested = TomlEventReader::New("a = [1, [2], { b = 3 }]");
     Skip(nested);
     Skip(nested);
     Assert(Arrives(nested, TomlEvent::ArrayStart), "an array opens");
@@ -121,7 +121,7 @@ func Main() -> int {
 
     // Locations, because a streaming reader that could not point at a line would leave the caller counting
     // bytes.
-    var located = TomlEventReader("a = 1\n\nb = 2");
+    var located = TomlEventReader::New("a = 1\n\nb = 2");
     Skip(located);
     Skip(located);
     Skip(located);
@@ -130,7 +130,7 @@ func Main() -> int {
     Assert(located.Column() == 1, "at the first column");
 
     // Text arrives as written, so a caller skipping a field pays nothing for its escapes.
-    var raw = TomlEventReader("a = \"x\\ty\"");
+    var raw = TomlEventReader::New("a = \"x\\ty\"");
     Skip(raw);
     Skip(raw);
     Assert(Arrives(raw, TomlEvent::Text), "a string with an escape in it");

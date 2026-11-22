@@ -27,7 +27,7 @@ extend ByteCursor {
     /// @param room how many bytes the buffer holds
     /// @returns a cursor over that storage, having written nothing
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor#new
-    pub func ByteCursor(room: var char8[..]) -> Self {
+    pub func New(room: var char8[..]) -> Self {
         return Self { room, length: 0, overran: false };
     }
 

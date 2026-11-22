@@ -27,14 +27,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Renders through Display and compares.
 func Shown(value: &Display, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     if (try? value.WriteDisplay(writer, spec)) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Refused(value: &Display, spec: FormatSpec) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     return (try? value.WriteDisplay(writer, spec)) is none;
 }
 
@@ -115,15 +115,15 @@ func Main() -> int {
     Assert(Shown(localFraction, Spec(".1"), "2026-09-07T00:00:00.0"), "a precision reaches the fraction through it");
 
     // An OffsetDateTime writes one, because it has one.
-    let moment = OffsetDateTime(DateTime { date: DateOf(2026, 9, 7), time: TimeOf(12, 34, 56, 0) },
+    let moment = OffsetDateTime::New(DateTime { date: DateOf(2026, 9, 7), time: TimeOf(12, 34, 56, 0) },
                                 OffsetOf(2, 0));
     let shownMoment: OffsetDateTime = moment;
     Assert(Shown(shownMoment, plain, "2026-09-07T12:34:56+02:00"), "an offset date-time is RFC 3339");
-    let atUtc = OffsetDateTime(DateTime { date: DateOf(2026, 9, 7), time: TimeOf(12, 34, 56, 0) },
+    let atUtc = OffsetDateTime::New(DateTime { date: DateOf(2026, 9, 7), time: TimeOf(12, 34, 56, 0) },
                                UtcOffset::Utc());
     let shownUtc: OffsetDateTime = atUtc;
     Assert(Shown(shownUtc, plain, "2026-09-07T12:34:56Z"), "and UTC is spelled Z there too");
-    let fractional = OffsetDateTime(DateTime { date: DateOf(2026, 9, 7), time: TimeOf(1, 2, 3, 400000000) },
+    let fractional = OffsetDateTime::New(DateTime { date: DateOf(2026, 9, 7), time: TimeOf(1, 2, 3, 400000000) },
                                     OffsetOf(-5, -30));
     let shownFractional: OffsetDateTime = fractional;
     Assert(Shown(shownFractional, plain, "2026-09-07T01:02:03.4-05:30"),

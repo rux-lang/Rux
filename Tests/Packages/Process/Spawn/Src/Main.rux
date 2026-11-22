@@ -31,7 +31,7 @@ func Present(value: OsStringView?) -> bool {
 }
 
 func ModeIs(text: char8[..]) -> bool {
-    return Is(Argument(1) ?? OsStringView(), text);
+    return Is(Argument(1) ?? OsStringView::New(), text);
 }
 
 // The child's side: what each mode does.
@@ -72,15 +72,15 @@ func RunChild() -> int {
         let b = Variable("RUX_SPAWN_B");
         let gone = Variable("RUX_SPAWN_GONE");
         var report: char8[3] = ['-', '-', '-'];
-        if Present(a) && Is(a ?? OsStringView(), "one") { report[0] = 'A'; }
-        if Present(b) && Is(b ?? OsStringView(), "two") { report[1] = 'B'; }
+        if Present(a) && Is(a ?? OsStringView::New(), "one") { report[0] = 'A'; }
+        if Present(b) && Is(b ?? OsStringView::New(), "two") { report[1] = 'B'; }
         if !Present(gone) { report[2] = 'G'; }
         try WriteAll(output, report[..]) catch { _ => return 4 };
         return 0;
     }
     if ModeIs("argument") {
         // Writes its second argument back, to show quoting keeps it whole.
-        let argument = Argument(2) ?? OsStringView();
+        let argument = Argument(2) ?? OsStringView::New();
         let units = argument.Units();
         var index: uint = 0;
         while index < units.length {
@@ -106,7 +106,7 @@ const NotAChild: int = -1;
 
 // A command that starts this executable again in `mode`.
 func NewSelf(program: OsStringView, mode: char8[..]) -> Command {
-    var command = Command::FromNative(SystemAllocator(), program);
+    var command = Command::FromNative(SystemAllocator::New(), program);
     command.Argument(mode);
     return move command;
 }
@@ -127,8 +127,8 @@ func Main() -> int {
         let code = RunChild();
         if code != NotAChild { return code; }
     }
-    let program = Argument(0) ?? OsStringView();
-    let allocator = SystemAllocator();
+    let program = Argument(0) ?? OsStringView::New();
+    let allocator = SystemAllocator::New();
 
     // An exit code comes back.
     let exit = NewSelf(program, "exit");
@@ -171,7 +171,7 @@ func Main() -> int {
     // A child sees this process's environment changes and the command's own.
     try SetVariable("RUX_SPAWN_A", "one") catch { _ => return 17 };
     try SetVariable("RUX_SPAWN_GONE", "here") catch { _ => return 18 };
-    Assert(Is(Variable("RUX_SPAWN_A") ?? OsStringView(), "one"), "a variable set here reads back");
+    Assert(Is(Variable("RUX_SPAWN_A") ?? OsStringView::New(), "one"), "a variable set here reads back");
     var environment = NewSelf(program, "environment");
     environment.SetVariable("RUX_SPAWN_B", "two");
     environment.RemoveVariable("RUX_SPAWN_GONE");
@@ -200,7 +200,7 @@ func Main() -> int {
     Assert(Same(echoed.Output(), awkward), "an awkward argument arrives whole");
 
     // A program that does not exist is reported as not found.
-    var missing = Command(allocator, "rux-no-such-program-anywhere");
+    var missing = Command::New(allocator, "rux-no-such-program-anywhere");
     try {
         missing.Spawn();
         Assert(false, "a missing program cannot start");

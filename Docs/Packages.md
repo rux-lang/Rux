@@ -124,8 +124,8 @@ These are settled for v0.1.0. Revisit the decision before changing anything that
 
   | Intent | Convention |
   | --- | --- |
-  | Construction | type-named constructor: `Arena(...)`, `Vector<T>(allocator)`, `Box<T>(allocator, value)` |
-  | Construction that can fail | type-named constructor declared `-> Self throws E`: `Regex(allocator, pattern)`, `JsonNumber(allocator, text)` |
+  | Construction | type-named constructor: `Arena::New(...)`, `Vector<T>::New(allocator)`, `Box<T>::New(allocator, value)` |
+  | Construction that can fail | type-named constructor declared `-> Self throws E`: `Regex::New(allocator, pattern)`, `JsonNumber::New(allocator, text)` |
   | Construction from a specific source | a descriptive factory: `FromBytes`, `FromParts`, `WithCapacity`, `Bind`, `Connect` |
   | Parse with details | `Parse(...) -> T throws ParseError` |
   | Lookup, removal or construction from parts that may find nothing | `-> T?`: `Find`, `Remove`, `Pop`, `Layout::Of`, `Date::FromParts` |

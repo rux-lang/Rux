@@ -92,14 +92,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 // The rendering of each container, into a buffer of its own so no case can read another's output. The length is
 // returned through the writer the caller keeps, which is what lets the hash cases inspect what was written.
 func RenderHashMap(map: &HashMap<int32, int32>, into: var char8[..]) -> uint {
-    var writer = BufferWriter(into);
+    var writer = BufferWriter::New(into);
     let sink: &var TextWriter = writer;
     Assert((try? WriteHashMapDebug<int32, int32>(sink, map, FormatSpec::Plain())) is .Some(_), "the map is shown");
     return writer.Length();
 }
 
 func RenderHashSet(set: &HashSet<int32>, into: var char8[..]) -> uint {
-    var writer = BufferWriter(into);
+    var writer = BufferWriter::New(into);
     let sink: &var TextWriter = writer;
     Assert((try? WriteHashSetDebug<int32>(sink, set, FormatSpec::Plain())) is .Some(_), "the set is shown");
     return writer.Length();
@@ -108,7 +108,7 @@ func RenderHashSet(set: &HashSet<int32>, into: var char8[..]) -> uint {
 func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[256];
     // Safety: `storage` is a local array of 256 elements.
-    var writer = BufferWriter((@storage[0])[..256]);
+    var writer = BufferWriter::New((@storage[0])[..256]);
     let sink: &var TextWriter = writer;
     if (try? WriteTreeMapDebug<int32, int32>(sink, map, spec)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -117,7 +117,7 @@ func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8
 func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[256];
     // Safety: `storage` is a local array of 256 elements.
-    var writer = BufferWriter((@storage[0])[..256]);
+    var writer = BufferWriter::New((@storage[0])[..256]);
     let sink: &var TextWriter = writer;
     if (try? WriteTreeSetDebug<int32>(sink, set, spec)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -126,7 +126,7 @@ func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -
 func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     // Safety: `storage` is a local array of 128 elements.
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     let shown: CollectionError = error;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
@@ -136,7 +136,7 @@ func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -
 func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     // Safety: `storage` is a local array of 128 elements.
-    var writer = BufferWriter((@storage[0])[..128]);
+    var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     let shown: CollectionError = error;
     if (try? shown.WriteDebug(sink, spec)) is none { return false; }
@@ -144,11 +144,11 @@ func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let plain = FormatSpec::Plain();
 
     // An ordered map is written in key order, which is the order it keeps whatever order it was filled in.
-    var ordered = TreeMap<int32, int32>(allocator, CompareInt32);
+    var ordered = TreeMap<int32, int32>::New(allocator, CompareInt32);
     Assert(ShownTreeMap(ordered, plain, "{}"), "an empty ordered map shows as empty braces");
     ordered.Insert(30i32, 3i32);
     ordered.Insert(10i32, 1i32);
@@ -160,19 +160,19 @@ func Main() -> int {
 
     // A second map with the same entries in a third order renders identically, which is the property that makes an
     // ordered map's rendering usable in an assertion at all.
-    var again = TreeMap<int32, int32>(allocator, CompareInt32);
+    var again = TreeMap<int32, int32>::New(allocator, CompareInt32);
     again.Insert(20i32, 2i32);
     again.Insert(30i32, 3i32);
     again.Insert(10i32, 1i32);
     Assert(ShownTreeMap(again, plain, "{10: 1, 20: 2, 30: 3}"), "two ordered maps of the same entries agree");
 
     // One entry, where a separator written one position out would show.
-    var single = TreeMap<int32, int32>(allocator, CompareInt32);
+    var single = TreeMap<int32, int32>::New(allocator, CompareInt32);
     single.Insert(7i32, 8i32);
     Assert(ShownTreeMap(single, plain, "{7: 8}"), "carries no separator");
 
     // An ordered set is the same rendering without the values.
-    var elements = TreeSet<int32>(allocator, CompareInt32);
+    var elements = TreeSet<int32>::New(allocator, CompareInt32);
     Assert(ShownTreeSet(elements, plain, "{}"), "an empty ordered set shows as empty braces");
     Assert(elements.Insert(5i32), "filled out of order");
     Assert(elements.Insert(1i32), "deliberately");
@@ -181,7 +181,7 @@ func Main() -> int {
 
     // A hash map has no order to pin, so what is checked is everything that holds regardless of it: the braces, one
     // separator fewer than there are entries, and each entry exactly once.
-    var hashed = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var hashed = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     var empty: char8[64];
     // Safety: `empty` is a local array of 64 elements.
     Assert(RenderHashMap(hashed, (@empty[0])[..64]) == 2, "an empty hash map is two braces");
@@ -246,7 +246,7 @@ func Main() -> int {
     Assert(seededLength == 2u + 9u * 4u + 8u * 2u, "with nothing else in the rendering at all");
 
     // A hash set answers the same way.
-    var members = HashSet<int32>(allocator, HashInt32, EqualsInt32);
+    var members = HashSet<int32>::New(allocator, HashInt32, EqualsInt32);
     var setStorage: char8[64];
     // Safety: `setStorage` is a local array of 64 elements.
     Assert(RenderHashSet(members, (@setStorage[0])[..64]) == 2, "an empty hash set is two braces");
@@ -267,13 +267,13 @@ func Main() -> int {
     // Showing a map takes nothing out of it, which is the property that matters for an entry type that cannot be
     // copied: a walk that yielded entries by value could not have been used here at all.
     var destroyed: int32 = 0;
-    var owning = TreeMap<int32, Tracked>(allocator, CompareInt32);
+    var owning = TreeMap<int32, Tracked>::New(allocator, CompareInt32);
     owning.Insert(2i32, Tracked { counter: @destroyed, tag: 2i32 });
     owning.Insert(1i32, Tracked { counter: @destroyed, tag: 1i32 });
 
     var ownedStorage: char8[128];
     // Safety: `ownedStorage` is a local array of 128 elements.
-    var ownedWriter = BufferWriter((@ownedStorage[0])[..128]);
+    var ownedWriter = BufferWriter::New((@ownedStorage[0])[..128]);
     let ownedSink: &var TextWriter = ownedWriter;
     Assert((try? WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain)) is .Some(_), "a move-only map is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
@@ -285,7 +285,7 @@ func Main() -> int {
     // A destination that runs out of room reports it and stops.
     var small: char8[6];
     // Safety: `small` is a local array of six elements.
-    var tight = BufferWriter((@small[0])[..6]);
+    var tight = BufferWriter::New((@small[0])[..6]);
     let tightSink: &var TextWriter = tight;
     let refused: Result<(), FormatError> =
         try .Success(WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain)) catch { error => .Failure(error) };
@@ -296,7 +296,7 @@ func Main() -> int {
     Assert(overflowed, "an ordered map reports a destination without room");
 
     // Safety: `small` is a local array of six elements.
-    var tighter = BufferWriter((@small[0])[..6]);
+    var tighter = BufferWriter::New((@small[0])[..6]);
     let tighterSink: &var TextWriter = tighter;
     let alsoRefused: Result<(), FormatError> =
         try .Success(WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain)) catch { error => .Failure(error) };
@@ -319,7 +319,7 @@ func Main() -> int {
     // silently ignores. Truncating a description produces a sentence that says something else.
     var refusalStorage: char8[128];
     // Safety: `refusalStorage` is a local array of 128 elements.
-    var refusalWriter = BufferWriter((@refusalStorage[0])[..128]);
+    var refusalWriter = BufferWriter::New((@refusalStorage[0])[..128]);
     let refusalSink: &var TextWriter = refusalWriter;
     let described = CollectionError::IndexOutOfRange;
     let truncated: Result<(), FormatError> = try .Success(described.WriteDisplay(refusalSink, Spec(".3"))) catch {

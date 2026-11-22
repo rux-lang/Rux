@@ -21,7 +21,7 @@ struct Labeled {
 const Greeting: int32 = 42;
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     let key = 7;
     let value = 2.5;
@@ -55,5 +55,5 @@ func Expect(allocator: Allocator, outcome: String?, expected: String, message: c
 
 // The rendered text, or an empty string when rendering failed, which no expected text matches.
 func Rendered(allocator: Allocator, outcome: String?) -> String {
-    return (move outcome) ?? String(allocator);
+    return (move outcome) ?? String::New(allocator);
 }

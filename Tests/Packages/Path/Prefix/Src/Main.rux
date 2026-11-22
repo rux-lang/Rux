@@ -14,7 +14,7 @@ func PathText(allocator: Allocator, text: char8[..]) -> OsString {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Text survives the round trip through native units, multi-byte characters included.
     let owned = PathText(allocator, "héllo/wörld");

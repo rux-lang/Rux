@@ -28,8 +28,8 @@ extend Xoshiro256 {
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256#new
-    pub func Xoshiro256(seed: uint64) -> Self {
-        var mixer = SplitMix64(seed);
+    pub func New(seed: uint64) -> Self {
+        var mixer = SplitMix64::New(seed);
         var generator = Self { state: [0; 4] };
         var index: uint = 0;
         while index < 4 {
@@ -46,7 +46,7 @@ extend Xoshiro256 {
     /// @returns a generator with exactly those state words
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256#from-state
     pub func FromState(words: uint64[4]) -> Self {
-        if words[0] == 0 && words[1] == 0 && words[2] == 0 && words[3] == 0 { return Xoshiro256(0); }
+        if words[0] == 0 && words[1] == 0 && words[2] == 0 && words[3] == 0 { return Xoshiro256::New(0); }
         return Self { state: words };
     }
 }

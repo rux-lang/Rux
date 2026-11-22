@@ -397,7 +397,7 @@ bool IsOperatorName(const std::string_view name) {
 }
 
 /// One function of an `extend` block or an interface, classified the way a reader looks for it.
-std::string_view MemberKind(const FuncDecl &function, const std::string &typeName, const bool requirement) {
+std::string_view MemberKind(const FuncDecl &function, const bool requirement) {
     if (requirement) {
         return "requirement";
     }
@@ -410,7 +410,7 @@ std::string_view MemberKind(const FuncDecl &function, const std::string &typeNam
     if (function.Receiver() != nullptr) {
         return "method";
     }
-    return function.name == typeName ? "constructor" : "associated";
+    return "associated";
 }
 
 /// Whether a member is part of the type's surface. A destructor runs wherever the type is dropped and an interface
@@ -419,12 +419,12 @@ bool MemberPublic(const FuncDecl &function, const bool requirement) {
     return requirement || function.name.starts_with('~') || function.isPublic;
 }
 
-void WriteFunctionMember(JsonWriter &json, Context &context, const FuncDecl &function, const std::string &typeName,
+void WriteFunctionMember(JsonWriter &json, Context &context, const FuncDecl &function,
                          const std::optional<std::string> &conformance, const bool requirement,
                          const std::string &source) {
     json.BeginObject();
     json.Key("kind");
-    json.String(MemberKind(function, typeName, requirement));
+    json.String(MemberKind(function, requirement));
     json.Key("name");
     json.String(function.name);
     json.Key("line");
@@ -505,7 +505,7 @@ void WriteMembers(JsonWriter &json, Context &context, const Decl &decl, const st
     json.BeginArray();
     if (const auto *interface = AstCast<const InterfaceDecl>(&decl)) {
         for (const auto &method : interface->methods) {
-            WriteFunctionMember(json, context, *method, typeName, std::nullopt, true, source.display);
+            WriteFunctionMember(json, context, *method, std::nullopt, true, source.display);
         }
     }
     const auto found = context.extensions.find(qualified);
@@ -525,7 +525,7 @@ void WriteMembers(JsonWriter &json, Context &context, const Decl &decl, const st
             std::ranges::stable_sort(members, {}, [](const Decl *member) { return member->location.offset; });
             for (const Decl *member : members) {
                 if (const auto *function = AstCast<const FuncDecl>(member)) {
-                    WriteFunctionMember(json, context, *function, typeName, extension->interfaceName, false,
+                    WriteFunctionMember(json, context, *function, extension->interfaceName, false,
                                         extensionSource->display);
                 }
                 else {

@@ -26,7 +26,7 @@ when #target.os {
 /// @returns success when the directory now exists
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#make-directory
 pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
         // in scope, and a `uint16` unit is a `char16`.
@@ -51,7 +51,7 @@ pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @returns success when the directory is gone
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#delete-directory
 pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
         // in scope, and a `uint16` unit is a `char16`.
@@ -75,7 +75,7 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @returns success when the file is gone
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#delete-file
 pub func DeleteFile(allocator: Allocator, path: Path) throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
         // in scope, and a `uint16` unit is a `char16`.
@@ -193,7 +193,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator th
         return move iterator;
     }
     else {
-        let native = try NativePath(allocator, path);
+        let native = try NativePath::New(allocator, path);
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope.
         let opened = OpenAt(AtFdCwd, native.Pointer() as *char8, OpenReadOnly | OpenDirectory, 0);
         if opened < 0 { throw TranslateNative((0 - opened) as int32); }

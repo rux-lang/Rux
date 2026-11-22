@@ -17,7 +17,7 @@ import Json::{
 import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 // The number a value holds, which the test has just made it hold.
@@ -48,7 +48,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 // The debug rendering of a failure, into a caller's buffer, and how much of it was written. Empty for a parse that
 // succeeded, which no case below expects.
 func Rendered(reason: &JsonParseError, into: var char8[..]) -> uint {
-    var writer = BufferWriter(into);
+    var writer = BufferWriter::New(into);
     let sink: &var TextWriter = writer;
     Assert((try? reason.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
     return writer.Length();
@@ -123,7 +123,7 @@ func ParseAndDrop(allocator: Allocator, text: char8[..], state: &CountState, whi
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The scalars.
     var nullValue = Accepts(allocator, "null", "null parses");
@@ -189,7 +189,7 @@ func Main() -> int {
     Refuses(allocator, "{\"a\":1,\"a\":2}", "JsonParseError::DuplicateName(12)", "a duplicate member name is refused");
 
     // The other policies exist because real documents contain duplicates and someone has to read them.
-    var keepFirstParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
+    var keepFirstParser = JsonParser::New(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepFirstParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepFirst);
     var keptFirst = Built(allocator, keepFirstParser, "keeping the first accepts the document");
     Assert(keptFirst.Length() is .Some(1), "and leaves one member");
@@ -199,7 +199,7 @@ func Main() -> int {
     Assert(Number(Member(keptFirst, nameA)).AsInt64() is .Some(1),
            "which holds the first value");
 
-    var keepLastParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
+    var keepLastParser = JsonParser::New(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepLastParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepLast);
     var keptLast = Built(allocator, keepLastParser, "keeping the last accepts it too");
     Assert(keptLast.Length() is .Some(1), "and also leaves one member");
@@ -208,7 +208,7 @@ func Main() -> int {
     Assert(Number(Member(keptLast, nameA)).AsInt64() is .Some(2),
            "which holds the last value");
 
-    var keepAllParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
+    var keepAllParser = JsonParser::New(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepAllParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepAll);
     var keptAll = Built(allocator, keepAllParser, "keeping all accepts it");
     Assert(keptAll.Length() is .Some(2), "and keeps both members, so the document is preserved exactly");
@@ -227,7 +227,7 @@ func Main() -> int {
     // The limits, reached through the parser rather than the lexer.
     var shallow = JsonLimits::Default();
     shallow.maximumDepth = 3;
-    var deepParser = JsonParser(allocator, "[[[[1]]]]", shallow);
+    var deepParser = JsonParser::New(allocator, "[[[[1]]]]", shallow);
     try {
         deepParser.Parse();
         Assert(false,
@@ -236,12 +236,12 @@ func Main() -> int {
         refusal => Assert(Refusal(refusal, "JsonParseError::TooDeep(4)"),
             "nesting past the depth limit is refused before the stack is at risk"),
     }
-    var fittingParser = JsonParser(allocator, "[[[1]]]", shallow);
+    var fittingParser = JsonParser::New(allocator, "[[[1]]]", shallow);
     var fitting = Built(allocator, fittingParser, "while nesting that fits is accepted");
 
     var few = JsonLimits::Default();
     few.maximumEntries = 2;
-    var manyParser = JsonParser(allocator, "[1,2,3]", few);
+    var manyParser = JsonParser::New(allocator, "[1,2,3]", few);
     try {
         manyParser.Parse();
         Assert(false,
@@ -250,12 +250,12 @@ func Main() -> int {
         refusal => Assert(Refusal(refusal, "JsonParseError::TooManyEntries(6)"),
             "a container past the entry limit is refused"),
     }
-    var enoughParser = JsonParser(allocator, "[1,2]", few);
+    var enoughParser = JsonParser::New(allocator, "[1,2]", few);
     var enough = Built(allocator, enoughParser, "and one that fits is not");
 
     // A lexical failure carries the lexer's own reason inside it rather than in a second field a caller has to
     // know to read, which is what makes it impossible to hold half of one.
-    var badParser = JsonParser(allocator, "[01]", JsonLimits::Default());
+    var badParser = JsonParser::New(allocator, "[01]", JsonLimits::Default());
     try {
         badParser.Parse();
         Assert(false,

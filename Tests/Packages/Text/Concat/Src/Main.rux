@@ -7,11 +7,11 @@ import Text::{ Concat, Repeat, String, StringView };
 // of its own, and the empty cases cost nothing.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     let hello = View("Hello, ");
     let world = View("world!");

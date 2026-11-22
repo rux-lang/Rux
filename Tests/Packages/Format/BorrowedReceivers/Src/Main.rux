@@ -20,7 +20,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
-    var writer = BufferWriter(storage[..192]);
+    var writer = BufferWriter::New(storage[..192]);
     Assert((try? value.WriteDisplay(writer, spec)) is .Some(_), "a constrained borrowed receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
@@ -31,7 +31,7 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 
 func Inspected<T: Debug>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
-    var writer = BufferWriter(storage[..192]);
+    var writer = BufferWriter::New(storage[..192]);
     Assert((try? value.WriteDebug(writer, spec)) is .Some(_), "a constrained borrowed debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
@@ -138,7 +138,7 @@ func Main() -> int {
 
 func Direct() {
     var storage: char8[192];
-    var writer = BufferWriter(storage[..192]);
+    var writer = BufferWriter::New(storage[..192]);
     let plain = FormatSpec::Plain();
     var number: int32 = -71;
     let borrowed: &var int32 = number;

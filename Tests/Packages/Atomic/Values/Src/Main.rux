@@ -14,7 +14,7 @@ var Depth: Level = Level::Zero;
 var Ready: Flag = Flag::False;
 
 func Main() -> int {
-    let counter = Atomic<int64>(10);
+    let counter = Atomic<int64>::New(10);
     if counter.Load() != 10 { return 1; }
     counter.Store(11);
     if counter.LoadWith(MemoryOrder::Acquire) != 11 || counter.LoadWith(MemoryOrder::Release) != 11 { return 2; }
@@ -65,20 +65,20 @@ func Main() -> int {
         }
     }
 
-    let small = Atomic<uint8>(250);
+    let small = Atomic<uint8>::New(250);
     if small.FetchAdd(10) != 250 || small.Load() != 4 { return 17; }
-    let signed = Atomic<int16>(-1);
+    let signed = Atomic<int16>::New(-1);
     if signed.FetchAnd(0x0F0F) != -1 || signed.Load() != 0x0F0F { return 18; }
     if signed.FetchOr(-0x1000) != 0x0F0F { return 19; }
     if signed.FetchXor(-1) >= 0 { return 20; }
 
-    let flag = Atomic<bool>(false);
+    let flag = Atomic<bool>::New(false);
     if flag.Exchange(true) || !flag.Load() { return 21; }
     if !flag.FetchAnd(false) || flag.Load() { return 22; }
 
     var first: int32 = 1;
     var second: int32 = 2;
-    let pointer = Atomic<*int32>(@first as *int32);
+    let pointer = Atomic<*int32>::New(@first as *int32);
     // Safety: the atomic only ever holds `@first` or `@second`, both live locals of this function.
     if *pointer.Load() != 1 { return 23; }
     // Safety: the atomic only ever holds `@first` or `@second`, both live locals of this function.

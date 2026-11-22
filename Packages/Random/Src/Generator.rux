@@ -39,7 +39,7 @@ extend SplitMix64 {
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value
     /// @see https://rux-lang.dev/docs/api/random/split-mix64#new
-    pub func SplitMix64(seed: uint64) -> Self {
+    pub func New(seed: uint64) -> Self {
         return Self { state: seed };
     }
 

@@ -24,7 +24,7 @@ func Nothing(iterations: uint64) {}
 
 func Main() -> int {
     // Work far too fast for an hour: the runs grow until the cap and stop there.
-    var capped = BenchmarkOptions();
+    var capped = BenchmarkOptions::New();
     capped.minimumTime = Duration::FromSeconds(3600);
     capped.maximumIterations = 5000;
     let atCap = Measure(Sum, capped);
@@ -33,7 +33,7 @@ func Main() -> int {
     Assert(Runs > 1u64 && Runs < 8u64, "the count grows at least twofold, so few runs reach the cap");
 
     // A short minimum: the measured run lasts at least that long.
-    var quick = BenchmarkOptions();
+    var quick = BenchmarkOptions::New();
     quick.minimumTime = Duration::FromMilliseconds(2);
     let timed = Measure(Sum, quick);
     Assert(timed.iterations >= 1u64, "a measurement makes at least one iteration");
@@ -45,7 +45,7 @@ func Main() -> int {
 
     // The runner measures only the benchmarks its filter chooses.
     let before = Runs;
-    var filtered = BenchmarkOptions();
+    var filtered = BenchmarkOptions::New();
     filtered.filter = "Empty";
     filtered.minimumTime = Duration::FromMilliseconds(1);
     let cases: BenchmarkCase[2] = [BenchmarkCase { name: "Sum", run: Sum }, BenchmarkCase { name: "Empty", run: Nothing }];

@@ -33,7 +33,7 @@ extend BigNat {
     /// @param allocator where the working storage comes from
     /// @returns a zero that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/format/float-layout#big-nat-new
-    func BigNat(allocator: Allocator) -> Self {
+    func New(allocator: Allocator) -> Self {
         return Self { allocator, limbs: null, capacity: 0, length: 0 };
     }
 
@@ -341,7 +341,7 @@ extend BigNat {
         if !self.Reserve(total + 1) { return false; }
         // The recursion works in one block taken here, so a product of any size asks the allocator twice, however
         // deep the split goes; asking at every level was most of the time at the widest float.
-        var work = BigNat(self.allocator);
+        var work = BigNat::New(self.allocator);
         let room = ProductWork(left.length, right.length);
         if room > 0 && !work.Reserve(room) { return false; }
         // Safety: `Reserve` made room for `total + 1` limbs here, each factor's length is within its block (the

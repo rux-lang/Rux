@@ -81,28 +81,28 @@ struct Counting {
 
 extend Counting : Allocator {
     func Allocate(&var self, layout: Layout) -> *var opaque throws AllocError {
-        var system = SystemAllocator();
+        var system = SystemAllocator::New();
         let block = try system.Allocate(layout);
         self.live += 1;
         return block;
     }
 
     func Deallocate(&var self, block: *var opaque, layout: Layout) throws AllocError {
-        var system = SystemAllocator();
+        var system = SystemAllocator::New();
         try system.Deallocate(block, layout);
         self.live -= 1;
     }
 
     func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque throws AllocError {
-        var system = SystemAllocator();
+        var system = SystemAllocator::New();
         return try system.Reallocate(block, oldLayout, newLayout);
     }
 }
 
 // A container built in a helper keeps the handle it was given, so it is returned whole.
 func Build(allocator: Allocator, drops: *var int, count: int) -> Vector<Tracked> {
-    var values = Vector<Tracked>(allocator);
+    var values = Vector<Tracked>::New(allocator);
     var id = 0;
     while id < count {
         values.Push(Tracked { drops, id });
@@ -155,11 +155,11 @@ func Main() -> int {
     // A container made in a helper is returned with its allocator, and each element is destroyed exactly once
     // across a move of the container and its replacement.
     var drops = 0;
-    var values = Build(SystemAllocator(), @drops, 3);
+    var values = Build(SystemAllocator::New(), @drops, 3);
     Assert(values.Length() == 3, "the container returned from its helper keeps its elements");
     var moved = move values;
     Assert(drops == 0, "moving the container destroys nothing");
-    moved = Build(SystemAllocator(), @drops, 2);
+    moved = Build(SystemAllocator::New(), @drops, 2);
     Assert(drops == 3, "replacing it destroys each old element once");
     moved.Clear();
     Assert(drops == 5, "and clearing destroys each new one once");
@@ -172,7 +172,7 @@ func Main() -> int {
 
     // An arena's handle is made from a pointer: its caller promises the arena outlives the containers that use it and
     // is neither moved nor reset while they hold its allocations, so the containers end first.
-    var arena = Arena(SystemAllocator(), 256);
+    var arena = Arena::New(SystemAllocator::New(), 256);
     FillArena(arena, @drops);
     Assert(drops == 20, "the container's elements are destroyed before the arena is reset");
     arena.Reset();

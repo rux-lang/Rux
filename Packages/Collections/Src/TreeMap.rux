@@ -32,8 +32,8 @@ extend TreeMap<K, V> {
     /// @param compare how two keys order against each other
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#new
-    pub func TreeMap(allocator: Allocator, compare: func(K, K) -> Ordering) -> Self {
-        return Self { tree: Tree<K, V>(allocator), compare };
+    pub func New(allocator: Allocator, compare: func(K, K) -> Ordering) -> Self {
+        return Self { tree: Tree<K, V>::New(allocator), compare };
     }
 
     /// How many entries the map holds.

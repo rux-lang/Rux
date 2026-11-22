@@ -363,7 +363,7 @@ when #target.os == .Windows {
 /// @returns what the system knows about the path
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata#metadata-of
 pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Metadata throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     var buffer: char8[256];
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
@@ -432,7 +432,7 @@ extend File {
 /// @returns success when the permissions were applied
 /// @see https://rux-lang.dev/docs/api/filesystem/permissions#set-permissions
 pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
         // in scope, and a `uint16` unit is a `char16`.
@@ -478,7 +478,7 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata#set-times
 pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
               followLinks: bool) throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
         if (handle as uint64) == InvalidHandleValue {

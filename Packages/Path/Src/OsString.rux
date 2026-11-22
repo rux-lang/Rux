@@ -36,7 +36,7 @@ extend OsStringView {
     /// A view over nothing.
     /// @returns an empty view
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#new
-    pub func OsStringView() -> Self {
+    pub func New() -> Self {
         return Self { units: [] };
     }
 
@@ -152,7 +152,7 @@ extend OsString {
     /// @param allocator where the storage comes from
     /// @returns an empty owned string that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/path/os-string#new
-    pub func OsString(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, allocator };
     }
 
@@ -165,7 +165,7 @@ extend OsString {
     /// @see https://rux-lang.dev/docs/api/path/os-string#from-view
     pub func FromView(allocator: Allocator, view: OsStringView) -> Self {
         let units = view.Units();
-        if units.length == 0 { return OsString(allocator); }
+        if units.length == 0 { return OsString::New(allocator); }
         let bytes = units.length * (sizeof(OsUnit) as uint);
         let layout = Layout::Of(bytes, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = allocator;
@@ -251,7 +251,7 @@ extend OsString {
                 }
             }
 
-            if needed == 0 { return OsString(allocator); }
+            if needed == 0 { return OsString::New(allocator); }
             let bytes = needed * 2;
             let layout = Layout::Of(bytes, 2);
             var borrowed = allocator;

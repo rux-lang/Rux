@@ -41,7 +41,7 @@ extend HashMap<K, V> {
     /// @param equals whether two keys are the same
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#new
-    pub func HashMap(allocator: Allocator, hash: func(K, uint64, uint64) -> uint64,
+    pub func New(allocator: Allocator, hash: func(K, uint64, uint64) -> uint64,
                  equals: func(K, K) -> bool) -> Self {
         return HashMap::WithSeed<K, V>(allocator, TableSeed::Random(), hash, equals);
     }
@@ -58,7 +58,7 @@ extend HashMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#with-seed
     pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(K, uint64, uint64) -> uint64,
                   equals: func(K, K) -> bool) -> Self {
-        return Self { table: Table<K, V>(allocator, seed), hash, equals };
+        return Self { table: Table<K, V>::New(allocator, seed), hash, equals };
     }
 
     /// An empty map with room for `capacity` entries already taken.
@@ -72,7 +72,7 @@ extend HashMap<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
                       equals: func(K, K) -> bool) -> Self {
-        var map = HashMap<K, V>(allocator, hash, equals);
+        var map = HashMap<K, V>::New(allocator, hash, equals);
         map.Reserve(capacity);
         return move map;
     }

@@ -11,11 +11,11 @@ import Text::{ String, StringView };
 // what a container keying on text wants.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     let empty = View("");
     let a = View("apple");

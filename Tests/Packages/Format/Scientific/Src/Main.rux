@@ -25,7 +25,7 @@ func Refused(reason: FormatError) -> bool {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The shortest digits, placed after one leading digit.
     Assert(Same(try? Render(allocator, "{:e}", 123456.0), "1.23456e+05"), "the shortest digits, in scientific form");

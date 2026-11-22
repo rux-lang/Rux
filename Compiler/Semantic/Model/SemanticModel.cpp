@@ -296,11 +296,6 @@ const Decl *SemanticModel::TryGetAsmSymbolDeclaration(const AsmOperand &operand)
     return declaration == facts.asmSymbolDeclarations.end() ? nullptr : declaration->second;
 }
 
-const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const LetStmt &statement) const noexcept {
-    const auto constructor = facts.defaultConstructors.find(&statement);
-    return constructor == facts.defaultConstructors.end() ? nullptr : &constructor->second;
-}
-
 bool SemanticModel::IsEffectivelyPublic(const Decl &declaration) const noexcept {
     const auto visibility = facts.effectiveVisibilities.find(&declaration);
     return visibility != facts.effectiveVisibilities.end() && visibility->second;

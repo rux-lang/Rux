@@ -41,7 +41,7 @@ struct Scratch {
 
 // A vector of `count` copies of `value`.
 func Filled<T>(allocator: Allocator, count: uint, value: T) -> Vector<T> {
-    var items = Vector<T>(allocator);
+    var items = Vector<T>::New(allocator);
     items.Reserve(count);
     var index: uint = 0;
     while index < count {

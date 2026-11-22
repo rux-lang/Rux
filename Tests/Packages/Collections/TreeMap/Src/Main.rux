@@ -30,7 +30,7 @@ extend Tracked {
 
 // A scope for a map of tracked values, so its destruction happens somewhere observable.
 func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterInserting: *var int32) {
-    var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
+    var map = TreeMap<int32, Tracked>::New(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter, value: key });
@@ -44,7 +44,7 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 // A consuming walk stopped part-way: what was handed out is destroyed by whoever received it, and what was not is
 // destroyed by the iterator. Every value exactly once, either way.
 func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take: int32, afterTaking: *var int32) {
-    var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
+    var map = TreeMap<int32, Tracked>::New(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter, value: key });
@@ -93,11 +93,11 @@ func CountRange(map: &TreeMap<int32, int32>, start: int32, end: int32) -> uint {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let missing = Missing();
 
     // Fifty keys arriving in a stride coprime with the count, so nothing about the order helps them come out sorted.
-    var map = TreeMap<int32, int32>(allocator, CompareInt32);
+    var map = TreeMap<int32, int32>::New(allocator, CompareInt32);
     var step: int32 = 0;
     while step < 50 {
         let key = (step * 23) % 50;
@@ -183,7 +183,7 @@ func Main() -> int {
     Assert(CountRange(map, 47, 100) == 3, "and one running past the end stops at the largest key");
 
     // Cleared and used again. A tree keeps no capacity back, so an emptied map is exactly a fresh one.
-    var reused = TreeMap<int32, int32>(allocator, CompareInt32);
+    var reused = TreeMap<int32, int32>::New(allocator, CompareInt32);
     reused.Insert(1, 10);
     reused.Insert(2, 20);
     reused.Clear();

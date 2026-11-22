@@ -180,21 +180,6 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
         return argumentType.IsUnknown() || CanAssignExprTo(*e->args[index], argumentType, parameterType);
     };
-    // Whether the arguments fit `declaration` without a diagnostic, as overload selection asks.
-    const auto argumentsFit = [&](const std::vector<TypeRef> &argTypes, const FuncDecl &declaration,
-                                  const bool isMethod, const std::vector<TypeRef> &fixedTypes,
-                                  const std::optional<TypeRef> &variadicElement) {
-        const auto bound = BoundParameterTypes(declaration, isMethod, fixedTypes, variadicElement, argTypes.size(), e);
-        if (!bound) {
-            return false;
-        }
-        for (std::size_t index = 0; index < argTypes.size(); ++index) {
-            if (!canPassArgument(index, argTypes[index], (*bound)[index])) {
-                return false;
-            }
-        }
-        return true;
-    };
     // Checks a call's arguments against the callable it selected, which every kind of callable takes alike: enough of
     // them for the parameters without a default value and, unless the last parameter is variadic, no more than the
     // fixed ones; each fixed argument against its parameter; then each remaining argument against the variadic
@@ -436,69 +421,11 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                                                     std::format("type '{}'", ident->name));
             }
             constructedType = InstantiateAssociatedReceiver(constructedType, e->typeArgs);
-            const std::vector<const FuncDecl *> candidates = ConstructorCandidates(constructedType);
-            if (candidates.empty()) {
-                const std::string typeName = NamedBaseTypeName(constructedType);
-                if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
-                    if (const auto constructors = methods->second.find(std::string(UnqualifiedNominalName(typeName)));
-                        constructors != methods->second.end()) {
-                        const auto privateConstructor = std::ranges::find_if(
-                            constructors->second, [this, &constructedType](const FuncDecl *candidate) {
-                                return !IsAccessible(*candidate) && IsConstructorCandidate(*candidate, constructedType);
-                            });
-                        if (privateConstructor != constructors->second.end()) {
-                            EmitPrivacyError(e->location, **privateConstructor, "constructor", typeName);
-                            return constructedType;
-                        }
-                    }
-                }
-                EmitError(e->location,
-                          std::format("type '{}' cannot be called because it has no declared constructor",
-                                      constructedType.ToString()),
-                          {}, "declare a receiverless constructor in its extend block or use explicit initialization");
-                return constructedType;
-            }
-
-            const auto constructorFixedTypes = [&](const FuncDecl &candidate) {
-                const TypeRef functionType = AssociatedFunctionType(constructedType, candidate);
-                return functionType->inner.empty()
-                         ? std::vector<TypeRef>{}
-                         : std::vector<TypeRef>(functionType->inner.begin(), functionType->inner.end() - 1);
-            };
-            const FuncDecl *constructor = nullptr;
-            for (const FuncDecl *candidate : candidates) {
-                if (argumentsFit(argTypes, *candidate, false, constructorFixedTypes(*candidate),
-                                 ResolveMethodVariadicType(constructedType, *candidate))) {
-                    constructor = candidate;
-                    break;
-                }
-            }
-            if (!constructor) {
-                if (candidates.size() > 1) {
-                    emitOverloadError(ident->name, argTypes, candidates);
-                }
-                else {
-                    const FuncDecl &candidate = *candidates.front();
-                    static_cast<void>(checkBoundArguments(ident->name, argTypes, candidate, false,
-                                                          constructorFixedTypes(candidate),
-                                                          ResolveMethodVariadicType(constructedType, candidate)));
-                }
-                return constructedType;
-            }
-
-            NoteDeclarationUse(*constructor, CallSiteLocation(*e));
-            const auto substitutions = MethodTypeSubstitutions(constructedType);
-            QueueGenericInstantiation(*constructor, substitutions,
-                                      expression.callee ? expression.callee->location : expression.location);
-            const TypeRef functionType = AssociatedFunctionType(constructedType, *constructor);
-            const std::size_t parameterCount = functionType->inner.size() - 1;
-            const std::vector<TypeRef> parameterTypes(functionType->inner.begin(),
-                                                      functionType->inner.begin() + parameterCount);
-            ConsumeCallArguments(*e, argTypes, &parameterTypes);
-            RecordFunctionBinding(*e, *constructor, ResolvedCallableBinding::DispatchKind::Constructor, substitutions,
-                                  constructedType);
-            // A constructor declared `-> Self throws E` returns its outcome, which the call's throw site takes apart.
-            return functionType->inner.back();
+            // A constructor is an ordinary static function, called by its name: nothing is called by naming a type.
+            const std::string spelled = constructedType.ToString();
+            EmitError(e->location, std::format("'{}' is a type, not a function", spelled), {},
+                      std::format("call a constructor by its name, as in '{}::New(...)'", spelled));
+            return constructedType;
         }
     }
 
@@ -868,6 +795,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     // call, exactly as a method is by its receiver's.
                     CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
                                                  std::format("method '{}'", method->name));
+                    NoteDeclarationUse(*method, CallSiteLocation(*e));
                     QueueGenericInstantiation(*method, methodSubstitutions,
                                               expression.callee ? expression.callee->location : expression.location);
                     const bool callAccepted = checkBoundArguments(

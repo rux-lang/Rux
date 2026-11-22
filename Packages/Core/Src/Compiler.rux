@@ -27,7 +27,7 @@ pub module Compilation {
         /// @param patch the patch version
         /// @returns the version
         /// @see https://rux-lang.dev/docs/api/core/semantic-version#new
-        pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> Self {
+        pub func New(major: uint, minor: uint, patch: uint) -> Self {
             return Self { major, minor, patch };
         }
 

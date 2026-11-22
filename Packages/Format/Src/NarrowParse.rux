@@ -49,7 +49,7 @@ struct Reading {
 // Builds `digits * 10^exponent` as an exact ratio.
 func BuildRatio(state: &var Reading, digits: &FixedNat, exponent: int) -> bool {
     state.numerator.Assign(digits);
-    state.denominator = FixedNat();
+    state.denominator = FixedNat::New();
     if !state.denominator.SetPowerOfTwo(0) { return false; }
     if exponent >= 0 {
         return state.numerator.MultiplyPowerOfTen(exponent as uint);
@@ -87,13 +87,13 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     *overflowed = false;
     if digits.IsZero() { return true; }
 
-    var state = Reading { numerator: FixedNat(), denominator: FixedNat(), sticky: truncated };
+    var state = Reading { numerator: FixedNat::New(), denominator: FixedNat::New(), sticky: truncated };
     if !BuildRatio(state, digits, exponent) { return false; }
 
     // Which binade the value is in: the bit lengths give it within one, and one comparison settles which. From
     // here the ratio is scaled so it sits in [1, 2), which is what the division below expects.
     var binade = (state.numerator.BitLength() as int) - (state.denominator.BitLength() as int);
-    var probe = FixedNat();
+    var probe = FixedNat::New();
     if binade >= 0 {
         probe.Assign(state.denominator);
         if !probe.ShiftLeft(binade as uint) { return false; }
@@ -118,8 +118,8 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
 
     // The ratio scaled into [1, 2). The division takes its bits from there, so the setup is the same whether the
     // value ends up normal or subnormal; only how many bits are taken differs.
-    var remainder = FixedNat();
-    var divisor = FixedNat();
+    var remainder = FixedNat::New();
+    var divisor = FixedNat::New();
     if binade >= 0 {
         remainder.Assign(state.numerator);
         divisor.Assign(state.denominator);
@@ -171,7 +171,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     // Round to nearest with ties to even, on what the division left. Twice the remainder against the divisor is
     // the exact "more than half"; a digit dropped past the retained bound makes the value strictly larger than the
     // remainder says, so it cannot be a tie and rounds up.
-    var twice = FixedNat();
+    var twice = FixedNat::New();
     twice.Assign(remainder);
     if !twice.ShiftLeft(1u) { return false; }
     let order = twice.Compare(divisor);

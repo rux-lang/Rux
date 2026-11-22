@@ -12,7 +12,7 @@ extend WsaData {
     /// Zeroed storage for `WSAStartup` to fill.
     /// @returns the storage
     /// @see https://rux-lang.dev/docs/api/windows/winsock#wsa-data-new
-    pub func WsaData() -> Self {
+    pub func New() -> Self {
         return Self { storage: [0u64; 51] };
     }
 }

@@ -9,7 +9,7 @@ import Format::{ ByteCursor, IsFinite, IsInfinite, IsNan, ParseError, ParseFloat
 // A failed check returns its numbered exit code for `rux test`.
 func Check(value: float64, expected: char8[..], code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: float64 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
@@ -66,7 +66,7 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    var text = StringView::FromBytes("3.5") ?? StringView();
+    var text = StringView::FromBytes("3.5") ?? StringView::New();
     let parsed: Result<float64, ParseError> = try .Success(ParseFloat64(text)) catch { error => .Failure(error) };
     let code = match parsed {
         .Success(value) => if value == 3.5 { 0 } else { 120 },
@@ -87,7 +87,7 @@ func CheckParseOverloads() -> int {
     if (try? ParseFloat64("invalid")) is .Some(_) { return 123; }
     if value != 6.25 { return 124; }
 
-    text = StringView::FromBytes("-4.5") ?? StringView();
+    text = StringView::FromBytes("-4.5") ?? StringView::New();
     try {
         let parsedView = ParseFloat64(text);
         value = parsedView;
@@ -96,7 +96,7 @@ func CheckParseOverloads() -> int {
     }
     if value != -4.5 { return 127; }
 
-    text = StringView::FromBytes("bad") ?? StringView();
+    text = StringView::FromBytes("bad") ?? StringView::New();
     if (try? ParseFloat64(text)) is .Some(_) { return 128; }
     if value != -4.5 { return 129; }
     return 0;

@@ -189,7 +189,7 @@ func CheckSuccessfulReallocation(allocator: Allocator) throws AllocError {
 }
 
 func Main() throws AllocError {
-    let real = SystemAllocator();
+    let real = SystemAllocator::New();
 
     // --- The contract, asked of each allocator ------------------------------------------------------------------
 
@@ -198,7 +198,7 @@ func Main() throws AllocError {
     try CheckFailedReallocation(real);
     try CheckSuccessfulReallocation(real);
 
-    var arena = Arena(real, 65536);
+    var arena = Arena::New(real, 65536);
     // Safety: `arena` is a local that outlives `arenaAllocator` and is never moved.
     let arenaAllocator = arena.Handle();
     try CheckAlignment(arenaAllocator, "Arena");
@@ -206,7 +206,7 @@ func Main() throws AllocError {
     try CheckFailedReallocation(arenaAllocator);
     try CheckSuccessfulReallocation(arenaAllocator);
 
-    var pool = Pool(real, 16);
+    var pool = Pool::New(real, 16);
     // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
     let poolAllocator = pool.Handle();
     try CheckAlignment(poolAllocator, "Pool");
@@ -216,7 +216,7 @@ func Main() throws AllocError {
 
     var storage: byte[65536];
     // Safety: `storage` is a local array of 65536 bytes, touched only through `buffer` until `buffer` is done.
-    var buffer = FixedBuffer(@storage[0] as *var opaque, 65536);
+    var buffer = FixedBuffer::New(@storage[0] as *var opaque, 65536);
     // Safety: `buffer` is a local that outlives `bufferAllocator` and is never moved.
     let bufferAllocator = buffer.Handle();
     try CheckAlignment(bufferAllocator, "FixedBuffer");
@@ -228,7 +228,7 @@ func Main() throws AllocError {
 
     // A handle is a copyable adapter holding the owner's address, so every copy sees one arena. If the adapter
     // carried the state instead, each copy would allocate out of its own and the accounting below would disagree.
-    var counted = Arena(real, 65536);
+    var counted = Arena::New(real, 65536);
     // Safety: `counted` outlives both handles, which are last used before it moves into `relocated` below.
     var first = counted.Handle();
     // Safety: as for `first`, the handle is last used before `counted` moves.
@@ -276,7 +276,7 @@ func Main() throws AllocError {
     // A fixed buffer is the case where the storage does not move even though its owner might: the buffer points at
     // storage the caller owns, so a handle taken after a move serves out of the very same bytes.
     // Safety: `storage` is a local array of 65536 bytes; `buffer` is done with it, so only `moving` touches it now.
-    var moving = FixedBuffer(@storage[0] as *var opaque, 65536);
+    var moving = FixedBuffer::New(@storage[0] as *var opaque, 65536);
     // Safety: `beforeMoveAllocator` is last used before `moving` moves into `carried` below.
     let beforeMoveAllocator = moving.Handle();
     let early = try beforeMoveAllocator.Allocate(unit);

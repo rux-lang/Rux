@@ -12,7 +12,7 @@ func Matches(actual: StringView, expected: char8[..]) -> bool {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     let hello = try String::FromBytes(allocator, "Hello World!") catch { _ => return 1 };
 
@@ -33,8 +33,8 @@ func Main() -> int {
     if hello.Length() != 12 { return 14; }
 
     // Debug quotes; Display does not. The difference is what makes an empty string visible.
-    var builder = StringBuilder(allocator);
-    let empty = String(allocator);
+    var builder = StringBuilder::New(allocator);
+    let empty = String::New(allocator);
     let shownPlain: StringView = empty.View();
     let plainWriter: &var TextWriter = builder;
     if (try? shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain())) is none { return 20; }
@@ -69,5 +69,5 @@ func Main() -> int {
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success.
 func Rendered(allocator: Allocator, outcome: String?) -> String {
-    return (move outcome) ?? String(allocator);
+    return (move outcome) ?? String::New(allocator);
 }

@@ -48,7 +48,7 @@ extend Deque<T> {
     /// @param allocator where the storage comes from
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/deque#new
-    pub func Deque(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { data: null, head: 0, length: 0, capacity: 0, allocator };
     }
 
@@ -60,7 +60,7 @@ extend Deque<T> {
     /// @returns an empty deque with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/deque#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
-        var deque = Deque<T>(allocator);
+        var deque = Deque<T>::New(allocator);
         if capacity == 0 {
             return move deque;
         }
@@ -76,7 +76,7 @@ extend Deque<T> {
     /// @returns a deque holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/deque#from-slice
     pub func FromSlice(allocator: Allocator, items: T[..]) -> Self {
-        var deque = Deque<T>(allocator);
+        var deque = Deque<T>::New(allocator);
         if items.length == 0 {
             return move deque;
         }
@@ -487,7 +487,7 @@ extend Deque<T> {
     /// @returns a cursor yielding copies of the elements, front to back
     /// @see https://rux-lang.dev/docs/api/collections/deque#iterate
     pub func Iterate(&var self) -> ValueIterator<T> {
-        return ValueIterator<T>(self.AsSlice());
+        return ValueIterator<T>::New(self.AsSlice());
     }
 
     /// An iterator over pointers to the elements, front to back.
@@ -495,6 +495,6 @@ extend Deque<T> {
     /// @returns a cursor yielding the elements' addresses, front to back
     /// @see https://rux-lang.dev/docs/api/collections/deque#references
     pub func References(&var self) -> ReferenceIterator<T> {
-        return ReferenceIterator<T>(self.AsSlice());
+        return ReferenceIterator<T>::New(self.AsSlice());
     }
 }

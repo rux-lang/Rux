@@ -95,7 +95,7 @@ extend Counted {
 // A scope holding a vector of counted elements, so that the vector's own destruction happens somewhere the test can
 // see across. `afterFilling` reports what the counter read while everything was still held.
 func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterFilling: *var int32) {
-    var vector = Vector<Counted>(allocator);
+    var vector = Vector<Counted>::New(allocator);
     var index: uint = 0;
     while index < count {
         vector.Push(Counted { counter, tag: index as int32 });
@@ -112,7 +112,7 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
     var guarded = Refusing(state);
     var allocator: RefusingAllocator = guarded;
     // Safety: `allocator` is a local of this function that outlives every use of the handle.
-    var vector = Vector<Counted>(@allocator as Allocator);
+    var vector = Vector<Counted>::New(@allocator as Allocator);
     var index: uint = 0;
     while index < 4 {
         vector.Push(Counted { counter, tag: index as int32 });
@@ -143,11 +143,11 @@ func PushRefused(vector: &var Vector<int64>, value: int64) -> AllocError? {
 }
 
 func Main() -> int {
-    let plain = SystemAllocator();
+    let plain = SystemAllocator::New();
 
     // A zero-sized element. The run gets a real address rather than the shared empty one, and everything else about
     // the container is ordinary.
-    var empties = Vector<Nothing>(plain);
+    var empties = Vector<Nothing>::New(plain);
     Assert(empties.IsEmpty(), "a vector of nothing starts empty");
     var pushed: uint = 0;
     while pushed < 5 {
@@ -176,7 +176,7 @@ func Main() -> int {
     Assert(markers.Length() == 6, "holding the length it was asked for");
     Assert(!IsEmptyBlock(markers.AsSlice().data as *var opaque), "on a real address");
 
-    var ring = Deque<Nothing>(plain);
+    var ring = Deque<Nothing>::New(plain);
     ring.PushBack(Nothing {});
     ring.PushFront(Nothing {});
     Assert(ring.Length() == 2, "counting both");
@@ -189,7 +189,7 @@ func Main() -> int {
     var hostile: RefusingAllocator = refusing;
 
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
-    var reserved = Vector<int64>(@hostile as Allocator);
+    var reserved = Vector<int64>::New(@hostile as Allocator);
     Assert(Refused(reserved, 16) == .Some(AllocError::OutOfMemory), "asking a refusing allocator for capacity fails");
     Assert(state.requests == 1, "having actually asked");
     // A container with no block yet meets the same refusal on its first growth.
@@ -203,7 +203,7 @@ func Main() -> int {
     // that matters — the failed call must leave the old block valid, because it is the only pointer to them.
     state.refusing = false;
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
-    var populated = Vector<int64>(@hostile as Allocator);
+    var populated = Vector<int64>::New(@hostile as Allocator);
     var value: int64 = 0;
     while value < 8 {
         populated.Push(value);
@@ -242,13 +242,13 @@ func Main() -> int {
     }
 
     // The copy a willing allocator makes is independent of its source.
-    var copy = try populated.TryClone() catch { _ => Vector<int64>(plain) };
+    var copy = try populated.TryClone() catch { _ => Vector<int64>::New(plain) };
     Assert(copy.Length() == length && copy.Get(0) == .Some(0), "a copy holds what its source holds");
     Assert(copy.AsSlice().data != populated.AsSlice().data, "in a block of its own");
 
     // A map's first insertion needs a table, and a refused one reports why and leaves the map empty.
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
-    var table = HashMap<int32, int32>(@hostile as Allocator, HashInt32, EqualsInt32);
+    var table = HashMap<int32, int32>::New(@hostile as Allocator, HashInt32, EqualsInt32);
     state.refusing = true;
     var insertRefused = false;
     try table.TryInsert(1, 10) catch { error => { insertRefused = error == AllocError::OutOfMemory; } };
@@ -260,13 +260,13 @@ func Main() -> int {
 
     // A deque grows through the same plumbing.
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
-    var queue = Deque<int64>(@hostile as Allocator);
+    var queue = Deque<int64>::New(@hostile as Allocator);
     queue.PushBack(7);
     Assert(queue.Length() == 1 && queue.Get(0) == .Some(7), "a deque grows through the same plumbing");
 
     // Everything held is destroyed exactly once. `Clear` destroys what it drops, and nothing before that.
     var tally: int32 = 0;
-    var counted = Vector<Counted>(plain);
+    var counted = Vector<Counted>::New(plain);
     var tag: int32 = 0;
     while tag < 6 {
         counted.Push(Counted { counter: @tally, tag });

@@ -100,7 +100,7 @@ extend FixedNat {
     /// Cannot fail; runs in constant time and allocates nothing.
     /// @returns the value zero
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat#new
-    pub func FixedNat() -> Self {
+    pub func New() -> Self {
         return Self { limbs: [0; 64], length: 0 };
     }
 
@@ -110,7 +110,7 @@ extend FixedNat {
     /// @returns a `FixedNat` equal to `initial`
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat#from-uint64
     pub func FromUint64(initial: uint64) -> Self {
-        var made = FixedNat();
+        var made = FixedNat::New();
         if initial != 0 {
             made.limbs[0] = initial;
             made.length = 1;
@@ -185,7 +185,7 @@ extend FixedNat {
         // A full workspace is the only one whose product can pass the capacity, so it is the only one that pays
         // for a copy to roll back from.
         if self.length >= FixedNatLimbs {
-            var work = FixedNat();
+            var work = FixedNat::New();
             work.Assign(self);
             if !ScaleInPlace(work, factor, addend) { return false; }
             self.Assign(work);
@@ -258,7 +258,7 @@ extend FixedNat {
     pub func Add(&var self, other: &Self) -> bool {
         let wider = if self.length > other.length { self.length } else { other.length };
         if wider >= FixedNatLimbs {
-            var work = FixedNat();
+            var work = FixedNat::New();
             work.Assign(self);
             if !AddInPlace(work, other) { return false; }
             self.Assign(work);

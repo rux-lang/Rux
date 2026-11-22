@@ -3,7 +3,7 @@ struct Record { value: int32; }
 struct Holder<T> { value: T; }
 enum Mode: uint8 { Ready = 3 }
 union Bits { value: uint32 }
-extend Record { func Record(value: int32) -> Self { return Self { value }; } func Sum(&self) -> int32 { return self.value; } }
+extend Record { func New(value: int32) -> Self { return Self { value }; } func Sum(&self) -> int32 { return self.value; } }
 extend Holder<T> { func Value(&self) -> T { return self.value; } }
 
 import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, MakeRecord, ReadBound, ReadProvider,
@@ -34,7 +34,7 @@ func Main() -> int {
         DropInProvider(@drops);
     }
     if drops != 11 { return 6; }
-    let record = Record(7i32);
+    let record = Record::New(7i32);
     let imported: ExportedRecord = MakeRecord();
     let error = Echo(ParseError::Missing(19i32));
     let holder = Holder<int32> { value: 53i32 };

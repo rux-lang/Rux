@@ -57,7 +57,7 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
 pub func GenerateNanoId(into: var char8[..]) throws EntropyError {
-    var system = SystemEntropy();
+    var system = SystemEntropy::New();
     return try Fill(system, into, NanoIdAlphabet);
 }
 
@@ -70,7 +70,7 @@ pub func GenerateNanoId(into: var char8[..]) throws EntropyError {
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
 pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) throws NanoIdError {
-    var system = SystemEntropy();
+    var system = SystemEntropy::New();
     return try GenerateNanoIdFrom(system, into, alphabet);
 }
 

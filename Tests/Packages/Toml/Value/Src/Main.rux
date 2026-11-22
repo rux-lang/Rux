@@ -10,11 +10,11 @@ import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlKind, TomlValue };
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Each kind reports itself, and answers only the accessor that matches.
     var integer = TomlValue::Integer(allocator, -17);

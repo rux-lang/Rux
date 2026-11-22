@@ -32,7 +32,7 @@ func Refused(reason: FormatError) -> bool {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The ordinary case, at both widths.
     Assert(Same(try? Render(allocator, "{:.2}", 3.14159), "3.14"), "a precision names digits after the point");

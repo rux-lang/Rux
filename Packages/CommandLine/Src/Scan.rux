@@ -40,8 +40,8 @@ extend ArgumentSource {
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#argument-source-at
     pub func At(&self, index: uint) -> OsStringView {
         return match self {
-            .Given(arguments) => if index < arguments.length { arguments[index] } else { OsStringView() },
-            .ProcessArguments => Argument(index + 1) ?? OsStringView()
+            .Given(arguments) => if index < arguments.length { arguments[index] } else { OsStringView::New() },
+            .ProcessArguments => Argument(index + 1) ?? OsStringView::New()
         };
     }
 }

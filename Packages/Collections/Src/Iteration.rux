@@ -37,7 +37,7 @@ extend ValueIterator<T> {
     /// @param items the elements to take
     /// @returns a cursor yielding copies of those elements
     /// @see https://rux-lang.dev/docs/api/collections/iterators#value-iterator-new
-    pub func ValueIterator(items: T[..]) -> Self {
+    pub func New(items: T[..]) -> Self {
         return Self { data: items.data, length: items.length, position: 0 };
     }
 }
@@ -81,7 +81,7 @@ extend ReferenceIterator<T> {
     /// @param items the elements to take
     /// @returns a cursor yielding those elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/iterators#reference-iterator-new
-    pub func ReferenceIterator(items: T[..]) -> Self {
+    pub func New(items: T[..]) -> Self {
         return Self { data: items.data, length: items.length, position: 0 };
     }
 }
@@ -123,7 +123,7 @@ extend MutableReferenceIterator<T> {
     /// @param items the elements to borrow for writing
     /// @returns a cursor yielding writable addresses
     /// @see https://rux-lang.dev/docs/api/collections/iterators#mutable-reference-iterator-new
-    pub func MutableReferenceIterator(items: var T[..]) -> Self {
+    pub func New(items: var T[..]) -> Self {
         return Self { data: items.data, length: items.length, position: 0 };
     }
 }

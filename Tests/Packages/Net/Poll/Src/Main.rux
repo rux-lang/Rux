@@ -12,12 +12,12 @@ import Net::{
 import Time::Duration;
 
 func Loopback(port: uint16) -> SocketAddress {
-    return SocketAddress(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
+    return SocketAddress::New(IpAddress::FromIpv4(Ipv4Address::Localhost()), port);
 }
 
 // Waits up to a second for an event with `token`, and returns it.
 func WaitFor(poller: &var Poller, token: uint64) -> PollEvent {
-    var events: PollEvent[8] = [PollEvent::PollEvent(); 8];
+    var events: PollEvent[8] = [PollEvent::New(); 8];
     var attempts: uint = 0;
     while attempts < 20u {
         let count = try poller.Wait(events[..], Duration::FromMilliseconds(50)) catch { _ => Panic("the wait works") };
@@ -45,7 +45,7 @@ func Main() -> int {
         error => Assert(error.kind == IoErrorKind::WouldBlock, "accept would block"),
     }
 
-    var poller = try Poller(SystemAllocator()) catch { _ => Panic("a poller is made") };
+    var poller = try Poller::New(SystemAllocator::New()) catch { _ => Panic("a poller is made") };
     try poller.Register(listener.PollSource(), 1, Interest::Readable()) catch { _ => Panic("the listener registers") };
     try {
         poller.Register(listener.PollSource(), 9, Interest::Readable());
@@ -53,7 +53,7 @@ func Main() -> int {
     } catch {
         error => Assert(error.kind == IoErrorKind::AlreadyExists, "a second registration is refused"),
     }
-    var events: PollEvent[4] = [PollEvent::PollEvent(); 4];
+    var events: PollEvent[4] = [PollEvent::New(); 4];
     let quiet = try poller.Wait(events[..], Duration::FromMilliseconds(20)) catch { _ => Panic("the wait works") };
     Assert(quiet == 0u, "nothing is ready before a connection");
 

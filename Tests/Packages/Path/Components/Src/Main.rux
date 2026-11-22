@@ -41,7 +41,7 @@ func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     Assert(IsSeparator(PreferredSeparator()), "the preferred separator separates");
 
@@ -52,7 +52,7 @@ func Main() -> int {
     let a = aOwned.View();
     let b = bOwned.View();
     let c = cOwned.View();
-    let root = OsStringView();
+    let root = OsStringView::New();
 
     // A relative path walks its segments; runs of separators count once; a trailing one adds nothing.
     let plainOwned = OsString::FromText(allocator, "a/b/c");
@@ -66,12 +66,12 @@ func Main() -> int {
     let slashOwned = OsString::FromText(allocator, "/");
     Assert(Walk(Path::FromView(slashOwned.View()), root, a, b, 1), "and the root alone is one component");
 
-    let empty = Path();
+    let empty = Path::New();
     Assert(empty.IsEmpty(), "the empty path is empty");
     Assert(Walk(empty, root, a, b, 0), "and walks as nothing at all");
 
     // The buffer: pushes separate, an absolute push replaces, and the result reads back as a path.
-    var buffer = PathBuffer(allocator);
+    var buffer = PathBuffer::New(allocator);
     buffer.Push(a);
     buffer.Push(b);
     buffer.Push(c);
@@ -86,9 +86,9 @@ func Main() -> int {
     Assert(Walk(buffer.AsPath(), root, a, b, 3), "and replaces everything before it");
 
     // Pushing the empty segment changes nothing.
-    var settled = PathBuffer(allocator);
+    var settled = PathBuffer::New(allocator);
     settled.Push(a);
-    settled.Push(OsStringView());
+    settled.Push(OsStringView::New());
     Assert(settled.Length() == 1, "which adds nothing, not even a separator");
 
     return 0;

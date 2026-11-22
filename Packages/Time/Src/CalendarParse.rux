@@ -293,5 +293,5 @@ pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime throws TimeParseError {
     let offset = try ReadOffset(reader);
     try AtEnd(reader);
     return
-        OffsetDateTime(DateTime { date, time }, offset);
+        OffsetDateTime::New(DateTime { date, time }, offset);
 }

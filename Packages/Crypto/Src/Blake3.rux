@@ -148,7 +148,7 @@ pub struct Blake3Chunk {
 }
 
 extend Blake3Chunk {
-    func Blake3Chunk(key: uint32[8], counter: uint64, flags: uint32) -> Self {
+    func New(key: uint32[8], counter: uint64, flags: uint32) -> Self {
         var block: char8[64];
         var index: uint = 0;
         while index < 64 {
@@ -275,7 +275,7 @@ extend Blake3 {
             index = index + 1;
         }
         return Self {
-            chunk: Blake3Chunk(key, 0, flags),
+            chunk: Blake3Chunk::New(key, 0, flags),
             stack,
             stackDepth: 0,
             key,
@@ -286,7 +286,7 @@ extend Blake3 {
     /// An unkeyed BLAKE3 hash.
     /// @returns a hasher with nothing absorbed
     /// @see https://rux-lang.dev/docs/api/crypto/blake3#new
-    pub func Blake3() -> Self {
+    pub func New() -> Self {
         return Self::Start(Blake3InitialValue, 0);
     }
 
@@ -350,7 +350,7 @@ extend Blake3 : Digest {
                 // Safety: `chaining` is a local sixteen-word array, room for the output and the eight words read back.
                 self.chunk.Output(0, @chaining[0]);
                 self.PushChunk(@chaining[0], finished);
-                self.chunk = Blake3Chunk(self.key, finished + 1, self.flags);
+                self.chunk = Blake3Chunk::New(self.key, finished + 1, self.flags);
             }
             // Safety: `offset` is below `bytes.length`, so the range covers exactly the unread tail of `bytes`.
             let rest = (@bytes[offset])[..bytes.length - offset];
@@ -469,7 +469,7 @@ extend Blake3 : Digest {
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-of
 pub func Blake3Of(bytes: char8[..], into: var char8[..]) {
-    var hasher = Blake3();
+    var hasher = Blake3::New();
     hasher.Update(bytes);
     hasher.Finish(into);
 }

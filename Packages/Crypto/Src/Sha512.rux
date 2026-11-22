@@ -96,7 +96,7 @@ extend Sha512 {
     /// A SHA-512 state.
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512#new
-    pub func Sha512() -> Self {
+    pub func New() -> Self {
         return Self::Start(Sha512InitialState, 64);
     }
 
@@ -284,7 +284,7 @@ extend Sha512 : Digest {
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha512#sha512-of
 pub func Sha512Of(bytes: char8[..], into: var char8[..]) {
-    var digest = Sha512();
+    var digest = Sha512::New();
     digest.Update(bytes);
     digest.Finish(into);
 }

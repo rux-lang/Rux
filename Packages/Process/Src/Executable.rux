@@ -33,7 +33,7 @@ const LongestPath: uint = 1u << 20;
 /// @returns the executable's path
 /// @see https://rux-lang.dev/docs/api/process/executable#current-executable
 pub func CurrentExecutable(allocator: Allocator) -> PathBuffer throws IoError {
-    var units = Buffer<OsUnit>(allocator);
+    var units = Buffer<OsUnit>::New(allocator);
     var room: uint = 260;
     while room <= LongestPath {
         units.Clear();

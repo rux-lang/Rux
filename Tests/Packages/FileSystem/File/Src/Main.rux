@@ -14,10 +14,10 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func Main() -> int throws IoError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
-    var missingHolder = OsString(allocator);
+    var missingHolder = OsString::New(allocator);
     let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", missingHolder);
     try {
         File::Open(allocator, missing, OpenOptions::Reading());
@@ -27,7 +27,7 @@ func Main() -> int throws IoError {
     }
 
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
-    var scratchHolder = OsString(allocator);
+    var scratchHolder = OsString::New(allocator);
     let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", scratchHolder);
     var written = try File::Open(allocator, scratch, OpenOptions::Writing());
     Assert(written.IsOpen(), "writing creates the missing file");
@@ -39,7 +39,7 @@ func Main() -> int throws IoError {
     var readable = move opened;
     Assert(readable.IsOpen(), "the created file reads");
     try readable.Close();
-    var claimed = OpenOptions();
+    var claimed = OpenOptions::New();
     claimed.write = true;
     claimed.createNew = true;
     try {
@@ -56,7 +56,7 @@ func Main() -> int throws IoError {
     try appended.Close();
 
     // The contradictions are refused before the platform is asked.
-    var nothing = OpenOptions();
+    var nothing = OpenOptions::New();
     try {
         File::Open(allocator, scratch, nothing);
         Panic("expected a failure");

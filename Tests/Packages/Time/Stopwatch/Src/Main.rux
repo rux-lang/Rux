@@ -17,7 +17,7 @@ func AtLeast(span: Duration, milliseconds: int64) -> bool {
 
 func Main() -> int {
     // A new stopwatch is stopped at zero, and stays at zero while stopped.
-    var watch = Stopwatch();
+    var watch = Stopwatch::New();
     if watch.IsRunning() || !watch.Elapsed().IsZero() { return 1; }
     if !Pause(5) || !watch.Elapsed().IsZero() { return 2; }
 

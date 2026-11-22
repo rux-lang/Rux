@@ -36,7 +36,7 @@ extend SmallVector<T> {
     /// @param allocator where the storage comes from once they outgrow it
     /// @returns the vector
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#new
-    pub func SmallVector(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self {
             inline: [0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64],
             heap: null,

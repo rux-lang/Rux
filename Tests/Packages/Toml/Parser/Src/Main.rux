@@ -10,7 +10,7 @@ import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError,
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 // The value under `key`, which the test has just seen the document hold.
@@ -33,7 +33,7 @@ func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..])
     return match outcome {
         .Success(_) => 0u,
         .Failure(failure) => {
-            var writer = BufferWriter(into);
+            var writer = BufferWriter::New(into);
             let sink: &var TextWriter = writer;
             Assert((try? failure.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
             return writer.Length();
@@ -134,7 +134,7 @@ func ParseAndDrop(allocator: Allocator, text: char8[..], state: &CountState, whi
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     // The ordinary shapes, which have to work before the refusals mean anything.
     var simple = Accepts(allocator, "title = \"TOML\"\ncount = 3", "a key and a value");
     Assert(Member(simple, View("title")).AsText() is .Some(view) && view.Length() == 4, "the string is there");

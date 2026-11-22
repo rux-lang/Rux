@@ -10,9 +10,9 @@ import Text::{ String, StringView, TextError };
 // the invariant that makes the rest of the package cheap: what a string holds is UTF-8, checked once on the way in.
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
-    let empty = String(allocator);
+    let empty = String::New(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "a new string holds nothing");
     Assert(empty.ScalarCount() == 0, "and no characters");
 
@@ -25,7 +25,7 @@ func Main() -> int {
     // is gone afterwards.
     let original = try String::FromBytes(allocator, "moved") catch { _ => Panic("well-formed bytes make a string") };
     let block = original.Bytes().data;
-    var assigned = String(allocator);
+    var assigned = String::New(allocator);
     assigned = move original;
     Assert(assigned.Bytes().data == block && assigned.Length() == 5, "moving a string hands over its block");
 

@@ -39,7 +39,7 @@ extend ThreadOptions {
     /// The defaults: the system's own stack size.
     /// @returns the default options
     /// @see https://rux-lang.dev/docs/api/thread/spawn#thread-options-new
-    pub func ThreadOptions() -> Self {
+    pub func New() -> Self {
         return Self { stackSize: 0 };
     }
 
@@ -138,7 +138,7 @@ extend JoinHandle<R> {
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn
 pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> throws ThreadError {
-    return try SpawnWith<T, R>(ThreadOptions(), entry, move context);
+    return try SpawnWith<T, R>(ThreadOptions::New(), entry, move context);
 }
 
 /// Starts a thread running `entry(context)` as `options` say.

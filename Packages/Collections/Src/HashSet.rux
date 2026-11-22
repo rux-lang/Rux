@@ -30,7 +30,7 @@ extend HashSet<T> {
     /// @param equals whether two elements are the same
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#new
-    pub func HashSet(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
+    pub func New(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
                  equals: func(T, T) -> bool) -> Self {
         return HashSet::WithSeed<T>(allocator, TableSeed::Random(), hash, equals);
     }
@@ -44,7 +44,7 @@ extend HashSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#with-seed
     pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(T, uint64, uint64) -> uint64,
                   equals: func(T, T) -> bool) -> Self {
-        return Self { table: Table<T, ()>(allocator, seed), hash, equals };
+        return Self { table: Table<T, ()>::New(allocator, seed), hash, equals };
     }
 
     /// An empty set with room for `capacity` elements already taken.
@@ -56,7 +56,7 @@ extend HashSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
                       equals: func(T, T) -> bool) -> Self {
-        var set = HashSet<T>(allocator, hash, equals);
+        var set = HashSet<T>::New(allocator, hash, equals);
         set.Reserve(capacity);
         return move set;
     }

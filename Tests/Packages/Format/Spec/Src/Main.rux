@@ -50,7 +50,7 @@ func RefusedAt(allocator: Allocator, format: char8[..], offset: uint) -> bool {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Width and alignment: numbers sit right by default, text left, and a named fill replaces the space.
     let right = Rendered(allocator, try? Render(allocator, "[{:6}]", 42));
@@ -247,5 +247,5 @@ func Main() -> int {
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
 func Rendered(allocator: Allocator, outcome: String?) -> String {
-    return (move outcome) ?? String(allocator);
+    return (move outcome) ?? String::New(allocator);
 }

@@ -33,7 +33,7 @@ struct Meter {
 
 extend Meter {
     #Warn("build a Meter with a literal")
-    func Meter(value: int32) -> Meter {
+    func New(value: int32) -> Meter {
         return Meter { value: value };
     }
 }
@@ -55,7 +55,7 @@ func Main() -> int {
     let point = Point { x: 1, y: 2, next: null };
     let total: Count = Limit;
     let mode = Mode::Fast;
-    let meter = Meter(3);
+    let meter = Meter::New(3);
     let twice: func(int32) -> int32 = Double;
     return (point.Sum() + meter.value + twice(1)) as int + total as int;
 }

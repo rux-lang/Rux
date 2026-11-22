@@ -80,10 +80,10 @@ extend Command {
     /// @param program the program's name or path, as UTF-8 text
     /// @returns the command
     /// @see https://rux-lang.dev/docs/api/process/command#command-new
-    pub func Command(allocator: Allocator, program: char8[..]) -> Self {
+    pub func New(allocator: Allocator, program: char8[..]) -> Self {
         var command = Self {
-            allocator, words: Buffer<OsUnit>(allocator), wordCount: 0,
-            directory: Buffer<OsUnit>(allocator), changes: Buffer<OsUnit>(allocator), clearEnvironment: false,
+            allocator, words: Buffer<OsUnit>::New(allocator), wordCount: 0,
+            directory: Buffer<OsUnit>::New(allocator), changes: Buffer<OsUnit>::New(allocator), clearEnvironment: false,
             input: Stdio::Inherit, output: Stdio::Inherit, error: Stdio::Inherit, failure: none
         };
         if program.length == 0 { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
@@ -97,7 +97,7 @@ extend Command {
     /// @returns the command
     /// @see https://rux-lang.dev/docs/api/process/command#from-native
     pub func FromNative(allocator: Allocator, program: OsStringView) -> Self {
-        var command = Command(allocator, "-");
+        var command = Command::New(allocator, "-");
         command.words.Clear();
         command.wordCount = 0;
         if program.IsEmpty() { command.failure = IoError::Of(IoErrorKind::InvalidInput); }
@@ -233,7 +233,7 @@ extend Command {
 
     // The child's environment as `name=value` entries, each followed by a NUL.
     func EnvironmentEntries(&self) -> Buffer<OsUnit> throws IoError {
-        var entries = Buffer<OsUnit>(self.allocator);
+        var entries = Buffer<OsUnit>::New(self.allocator);
         if !self.clearEnvironment {
             for variable in Environment() {
                 if self.LastChange(variable.name) != none { continue; }
@@ -274,7 +274,7 @@ extend Command {
     func LaunchPosix(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
         when #target.os != .Windows {
             let words = self.words.View();
-            var arguments = Buffer<*char8>(self.allocator);
+            var arguments = Buffer<*char8>::New(self.allocator);
             var at: uint = 0;
             while at < words.length {
                 try arguments.Push(@words[at]);
@@ -285,7 +285,7 @@ extend Command {
 
             let entries = try self.EnvironmentEntries();
             let entryUnits = entries.View();
-            var environment = Buffer<*char8>(self.allocator);
+            var environment = Buffer<*char8>::New(self.allocator);
             at = 0;
             while at < entryUnits.length {
                 try environment.Push(@entryUnits[at]);
@@ -294,7 +294,7 @@ extend Command {
             }
             try environment.Push(null);
 
-            var actions = SpawnFileActions();
+            var actions = SpawnFileActions::New();
             // Safety: `actions` is a local `SpawnFileActions` the call initializes.
             if posix_spawn_file_actions_init(@actions) != 0 {
                 throw IoError::Of(IoErrorKind::LimitExceeded);
@@ -378,7 +378,7 @@ extend Command {
     // `CreateProcessW` with a quoted command line, an environment block and inheritable standard handles.
     func LaunchWindows(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
         when #target.os == .Windows {
-            var line = Buffer<OsUnit>(self.allocator);
+            var line = Buffer<OsUnit>::New(self.allocator);
             let words = self.words.View();
             var at: uint = 0;
             while at < words.length {

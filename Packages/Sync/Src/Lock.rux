@@ -24,7 +24,7 @@ extend Lock {
     /// A lock nobody holds.
     /// @returns the lock
     /// @see https://rux-lang.dev/docs/api/sync/lock#lock-new
-    pub func Lock() -> Self {
+    pub func New() -> Self {
         return Self { word: 0 };
     }
 
@@ -76,7 +76,7 @@ extend Once {
     /// An initialization that has not run.
     /// @returns the once
     /// @see https://rux-lang.dev/docs/api/sync/lock#once-new
-    pub func Once() -> Self {
+    pub func New() -> Self {
         return Self { state: OnceIncomplete };
     }
 

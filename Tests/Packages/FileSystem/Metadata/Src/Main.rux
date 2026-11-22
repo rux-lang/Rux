@@ -22,12 +22,12 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func Main() -> int throws IoError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let able = CapabilitiesOfSystem();
 
-    var dirHolder = OsString(allocator);
+    var dirHolder = OsString::New(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemMeta.tmp", dirHolder);
-    var fileHolder = OsString(allocator);
+    var fileHolder = OsString::New(allocator);
     let file = PathOf(allocator, "Bin/FileSystemMeta.tmp/f.txt", fileHolder);
 
     try DeleteFile(allocator, file) catch { _ => {} };
@@ -51,7 +51,7 @@ func Main() -> int throws IoError {
     // A directory is a directory, and asking about a name that is not there is NotFound.
     let dirMetadata = try MetadataOf(allocator, dir, true);
     Assert(dirMetadata.kind == FileKind::Directory, "a directory reports as one");
-    var missingHolder = OsString(allocator);
+    var missingHolder = OsString::New(allocator);
     let missing = PathOf(allocator, "Bin/FileSystemMeta.tmp/nothing.txt", missingHolder);
     try {
         MetadataOf(allocator, missing, true);

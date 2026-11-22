@@ -77,7 +77,7 @@ extend Crc32 {
     /// Constructs a checksum with nothing written into it yet.
     /// @returns a hasher with nothing written to it yet
     /// @see https://rux-lang.dev/docs/api/hash/crc32#new
-    pub func Crc32() -> Self {
+    pub func New() -> Self {
         return Self { register: Crc32Initial };
     }
 
@@ -147,7 +147,7 @@ extend Crc32c {
     /// Constructs a checksum with nothing written into it yet.
     /// @returns a hasher with nothing written to it yet
     /// @see https://rux-lang.dev/docs/api/hash/crc32c#new
-    pub func Crc32c() -> Self {
+    pub func New() -> Self {
         return Self { register: Crc32Initial };
     }
 
@@ -210,7 +210,7 @@ extend Crc32c : Hasher {
 /// @returns their CRC-32 checksum
 /// @see https://rux-lang.dev/docs/api/hash/crc32#crc32-of
 pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
-    var checksum = Crc32();
+    var checksum = Crc32::New();
     checksum.Write(bytes, length);
     return checksum.Value();
 }
@@ -225,7 +225,7 @@ pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
 /// @returns their CRC-32C checksum
 /// @see https://rux-lang.dev/docs/api/hash/crc32c#crc32c-of
 pub func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
-    var checksum = Crc32c();
+    var checksum = Crc32c::New();
     checksum.Write(bytes, length);
     return checksum.Value();
 }

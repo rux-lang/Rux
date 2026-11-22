@@ -49,14 +49,14 @@ func ReserveRefused(builder: &var StringBuilder, additional: uint) -> AllocError
 }
 
 func Main() -> int {
-    let plain = SystemAllocator();
+    let plain = SystemAllocator::New();
     var state = RefusalState { backing: plain, refusing: false };
     var refusing = RefusingAllocator { state: @state };
     var hostile: RefusingAllocator = refusing;
 
     // A builder holding text keeps it when a growth is refused.
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
-    var builder = StringBuilder(@hostile as Allocator);
+    var builder = StringBuilder::New(@hostile as Allocator);
     builder.Append("hello");
     let capacity = builder.Capacity();
     state.refusing = true;
@@ -76,14 +76,14 @@ func Main() -> int {
     var copy = try source.TryClone() catch {
         error => {
             refusal = error;
-            String(plain)
+            String::New(plain)
         },
     };
     Assert(refusal == AllocError::OutOfMemory, "a refused copy is reported");
     Assert(copy.IsEmpty(), "and makes nothing");
     Assert(source.View().Equals(StringView::FromValidated("hello")), "leaving the source as it was");
     state.refusing = false;
-    copy = try source.TryClone() catch { _ => String(plain) };
+    copy = try source.TryClone() catch { _ => String::New(plain) };
     Assert(copy.View().Equals(source.View()), "a willing allocator makes an equal copy");
     Assert(copy.Bytes().data != source.Bytes().data, "in a block of its own");
     let cloned = source.Clone();

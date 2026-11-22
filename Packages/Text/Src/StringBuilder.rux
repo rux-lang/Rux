@@ -43,7 +43,7 @@ extend StringBuilder {
     /// @param allocator where the storage comes from
     /// @returns an empty builder that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/text/string-builder#new
-    pub func StringBuilder(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
@@ -55,7 +55,7 @@ extend StringBuilder {
     /// @returns an empty builder with room for that many bytes already taken
     /// @see https://rux-lang.dev/docs/api/text/string-builder#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
-        var builder = StringBuilder(allocator);
+        var builder = StringBuilder::New(allocator);
         builder.Reserve(capacity);
         return move builder;
     }

@@ -36,7 +36,7 @@ struct Ratio {
 // The comparison appears twice per digit and is the only place the method needs a sum it does not keep, so it is
 // written once with its own scratch rather than left to each caller.
 func SumExceeds(left: &FixedNat, right: &FixedNat, limit: &FixedNat, orEqual: bool) -> bool {
-    var total = FixedNat();
+    var total = FixedNat::New();
     total.Assign(left);
     if !total.Add(right) {
         // Past the workspace, which Docs/NarrowFloat.md proves the narrow widths do not reach. Answering true
@@ -53,9 +53,9 @@ func SumExceeds(left: &FixedNat, right: &FixedNat, limit: &FixedNat, orEqual: bo
 // two gaps in the same units. Answers false only if the workspace could not hold the setup.
 func Prepare(state: &var Ratio, significand: uint64, exponent: int, atBinadeBottom: bool) -> bool {
     state.numerator = FixedNat::FromUint64(significand);
-    state.denominator = FixedNat();
-    state.upperGap = FixedNat();
-    state.lowerGap = FixedNat();
+    state.denominator = FixedNat::New();
+    state.upperGap = FixedNat::New();
+    state.lowerGap = FixedNat::New();
 
     // Everything is scaled by two so that the gaps, which are halves, stay integers. The binade-bottom case scales
     // by two again so that the halved lower gap does as well.
@@ -94,7 +94,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
     // Too small: ten times the value still would not reach the first digit position, so everything but the
     // denominator climbs. The test is the same one, inclusive the same way, which is what keeps the scaling and
     // the generation below agreeing about where a boundary value belongs.
-    var reach = FixedNat();
+    var reach = FixedNat::New();
     reach.Assign(state.numerator);
     if !reach.Add(state.upperGap) { return false; }
     if !reach.MultiplySmall(10) { return false; }
@@ -153,10 +153,10 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
     if into.length < MaximumShortestDigits || significand == 0 { return false; }
 
     var state = Ratio {
-        numerator: FixedNat(),
-        denominator: FixedNat(),
-        upperGap: FixedNat(),
-        lowerGap: FixedNat()
+        numerator: FixedNat::New(),
+        denominator: FixedNat::New(),
+        upperGap: FixedNat::New(),
+        lowerGap: FixedNat::New()
     };
     if !Prepare(state, significand, exponent, atBinadeBottom) { return false; }
 
@@ -189,7 +189,7 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         if low && high {
             // Both sides allow stopping, so the nearer one wins: twice what is left against the denominator says
             // which. An exact tie chooses the even final digit, as the wide formatter does.
-            var twice = FixedNat();
+            var twice = FixedNat::New();
             twice.Assign(state.numerator);
             if !twice.ShiftLeft(1) { return false; }
             let halfway = twice.Compare(state.denominator);

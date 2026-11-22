@@ -141,10 +141,10 @@ func Reports(report: char8[..], message: char8[..]) -> bool {
 
 // Starts this executable in `mode` and checks that it stopped with `message`.
 func Expect(program: OsStringView, mode: char8[..], message: char8[..]) {
-    var command = Command::FromNative(SystemAllocator(), program);
+    var command = Command::FromNative(SystemAllocator::New(), program);
     command.Argument(mode);
     try {
-        let captured = command.Capture(SystemAllocator());
+        let captured = command.Capture(SystemAllocator::New());
         Assert(!captured.Status().Success(), mode);
         Assert(Reports(captured.Error(), message), mode);
     } catch {
@@ -289,7 +289,7 @@ func CheckLoops() {
 
 func Main() -> int {
     if ArgumentCount() > 1u {
-        let code = Overflow(Argument(1) ?? OsStringView());
+        let code = Overflow(Argument(1) ?? OsStringView::New());
         if code != NotAChild { return code; }
     }
     CheckWrapping();
@@ -298,7 +298,7 @@ func Main() -> int {
     CheckConversions();
     CheckLoops();
 
-    let program = Argument(0) ?? OsStringView();
+    let program = Argument(0) ?? OsStringView::New();
     Expect(program, "add-int8", "integer overflow in '+'");
     Expect(program, "add-uint8", "integer overflow in '+'");
     Expect(program, "sub-int16", "integer overflow in '-'");

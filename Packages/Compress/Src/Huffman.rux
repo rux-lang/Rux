@@ -16,7 +16,7 @@ struct DecodeTable {
 }
 
 extend DecodeTable {
-    func DecodeTable() -> Self {
+    func New() -> Self {
         return Self { counts: [0u16; 16], symbols: [0u16; 288] };
     }
 

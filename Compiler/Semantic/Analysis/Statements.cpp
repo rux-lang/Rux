@@ -371,40 +371,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                              : "annotate the type the value should have, as in 'let value: int32? = .Some(1i32);'");
             declarationType = TypeRef::MakeUnknown();
         }
-        const FuncDecl *defaultConstructor = nullptr;
-        if (!letStatement->init && letStatement->isMut && !declarationType.IsUnknown()) {
-            std::vector<const FuncDecl *> eligible;
-            for (const FuncDecl *candidate : ConstructorCandidates(declarationType)) {
-                const bool acceptsNoArguments = std::ranges::all_of(candidate->params, [](const Param &parameter) {
-                    return parameter.isVariadic || parameter.defaultValue.has_value();
-                });
-                if (acceptsNoArguments) {
-                    eligible.push_back(candidate);
-                }
-            }
-            if (eligible.size() == 1 && ResolveMethodReturnType(declarationType, *eligible.front()).IsFallible()) {
-                // `var value: T;` runs `T()` where nothing marks it, and a throw site must be marked.
-                EmitError(letStatement->location,
-                          std::format("default construction of '{}' can throw", declarationType.ToString()),
-                          {std::format("'{}()' declares 'throws', and a declaration without a value cannot be marked",
-                                       declarationType.ToString())},
-                          std::format("write 'var {} = try {}();'", letStatement->name, declarationType.ToString()));
-            }
-            else if (eligible.size() == 1) {
-                defaultConstructor = eligible.front();
-                const auto substitutions = MethodTypeSubstitutions(declarationType);
-                QueueGenericInstantiation(*defaultConstructor, substitutions);
-                defaultConstructors.insert_or_assign(letStatement,
-                                                     ResolvedDefaultConstructor{defaultConstructor, declarationType});
-                NoteDeclarationUse(*defaultConstructor, letStatement->location);
-            }
-            else if (eligible.size() > 1) {
-                EmitError(letStatement->location,
-                          std::format("default construction of '{}' is ambiguous", declarationType.ToString()),
-                          {"more than one constructor can be called without arguments"},
-                          "remove defaults so exactly one constructor accepts no arguments");
-            }
-        }
         if (!HoldsBorrow(declarationType)) {
             ValidateStoredType(declarationType, letStatement->location, "local variable");
         }
@@ -485,7 +451,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         symbol.location = letStatement->location;
         symbol.type = declarationType;
         symbol.isMut = letStatement->isMut;
-        Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr || defaultConstructor);
+        Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr);
         if (defined && !initialViews.empty()) {
             viewSources[defined] = std::move(initialViews);
         }

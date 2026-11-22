@@ -40,16 +40,16 @@ func EndsWith(buffer: &PathBuffer, tail: char8[..]) -> bool {
 }
 
 func Main() -> int throws IoError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The working directory is absolute, and reading it does not disturb anything.
     var here = try CurrentDirectory(allocator);
     Assert(!here.IsEmpty(), "and is not empty");
     Assert(IsAbsolute(Path::FromView(here.View())), "and is absolute");
 
-    var dirHolder = OsString(allocator);
+    var dirHolder = OsString::New(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemLoc.tmp", dirHolder);
-    var fileHolder = OsString(allocator);
+    var fileHolder = OsString::New(allocator);
     let file = PathOf(allocator, "Bin/FileSystemLoc.tmp/real.txt", fileHolder);
     try DeleteFile(allocator, file) catch { _ => {} };
     try DeleteDirectory(allocator, dir) catch { _ => {} };
@@ -61,7 +61,7 @@ func Main() -> int throws IoError {
     Assert(IsAbsolute(made.AsPath()), "and is absolute");
     Assert(EndsWith(made, "FileSystemLoc.tmp/real.txt"), "ending in what was asked for");
 
-    var absentHolder = OsString(allocator);
+    var absentHolder = OsString::New(allocator);
     let absent = PathOf(allocator, "Bin/FileSystemLoc.tmp/never-existed.txt", absentHolder);
     var imagined = try Absolute(allocator, absent) catch {
         _ => Panic("a path that does not exist is still made absolute"),
@@ -69,7 +69,7 @@ func Main() -> int throws IoError {
     Assert(EndsWith(imagined, "never-existed.txt"), "keeping the name it was given");
 
     // The dot segments are simplified lexically, without asking anything.
-    var noisyHolder = OsString(allocator);
+    var noisyHolder = OsString::New(allocator);
     let noisy = PathOf(allocator, "Bin/./FileSystemLoc.tmp/../FileSystemLoc.tmp/real.txt", noisyHolder);
     var tidied = try Absolute(allocator, noisy);
     Assert(EndsWith(tidied, "FileSystemLoc.tmp/real.txt"), "the dot segments simplify away");

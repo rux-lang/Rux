@@ -86,13 +86,6 @@ struct ResolvedCallableBinding {
     Instantiate(const std::unordered_map<std::string, TypeRef> &contextSubstitutions) const;
 };
 
-/// A typed local declaration whose omitted initializer resolves to the type's accessible zero-argument constructor.
-/// Lowering synthesizes the call from this selected declaration rather than repeating constructor lookup.
-struct ResolvedDefaultConstructor {
-    const FuncDecl *declaration = nullptr;
-    TypeRef type;
-};
-
 /// The nominal case selected by one accepted case pattern. Lowering consumes this instead of repeating name lookup or
 /// inferring whether the declaration is an enum or variant from its payload shape.
 struct ResolvedCasePattern {
@@ -419,7 +412,6 @@ struct SemanticFacts {
     /// Each temporary lent to an immutable interface view, by the type it has: lowering keeps it in storage of the
     /// block it is written in, which destroys it when the block ends.
     std::unordered_map<const Expr *, TypeRef> interfaceTemporaries;
-    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, bool> effectiveVisibilities;
     /// Effectively public declarations owned by the package being compiled, rather than by one of its dependencies.
     std::unordered_set<const Decl *> exportedDeclarations;
@@ -533,9 +525,6 @@ struct SemanticModel {
     [[nodiscard]] const Decl *TryGetAsmSymbolDeclaration(const AsmOperand &operand) const noexcept;
     /// Whether `value` is a temporary lent to an immutable interface view, which lowering must give storage.
     [[nodiscard]] bool IsInterfaceTemporary(const Expr &value) const noexcept;
-
-    /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
-    [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;
 
     /// Whether a declaration is public after every containing module and owning type has capped its visibility.
     [[nodiscard]] bool IsEffectivelyPublic(const Decl &declaration) const noexcept;

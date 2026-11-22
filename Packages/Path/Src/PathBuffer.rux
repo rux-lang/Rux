@@ -28,7 +28,7 @@ extend PathBuffer {
     /// @param allocator where the storage comes from
     /// @returns an empty buffer that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#new
-    pub func PathBuffer(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
@@ -38,7 +38,7 @@ extend PathBuffer {
     /// @returns a copy of `path` this buffer owns
     /// @see https://rux-lang.dev/docs/api/path/path-buffer#from-path
     pub func FromPath(allocator: Allocator, path: Path) -> Self {
-        var buffer = PathBuffer(allocator);
+        var buffer = PathBuffer::New(allocator);
         buffer.AppendUnits(path.AsView().Units());
         return move buffer;
     }
@@ -197,7 +197,7 @@ pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBu
 /// @returns the path with its redundant components resolved
 /// @see https://rux-lang.dev/docs/api/path/path-buffer#normalize
 pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
-    var buffer = PathBuffer(allocator);
+    var buffer = PathBuffer::New(allocator);
 
     let units = path.AsView().Units();
     // Safety: `units` is not empty, checked first in the same condition.

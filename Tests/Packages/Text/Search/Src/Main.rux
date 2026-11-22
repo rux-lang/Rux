@@ -9,7 +9,7 @@ import Text::{ IsAsciiSpace, StringView };
 // Nothing here allocates: every answer is a position, a boolean, or a borrow of bytes that were already there.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 func Main() -> int {

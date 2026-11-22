@@ -39,7 +39,7 @@ extend Channel<T> {
     /// @param capacity how many values may wait in the channel at once
     /// @returns the first handle to it
     /// @see https://rux-lang.dev/docs/api/sync/channel#channel-new
-    pub func Channel(capacity: uint) -> Self {
+    pub func New(capacity: uint) -> Self {
         if capacity == 0u { Panic("a channel needs room for at least one value"); }
         // Safety: `Alloc` returns memory aligned for any type, and this retyping only names the `capacity` slots it
         // asked for.

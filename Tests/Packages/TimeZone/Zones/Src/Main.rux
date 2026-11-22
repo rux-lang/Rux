@@ -35,7 +35,7 @@ func Local(year: int32, month: uint8, day: uint8, hour: uint8, minute: uint8) ->
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let berlin = try TimeZone::FromTzif(allocator, "Europe/Berlin", BerlinData[..]) catch { _ => return 10 };
     let sydney = try TimeZone::FromTzif(allocator, "Australia/Sydney", SydneyData[..]) catch { _ => return 11 };
     Assert(Same(berlin.Name(), "Europe/Berlin"), "a zone keeps its name");

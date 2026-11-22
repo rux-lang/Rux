@@ -145,7 +145,7 @@ extend XxHash64 {
     /// Constructs an unseeded hasher with nothing written into it yet.
     /// @returns a hasher with a seed of zero
     /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#new
-    pub func XxHash64() -> Self {
+    pub func New() -> Self {
         return Self::WithSeed(0);
     }
 

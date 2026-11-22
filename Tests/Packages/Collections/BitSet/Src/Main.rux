@@ -6,7 +6,7 @@ import Core::Diagnostics::Assert;
 // word across sets of different lengths, and shrinking forgets bits for good.
 
 func Main() -> int {
-    var bits = BitSet(SystemAllocator());
+    var bits = BitSet::New(SystemAllocator::New());
     Assert(bits.Length() == 0u && bits.IsEmpty() && !bits.Get(5), "an empty set");
     bits.Set(3);
     bits.Set(64);
@@ -20,20 +20,20 @@ func Main() -> int {
     bits.Toggle(5);
     Assert(!bits.Get(64) && !bits.Get(3) && bits.Get(5) && bits.Count() == 2u, "reset and toggle");
 
-    var other = BitSet(SystemAllocator());
+    var other = BitSet::New(SystemAllocator::New());
     other.Set(5);
     other.Set(200);
-    var joined = BitSet(SystemAllocator());
+    var joined = BitSet::New(SystemAllocator::New());
     joined.UnionWith(bits);
     joined.UnionWith(other);
     Assert(joined.Count() == 3u && joined.Get(200) && joined.Length() == 201u, "union grows to span both");
-    var both = BitSet(SystemAllocator());
+    var both = BitSet::New(SystemAllocator::New());
     both.UnionWith(joined);
     both.IntersectWith(other);
     Assert(both.Count() == 2u && both.Get(5) && both.Get(200), "intersection");
     both.DifferenceWith(bits);
     Assert(both.Count() == 1u && both.Get(200) && both.Equals(other) == false, "difference");
-    var copy = BitSet(SystemAllocator());
+    var copy = BitSet::New(SystemAllocator::New());
     copy.Set(200);
     Assert(both.Equals(copy), "equality ignores length");
 

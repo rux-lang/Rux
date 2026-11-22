@@ -80,7 +80,7 @@ func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) throws Io
 // Moves gathered bytes into a vector and releases the storage.
 // Safety: `gathered` must address live gathered storage, as `AppendGathered` requires.
 func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byte> throws IoError {
-    var result = Vector<byte>(allocator);
+    var result = Vector<byte>::New(allocator);
     if gathered.length > 0u {
         result.PushSlice((gathered.data as *byte)[..gathered.length]);
     }
@@ -110,7 +110,7 @@ pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: L
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
     var sink = GatherSink { target: @gathered };
     // Safety: `sink` is a local that outlives `writer`, the only holder of the handle, and is never moved.
-    var writer = try CompressWriter(allocator, @sink as Writer, format, level);
+    var writer = try CompressWriter::New(allocator, @sink as Writer, format, level);
     var written: uint = 0;
     // Safety: `data` is readable for its length, and `byte` and `char8` are both single bytes.
     let text = (data.data as *char8)[..data.length];
@@ -148,7 +148,7 @@ pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vec
     let text = (data.data as *char8)[..data.length];
     var source = SliceSource { data: text, at: 0 };
     // Safety: `source` is a local that outlives `reader`, the only holder of the handle, and is never moved.
-    var reader = try DecompressReader(allocator, @source as Reader, format);
+    var reader = try DecompressReader::New(allocator, @source as Reader, format);
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
         let count = try reader.Read(chunk[..]) catch {

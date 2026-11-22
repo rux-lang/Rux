@@ -99,7 +99,7 @@ Core diagnostic messages and compile-time context text use `char8[..]`. External
 
 ## Ownership and borrowing
 
-Core methods borrow ordinary values with `&self` and mutable receivers with `&var self`; callers pass the value directly and the compiler creates the short-lived borrow. Named move-only values require `move` when ownership crosses a binding, call, assignment, return, or consuming receiver. Copyable Core values are plain data, copied byte for byte. Canonical constructors are type calls such as `SemanticVersion(1, 2, 3)`, and descriptive factories retain their names.
+Core methods borrow ordinary values with `&self` and mutable receivers with `&var self`; callers pass the value directly and the compiler creates the short-lived borrow. Named move-only values require `move` when ownership crosses a binding, call, assignment, return, or consuming receiver. Copyable Core values are plain data, copied byte for byte. Canonical constructors are type calls such as `SemanticVersion::New(1, 2, 3)`, and descriptive factories retain their names.
 
 Raw pointers remain where absence, storage, or address arithmetic is part of the contract: slice fields, nullable `TryInto*` outputs, unchecked checked-arithmetic/conversion destinations, byte-order buffers, and zeroization.
 
@@ -133,7 +133,7 @@ func Major(version: &SemanticVersion) -> uint {
 }
 
 func Main() -> int {
-    let version = SemanticVersion(1, 2, 3);
+    let version = SemanticVersion::New(1, 2, 3);
     let answer: int32? = .Some(42i32);
     Assert(Major(version) == 1u, "borrowed version");
     Assert((answer ?? 0i32) == 42i32, "present optional value");

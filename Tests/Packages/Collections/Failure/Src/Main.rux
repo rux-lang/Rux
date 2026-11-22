@@ -35,16 +35,16 @@ func MapRefusal(map: &var HashMap<int32, int32>, additional: uint) -> AllocError
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // A count whose byte size cannot be addressed is rejected before anything is allocated.
-    var empty = Vector<int64>(allocator);
+    var empty = Vector<int64>::New(allocator);
     if VectorRefusal(empty, uint::Max) != .Some(AllocError::Unsupported) { return 22; }
     if empty.Capacity() != 0 || empty.Length() != 0 { return 23; }
 
     // A populated Vector survives a rejected reservation untouched: the same
     // block, the same length, the same capacity, the same elements.
-    var populated = Vector<int64>(allocator);
+    var populated = Vector<int64>::New(allocator);
     var element: int64 = 0;
     while element < 8 {
         populated.Push(element);
@@ -86,7 +86,7 @@ func Main() -> int {
     if populated.At(populated.Length()) is .Some(_) { return 54; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
-    var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var map = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     map.Insert(1, 10);
     map.Insert(2, 20);
     let mapCapacity = map.Capacity();

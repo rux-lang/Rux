@@ -104,7 +104,7 @@ extend Regex {
             },
             NodeKind::Concat => {
                 if reverse {
-                    var children = Vector<uint32>(self.allocator);
+                    var children = Vector<uint32>::New(self.allocator);
                     var child = node.child;
                     while child != NoNode {
                         children.Push(child);
@@ -240,8 +240,8 @@ extend Regex {
     // match that can be empty, or can start with any character, leaves nothing to skip.
     func FindFirstBytes(&var self) {
         let instructions = self.instructions.AsSlice();
-        var seen = Vector<bool>(self.allocator);
-        var pending = Vector<uint32>(self.allocator);
+        var seen = Vector<bool>::New(self.allocator);
+        var pending = Vector<uint32>::New(self.allocator);
         var index: uint = 0;
         while index < instructions.length {
             seen.Push(false);

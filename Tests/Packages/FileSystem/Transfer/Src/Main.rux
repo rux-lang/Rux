@@ -48,21 +48,21 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
 }
 
 func Main() -> int throws IoError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
-    var dirHolder = OsString(allocator);
+    var dirHolder = OsString::New(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemXfer.tmp", dirHolder);
-    var aHolder = OsString(allocator);
+    var aHolder = OsString::New(allocator);
     let a = PathOf(allocator, "Bin/FileSystemXfer.tmp/a.txt", aHolder);
-    var bHolder = OsString(allocator);
+    var bHolder = OsString::New(allocator);
     let b = PathOf(allocator, "Bin/FileSystemXfer.tmp/b.txt", bHolder);
-    var cHolder = OsString(allocator);
+    var cHolder = OsString::New(allocator);
     let c = PathOf(allocator, "Bin/FileSystemXfer.tmp/c.txt", cHolder);
-    var dHolder = OsString(allocator);
+    var dHolder = OsString::New(allocator);
     let d = PathOf(allocator, "Bin/FileSystemXfer.tmp/d.txt", dHolder);
-    var hHolder = OsString(allocator);
+    var hHolder = OsString::New(allocator);
     let h = PathOf(allocator, "Bin/FileSystemXfer.tmp/h.txt", hHolder);
-    var sHolder = OsString(allocator);
+    var sHolder = OsString::New(allocator);
     let s = PathOf(allocator, "Bin/FileSystemXfer.tmp/s.txt", sHolder);
 
     // Fresh ground.
@@ -104,7 +104,7 @@ func Main() -> int throws IoError {
 
     // A symbolic link follows on open and deletes as itself. Creation is privilege-gated on Windows, so a
     // PermissionDenied here is an environment, not a defect — the rest is skipped, not faked.
-    var linkNameHolder = OsString(allocator);
+    var linkNameHolder = OsString::New(allocator);
     let linkTarget = PathOf(allocator, "h.txt", linkNameHolder);
     let linked: Result<(), IoError> = try .Success(CreateSymbolicLink(allocator, linkTarget, s, false)) catch {
         error => .Failure(error)

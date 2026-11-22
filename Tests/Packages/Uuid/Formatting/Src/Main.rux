@@ -79,7 +79,7 @@ func Untouched(room: char8[..]) -> bool {
 // Whether the value writes exactly `expected` through its Display interface.
 func Shown(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let sink: &var TextWriter = writer;
     let shown: Uuid = value;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
@@ -89,7 +89,7 @@ func Shown(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
 // Whether `Debug` writes exactly `expected`, which for this type is whatever `Display` wrote.
 func Inspected(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let sink: &var TextWriter = writer;
     let shown: Uuid = value;
     if (try? shown.WriteDebug(sink, spec)) is none { return false; }
@@ -100,7 +100,7 @@ func Inspected(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
 // failure travelling out through the protocol rather than being swallowed by it.
 func RefusedByWriter(value: Uuid, spec: FormatSpec, room: uint) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..room]);
+    var writer = BufferWriter::New(storage[..room]);
     let sink: &var TextWriter = writer;
     let shown: Uuid = value;
     var caught: FormatError? = none;
@@ -119,7 +119,7 @@ func RefusedByWriter(value: Uuid, spec: FormatSpec, room: uint) -> bool {
 // Whether the specification is refused by the value rather than applied or ignored.
 func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let sink: &var TextWriter = writer;
     let shown: Uuid = value;
     var caught: FormatError? = none;
@@ -294,7 +294,7 @@ func Main() -> int {
     // What Display writes parses back, in both forms, which is what makes the pair a round trip rather than two
     // separate opinions about the text.
     var shownText: char8[64];
-    var shownWriter = BufferWriter(shownText[..64]);
+    var shownWriter = BufferWriter::New(shownText[..64]);
     let shownSink: &var TextWriter = shownWriter;
     let displayed: Uuid = value;
     Assert((try? displayed.WriteDisplay(shownSink, Spec("urn"))) is .Some(_), "the URN rendering succeeds");

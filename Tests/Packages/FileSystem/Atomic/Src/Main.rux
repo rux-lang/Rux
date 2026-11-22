@@ -52,11 +52,11 @@ func CountEntries(allocator: Allocator, directory: Path) -> uint {
 }
 
 func Main() -> int throws IoError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
-    var dirHolder = OsString(allocator);
+    var dirHolder = OsString::New(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemAtomic.tmp", dirHolder);
-    var targetHolder = OsString(allocator);
+    var targetHolder = OsString::New(allocator);
     let target = PathOf(allocator, "Bin/FileSystemAtomic.tmp/settled.txt", targetHolder);
 
     try DeleteFile(allocator, target) catch { _ => {} };

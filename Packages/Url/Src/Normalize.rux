@@ -18,7 +18,7 @@ struct Bytes {
 }
 
 extend Bytes {
-    func Bytes(allocator: Allocator) -> Self {
+    func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, capacity: 0, allocator };
     }
 

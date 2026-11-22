@@ -122,7 +122,7 @@ extend JsonEventReader {
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a reader positioned before the first event
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#constructor
-    pub func JsonEventReader(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self {
+    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> Self {
         var reader = Self {
             source, data: null, capacity: 0, filled: 0, position: 0, consumedBefore: 0, exhausted: false,
             allocator, limits, stack: [0; 16],

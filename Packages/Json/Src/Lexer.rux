@@ -148,7 +148,7 @@ extend JsonLexer {
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a lexer positioned at the start of the input
     /// @see https://rux-lang.dev/docs/api/json/json-lexer#new
-    pub func JsonLexer(input: char8[..], limits: JsonLimits) -> Self {
+    pub func New(input: char8[..], limits: JsonLimits) -> Self {
         return Self { input, position: 0, limits };
     }
 

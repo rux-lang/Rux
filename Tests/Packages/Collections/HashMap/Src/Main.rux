@@ -23,7 +23,7 @@ extend Tracked {
 
 // A scope for a map of tracked values, so its destruction happens somewhere observable.
 func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterFilling: *var int32) {
-    var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var map = HashMap<int32, Tracked>::New(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter, value: key });
@@ -37,7 +37,7 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterF
 // Drains a map of tracked values completely, giving each yielded entry its own scope so it is owned by exactly one
 // binding and destroyed once.
 func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint {
-    var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var map = HashMap<int32, Tracked>::New(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter, value: key });
@@ -61,7 +61,7 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint
 
 // Stops part-way, so the iterator has to destroy what nobody took.
 func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAfter: uint) {
-    var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var map = HashMap<int32, Tracked>::New(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter, value: key });
@@ -171,12 +171,12 @@ func VerifySliceEquality() {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     VerifyEntryHashes(allocator);
     VerifySliceEquality();
 
     // A new map allocates nothing.
-    var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var map = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     Assert(map.IsEmpty(), "a new map is empty");
     Assert(map.Capacity() == 0, "and has no storage");
     Assert(!map.ContainsKey(1), "with nothing in it");
@@ -351,7 +351,7 @@ func Main() -> int {
     Assert(destroyed == 40, "and destroying it destroys every value exactly once");
 
     destroyed = 0;
-    var owning = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var owning = HashMap<int32, Tracked>::New(allocator, HashInt32, EqualsInt32);
     owning.Insert(1, Tracked { counter: @destroyed, value: 1 });
     Assert(destroyed == 0, "inserting destroys nothing");
     owning.Insert(1, Tracked { counter: @destroyed, value: 2 });
@@ -360,7 +360,7 @@ func Main() -> int {
     Assert(destroyed == 2, "and clearing destroys what is left");
 
     // One operation where a lookup and an insertion would have been two, and the key named once.
-    var lookup = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var lookup = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     let stored = lookup.GetOrInsert(5, 50);
     Assert(stored == 50, "the map lends the value it put there");
     stored = 55;
@@ -386,7 +386,7 @@ func Main() -> int {
     Assert(lookup.RemoveEntry(5) is none, "and a second removal finds nothing");
 
     // Iterating with a `for` loop reaches every entry exactly once.
-    var loops = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var loops = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     key = 0;
     while key < 50 {
         loops.Insert(key, key * 2);
@@ -403,7 +403,7 @@ func Main() -> int {
     Assert(sum == 1225, "each exactly once, since the keys sum to what they should");
 
     // Consuming iteration moves every entry out and takes the storage with it.
-    var drained = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var drained = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     key = 0;
     while key < 20 {
         drained.Insert(key, key + 100);

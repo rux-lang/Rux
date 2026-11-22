@@ -130,20 +130,20 @@ extend Dfa {
             seeking,
             context,
             ready: false,
-            roots: Vector<uint32>(allocator),
-            firstRoot: Vector<uint>(allocator),
-            rootCount: Vector<uint32>(allocator),
-            flags: Vector<uint8>(allocator),
-            info: Vector<uint8>(allocator),
-            direct: Vector<uint32>(allocator),
-            buckets: Vector<uint32>(allocator),
-            wideKeys: Vector<uint64>(allocator),
-            wideValues: Vector<uint32>(allocator),
-            stamps: Vector<uint32>(allocator),
+            roots: Vector<uint32>::New(allocator),
+            firstRoot: Vector<uint>::New(allocator),
+            rootCount: Vector<uint32>::New(allocator),
+            flags: Vector<uint8>::New(allocator),
+            info: Vector<uint8>::New(allocator),
+            direct: Vector<uint32>::New(allocator),
+            buckets: Vector<uint32>::New(allocator),
+            wideKeys: Vector<uint64>::New(allocator),
+            wideValues: Vector<uint32>::New(allocator),
+            stamps: Vector<uint32>::New(allocator),
             generation: 0,
-            stack: Vector<uint32>(allocator),
-            ordered: Vector<uint32>(allocator),
-            following: Vector<uint32>(allocator),
+            stack: Vector<uint32>::New(allocator),
+            ordered: Vector<uint32>::New(allocator),
+            following: Vector<uint32>::New(allocator),
             drops: 0,
             allocator
         };
@@ -336,7 +336,7 @@ extend Dfa {
                 self.following.Push(self.start);
             }
         }
-        var roots = Vector<uint32>(self.allocator);
+        var roots = Vector<uint32>::New(self.allocator);
         roots.PushSlice(self.following.AsSlice());
         let next = self.Add(roots.AsSlice(), nextFlags);
         return (next + 1u32) * 2u32 + found;

@@ -31,7 +31,7 @@ extend Stopwatch {
     /// Cannot fail and does not read the clock.
     /// @returns a stopped stopwatch at zero
     /// @see https://rux-lang.dev/docs/api/time/stopwatch#new
-    pub func Stopwatch() -> Self {
+    pub func New() -> Self {
         return Self { finished: Duration::Zero(), startedAt: none, lapMark: Duration::Zero() };
     }
 
@@ -40,7 +40,7 @@ extend Stopwatch {
     /// @returns a running stopwatch, started now
     /// @see https://rux-lang.dev/docs/api/time/stopwatch#start-new
     pub func StartNew() -> Self {
-        var watch = Stopwatch();
+        var watch = Stopwatch::New();
         watch.Start();
         return watch;
     }

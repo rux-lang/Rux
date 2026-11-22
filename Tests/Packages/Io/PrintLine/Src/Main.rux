@@ -59,7 +59,7 @@ func Main() -> int {
     // Safety: `wideBits` is a local `uint128`, as wide as a `char128`, so the retyped read stays inside it.
     PrintLine(*((@wideBits) as *char128));
 
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let text = try String::FromBytes(allocator, "string-value") catch { _ => return 1 };
     PrintLine(text);
     PrintLine("slice-value");

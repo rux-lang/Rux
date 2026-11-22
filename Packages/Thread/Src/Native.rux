@@ -44,7 +44,7 @@ func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint
         return handle as uint64;
     }
     else {
-        var attributes = PThreadAttributes();
+        var attributes = PThreadAttributes::New();
         if pthread_attr_init(@attributes) != 0 { throw .Exhausted; }
         if stackSize != 0 && pthread_attr_setstacksize(@attributes, stackSize) != 0 {
             pthread_attr_destroy(@attributes);

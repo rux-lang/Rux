@@ -53,7 +53,7 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: &var uint, ope
     var state = SliceState { bytes: text, offset: 0 };
     var handle = SliceHandle { state: @state };
     // Safety: `handle` is a local of this function that outlives every use of the handle.
-    var reader = JsonEventReader(allocator, @handle as Reader, JsonLimits::Default());
+    var reader = JsonEventReader::New(allocator, @handle as Reader, JsonLimits::Default());
     scalars = 0;
     opens = 0;
     names = 0;
@@ -104,7 +104,7 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     var wrote = false;
 
     // Well-formed documents: each parses, writes, parses again, and the two writings agree. That round
@@ -227,14 +227,14 @@ func Main() -> int {
 func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
     let value = try Parse(allocator, text) catch { _ => Panic("a well-formed document parses") };
 
-    var builder = StringBuilder(allocator);
+    var builder = StringBuilder::New(allocator);
     let sink: &var TextWriter = builder;
     wrote = (try? WriteValue(sink, value, JsonStyle::Compact())) is .Some(_);
     Assert(wrote, "and writes");
     var once = builder.TakeString();
 
     let again = try Parse(allocator, once.View().Bytes()) catch { _ => Panic("and the written form parses") };
-    var secondBuilder = StringBuilder(allocator);
+    var secondBuilder = StringBuilder::New(allocator);
     let secondSink: &var TextWriter = secondBuilder;
     wrote = (try? WriteValue(secondSink, again, JsonStyle::Compact())) is .Some(_);
     var twice = secondBuilder.TakeString();
@@ -269,7 +269,7 @@ func CheckRefused(allocator: Allocator, text: char8[..]) {
 // byte it stopped at.
 func RefusedWith(reason: JsonParseError, expected: char8[..]) -> bool {
     var storage: char8[96];
-    var writer = BufferWriter(storage[..96]);
+    var writer = BufferWriter::New(storage[..96]);
     let sink: &var TextWriter = writer;
     if (try? reason.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     let shown = writer.Written();

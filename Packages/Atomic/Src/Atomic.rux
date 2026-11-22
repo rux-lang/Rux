@@ -27,7 +27,7 @@ extend Atomic<T> {
     /// @param value the initial value
     /// @returns an atomic holding `value`
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#new
-    pub func Atomic(value: T) -> Self {
+    pub func New(value: T) -> Self {
         return Self { value };
     }
 

@@ -38,7 +38,7 @@ func TripFloat64(allocator: Allocator, value: float64) -> bool {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The signed edges, the zero, and values crossing each digit-count boundary.
     if !TripInt64(allocator, 0i64) { return 10; }
@@ -95,5 +95,5 @@ func Main() -> int {
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
 func Rendered(allocator: Allocator, outcome: String?) -> String {
-    return (move outcome) ?? String(allocator);
+    return (move outcome) ?? String::New(allocator);
 }

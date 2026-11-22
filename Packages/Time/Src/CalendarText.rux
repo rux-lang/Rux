@@ -34,7 +34,7 @@ extend OffsetDateTime {
     /// @param offset the offset from UTC that `dateTime` is stated in
     /// @returns the pairing
     /// @see https://rux-lang.dev/docs/api/time/offset-date-time#new
-    pub func OffsetDateTime(dateTime: DateTime, offset: UtcOffset) -> Self {
+    pub func New(dateTime: DateTime, offset: UtcOffset) -> Self {
         return Self { dateTime, offset };
     }
 

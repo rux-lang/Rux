@@ -4,10 +4,10 @@ import Core::Diagnostics::Assert;
 import Format::{ ByteCursor, FloatLayout, WriteWideFloat };
 
 func Check(bits: uint512, expected: char8[..]) {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let layout = FloatLayout::Binary512();
     var storage: char8[256];
-    var cursor = ByteCursor(storage[..256]);
+    var cursor = ByteCursor::New(storage[..256]);
     let writer: &var TextWriter = cursor;
     Assert((try? WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout)) is .Some(_),
            "extreme value renders");

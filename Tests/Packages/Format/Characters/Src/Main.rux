@@ -49,14 +49,14 @@ func Same(outcome: String?, expected: char8[..]) -> bool {
 // Whether the value's `Debug` rendering is exactly `expected`.
 func Inspected(value: &Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     if (try? WriteDebugValue(sink, value, FormatSpec::Plain())) is none { return false; }
     return SameBytes(writer.Written(), expected);
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The four boolean widths render alike: a boolean's text has nothing to do with how many bytes it is stored in.
     Assert(Same(try? Render(allocator, "{}", true), "true"), "the default boolean width");

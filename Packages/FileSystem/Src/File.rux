@@ -58,7 +58,7 @@ extend OpenOptions {
     /// Nothing at all: the caller states every intention.
     /// @returns options that permit nothing, which must be added to before opening
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-new
-    pub func OpenOptions() -> Self {
+    pub func New() -> Self {
         return Self { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
     }
 
@@ -66,7 +66,7 @@ extend OpenOptions {
     /// @returns options that open an existing file for reading
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-reading
     pub func Reading() -> Self {
-        var options = OpenOptions();
+        var options = OpenOptions::New();
         options.read = true;
         return options;
     }
@@ -75,7 +75,7 @@ extend OpenOptions {
     /// @returns options that create or truncate a file for writing
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-writing
     pub func Writing() -> Self {
-        var options = OpenOptions();
+        var options = OpenOptions::New();
         options.write = true;
         options.create = true;
         options.truncate = true;
@@ -86,7 +86,7 @@ extend OpenOptions {
     /// @returns options that create or open a file and write at its end
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-appending
     pub func Appending() -> Self {
-        var options = OpenOptions();
+        var options = OpenOptions::New();
         options.append = true;
         options.create = true;
         return options;
@@ -130,7 +130,7 @@ struct NativePath {
 extend NativePath {
     // A copy of `path` with a terminator. A name holding a NUL is refused with `InvalidInput`, because the platform
     // would silently truncate it there and act on another file; a block that cannot be allocated is `Other`.
-    func NativePath(allocator: Allocator, path: Path) -> Self throws IoError {
+    func New(allocator: Allocator, path: Path) -> Self throws IoError {
         let units = path.name.units;
         var index: uint = 0;
         while index < units.length {
@@ -185,7 +185,7 @@ extend File {
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open
     pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self throws IoError {
         try options.Validate();
-        let native = try NativePath(allocator, path);
+        let native = try NativePath::New(allocator, path);
         when #target.os == .Windows {
             var access: uint32 = 0;
             if options.read {

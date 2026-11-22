@@ -23,7 +23,7 @@ func AsBytes(text: char8[..]) -> byte[..] {
 
 // The text the reference streams were made from.
 func Fox() -> Vector<byte> {
-    var text = Vector<byte>(SystemAllocator());
+    var text = Vector<byte>::New(SystemAllocator::New());
     let sentence = "The quick brown fox jumps over the lazy dog. ";
     var round: uint = 0;
     while round < 20u {
@@ -53,7 +53,7 @@ func SameBytes(left: byte[..], right: byte[..]) -> bool {
 func DecodesToFox(stream: byte[..], format: Format) -> bool {
     let fox = Fox();
     try {
-        let data = Decompress(SystemAllocator(), stream, format);
+        let data = Decompress(SystemAllocator::New(), stream, format);
         return SameBytes(data.AsSlice(), fox.AsSlice());
     } catch {
         _ => return false,
@@ -62,15 +62,15 @@ func DecodesToFox(stream: byte[..], format: Format) -> bool {
 
 // Compresses and decompresses `data`, and checks it comes back whole; returns the compressed size, or zero on failure.
 func RoundTrip(data: byte[..], format: Format, level: Level) -> uint {
-    let packed = try Compress(SystemAllocator(), data, format, level) catch { _ => return 0 };
-    let unpacked = try Decompress(SystemAllocator(), packed.AsSlice(), format) catch { _ => return 0 };
+    let packed = try Compress(SystemAllocator::New(), data, format, level) catch { _ => return 0 };
+    let unpacked = try Decompress(SystemAllocator::New(), packed.AsSlice(), format) catch { _ => return 0 };
     if !SameBytes(unpacked.AsSlice(), data) { return 0; }
     return packed.Length();
 }
 
 // Bytes from a small linear congruential generator: hard to compress.
 func Noise(count: uint) -> Vector<byte> {
-    var bytes = Vector<byte>(SystemAllocator());
+    var bytes = Vector<byte>::New(SystemAllocator::New());
     var state: uint32 = 12345;
     var index: uint = 0;
     while index < count {
@@ -83,7 +83,7 @@ func Noise(count: uint) -> Vector<byte> {
 
 // Text with repeats far apart and close together, longer than the window and than one block.
 func Prose(count: uint) -> Vector<byte> {
-    var bytes = Vector<byte>(SystemAllocator());
+    var bytes = Vector<byte>::New(SystemAllocator::New());
     let words: char8[..] = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu ";
     var index: uint = 0;
     var state: uint32 = 7;
@@ -102,7 +102,7 @@ func Main() -> int {
     Assert(DecodesToFox(ZlibStream[..], Format::Zlib), "a zlib stream decodes");
     Assert(DecodesToFox(RawStream[..], Format::Raw), "a raw Deflate stream decodes");
     Assert(DecodesToFox(GzipStream[..], Format::Gzip), "a gzip member decodes");
-    let hello = try Decompress(SystemAllocator(), FixedStream[..], Format::Zlib) catch { _ => return 10 };
+    let hello = try Decompress(SystemAllocator::New(), FixedStream[..], Format::Zlib) catch { _ => return 10 };
     Assert(SameBytes(hello.AsSlice(), AsBytes("hello hello hello")), "fixed codes decode");
 
     // Every format and level round-trips data of every shape.
@@ -126,7 +126,7 @@ func Main() -> int {
     }
 
     // Compression pays: repeated text shrinks, noise barely grows, and higher levels are no larger.
-    var repeated = Vector<byte>(SystemAllocator());
+    var repeated = Vector<byte>::New(SystemAllocator::New());
     var copy: uint = 0;
     while copy < 200u {
         repeated.PushSlice(fox.AsSlice());
@@ -145,24 +145,24 @@ func Main() -> int {
            "noise is stored rather than inflated");
 
     // Damage and truncation are caught.
-    let packed = try Compress(SystemAllocator(), fox.AsSlice(), Format::Gzip) catch { _ => return 11 };
-    var damaged = Vector<byte>(SystemAllocator());
+    let packed = try Compress(SystemAllocator::New(), fox.AsSlice(), Format::Gzip) catch { _ => return 11 };
+    var damaged = Vector<byte>::New(SystemAllocator::New());
     damaged.PushSlice(packed.AsSlice());
     damaged.AsMutableSlice()[damaged.Length() - 6u] = damaged.AsSlice()[damaged.Length() - 6u] ^ 0x01u8;
     try {
-        Decompress(SystemAllocator(), damaged.AsSlice(), Format::Gzip);
+        Decompress(SystemAllocator::New(), damaged.AsSlice(), Format::Gzip);
         Assert(false, "a damaged checksum is caught");
     } catch {
         error => Assert(error.kind == IoErrorKind::InvalidInput, "a damaged checksum is invalid input"),
     }
     try {
-        Decompress(SystemAllocator(), packed.AsSlice()[..packed.Length() - 3u], Format::Gzip);
+        Decompress(SystemAllocator::New(), packed.AsSlice()[..packed.Length() - 3u], Format::Gzip);
         Assert(false, "a truncated stream is caught");
     } catch {
         error => Assert(error.kind == IoErrorKind::InvalidInput, "a truncated stream is invalid input"),
     }
     try {
-        Decompress(SystemAllocator(), fox.AsSlice(), Format::Zlib);
+        Decompress(SystemAllocator::New(), fox.AsSlice(), Format::Zlib);
         Assert(false, "text is not a zlib stream");
     } catch {
         error => Assert(error.kind == IoErrorKind::InvalidInput, "text is not a zlib stream"),
@@ -170,11 +170,11 @@ func Main() -> int {
 
     // Text compresses as its UTF-8 bytes, with no cast to bytes first, and a stream held as text decompresses.
     let text = "the same text, the same text, the same text, the same text";
-    let packedText = try Compress(SystemAllocator(), text, Format::Gzip) catch { _ => return 13 };
+    let packedText = try Compress(SystemAllocator::New(), text, Format::Gzip) catch { _ => return 13 };
     // Safety: `byte` and `char8` are both one byte wide with every bit pattern valid, and the slice's data addresses
     // the `packedText.Length()` live bytes of `packedText`, which outlives `asText`.
     let asText = (packedText.AsSlice().data as *char8)[..packedText.Length()];
-    let unpackedText = try Decompress(SystemAllocator(), asText, Format::Gzip) catch { _ => return 14 };
+    let unpackedText = try Decompress(SystemAllocator::New(), asText, Format::Gzip) catch { _ => return 14 };
     Assert(SameBytes(unpackedText.AsSlice(), AsBytes(text)), "text round-trips");
     return 0;
 }

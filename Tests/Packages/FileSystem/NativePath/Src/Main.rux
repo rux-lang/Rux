@@ -49,12 +49,12 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func Main() -> int {
-    let base = SystemAllocator();
+    let base = SystemAllocator::New();
     var state = CountState { inner: base, live: 0, taken: 0 };
     var counted = CountingAllocator { state: @state };
 
     // Refused by the platform after the path was converted: the parent does not exist.
-    var missingHolder = OsString(base);
+    var missingHolder = OsString::New(base);
     let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", missingHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
     let countedHandle = @counted as Allocator;
@@ -63,7 +63,7 @@ func Main() -> int {
     Assert(state.live == 0, "and the converted path is given back exactly once");
 
     // A call that succeeds gives its copy back too, and so does the one that undoes it.
-    var madeHolder = OsString(base);
+    var madeHolder = OsString::New(base);
     let made = PathOf(base, "Bin/FileSystemNativePath.tmp", madeHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
     try MakeDirectory(@counted as Allocator, made) catch { _ => Panic("a directory is made") };

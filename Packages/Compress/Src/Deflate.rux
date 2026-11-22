@@ -80,7 +80,7 @@ extend CompressWriter {
     /// @param level how hard to compress
     /// @returns the writer, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/deflate#new
-    pub func CompressWriter(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
+    pub func New(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
         -> Self throws IoError {
         // Safety: `Take` returns a fresh block of the bytes asked for, eight-byte aligned, which holds exactly
         // `DataCapacity` bytes.
@@ -102,7 +102,7 @@ extend CompressWriter {
         return Self {
             sink: move sink, format, level, allocator, data, dataLength: 0,
             blockStart: 0, head, previous, tokens, tokenCount: 0, output,
-            outputLength: 0, bits: 0, bitCount: 0, started: false, finished: false, crc: Crc32(), adler: Adler32(),
+            outputLength: 0, bits: 0, bitCount: 0, started: false, finished: false, crc: Crc32::New(), adler: Adler32::New(),
             size: 0
         };
     }

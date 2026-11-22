@@ -40,8 +40,8 @@ extend TreeSet<T> {
     /// @param compare how two keys order against each other
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#new
-    pub func TreeSet(allocator: Allocator, compare: func(T, T) -> Ordering) -> Self {
-        return Self { tree: Tree<T, ()>(allocator), compare };
+    pub func New(allocator: Allocator, compare: func(T, T) -> Ordering) -> Self {
+        return Self { tree: Tree<T, ()>::New(allocator), compare };
     }
 
     /// How many elements the set holds.
@@ -325,7 +325,7 @@ extend TreeSet<T> {
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#symmetric-difference-with
     pub func SymmetricDifferenceWith(&var self, other: &Self) {
-        var shared = TreeSet<T>(self.tree.allocator, self.compare);
+        var shared = TreeSet<T>::New(self.tree.allocator, self.compare);
         var walker = other.Iterate();
         var walking = true;
         while walking {
@@ -366,7 +366,7 @@ extend TreeSet<T> {
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#clone
     pub func Clone(&self) -> Self {
-        var copy = TreeSet<T>(self.tree.allocator, self.compare);
+        var copy = TreeSet<T>::New(self.tree.allocator, self.compare);
         copy.UnionWith(self);
         return move copy;
     }

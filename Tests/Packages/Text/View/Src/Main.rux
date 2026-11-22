@@ -45,8 +45,8 @@ func Main() -> int {
     Assert(!(held.Part(0, 12) is StringView), "and one past the end");
     Assert((held.Part(2, 2) ?? held).IsEmpty(), "a cut at one point is empty rather than refused");
 
-    let front = held.Part(0, 4) ?? StringView();
-    let back = held.Part(4, 11) ?? StringView();
+    let front = held.Part(0, 4) ?? StringView::New();
+    let back = held.Part(4, 11) ?? StringView::New();
     Assert(front.Length() + back.Length() == held.Length(), "two cuts meeting at a boundary cover every byte");
     Assert(front.ScalarCount() + back.ScalarCount() == held.ScalarCount(), "and every character, once each");
 
@@ -87,8 +87,8 @@ func Main() -> int {
     Assert(!(StringView::FromBytes(broken[0..2]) is StringView), "and neither does a sequence that runs out");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.
-    let same = StringView::FromBytes(text) ?? StringView();
-    let shorter = held.Part(0, 2) ?? StringView();
+    let same = StringView::FromBytes(text) ?? StringView::New();
+    let shorter = held.Part(0, 2) ?? StringView::New();
     Assert(held.Equals(same), "a view equals one over the same bytes");
     Assert(!held.Equals(shorter), "and not one over fewer of them");
     Assert(held.Compare(same) == Ordering::Equal, "equal bytes order equal");
@@ -98,10 +98,10 @@ func Main() -> int {
     // A view over text is free: it was checked before it existed, so neither spelling makes a pass over it.
     let overText = StringView::FromValidated("hi");
     Assert(overText.Length() == 2, "a view over text spans its bytes");
-    let checkedText = StringView::FromBytes("hi") ?? StringView();
+    let checkedText = StringView::FromBytes("hi") ?? StringView::New();
     Assert(checkedText.Equals(overText), "and the checked spelling answers the same view");
 
-    let empty = StringView();
+    let empty = StringView::New();
     Assert(empty.IsEmpty() && empty.Length() == 0 && empty.ScalarCount() == 0, "the empty view holds nothing");
     Assert(empty.IsBoundary(0), "its start is a boundary");
     Assert(empty.Compare(held) == Ordering::Less, "and it orders before anything with bytes in it");

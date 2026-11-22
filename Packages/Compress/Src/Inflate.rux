@@ -62,7 +62,7 @@ extend DecompressReader {
     /// @param format the container the stream is in
     /// @returns the reader, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/inflate#new
-    pub func DecompressReader(allocator: Allocator, source: Reader, format: Format) -> Self throws IoError {
+    pub func New(allocator: Allocator, source: Reader, format: Format) -> Self throws IoError {
         var borrowed = allocator;
         let inputLayout = Layout::Of(InputCapacity, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
         let input = try borrowed.Allocate(inputLayout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
@@ -80,8 +80,8 @@ extend DecompressReader {
             } else {
                 AtHeader
             }, final: false, failed: false, storedLeft: 0,
-            copyLength: 0, copyDistance: 0, literals: DecodeTable(), distances: DecodeTable(), crc: Crc32(),
-            adler: Adler32(), memberSize: 0
+            copyLength: 0, copyDistance: 0, literals: DecodeTable::New(), distances: DecodeTable::New(), crc: Crc32::New(),
+            adler: Adler32::New(), memberSize: 0
         };
     }
 

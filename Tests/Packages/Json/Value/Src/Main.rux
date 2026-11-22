@@ -8,7 +8,7 @@ import Json::{ JsonError, JsonKind, JsonNumber, JsonValue };
 import Text::{ String, StringView };
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 // The number a value holds, which the test has just made it hold.
@@ -20,7 +20,7 @@ func Number(value: &JsonValue) -> &JsonNumber {
 func RefusedNumber(allocator: Allocator, text: char8[..]) -> bool {
     var number = false;
     try {
-        JsonNumber(allocator, text);
+        JsonNumber::New(allocator, text);
     } catch {
         error => { number = error == JsonError::MalformedNumber; }
     }
@@ -36,13 +36,13 @@ func RefusedNumber(allocator: Allocator, text: char8[..]) -> bool {
 // Whether `text` is accepted as a number by both public constructors, keeping exactly the text it was given.
 func AcceptedNumber(allocator: Allocator, text: char8[..]) -> bool {
     let want = View(text);
-    let number = if (try? JsonNumber(allocator, text)) is .Some(made) { made.Text().Equals(want) } else { false };
+    let number = if (try? JsonNumber::New(allocator, text)) is .Some(made) { made.Text().Equals(want) } else { false };
     let value = if (try? JsonValue::Number(allocator, text)) is .Some(made) { made.Kind() == JsonKind::Number && Number(made).Text().Equals(want) } else { false };
     return number && value;
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The tags, each recognised as itself.
     var nullValue = JsonValue::Null(allocator);

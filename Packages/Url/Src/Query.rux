@@ -66,7 +66,7 @@ extend QueryPairs : Iterator {
 /// @returns the text, or fails when an escape is malformed or the bytes are not UTF-8
 /// @see https://rux-lang.dev/docs/api/url/query#decode
 pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) -> String throws UrlError {
-    var out = Bytes(allocator);
+    var out = Bytes::New(allocator);
     var index: uint = 0;
     while index < encoded.length {
         let c = encoded[index];
@@ -96,8 +96,8 @@ extend QueryBuilder {
     /// @param allocator what the query is kept in
     /// @returns the builder
     /// @see https://rux-lang.dev/docs/api/url/query#query-builder-new
-    pub func QueryBuilder(allocator: Allocator) -> Self {
-        return Self { bytes: Bytes(allocator) };
+    pub func New(allocator: Allocator) -> Self {
+        return Self { bytes: Bytes::New(allocator) };
     }
 
     /// Appends a pair, encoding the name and the value: letters, digits, `*`, `-`, `.` and `_` stay, a space becomes

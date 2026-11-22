@@ -59,7 +59,7 @@ extend Sha256 {
     /// A SHA-256 state.
     /// @returns a hasher producing a 256-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha256#new
-    pub func Sha256() -> Self {
+    pub func New() -> Self {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64 {
@@ -239,7 +239,7 @@ extend Sha256 : Digest {
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha256#sha256-of
 pub func Sha256Of(bytes: char8[..], into: var char8[..]) {
-    var digest = Sha256();
+    var digest = Sha256::New();
     digest.Update(bytes);
     digest.Finish(into);
 }

@@ -42,7 +42,7 @@ struct Hasher {
 }
 
 extend Hasher {
-    func Hasher(hash: func(int32) -> uint, equals: func(int32, int32) -> bool) -> Self {
+    func New(hash: func(int32) -> uint, equals: func(int32, int32) -> bool) -> Self {
         return Self { hash, equals, salt: 7u };
     }
 
@@ -85,7 +85,7 @@ struct Table<K> {
 }
 
 extend Table<K> {
-    func Table(hash: func(K) -> uint, equals: func(K, K) -> bool) -> Self {
+    func New(hash: func(K) -> uint, equals: func(K, K) -> bool) -> Self {
         return Self { hash, equals, length: 0 };
     }
 
@@ -127,7 +127,7 @@ extend Store {
 
 func Main() -> int {
     // 1. A field of function type, in a plain struct.
-    var hasher = Hasher(HashInt32, EqualsInt32);
+    var hasher = Hasher::New(HashInt32, EqualsInt32);
     Assert(hasher.Apply(3) == HashInt32(3), "a callback field is callable through the receiver");
     Assert(hasher.ApplyViaLocal(3) == HashInt32(3), "a callback field is callable through a local");
     Assert(hasher.ApplyViaGeneric(3) == HashInt32(3), "a callback field passes to a generic function");
@@ -145,7 +145,7 @@ func Main() -> int {
     Assert(copied.Apply(3) == HashInt32(3), "replacing one copy's callback leaves the other alone");
 
     // 2. The same, typed by a struct type parameter.
-    var table = Table<int32>(HashInt32, EqualsInt32);
+    var table = Table<int32>::New(HashInt32, EqualsInt32);
     Assert(table.Apply(5) == HashInt32(5), "a generic callback field is callable through the receiver");
     Assert(table.ApplyViaGeneric(5) == HashInt32(5), "a generic callback field passes to a generic function");
     Assert(table.Same(6, 6), "a generic equality field accepts a matching pair");

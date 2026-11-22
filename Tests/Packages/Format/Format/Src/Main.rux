@@ -204,7 +204,7 @@ func PropagationCases(allocator: Allocator) {
     Assert(counts.invalidReleases == 0, "propagation does not attempt a second builder release");
 
     var room: char8[64];
-    var writer = BufferWriter(room[..64]);
+    var writer = BufferWriter::New(room[..64]);
     let sink: &var TextWriter = writer;
     let failed: Result<(), FormatError> = try .Success(WriteFormat(sink, "head {} tail", refusing)) catch {
         error => .Failure(error),
@@ -249,7 +249,7 @@ func PropagationCases(allocator: Allocator) {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     PropagationCases(allocator);
 
     // Text outside a placeholder is copied through, and a pattern with nothing to substitute is copied entire.
@@ -402,7 +402,7 @@ func Main() -> int {
     // A destination that runs out of room reports it, and stops: what a refused write did not accept is not
     // written, and nothing after the failing placeholder is either.
     var room: char8[8];
-    var writer = BufferWriter(room[..8]);
+    var writer = BufferWriter::New(room[..8]);
     let sink: &var TextWriter = writer;
     let overflowed: Result<(), FormatError> =
         try .Success(WriteFormat(sink, "12345{}<end>", Filler { count: 1 })) catch { error => .Failure(error) };
@@ -416,11 +416,11 @@ func Main() -> int {
     if writer.Length() != 5 { return 91; }
 
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
-    var second = BufferWriter(room[..8]);
+    var second = BufferWriter::New(room[..8]);
     let other: &var TextWriter = second;
     if (try? WriteFormat(other, "abc{", 1)) is .Some(_) { return 92; }
     if second.Length() != 0 { return 93; }
-    var third = BufferWriter(room[..8]);
+    var third = BufferWriter::New(room[..8]);
     let last: &var TextWriter = third;
     if (try? WriteFormat(last, Pattern("abc{}"), 1, 2)) is .Some(_) { return 94; }
     if third.Length() != 0 { return 95; }

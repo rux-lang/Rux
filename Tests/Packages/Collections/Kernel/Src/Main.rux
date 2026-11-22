@@ -17,7 +17,7 @@ func CrowdedHash(value: int32, low: uint64, high: uint64) -> uint64 {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Filled right up to the load factor, then read back. A table that grows exactly when it should still has every
     // key findable at the fullest moment.

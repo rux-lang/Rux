@@ -41,12 +41,12 @@ import Text::{ BufferWriter, String, TextWriter };
 func Main() -> int throws FormatError {
     // Into a destination the caller owns, allocating nothing.
     var storage: char8[64];
-    var buffer = BufferWriter(storage[..64]);
+    var buffer = BufferWriter::New(storage[..64]);
     let writer: &var TextWriter = buffer;
     try WriteFormat(writer, "count={}", 42i64);
 
     // Or into a string of its own, which is the one place rendering allocates.
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     return if (try? Render(allocator, "pi={:.2}", 3.14159f64)) is .Some(_) { 0 } else { 1 };
 }
 ```

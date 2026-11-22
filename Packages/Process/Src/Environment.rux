@@ -63,8 +63,8 @@ func SplitEntry(entry: OsStringView) -> EnvironmentVariable {
     while at < units.length && units[at] != (0x3D as OsUnit) {
         at = at + 1;
     }
-    let name = if at == 0 { OsStringView() } else { OsStringView::FromUnits(units[..at]) };
-    let value = if at + 1 >= units.length { OsStringView() } else { OsStringView::FromUnits(units[at + 1..]) };
+    let name = if at == 0 { OsStringView::New() } else { OsStringView::FromUnits(units[..at]) };
+    let value = if at + 1 >= units.length { OsStringView::New() } else { OsStringView::FromUnits(units[at + 1..]) };
     return EnvironmentVariable { name, value };
 }
 
@@ -395,7 +395,7 @@ pub func SetVariable(name: char8[..], value: char8[..]) throws IoError {
 pub func RemoveVariable(name: char8[..]) throws IoError {
     try CheckName(name);
     let nativeName = try PermanentText(name);
-    try RecordChange(nativeName, OsStringView(), true);
+    try RecordChange(nativeName, OsStringView::New(), true);
     when #target.os == .Windows {
         // Safety: `PermanentText` keeps the name followed by a NUL, in storage that is never freed, and a null value
         // asks for removal.

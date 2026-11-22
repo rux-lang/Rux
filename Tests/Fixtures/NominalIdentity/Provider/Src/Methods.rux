@@ -1,11 +1,11 @@
 extend Record {
-    pub func Record(first: int64, second: int64) -> Self { return Self { first, second }; }
+    pub func New(first: int64, second: int64) -> Self { return Self { first, second }; }
     pub func Sum(&self) -> int64 { return self.first + self.second; }
 }
 extend Holder<T, U> {
     pub func Sum(&self) -> int64 { return self.record.Sum(); }
 }
-pub func MakeRecord() -> ExportedRecord { return Record(17i64, 25i64); }
+pub func MakeRecord() -> ExportedRecord { return Record::New(17i64, 25i64); }
 pub func RoundTrip<T>(value: T) -> Holder<T, Record> {
     return Holder<T, Record> { value, marker: MakeRecord(), record: MakeRecord() };
 }

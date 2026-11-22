@@ -51,7 +51,7 @@ extend SystemAllocator {
     /// nothing to keep alive behind it.
     /// @returns the allocator, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator#new
-    pub func SystemAllocator() -> Self {
+    pub func New() -> Self {
         return Self {};
     }
 

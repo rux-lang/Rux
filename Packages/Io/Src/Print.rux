@@ -44,7 +44,7 @@ func Reported(failure: IoError?, reason: FormatError) -> IoError? {
 /// @see https://rux-lang.dev/docs/api/io/print#print-value
 pub func PrintValue(value: &Display) -> IoError? {
     var failure: IoError? = none;
-    var sink = ConsoleWriter(@failure);
+    var sink = ConsoleWriter::New(@failure);
     let writer: &var TextWriter = sink;
     try value.WriteDisplay(writer, FormatSpec::Plain()) catch { reason => return Reported(failure, reason) };
     return failure;
@@ -101,7 +101,7 @@ pub func Print(value: char8[..]) -> IoError? {
 /// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(#Format format: char8[..], args: &Display...) -> IoError? {
     var failure: IoError? = none;
-    var sink = ConsoleWriter(@failure);
+    var sink = ConsoleWriter::New(@failure);
     let writer: &var TextWriter = sink;
     try WriteFormat(writer, format, args...) catch { reason => return Reported(failure, reason) };
     return failure;

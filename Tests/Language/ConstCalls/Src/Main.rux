@@ -73,7 +73,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Counter() -> Self { return Self { total: 0i32, steps: 0i32 }; }
+    func New() -> Self { return Self { total: 0i32, steps: 0i32 }; }
 
     func Add(&var self, amount: int32) {
         self.total += amount;
@@ -84,7 +84,7 @@ extend Counter {
 }
 
 func Count(limit: int32) -> Counter {
-    var counter = Counter();
+    var counter = Counter::New();
     var value = 1i32;
     while value <= limit {
         counter.Add(value);

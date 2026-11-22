@@ -87,7 +87,7 @@ extend Pool {
     /// @param blocksPerChunk how many blocks a chunk carves into; zero asks for the default
     /// @returns the pool, holding no chunk yet
     /// @see https://rux-lang.dev/docs/api/allocator/pool#new
-    pub func Pool(backing: Allocator, blocksPerChunk: uint) -> Self {
+    pub func New(backing: Allocator, blocksPerChunk: uint) -> Self {
         let blocks = if blocksPerChunk == 0 { DefaultPoolBlocksPerChunk } else { blocksPerChunk };
         return Self {
             backing,

@@ -101,7 +101,7 @@ pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: For
     unpadded.width = 0;
     if spec.width == 0u { return try value.WriteDisplay(writer, unpadded); }
     var room: char8[256];
-    var buffer = BufferWriter(room[..]);
+    var buffer = BufferWriter::New(room[..]);
     let into: &var TextWriter = buffer;
     try {
         value.WriteDisplay(into, unpadded);

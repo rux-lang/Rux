@@ -25,7 +25,7 @@ extend Tracked {
 // what the counter read once everything was in, which is what separates the pushes from the destruction.
 func PushAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPushing: *var int32)
     throws CollectionError {
-    var vector = Vector<Tracked>(allocator);
+    var vector = Vector<Tracked>::New(allocator);
     var index: uint = 0;
     while index < count {
         vector.Push(Tracked { counter, value: index as int32 });
@@ -38,7 +38,7 @@ func PushAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
 
 // Pops everything, which is a different path from the vector destroying them.
 func PushThenPop(allocator: Allocator, counter: *var int32, count: uint) {
-    var vector = Vector<Tracked>(allocator);
+    var vector = Vector<Tracked>::New(allocator);
     var index: uint = 0;
     while index < count {
         vector.Push(Tracked { counter, value: index as int32 });
@@ -52,7 +52,7 @@ func PushThenPop(allocator: Allocator, counter: *var int32, count: uint) {
 
 // Drains a vector of tracked elements completely, letting each yielded element die here. Returns how many came out.
 func DrainFully(allocator: Allocator, counter: *var int32, count: uint) -> uint {
-    var vector = Vector<Tracked>(allocator);
+    var vector = Vector<Tracked>::New(allocator);
     var index: uint = 0;
     while index < count {
         vector.Push(Tracked { counter, value: index as int32 });
@@ -80,7 +80,7 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: uint) -> uint 
 
 // Stops part-way, so the iterator has to destroy what nobody took.
 func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAfter: uint) {
-    var vector = Vector<Tracked>(allocator);
+    var vector = Vector<Tracked>::New(allocator);
     var index: uint = 0;
     while index < count {
         vector.Push(Tracked { counter, value: index as int32 });
@@ -102,10 +102,10 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAft
 }
 
 func Main() throws CollectionError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // A new vector allocates nothing at all.
-    var numbers = Vector<int32>(allocator);
+    var numbers = Vector<int32>::New(allocator);
     Assert(numbers.IsEmpty(), "a new vector is empty");
     Assert(numbers.Length() == 0, "with no elements");
     Assert(numbers.Capacity() == 0, "and no storage");
@@ -218,7 +218,7 @@ func Main() throws CollectionError {
 
     // Truncating destroys exactly the elements it drops.
     destroyed = 0;
-    var tracked = Vector<Tracked>(allocator);
+    var tracked = Vector<Tracked>::New(allocator);
     var explicitlyMoved = Tracked { counter: @destroyed, value: 41 };
     tracked.Push(move explicitlyMoved);
     Assert(destroyed == 0, "the transfer does not destroy the element");
@@ -265,7 +265,7 @@ func Main() throws CollectionError {
     Assert(destroyed == 1, "while the handed-back element is still alive");
 
     // Insertion moves elements along and keeps order.
-    var ordered = Vector<int32>(allocator);
+    var ordered = Vector<int32>::New(allocator);
     index = 0;
     while index < 4 {
         ordered.Push((index * 10) as int32);
@@ -305,12 +305,12 @@ func Main() throws CollectionError {
     // The ends, and what an empty vector has instead of them.
     Assert(ordered.First() is .Some(_), "a non-empty vector has a first element");
     Assert(ordered.Last() is .Some(_), "and a last one");
-    var nothing = Vector<int32>(allocator);
+    var nothing = Vector<int32>::New(allocator);
     Assert(nothing.First() is none, "an empty vector has no first element");
     Assert(nothing.Last() is none, "and no last one");
 
     // Slicing is clamped rather than refused, so a caller need not check twice.
-    var span = Vector<int32>(allocator);
+    var span = Vector<int32>::New(allocator);
     index = 0;
     while index < 6 {
         span.Push(index as int32);
@@ -325,7 +325,7 @@ func Main() throws CollectionError {
     Assert(span.MutableSliceOf(1, 2).length == 2, "a writable slice is clamped the same way");
 
     // Consuming iteration moves every element out and takes the storage with it.
-    var drained = Vector<int32>(allocator);
+    var drained = Vector<int32>::New(allocator);
     index = 0;
     while index < 5 {
         drained.Push((index + 1) as int32);
@@ -351,7 +351,7 @@ func Main() throws CollectionError {
     Assert(destroyed == 6, "and stopping part-way destroys the two taken and the four left, once each");
 
     // Handing the storage to an array copies nothing.
-    var moving = Vector<int32>(allocator);
+    var moving = Vector<int32>::New(allocator);
     moving.Push(3);
     moving.Push(4);
     var fixed = (move moving).IntoArray();
@@ -361,7 +361,7 @@ func Main() throws CollectionError {
     // may move it: an array's length is its capacity, and a vector's spare has to go before it can be one.
     Assert(fixed.AsSlice().data != null, "over storage the array now owns");
 
-    var copying = Vector<int32>(allocator);
+    var copying = Vector<int32>::New(allocator);
     copying.Push(8);
     var duplicated = copying.ToArray();
     Assert(duplicated.AsSlice().data != copying.AsSlice().data, "over storage of its own");

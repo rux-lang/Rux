@@ -23,7 +23,7 @@ extend Tracked {
 
 // A scope for a deque of tracked elements. `afterPushing` reports what the counter read once everything was in.
 func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPushing: *var int32) {
-    var deque = Deque<Tracked>(allocator);
+    var deque = Deque<Tracked>::New(allocator);
     var index: uint = 0;
     while index < count {
         deque.PushBack(Tracked { counter, value: index as int32 });
@@ -35,10 +35,10 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // A new deque allocates nothing.
-    var queue = Deque<int32>(allocator);
+    var queue = Deque<int32>::New(allocator);
     Assert(queue.IsEmpty(), "a new deque is empty");
     Assert(queue.Capacity() == 0, "and has no storage");
     Assert(queue.PopFront() == none, "with nothing to take from either end");
@@ -175,7 +175,7 @@ func Main() -> int {
 
     // Clearing destroys what it holds, and growth relocates rather than copying.
     destroyed = 0;
-    var owning = Deque<Tracked>(allocator);
+    var owning = Deque<Tracked>::New(allocator);
     var index: uint = 0;
     while index < 20 {
         owning.PushFront(Tracked { counter: @destroyed, value: index as int32 });

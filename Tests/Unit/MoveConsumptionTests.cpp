@@ -735,7 +735,7 @@ TEST_CASE("assignment transfers a fresh temporary and never copies a named ownin
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Counted { id: int32; }
         extend Counted {
-            func Counted(id: int32) -> Counted { return Counted { id: id }; }
+            func New(id: int32) -> Counted { return Counted { id: id }; }
             func Clone(&self) -> Counted { return Counted { id: self.id }; }
             func ~(&var self) {}
         }
@@ -747,7 +747,7 @@ TEST_CASE("assignment transfers a fresh temporary and never copies a named ownin
             var moved = Make(9);
             item = Make(1);
             item = Counted { id: 2 };
-            item = Counted(3);
+            item = Counted::New(3);
             item = if flag { Make(4) } else { Make(5) };
             item = match which { 6 => Make(6), _ => Make(7) };
             item = move moved;

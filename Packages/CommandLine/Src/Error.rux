@@ -183,6 +183,6 @@ func UnitAt(units: OsUnit[..], index: uint) -> uint32 {
 
 // A view of `units` from `start` to `end`, or an empty view for no units.
 func Part(units: OsUnit[..], start: uint, end: uint) -> OsStringView {
-    if start >= end { return OsStringView(); }
+    if start >= end { return OsStringView::New(); }
     return OsStringView::FromUnits(units[start..end]);
 }

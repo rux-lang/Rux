@@ -40,7 +40,7 @@ struct Quotient {
 // must be non-null and writable.
 func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, power: *var int) -> bool {
     state.numerator = FixedNat::FromUint64(significand);
-    state.denominator = FixedNat();
+    state.denominator = FixedNat::New();
     if exponent >= 0 {
         if !state.numerator.ShiftLeft(exponent as uint) { return false; }
         if !state.denominator.SetPowerOfTwo(0) { return false; }
@@ -56,7 +56,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
     }
     // Ten times the value still below one means the first significant digit is further down, so the numerator
     // climbs until it is not.
-    var reach = FixedNat();
+    var reach = FixedNat::New();
     reach.Assign(state.numerator);
     if !reach.MultiplySmall(10) { return false; }
     while reach.Compare(state.denominator) < 0 {
@@ -106,7 +106,7 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
     *power = 0;
     if precision > MaximumPrecision || significand == 0 { return false; }
 
-    var state = Quotient { numerator: FixedNat(), denominator: FixedNat() };
+    var state = Quotient { numerator: FixedNat::New(), denominator: FixedNat::New() };
     var scaled: int = 0;
     if !PrepareQuotient(state, significand, exponent, @scaled) { return false; }
 
@@ -143,7 +143,7 @@ func RoundGenerated(state: &Quotient, into: var char8[..], produced: *var uint, 
     // Round on what is left. Twice the remainder against the denominator is the exact "more than half", and a tie
     // goes to the even digit, which is what reading the result back would do with it. With no digits produced the
     // implicit last digit is a zero, which is even, so a tie stays down.
-    var twice = FixedNat();
+    var twice = FixedNat::New();
     twice.Assign(state.numerator);
     if !twice.ShiftLeft(1) { return false; }
     let order = twice.Compare(state.denominator);
@@ -264,7 +264,7 @@ pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatP
         throw .UnsupportedRequest;
     }
     var storage: char8[1426];
-    var cursor = ByteCursor(storage[2..MaximumFixedLength + 2]);
+    var cursor = ByteCursor::New(storage[2..MaximumFixedLength + 2]);
     if !WritePrecisionFloat(cursor, parts, spec.Precision()) {
         throw .UnsupportedRequest;
     }

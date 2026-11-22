@@ -34,7 +34,7 @@ extend BufferWriter {
     /// @param room the storage to fill, which must outlive the writer
     /// @returns a writer holding no text yet
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer#new
-    pub func BufferWriter(room: var char8[..]) -> Self {
+    pub func New(room: var char8[..]) -> Self {
         return Self { room, length: 0 };
     }
 

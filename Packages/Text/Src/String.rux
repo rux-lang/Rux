@@ -43,7 +43,7 @@ extend String {
     /// @param allocator where the storage comes from
     /// @returns an empty string that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/text/string#new
-    pub func String(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
@@ -63,7 +63,7 @@ extend String {
 
     // `FromValidated`, throwing the allocator's refusal instead of terminating the program.
     func TryFromValidated(allocator: Allocator, bytes: char8[..]) -> Self throws AllocError {
-        if bytes.length == 0 { return String(allocator); }
+        if bytes.length == 0 { return String::New(allocator); }
 
         let layout = Layout::Of(bytes.length, 1) ?? throw .Unsupported;
 

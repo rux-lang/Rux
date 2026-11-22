@@ -63,7 +63,7 @@ extend Tree<K, V> {
     /// @param allocator where the storage comes from
     /// @returns an empty tree that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/tree#new
-    pub func Tree(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { root: null, length: 0, allocator };
     }
 

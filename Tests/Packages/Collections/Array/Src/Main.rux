@@ -26,7 +26,7 @@ extend Tracked {
 // counter, so destroying one is observable; they come from a vector because filling copies, and a type with a
 // destructor is move-only.
 func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *var int32) {
-    var items = Vector<Tracked>(allocator);
+    var items = Vector<Tracked>::New(allocator);
     items.Push(Tracked { counter: destroyed, value: 1 });
     items.Push(Tracked { counter: destroyed, value: 2 });
     var array = (move items).IntoArray();
@@ -70,7 +70,7 @@ func SumOf(allocator: Allocator) -> int32 {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // The ordinary shape: numbers copied in, walked, and released with the array.
     Assert(SumOf(allocator) == 10, "an array holds what was copied into it and iterates over it");

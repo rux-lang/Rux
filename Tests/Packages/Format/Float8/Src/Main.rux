@@ -30,7 +30,7 @@ func FromBits(bits: uint8) -> float8 {
 // Whether the value's `Display` text is `expected`, with `prefix` in front of it.
 func Shows(value: float8, prefix: char8[..], expected: char8[..]) -> bool {
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: float8 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
@@ -44,7 +44,7 @@ func Shows(value: float8, prefix: char8[..], expected: char8[..]) -> bool {
 // Whether `format` applied to the value writes `expected`.
 func Formats(format: char8[..], value: float8, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     if (try? WriteFormat(writer, format, value)) is none {
         return false;
@@ -124,7 +124,7 @@ func Main() -> int {
 
     // Debug is the same text.
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let debugged: float8 = 0.34375f8;
     if (try? debugged.WriteDebug(writer, FormatSpec::Plain())) is none { return 50; }

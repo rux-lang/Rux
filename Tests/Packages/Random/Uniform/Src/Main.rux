@@ -10,7 +10,7 @@ import Random::{ NextFloat64, RandomGenerator, UniformBelow, UniformFloatInRange
 
 func Main() -> int {
     // Every value below the bound appears, and none at or above it.
-    var generator = Xoshiro256(1);
+    var generator = Xoshiro256::New(1);
     var counts: uint[6];
     var index: uint = 0;
     while index < 6 {

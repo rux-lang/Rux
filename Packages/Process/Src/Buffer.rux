@@ -14,7 +14,7 @@ struct Buffer<T> {
 }
 
 extend Buffer<T> {
-    func Buffer(allocator: Allocator) -> Self {
+    func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, capacity: 0, allocator };
     }
 

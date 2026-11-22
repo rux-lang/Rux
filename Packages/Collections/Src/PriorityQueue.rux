@@ -20,8 +20,8 @@ extend PriorityQueue<T> {
     /// @param allocator where the storage comes from
     /// @returns the queue
     /// @see https://rux-lang.dev/docs/api/collections/priority-queue#new
-    pub func PriorityQueue(allocator: Allocator) -> Self {
-        return Self { items: Vector<T>(allocator) };
+    pub func New(allocator: Allocator) -> Self {
+        return Self { items: Vector<T>::New(allocator) };
     }
 
     /// How many elements it holds.

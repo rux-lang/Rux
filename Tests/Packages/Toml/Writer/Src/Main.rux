@@ -18,14 +18,14 @@ func TextBytes(text: char8[..]) -> char8[..] {
 
 // Renders `value` into `storage` and returns the bytes.
 func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
-    var cursor = ByteCursor(storage);
+    var cursor = ByteCursor::New(storage);
     let writer: &var TextWriter = cursor;
     Assert((try? TomlWriteDocument(writer, value)) is .Some(_), "writing succeeds");
     return cursor.Written();
 }
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 // The value under `key`, which the test has just seen the document hold.
@@ -70,7 +70,7 @@ func Parsed(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     var storage: char8[4096];
     var second: char8[4096];
     // A document written and read and written again is the same the second time, which is the property a file
@@ -190,7 +190,7 @@ func Main() -> int {
     // the problem.
     var bounded = Parsed(allocator, "a = 1\nb = 2\n[t]\nc = 3", "a document for a bounded destination");
     var room: char8[8];
-    var small = BufferWriter(room[..8]);
+    var small = BufferWriter::New(room[..8]);
     let smallSink: &var TextWriter = small;
     let full = FormatError::InsufficientCapacity;
     try {
@@ -205,7 +205,7 @@ func Main() -> int {
     // And the same document goes out whole when there is room, so the case above is about the bound rather than
     // about a writer that refuses everything.
     var enough: char8[128];
-    var roomy = BufferWriter(enough[..128]);
+    var roomy = BufferWriter::New(enough[..128]);
     let roomySink: &var TextWriter = roomy;
     Assert((try? TomlWriteDocument(roomySink, bounded)) is .Some(_),
            "the same document writes whole into a destination that has room");

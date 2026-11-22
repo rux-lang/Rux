@@ -9,9 +9,9 @@ import Path::{ OsString, OsStringView, OsUnit };
 // unit count differs per platform in a way the test states rather than papers over.
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
-    let empty = OsString(allocator);
+    let empty = OsString::New(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "new native text holds nothing");
 
     // Ordinary text converts, and its unit count is the platform's business: an accented word is six UTF-8 bytes

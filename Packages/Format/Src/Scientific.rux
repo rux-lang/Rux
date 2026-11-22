@@ -48,7 +48,7 @@ func SignificantDigits(significand: uint64, exponent: int, wanted: uint, into: v
     *power = 0;
     if significand == 0 || wanted == 0 || wanted >= into.length { return false; }
 
-    var state = Quotient { numerator: FixedNat(), denominator: FixedNat() };
+    var state = Quotient { numerator: FixedNat::New(), denominator: FixedNat::New() };
     var scaled: int = 0;
     if !PrepareQuotient(state, significand, exponent, @scaled) { return false; }
     var produced: uint = 0;
@@ -177,7 +177,7 @@ pub func WriteScientificNotation(writer: &var TextWriter, spec: FormatSpec, part
     // Sign, one digit, the point, the largest precision, the mark, the exponent's sign and its digits fit with
     // room to spare; two bytes in front leave space for a requested sign.
     var storage: char8[1120];
-    var cursor = ByteCursor(storage[2..1120]);
+    var cursor = ByteCursor::New(storage[2..1120]);
     if !WriteScientificFloat(cursor, parts, spec.HasPrecision(), spec.Precision(), mark) || cursor.Overran() {
         throw .UnsupportedRequest;
     }

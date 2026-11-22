@@ -47,7 +47,7 @@ extend Hmac<D> {
     /// @param key the key
     /// @returns an authenticator keyed with those bytes
     /// @see https://rux-lang.dev/docs/api/crypto/hmac#new
-    pub func Hmac(prototype: D, key: char8[..]) -> Self {
+    pub func New(prototype: D, key: char8[..]) -> Self {
         var probe = prototype;
         let blockLength = probe.BlockLength();
         let digestLength = probe.DigestLength();
@@ -130,7 +130,7 @@ extend Hmac<D> {
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/hmac#hmac-of
 pub func HmacOf<D: Digest>(prototype: D, key: char8[..], message: char8[..], into: var char8[..]) {
-    var state = Hmac<D>(prototype, key);
+    var state = Hmac<D>::New(prototype, key);
     state.Update(message);
     state.Finish(into);
 }

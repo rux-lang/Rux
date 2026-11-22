@@ -8,7 +8,7 @@ import Text::{ CString, StringView, TextError };
 // it, and the bytes are validated because nothing about C promises text.
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Out: ordinary text picks up its terminator, invisible from the Rux side.
     let text = StringView::FromValidated("hello");
@@ -22,7 +22,7 @@ func Main() -> int {
     Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
     // Empty text is one byte of terminator, not a null pointer.
-    Assert((try? CString::FromView(allocator, StringView())) is .Some(_), "empty text crosses too");
+    Assert((try? CString::FromView(allocator, StringView::New())) is .Some(_), "empty text crosses too");
 
     // A zero byte in the middle is refused, not truncated.
     var smuggled: char8[8];
@@ -34,7 +34,7 @@ func Main() -> int {
     smuggled[5] = c8'e';
     smuggled[6] = c8'x';
     smuggled[7] = c8'e';
-    let hidden = StringView::FromBytes(smuggled[0..8]) ?? StringView();
+    let hidden = StringView::FromBytes(smuggled[0..8]) ?? StringView::New();
     Assert(hidden.Length() == 8, "a zero byte is valid UTF-8 and makes a view");
     try {
         CString::FromView(allocator, hidden);

@@ -66,7 +66,7 @@ extend Arena {
     /// @param blockSize the first block's payload in bytes; zero asks for the default
     /// @returns the arena, holding no block yet
     /// @see https://rux-lang.dev/docs/api/allocator/arena#new
-    pub func Arena(backing: Allocator, blockSize: uint) -> Self {
+    pub func New(backing: Allocator, blockSize: uint) -> Self {
         let size = if blockSize == 0 { DefaultArenaBlockSize } else { blockSize };
         return Self {
             backing,

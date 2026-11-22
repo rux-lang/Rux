@@ -33,14 +33,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Whether `value` renders as exactly `expected` through `Display`.
 func Shown(value: &Display, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     if (try? value.WriteDisplay(writer, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Inspected(value: &Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     if (try? value.WriteDebug(writer, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
 }
@@ -48,9 +48,9 @@ func Inspected(value: &Debug, expected: char8[..]) -> bool {
 // Whether the specification is refused by both renderings rather than applied or ignored.
 func Refused(shown: &Display, inspected: &Debug, spec: FormatSpec) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     if !((try? shown.WriteDisplay(writer, spec)) is none) { return false; }
-    var second = BufferWriter(storage[..128]);
+    var second = BufferWriter::New(storage[..128]);
     let other: &var TextWriter = second;
     return (try? inspected.WriteDebug(other, spec)) is none;
 }

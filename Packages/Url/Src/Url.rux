@@ -72,7 +72,7 @@ func IsNetworkScheme(scheme: char8[..]) -> bool {
 func Compose(allocator: Allocator, pieces: &Pieces) -> Url throws UrlError {
     let scheme = pieces.scheme ?? throw .MissingScheme;
     if scheme.length == 0 || !IsAlpha(scheme[0] as uint8) { throw .InvalidScheme; }
-    var out = Bytes(allocator);
+    var out = Bytes::New(allocator);
     var index: uint = 0;
     while index < scheme.length {
         let c = scheme[index] as uint8;
@@ -81,7 +81,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url throws UrlError {
         index = index + 1;
     }
     var url = Url {
-        text: String(allocator), allocator, schemeEnd: out.length, hasAuthority: pieces.hasAuthority,
+        text: String::New(allocator), allocator, schemeEnd: out.length, hasAuthority: pieces.hasAuthority,
         hasUserinfo: false, userinfoStart: 0, usernameEnd: 0, userinfoEnd: 0, hostStart: 0, hostEnd: 0,
         hostKind: HostKind::None, hasPort: false, portStart: 0, portEnd: 0, port: 0, pathStart: 0, pathEnd: 0,
         hasQuery: false, queryStart: 0, queryEnd: 0, hasFragment: false, fragmentStart: 0
@@ -158,7 +158,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url throws UrlError {
     }
 
     url.pathStart = out.length;
-    var path = Bytes(allocator);
+    var path = Bytes::New(allocator);
     try AppendNormalized(path, pieces.path, Component::Path);
     RemoveDotSegments(out, path.View());
     if pieces.hasAuthority && network && out.length == url.pathStart { out.Push(c8'/'); }
@@ -234,7 +234,7 @@ extend Url {
     pub func Resolve(&self, reference: char8[..]) -> Self throws UrlError {
         var target = try SplitReference(reference);
         if IsSet(target.scheme) { return try Compose(self.allocator, target); }
-        var merged = Bytes(self.allocator);
+        var merged = Bytes::New(self.allocator);
         target.scheme = self.Scheme();
         if !target.hasAuthority {
             self.CopyAuthority(@target);
@@ -367,7 +367,7 @@ extend Url {
     /// @see https://rux-lang.dev/docs/api/url/url#set-path
     pub func SetPath(&var self, path: char8[..]) throws UrlError {
         var pieces = self.Pieces();
-        var rooted = Bytes(self.allocator);
+        var rooted = Bytes::New(self.allocator);
         if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/'); }
         rooted.PushAll(path);
         pieces.path = rooted.View();

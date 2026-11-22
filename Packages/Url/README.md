@@ -25,7 +25,7 @@ import Allocator::SystemAllocator;
 import Url::{ Pairs, Url, UrlError };
 
 func SearchTerm(link: char8[..]) -> bool throws UrlError {
-    let page = try Url::Parse(SystemAllocator(), "https://example.com/docs/index.html");
+    let page = try Url::Parse(SystemAllocator::New(), "https://example.com/docs/index.html");
     let target = try page.Resolve(link);
     for pair in Pairs(target.Query() ?? "") {
         if pair.name.length == 1 && pair.name[0] == 'q' { return true; }

@@ -49,7 +49,7 @@ struct Drain {
 // Reads a pipe to its end, and gives back its bytes, or none when reading failed.
 func DrainPipe(drain: Drain) -> Buffer<char8>? {
     var source = move drain;
-    var bytes = Buffer<char8>(source.allocator);
+    var bytes = Buffer<char8>::New(source.allocator);
     let read = ReadAll(source.reader, bytes);
     source.reader.Close();
     if !read { return none; }
@@ -83,7 +83,7 @@ extend Command {
         let error = child.TakeError() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
         var reader = try Spawn(DrainPipe, Drain { reader: move error, allocator })
             catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
-        var outputBytes = Buffer<char8>(allocator);
+        var outputBytes = Buffer<char8>::New(allocator);
         let outputRead = ReadAll(output, outputBytes);
         output.Close();
         var drained = reader.Join();

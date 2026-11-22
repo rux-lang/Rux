@@ -59,7 +59,7 @@ func StartNetworking() {
             AtomicCompareExchange(@WinsockState, 0u32, 1u32, MemoryOrder::Acquire, MemoryOrder::Acquire)
         };
         if previous == 0u32 {
-            var data = WsaData();
+            var data = WsaData::New();
             // Safety: `data` is a local `WsaData` the call fills in.
             WSAStartup(0x0202u16, @data);
             // Safety: `WinsockState` is a module variable, live and aligned for the whole process, that every thread

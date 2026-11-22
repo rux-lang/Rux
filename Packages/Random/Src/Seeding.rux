@@ -16,7 +16,7 @@ import Entropy::{ EntropyError, NextUint64 };
 /// @returns a generator seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/xoshiro256#xoshiro-from-entropy
 pub func XoshiroFromEntropy() -> Xoshiro256 throws EntropyError {
-    return try Xoshiro256(NextUint64());
+    return try Xoshiro256::New(NextUint64());
 }
 
 /// A `Pcg64Dxsm` seeded from the operating system's entropy, on the default stream.
@@ -24,7 +24,7 @@ pub func XoshiroFromEntropy() -> Xoshiro256 throws EntropyError {
 /// @returns a generator seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#pcg-from-entropy
 pub func PcgFromEntropy() -> Pcg64Dxsm throws EntropyError {
-    return try Pcg64Dxsm(NextUint64());
+    return try Pcg64Dxsm::New(NextUint64());
 }
 
 /// A `Pcg64Dxsm` seeded from entropy on the stream `stream` selects.

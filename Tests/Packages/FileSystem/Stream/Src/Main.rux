@@ -23,11 +23,11 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 func Main() -> int throws IoError {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp");
     let scratch = Path::FromView(holder.View());
 
@@ -61,7 +61,7 @@ func Main() -> int throws IoError {
     try reading.Close();
 
     // Cutting the file discards the tail and nothing else.
-    var cutOptions = OpenOptions();
+    var cutOptions = OpenOptions::New();
     cutOptions.write = true;
     var cutting = try File::Open(allocator, scratch, cutOptions);
     Assert(cutting.IsOpen(), "it reopens for cutting");
@@ -84,23 +84,23 @@ func Main() -> int throws IoError {
     try lines.Close();
     var back = try File::Open(allocator, scratch, OpenOptions::Reading());
     // Safety: `back` is a local of this function that outlives `buffered`, the only holder of the handle.
-    var buffered = try BufferedReader(allocator, @back as Reader, 8);
-    var builder = StringBuilder(allocator);
+    var buffered = try BufferedReader::New(allocator, @back as Reader, 8);
+    var builder = StringBuilder::New(allocator);
     try ReadTextLine(buffered, builder, 64);
     let alpha = builder.TakeString();
     let alphaWant = View("alpha");
     Assert(alpha.View().Equals(alphaWant), "normalized across the CRLF");
-    var second = StringBuilder(allocator);
+    var second = StringBuilder::New(allocator);
     try ReadTextLine(buffered, second, 64);
     let beta = second.TakeString();
     let betaWant = View("beta");
     Assert(beta.View().Equals(betaWant), "exactly");
-    var third = StringBuilder(allocator);
+    var third = StringBuilder::New(allocator);
     try ReadTextLine(buffered, third, 64);
     let gamma = third.TakeString();
     let gammaWant = View("gamma");
     Assert(gamma.View().Equals(gammaWant), "with everything before the end");
-    var last = StringBuilder(allocator);
+    var last = StringBuilder::New(allocator);
     try {
         ReadTextLine(buffered, last, 64);
         Panic("expected a failure");

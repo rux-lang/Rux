@@ -64,7 +64,7 @@ func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSp
 func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) throws FormatError {
     if !value.IsInCalendarRange() { throw FormatError::ValueOutOfRange; }
     let moment = Timestamp { seconds: value.seconds, nanoseconds: value.nanoseconds };
-    let shown = OffsetDateTime(DateTime::FromTimestamp(moment, UtcOffset::Utc()), UtcOffset::Utc());
+    let shown = OffsetDateTime::New(DateTime::FromTimestamp(moment, UtcOffset::Utc()), UtcOffset::Utc());
     return try shown.WriteDisplay(writer, spec);
 }
 

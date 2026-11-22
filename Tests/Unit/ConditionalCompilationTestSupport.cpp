@@ -22,7 +22,7 @@ pub module Compilation {
         pub patch: uint;
     }
     extend SemanticVersion {
-        pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
+        pub func New(major: uint, minor: uint, patch: uint) -> SemanticVersion {
             return SemanticVersion { major: major, minor: minor, patch: patch };
         }
     }

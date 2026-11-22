@@ -35,7 +35,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Whether the value writes exactly `expected` through its Display interface.
 func Shown(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: OsStringView = view;
     if (try? shown.WriteDisplay(sink, spec)) is none { return false; }
@@ -45,7 +45,7 @@ func Shown(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
 // Whether the view's `Debug` writes exactly `expected`, quotes included.
 func Inspected(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: OsStringView = view;
     if (try? shown.WriteDebug(sink, spec)) is none { return false; }
@@ -56,7 +56,7 @@ func Inspected(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> boo
 // the same units its view does.
 func PathShown(path: Path, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Path = path;
     if (try? shown.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
@@ -65,7 +65,7 @@ func PathShown(path: Path, expected: char8[..]) -> bool {
 
 func PathInspected(path: Path, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Path = path;
     if (try? shown.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
@@ -76,7 +76,7 @@ func PathInspected(path: Path, expected: char8[..]) -> bool {
 // what is under test there is that they render the units they own, not how they are dispatched.
 func OwnedShown(text: &OsString, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     if (try? text.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
@@ -84,7 +84,7 @@ func OwnedShown(text: &OsString, expected: char8[..]) -> bool {
 
 func OwnedInspected(text: &OsString, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     if (try? text.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
@@ -92,7 +92,7 @@ func OwnedInspected(text: &OsString, expected: char8[..]) -> bool {
 
 func BufferShown(buffer: &PathBuffer, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     if (try? buffer.WriteDisplay(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
@@ -100,7 +100,7 @@ func BufferShown(buffer: &PathBuffer, expected: char8[..]) -> bool {
 
 func BufferInspected(buffer: &PathBuffer, expected: char8[..]) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     if (try? buffer.WriteDebug(sink, FormatSpec::Plain())) is none { return false; }
     return Same(writer.Written(), expected);
@@ -108,18 +108,18 @@ func BufferInspected(buffer: &PathBuffer, expected: char8[..]) -> bool {
 
 func Refused(view: OsStringView, spec: FormatSpec) -> bool {
     var storage: char8[128];
-    var writer = BufferWriter(storage[..128]);
+    var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: OsStringView = view;
     if !((try? shown.WriteDisplay(sink, spec)) is none) { return false; }
     let inspected: OsStringView = view;
-    var second = BufferWriter(storage[..128]);
+    var second = BufferWriter::New(storage[..128]);
     let other: &var TextWriter = second;
     return (try? inspected.WriteDebug(other, spec)) is none;
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Ordinary text renders as itself in both forms; only the quoting differs.
     let plain = OsString::FromText(allocator, "usr/local/bin");
@@ -236,7 +236,7 @@ func Main() -> int {
     }
 
     // Nothing here is empty-hostile: a name of no units renders as nothing, and as empty quotes.
-    let nothing = OsStringView();
+    let nothing = OsStringView::New();
     Assert(Shown(nothing, FormatSpec::Plain(), ""), "an empty name shows as nothing");
     Assert(Inspected(nothing, FormatSpec::Plain(), "\"\""), "and inspects as empty quotes");
 

@@ -60,7 +60,7 @@ func TerminatedLength(units: *OsUnit) -> uint {
 // the view is used.
 func ViewTerminated(units: *OsUnit) -> OsStringView {
     let length = TerminatedLength(units);
-    if length == 0 { return OsStringView(); }
+    if length == 0 { return OsStringView::New(); }
     return OsStringView::FromUnits(units[..length]);
 }
 

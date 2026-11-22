@@ -39,13 +39,13 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
     let lonely = f == leading && e > layout.MinimumExponent();
     let even = (f & 1) == 0;
 
-    var r = BigNat(allocator);
-    var s = BigNat(allocator);
-    var high = BigNat(allocator);
-    var low = BigNat(allocator);
-    var tmp = BigNat(allocator);
-    var base = BigNat(allocator);
-    var scratch = BigNat(allocator);
+    var r = BigNat::New(allocator);
+    var s = BigNat::New(allocator);
+    var high = BigNat::New(allocator);
+    var low = BigNat::New(allocator);
+    var tmp = BigNat::New(allocator);
+    var base = BigNat::New(allocator);
+    var scratch = BigNat::New(allocator);
     if !r.SetWide(f) || !high.SetSmall(1) || !low.SetSmall(1) { return false; }
     if e >= 0 {
         let shift = e as uint;
@@ -161,11 +161,11 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     // Safety: the documented contract makes `failure` a non-null pointer to the caller's writable
     // `WideDigitFailure`.
     *failure = WideDigitFailure::OutOfMemory;
-    var r = BigNat(allocator);
-    var s = BigNat(allocator);
-    var tmp = BigNat(allocator);
-    var base = BigNat(allocator);
-    var scratch = BigNat(allocator);
+    var r = BigNat::New(allocator);
+    var s = BigNat::New(allocator);
+    var tmp = BigNat::New(allocator);
+    var base = BigNat::New(allocator);
+    var scratch = BigNat::New(allocator);
     if !r.SetWide(value.significand) || !s.SetSmall(1) { return false; }
     if value.exponent >= 0 {
         if !r.ShiftLeft(value.exponent as uint) { return false; }

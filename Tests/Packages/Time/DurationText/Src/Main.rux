@@ -29,7 +29,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 func Shown(value: Duration, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let shown: Duration = value;
     if (try? shown.WriteDisplay(writer, spec)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -37,7 +37,7 @@ func Shown(value: Duration, spec: FormatSpec, expected: char8[..]) -> bool {
 
 func Refused(value: Duration, spec: FormatSpec) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let shown: Duration = value;
     return (try? shown.WriteDisplay(writer, spec)) is none;
 }

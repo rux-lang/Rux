@@ -14,14 +14,14 @@ import Format::{ FixedNat, FixedNatBits, FixedNatLimbs };
 // Whether `value` is exactly two to the `bits`, checked through the only two questions the type answers about
 // magnitude: its bit length, and its comparison against a power of two built independently.
 func IsPowerOfTwo(value: &FixedNat, bits: uint) -> bool {
-    var expected = FixedNat();
+    var expected = FixedNat::New();
     if !expected.SetPowerOfTwo(bits) { return false; }
     return value.Compare(expected) == 0 && value.BitLength() == bits + 1;
 }
 
 func Main() -> int {
     // Zero is the value with no limbs, and says so.
-    var zero = FixedNat();
+    var zero = FixedNat::New();
     Assert(zero.IsZero(), "a new workspace is zero");
     Assert(zero.BitLength() == 0, "and zero occupies no bits");
     Assert(zero.Low64() == 0, "and reads back as zero");
@@ -64,7 +64,7 @@ func Main() -> int {
 
     // Subtraction borrows across a limb, which is the mirror of the carry and the other half a single-limb
     // implementation gets wrong.
-    var borrowed = FixedNat();
+    var borrowed = FixedNat::New();
     Assert(borrowed.SetPowerOfTwo(64), "two to the sixty-fourth is built directly");
     borrowed.Subtract(one);
     Assert(borrowed.BitLength() == 64, "and one less than it is a single full limb");
@@ -90,12 +90,12 @@ func Main() -> int {
     Assert(spilling.BitLength() == 65, "and occupies sixty-five bits");
 
     // Zero shifts to zero rather than growing a limb of zeros.
-    var stillZero = FixedNat();
+    var stillZero = FixedNat::New();
     Assert(stillZero.ShiftLeft(500), "shifting zero fits trivially");
     Assert(stillZero.IsZero(), "and leaves it zero");
 
     // Addition of two multi-limb values, with a carry that propagates the whole way.
-    var left = FixedNat();
+    var left = FixedNat::New();
     Assert(left.SetPowerOfTwo(128), "two to the one hundred and twenty-eighth");
     left.Subtract(one);
     var right = FixedNat::FromUint64(1);
@@ -125,27 +125,27 @@ func Main() -> int {
     Assert(FixedNatLimbs == 64, "the workspace is sixty-four limbs");
     Assert(FixedNatBits == 4096, "which is four thousand and ninety-six bits");
 
-    var full = FixedNat();
+    var full = FixedNat::New();
     Assert(full.SetPowerOfTwo(FixedNatBits - 1), "the highest bit the capacity holds is reachable");
     Assert(full.BitLength() == FixedNatBits, "and fills it exactly");
     Assert(!full.SetPowerOfTwo(FixedNatBits), "one past it is refused rather than wrapped to zero");
     Assert(!full.ShiftLeft(1), "shifting the top bit out is refused");
     Assert(!full.MultiplySmall(2), "and so is doubling it");
     Assert(!full.MultiplyPowerOfTen(1), "and multiplying it by ten");
-    var alsoFull = FixedNat();
+    var alsoFull = FixedNat::New();
     Assert(alsoFull.SetPowerOfTwo(FixedNatBits - 1), "a second copy of the top value");
     Assert(!full.Add(alsoFull), "and adding the two is refused");
 
     // A value one bit below the top still has room for one doubling, which is what makes the refusals above about
     // the bound rather than about the operations always refusing.
-    var nearlyFull = FixedNat();
+    var nearlyFull = FixedNat::New();
     Assert(nearlyFull.SetPowerOfTwo(FixedNatBits - 2), "one bit below the top");
     Assert(nearlyFull.MultiplySmall(2), "doubles into the top bit");
     Assert(IsPowerOfTwo(nearlyFull, FixedNatBits - 1), "and lands exactly there");
 
     // The two boundary vectors the bound was derived from, which are the largest values the narrow conversion
     // actually forms. Both must fit, with the headroom Docs/NarrowFloat.md claims.
-    var smallestSubnormalScaled = FixedNat();
+    var smallestSubnormalScaled = FixedNat::New();
     Assert(smallestSubnormalScaled.SetPowerOfTwo(54), "the smallest float64 subnormal's numerator");
     Assert(smallestSubnormalScaled.MultiplyPowerOfTen(324),
            "scaled to where its first significant digit appears, which is the worst case the bound covers");
@@ -160,7 +160,7 @@ func Main() -> int {
     Assert(widest > 3600 && widest < FixedNatBits, "occupies over thirty-six hundred bits and still fits");
     Assert(FixedNatBits - widest > 384, "with more than six limbs of headroom, as the derivation claims");
 
-    var subnormalDenominator = FixedNat();
+    var subnormalDenominator = FixedNat::New();
     Assert(subnormalDenominator.SetPowerOfTwo(1075), "the denominator that subnormal is formed over");
     Assert(subnormalDenominator.BitLength() == 1076, "occupies one thousand and seventy-six bits");
 

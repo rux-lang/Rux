@@ -8,7 +8,7 @@ import Math::{ Abs, IsFinite, Sqrt };
 import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator, Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256(31337);
+    var generator = Xoshiro256::New(31337);
 
     // Gamma: mean equals the shape and variance equals the shape, at a shape above one and below it — the two
     // sides of the boosting cutoff.

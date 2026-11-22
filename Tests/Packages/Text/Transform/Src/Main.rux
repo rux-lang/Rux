@@ -6,11 +6,11 @@ import Text::{ Replace, StringView, ToAsciiLower, ToAsciiUpper };
 // end, a replacement that contains the needle, and bytes that are not ASCII passing through case conversion whole.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes) ?? StringView();
+    return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     let text = View("one,two,,three");
     let replaced = Replace(allocator, text, View(","), View(" - "));

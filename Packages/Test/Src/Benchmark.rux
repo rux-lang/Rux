@@ -58,7 +58,7 @@ extend BenchmarkOptions {
     /// Options that measure every benchmark for at least 200 milliseconds and at most a billion iterations.
     /// @returns the options
     /// @see https://rux-lang.dev/docs/api/test/benchmark#benchmark-options-new
-    pub func BenchmarkOptions() -> Self {
+    pub func New() -> Self {
         return Self { filter: "", filters: [], minimumTime: Duration::FromMilliseconds(200),
                                   maximumIterations: 1000000000u64 };
     }
@@ -156,17 +156,17 @@ pub func RunBenchmarksWith(benchmarks: BenchmarkCase[..], options: BenchmarkOpti
 /// @returns 0, or 2 for arguments it does not understand
 /// @see https://rux-lang.dev/docs/api/test/benchmark#run-benchmarks
 pub func RunBenchmarks(benchmarks: BenchmarkCase[..]) -> int {
-    var options = BenchmarkOptions();
-    var texts = Vector<String>(SystemAllocator());
+    var options = BenchmarkOptions::New();
+    var texts = Vector<String>::New(SystemAllocator::New());
     var index: uint = 1;
     let count = ArgumentCount();
     while index < count {
         let view = Argument(index) ?? break;
-        let text = try view.ToText(SystemAllocator()) catch { _ => return 2 };
+        let text = try view.ToText(SystemAllocator::New()) catch { _ => return 2 };
         texts.Push(move text);
         index = index + 1;
     }
-    var filters = Vector<char8[..]>(SystemAllocator());
+    var filters = Vector<char8[..]>::New(SystemAllocator::New());
     // Each argument is read where the vector keeps it: the filters are views of that text, which a loop variable,
     // a copy destroyed at the end of its pass, would leave dangling.
     let arguments = texts.AsSlice();

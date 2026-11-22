@@ -5,7 +5,7 @@ struct PackageCounter {
 }
 
 extend PackageCounter {
-    func PackageCounter(value: int) -> Self {
+    func New(value: int) -> Self {
         return Self { value };
     }
 
@@ -15,7 +15,7 @@ extend PackageCounter {
 }
 
 func MakePackageCounter(value: int) -> PackageCounter {
-    return PackageCounter(value);
+    return PackageCounter::New(value);
 }
 
 // Public declarations still choose their public members individually.
@@ -25,12 +25,12 @@ pub struct PublicCounter {
 }
 
 extend PublicCounter {
-    pub func PublicCounter(value: int) -> Self {
+    pub func New(value: int) -> Self {
         return Self { value, hidden: 1 };
     }
 
     pub func Zero() -> Self {
-        return PublicCounter(0);
+        return PublicCounter::New(0);
     }
 
     pub func Read(&self) -> int {
@@ -38,7 +38,7 @@ extend PublicCounter {
     }
 
     pub func +(&self, other: Self) -> Self {
-        return PublicCounter(self.value + other.value);
+        return PublicCounter::New(self.value + other.value);
     }
 }
 

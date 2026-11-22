@@ -179,7 +179,7 @@ pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &
 /// @returns the rendered string, or why it could not be produced
 /// @see https://rux-lang.dev/docs/api/format/render
 pub func Render(allocator: Allocator, #Format format: char8[..], args: &Display...) -> String throws FormatError {
-    var builder = StringBuilder(allocator);
+    var builder = StringBuilder::New(allocator);
     builder.Reserve(format.length + args.length * 8);
     let sink: &var TextWriter = builder;
     try WriteFormat(sink, format, args...);

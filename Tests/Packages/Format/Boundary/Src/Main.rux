@@ -41,7 +41,7 @@ func Render(value: &Display, spec: FormatSpec, into: &var TextWriter) throws For
 
 func Main() -> int {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..64]);
+    var writer = BufferWriter::New(storage[..64]);
     let plain = FormatSpec::Plain();
 
     // A direct call on the concrete Core type. The method is Format's, the interface is Text's, the receiver is
@@ -117,7 +117,7 @@ func Main() -> int {
     Assert(Same(writer.Written(), "count=7"), "each rendered by its own package's implementation");
 
     // And through the allocating entry point, which is the same route ending in a String rather than a buffer.
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     let rendered = if (try? Render(allocator, "{:>6}", -42i32)) is .Some(built) { Same(built.View().Bytes(), "   -42") } else { false };
     Assert(rendered, "the allocating entry point reaches the same implementation");
     return 0;

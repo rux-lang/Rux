@@ -6,7 +6,7 @@ import Format::{ ByteCursor };
 // A failed check returns its numbered exit code for `rux test`.
 func Check(value: char8, expected: char8[..], code: int) -> int {
     var storage: char8[8];
-    var cursor = ByteCursor(storage[..8]);
+    var cursor = ByteCursor::New(storage[..8]);
     let writer: &var TextWriter = cursor;
     let shown: char8 = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
@@ -44,7 +44,7 @@ func Main() -> int {
     // The null character is a byte like any other, and what it renders into is one byte long rather than nothing:
     // text carries its length and does not look for a terminator.
     var storage: char8[8];
-    var cursor = ByteCursor(storage[..8]);
+    var cursor = ByteCursor::New(storage[..8]);
     let writer: &var TextWriter = cursor;
     let nul: char8 = c8'\0';
     if (try? nul.WriteDisplay(writer, FormatSpec::Plain())) is none { return 20; }
@@ -55,7 +55,7 @@ func Main() -> int {
     // so what comes out is the replacement character rather than the fragment. Writing the byte on its own would
     // produce something that is not UTF-8, and every reader of the result relies on it being UTF-8.
     var second: char8[8];
-    var piece = ByteCursor(second[..8]);
+    var piece = ByteCursor::New(second[..8]);
     let fragmentWriter: &var TextWriter = piece;
     let fragment: char8 = 0xC3u8 as char8;
     if (try? fragment.WriteDisplay(fragmentWriter, FormatSpec::Plain())) is none { return 30; }

@@ -65,7 +65,7 @@ extend LegacyMd5 {
     /// An MD5 state.
     /// @returns an MD5 hasher, which is broken and is here only to read what already exists
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#new
-    pub func LegacyMd5() -> Self {
+    pub func New() -> Self {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64 {
@@ -198,7 +198,7 @@ extend LegacyMd5 {
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5#legacy-md5-of
 pub func LegacyMd5Of(bytes: char8[..], into: var char8[..]) {
-    var digest = LegacyMd5();
+    var digest = LegacyMd5::New();
     digest.Update(bytes);
     digest.Finish(into);
 }
@@ -221,7 +221,7 @@ extend LegacySha1 {
     /// A SHA-1 state.
     /// @returns a SHA-1 hasher, which is broken and is here only to read what already exists
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#new
-    pub func LegacySha1() -> Self {
+    pub func New() -> Self {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64 {
@@ -358,7 +358,7 @@ extend LegacySha1 {
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1#legacy-sha1-of
 pub func LegacySha1Of(bytes: char8[..], into: var char8[..]) {
-    var digest = LegacySha1();
+    var digest = LegacySha1::New();
     digest.Update(bytes);
     digest.Finish(into);
 }

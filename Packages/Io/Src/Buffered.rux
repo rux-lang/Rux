@@ -43,7 +43,7 @@ extend BufferedReader {
     /// @param capacity how many bytes the buffer holds
     /// @returns the buffered stream; `Other` when the allocator refused the buffer
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#new
-    pub func BufferedReader(allocator: Allocator, source: Reader, capacity: uint) -> Self throws IoError {
+    pub func New(allocator: Allocator, source: Reader, capacity: uint) -> Self throws IoError {
         var reader = Self {
             source,
             data: null,
@@ -186,7 +186,7 @@ extend BufferedWriter {
     /// @param capacity how many bytes the buffer holds
     /// @returns the buffered stream; `Other` when the allocator refused the buffer
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#new
-    pub func BufferedWriter(allocator: Allocator, sink: Writer, capacity: uint) -> Self throws IoError {
+    pub func New(allocator: Allocator, sink: Writer, capacity: uint) -> Self throws IoError {
         var writer = Self { sink, data: null, capacity: 0, length: 0, allocator };
         let wanted = if capacity == 0 { DefaultBufferCapacity } else { capacity };
         let layout = Layout::Of(wanted, 1) ?? Layout { size: wanted, alignment: 1 };

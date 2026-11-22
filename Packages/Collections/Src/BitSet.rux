@@ -21,8 +21,8 @@ extend BitSet {
     /// @param allocator where the storage comes from
     /// @returns the set
     /// @see https://rux-lang.dev/docs/api/collections/bit-set#new
-    pub func BitSet(allocator: Allocator) -> Self {
-        return Self { words: Vector<uint64>(allocator), length: 0 };
+    pub func New(allocator: Allocator) -> Self {
+        return Self { words: Vector<uint64>::New(allocator), length: 0 };
     }
 
     /// How many bits the set spans, set or not.

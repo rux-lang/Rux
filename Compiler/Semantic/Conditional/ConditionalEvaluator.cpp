@@ -697,8 +697,10 @@ std::optional<ParsedSemanticVersion> ConditionalEvaluator::Impl::EvalSemanticVer
     }
 
     if (const auto *call = AstCast<const CallExpr>(&expr)) {
-        const auto *identifier = AstCast<const IdentExpr>(call->callee.get());
-        const bool typeConstructor = identifier && identifier->name == "SemanticVersion";
+        // `SemanticVersion::New(major, minor, patch)`, Core's constructor, is folded where a condition writes it.
+        const auto *path = AstCast<const PathExpr>(call->callee.get());
+        const bool typeConstructor =
+            path && path->segments.size() == 2 && path->segments[0] == "SemanticVersion" && path->segments[1] == "New";
         if (typeConstructor && call->args.size() == 3) {
             ParsedSemanticVersion version;
             std::uint64_t *components[] = {&version.major, &version.minor, &version.patch};

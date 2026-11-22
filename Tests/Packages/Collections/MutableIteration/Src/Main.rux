@@ -16,7 +16,7 @@ extend Tracked {
 }
 
 func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
-    var vector = Vector<Tracked>(allocator);
+    var vector = Vector<Tracked>::New(allocator);
     vector.Push(Tracked { destroyed, value: 10, tail: 100 });
     vector.Push(Tracked { destroyed, value: 20, tail: 200 });
     for element in vector.MutableReferences() {
@@ -53,7 +53,7 @@ func Main() -> int {
     var values: int32[3] = [1, 2, 3];
     // Safety: `values` is a local array of three elements.
     let view = (@values[0])[..3];
-    var iterator = MutableReferenceIterator<int32>(view);
+    var iterator = MutableReferenceIterator<int32>::New(view);
     var seen = 0;
     while true {
         let pointer = iterator.Next() ?? break;
@@ -65,15 +65,15 @@ func Main() -> int {
     Assert(seen == 3 && values[0] == 11 && values[1] == 12 && values[2] == 13, "all elements changed once");
     Assert(iterator.Next() == none && iterator.Next() == none, "exhaustion is stable across repeated calls");
     // Safety: `values` is a local array, and an empty run of it covers nothing.
-    var empty = MutableReferenceIterator<int32>((@values[0])[..0]);
+    var empty = MutableReferenceIterator<int32>::New((@values[0])[..0]);
     Assert(empty.Next() == none && empty.Next() == none, "empty iteration never yields an address");
 
     // Construct and instantiate both pointer kinds together.
-    var readOnly = ReferenceIterator<int32>(view);
+    var readOnly = ReferenceIterator<int32>::New(view);
     let readable = readOnly.Next() ?? Panic("read-only iteration yields an address");
     // Safety: the cursor yielded the address of the first element of `values`, which is still alive.
     Assert(*readable == 11, "read-only iteration sees the same storage");
-    var copied = MutableReferenceIterator<int32>(view);
+    var copied = MutableReferenceIterator<int32>::New(view);
     for element in copied {
         // Safety: the cursor yields addresses inside `values`, which outlives the loop.
         *element = *element * 2;
@@ -81,7 +81,7 @@ func Main() -> int {
     Assert(copied.Next() == none, "for advances the cursor variable itself");
     Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the cursor borrows the original elements");
 
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
     var array = Array::Filled<int32>(allocator, 3, 5);
     for element in array.MutableReferences() {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
@@ -91,7 +91,7 @@ func Main() -> int {
     var emptyArray = Array::Filled<int32>(allocator, 0, 0);
     var arrayCursor = emptyArray.MutableReferences();
     Assert(arrayCursor.Next() == none, "an empty array yields nothing");
-    var vector = Vector<int32>(allocator);
+    var vector = Vector<int32>::New(allocator);
     var vectorCursor = vector.MutableReferences();
     Assert(vectorCursor.Next() == none, "an empty vector yields nothing");
     vector.Reserve(20);

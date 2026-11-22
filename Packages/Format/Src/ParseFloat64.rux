@@ -76,7 +76,7 @@ pub struct DecimalReading {
 pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseError {
     // The decimal is read into a local and handed over whole once the text has matched.
     var scanned = DecimalReading {
-        digits: FixedNat(),
+        digits: FixedNat::New(),
         exponent: 0,
         significant: 0,
         truncated: false,
@@ -196,7 +196,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseE
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float64
 pub func ParseFloat64(str: char8[..]) -> float64 throws ParseError {
     var reading = DecimalReading {
-        digits: FixedNat(),
+        digits: FixedNat::New(),
         exponent: 0,
         significant: 0,
         truncated: false,
@@ -250,7 +250,7 @@ pub func ParseFloat64(str: StringView) -> float64 throws ParseError {
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float32
 pub func ParseFloat32(str: char8[..]) -> float32 throws ParseError {
     var reading = DecimalReading {
-        digits: FixedNat(),
+        digits: FixedNat::New(),
         exponent: 0,
         significant: 0,
         truncated: false,

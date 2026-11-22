@@ -41,7 +41,7 @@ func CountFlags() -> uint {
 }
 
 func HasHome() -> bool {
-    let home = Variable("HOME") ?? OsStringView();
+    let home = Variable("HOME") ?? OsStringView::New();
     return !home.IsEmpty() && ArgumentCount() > 0;
 }
 ```
@@ -52,9 +52,9 @@ import Io::IoError;
 import Process::Command;
 
 func Version() -> bool throws IoError {
-    var command = Command(SystemAllocator(), "git");
+    var command = Command::New(SystemAllocator::New(), "git");
     command.Argument("--version");
-    let captured = try command.Capture(SystemAllocator());
+    let captured = try command.Capture(SystemAllocator::New());
     return captured.Status().Success() && captured.Output().length > 0;
 }
 ```

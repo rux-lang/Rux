@@ -202,7 +202,7 @@ extend Array<T> {
     /// @returns a cursor yielding copies of the elements
     /// @see https://rux-lang.dev/docs/api/collections/array#iterate
     pub func Iterate(&self) -> ValueIterator<T> {
-        return ValueIterator<T>(self.AsSlice());
+        return ValueIterator<T>::New(self.AsSlice());
     }
 
     /// An iterator over pointers to the elements.
@@ -210,7 +210,7 @@ extend Array<T> {
     /// @returns a cursor yielding the elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/array#references
     pub func References(&self) -> ReferenceIterator<T> {
-        return ReferenceIterator<T>(self.AsSlice());
+        return ReferenceIterator<T>::New(self.AsSlice());
     }
 
     /// An iterator over writable pointers to the elements, without copying them.
@@ -219,7 +219,7 @@ extend Array<T> {
     /// @returns a cursor yielding writable element addresses
     /// @see https://rux-lang.dev/docs/api/collections/array#mutable-references
     pub func MutableReferences(&var self) -> MutableReferenceIterator<T> {
-        return MutableReferenceIterator<T>(self.AsMutableSlice());
+        return MutableReferenceIterator<T>::New(self.AsMutableSlice());
     }
 
     /// Destroys every element and releases the storage.

@@ -89,7 +89,7 @@ extend PollEvent {
     /// An event for nothing, to fill the room a wait reports into.
     /// @returns the event
     /// @see https://rux-lang.dev/docs/api/net/poller#poll-event-new
-    pub func PollEvent() -> Self {
+    pub func New() -> Self {
         return Self { token: 0, readable: false, writable: false, closed: false };
     }
 }
@@ -131,9 +131,9 @@ extend Poller {
     /// @param allocator where Windows' registrations and the room for events come from
     /// @returns the poller, or why the system would not make one
     /// @see https://rux-lang.dev/docs/api/net/poller#new
-    pub func Poller(allocator: Allocator) -> Self throws IoError {
-        var poller = Self { handle: NoSocket, registrations: Vector<Registration>(allocator),
-                              buffer: Vector<uint64>(allocator) };
+    pub func New(allocator: Allocator) -> Self throws IoError {
+        var poller = Self { handle: NoSocket, registrations: Vector<Registration>::New(allocator),
+                              buffer: Vector<uint64>::New(allocator) };
         when #target.os == .Linux {
             let created = EpollCreate1(EPOLL_CLOEXEC);
             if created < 0i64 { throw LastFailure(created); }

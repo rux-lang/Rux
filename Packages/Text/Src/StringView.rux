@@ -25,7 +25,7 @@ extend StringView {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns an empty view
     /// @see https://rux-lang.dev/docs/api/text/string-view#new
-    pub func StringView() -> Self {
+    pub func New() -> Self {
         return Self { bytes: [] };
     }
 

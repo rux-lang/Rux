@@ -54,7 +54,7 @@ func Main() -> int {
     // the boundaries either side of thirty-two bytes are where an off-by-one would live.
     var cut: uint = 0;
     while cut <= length {
-        var streamed = XxHash64();
+        var streamed = XxHash64::New();
         streamed.Write(bytes, cut);
         streamed.Write(pangram[cut..].data, length - cut);
         Assert(streamed.Finish() == expected, "splitting the writes anywhere gives the same answer");
@@ -62,7 +62,7 @@ func Main() -> int {
     }
 
     // One byte at a time is the extreme case of the same property.
-    var byByte = XxHash64();
+    var byByte = XxHash64::New();
     var index: uint = 0;
     while index < length {
         byByte.Write(pangram[index..].data, 1);
@@ -71,7 +71,7 @@ func Main() -> int {
     Assert(byByte.Finish() == expected, "and so does writing one byte at a time");
 
     // A zero-length write changes nothing, wherever it lands.
-    var padded = XxHash64();
+    var padded = XxHash64::New();
     padded.Write(null, 0);
     padded.Write(bytes, 16);
     padded.Write(null, 0);
@@ -87,17 +87,17 @@ func Main() -> int {
     Assert(OneShot(full[..XxBlockSize - 1]) != OneShot(full[..XxBlockSize]), "one byte short is a different hash");
     Assert(OneShot(full[..1]) != OneShot(full[..2]), "and so is one byte against two");
 
-    var blockStream = XxHash64();
+    var blockStream = XxHash64::New();
     blockStream.Write(block, XxBlockSize);
     Assert(blockStream.Finish() == OneShot(full[..XxBlockSize]), "a block written whole agrees with one shot");
 
-    var blockSplit = XxHash64();
+    var blockSplit = XxHash64::New();
     blockSplit.Write(block, XxBlockSize - 1);
     blockSplit.Write(full[XxBlockSize - 1..].data, 1);
     Assert(blockSplit.Finish() == OneShot(full[..XxBlockSize]), "and a block completed by its last byte agrees too");
 
     // Finishing does not consume, and writing afterwards continues rather than restarting.
-    var kept = XxHash64();
+    var kept = XxHash64::New();
     kept.Write(bytes, 20);
     let partial = kept.Finish();
     Assert(kept.Finish() == partial, "finishing twice gives the same answer");
@@ -116,7 +116,7 @@ func Main() -> int {
     Assert(seeded.Finish() == seededResult, "and hashing again agrees with the first time");
 
     // Usable through the bound, which is what puts it in generic code.
-    var bounded = XxHash64();
+    var bounded = XxHash64::New();
     // Safety: `bytes` and `length` are the data and length of the `pangram` slice.
     let boundedHash = HashBytes<XxHash64>(bounded, bytes, length);
     Assert(boundedHash == expected, "xxHash64 is usable through the hashing bound");

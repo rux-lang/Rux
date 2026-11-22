@@ -51,7 +51,7 @@ func Main() -> int {
     var failure: IoError? = none;
     // The adapter keeps a `Writer` handle that addresses `out` rather than copying it.
     // Safety: `out` is a local that outlives `adapter` and stays where it is.
-    var adapter = StreamWriter(@out as Writer, @failure);
+    var adapter = StreamWriter::New(@out as Writer, @failure);
     let text: &var TextWriter = adapter;
 
     // The type argument is required: the function is generic over the value so that it can borrow it rather than
@@ -70,7 +70,7 @@ Neither error type can hold the other's failures, so the crossing is made explic
 
 `WriteValueLine` and `WriteFormatLine` write a value or a pattern followed by a newline, and write the newline **only if** what came before it went out whole. A line is a value and its terminator together, so a value that could not be written must not be followed by one. Every `PrintLine` overload follows the same rule. `WriteValueLine` takes its value by bound rather than as an interface view, so the call is resolved for the value's own type and nothing is dispatched at run time; `WriteValue` and the variadic `args: &Display...` of the format functions borrow theirs as `&Display` views, which a temporary may be lent to for the call.
 
-Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views, and a named stream passed straight into one of them borrows without any binding: `try WriteAll(file, contents)`. The borrow neither copies nor consumes the stream, and it ends at the call. `BufferedReader`, `BufferedWriter` and `StreamWriter` must keep their streams after construction, so they store a `Reader` or `Writer` interface value: a copyable handle that addresses the stream and owns nothing. A handle to a stream with state is made from its address, `@file as Reader`, whose maker promises that the stream outlives the adapter and is not moved while it holds the handle. The `BufferedReader` and `BufferedWriter` constructors throw `Other` when their buffer cannot be allocated, so they are called as `try BufferedReader(allocator, source, capacity)`. Both buffered types prohibit copying, move with `move`, and release their owned buffers in their destructors.
+Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views, and a named stream passed straight into one of them borrows without any binding: `try WriteAll(file, contents)`. The borrow neither copies nor consumes the stream, and it ends at the call. `BufferedReader`, `BufferedWriter` and `StreamWriter` must keep their streams after construction, so they store a `Reader` or `Writer` interface value: a copyable handle that addresses the stream and owns nothing. A handle to a stream with state is made from its address, `@file as Reader`, whose maker promises that the stream outlives the adapter and is not moved while it holds the handle. The `BufferedReader` and `BufferedWriter` constructors throw `Other` when their buffer cannot be allocated, so they are called as `try BufferedReader::New(allocator, source, capacity)`. Both buffered types prohibit copying, move with `move`, and release their owned buffers in their destructors.
 
 ## Example
 
@@ -80,8 +80,8 @@ import Io::{ PrintLine, ReadLine };
 import Text::StringBuilder;
 
 func Main() -> int {
-    let allocator = SystemAllocator();
-    var name = StringBuilder(allocator);
+    let allocator = SystemAllocator::New();
+    var name = StringBuilder::New(allocator);
     PrintLine("What is your name?");
     try ReadLine(name) catch { _ => return 1 };
     let text = name.TakeString();

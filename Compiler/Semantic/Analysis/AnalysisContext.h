@@ -378,8 +378,6 @@ private:
     void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
     /// Whether a constructor returning `returned` builds `type`: exactly it, or it with a `throws` clause.
     [[nodiscard]] static bool ConstructsType(const TypeRef &returned, const TypeRef &type);
-    [[nodiscard]] bool IsConstructorCandidate(const FuncDecl &method, const TypeRef &type);
-    [[nodiscard]] std::vector<const FuncDecl *> ConstructorCandidates(const TypeRef &type);
     [[nodiscard]] std::vector<const FuncDecl *> AccessibleMethodCandidates(const TypeRef &receiverType,
                                                                            const std::string &methodName) const;
 
@@ -1211,7 +1209,6 @@ private:
     std::unordered_map<const LiteralExpr *, NamedFormatArguments> &namedFormats;
     std::unordered_map<const AsmOperand *, const Decl *> &asmSymbolDeclarations;
     std::unordered_map<const Expr *, TypeRef> &interfaceTemporaries;
-    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;

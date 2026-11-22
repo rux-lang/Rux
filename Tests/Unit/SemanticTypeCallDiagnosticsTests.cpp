@@ -53,19 +53,19 @@ TEST_CASE("type-named constructors lower overloads generic calls and default ini
     const HirPackage package = LowerSource(R"(
         struct Point { value: int32; }
         extend Point {
-            func Point() -> Point { return Point { value: 0i32 }; }
-            func Point(value: int32) -> Point { return Point { value: value }; }
+            func New() -> Point { return Point { value: 0i32 }; }
+            func New(value: int32) -> Point { return Point { value: value }; }
         }
 
         struct Box<T> { value: T; }
         extend Box<T> {
-            func Box(value: T) -> Box<T> { return Box<T> { value: value }; }
+            func New(value: T) -> Box<T> { return Box<T> { value: value }; }
         }
 
         func Build() -> int32 {
-            var origin: Point;
-            let point = Point(2i32);
-            let box = Box<int32>(3i32);
+            var origin = Point::New();
+            let point = Point::New(2i32);
+            let box = Box<int32>::New(3i32);
             return origin.value + point.value + box.value;
         }
     )");
@@ -103,7 +103,7 @@ TEST_CASE("type-named constructors lower overloads generic calls and default ini
     CHECK(boxCallee->name.contains("Box"));
 }
 
-TEST_CASE("type calls require declared constructors and never provide hidden conversions") {
+TEST_CASE("a type is not called and never provides a hidden conversion") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Point { value: int32; }
         func Build() {
@@ -113,22 +113,23 @@ TEST_CASE("type calls require declared constructors and never provide hidden con
     )");
 
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "type 'Point' cannot be called because it has no declared constructor");
+    CHECK_EQ(diagnostics[0].message, "'Point' is a type, not a function");
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help, "call a constructor by its name, as in 'Point::New(...)'");
     CHECK_EQ(diagnostics[1].message, "cannot assign 'int32' to 'Point'");
 }
 
-TEST_CASE("constructor declarations enforce receiverless exact-type results") {
+TEST_CASE("a function named after its type is not a constructor") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Item { value: int32; }
         extend Item {
-            func Item(&self) -> Item { return Item { value: 0i32 }; }
-            func Item(value: int32) -> int32 { return value; }
+            func Item(value: int32) -> Item { return Item { value }; }
+            func New(value: int32) -> Item { return Item { value }; }
         }
     )");
 
-    REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "constructor 'Item' must not declare a 'self' receiver");
-    CHECK_EQ(diagnostics[1].message, "constructor 'Item' must return exactly 'Item'");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "a function named after its type 'Item' is not a constructor");
 }
 
 TEST_CASE("omitted initialization stays tracked when no default constructor exists") {

@@ -42,7 +42,7 @@ extend SystemEntropy {
     /// Runs in constant time and allocates nothing.
     /// @returns the source, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#new
-    pub func SystemEntropy() -> Self {
+    pub func New() -> Self {
         return Self {};
     }
 
@@ -140,7 +140,7 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
 /// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill
 pub func Fill(buffer: *var opaque, length: uint) throws EntropyError {
-    var system = SystemEntropy();
+    var system = SystemEntropy::New();
     let source: &var EntropySource = system;
     return try FillFrom(source, buffer, length);
 }

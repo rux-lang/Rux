@@ -80,7 +80,7 @@ extend MonotonicUuid {
     /// A generator that has produced nothing yet.
     /// @returns the generator, which has produced nothing yet
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#new
-    pub func MonotonicUuid() -> Self {
+    pub func New() -> Self {
         return Self { previous: Uuid::Nil(), started: false };
     }
 

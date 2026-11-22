@@ -31,7 +31,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
         return InfinityBits(negative, layout);
     }
 
-    var digits = BigNat(allocator);
+    var digits = BigNat::New(allocator);
     var significant: uint = 0;
     var decimalExponent: int = 0;
     var digitCount: uint = 0;
@@ -100,11 +100,11 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
 // The bits nearest to `digits` times ten to `decimalExponent`, found by exact division.
 func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int, negative: bool,
                 layout: &FloatLayout, where: uint) -> uint512 throws ParseError {
-    var numerator = BigNat(allocator);
-    var denominator = BigNat(allocator);
-    var power = BigNat(allocator);
-    var base = BigNat(allocator);
-    var scratch = BigNat(allocator);
+    var numerator = BigNat::New(allocator);
+    var denominator = BigNat::New(allocator);
+    var power = BigNat::New(allocator);
+    var base = BigNat::New(allocator);
+    var scratch = BigNat::New(allocator);
     if !denominator.SetSmall(1u64) { AllocationFailed(AllocError::OutOfMemory); }
     if decimalExponent >= 0 {
         if !SetPowerOfTen(power, decimalExponent as uint, base, scratch) || !numerator.SetProduct(digits, power) {
@@ -149,8 +149,8 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     }
 
     // Long division to `wanted` bits, the leading one first, with whatever is left folded into the last.
-    var remainder = BigNat(allocator);
-    var divisor = BigNat(allocator);
+    var remainder = BigNat::New(allocator);
+    var divisor = BigNat::New(allocator);
     if exponent >= 0 {
         if !remainder.Assign(numerator) || !divisor.Assign(denominator) || !divisor.ShiftLeft(exponent as uint) {
             AllocationFailed(AllocError::OutOfMemory);

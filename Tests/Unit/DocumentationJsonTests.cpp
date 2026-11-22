@@ -52,7 +52,7 @@ extend Size {
     /// @param width how wide
     /// @returns the size
     /// @see https://rux-lang.dev/docs/api/shapes/size#size
-    pub func Size(width: uint32) -> Size {
+    pub func New(width: uint32) -> Size {
         return Size { width: width, cached: 0 };
     }
 
@@ -80,7 +80,7 @@ extend Size : Measured {
     /// The size itself.
     /// @returns the size
     pub func Measure(&self) -> Size {
-        return Size(self.width);
+        return Size::New(self.width);
     }
 }
 
@@ -280,10 +280,10 @@ constexpr std::string_view Expected = R"json({
           }
         },
         {
-          "kind": "constructor",
-          "name": "Size",
+          "kind": "associated",
+          "name": "New",
           "line": 38,
-          "signature": "pub func Size(width: uint32) -> Size",
+          "signature": "pub func New(width: uint32) -> Size",
           "typeParams": [],
           "params": [
             {

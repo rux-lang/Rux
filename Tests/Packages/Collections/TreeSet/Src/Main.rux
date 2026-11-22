@@ -37,10 +37,10 @@ func CountRange(set: &TreeSet<int32>, start: int32, end: int32) -> uint {
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Fifty elements arriving in a stride coprime with the count.
-    var set = TreeSet<int32>(allocator, CompareInt32);
+    var set = TreeSet<int32>::New(allocator, CompareInt32);
     var step: int32 = 0;
     while step < 50 {
         let added = set.Insert((step * 23) % 50);
@@ -108,9 +108,9 @@ func Main() -> int {
 
     // Three sets whose overlaps can be written down: the evens below twenty, the odds below twenty, and everything
     // below six.
-    var evens = TreeSet<int32>(allocator, CompareInt32);
-    var odds = TreeSet<int32>(allocator, CompareInt32);
-    var small = TreeSet<int32>(allocator, CompareInt32);
+    var evens = TreeSet<int32>::New(allocator, CompareInt32);
+    var odds = TreeSet<int32>::New(allocator, CompareInt32);
+    var small = TreeSet<int32>::New(allocator, CompareInt32);
     value = 0;
     while value < 20 {
         if value % 2 == 0 {
@@ -126,7 +126,7 @@ func Main() -> int {
     }
     Assert(evens.Length() == 10 && odds.Length() == 10 && small.Length() == 6, "the three sets are what they claim");
 
-    var empty = TreeSet<int32>(allocator, CompareInt32);
+    var empty = TreeSet<int32>::New(allocator, CompareInt32);
     Assert(empty.IsSubsetOf(evens), "the empty set is a subset of everything");
     Assert(empty.IsSubsetOf(empty), "including itself");
     Assert(evens.IsSupersetOf(empty), "and everything is a superset of it");

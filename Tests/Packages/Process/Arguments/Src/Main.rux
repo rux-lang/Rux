@@ -24,7 +24,7 @@ func Contains(units: OsUnit[..], name: char8[..]) -> bool {
 func Main() -> int {
     let count = ArgumentCount();
     if count < 1 { return 1; }
-    let program = Argument(0) ?? OsStringView();
+    let program = Argument(0) ?? OsStringView::New();
     if program.IsEmpty() { return 2; }
     match Argument(count) {
         .Some(_) => return 3,
@@ -33,7 +33,7 @@ func Main() -> int {
 
     var walked: uint = 0;
     for argument in Arguments() {
-        let same = Argument(walked) ?? OsStringView();
+        let same = Argument(walked) ?? OsStringView::New();
         if !argument.Equals(same) { return 4; }
         walked = walked + 1;
     }
@@ -51,10 +51,10 @@ func Main() -> int {
     if !Contains(program.Units(), "Arguments") { return 8; }
 
     // So does the system's path to the executable, which is absolute and ends in its file name.
-    let executable = try CurrentExecutable(SystemAllocator()) catch { _ => return 9 };
+    let executable = try CurrentExecutable(SystemAllocator::New()) catch { _ => return 9 };
     let path = executable.AsPath();
     if !IsAbsolute(path) { return 10; }
-    let file = path.FileName() ?? OsStringView();
+    let file = path.FileName() ?? OsStringView::New();
     if !Contains(file.Units(), "Arguments") { return 11; }
     return 0;
 }

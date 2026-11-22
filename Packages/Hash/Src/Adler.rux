@@ -20,7 +20,7 @@ extend Adler32 {
     /// Constructs a checksum with nothing written into it yet.
     /// @returns a hasher with nothing written to it yet
     /// @see https://rux-lang.dev/docs/api/hash/adler32#new
-    pub func Adler32() -> Self {
+    pub func New() -> Self {
         return Self { low: 1, high: 0 };
     }
 

@@ -150,7 +150,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) throws FormatError {
     var significant: uint = 15;
     while significant <= 17 {
         // Safety: `storage` is a local array of 64 bytes.
-        var cursor = ByteCursor((@storage[0])[..64]);
+        var cursor = ByteCursor::New((@storage[0])[..64]);
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
@@ -392,7 +392,7 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) throws FormatError {
     }
     var storage: char8[512];
     // Safety: `storage` is a local array of 512 bytes.
-    var cursor = ByteCursor((@storage[0])[..512]);
+    var cursor = ByteCursor::New((@storage[0])[..512]);
     let quoted: &var TextWriter = cursor;
     try EmitBasicString(quoted, name);
     if !path.Append(cursor.Written()) { try PathTooLong(); }

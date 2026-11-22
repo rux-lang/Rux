@@ -166,7 +166,7 @@ func Main() -> int {
     var sink: RecordingStream = stream;
     var failure: IoError? = none;
     // Safety: `sink` is a local of this function that outlives every use of the handle.
-    var adapter = StreamWriter(@sink as Writer, @failure);
+    var adapter = StreamWriter::New(@sink as Writer, @failure);
     let writer: &var TextWriter = adapter;
 
     try {
@@ -198,7 +198,7 @@ func Main() -> int {
     var target: RecordingStream = open;
     var healthy: IoError? = none;
     // Safety: `target` is a local of this function that outlives every use of the handle.
-    var good = StreamWriter(@target as Writer, @healthy);
+    var good = StreamWriter::New(@target as Writer, @healthy);
     let out: &var TextWriter = good;
 
     var destroyed: int32 = 0;
@@ -222,7 +222,7 @@ func Main() -> int {
     var thirdSink: RecordingStream = thirdStream;
     var thirdFailure: IoError? = none;
     // Safety: `thirdSink` is a local of this function that outlives every use of the handle.
-    var thirdAdapter = StreamWriter(@thirdSink as Writer, @thirdFailure);
+    var thirdAdapter = StreamWriter::New(@thirdSink as Writer, @thirdFailure);
     let thirdOut: &var TextWriter = thirdAdapter;
 
     var bad = Refuses {};
@@ -253,7 +253,7 @@ func Main() -> int {
     var fourthSink: RecordingStream = fourthStream;
     var fourthFailure: IoError? = none;
     // Safety: `fourthSink` is a local of this function that outlives every use of the handle.
-    var fourthAdapter = StreamWriter(@fourthSink as Writer, @fourthFailure);
+    var fourthAdapter = StreamWriter::New(@fourthSink as Writer, @fourthFailure);
     let fourthOut: &var TextWriter = fourthAdapter;
     try {
         WriteValueLine(fourthOut, value);
@@ -269,7 +269,7 @@ func Main() -> int {
     // A console writer built over a slot that already holds a failure writes nothing at all, which is the same rule
     // over standard output. Nothing is printed by this case, which is the point of it.
     var recorded: IoError? = IoError::Of(IoErrorKind::PermissionDenied);
-    var console = ConsoleWriter(@recorded);
+    var console = ConsoleWriter::New(@recorded);
     let consoleOut: &var TextWriter = console;
     try {
         consoleOut.Write("this must not appear");
@@ -282,7 +282,7 @@ func Main() -> int {
     // A bounded destination reaches the same boundary from the other side: `InsufficientCapacity` is not a stream
     // failure and must not be reported as one.
     var room: char8[4];
-    var bounded = BufferWriter(room[..4]);
+    var bounded = BufferWriter::New(room[..4]);
     let boundedOut: &var TextWriter = bounded;
     try {
         WriteValueLine(boundedOut, value);
@@ -296,7 +296,7 @@ func Main() -> int {
 
     // An I/O failure reads as words, with the platform's code when it has one, and takes the placeholder's width.
     var shown: char8[96];
-    var shownWriter = BufferWriter(shown[..96]);
+    var shownWriter = BufferWriter::New(shown[..96]);
     let shownOut: &var TextWriter = shownWriter;
     let notFound = IoError { kind: IoErrorKind::NotFound, raw: 2 };
     let noListener = IoError::Of(IoErrorKind::ConnectionRefused);

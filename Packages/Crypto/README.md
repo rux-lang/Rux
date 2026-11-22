@@ -30,7 +30,7 @@ rux add Rux/Crypto
 
 ## Value and borrowing model
 
-Digest, XOF, and HMAC states are structural `Copy` values: copying a state takes an independent snapshot and owns no external resource. Safe mutation uses `&var` receivers, and read-only queries use `&`; calls borrow automatically. Construct default states with type calls such as `Sha256()`, `Sha512()`, and `Blake3()`. Descriptive variants such as `Sha256::New224()`, `Shake::New128()`, and `Blake3::NewKeyed()` retain their names. Raw pointers remain only inside compression helpers and the optimizer barrier, where contiguous word access or an opaque address is intentional.
+Digest, XOF, and HMAC states are structural `Copy` values: copying a state takes an independent snapshot and owns no external resource. Safe mutation uses `&var` receivers, and read-only queries use `&`; calls borrow automatically. Construct default states with type calls such as `Sha256::New()`, `Sha512::New()`, and `Blake3::New()`. Descriptive variants such as `Sha256::New224()`, `Shake::New128()`, and `Blake3::NewKeyed()` retain their names. Raw pointers remain only inside compression helpers and the optimizer barrier, where contiguous word access or an opaque address is intentional.
 
 The three public compression helpers take raw word buffers, so the caller promises the buffer sizes the functions cannot check: `KeccakPermute` needs `lanes` to address twenty-five readable and writable lanes; `Blake3Compress` needs `chaining` to address eight readable words, `message` sixteen readable words, and `into` sixteen writable words; `Blake3Chunk::Output` needs `into` to address sixteen writable words. The digest, XOF, HMAC, and HKDF APIs take slices and put no such obligation on their callers.
 

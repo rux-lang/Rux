@@ -220,7 +220,6 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , namedFormats(output.namedFormats)
     , asmSymbolDeclarations(output.asmSymbolDeclarations)
     , interfaceTemporaries(output.interfaceTemporaries)
-    , defaultConstructors(output.defaultConstructors)
     , symbolIdentities(output.symbolIdentities)
     , vtableIdentities(output.vtableIdentities)
     , typeLayouts(output.typeLayouts)

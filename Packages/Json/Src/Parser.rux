@@ -225,9 +225,9 @@ extend JsonParser {
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a parser ready to read the input
     /// @see https://rux-lang.dev/docs/api/json/json-parser#new
-    pub func JsonParser(allocator: Allocator, input: char8[..], limits: JsonLimits) -> Self {
+    pub func New(allocator: Allocator, input: char8[..], limits: JsonLimits) -> Self {
         return Self {
-            lexer: JsonLexer(input, limits),
+            lexer: JsonLexer::New(input, limits),
             allocator,
             limits,
             duplicates: DuplicateKeyPolicy::Reject,
@@ -295,7 +295,7 @@ extend JsonParser {
         // Safety: the lexer produced `token` from `self.input`, so `token.start..token.end` lies inside it.
         let span = (@self.input.data[token.start])[..token.end - token.start];
         if !token.escaped { return try String::FromBytes(self.allocator, span); }
-        var builder = StringBuilder(self.allocator);
+        var builder = StringBuilder::New(self.allocator);
         var index: uint = 0;
         while index < span.length {
             // Safety: `index` is below `span.length`, checked by the loop.
@@ -637,7 +637,7 @@ func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse
 pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue throws JsonParseError {
-    var parser = JsonParser(allocator, input, JsonLimits::Default());
+    var parser = JsonParser::New(allocator, input, JsonLimits::Default());
     return try parser.Parse();
 }
 
@@ -656,7 +656,7 @@ pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue throws JsonP
 /// @see https://rux-lang.dev/docs/api/json/parse#parse-with
 pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits,
                    duplicates: DuplicateKeyPolicy) -> JsonValue throws JsonParseError {
-    var parser = JsonParser(allocator, input, limits);
+    var parser = JsonParser::New(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);
     return try parser.Parse();
 }

@@ -107,7 +107,7 @@ extend SystemWaiter {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the waiter
     /// @see https://rux-lang.dev/docs/api/time/waiter#system-waiter-new
-    pub func SystemWaiter() -> Self {
+    pub func New() -> Self {
         return Self { reserved: 0 };
     }
 }
@@ -203,7 +203,7 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) throws TimeError 
 /// @returns nothing when the whole span was waited out, or why it was not
 /// @see https://rux-lang.dev/docs/api/time/sleep
 pub func SleepFor(span: Duration) throws TimeError {
-    var waiter = SystemWaiter();
+    var waiter = SystemWaiter::New();
     // A named value auto-borrows into the generic's `&var W`; taking its address would be a pointer.
     return try SleepUsing<SystemWaiter>(waiter, span);
 }

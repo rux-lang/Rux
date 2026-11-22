@@ -181,8 +181,8 @@ TEST_CASE("Self inside extend is the extended type in signatures, literals, call
     const auto parsed = ParseSource(R"(
         struct Pair<T> { first: T; second: T; }
         extend Pair<T> {
-            func Pair(first: T, second: T) -> Self { return Self { first, second }; }
-            func Twin(value: T) -> Self { return Self(value, value); }
+            func New(first: T, second: T) -> Self { return Self { first, second }; }
+            func Twin(value: T) -> Self { return Self::New(value, value); }
             func Swapped(&self) -> Self { return Self::Of(self.second, self.first); }
             func Of(first: T, second: T) -> Self { return Self::Of(first, second); }
         }
@@ -218,9 +218,9 @@ TEST_CASE("Self inside extend is the extended type in signatures, literals, call
     REQUIRE(constructorReturn->value.has_value());
     const auto *constructor = dynamic_cast<const CallExpr *>(constructorReturn->value->get());
     REQUIRE(constructor != nullptr);
-    const auto *constructorName = dynamic_cast<const IdentExpr *>(constructor->callee.get());
-    REQUIRE(constructorName != nullptr);
-    CHECK_EQ(constructorName->name, "Pair");
+    const auto *constructorPath = dynamic_cast<const PathExpr *>(constructor->callee.get());
+    REQUIRE(constructorPath != nullptr);
+    CHECK_EQ(constructorPath->segments, std::vector<std::string>{"Pair", "New"});
     CHECK_EQ(constructor->typeArgs.size(), 1);
 
     // A member call carries the block's type arguments first, as `Pair::Of<T>(...)` would be written.
@@ -260,13 +260,13 @@ TEST_CASE("Self and receiver shorthand check as the type written out") {
     const auto diagnostics = Analyze(R"(
         struct Counter { count: int32; }
         extend Counter {
-            func Counter(count: int32) -> Self { return Self { count }; }
+            func New(count: int32) -> Self { return Self { count }; }
             func Bump(&var self) { self.count += 1; }
             func Read(&self) -> int32 { return self.count; }
-            func Twice(&self) -> Self { return Self::Counter(self.count * 2); }
+            func Twice(&self) -> Self { return Self::New(self.count * 2); }
         }
         func Main() -> int {
-            var counter = Counter(1);
+            var counter = Counter::New(1);
             counter.Bump();
             let doubled = counter.Twice();
             return doubled.Read() - 4;

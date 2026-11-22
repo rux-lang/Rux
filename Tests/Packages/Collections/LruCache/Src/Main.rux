@@ -33,7 +33,7 @@ extend Tracked {
 
 // Replaces one cached value and evicts another, then lets the cache go.
 func ReplaceAndEvict(destroyed: *var int32, kept: *var int32) -> bool {
-    var cache = LruCache<int32, Tracked>(SystemAllocator(), 1, HashInt32, EqualsInt32);
+    var cache = LruCache<int32, Tracked>::New(SystemAllocator::New(), 1, HashInt32, EqualsInt32);
     cache.Put(1, Tracked { counter: destroyed });
     cache.Put(1, Tracked { counter: destroyed });
     // Safety: `destroyed` points at a local of the caller, which outlives this call.
@@ -45,7 +45,7 @@ func ReplaceAndEvict(destroyed: *var int32, kept: *var int32) -> bool {
 }
 
 func Main() -> int {
-    var cache = LruCache<int32, int32>(SystemAllocator(), 3, HashInt32, EqualsInt32);
+    var cache = LruCache<int32, int32>::New(SystemAllocator::New(), 3, HashInt32, EqualsInt32);
     Assert(cache.Capacity() == 3u && cache.Length() == 0u && cache.Get(1) == none, "an empty cache");
     Assert((cache.Put(1, 10)) == none, "room for the first");
     cache.Put(2, 20);
@@ -67,7 +67,7 @@ func Main() -> int {
     cache.Clear();
     Assert(cache.Length() == 0u && cache.Get(6) == none, "clearing forgets everything");
 
-    var one = LruCache<int32, int32>(SystemAllocator(), 0, HashInt32, EqualsInt32);
+    var one = LruCache<int32, int32>::New(SystemAllocator::New(), 0, HashInt32, EqualsInt32);
     one.Put(1, 1);
     Assert(one.Capacity() == 1u && (one.Put(2, 2) ?? 0) == 1 && Order(one, [2i32]),
            "a cache of one keeps only the latest");

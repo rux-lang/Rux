@@ -76,7 +76,7 @@ func Main() -> int {
     Assert(lazy == (0 + 4 + 16) * 1000 && Asked == 5, "nothing is computed ahead of the take");
 
     // A container's own iterator feeds the adaptors too.
-    var vector = Vector<int32>(SystemAllocator());
+    var vector = Vector<int32>::New(SystemAllocator::New());
     for value in numbers[..] { vector.Push(value); }
     var fromVector: int32 = 0;
     for value in Filter(vector.Iterate(), IsEven) { fromVector = fromVector + value; }

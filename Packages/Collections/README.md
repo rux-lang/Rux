@@ -69,8 +69,8 @@ An operation that reports an ordinary miss does it with an optional — `Get`, `
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::Vector;
 
-let allocator = SystemAllocator();
-var numbers = Vector<int32>(allocator);
+let allocator = SystemAllocator::New();
+var numbers = Vector<int32>::New(allocator);
 numbers.Push(1);
 try numbers.TryReserve(1024) catch { _ => return 1 };
 
@@ -89,7 +89,7 @@ Containers talk to the allocator in elements rather than bytes, through three he
 
 Every owning container prohibits copying. Hand one to a consuming function with `move`, as in `Consume(move values)`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
 
-Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`, `HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
+Canonical empty construction is `Vector<T>::New(allocator)`, `Deque<T>::New(allocator)`, `HashMap<K, V>::New(...)`, `HashSet<T>::New(...)`, `TreeMap<K, V>::New(...)`, and `TreeSet<T>::New(...)`. Descriptive factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
 The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one built from a pool comes back to the pool.
 
@@ -117,7 +117,7 @@ A `for` loop over an iterator _variable_ advances that variable, so a loop that 
 
 For example, `for element in numbers.MutableReferences() { *element = *element * 2; }` doubles the stored numbers.
 
-Construct `MutableReferenceIterator<T>(items)` directly to walk a `var T[..]`. Repeated `Next()` calls return `(*var T)?` and keep returning `none` after exhaustion. These cursors store raw pointers: callers must coordinate aliases and avoid moving or destroying the owner, or growing, shrinking, or reallocating its storage while an iterator or yielded pointer is in use. Iteration itself does not allocate or destroy elements.
+Construct `MutableReferenceIterator<T>::New(items)` directly to walk a `var T[..]`. Repeated `Next()` calls return `(*var T)?` and keep returning `none` after exhaustion. These cursors store raw pointers: callers must coordinate aliases and avoid moving or destroying the owner, or growing, shrinking, or reallocating its storage while an iterator or yielded pointer is in use. Iteration itself does not allocate or destroy elements.
 
 ## Hashing
 
@@ -222,13 +222,13 @@ import Text::{ FormatError, FormatSpec, TextWriter };
 import Format::*;
 
 func Show() throws FormatError {
-    let allocator = SystemAllocator();
-    var numbers = Vector<int32>(allocator);
+    let allocator = SystemAllocator::New();
+    var numbers = Vector<int32>::New(allocator);
     numbers.Push(1);
     numbers.Push(2);
 
     var failure: IoError? = none;
-    var console = ConsoleWriter(@failure);
+    var console = ConsoleWriter::New(@failure);
     let sink: &var TextWriter = console;
     try WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());
 }

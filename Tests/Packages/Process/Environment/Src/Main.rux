@@ -7,10 +7,10 @@ import Path::OsStringView;
 import Process::{ Environment, Variable };
 
 func Main() -> int {
-    let path = Variable("PATH") ?? OsStringView();
+    let path = Variable("PATH") ?? OsStringView::New();
     if path.IsEmpty() { return 1; }
     when #target.os == .Windows {
-        let lower = Variable("path") ?? OsStringView();
+        let lower = Variable("path") ?? OsStringView::New();
         if !lower.Equals(path) { return 2; }
     }
 

@@ -21,7 +21,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func HelpIs(spec: &CommandSpec, expected: char8[..]) -> bool {
     var storage: char8[2048];
-    var writer = BufferWriter(storage[..]);
+    var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     if (try? WriteHelp(spec, sink)) is none { return false; }
     return Same(writer.Written(), expected);
@@ -40,13 +40,13 @@ func Main() -> int {
     if !HelpIs(tool, toolHelp) { return 1; }
 
     var storage: char8[256];
-    var writer = BufferWriter(storage[..]);
+    var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     if (try? WriteVersion(tool, sink)) is none { return 2; }
     if !Same(writer.Written(), "tool 1.2.3\n") { return 3; }
 
     var usageStorage: char8[256];
-    var usageWriter = BufferWriter(usageStorage[..]);
+    var usageWriter = BufferWriter::New(usageStorage[..]);
     let usageSink: &var TextWriter = usageWriter;
     if (try? WriteUsage(tool, usageSink)) is none { return 4; }
     if !Same(usageWriter.Written(), "Usage: tool [options] <input> [files...]\n") { return 5; }
@@ -65,7 +65,7 @@ func Main() -> int {
 
     // A subcommand's help names its parent, through the parse that reached it.
     let units: char8[8] = ['b', 'u', 'i', 'l', 'd', '-', '-', 'h'];
-    var arguments: OsStringView[2] = [OsStringView(), OsStringView()];
+    var arguments: OsStringView[2] = [OsStringView::New(), OsStringView::New()];
     var wideStorage: uint16[8] = [0; 8];
     when #target.os == .Windows {
         var index: uint = 0;
@@ -84,7 +84,7 @@ func Main() -> int {
     let sub = parsed.Subcommand() ?? Panic("the subcommand parses");
     if !sub.HelpRequested() { return 7; }
     var subStorage: char8[512];
-    var subWriter = BufferWriter(subStorage[..]);
+    var subWriter = BufferWriter::New(subStorage[..]);
     let subSink: &var TextWriter = subWriter;
     if (try? sub.WriteHelp(subSink)) is none { return 8; }
     let buildHelp = "Compile\n\nUsage: git build [options] [target]\n\nArguments:\n  [target]  What to build\n\nOptions:\n  -r, --release  Optimize\n  -h, --help     Print this help\n";

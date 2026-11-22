@@ -125,7 +125,7 @@ extend StringView {
         while start < self.bytes.length && IsAsciiSpace(self.bytes.data[start]) {
             start = start + 1;
         }
-        return self.Part(start, self.bytes.length) ?? StringView();
+        return self.Part(start, self.bytes.length) ?? StringView::New();
     }
 
     /// This view without the ASCII whitespace at its end.
@@ -137,7 +137,7 @@ extend StringView {
         while end > 0 && IsAsciiSpace(self.bytes.data[end - 1]) {
             end = end - 1;
         }
-        return self.Part(0, end) ?? StringView();
+        return self.Part(0, end) ?? StringView::New();
     }
 
     /// This view without the ASCII whitespace at either end.
@@ -216,9 +216,9 @@ extend SplitIterator : Iterator {
             return self.rest;
         }
         let at = found ?? 0;
-        let part = self.rest.Part(0, at) ?? StringView();
+        let part = self.rest.Part(0, at) ?? StringView::New();
         let after = at + self.separator.bytes.length;
-        self.rest = self.rest.Part(after, self.rest.bytes.length) ?? StringView();
+        self.rest = self.rest.Part(after, self.rest.bytes.length) ?? StringView::New();
         return part;
     }
 }

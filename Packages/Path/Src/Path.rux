@@ -47,8 +47,8 @@ extend Path {
     /// A path over nothing.
     /// @returns an empty path
     /// @see https://rux-lang.dev/docs/api/path/path#new
-    pub func Path() -> Self {
-        return Self { name: OsStringView() };
+    pub func New() -> Self {
+        return Self { name: OsStringView::New() };
     }
 
     /// A path over `view`'s units as they stand.
@@ -121,7 +121,7 @@ extend ComponentIterator {
         // Safety: `self.units.length` is positive, checked just before the read.
         if self.cursor == 0 && self.units.length > 0 && IsSeparator(self.units.data[0]) {
             self.cursor = 1;
-            return OsStringView();
+            return OsStringView::New();
         }
         // Safety: `self.cursor` is below `self.units.length`, checked first in the same condition.
         while self.cursor < self.units.length && IsSeparator(self.units.data[self.cursor]) {

@@ -125,7 +125,7 @@ extend TomlLexer {
     /// @param input the text to read
     /// @returns a lexer positioned at the start of the input
     /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#new
-    pub func TomlLexer(input: char8[..]) -> Self {
+    pub func New(input: char8[..]) -> Self {
         return Self { input, position: 0, line: 1, lineStart: 0 };
     }
 
@@ -545,7 +545,7 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
         return try String::FromBytes(allocator, span);
     }
     let multiline = form == TomlTextForm::MultiLineBasic;
-    var builder = StringBuilder(allocator);
+    var builder = StringBuilder::New(allocator);
     var index: uint = 0;
     while index < span.length {
         // Safety: `index` is below `span.length`, checked by the loop.

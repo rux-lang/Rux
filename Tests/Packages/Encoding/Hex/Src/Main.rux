@@ -69,7 +69,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 // Whether the view renders exactly `expected` under the spec.
 func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char8[..]) -> bool {
     var storage: char8[600];
-    var writer = BufferWriter(storage[..]);
+    var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: HexView = ViewHex(bytes, letterCase);
     if (try? shown.WriteDisplay(sink, Spec(spec))) is none { return false; }
@@ -78,7 +78,7 @@ func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char
 
 func RefusedBySpec(bytes: byte[..], spec: char8[..]) -> bool {
     var storage: char8[64];
-    var writer = BufferWriter(storage[..]);
+    var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: HexView = ViewHex(bytes);
     var caught: FormatError? = none;

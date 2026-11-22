@@ -10,7 +10,7 @@ import Text::{ String };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 
 func FirstToken(text: char8[..]) -> TomlToken {
-    var lexer = TomlLexer(text);
+    var lexer = TomlLexer::New(text);
     return lexer.Next();
 }
 
@@ -24,8 +24,8 @@ func FirstError(text: char8[..]) -> TomlLexError {
 
 // The decoded content of the first token, which must be a text token.
 func FirstText(text: char8[..]) -> String {
-    let allocator = SystemAllocator();
-    var lexer = TomlLexer(text);
+    let allocator = SystemAllocator::New();
+    var lexer = TomlLexer::New(text);
     let token = lexer.Next();
     var bad = false;
     let span = lexer.TextOf(token);
@@ -63,7 +63,7 @@ func Main() -> int {
     Assert(FirstKind("\r\n") == TomlTokenKind::Newline, "and so is a carriage return pair");
 
     // A comment is not a token at all; it is skipped like the whitespace around it.
-    var comments = TomlLexer("# a comment\nkey");
+    var comments = TomlLexer::New("# a comment\nkey");
     Assert(comments.Next().kind == TomlTokenKind::Newline, "a comment runs to the end of its line");
     Assert(comments.Next().kind == TomlTokenKind::BareKey, "and the key after it survives");
 
@@ -173,8 +173,8 @@ func Main() -> int {
     Assert(FirstError("\"a\u{1}b\"") == TomlLexError::UnescapedControl, "and a raw control character");
 
     // A surrogate is not a scalar value, so no escape names one.
-    let allocator = SystemAllocator();
-    var surrogateLexer = TomlLexer("\"\\uD800\"");
+    let allocator = SystemAllocator::New();
+    var surrogateLexer = TomlLexer::New("\"\\uD800\"");
     let surrogate = surrogateLexer.Next();
     var surrogateBad = false;
     let surrogateSpan = surrogateLexer.TextOf(surrogate);
@@ -184,7 +184,7 @@ func Main() -> int {
     Assert(surrogateBad, "an escaped surrogate names no scalar value");
 
     // Spans and positions, because a configuration error that cannot point at itself costs more than the parse.
-    var document = TomlLexer("alpha = 1\nbeta = 2");
+    var document = TomlLexer::New("alpha = 1\nbeta = 2");
     Assert(document.Next().line == 1, "the first key is on line one");
     document.Next();
     document.Next();

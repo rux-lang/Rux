@@ -28,8 +28,8 @@ when #target.os {
 /// @returns success when the file is at its new path
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#rename
 pub func Rename(allocator: Allocator, from: Path, to: Path) throws IoError {
-    let fromNative = try NativePath(allocator, from);
-    let toNative = try NativePath(allocator, to);
+    let fromNative = try NativePath::New(allocator, from);
+    let toNative = try NativePath::New(allocator, to);
     when #target.os == .Windows {
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
@@ -58,8 +58,8 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) throws IoError {
 /// @returns success when the new name refers to the same file
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-hard-link
 pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) throws IoError {
-    let existingNative = try NativePath(allocator, existing);
-    let linkNative = try NativePath(allocator, link);
+    let existingNative = try NativePath::New(allocator, existing);
+    let linkNative = try NativePath::New(allocator, link);
     when #target.os == .Windows {
         // Safety: `linkNative` and `existingNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
@@ -90,8 +90,8 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) throws
 /// @returns success when the link was created; Windows needs a privilege for this
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-symbolic-link
 pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) throws IoError {
-    let targetNative = try NativePath(allocator, target);
-    let linkNative = try NativePath(allocator, link);
+    let targetNative = try NativePath::New(allocator, target);
+    let linkNative = try NativePath::New(allocator, link);
     when #target.os == .Windows {
         var flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
         if targetIsDirectory {
@@ -124,8 +124,8 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#copy-file
 pub func CopyFile(allocator: Allocator, from: Path, to: Path) throws IoError {
     when #target.os == .Windows {
-        let fromNative = try NativePath(allocator, from);
-        let toNative = try NativePath(allocator, to);
+        let fromNative = try NativePath::New(allocator, from);
+        let toNative = try NativePath::New(allocator, to);
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
         if CopyFileW(fromNative.Pointer() as *char16, toNative.Pointer() as *char16, 0) == 0 {

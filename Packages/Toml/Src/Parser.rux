@@ -298,8 +298,8 @@ extend TomlParser {
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a parser ready to read the input
     /// @see https://rux-lang.dev/docs/api/toml/toml-parser#new
-    pub func TomlParser(allocator: Allocator, input: char8[..], limits: TomlLimits) -> Self {
-        var lexer = TomlLexer(input);
+    pub func New(allocator: Allocator, input: char8[..], limits: TomlLimits) -> Self {
+        var lexer = TomlLexer::New(input);
         let first = lexer.Next();
         return Self {
             lexer,
@@ -407,7 +407,7 @@ extend TomlParser {
         if token.kind == TomlTokenKind::Text {
             var bad = false;
             var decoded = try TomlDecodeText(self.allocator, span, token.form, @bad) catch {
-                _ => String(self.allocator),
+                _ => String::New(self.allocator),
             };
             if bad {
                 self.Stop(TomlStop::BadText);
@@ -548,7 +548,7 @@ extend TomlParser {
         // A key made of digits — `1234 = "x"` — lexes as an integer and is a perfectly good bare key, so the
         // form for anything that is not a quoted string is the one that copies the bytes unchanged.
         let form = if token.kind == TomlTokenKind::Text { token.form } else { TomlTextForm::Bare };
-        into.ReplaceWith((try TomlDecodeText(self.allocator, span, form, @bad) catch { _ => String(self.allocator) }));
+        into.ReplaceWith((try TomlDecodeText(self.allocator, span, form, @bad) catch { _ => String::New(self.allocator) }));
         if bad {
             self.Stop(TomlStop::BadText);
             return false;
@@ -559,7 +559,7 @@ extend TomlParser {
     // A dotted key path, collected into `parts`.
     func ParseKeyPath(&var self, parts: &var Vector<String>) -> bool {
         while true {
-            var part = String(self.allocator);
+            var part = String::New(self.allocator);
             if !self.ParseKeyPart(part) {
                 part.Clear();
                 return false;
@@ -576,7 +576,7 @@ extend TomlParser {
     // Safety: `into` must point at a live table, a document's or an inline one, that nothing else changes during the
     // call. This adds only to that table and the tables below it, so `into` stays valid throughout.
     func ParseKeyValue(&var self, into: *var TomlValue) {
-        var parts = Vector<String>(self.allocator);
+        var parts = Vector<String>::New(self.allocator);
         if !self.ParseKeyPath(parts) {
             parts.Clear();
             return;
@@ -655,7 +655,7 @@ extend TomlParser {
             array = true;
             self.Advance();
         }
-        var parts = Vector<String>(self.allocator);
+        var parts = Vector<String>::New(self.allocator);
         if !self.ParseKeyPath(parts) {
             parts.Clear();
             return null;
@@ -856,6 +856,6 @@ extend TomlParser {
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/toml/toml-parse
 pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue throws TomlParseFailure {
-    var parser = TomlParser(allocator, input, TomlLimits::Default());
+    var parser = TomlParser::New(allocator, input, TomlLimits::Default());
     return try parser.Parse();
 }

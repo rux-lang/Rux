@@ -144,7 +144,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 func Shown(bytes: byte[..], form: Base64Variant, spec: char8[..], expected: char8[..]) -> bool {
     var storage: char8[600];
-    var writer = BufferWriter(storage[..]);
+    var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Base64View = ViewBase64(bytes, form);
     if (try? shown.WriteDisplay(sink, Spec(spec))) is none { return false; }

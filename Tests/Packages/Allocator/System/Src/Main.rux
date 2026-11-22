@@ -51,7 +51,7 @@ func Main() throws AllocError {
     Assert(!AllocError::Unsupported.IsTransient(), "but an unsupported request will not");
     Assert(!AllocError::InvalidBlock.IsTransient(), "and neither will a mistaken one");
 
-    var allocator = SystemAllocator();
+    var allocator = SystemAllocator::New();
 
     // A concrete allocator can be borrowed directly as an interface view. The view changes the same allocator and
     // owns nothing, so it cannot accidentally duplicate or outlive allocator state.

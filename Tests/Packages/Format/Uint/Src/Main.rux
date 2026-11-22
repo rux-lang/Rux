@@ -9,7 +9,7 @@ import Format::{ ByteCursor };
 // buys: this test needs no allocator at all.
 func Check(value: uint, expected: char8[..], code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor(storage[..64]);
+    var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: uint = value;
     if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
@@ -51,7 +51,7 @@ func Main() -> int {
 
     // Text reports its length as a uint, so this is the overload a caller lands on when printing one, with no
     // annotation anywhere to steer it.
-    let text = StringView::FromBytes("Hello") ?? StringView();
+    let text = StringView::FromBytes("Hello") ?? StringView::New();
     code = Check(text.Length(), "5", 21);
     if code != 0 { return code; }
 

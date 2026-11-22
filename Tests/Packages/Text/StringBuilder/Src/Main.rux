@@ -10,9 +10,9 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // whole character rather than by checking afterwards.
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
-    var builder = StringBuilder(allocator);
+    var builder = StringBuilder::New(allocator);
     Assert(builder.IsEmpty() && builder.Length() == 0, "a new builder holds nothing");
     Assert(builder.Capacity() == 0, "and has taken no room");
 
@@ -67,7 +67,7 @@ func Main() -> int {
     Assert(builder.Capacity() > firstCapacity, "having taken more room to do it");
 
     // A full builder doubles its room rather than taking only what the append needs.
-    var doubling = StringBuilder(allocator);
+    var doubling = StringBuilder::New(allocator);
     doubling.Append("0123456789abcdef");
     Assert(doubling.Capacity() == 16, "filling the first block exactly");
     doubling.Append("xyz");

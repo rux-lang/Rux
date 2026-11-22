@@ -39,7 +39,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
     if spec.HasPrecision() { return try WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
-    var cursor = ByteCursor(storage[2..256]);
+    var cursor = ByteCursor::New(storage[2..256]);
     if value.class == WideClass::Zero {
         if value.negative {
             cursor.Push(c8'-');
@@ -104,7 +104,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
         }
     }
     if failure == none {
-        var cursor = ByteCursor(text[1u..textRoom]);
+        var cursor = ByteCursor::New(text[1u..textRoom]);
         if value.negative && value.class != WideClass::Zero {
             cursor.Push(c8'-');
         }

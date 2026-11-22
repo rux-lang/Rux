@@ -59,7 +59,7 @@ func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> throws Time
             throw .Unreadable;
         },
     };
-    var bytes = Vector<byte>(allocator);
+    var bytes = Vector<byte>::New(allocator);
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
         try {
@@ -101,7 +101,7 @@ extend TimeZone {
     /// @see https://rux-lang.dev/docs/api/timezone/zone#load
     pub func Load(allocator: Allocator, name: char8[..]) -> Self throws TimeZoneError {
         if !IsZoneName(name) { throw .InvalidName; }
-        var directory = Vector<char8>(allocator);
+        var directory = Vector<char8>::New(allocator);
         match Variable("TZDIR") {
             .Some(value) => {
                 if AsciiText(value, directory) && directory.Length() > 0u {
@@ -132,7 +132,7 @@ extend TimeZone {
 
     // Loads `name` from `directory`.
     func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> Self throws TimeZoneError {
-        var path = Vector<char8>(allocator);
+        var path = Vector<char8>::New(allocator);
         path.PushSlice(directory);
         path.Push(c8'/');
         path.PushSlice(name);
@@ -152,7 +152,7 @@ extend TimeZone {
             return try Self::WindowsLocal(allocator);
         }
         else {
-            var setting = Vector<char8>(allocator);
+            var setting = Vector<char8>::New(allocator);
             match Variable("TZ") {
                 .Some(value) => {
                     AsciiText(value, setting);

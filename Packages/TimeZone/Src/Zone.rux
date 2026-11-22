@@ -78,8 +78,8 @@ extend TimeZone {
     // An empty zone named `name`, ready to be filled.
     func Empty(allocator: Allocator, name: char8[..]) -> Self {
         var zone = Self {
-            name: Vector<char8>(allocator), names: Vector<char8>(allocator), transitions: Vector<int64>(allocator),
-            transitionTypes: Vector<uint8>(allocator), types: Vector<ZoneType>(allocator), rule: NoRule()
+            name: Vector<char8>::New(allocator), names: Vector<char8>::New(allocator), transitions: Vector<int64>::New(allocator),
+            transitionTypes: Vector<uint8>::New(allocator), types: Vector<ZoneType>::New(allocator), rule: NoRule()
         };
         zone.name.PushSlice(name);
         return move zone;

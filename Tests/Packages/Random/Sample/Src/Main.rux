@@ -7,7 +7,7 @@ import Math::Abs;
 import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256(8675309);
+    var generator = Xoshiro256::New(8675309);
 
     // A shuffle is a permutation: every element still present, exactly once.
     var items: uint64[16];
@@ -149,7 +149,7 @@ func Main() -> int {
     while run < 20000 {
         var sample: uint64[4];
         let sampleRoom = sample[..4];
-        var reservoir = Reservoir<uint64>(sampleRoom);
+        var reservoir = Reservoir<uint64>::New(sampleRoom);
         index = 0;
         while index < 20 {
             Offer<Xoshiro256, uint64>(generator, reservoir, index as uint64);
@@ -182,7 +182,7 @@ func Main() -> int {
     // A stream shorter than the reservoir is kept whole.
     var shortSample: uint64[6];
     let shortRoom = shortSample[..6];
-    var shortReservoir = Reservoir<uint64>(shortRoom);
+    var shortReservoir = Reservoir<uint64>::New(shortRoom);
     index = 0;
     while index < 3 {
         Offer<Xoshiro256, uint64>(generator, shortReservoir, (100 + index) as uint64);
@@ -194,7 +194,7 @@ func Main() -> int {
 
     // A reservoir with no room accepts the stream and keeps nothing.
     let noRoom = shortSample[..0];
-    var emptyReservoir = Reservoir<uint64>(noRoom);
+    var emptyReservoir = Reservoir<uint64>::New(noRoom);
     Offer<Xoshiro256, uint64>(generator, emptyReservoir, 7);
     Assert(emptyReservoir.Length() == 0 && emptyReservoir.Seen() == 1,
            "a reservoir with no room still counts what it was offered");

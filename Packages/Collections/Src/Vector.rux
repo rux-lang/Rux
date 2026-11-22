@@ -52,7 +52,7 @@ extend Vector<T> {
     /// @param allocator where the storage comes from
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/vector#new
-    pub func Vector(allocator: Allocator) -> Self {
+    pub func New(allocator: Allocator) -> Self {
         return Self { data: null, length: 0, capacity: 0, allocator };
     }
 
@@ -64,7 +64,7 @@ extend Vector<T> {
     /// @returns an empty vector with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/vector#with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint) -> Self {
-        var vector = Vector<T>(allocator);
+        var vector = Vector<T>::New(allocator);
         if capacity == 0 {
             return move vector;
         }
@@ -80,7 +80,7 @@ extend Vector<T> {
     /// @returns a vector holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/vector#from-slice
     pub func FromSlice(allocator: Allocator, items: T[..]) -> Self {
-        var vector = Vector<T>(allocator);
+        var vector = Vector<T>::New(allocator);
         if items.length == 0 {
             return move vector;
         }
@@ -114,7 +114,7 @@ extend Vector<T> {
     /// @returns an independent copy, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-clone
     pub func TryClone(&self) -> Self throws AllocError {
-        var vector = Vector<T>(self.allocator);
+        var vector = Vector<T>::New(self.allocator);
         try vector.TryReserve(self.length);
         vector.PushSlice(self.AsSlice());
         return move vector;
@@ -414,7 +414,7 @@ extend Vector<T> {
     /// @returns a cursor yielding copies of the elements
     /// @see https://rux-lang.dev/docs/api/collections/vector#iterate
     pub func Iterate(&self) -> ValueIterator<T> {
-        return ValueIterator<T>(self.AsSlice());
+        return ValueIterator<T>::New(self.AsSlice());
     }
 
     /// An iterator over pointers to the elements.
@@ -422,7 +422,7 @@ extend Vector<T> {
     /// @returns a cursor yielding the elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/vector#references
     pub func References(&self) -> ReferenceIterator<T> {
-        return ReferenceIterator<T>(self.AsSlice());
+        return ReferenceIterator<T>::New(self.AsSlice());
     }
 
     /// An iterator over writable pointers to initialized elements, without copying them.
@@ -431,7 +431,7 @@ extend Vector<T> {
     /// @returns a cursor yielding writable element addresses
     /// @see https://rux-lang.dev/docs/api/collections/vector#mutable-references
     pub func MutableReferences(&var self) -> MutableReferenceIterator<T> {
-        return MutableReferenceIterator<T>(self.AsMutableSlice());
+        return MutableReferenceIterator<T>::New(self.AsMutableSlice());
     }
 
     /// Inserts `value` at `index`, moving everything from there on one place along.

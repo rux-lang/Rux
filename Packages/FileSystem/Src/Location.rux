@@ -68,7 +68,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString throws IoError {
 /// @returns success when the working directory changed
 /// @see https://rux-lang.dev/docs/api/filesystem/location#set-current-directory
 pub func SetCurrentDirectory(allocator: Allocator, path: Path) throws IoError {
-    let native = try NativePath(allocator, path);
+    let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
         // in scope, and a `uint16` unit is a `char16`.
@@ -111,7 +111,7 @@ when #target.os != .Windows {
     // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
     // is the answer the walk below asks for at every component.
     func ReadLinkText(allocator: Allocator, path: Path) -> OsString? throws IoError {
-        let native = try NativePath(allocator, path);
+        let native = try NativePath::New(allocator, path);
         var units: OsUnit[4096];
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope, and
         // `units` is a local array of 4096 units, the length passed.
@@ -170,7 +170,7 @@ when #target.os != .Windows {
                 stepping = false;
             }
             else {
-                let segment = step ?? OsStringView();
+                let segment = step ?? OsStringView::New();
                 if segment.IsEmpty() || SegmentIs(segment, 1) {
                     // The root component and a bare `.` both add nothing.
                 }
@@ -218,7 +218,7 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer throws IoE
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
         // carries no access rights, which is enough here and works on a file this process may not read.
-        let native = try NativePath(allocator, path);
+        let native = try NativePath::New(allocator, path);
         let handle = OpenForQuery(native, true);
         if (handle as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
@@ -241,7 +241,7 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer throws IoE
         // No Unix kernel resolves a whole path for a caller — `realpath` is library code over `readlink` — so
         // the walk is done here, component by component, against what each link actually points at.
         var started = try Absolute(allocator, path);
-        var resolved = PathBuffer(allocator);
+        var resolved = PathBuffer::New(allocator);
         var followed: uint = 0;
         try ResolveInto(allocator, started.AsPath(), resolved, @followed);
         started.Release();

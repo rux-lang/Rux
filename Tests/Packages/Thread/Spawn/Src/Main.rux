@@ -110,7 +110,7 @@ func Main() -> int {
     Assert(AtomicLoad(@finished, MemoryOrder::Acquire) == 5u64, "joined threads without a result ran");
 
     // A larger stack holds a deeper recursion.
-    let options = ThreadOptions().WithStackSize(16u * 1024u * 1024u);
+    let options = ThreadOptions::New().WithStackSize(16u * 1024u * 1024u);
     Assert(options.StackSize() == 16u * 1024u * 1024u, "the options keep the stack size");
     var deep = try SpawnWith(options, Deep, 1000u64) catch { _ => return 40 };
     Assert(deep.Join() == 1001u64, "a thread with a larger stack runs a deep recursion");

@@ -205,9 +205,6 @@ ConstantCallEvaluator::Completion ConstantCallEvaluator::ExecuteLet(const LetStm
     else if (let.init) {
         value = EvaluateAs(*let.init, declared.IsUnknown() ? ValueType(TypeOf(*let.init)) : declared);
     }
-    else if (const auto found = context.defaultConstructors.find(&let); found != context.defaultConstructors.end()) {
-        value = Invoke(*found->second.declaration, {}, nullptr, {}, let.location);
-    }
     else {
         value = DefaultValue(declared, let.location);
     }

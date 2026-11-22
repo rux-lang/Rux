@@ -173,7 +173,7 @@ extend Tracked {
 // A scope for a tree of tracked values, so its destruction happens somewhere observable. `afterAttaching` reports
 // what the counter read once everything was in, which is what separates the insertions from the destruction.
 func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterAttaching: *var int32) {
-    var tree = Tree<int32, Tracked>(allocator);
+    var tree = Tree<int32, Tracked>::New(allocator);
     var key: int32 = 0;
     while key < count {
         tree.Attach(key, Tracked { counter, value: key }, CompareInt32);
@@ -187,7 +187,7 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 // The value a replaced key displaces has to come back rather than be destroyed in place, and the one that comes back
 // has to be destroyed exactly once when the caller is done with it.
 func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *var int32) {
-    var tree = Tree<int32, Tracked>(allocator);
+    var tree = Tree<int32, Tracked>::New(allocator);
     let first = tree.Attach(7, Tracked { counter, value: 1 }, CompareInt32);
     Assert(!(first is Tracked), "nothing was displaced by a fresh key");
 
@@ -201,7 +201,7 @@ func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *
 // Entries leaving through `Detach` rather than through the tree's own destruction, so the kernel's handover of a
 // value it owns is counted on its own — away from anything a map built on it does.
 func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take: int32, afterTaking: *var int32) {
-    var tree = Tree<int32, Tracked>(allocator);
+    var tree = Tree<int32, Tracked>::New(allocator);
     var key: int32 = 0;
     while key < count {
         tree.Attach(key, Tracked { counter, value: key }, CompareInt32);
@@ -223,19 +223,19 @@ func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take
 }
 
 func Main() -> int {
-    let allocator = SystemAllocator();
+    let allocator = SystemAllocator::New();
 
     // Ascending insertion, which is what turns an uncoloured binary search tree into a linked list of 64 nodes. A
     // depth of at most twelve is the bound the colouring promises for this many entries, and the whole reason for
     // paying for the rotations.
-    var ascending = Tree<int32, int32>(allocator);
+    var ascending = Tree<int32, int32>::New(allocator);
     let ascendingDepth = Fill(ascending, 64, 1);
     Assert(ascending.Length() == 64, "the tree holds every key");
     Assert(WalkedInOrder(ascending) == 64, "and walks them in order");
     Assert(ascendingDepth <= 12, "sorted input does not make a list of it");
 
     // Descending insertion, the other degenerate order, taken through the mirrored half of the fix-up.
-    var descending = Tree<int32, int32>(allocator);
+    var descending = Tree<int32, int32>::New(allocator);
     var key: int32 = 63;
     while key >= 0 {
         descending.Attach(key, key * 3, CompareInt32);
@@ -308,7 +308,7 @@ func Main() -> int {
 
     // Built and taken apart in orders nothing about the algorithm makes convenient: both strides are coprime with
     // the count, so each reaches every key while arriving nowhere near sorted.
-    var churned = Tree<int32, int32>(allocator);
+    var churned = Tree<int32, int32>::New(allocator);
     Assert(Fill(churned, 64, 37) <= 12, "a shuffled build stays balanced too");
     Assert(WalkedInOrder(churned) == 64, "and comes out in order");
     Drain(churned, 64, 23);

@@ -31,7 +31,7 @@ extend Pcg64Dxsm {
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value, on the default stream
     /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#new
-    pub func Pcg64Dxsm(seed: uint64) -> Self {
+    pub func New(seed: uint64) -> Self {
         return Self::WithStream(seed, 0);
     }
 
@@ -44,10 +44,10 @@ extend Pcg64Dxsm {
     /// @returns a generator seeded with that value, on the given stream
     /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#with-stream
     pub func WithStream(seed: uint64, stream: uint64) -> Self {
-        var mixer = SplitMix64(seed);
+        var mixer = SplitMix64::New(seed);
         let stateHigh = mixer.NextUint64() as uint128;
         let stateLow = mixer.NextUint64() as uint128;
-        var streamMixer = SplitMix64(stream);
+        var streamMixer = SplitMix64::New(stream);
         let incrementHigh = streamMixer.NextUint64() as uint128;
         let incrementLow = streamMixer.NextUint64() as uint128;
         var generator = Self {

@@ -20,7 +20,7 @@ struct Tracked {
 }
 
 extend Tracked {
-    func Tracked(log: *var Log, id: int32) -> Self {
+    func New(log: *var Log, id: int32) -> Self {
         return Self { log, id };
     }
 
@@ -96,7 +96,7 @@ func LiteralIntoLocal(log: *var Log) {
 
 func ConstructorIntoLocal(log: *var Log) {
     var item = Track(log, 1i32);
-    item = Tracked(log, 2i32);
+    item = Tracked::New(log, 2i32);
     Mark(log);
     Assert(item.id == 2i32, "the constructed value is installed as it stands");
 }

@@ -28,7 +28,7 @@ when #target.os {
 /// @returns the addresses, or fails with `NotFound` when the name has none, or with the resolver's reason
 /// @see https://rux-lang.dev/docs/api/net/resolve#resolve
 pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> throws IoError {
-    var addresses = Vector<SocketAddress>(allocator);
+    var addresses = Vector<SocketAddress>::New(allocator);
     match IpAddress::Parse(host) {
         .Some(ip) => {
             addresses.Push(SocketAddress { ip, port });
@@ -56,7 +56,7 @@ when #target.os != .Linux {
         -> Vector<SocketAddress> throws IoError {
         var results = move addresses;
         StartNetworking();
-        var name = Vector<char8>(allocator);
+        var name = Vector<char8>::New(allocator);
         name.PushSlice(host);
         name.Push(c8'\0');
         let hints = AddressInfo {

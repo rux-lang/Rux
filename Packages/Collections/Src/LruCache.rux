@@ -37,11 +37,11 @@ extend LruCache<K, V> {
     /// @param equals whether two keys are the same
     /// @returns the cache
     /// @see https://rux-lang.dev/docs/api/collections/lru-cache#new
-    pub func LruCache(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
+    pub func New(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
                       equals: func(K, K) -> bool) -> Self {
         return Self {
-            entries: Vector<CacheEntry<K, V>>(allocator),
-            index: HashMap<K, uint>(allocator, hash, equals),
+            entries: Vector<CacheEntry<K, V>>::New(allocator),
+            index: HashMap<K, uint>::New(allocator, hash, equals),
             capacity: if capacity == 0 { 1u } else { capacity },
             newest: NoEntry,
             oldest: NoEntry

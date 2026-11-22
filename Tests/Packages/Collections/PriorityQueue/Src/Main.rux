@@ -27,7 +27,7 @@ extend Owned {
 }
 
 func Main() -> int {
-    var queue = PriorityQueue<int32>(SystemAllocator());
+    var queue = PriorityQueue<int32>::New(SystemAllocator::New());
     Assert(queue.IsEmpty() && queue.Pop() == none && queue.Peek() is none, "an empty queue");
     let values: int32[8] = [5, 1, 9, 3, 9, 7, 2, 8];
     for value in values[..] { queue.Push(value); }
@@ -37,7 +37,7 @@ func Main() -> int {
     for value in expected[..] { Assert((queue.Pop() ?? -1) == value, "elements come out largest first"); }
     Assert(queue.IsEmpty(), "every element came out");
 
-    var jobs = PriorityQueue<Job>(SystemAllocator());
+    var jobs = PriorityQueue<Job>::New(SystemAllocator::New());
     jobs.Push(Job { priority: 4 });
     jobs.Push(Job { priority: 1 });
     jobs.Push(Job { priority: 3 });
@@ -45,7 +45,7 @@ func Main() -> int {
     jobs.Clear();
     Assert(jobs.Length() == 0u, "clearing empties it");
 
-    var owned = PriorityQueue<Owned>(SystemAllocator());
+    var owned = PriorityQueue<Owned>::New(SystemAllocator::New());
     owned.Push(Owned { value: 2 });
     owned.Push(Owned { value: 6 });
     match owned.Pop() {

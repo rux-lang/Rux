@@ -227,7 +227,7 @@ func Main() -> int {
     try SleepFor(Duration::FromMicroseconds(200)) catch { _ => Panic("a sub-millisecond sleep completes") };
 
     // The system waiter reports the same way through the generic entry point as through SleepFor.
-    var system = SystemWaiter();
+    var system = SystemWaiter::New();
     try SleepUsing<SystemWaiter>(system, Duration::FromMilliseconds(1)) catch {
         _ => Panic("the system waiter drives the same loop"),
     };

@@ -68,7 +68,7 @@ extend TestFailure {
 
     // A writer over the room left, for formatting into; `Grow` then takes what it wrote.
     func Rest(&var self) -> BufferWriter {
-        return BufferWriter(self.text[self.length..MessageRoom]);
+        return BufferWriter::New(self.text[self.length..MessageRoom]);
     }
 
     func Grow(&var self, writer: &BufferWriter) {
