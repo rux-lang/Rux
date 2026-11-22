@@ -9,79 +9,81 @@
 
 import Core::Ownership::Copyable;
 
-/// Shuffles `items` into a uniformly random order.
-/// Fisher and Yates' method, walking from the end and swapping each position with one at or below it. The bound
-/// is what makes it uniform: swapping with a position anywhere in the collection is the version that is subtly
-/// biased, and it is the version almost everyone writes first.
-/// Runs in time proportional to the length and allocates nothing.
-/// @typeParam G the generator's type
-/// @typeParam T the item type
-/// @param generator where the bits come from
-/// @param items the sequence to shuffle in place
-/// @see https://rux-lang.dev/docs/api/random/sampling#shuffle
-pub func Shuffle<G: RandomGenerator + Copyable, T: Copyable>(generator: &var G, items: var T[..]) {
-    if items.length < 2 { return; }
-    var index = items.length - 1u;
-    while index > 0 {
-        // At or below the current position, never above it.
-        let target = UniformBelow<G>(generator, (index + 1u) as uint64) as uint;
-        if target != index {
-            let held = items[index];
-            items[index] = items[target];
-            items[target] = held;
+pub module Sampling {
+    /// Shuffles `items` into a uniformly random order.
+    /// Fisher and Yates' method, walking from the end and swapping each position with one at or below it. The bound
+    /// is what makes it uniform: swapping with a position anywhere in the collection is the version that is subtly
+    /// biased, and it is the version almost everyone writes first.
+    /// Runs in time proportional to the length and allocates nothing.
+    /// @typeParam G the generator's type
+    /// @typeParam T the item type
+    /// @param generator where the bits come from
+    /// @param items the sequence to shuffle in place
+    /// @see https://rux-lang.dev/docs/api/random/sampling#shuffle
+    pub func Shuffle<G: RandomGenerator + Copyable, T: Copyable>(generator: &var G, items: var T[..]) {
+        if items.length < 2 { return; }
+        var index = items.length - 1u;
+        while index > 0 {
+            // At or below the current position, never above it.
+            let target = UniformBelow<G>(generator, (index + 1u) as uint64) as uint;
+            if target != index {
+                let held = items[index];
+                items[index] = items[target];
+                items[target] = held;
+            }
+            index = index - 1u;
         }
-        index = index - 1u;
     }
-}
 
-/// A uniformly chosen index below `count`, or `count` itself when there is nothing to choose from.
-/// Returning the count for an empty collection gives the caller a value that cannot be mistaken for a valid
-/// index, which a zero would be.
-/// @typeParam G the generator's type
-/// @param generator where the bits come from
-/// @param count how many there are to choose among
-/// @returns an index in `[0, count)`, each equally likely
-/// @see https://rux-lang.dev/docs/api/random/sampling#choose-index
-pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
-    if count == 0 { return 0u; }
-    return UniformBelow<G>(generator, count as uint64) as uint;
-}
+    /// A uniformly chosen index below `count`, or `count` itself when there is nothing to choose from.
+    /// Returning the count for an empty collection gives the caller a value that cannot be mistaken for a valid
+    /// index, which a zero would be.
+    /// @typeParam G the generator's type
+    /// @param generator where the bits come from
+    /// @param count how many there are to choose among
+    /// @returns an index in `[0, count)`, each equally likely
+    /// @see https://rux-lang.dev/docs/api/random/sampling#choose-index
+    pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
+        if count == 0 { return 0u; }
+        return UniformBelow<G>(generator, count as uint64) as uint;
+    }
 
-/// An index chosen in proportion to `weights`.
-/// A weight of zero is never chosen; negative weights are treated as zero rather than subtracting from the
-/// total, since a negative probability has no meaning and silently reversing a comparison is worse than
-/// ignoring the entry. Weights that are all zero, or an empty slice, give the length — the same
-/// out-of-range answer `ChooseIndex` gives for an empty collection.
-/// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
-/// @typeParam G the generator's type
-/// @param generator where the bits come from
-/// @param weights the relative weight of each index; they need not sum to one
-/// @returns an index chosen in proportion to its weight
-/// @see https://rux-lang.dev/docs/api/random/sampling#weighted-index
-pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: float64[..]) -> uint {
-    var total = 0.0;
-    var index: uint = 0;
-    while index < weights.length {
-        if weights[index] > 0.0 {
-            total = total + weights[index];
+    /// An index chosen in proportion to `weights`.
+    /// A weight of zero is never chosen; negative weights are treated as zero rather than subtracting from the
+    /// total, since a negative probability has no meaning and silently reversing a comparison is worse than
+    /// ignoring the entry. Weights that are all zero, or an empty slice, give the length — the same
+    /// out-of-range answer `ChooseIndex` gives for an empty collection.
+    /// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
+    /// @typeParam G the generator's type
+    /// @param generator where the bits come from
+    /// @param weights the relative weight of each index; they need not sum to one
+    /// @returns an index chosen in proportion to its weight
+    /// @see https://rux-lang.dev/docs/api/random/sampling#weighted-index
+    pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: float64[..]) -> uint {
+        var total = 0.0;
+        var index: uint = 0;
+        while index < weights.length {
+            if weights[index] > 0.0 {
+                total = total + weights[index];
+            }
+            index = index + 1;
         }
-        index = index + 1;
+        if !(total > 0.0) { return weights.length; }
+        var target = NextFloat64<G>(generator) * total;
+        index = 0;
+        while index < weights.length {
+            let weight = if weights[index] > 0.0 { weights[index] } else { 0.0 };
+            if target < weight { return index; }
+            target = target - weight;
+            index = index + 1;
+        }
+        // Only reachable if rounding in the subtraction leaves a residue; the last positive weight is the honest
+        // answer, since that is the interval the draw fell in.
+        index = weights.length;
+        while index > 0 {
+            index = index - 1u;
+            if weights[index] > 0.0 { return index; }
+        }
+        return weights.length;
     }
-    if !(total > 0.0) { return weights.length; }
-    var target = NextFloat64<G>(generator) * total;
-    index = 0;
-    while index < weights.length {
-        let weight = if weights[index] > 0.0 { weights[index] } else { 0.0 };
-        if target < weight { return index; }
-        target = target - weight;
-        index = index + 1;
-    }
-    // Only reachable if rounding in the subtraction leaves a residue; the last positive weight is the honest
-    // answer, since that is the interval the draw fell in.
-    index = weights.length;
-    while index > 0 {
-        index = index - 1u;
-        if weights[index] > 0.0 { return index; }
-    }
-    return weights.length;
 }

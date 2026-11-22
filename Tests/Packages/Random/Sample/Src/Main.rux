@@ -4,7 +4,8 @@
 
 import Core::Diagnostics::Assert;
 import Math::Abs;
-import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
+import Random::{ RandomGenerator, Xoshiro256 };
+import Random::Sampling::{ ChooseIndex, Offer, Reservoir, Shuffle, WeightedIndex };
 
 func Main() -> int {
     var generator = Xoshiro256::New(8675309);

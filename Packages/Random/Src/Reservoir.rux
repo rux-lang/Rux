@@ -3,69 +3,70 @@
 // instead. This keeps only the sample, so a stream of any length — a file being read, a query being scanned --
 // costs the memory of the answer rather than the memory of the input.
 
-
-/// A reservoir sample being built.
-/// Offer every item of the stream in turn and the reservoir ends holding a uniformly chosen subset of whatever
-/// arrived, each subset of that size equally likely. The caller owns the storage, and its length is the sample
-/// size.
-/// @typeParam T the item type
-/// @see https://rux-lang.dev/docs/api/random/reservoir
-pub struct Reservoir<T> {
-    /// Where the sample is kept; its length is the sample size.
-    room: var T[..];
-    /// How many items have been offered so far.
-    seen: uint;
-}
-
-extend Reservoir<T> {
-    /// A reservoir that will fill `room`.
-    /// @param room how many items the reservoir keeps
-    /// @returns an empty reservoir that will keep `room` items
-    /// @see https://rux-lang.dev/docs/api/random/reservoir#new
-    pub func New(room: var T[..]) -> Self {
-        return Self { room, seen: 0 };
+pub module Sampling {
+    /// A reservoir sample being built.
+    /// Offer every item of the stream in turn and the reservoir ends holding a uniformly chosen subset of whatever
+    /// arrived, each subset of that size equally likely. The caller owns the storage, and its length is the sample
+    /// size.
+    /// @typeParam T the item type
+    /// @see https://rux-lang.dev/docs/api/random/reservoir
+    pub struct Reservoir<T> {
+        /// Where the sample is kept; its length is the sample size.
+        room: var T[..];
+        /// How many items have been offered so far.
+        seen: uint;
     }
 
-    /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
-    /// offered.
-    /// @returns how many items it currently holds
-    /// @see https://rux-lang.dev/docs/api/random/reservoir#length
-    pub func Length(&self) -> uint {
-        return if self.seen < self.room.length { self.seen } else { self.room.length };
+    extend Reservoir<T> {
+        /// A reservoir that will fill `room`.
+        /// @param room how many items the reservoir keeps
+        /// @returns an empty reservoir that will keep `room` items
+        /// @see https://rux-lang.dev/docs/api/random/reservoir#new
+        pub func New(room: var T[..]) -> Self {
+            return Self { room, seen: 0 };
+        }
+
+        /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
+        /// offered.
+        /// @returns how many items it currently holds
+        /// @see https://rux-lang.dev/docs/api/random/reservoir#length
+        pub func Length(&self) -> uint {
+            return if self.seen < self.room.length { self.seen } else { self.room.length };
+        }
+
+        /// How many items have been offered.
+        /// @returns how many items have been offered to it in total
+        /// @see https://rux-lang.dev/docs/api/random/reservoir#seen
+        pub func Seen(&self) -> uint {
+            return self.seen;
+        }
     }
 
-    /// How many items have been offered.
-    /// @returns how many items have been offered to it in total
-    /// @see https://rux-lang.dev/docs/api/random/reservoir#seen
-    pub func Seen(&self) -> uint {
-        return self.seen;
-    }
-}
-
-/// Offers `item` to `reservoir`.
-/// Algorithm R: while the reservoir has room the item is kept outright, and afterwards the item replaces a
-/// uniformly chosen existing entry with probability equal to the sample size over the number seen. That is what
-/// keeps every subset equally likely at every moment, not merely at the end — so a stream can be cut short and
-/// the sample is still uniform over what arrived.
-/// @typeParam G the generator's type
-/// @typeParam T the item type
-/// @param generator where the bits come from
-/// @param reservoir the reservoir to offer the item to
-/// @param item the item being offered
-/// @see https://rux-lang.dev/docs/api/random/reservoir#offer
-pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
-    if reservoir.room.length == 0 {
+    /// Offers `item` to `reservoir`.
+    /// Algorithm R: while the reservoir has room the item is kept outright, and afterwards the item replaces a
+    /// uniformly chosen existing entry with probability equal to the sample size over the number seen. That is what
+    /// keeps every subset equally likely at every moment, not merely at the end — so a stream can be cut short and
+    /// the sample is still uniform over what arrived.
+    /// @typeParam G the generator's type
+    /// @typeParam T the item type
+    /// @param generator where the bits come from
+    /// @param reservoir the reservoir to offer the item to
+    /// @param item the item being offered
+    /// @see https://rux-lang.dev/docs/api/random/reservoir#offer
+    pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
+        if reservoir.room.length == 0 {
+            reservoir.seen = reservoir.seen + 1u;
+            return;
+        }
+        if reservoir.seen < reservoir.room.length {
+            reservoir.room[reservoir.seen] = item;
+            reservoir.seen = reservoir.seen + 1u;
+            return;
+        }
         reservoir.seen = reservoir.seen + 1u;
-        return;
-    }
-    if reservoir.seen < reservoir.room.length {
-        reservoir.room[reservoir.seen] = item;
-        reservoir.seen = reservoir.seen + 1u;
-        return;
-    }
-    reservoir.seen = reservoir.seen + 1u;
-    let position = UniformBelow<G>(generator, reservoir.seen as uint64) as uint;
-    if position < reservoir.room.length {
-        reservoir.room[position] = item;
+        let position = UniformBelow<G>(generator, reservoir.seen as uint64) as uint;
+        if position < reservoir.room.length {
+            reservoir.room[position] = item;
+        }
     }
 }

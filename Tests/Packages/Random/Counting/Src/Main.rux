@@ -5,7 +5,8 @@
 
 import Core::Diagnostics::Assert;
 import Math::{ Abs, IsFinite, Sqrt };
-import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator, Xoshiro256 };
+import Random::{ RandomGenerator, Xoshiro256 };
+import Random::Distributions::{ Beta, Binomial, Gamma, GammaWithScale, Poisson };
 
 func Main() -> int {
     var generator = Xoshiro256::New(31337);
