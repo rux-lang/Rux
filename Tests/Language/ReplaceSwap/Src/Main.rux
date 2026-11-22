@@ -1,0 +1,54 @@
+// Only a local, a parameter or a temporary can be given away. A field, an element or the referent of a reference
+// keeps living, so its old value is taken with Core's `Replace`, which installs a new one and returns the old, or
+// exchanged with `Swap`; a value whose type declares no destructor can also be taken apart with a pattern. Neither
+// copies nor destroys anything, so each value is destroyed once, by whoever holds it last.
+
+import Core::Diagnostics::Assert;
+import Core::Ownership::{ Replace, Swap };
+
+var log: int = 0;
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    destructor {
+        log = log * 10 + self.id;
+    }
+}
+
+struct Holder {
+    first: Token;
+    second: Token;
+}
+
+func Rename(slot: &var Token, id: int) -> Token {
+    return Replace(slot, Token { id });
+}
+
+func Main() -> int {
+    var holder = Holder { first: Token { id: 1 }, second: Token { id: 2 } };
+    let old = Replace(&var holder.first, Token { id: 3 });
+    Assert(log == 0 && old.id == 1 && holder.first.id == 3, "Replace takes a field's value and destroys nothing");
+    destroy old;
+    Assert(log == 1, "the taken value is destroyed once, by its new owner");
+
+    Swap(&var holder.first, &var holder.second);
+    Assert(holder.first.id == 2 && holder.second.id == 3 && log == 1, "Swap exchanges two fields");
+
+    var tokens = [Token { id: 4 }, Token { id: 5 }];
+    let element = Replace(&var tokens[0], Token { id: 6 });
+    Assert(element.id == 4 && tokens[0].id == 6, "an element is taken the same way");
+    destroy element;
+    Assert(log == 14, "and destroyed once");
+
+    let renamed = Rename(&var holder.second, 7);
+    Assert(renamed.id == 3 && holder.second.id == 7, "a referent is taken through a reference");
+    destroy renamed;
+    Assert(log == 143, "nothing was copied or destroyed twice");
+
+    let Holder { first, second } = holder;
+    Assert(first.id == 2 && second.id == 7, "a value without a destructor is taken apart with a pattern");
+    return 0;
+}

@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ReplaceSwap"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: Replace and Swap take a value out of a field, an element or a referent"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

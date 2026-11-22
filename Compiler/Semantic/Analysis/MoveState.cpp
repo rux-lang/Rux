@@ -991,7 +991,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         const MovePlace place = AnalyzeMovePlace(expression);
         EmitError(location, std::format("cannot move '{}' out of borrowed reference storage", place.Display()),
                   {"references do not transfer ownership of the value they borrow"},
-                  "move the owning value or clone the borrowed value explicitly");
+                  std::format("take it with 'Replace(&var {}, value)' or 'Swap', or clone it", place.Display()));
         return false;
     }
     // A read through a raw pointer takes the value out and leaves the storage empty: a pointer cannot say whether its
@@ -1003,7 +1003,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     if (place.IsBorrowedStorage()) {
         EmitError(location, std::format("cannot move '{}' out of borrowed pointer storage", place.Display()),
                   {"borrowed pointers do not transfer ownership of the value they address"},
-                  "move the owning value or clone the pointed-to value explicitly");
+                  std::format("take it with 'Replace(&var {}, value)' or 'Swap', or clone it", place.Display()));
         return false;
     }
     if (place.IsComplete()) {
@@ -1014,7 +1014,8 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
               std::format("cannot move {} out of '{}', which is destroyed as a whole",
                           place.LastProjectionDescription(), place.ContainerDisplay()),
               {"partial moves would leave the aggregate with only some fields initialized when it is destroyed"},
-              "move the complete aggregate or borrow or clone the component explicitly");
+              std::format("take it with 'Replace(&var {}, value)' or 'Swap', or take '{}' apart with a pattern",
+                          place.Display(), place.ContainerDisplay()));
     return false;
 }
 
