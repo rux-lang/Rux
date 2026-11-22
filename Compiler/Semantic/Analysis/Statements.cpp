@@ -148,6 +148,16 @@ void AnalysisContext::EmitError(const SourceLocation location, std::string messa
             help = DiagnosticTypeNames(std::move(*help));
         }
     }
+    // An expression can be checked more than once -- as a compound assignment's target and operand, or again when a
+    // conversion or a receiver needs its type -- and each check reports what it finds. The same error at the same
+    // place says nothing new, so it is reported once.
+    if (std::ranges::any_of(diags, [&](const SemanticDiagnostic &reported) {
+            return reported.severity == SemanticDiagnostic::Severity::Error && reported.location == location &&
+                   reported.sourceName == currentFile && reported.message == message && reported.notes == notes &&
+                   reported.help == help;
+        })) {
+        return;
+    }
     diags.push_back({SemanticDiagnostic::Severity::Error,
                      currentFile,
                      location,

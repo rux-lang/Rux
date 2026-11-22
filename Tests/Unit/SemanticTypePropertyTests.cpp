@@ -490,9 +490,9 @@ TEST_CASE("a destructor is a block of its type's extension and a type has at mos
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     const SemanticModel model = analyzer.Analyze();
-    CHECK(std::ranges::any_of(model.diagnostics, [](const Diagnostic &diagnostic) {
-        return diagnostic.message == "'Bad' already has a destructor";
-    }));
+    // The second destructor is reported once, as a destructor, and not again as an overload of the first.
+    REQUIRE_EQ(model.diagnostics.size(), 1);
+    CHECK_EQ(model.diagnostics.front().message, "'Bad' already has a destructor");
 
     const auto parseErrors = [](const std::string &source) {
         Lexer sourceLexer(source, "destructor_forms.rux");

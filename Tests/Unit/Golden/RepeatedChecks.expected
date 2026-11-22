@@ -1,0 +1,2 @@
+9:5: error: variable 'tally' is used before it is initialized
+10:12: error: variable 'tally' is used before it is initialized

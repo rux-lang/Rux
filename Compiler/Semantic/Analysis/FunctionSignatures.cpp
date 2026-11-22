@@ -341,6 +341,10 @@ bool AnalysisContext::SameFunctionSignature(const FunctionSignature &left, const
 
 void AnalysisContext::ValidateFunctionSignature(const FuncDecl &declaration,
                                                 const std::vector<const FuncDecl *> &overloads, const bool isMethod) {
+    // A destructor has no overloads: a second one is reported as such where destructors are classified.
+    if (IsDestructorName(declaration.name)) {
+        return;
+    }
     const auto signature = ResolveFunctionSignature(declaration, isMethod);
     if (!signature) {
         return;

@@ -1,0 +1,11 @@
+// An expression checked more than once reports each error once: the target of a compound assignment is read and then
+// written, and both checks find the same uninitialized local.
+struct Tally {
+    count: int;
+}
+
+func Count() -> int {
+    var tally: Tally;
+    tally.count += 1;
+    return tally.count;
+}
