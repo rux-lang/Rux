@@ -27,13 +27,13 @@ func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemDir.tmp", dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemDir.tmp", &var dirHolder);
     var oneHolder = OsString::New(allocator);
-    let one = PathOf(allocator, "Bin/FileSystemDir.tmp/one.txt", oneHolder);
+    let one = PathOf(allocator, "Bin/FileSystemDir.tmp/one.txt", &var oneHolder);
     var twoHolder = OsString::New(allocator);
-    let two = PathOf(allocator, "Bin/FileSystemDir.tmp/two.txt", twoHolder);
+    let two = PathOf(allocator, "Bin/FileSystemDir.tmp/two.txt", &var twoHolder);
     var accentHolder = OsString::New(allocator);
-    let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", accentHolder);
+    let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", &var accentHolder);
 
     // Fresh ground: an earlier run may have left the tree behind, and cleanup is not the thing under test yet.
     DeleteFile(allocator, one) catch { _ => {} };
@@ -57,11 +57,11 @@ func Run() -> int ! IoError {
     // Read back: three names, each one expected, the accent intact in the system's own units.
     var iterator = ReadDirectory(allocator, dir)!;
     var oneWantHolder = OsString::New(allocator);
-    let oneWant = NameOf(allocator, "one.txt", oneWantHolder);
+    let oneWant = NameOf(allocator, "one.txt", &var oneWantHolder);
     var twoWantHolder = OsString::New(allocator);
-    let twoWant = NameOf(allocator, "two.txt", twoWantHolder);
+    let twoWant = NameOf(allocator, "two.txt", &var twoWantHolder);
     var accentWantHolder = OsString::New(allocator);
-    let accentWant = NameOf(allocator, "caf\u{00E9}.txt", accentWantHolder);
+    let accentWant = NameOf(allocator, "caf\u{00E9}.txt", &var accentWantHolder);
     var seenOne = false;
     var seenTwo = false;
     var seenAccent = false;

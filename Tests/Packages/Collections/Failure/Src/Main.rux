@@ -39,7 +39,7 @@ func Main() -> int {
 
     // A count whose byte size cannot be addressed is rejected before anything is allocated.
     var empty = Vector<int64>::New(allocator);
-    if VectorRefusal(empty, uint::Max) != AllocError::Unsupported { return 22; }
+    if VectorRefusal(&var empty, uint::Max) != AllocError::Unsupported { return 22; }
     if empty.Capacity() != 0 || empty.Length() != 0 { return 23; }
 
     // A populated Vector survives a rejected reservation untouched: the same
@@ -56,13 +56,13 @@ func Main() -> int {
     let capacity = populated.Capacity();
 
     // The length plus the request wraps.
-    if VectorRefusal(populated, uint::Max) != AllocError::Unsupported { return 31; }
+    if VectorRefusal(&var populated, uint::Max) != AllocError::Unsupported { return 31; }
     if populated.AsSlice().data != block || populated.Length() != length { return 32; }
     if populated.Capacity() != capacity { return 33; }
 
     // The sum fits but its byte size does not, which is the other way the same
     // request fails.
-    if VectorRefusal(populated, uint::Max / 4) != AllocError::Unsupported { return 34; }
+    if VectorRefusal(&var populated, uint::Max / 4) != AllocError::Unsupported { return 34; }
     if populated.AsSlice().data != block || populated.Length() != length { return 35; }
     if populated.Capacity() != capacity { return 36; }
 
@@ -90,7 +90,7 @@ func Main() -> int {
     map.Insert(1, 10);
     map.Insert(2, 20);
     let mapCapacity = map.Capacity();
-    if MapRefusal(map, uint::Max) != AllocError::Unsupported { return 72; }
+    if MapRefusal(&var map, uint::Max) != AllocError::Unsupported { return 72; }
     if map.Length() != 2 || map.Capacity() != mapCapacity { return 73; }
     if map.Get(1) != 10 { return 74; }
 

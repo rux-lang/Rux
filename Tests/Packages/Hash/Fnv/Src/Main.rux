@@ -110,7 +110,7 @@ func Main() -> int {
     // The generic helper borrows the caller's own hasher, so what it hashed is still in there afterwards.
     var helped = Fnv1a64::New();
     // Safety: `bytes` addresses the six bytes of "foobar".
-    let helpedHash = HashBytes<Fnv1a64>(helped, bytes, 6);
+    let helpedHash = HashBytes<Fnv1a64>(&var helped, bytes, 6);
     Assert(helpedHash == 0x85944171F73967E8, "the generic helper hashes what it is given");
     Assert(helped.Finish() == 0x85944171F73967E8, "leaving the caller's hasher holding it");
 
@@ -118,7 +118,7 @@ func Main() -> int {
     // that they agree with writing those bytes out by hand.
     var buffer: byte[8];
     var written = Fnv1a64::New();
-    WriteUint32<Fnv1a64>(written, 0x04030201);
+    WriteUint32<Fnv1a64>(&var written, 0x04030201);
     buffer[0] = 0x01;
     buffer[1] = 0x02;
     buffer[2] = 0x03;
@@ -127,7 +127,7 @@ func Main() -> int {
            "a 32-bit write is its four bytes, least significant first");
 
     var written64 = Fnv1a64::New();
-    WriteUint64<Fnv1a64>(written64, 0x0807060504030201);
+    WriteUint64<Fnv1a64>(&var written64, 0x0807060504030201);
     index = 0;
     while index < 8 {
         buffer[index] = (index + 1) as byte;
@@ -136,7 +136,7 @@ func Main() -> int {
     Assert(written64.Finish() == Bytes64(buffer[..8]), "and a 64-bit write is its eight");
 
     var writtenByte = Fnv1a64::New();
-    WriteByte<Fnv1a64>(writtenByte, 0x61);
+    WriteByte<Fnv1a64>(&var writtenByte, 0x61);
     Assert(writtenByte.Finish() == Hash64("a"), "and a single byte is that byte");
 
     // Different inputs give different hashes. Not a proof of anything, but a hash that collided on these would be

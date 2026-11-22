@@ -24,18 +24,18 @@ func Main() -> int {
     other.Set(5);
     other.Set(200);
     var joined = BitSet::New(SystemAllocator::New());
-    joined.UnionWith(bits);
-    joined.UnionWith(other);
+    joined.UnionWith(&bits);
+    joined.UnionWith(&other);
     Assert(joined.Count() == 3u && joined.Get(200) && joined.Length() == 201u, "union grows to span both");
     var both = BitSet::New(SystemAllocator::New());
-    both.UnionWith(joined);
-    both.IntersectWith(other);
+    both.UnionWith(&joined);
+    both.IntersectWith(&other);
     Assert(both.Count() == 2u && both.Get(5) && both.Get(200), "intersection");
-    both.DifferenceWith(bits);
-    Assert(both.Count() == 1u && both.Get(200) && both.Equals(other) == false, "difference");
+    both.DifferenceWith(&bits);
+    Assert(both.Count() == 1u && both.Get(200) && both.Equals(&other) == false, "difference");
     var copy = BitSet::New(SystemAllocator::New());
     copy.Set(200);
-    Assert(both.Equals(copy), "equality ignores length");
+    Assert(both.Equals(&copy), "equality ignores length");
 
     joined.Resize(10);
     Assert(joined.Count() == 1u && joined.Get(5), "shrinking drops the bits past the length");

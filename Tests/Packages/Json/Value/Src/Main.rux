@@ -35,7 +35,7 @@ func RefusedNumber(allocator: Allocator, text: char8[..]) -> bool {
 func AcceptedNumber(allocator: Allocator, text: char8[..]) -> bool {
     let want = View(text);
     let number = if let made? = (JsonNumber::New(allocator, text) !! none) { made.Text().Equals(want) } else { false };
-    let value = if let made? = (JsonValue::Number(allocator, text) !! none) { made.Kind() == JsonKind::Number && Number(made).Text().Equals(want) } else { false };
+    let value = if let made? = (JsonValue::Number(allocator, text) !! none) { made.Kind() == JsonKind::Number && Number(&made).Text().Equals(want) } else { false };
     return number && value;
 }
 
@@ -56,14 +56,14 @@ func Main() -> int {
     var large = JsonValue::Number(allocator, "9007199254740993") catch {
         _ => Panic("a large integer is stored")
     };
-    Assert(Number(large).AsUint64() == 9007199254740993,
+    Assert(Number(&large).AsUint64() == 9007199254740993,
            "and reads back exactly -- one past two to the fifty-third, which a double would have rounded away");
-    let asFloat = Number(large).AsFloat64() ?? Panic("it also reads as a float");
+    let asFloat = Number(&large).AsFloat64() ?? Panic("it also reads as a float");
     Assert((asFloat as uint64) != 9007199254740993,
            "and that reading loses the last digit, which is why the exact one is offered separately");
 
     var written = JsonValue::Number(allocator, "1.2000") catch { _ => Panic("1.2000 is stored") };
-    let writtenText = Number(written).Text();
+    let writtenText = Number(&written).Text();
     let expectedText = View("1.2000");
     Assert(writtenText.Equals(expectedText), "a number keeps the text it was written with, trailing zeros too");
 
@@ -71,19 +71,19 @@ func Main() -> int {
     var whole = JsonValue::Number(allocator, "42") catch { _ => Panic("42 is stored") };
     var pointZero = JsonValue::Number(allocator, "42.0") catch { _ => Panic("42.0 is stored") };
     var exponent = JsonValue::Number(allocator, "4.2e1") catch { _ => Panic("4.2e1 is stored") };
-    Assert(Number(whole).IsIntegral(), "42 is integral");
-    Assert(!Number(pointZero).IsIntegral(), "42.0 is not, though its value is whole");
-    Assert(!Number(exponent).IsIntegral(), "and neither is 4.2e1");
-    Assert(Number(pointZero).AsInt64() == none,
+    Assert(Number(&whole).IsIntegral(), "42 is integral");
+    Assert(!Number(&pointZero).IsIntegral(), "42.0 is not, though its value is whole");
+    Assert(!Number(&exponent).IsIntegral(), "and neither is 4.2e1");
+    Assert(Number(&pointZero).AsInt64() == none,
            "so 42.0 does not read as an integer, which keeps a distinction the document was making");
-    Assert(Number(pointZero).AsFloat64() == 42.0, "while it reads fine as a float");
+    Assert(Number(&pointZero).AsFloat64() == 42.0, "while it reads fine as a float");
 
     var negative = JsonValue::Number(allocator, "-9223372036854775808") catch {
         _ => Panic("the most negative signed integer is stored")
     };
-    Assert(Number(negative).AsInt64() == -9223372036854775808i64,
+    Assert(Number(&negative).AsInt64() == -9223372036854775808i64,
            "the most negative signed integer reads back exactly");
-    Assert(Number(negative).AsUint64() == none, "and does not read as unsigned");
+    Assert(Number(&negative).AsUint64() == none, "and does not read as unsigned");
 
     // A number made by hand is held to the grammar a parsed one is, so nothing the tree holds is a number only this
     // package would read.

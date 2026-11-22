@@ -179,6 +179,9 @@ const Expr *AnalysisContext::BorrowReturnSourceArgument(const CallExpr &call) co
 
 const Expr *AnalysisContext::BorrowResultSource(const Expr &expression) const {
     const Expr *current = &expression;
+    if (const auto *loan = AstCast<const LoanExpr>(current)) {
+        current = loan->operand.get();
+    }
     while (true) {
         if (const auto *field = AstCast<const FieldExpr>(current)) {
             current = field->object.get();

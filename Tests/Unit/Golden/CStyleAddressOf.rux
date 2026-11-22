@@ -1,6 +1,5 @@
-// C spells address-of `&`; Rux spells it `@`. The rewrite is reported once and
-// the argument still parses as an address, so the call it belongs to does not
-// cascade into "expected an expression" or an arity error.
+// C spells address-of `&`; Rux spells it `@`, and `&` lends a place. A loan passed where a raw pointer is expected
+// is a type mismatch whose help points at `@`, and a binary `&` is still bitwise and.
 func Take(value: *var uint64) -> bool {
     return true;
 }

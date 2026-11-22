@@ -155,7 +155,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
                     }
                     else {
                         let piece = buffer[0..filled];
-                        WriteAll(destination, piece) catch {
+                        WriteAll(&var destination, piece) catch {
                             error => {
                                 failure = error;
                                 copying = false;

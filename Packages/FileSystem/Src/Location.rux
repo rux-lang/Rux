@@ -219,7 +219,7 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
         // carries no access rights, which is enough here and works on a file this process may not read.
         let native = NativePath::New(allocator, path)!;
-        let handle = OpenForQuery(native, true);
+        let handle = OpenForQuery(&native, true);
         if (handle as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(GetLastError() as int32);
@@ -243,7 +243,7 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         var started = Absolute(allocator, path)!;
         var resolved = PathBuffer::New(allocator);
         var followed: uint = 0;
-        ResolveInto(allocator, started.AsPath(), resolved, @followed)!;
+        ResolveInto(allocator, started.AsPath(), &var resolved, @followed)!;
         started.Release();
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".

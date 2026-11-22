@@ -58,7 +58,7 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
 pub func GenerateNanoId(into: var char8[..]) -> !EntropyError {
     var system = SystemEntropy::New();
-    return Fill(system, into, NanoIdAlphabet)!;
+    return Fill(&var system, into, NanoIdAlphabet)!;
 }
 
 /// Fills the whole of `into` with an identifier drawn from `alphabet`, using the operating system's generator.
@@ -71,7 +71,7 @@ pub func GenerateNanoId(into: var char8[..]) -> !EntropyError {
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
 pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> !NanoIdError {
     var system = SystemEntropy::New();
-    return GenerateNanoIdFrom(system, into, alphabet)!;
+    return GenerateNanoIdFrom(&var system, into, alphabet)!;
 }
 
 /// Fills the whole of `into` with an identifier drawn from `alphabet`, using random bytes from `source`.

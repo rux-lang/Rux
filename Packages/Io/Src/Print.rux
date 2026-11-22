@@ -12,7 +12,7 @@ import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter 
 // The one write under everything here.
 func PrintBytes(bytes: char8[..]) -> !IoError {
     var out = StandardOut::Acquire();
-    WriteAll(out, bytes)!;
+    WriteAll(&var out, bytes)!;
 }
 
 // The failure a write reported, as the optional every printing call returns.

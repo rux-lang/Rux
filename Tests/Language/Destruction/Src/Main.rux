@@ -238,7 +238,7 @@ func Main() -> int {
     // A match through a borrow takes nothing either. The option is somebody else's and still owns what it holds.
     counter.count = 0;
     var borrowed = Option::Some<Tracked>(MakeTracked(@counter));
-    Assert(MatchThroughBorrow(borrowed), "a borrowed option can be looked at");
+    Assert(MatchThroughBorrow(&borrowed), "a borrowed option can be looked at");
     Assert(counter.count == 0, "and looking at one destroys nothing");
 
     // An option whose payload is an aggregate destroys the aggregate's fields where they are. The payload address is

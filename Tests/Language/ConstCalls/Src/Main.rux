@@ -107,7 +107,7 @@ func Ordered(first: int, second: int) -> (int, int) {
     var low = first;
     var high = second;
     if low > high {
-        Swap(low, high);
+        Swap(&var low, &var high);
     }
     return (low, high);
 }

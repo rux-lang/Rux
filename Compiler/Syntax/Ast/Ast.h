@@ -355,6 +355,13 @@ struct MoveExpr : Expr {
     ExprPtr operand;
 };
 
+/// `&place` or `&var place`: a loan written where it starts, read-only or for writing. It lends the place and never
+/// moves or copies it, and its type is `&T` or `&var T`.
+struct LoanExpr : Expr {
+    ExprPtr operand;
+    bool writes = false;
+};
+
 /// `expr?`
 ///
 /// Propagate a failure: the expression evaluates to the success payload, and a failure returns from the enclosing

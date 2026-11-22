@@ -642,9 +642,6 @@ TEST_CASE("a binary operator written where an expression starts reports its own 
     };
 
     constexpr Case cases[] = {
-        {"func F() { let value = Call(&count); }",
-         "'&' does not take an address; write '@' to take the address of a value"},
-        {"func F() { let value = &count; }", "'&' does not take an address; write '@' to take the address of a value"},
         {"func F() { let value = Call(|count); }", "expected an expression after '(' in the argument list before '|'"},
         {"func F() { let value = ^count; }", "expected an expression after '=' in the binding before '^'"},
         {"func F() { let value = Call(as int); }", "expected an expression after '(' in the argument list before 'as'"},
@@ -656,17 +653,6 @@ TEST_CASE("a binary operator written where an expression starts reports its own 
         CAPTURE(DiagnosticMessages(parsed));
         CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
     }
-}
-
-TEST_CASE("the C address-of spelling reports the rewrite once and recovers as '@'") {
-    // Recovering as address-of is what stops one rejected sigil from cascading
-    // into a missing argument and an arity error on the call that holds it.
-    const auto parsed = ParseSource("func F() { let flag = Take(&bytes); }");
-    CAPTURE(DiagnosticMessages(parsed));
-    REQUIRE_EQ(parsed.diagnostics.size(), 1);
-    CHECK_EQ(parsed.diagnostics[0].message, "'&' does not take an address; write '@' to take the address of a value");
-    CHECK_EQ(parsed.diagnostics[0].location.column, 28);
-    CHECK_FALSE(HasDiagnosticContaining(parsed, "expected an expression"));
 }
 
 TEST_CASE("'&' between two operands stays the bitwise operator") {

@@ -108,7 +108,7 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
 
     var state = Quotient { numerator: FixedNat::New(), denominator: FixedNat::New() };
     var scaled: int = 0;
-    if !PrepareQuotient(state, significand, exponent, @scaled) { return false; }
+    if !PrepareQuotient(&var state, significand, exponent, @scaled) { return false; }
 
     // How many digits run from the first significant one down to the place the precision names. A value whose
     // first significant digit is already below that place has none, and rounding decides whether the last place
@@ -119,7 +119,7 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
         if (wanted as uint) > into.length { return false; }
         while produced < (wanted as uint) {
             if !state.numerator.MultiplySmall(10) { return false; }
-            let digit = (TakeDigit(state) + 0x30) as char8;
+            let digit = (TakeDigit(&var state) + 0x30) as char8;
             // Safety: `produced` is below `wanted`, the loop condition, which is at most `into.length`, checked
             // above.
             into.data[produced] = digit;
@@ -265,7 +265,7 @@ pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatP
     }
     var storage: char8[1426];
     var cursor = ByteCursor::New(storage[2..MaximumFixedLength + 2]);
-    if !WritePrecisionFloat(cursor, parts, spec.Precision()) {
+    if !WritePrecisionFloat(&var cursor, parts, spec.Precision()) {
         throw .UnsupportedRequest;
     }
     var rendered = cursor.Written();

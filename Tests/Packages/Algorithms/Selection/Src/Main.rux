@@ -180,7 +180,7 @@ func Main() -> int {
     var shape: int = 0;
     var caseId: int = 0;
     while shape < 5 {
-        FillShape(buffer[..9], shape, state);
+        FillShape(buffer[..9], shape, &var state);
         var n: uint = 0;
         while n < 9 {
             let kind = CheckNth(buffer[..9], n);
@@ -197,7 +197,7 @@ func Main() -> int {
     shape = 0;
     caseId = 0;
     while shape < 5 {
-        FillShape(buffer[..9], shape, state);
+        FillShape(buffer[..9], shape, &var state);
         var count: uint = 0;
         while count <= 9 {
             let kind = CheckPartial(buffer[..9], count);
@@ -214,8 +214,8 @@ func Main() -> int {
     // the ends, the median, and a quarter position.
     var round: int = 0;
     while round < 12 {
-        let length = ((NextRandom(state) % 200) as uint) + 4;
-        FillShape(buffer[..length], 4, state);
+        let length = ((NextRandom(&var state) % 200) as uint) + 4;
+        FillShape(buffer[..length], 4, &var state);
 
         if CheckNth(buffer[..length], 0) != 0 { return 120; }
         if CheckNth(buffer[..length], length - 1) != 0 { return 121; }
@@ -231,15 +231,15 @@ func Main() -> int {
 
     // An all-equal sequence lands n inside the pivot band on the first
     // partition, which is the early-exit path.
-    FillShape(buffer[..200], 2, state);
+    FillShape(buffer[..200], 2, &var state);
     if CheckNth(buffer[..200], 100) != 0 { return 130; }
     if CheckPartial(buffer[..200], 10) != 0 { return 131; }
 
     // Already-sorted and reverse-sorted input at length 200.
-    FillShape(buffer[..200], 0, state);
+    FillShape(buffer[..200], 0, &var state);
     if CheckNth(buffer[..200], 37) != 0 { return 132; }
     if CheckPartial(buffer[..200], 20) != 0 { return 133; }
-    FillShape(buffer[..200], 1, state);
+    FillShape(buffer[..200], 1, &var state);
     if CheckNth(buffer[..200], 37) != 0 { return 134; }
     if CheckPartial(buffer[..200], 20) != 0 { return 135; }
 

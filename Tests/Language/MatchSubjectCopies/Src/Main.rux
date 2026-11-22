@@ -87,7 +87,7 @@ func Reset(log: *var Log) {
 
 func TupleStatement(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match ClonePair(pair) {
+    match ClonePair(&pair) {
         (item, count) => {
             Mark(log);
             Assert(item.id == 11 && count == 2, "the arm binds the clone");
@@ -98,14 +98,14 @@ func TupleStatement(log: *var Log) {
 
 func TupleExpression(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    let id = match ClonePair(pair) { (item, _) => item.id };
+    let id = match ClonePair(&pair) { (item, _) => item.id };
     Mark(log);
     Assert(id == 11, "the arm reads the clone");
 }
 
 func TupleLeavesPart(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match ClonePair(pair) {
+    match ClonePair(&pair) {
         (_, count) => {
             Mark(log);
             Assert(count == 2, "the arm binds the count");
@@ -115,7 +115,7 @@ func TupleLeavesPart(log: *var Log) {
 
 func StructBindsField(log: *var Log) {
     let holder = Holder { item: Track(log, 1), count: 2i32 };
-    match CloneHolder(holder) {
+    match CloneHolder(&holder) {
         Holder { item, count } => {
             Mark(log);
             Assert(item.id == 11 && count == 2, "the arm binds both fields of the clone");
@@ -125,7 +125,7 @@ func StructBindsField(log: *var Log) {
 
 func StructOmitsField(log: *var Log) {
     let holder = Holder { item: Track(log, 1), count: 2i32 };
-    match CloneHolder(holder) {
+    match CloneHolder(&holder) {
         Holder { count } => {
             Mark(log);
             Assert(count == 2, "the arm binds the count");
@@ -135,7 +135,7 @@ func StructOmitsField(log: *var Log) {
 
 func VariantPayload(log: *var Log) {
     let parcel = Parcel::Double(Track(log, 1), Track(log, 2));
-    match CloneParcel(parcel) {
+    match CloneParcel(&parcel) {
         .Single(_) => Assert(false, "the parcel holds two items"),
         .Double(first, _) => {
             Mark(log);
@@ -172,7 +172,7 @@ func SumMember(log: *var Log) {
 // The guard refutes the first arm after it bound the clone; only the arm that is taken destroys it.
 func GuardRefutesArm(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match ClonePair(pair) {
+    match ClonePair(&pair) {
         (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the first arm"),
         (item, _) => {
             Mark(log);
@@ -184,7 +184,7 @@ func GuardRefutesArm(log: *var Log) {
 // No arm takes the clone, so the match destroys it as it ends.
 func GuardRefutesEveryArm(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match ClonePair(pair) {
+    match ClonePair(&pair) {
         (item, count) if count > 5 => Assert(item.id < 0, "the guard refutes the only binding arm"),
         _ => {}
     }
@@ -194,7 +194,7 @@ func GuardRefutesEveryArm(log: *var Log) {
 // An arm that binds nothing from the clone destroys it whole at its top.
 func ArmBindsNothing(log: *var Log) {
     let pair = (Track(log, 1), 2i32);
-    match ClonePair(pair) {
+    match ClonePair(&pair) {
         (item, 7) => Assert(item.id < 0, "the count is not 7"),
         _ => Mark(log)
     }

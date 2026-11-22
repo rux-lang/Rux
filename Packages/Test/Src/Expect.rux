@@ -24,7 +24,7 @@ pub func ExpectEqual<T: Display>(actual: T, expected: T) -> !TestFailure {
     if actual == expected { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{}, but got {}", expected, actual) catch { _ => {} };
+    WriteFormat(&var writer, "{}, but got {}", expected, actual) catch { _ => {} };
     failure.Grow(writer);
     throw failure;
 }
@@ -39,7 +39,7 @@ pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> !TestFailure {
     if actual != unexpected { return; }
     var failure = TestFailure::Of("expected anything but ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{}", unexpected) catch { _ => {} };
+    WriteFormat(&var writer, "{}", unexpected) catch { _ => {} };
     failure.Grow(writer);
     throw failure;
 }
@@ -55,7 +55,7 @@ pub func ExpectNear(actual: float64, expected: float64, tolerance: float64) -> !
     if difference <= tolerance { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{} within {}, but got {}", expected, tolerance, actual) catch { _ => {} };
+    WriteFormat(&var writer, "{} within {}, but got {}", expected, tolerance, actual) catch { _ => {} };
     failure.Grow(writer);
     throw failure;
 }
@@ -91,13 +91,13 @@ pub func ExpectText(actual: char8[..], expected: char8[..]) -> !TestFailure {
     if at == actual.length && at == expected.length { return; }
     var failure = TestFailure::Of("texts differ at byte ");
     var writer = failure.Rest();
-    WriteFormat(writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { _ => {} };
+    WriteFormat(&var writer, "{} (expected {} bytes, got {})", at, expected.length, actual.length) catch { _ => {} };
     failure.Grow(writer);
     let start = if at > 24u { at - 24u } else { 0u };
     failure.Append("\n  expected ");
-    AppendExcerpt(failure, expected, start, 48);
+    AppendExcerpt(&var failure, expected, start, 48);
     failure.Append("\n  but got  ");
-    AppendExcerpt(failure, actual, start, 48);
+    AppendExcerpt(&var failure, actual, start, 48);
     throw failure;
 }
 

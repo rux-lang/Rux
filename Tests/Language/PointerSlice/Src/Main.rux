@@ -57,7 +57,7 @@ func Main() -> int {
     var calls = Counter { value: 0 };
     var numbers: int[4] = [10, 20, 30, 40];
     // Safety: `NextPointer` returns `@numbers[0]` and elements 1 and 2 lie inside the four-element local `numbers`.
-    let evaluated = NextPointer(calls, @numbers[0])[NextBound(calls, 1)..NextBound(calls, 3)];
+    let evaluated = NextPointer(&var calls, @numbers[0])[NextBound(&var calls, 1)..NextBound(&var calls, 3)];
     Assert(calls.value == 3, "the pointer and both bounds are evaluated once");
     Assert(evaluated.length == 2 && evaluated[0] == 20, "evaluated bounds retain their values");
     evaluated[1] = 99;

@@ -87,10 +87,10 @@ func Lazy(condition: bool) -> uint128 {
     var conditionCalls = Calls { count: 0 };
     var firstCalls = Calls { count: 0 };
     var secondCalls = Calls { count: 0 };
-    let value: uint128 = if Choose(conditionCalls, condition) {
-        Arm(firstCalls, 18446744073709551616)
+    let value: uint128 = if Choose(&var conditionCalls, condition) {
+        Arm(&var firstCalls, 18446744073709551616)
     } else {
-        Arm(secondCalls, 25)
+        Arm(&var secondCalls, 25)
     };
     Assert(conditionCalls.count == 1, "evaluate the condition exactly once");
     Assert(firstCalls.count == (if condition { 10 } else { 0 }), "run the first arm only when selected");

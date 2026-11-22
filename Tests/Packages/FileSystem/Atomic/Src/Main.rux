@@ -29,7 +29,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     Assert(size == expected.length as uint64, "and is exactly as long as expected");
     var storage: char8[64];
     let room = storage[..expected.length];
-    ReadExact(file, room) catch { _ => Panic("and reads whole") };
+    ReadExact(&var file, room) catch { _ => Panic("and reads whole") };
     var index: uint = 0;
     while index < expected.length {
         Assert(storage[index] == expected[index], "byte for byte");
@@ -55,9 +55,9 @@ func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemAtomic.tmp", dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemAtomic.tmp", &var dirHolder);
     var targetHolder = OsString::New(allocator);
-    let target = PathOf(allocator, "Bin/FileSystemAtomic.tmp/settled.txt", targetHolder);
+    let target = PathOf(allocator, "Bin/FileSystemAtomic.tmp/settled.txt", &var targetHolder);
 
     DeleteFile(allocator, target) catch { _ => {} };
     DeleteDirectory(allocator, dir) catch { _ => {} };
@@ -70,7 +70,7 @@ func Run() -> int ! IoError {
 
     // Part-way through a replacement, the target still holds the old contents.
     var replacement = AtomicWrite::Begin(allocator, target)!;
-    WriteAll(replacement, TextBytes("second contents, longer"))!;
+    WriteAll(&var replacement, TextBytes("second contents, longer"))!;
     CheckWhole(allocator, target, "first contents");
     Assert(CountEntries(allocator, dir) == 2, "with the partial file alongside, not on top");
 
@@ -82,7 +82,7 @@ func Run() -> int ! IoError {
 
     // Abandoning leaves the target exactly as it was, and cleans up after itself.
     var discarded = AtomicWrite::Begin(allocator, target)!;
-    WriteAll(discarded, TextBytes("never published"))!;
+    WriteAll(&var discarded, TextBytes("never published"))!;
     discarded.Abandon(allocator)!;
     CheckWhole(allocator, target, "second contents, longer");
     Assert(CountEntries(allocator, dir) == 1, "and leaves nothing behind");
@@ -109,5 +109,5 @@ func Main() -> int {
 // Begins a replacement, writes to it, and lets it fall out of scope undecided.
 func Dropped(allocator: Allocator, target: Path) -> !IoError {
     var replacement = AtomicWrite::Begin(allocator, target)!;
-    WriteAll(replacement, TextBytes("abandoned by scope"))!;
+    WriteAll(&var replacement, TextBytes("abandoned by scope"))!;
 }

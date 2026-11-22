@@ -107,9 +107,9 @@ extend QueryBuilder {
     /// @see https://rux-lang.dev/docs/api/url/query#append
     pub func Append(&var self, name: char8[..], value: char8[..]) {
         if self.bytes.length > 0 { self.bytes.Push(c8'&'); }
-        AppendForm(self.bytes, name);
+        AppendForm(&var self.bytes, name);
         self.bytes.Push(c8'=');
-        AppendForm(self.bytes, value);
+        AppendForm(&var self.bytes, value);
     }
 
     /// The query built so far, without a `?`, ready for `Url::SetQuery`.

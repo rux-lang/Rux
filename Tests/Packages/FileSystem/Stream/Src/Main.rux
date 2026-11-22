@@ -33,7 +33,7 @@ func Run() -> int ! IoError {
     // Write a known body and make it durable.
     var written = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(written.IsOpen(), "the scratch file opens for writing");
-    WriteAll(written, TextBytes("0123456789"))!;
+    WriteAll(&var written, TextBytes("0123456789"))!;
     written.Sync()!;
     Assert(written.Size()! == 10, "ten bytes long, measured while open");
     written.Close()!;
@@ -43,11 +43,11 @@ func Run() -> int ! IoError {
     Assert(reading.IsOpen(), "it reopens for reading");
     var storage: char8[16];
     let head = storage[..4];
-    ReadExact(reading, head)!;
+    ReadExact(&var reading, head)!;
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
 
     Assert(reading.Seek(SeekFrom::End, -4)! == 6, "four back from the end is position six");
-    ReadExact(reading, head)!;
+    ReadExact(&var reading, head)!;
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     let room = storage[..4];
     match reading.Read(room) {
@@ -72,35 +72,35 @@ func Run() -> int ! IoError {
     var appending = File::Open(allocator, scratch, OpenOptions::Appending())!;
     Assert(appending.IsOpen(), "it reopens for appending");
     Assert(appending.Seek(SeekFrom::Start, 0)! == 0, "the position moves to the start");
-    WriteAll(appending, TextBytes("XY"))!;
+    WriteAll(&var appending, TextBytes("XY"))!;
     Assert(appending.Size()! == 6, "at the end, not the position");
     appending.Close()!;
 
     // The buffered machinery stacks on a file without knowing it left memory.
     var lines = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(lines.IsOpen(), "the file opens once more for line content");
-    WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma"))!;
+    WriteAll(&var lines, TextBytes("alpha\r\nbeta\ngamma"))!;
     lines.Close()!;
     var back = File::Open(allocator, scratch, OpenOptions::Reading())!;
     // Safety: `back` is a local of this function that outlives `buffered`, the only holder of the handle.
     var buffered = BufferedReader::New(allocator, @back as Reader, 8)!;
     var builder = StringBuilder::New(allocator);
-    ReadTextLine(buffered, builder, 64)!;
+    ReadTextLine(&var buffered, &var builder, 64)!;
     let alpha = builder.TakeString();
     let alphaWant = View("alpha");
     Assert(alpha.View().Equals(alphaWant), "normalized across the CRLF");
     var second = StringBuilder::New(allocator);
-    ReadTextLine(buffered, second, 64)!;
+    ReadTextLine(&var buffered, &var second, 64)!;
     let beta = second.TakeString();
     let betaWant = View("beta");
     Assert(beta.View().Equals(betaWant), "exactly");
     var third = StringBuilder::New(allocator);
-    ReadTextLine(buffered, third, 64)!;
+    ReadTextLine(&var buffered, &var third, 64)!;
     let gamma = third.TakeString();
     let gammaWant = View("gamma");
     Assert(gamma.View().Equals(gammaWant), "with everything before the end");
     var last = StringBuilder::New(allocator);
-    match ReadTextLine(buffered, last, 64) {
+    match ReadTextLine(&var buffered, &var last, 64) {
         .Success(_) => {
             Panic("expected a failure");
         },
@@ -135,7 +135,7 @@ func Run() -> int ! IoError {
     Assert(shared.IsOpen(), "a file opens for writing");
     // Safety: `shared` is a local of this function that outlives `held`.
     var held = @shared as Writer;
-    WriteAll(held, TextBytes("abcd"))!;
+    WriteAll(&var held, TextBytes("abcd"))!;
     Assert(shared.Size()! == 4, "and the file itself measures them");
     shared.Close()!;
 

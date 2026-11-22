@@ -34,14 +34,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown(value: &Display, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (value.WriteDisplay(writer, FormatSpec::Plain()) !! none) == none { return false; }
+    if (value.WriteDisplay(&var writer, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Inspected(value: &Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (value.WriteDebug(writer, FormatSpec::Plain()) !! none) == none { return false; }
+    if (value.WriteDebug(&var writer, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -49,7 +49,7 @@ func Inspected(value: &Debug, expected: char8[..]) -> bool {
 func Refused(shown: &Display, inspected: &Debug, spec: FormatSpec) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if !((shown.WriteDisplay(writer, spec) !! none) == none) { return false; }
+    if !((shown.WriteDisplay(&var writer, spec) !! none) == none) { return false; }
     var second = BufferWriter::New(storage[..128]);
     let other: &var TextWriter = second;
     return (inspected.WriteDebug(other, spec) !! none) == none;

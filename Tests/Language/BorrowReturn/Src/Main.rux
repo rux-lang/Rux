@@ -128,7 +128,7 @@ func Main() -> int {
     Assert(Read(pair.First()) == 3i32, "a returned reference is passed on to a reference parameter");
     Bump(pair.SecondMutable());
     Assert(pair.second == 13i32, "a returned mutable reference is passed on to a mutable reference parameter");
-    let inner = Inner(pair, 0i32);
+    let inner = Inner(&var pair, 0i32);
     inner += 2i32;
     Assert(pair.second == 15i32, "a reference returned from a call is returned again");
 

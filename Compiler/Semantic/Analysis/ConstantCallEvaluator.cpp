@@ -777,6 +777,8 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateOther(const Expr &e
     }
     if (AstCast<const IntrinsicExpr>(&expression))
         return Unsupported(expression.location, "a compiler-supplied value");
+    if (const auto *loan = AstCast<const LoanExpr>(&expression))
+        return Argument(expression, TypeOf(*loan));
     // The operand of a postfix error form runs as any other expression; an error it throws is an error at the
     // constant, whatever would handle it at run time.
     if (const auto *marked = AstCast<const ErrorFormExpr>(&expression))
@@ -1360,7 +1362,9 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateCall(const CallExpr
 
 std::optional<EvaluatedValue> ConstantCallEvaluator::Argument(const Expr &argument, const TypeRef &parameterType) {
     if (parameterType->kind == TypeRef::Kind::Reference) {
-        auto place = EvaluatePlace(argument);
+        // A written loan lends the place it names, as an unwritten one does.
+        const auto *loan = AstCast<const LoanExpr>(&argument);
+        auto place = EvaluatePlace(loan ? *loan->operand : argument);
         if (!place)
             return std::nullopt;
         EvaluatedValue reference;

@@ -68,29 +68,29 @@ func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);
-    let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", dirHolder);
+    let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", &var dirHolder);
     DeleteDirectory(allocator, dir) catch { _ => {} };
     MakeDirectory(allocator, dir)!;
 
     // Characters no ANSI code page holds, which is what a lossy conversion loses first.
     var cyrillicHolder = OsString::New(allocator);
-    let cyrillic = PathOf(allocator, "Привіт.txt", cyrillicHolder);
+    let cyrillic = PathOf(allocator, "Привіт.txt", &var cyrillicHolder);
     RoundTrip(allocator, dir, cyrillic.name, "a Cyrillic name is created");
 
     var mixedHolder = OsString::New(allocator);
-    let mixed = PathOf(allocator, "café-日本語.txt", mixedHolder);
+    let mixed = PathOf(allocator, "café-日本語.txt", &var mixedHolder);
     RoundTrip(allocator, dir, mixed.name, "a name mixing scripts is created");
 
     // An astral-plane character: one character, two UTF-16 code units, four UTF-8 bytes. A conversion that
     // walks units rather than characters cuts it in half here and nowhere else.
     var astralHolder = OsString::New(allocator);
-    let astral = PathOf(allocator, "emoji-😀.txt", astralHolder);
+    let astral = PathOf(allocator, "emoji-😀.txt", &var astralHolder);
     RoundTrip(allocator, dir, astral.name, "an astral-plane name is created");
 
     // A base character followed by a combining mark: two characters that render as one, and which the
     // filesystem must not silently normalize into the single precomposed character.
     var combiningHolder = OsString::New(allocator);
-    let combining = PathOf(allocator, "café.txt", combiningHolder);
+    let combining = PathOf(allocator, "café.txt", &var combiningHolder);
     RoundTripCombining(allocator, dir, combining.name);
 
     // A Unix name need not be text — except on Darwin, whose filesystems take only valid UTF-8 and refuse the

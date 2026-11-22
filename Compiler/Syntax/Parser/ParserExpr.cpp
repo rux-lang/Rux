@@ -647,23 +647,18 @@ ExprPtr Parser::ParseUnary() {
         return expression;
     }
 
-    // C spells address-of '&', so report the rewrite where an expression
-    // starts and keep parsing as '@'. Recovering here is what stops the
-    // operand from cascading into "expected an expression".
+    // `&place` lends a place for reading and `&var place` for writing. It binds as tightly as any other prefix
+    // operator, so `&a.b` lends the field.
     if (Check(TokenKind::Amp)) {
-        const auto loc = CurrentLocation();
-        EmitError(loc, "'&' does not take an address; write '@' to take the address of a value");
-        Advance(); // consume '&', so the operand below parses as address-of
-        auto operand = ParseUnary();
-        if (!operand) {
-            EmitMissingExpression("after unary '&'");
+        auto loan = std::make_unique<LoanExpr>();
+        loan->location = Advance().location;
+        loan->writes = Match(TokenKind::VarKeyword);
+        loan->operand = ParseUnary();
+        if (!loan->operand) {
+            EmitMissingExpression(loan->writes ? "after '&var'" : "after '&'");
             return nullptr;
         }
-        auto e = std::make_unique<UnaryExpr>();
-        e->location = loc;
-        e->op = TokenKind::At;
-        e->operand = std::move(operand);
-        return e;
+        return loan;
     }
 
     // '@' is address-of. It is unambiguous against the '@[Attr]' attribute

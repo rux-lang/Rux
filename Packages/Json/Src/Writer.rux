@@ -218,7 +218,7 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
             if style.indent > 0 || style.spaceAfterColon {
                 WriteJsonBytes(writer, " ")!;
             }
-            WriteAtLevel(writer, member.value, style, level + 1)!;
+            WriteAtLevel(writer, &member.value, style, level + 1)!;
         }
         else {
             let element = value.At(index) ?? break;

@@ -69,23 +69,23 @@ func Main() -> int {
     // bytes 0 to 20 give the alphabet's first twenty-one characters.
     var source = CountingSource { next: 0, failing: false, requests: 0 };
     var id: char8[21];
-    GenerateNanoIdFrom(source, id[..]) catch { _ => return 1 };
+    GenerateNanoIdFrom(&var source, id[..]) catch { _ => return 1 };
     if !Same(id[..], NanoIdAlphabet[..21]) { return 2; }
     // Bytes 64 to 84 give the same characters again, since only the low six bits are used.
     source.next = 64;
-    GenerateNanoIdFrom(source, id[..]) catch { _ => return 3 };
+    GenerateNanoIdFrom(&var source, id[..]) catch { _ => return 3 };
     if !Same(id[..], NanoIdAlphabet[..21]) { return 4; }
 
     // A custom alphabet of three: the mask is three, so a masked value of three is thrown away, not folded to `a`.
     source.next = 0;
     var short: char8[7];
-    GenerateNanoIdFrom(source, short[..], "abc") catch { _ => return 5 };
+    GenerateNanoIdFrom(&var source, short[..], "abc") catch { _ => return 5 };
     if !Same(short[..], "abcabca") { return 6; }
     // Bytes 0..2 and 4..6 are accepted and 3 and 7 are not; the identifier is filled across however many requests
     // that takes.
     source.next = 0;
     var long: char8[300];
-    GenerateNanoIdFrom(source, long[..], "abc") catch { _ => return 7 };
+    GenerateNanoIdFrom(&var source, long[..], "abc") catch { _ => return 7 };
     var index: uint = 0;
     while index < 300 {
         let expected: char8 = if index % 3 == 0 { 'a' } else if index % 3 == 1 { 'b' } else { 'c' };
@@ -96,7 +96,7 @@ func Main() -> int {
     // A source that fails: the failure is reported and the destination holds no partial identifier.
     var failing = CountingSource { next: 0, failing: true, requests: 0 };
     var refused: char8[21] = ['x'; 21];
-    match GenerateNanoIdFrom(failing, refused[..]) {
+    match GenerateNanoIdFrom(&var failing, refused[..]) {
         .Success(_) => {
             return 11;
         },
@@ -119,7 +119,7 @@ func Main() -> int {
     if AlphabetFailure("abé") != 402 { return 15; }
     if AlphabetFailure("01") != 0 || AlphabetFailure(NanoIdAlphabet) != 0 { return 16; }
     var spent = CountingSource { next: 0, failing: false, requests: 0 };
-    match GenerateNanoIdFrom(spent, short[..], "aa") {
+    match GenerateNanoIdFrom(&var spent, short[..], "aa") {
         .Success(_) => {
             return 17;
         },

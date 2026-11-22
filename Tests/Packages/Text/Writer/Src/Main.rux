@@ -163,19 +163,19 @@ func Main() -> int {
 
     // The shared helpers reach a writer through the same contract.
     writer.Clear();
-    match WriteBytes(writer, "raw") {
+    match WriteBytes(&var writer, "raw") {
         .Success(_) => {
             Assert((0) == 0, "WriteBytes forwards to the writer");
         },
         .Failure(refusal) => Assert(FailureCode(refusal) == 0, "WriteBytes forwards to the writer"),
     }
-    match WriteAscii(writer, c8'!') {
+    match WriteAscii(&var writer, c8'!') {
         .Success(_) => {
             Assert((0) == 0, "WriteAscii writes one byte");
         },
         .Failure(refusal) => Assert(FailureCode(refusal) == 0, "WriteAscii writes one byte"),
     }
-    match WriteScalar(writer, 0x20ACu32 as char32) {
+    match WriteScalar(&var writer, 0x20ACu32 as char32) {
         .Success(_) => {
             Assert((0) == 0, "WriteScalar encodes and writes");
         },
@@ -184,7 +184,7 @@ func Main() -> int {
     Assert(Same(writer.Written(), "raw!\u{20AC}"), "and all three landed in order");
 
     // WriteAscii refuses a byte that is not a whole character rather than writing half of one.
-    match WriteAscii(writer, 0xC3u8 as char8) {
+    match WriteAscii(&var writer, 0xC3u8 as char8) {
         .Success(_) => {
             Assert((0) == 2, "a byte above 0x7F is not one ASCII character");
         },
@@ -195,7 +195,7 @@ func Main() -> int {
     var half: uint32 = 0xD800;
     // Safety: `half` is a live local `uint32`, and `char32` has the same size and alignment.
     let halfScalar = *((@half) as *char32);
-    match WriteScalar(writer, halfScalar) {
+    match WriteScalar(&var writer, halfScalar) {
         .Success(_) => {
             Assert((0) == 2, "a surrogate half is not a scalar value");
         },
@@ -205,7 +205,7 @@ func Main() -> int {
     // A helper's failure propagates the writer's own failure unchanged rather than replacing it.
     var tiny: char8[2];
     var small = BufferWriter::New(tiny[..2]);
-    match WriteScalar(small, 0x20ACu32 as char32) {
+    match WriteScalar(&var small, 0x20ACu32 as char32) {
         .Success(_) => {
             Assert((0) == 1,
                "a three-byte character into two bytes is a capacity failure, not an encoding one");
@@ -225,7 +225,7 @@ func Main() -> int {
         },
         .Failure(refusal) => Assert(FailureCode(refusal) == 0, "a builder accepts a write"),
     }
-    match WriteBytes(builder, " and grows") {
+    match WriteBytes(&var builder, " and grows") {
         .Success(_) => {
             Assert((0) == 0, "and another through the helper");
         },

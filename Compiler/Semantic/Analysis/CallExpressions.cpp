@@ -148,11 +148,22 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (refusedInterface) {
             std::ranges::copy(InterfaceValueNotes(), std::back_inserter(notes));
         }
+        std::optional<std::string> help =
+            refusedInterface ? std::optional(InterfaceValueHelp(parameterType)) : std::nullopt;
+        // `&x` lends; a raw pointer is taken with `@`, as C's `&` would have taken it.
+        if (AstCast<const LoanExpr>(&argument) && parameterType->kind == TypeRef::Kind::Pointer) {
+            help = "'&' lends a place; write '@' to take its address for a raw pointer";
+        }
+        else if (const auto *loan = AstCast<const LoanExpr>(&argument);
+                 loan && !loan->writes && parameterType->kind == TypeRef::Kind::Reference &&
+                 !parameterType->inner.empty() && parameterType->inner.front().isMut) {
+            help = "lend it for writing with '&var'";
+        }
         EmitError(argument.location,
                   std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
                               argumentType.DisplayString(), variadic ? "variadic " : "", parameterName,
                               parameterType.ToString()),
-                  std::move(notes), refusedInterface ? std::optional(InterfaceValueHelp(parameterType)) : std::nullopt);
+                  std::move(notes), std::move(help));
     };
     const auto emitOverloadError = [&](const std::string_view callable, const std::vector<TypeRef> &argumentTypes,
                                        const std::vector<const FuncDecl *> &candidates, const bool isMethod = false,

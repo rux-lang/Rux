@@ -52,7 +52,7 @@ func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Captu
     var at: uint = 0;
     while at < data.length {
         let end = if at + chunk < data.length { at + chunk } else { data.length };
-        WriteAll(writer, data[at..end]) catch { _ => return false };
+        WriteAll(&var writer, data[at..end]) catch { _ => return false };
         at = end;
     }
     writer.Finish() catch { _ => return false };
@@ -148,7 +148,7 @@ func Main() -> int {
     // Safety: `byteReader` is a local of this function that outlives every use of the handle.
     var crockford = DecodingReader::New(@byteReader as Reader, StreamCodec::Base32(Base32Variant::Crockford));
     var hello: char8[5] = [c8' '; 5];
-    ReadExact(crockford, hello[..]) catch { _ => return 4 };
+    ReadExact(&var crockford, hello[..]) catch { _ => return 4 };
     Assert(Same(hello[..], "Hello"), "Crockford with a hyphen");
     return 0;
 }

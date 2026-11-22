@@ -55,7 +55,7 @@ func Main() -> int {
 
     // Refused by the platform after the path was converted: the parent does not exist.
     var missingHolder = OsString::New(base);
-    let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", missingHolder);
+    let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", &var missingHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
     let countedHandle = @counted as Allocator;
     Assert((MakeDirectory(countedHandle, missing) !! none) == none, "a directory under a missing parent is refused");
@@ -64,7 +64,7 @@ func Main() -> int {
 
     // A call that succeeds gives its copy back too, and so does the one that undoes it.
     var madeHolder = OsString::New(base);
-    let made = PathOf(base, "Bin/FileSystemNativePath.tmp", madeHolder);
+    let made = PathOf(base, "Bin/FileSystemNativePath.tmp", &var madeHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
     MakeDirectory(@counted as Allocator, made) catch { _ => Panic("a directory is made") };
     Assert(state.live == 0, "a call that succeeds gives its copy back");

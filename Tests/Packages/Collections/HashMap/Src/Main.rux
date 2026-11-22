@@ -262,7 +262,7 @@ func Main() -> int {
     var cursor: uint = 0;
     var walked: uint = 0;
     var total: int64 = 0;
-    while let seen? = map.NextEntry(cursor) {
+    while let seen? = map.NextEntry(&var cursor) {
         Assert(seen.value == seen.key * 3, "every entry a walk reports is one that was put in");
         total = total + (seen.key as int64);
         walked = walked + 1;
@@ -308,8 +308,8 @@ func Main() -> int {
     var firstCursor: uint = 0;
     var secondCursor: uint = 0;
     var differed = false;
-    while let firstEntry? = first.NextEntry(firstCursor) {
-        let secondEntry = second.NextEntry(secondCursor);
+    while let firstEntry? = first.NextEntry(&var firstCursor) {
+        let secondEntry = second.NextEntry(&var secondCursor);
         if secondEntry == none {
             differed = true;
             break;
@@ -331,8 +331,8 @@ func Main() -> int {
     firstCursor = 0;
     var sameCursor: uint = 0;
     var matched = true;
-    while let firstEntry? = first.NextEntry(firstCursor) {
-        let sameEntry = same.NextEntry(sameCursor);
+    while let firstEntry? = first.NextEntry(&var firstCursor) {
+        let sameEntry = same.NextEntry(&var sameCursor);
         if sameEntry == none {
             matched = false;
             break;

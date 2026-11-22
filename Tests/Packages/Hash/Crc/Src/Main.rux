@@ -123,7 +123,7 @@ func Main() -> int {
     // Both types are usable through the bound, which is what puts them in generic code.
     var bounded = Crc32c::New();
     // Safety: `bytes` addresses the nine bytes of "123456789".
-    let boundedHash = HashBytes<Crc32c>(bounded, bytes, 9);
+    let boundedHash = HashBytes<Crc32c>(&var bounded, bytes, 9);
     Assert(boundedHash == 0xE3069283, "a CRC is usable through the hashing bound");
 
     // A single-bit change must change the checksum. That is the property a CRC exists for, and the one a broken

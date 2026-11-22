@@ -133,7 +133,7 @@ func ThroughParameter(holder: &var Holder, log: *var Log) {
 
 func ReferenceField(log: *var Log) {
     var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
-    ThroughParameter(holder, log);
+    ThroughParameter(&var holder, log);
     Mark(log);
     holder.Replace(3i32);
     Mark(log);
@@ -148,7 +148,7 @@ func PutValue<T>(box: &var Box<T>, value: T) {
 
 func GenericField(log: *var Log) {
     var box = Box<Tracked> { value: Make(log, 1i32) };
-    PutValue(box, Make(log, 2i32));
+    PutValue(&var box, Make(log, 2i32));
     Mark(log);
 }
 

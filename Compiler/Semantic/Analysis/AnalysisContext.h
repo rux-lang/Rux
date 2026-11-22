@@ -1719,6 +1719,8 @@ private:
     /// The fix offered for writing the immutable `binding`: declaring a local with `var`, or for a parameter, which
     /// has no `var` form, taking it by `&var T` instead. Null when no declaration would make the write legal.
     [[nodiscard]] static std::optional<std::string> ImmutableBindingHelp(const Symbol &binding);
+    /// `&place` or `&var place`, whose type is a reference to the place.
+    [[nodiscard]] TypeRef CheckLoan(const LoanExpr &loan);
     [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                                const FuncDecl &method);
     /// The check `CheckReceiverMutability` applies once a method is known to write through `declared`: a reference or

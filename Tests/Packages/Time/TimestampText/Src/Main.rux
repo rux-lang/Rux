@@ -37,7 +37,7 @@ func Shown(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
-    if (shown.WriteDisplay(writer, spec) !! none) == none { return false; }
+    if (shown.WriteDisplay(&var writer, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -46,7 +46,7 @@ func Inspected(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool 
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
-    if (shown.WriteDebug(writer, spec) !! none) == none { return false; }
+    if (shown.WriteDebug(&var writer, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -57,7 +57,7 @@ func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, writ
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
     var caught: FormatError? = none;
-    match shown.WriteDisplay(writer, spec) {
+    match shown.WriteDisplay(&var writer, spec) {
         .Success(_) => {},
         .Failure(error) => { caught = error; },
     }
@@ -75,7 +75,7 @@ func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, writ
 // value cannot be spelled is holding text nobody can use.
 func RefusedBeforeOutput(value: Timestamp, spec: FormatSpec, expected: FormatError) -> bool {
     var written: uint = 0;
-    if !RefusedWith(value, spec, expected, written) { return false; }
+    if !RefusedWith(value, spec, expected, &var written) { return false; }
     return written == 0;
 }
 
@@ -84,7 +84,7 @@ func RoundTrips(value: Timestamp) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
-    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) == none { return false; }
+    if (shown.WriteDisplay(&var writer, FormatSpec::Plain()) !! none) == none { return false; }
     return if let parsed? = (ParseRfc3339(writer.Written()) !! none) { parsed.ToTimestamp().Equals(value) } else { false };
 }
 
@@ -138,9 +138,9 @@ func Main() -> int {
     // A precision past nine is refused too, though only once the fraction is reached — the same partial-output
     // behaviour the calendar values have, since the digits before it were all valid.
     var partial: uint = 0;
-    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10"), FormatError::UnsupportedRequest, partial),
+    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10"), FormatError::UnsupportedRequest, &var partial),
            "a precision past nine is refused");
-    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10unix"), FormatError::UnsupportedRequest, partial),
+    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10unix"), FormatError::UnsupportedRequest, &var partial),
            "in either form");
 
     // The edges of the calendar range, which is years 0000 through 9999 because that is what four year digits

@@ -25,7 +25,7 @@ import Hash::{ SipHash24, SipHash24Of, SipWord, WriteUint64 };
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-uint
 pub func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
-    WriteUint64<SipHash24>(hasher, value as uint64);
+    WriteUint64<SipHash24>(&var hasher, value as uint64);
     return hasher.Finish();
 }
 
@@ -37,7 +37,7 @@ pub func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-uint64
 pub func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
-    WriteUint64<SipHash24>(hasher, value);
+    WriteUint64<SipHash24>(&var hasher, value);
     return hasher.Finish();
 }
 
@@ -49,7 +49,7 @@ pub func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-uint32
 pub func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
-    WriteUint64<SipHash24>(hasher, value as uint64);
+    WriteUint64<SipHash24>(&var hasher, value as uint64);
     return hasher.Finish();
 }
 
@@ -61,7 +61,7 @@ pub func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-int64
 pub func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
-    WriteUint64<SipHash24>(hasher, value.Truncate<uint64>());
+    WriteUint64<SipHash24>(&var hasher, value.Truncate<uint64>());
     return hasher.Finish();
 }
 
@@ -73,7 +73,7 @@ pub func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-int32
 pub func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
-    WriteUint64<SipHash24>(hasher, (value as int64).Truncate<uint64>());
+    WriteUint64<SipHash24>(&var hasher, (value as int64).Truncate<uint64>());
     return hasher.Finish();
 }
 
@@ -85,7 +85,7 @@ pub func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/collections/hashing#hash-char8
 pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
-    WriteUint64<SipHash24>(hasher, (value as uint8) as uint64);
+    WriteUint64<SipHash24>(&var hasher, (value as uint8) as uint64);
     return hasher.Finish();
 }
 

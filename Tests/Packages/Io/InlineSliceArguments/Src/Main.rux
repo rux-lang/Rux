@@ -15,7 +15,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 func Check(flag: bool) {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    Assert((WriteFormat(writer, "{}/{}/{}", if flag { "alpha" } else { "B" }, if flag { "" } else { "alpha" }, if flag {
+    Assert((WriteFormat(&var writer, "{}/{}/{}", if flag { "alpha" } else { "B" }, if flag { "" } else { "alpha" }, if flag {
         "B"
     } else {
         ""
@@ -23,7 +23,7 @@ func Check(flag: bool) {
     Assert(Same(writer.Written(), if flag { "alpha//B" } else { "B/alpha/" }), "all selected slice bytes survive");
     var plainStorage: char8[32];
     var plainWriter = BufferWriter::New(plainStorage[..32]);
-    Assert((WriteValue(plainWriter, if flag {
+    Assert((WriteValue(&var plainWriter, if flag {
         "alpha"
     } else {
         "B"

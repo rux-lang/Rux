@@ -62,7 +62,7 @@ func Main() -> int {
 
     var counter = Counter { value: 29i32 };
     Assert(Width(counter) == 4u, "infer through an implicit immutable borrow");
-    Assert(WritableWidth(counter) == 4u, "infer through an implicit mutable borrow");
+    Assert(WritableWidth(&var counter) == 4u, "infer through an implicit mutable borrow");
     let shared: &Counter = counter;
     Assert(Width(shared) == 4u, "infer from an existing immutable reference");
     let exclusive: &var Counter = counter;

@@ -229,9 +229,9 @@ func Main() -> int {
     // depth of at most twelve is the bound the colouring promises for this many entries, and the whole reason for
     // paying for the rotations.
     var ascending = Tree<int32, int32>::New(allocator);
-    let ascendingDepth = Fill(ascending, 64, 1);
+    let ascendingDepth = Fill(&var ascending, 64, 1);
     Assert(ascending.Length() == 64, "the tree holds every key");
-    Assert(WalkedInOrder(ascending) == 64, "and walks them in order");
+    Assert(WalkedInOrder(&ascending) == 64, "and walks them in order");
     Assert(ascendingDepth <= 12, "sorted input does not make a list of it");
 
     // Descending insertion, the other degenerate order, taken through the mirrored half of the fix-up.
@@ -239,10 +239,10 @@ func Main() -> int {
     var key: int32 = 63;
     while key >= 0 {
         descending.Attach(key, key * 3, CompareInt32);
-        Assert(Sound(descending), "the rules hold after every descending insertion");
+        Assert(Sound(&descending), "the rules hold after every descending insertion");
         key = key - 1;
     }
-    Assert(WalkedInOrder(descending) == 64, "reversed input comes back out in order");
+    Assert(WalkedInOrder(&descending) == 64, "reversed input comes back out in order");
     // Safety: the root is null or a live node of the tree.
     Assert(Depth(descending.Root()) <= 12, "and does not make a list of it either");
 
@@ -293,7 +293,7 @@ func Main() -> int {
         // Safety: `node` is non-null, asserted above, and `Find` hands back only live nodes of this tree.
         let entry = ascending.Detach(node);
         Assert(entry.key == gone, "and came back out");
-        Assert(Sound(ascending), "the rules hold through the rearranging");
+        Assert(Sound(&ascending), "the rules hold through the rearranging");
         gone = gone + 1;
     }
     // Safety: key 33 was never removed, so `pinned` is still a live node of the tree.
@@ -303,16 +303,16 @@ func Main() -> int {
     // Cleared and used again. A tree has no capacity to keep back, so an emptied one is exactly a fresh one.
     ascending.Clear();
     Assert(ascending.IsEmpty() && ascending.Root() == null, "clearing empties it");
-    let refilled = Fill(ascending, 16, 1);
+    let refilled = Fill(&var ascending, 16, 1);
     Assert(ascending.Length() == 16 && refilled <= 8, "and it is usable again afterwards");
 
     // Built and taken apart in orders nothing about the algorithm makes convenient: both strides are coprime with
     // the count, so each reaches every key while arriving nowhere near sorted.
     var churned = Tree<int32, int32>::New(allocator);
-    Assert(Fill(churned, 64, 37) <= 12, "a shuffled build stays balanced too");
-    Assert(WalkedInOrder(churned) == 64, "and comes out in order");
-    Drain(churned, 64, 23);
-    Assert(WalkedInOrder(churned) == 0, "an emptied tree walks nothing");
+    Assert(Fill(&var churned, 64, 37) <= 12, "a shuffled build stays balanced too");
+    Assert(WalkedInOrder(&churned) == 64, "and comes out in order");
+    Drain(&var churned, 64, 23);
+    Assert(WalkedInOrder(&churned) == 0, "an emptied tree walks nothing");
 
     // Every value destroyed exactly once, however it left the tree. Attaching destroys nothing, the tree's own
     // destructor takes everything still in it, and a replaced value is destroyed by whoever received it back rather

@@ -151,7 +151,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> !FormatError {
     while significant <= 17 {
         // Safety: `storage` is a local array of 64 bytes.
         var cursor = ByteCursor::New((@storage[0])[..64]);
-        WriteDecimal(cursor, value, significant);
+        WriteDecimal(&var cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
         let parsed = ParseFloat64(rendered) catch { _ => 0.0 };
@@ -288,7 +288,7 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> !FormatError {
             if let entry? = value.EntryAt(index) {
                 EmitKey(writer, entry.key.View().Bytes())!;
                 Emit(writer, " = ")!;
-                EmitValue(writer, entry.value)!;
+                EmitValue(writer, &entry.value)!;
             }
             index = index + 1;
         }
@@ -310,10 +310,10 @@ func IsBodyEntry(value: &TomlValue) -> bool {
 func EmitBody(writer: &var TextWriter, table: &TomlValue) -> !FormatError {
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
-        if let entry? = table.EntryAt(index) && IsBodyEntry(entry.value) {
+        if let entry? = table.EntryAt(index) && IsBodyEntry(&entry.value) {
             EmitKey(writer, entry.key.View().Bytes())!;
             Emit(writer, " = ")!;
-            EmitValue(writer, entry.value)!;
+            EmitValue(writer, &entry.value)!;
             EmitByte(writer, 0x0A)!;
         }
         index = index + 1;
@@ -351,7 +351,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
 // One entry of a table under the header, or headers, of its own, unless it is written in the table's body.
 func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath, written: &var uint,
                  root: bool) -> !FormatError {
-    if IsBodyEntry(entry.value) { return; }
+    if IsBodyEntry(&entry.value) { return; }
     let mark = path.length;
     if !root {
         if !path.Append(".") { return PathTooLong()!; }
@@ -360,8 +360,8 @@ func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath
     if entry.value.Kind() == TomlKind::Table {
         EmitHeader(writer, path, false, written == 0)!;
         written = written + 1;
-        EmitBody(writer, entry.value)!;
-        EmitSections(writer, entry.value, path, written, false)!;
+        EmitBody(writer, &entry.value)!;
+        EmitSections(writer, &entry.value, path, written, false)!;
     }
     else {
         var element: uint = 0;
@@ -422,7 +422,7 @@ pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> !Forma
     // The root's own lines come first, so a header needs a blank line before it unless nothing has been
     // written yet.
     var written = CountBodyEntries(table);
-    return EmitSections(writer, table, path, written, true)!;
+    return EmitSections(writer, table, &var path, &var written, true)!;
 }
 
 // How many of a table's entries are written as lines rather than as sections.
@@ -430,7 +430,7 @@ func CountBodyEntries(table: &TomlValue) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
-        if let entry? = table.EntryAt(index) && IsBodyEntry(entry.value) {
+        if let entry? = table.EntryAt(index) && IsBodyEntry(&entry.value) {
             count = count + 1;
         }
         index = index + 1;

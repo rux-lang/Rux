@@ -109,7 +109,7 @@ extend Command {
     /// @param value the argument
     /// @see https://rux-lang.dev/docs/api/process/command#argument
     pub func Argument(&var self, value: char8[..]) {
-        AppendText(self.words, value) catch { error => { self.Note(error); } };
+        AppendText(&var self.words, value) catch { error => { self.Note(error); } };
         self.words.Push(0 as OsUnit) catch { error => { self.Note(error); } };
         self.wordCount = self.wordCount + 1;
     }
@@ -118,7 +118,7 @@ extend Command {
     /// @param value the argument
     /// @see https://rux-lang.dev/docs/api/process/command#native-argument
     pub func NativeArgument(&var self, value: OsStringView) {
-        AppendUnits(self.words, value.Units()) catch { error => { self.Note(error); } };
+        AppendUnits(&var self.words, value.Units()) catch { error => { self.Note(error); } };
         self.words.Push(0 as OsUnit) catch { error => { self.Note(error); } };
         self.wordCount = self.wordCount + 1;
     }
@@ -128,7 +128,7 @@ extend Command {
     /// @see https://rux-lang.dev/docs/api/process/command#directory
     pub func Directory(&var self, path: char8[..]) {
         self.directory.Clear();
-        AppendText(self.directory, path) catch { error => { self.Note(error); } };
+        AppendText(&var self.directory, path) catch { error => { self.Note(error); } };
         self.directory.Push(0 as OsUnit) catch { error => { self.Note(error); } };
     }
 
@@ -139,9 +139,9 @@ extend Command {
     pub func SetVariable(&var self, name: char8[..], value: char8[..]) {
         self.CheckName(name);
         self.changes.Push(0x53 as OsUnit) catch { error => { self.Note(error); } };
-        AppendText(self.changes, name) catch { error => { self.Note(error); } };
+        AppendText(&var self.changes, name) catch { error => { self.Note(error); } };
         self.changes.Push(0x3D as OsUnit) catch { error => { self.Note(error); } };
-        AppendText(self.changes, value) catch { error => { self.Note(error); } };
+        AppendText(&var self.changes, value) catch { error => { self.Note(error); } };
         self.changes.Push(0 as OsUnit) catch { error => { self.Note(error); } };
     }
 
@@ -151,7 +151,7 @@ extend Command {
     pub func RemoveVariable(&var self, name: char8[..]) {
         self.CheckName(name);
         self.changes.Push(0x52 as OsUnit) catch { error => { self.Note(error); } };
-        AppendText(self.changes, name) catch { error => { self.Note(error); } };
+        AppendText(&var self.changes, name) catch { error => { self.Note(error); } };
         self.changes.Push(0 as OsUnit) catch { error => { self.Note(error); } };
     }
 
@@ -385,7 +385,7 @@ extend Command {
                 var end = at;
                 while words[end] != (0 as OsUnit) { end = end + 1; }
                 if at != 0 { line.Push(0x20 as OsUnit)!; }
-                QuoteArgument(line, words[at..end])!;
+                QuoteArgument(&var line, words[at..end])!;
                 at = end + 1;
             }
             line.Push(0 as OsUnit)!;

@@ -101,7 +101,7 @@ func Clones(counter: *var Counter) {
     // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
     Assert(counter.clones == 1, "Clone runs the type's own method exactly once");
     Assert(clone.id == 104 && original.id == 4, "and leaves the source as it was");
-    let generic = Duplicate<Resource>(original);
+    let generic = Duplicate<Resource>(&original);
     // Safety: `counter` is `Main`'s pointer to its live `Counter` local.
     Assert(counter.clones == 2 && generic.id == 104, "generic code clones under 'Cloneable'");
 }

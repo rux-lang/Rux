@@ -77,7 +77,7 @@ func CheckPauses(allocator: Allocator) {
     };
     var interruptedSource = PausingHandle { state: @interrupted };
     var first = StringBuilder::New(allocator);
-    Assert((ReadLineFrom(interruptedSource, first) !! none) != none,
+    Assert((ReadLineFrom(&var interruptedSource, &var first) !! none) != none,
            "an interrupted read is retried within the line");
     let ab = StringView::FromBytes("ab") ?? StringView::New();
     Assert(first.View().Equals(ab), "which arrives whole");
@@ -95,14 +95,14 @@ func CheckPauses(allocator: Allocator) {
     var blockedSource = PausingHandle { state: @blocked };
     var second = StringBuilder::New(allocator);
     var kind: IoErrorKind? = none;
-    match ReadLineFrom(blockedSource, second) {
+    match ReadLineFrom(&var blockedSource, &var second) {
         .Success(_) => {},
         .Failure(error) => { kind = error.kind; },
     }
     Assert(kind == IoErrorKind::WouldBlock, "a source that is not ready is handed back");
     Assert(second.View().Equals(ab), "with the bytes read before it in the builder");
     Assert(blocked.calls == 3, "after a single attempt, not a spin");
-    CheckLine(allocator, blockedSource, none, "");
+    CheckLine(allocator, &var blockedSource, none, "");
     Assert(blocked.calls == 4, "and the next call finishes the line once the source is ready");
     second.Release();
 }
@@ -112,7 +112,7 @@ func CheckPauses(allocator: Allocator) {
 func CheckLine(allocator: Allocator, source: &var Reader, expectedKind: IoErrorKind?, expected: char8[..]) {
     var builder = StringBuilder::New(allocator);
     var reported: IoErrorKind? = none;
-    match ReadLineFrom(source, builder) {
+    match ReadLineFrom(source, &var builder) {
         .Success(_) => {},
         .Failure(error) => { reported = error.kind; },
     }
@@ -157,17 +157,17 @@ func CheckScript(allocator: Allocator) {
     for index in 0..6 {
         accented[index] = bytes[index];
     }
-    CheckLine(allocator, source, none, accented[0..6]);
+    CheckLine(allocator, &var source, none, accented[0..6]);
     var face: char8[4];
     for index in 0..4 {
         face[index] = bytes[7 + index];
     }
-    CheckLine(allocator, source, none, face[0..4]);
-    CheckLine(allocator, source, IoErrorKind::InvalidText, "a");
-    CheckLine(allocator, source, IoErrorKind::InvalidText, "");
-    CheckLine(allocator, source, none, "ok");
-    CheckLine(allocator, source, IoErrorKind::InvalidText, "");
-    CheckLine(allocator, source, IoErrorKind::EndOfStream, "");
+    CheckLine(allocator, &var source, none, face[0..4]);
+    CheckLine(allocator, &var source, IoErrorKind::InvalidText, "a");
+    CheckLine(allocator, &var source, IoErrorKind::InvalidText, "");
+    CheckLine(allocator, &var source, none, "ok");
+    CheckLine(allocator, &var source, IoErrorKind::InvalidText, "");
+    CheckLine(allocator, &var source, IoErrorKind::EndOfStream, "");
 }
 
 func Main() -> int {
@@ -179,7 +179,7 @@ func Main() -> int {
     while count < 8 {
         var builder = StringBuilder::New(allocator);
         {
-            ReadLine(builder) catch {
+            ReadLine(&var builder) catch {
             error => {
                 builder.Release();
                 if !error.IsEnd() { return 1; }
@@ -188,7 +188,7 @@ func Main() -> int {
         };
             let line = builder.TakeString();
             Print("[");
-            Print(line);
+            Print(&line);
             PrintLine("]");
             count = count + 1;
         }

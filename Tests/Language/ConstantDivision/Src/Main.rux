@@ -359,7 +359,7 @@ func CheckSigned8(n: int8) {
 func Main() -> int {
     var state: uint64 = 7u64;
     for i in 0u64..4096u64 {
-        let n = Next(state);
+        let n = Next(&var state);
         Check64(n);
         Check64(n >> (i % 64u64));
         Check64(i);

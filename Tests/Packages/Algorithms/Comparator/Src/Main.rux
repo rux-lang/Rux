@@ -166,7 +166,7 @@ func Main() -> int {
     for n in sizes {
         var i: uint = 0;
         while i < n {
-            buffer[i] = (NextRandom(state) % 60) as int32;
+            buffer[i] = (NextRandom(&var state) % 60) as int32;
             i++;
         }
         let kind = CheckSort(buffer[..n]);
@@ -220,7 +220,7 @@ func Main() -> int {
     var selection: int32[40];
     i = 0;
     while i < 40 {
-        selection[i] = (NextRandom(state) % 30) as int32;
+        selection[i] = (NextRandom(&var state) % 30) as int32;
         i++;
     }
     var sorted: int32[40];

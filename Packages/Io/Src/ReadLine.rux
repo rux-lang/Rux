@@ -20,7 +20,7 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error };
 /// @see https://rux-lang.dev/docs/api/io/read-line
 pub func ReadLine(builder: &var StringBuilder) -> !IoError {
     var input = StandardIn::Acquire();
-    return ReadLineFrom(input, builder)!;
+    return ReadLineFrom(&var input, builder)!;
 }
 
 /// Appends the next line of `reader` to `builder`, without its ending, reading one byte at a time.

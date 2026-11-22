@@ -124,7 +124,7 @@ func Main() -> int {
     Assert(stack.Top() == 9 && stack.Length() == 2, "a generic block's shorthand carries its type arguments");
 
     var knob = Knob { level: 1 };
-    Assert(Spin(knob) == 3, "an interface requirement's '&var self' is 'self: &var Self'");
+    Assert(Spin(&var knob) == 3, "an interface requirement's '&var self' is 'self: &var Self'");
     Assert(Observe(knob) == 3, "an interface requirement's '&self' is 'self: &Self'");
     return 0;
 }

@@ -88,7 +88,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     if digits.IsZero() { return true; }
 
     var state = Reading { numerator: FixedNat::New(), denominator: FixedNat::New(), sticky: truncated };
-    if !BuildRatio(state, digits, exponent) { return false; }
+    if !BuildRatio(&var state, digits, exponent) { return false; }
 
     // Which binade the value is in: the bit lengths give it within one, and one comparison settles which. From
     // here the ratio is scaled so it sits in [1, 2), which is what the division below expects.

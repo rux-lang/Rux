@@ -66,10 +66,10 @@ pub func Log(level: Level, message: char8[..], fields: Field[..]) {
     // Safety: likewise `@GlobalTimestamps`, a live, aligned module variable reached only through atomic operations.
     let timestamps = AtomicLoad(@GlobalTimestamps, MemoryOrder::Relaxed);
     var builder = StringBuilder::New(SystemAllocator::New());
-    if !WriteRecord(builder, format, timestamps, level, message, NoFields(), fields) { return; }
+    if !WriteRecord(&var builder, format, timestamps, level, message, NoFields(), fields) { return; }
     GlobalLock.Acquire();
     var stream = StandardError::Acquire();
-    WriteAll(stream, builder.Bytes()) catch { _ => {} };
+    WriteAll(&var stream, builder.Bytes()) catch { _ => {} };
     GlobalLock.Release();
 }
 

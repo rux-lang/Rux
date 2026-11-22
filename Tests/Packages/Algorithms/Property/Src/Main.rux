@@ -96,7 +96,7 @@ func Main() -> int {
     var trial: uint = 0;
     while trial < Trials {
         // A length from zero to MaxLength, so the degenerate cases come up as often as any other.
-        let length = (NextRandom(state) % ((MaxLength + 1) as uint64)) as uint;
+        let length = (NextRandom(&var state) % ((MaxLength + 1) as uint64)) as uint;
 
         // Values from a range narrow enough that duplicates are common, since duplicates are what the interesting
         // cases are made of.
@@ -105,7 +105,7 @@ func Main() -> int {
         var working: int32[48];
         var index: uint = 0;
         while index < length {
-            let value = (NextRandom(state) % 20) as int32;
+            let value = (NextRandom(&var state) % 20) as int32;
             values[index] = value;
             expected[index] = value;
             index++;
@@ -260,7 +260,7 @@ func Main() -> int {
             pruned[index] = values[index];
             index++;
         }
-        let target = (NextRandom(state) % 20) as int32;
+        let target = (NextRandom(&var state) % 20) as int32;
         var occurrences: int32 = 0;
         index = 0;
         while index < length {

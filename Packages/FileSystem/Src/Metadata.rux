@@ -366,7 +366,7 @@ pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Meta
     let native = NativePath::New(allocator, path)!;
     var buffer: char8[256];
     when #target.os == .Windows {
-        let handle = OpenForQuery(native, followLinks);
+        let handle = OpenForQuery(&native, followLinks);
         if (handle as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(GetLastError() as int32);
@@ -480,7 +480,7 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
               followLinks: bool) -> !IoError {
     let native = NativePath::New(allocator, path)!;
     when #target.os == .Windows {
-        let handle = OpenForQuery(native, followLinks);
+        let handle = OpenForQuery(&native, followLinks);
         if (handle as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
             throw TranslateNative(GetLastError() as int32);

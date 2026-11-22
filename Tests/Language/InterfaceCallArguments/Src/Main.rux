@@ -102,12 +102,12 @@ func InterfaceArguments(frame: &Render) {
     var first = Buffer { total: @firstTotal };
     var second = Buffer { total: @secondTotal };
     let triple = Triple { first: 3u, second: 5u, third: 11u };
-    Assert(frame.Mixed(2u, first, triple, buffer, second, 7u) == 133u,
+    Assert(frame.Mixed(2u, &var first, triple, buffer, &var second, 7u) == 133u,
            "interface pairs retain their positions beside scalar and aggregate arguments");
     Assert(firstTotal == 5u && secondTotal == 12u && total == 74u,
            "each mutable interface writes its own concrete storage");
-    Assert(frame.Defaulted(first) == 43u && firstTotal == 36u, "default arguments use the same receiver offset");
-    Assert(frame.Defaulted(first, 9u) == 76u && firstTotal == 67u,
+    Assert(frame.Defaulted(&var first) == 43u && firstTotal == 36u, "default arguments use the same receiver offset");
+    Assert(frame.Defaulted(&var first, 9u) == 76u && firstTotal == 67u,
            "explicit arguments replace the default at the right slot");
     Assert(frame.Sum(1u, first, second, buffer) == 185u,
            "multiple variadic concrete arguments each acquire an interface pair");
@@ -127,7 +127,7 @@ func TakeMany(seed: uint, values: &Reader...) -> uint {
     return total;
 }
 
-func Bound<T: Reader>(value: T) -> uint { return Take(value); }
+func Bound<T: Reader>(value: T) -> uint { return Take(&value); }
 func BoundBorrow<T: Reader>(value: &T) -> uint { return Borrow(value); }
 func BoundMany<T: Reader>(value: T) -> uint { return TakeMany(1u, value, value); }
 func BoundNested<T: Reader>(value: T) -> uint { return Bound<T>(value); }
@@ -153,7 +153,7 @@ func Main() -> int {
     var total = 0u;
     var buffer = Buffer { total: @total };
     let frame = Frame { value: 31u };
-    Assert(frame.Write(buffer, 5u) == 36u && total == 31u,
+    Assert(frame.Write(&var buffer, 5u) == 36u && total == 31u,
            "an interface method coerces its concrete writer at the correct argument position");
     BorrowedWriter(frame);
     InterfaceArguments(frame);

@@ -94,7 +94,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
     let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103) / 100000) as int + 3);
     if magnitude > largest { throw ParseError::Overflow(str.length); }
     if magnitude < smallest { return PackWide(negative, 0, 0, layout); }
-    return RoundRatio(allocator, digits, decimalExponent, negative, layout, str.length)!;
+    return RoundRatio(allocator, &var digits, decimalExponent, negative, layout, str.length)!;
 }
 
 // The bits nearest to `digits` times ten to `decimalExponent`, found by exact division.
@@ -107,13 +107,13 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     var scratch = BigNat::New(allocator);
     if !denominator.SetSmall(1u64) { AllocationFailed(AllocError::OutOfMemory); }
     if decimalExponent >= 0 {
-        if !SetPowerOfTen(power, decimalExponent as uint, base, scratch) || !numerator.SetProduct(digits, power) {
+        if !SetPowerOfTen(&var power, decimalExponent as uint, &var base, &var scratch) || !numerator.SetProduct(digits, &power) {
             AllocationFailed(AllocError::OutOfMemory);
         }
     }
     else {
         if !numerator.Assign(digits) ||
-            !SetPowerOfTen(denominator, (0 - decimalExponent) as uint, base, scratch) {
+            !SetPowerOfTen(&var denominator, (0 - decimalExponent) as uint, &var base, &var scratch) {
             AllocationFailed(AllocError::OutOfMemory);
         }
     }
@@ -121,18 +121,18 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     // The binade: two to the exponent is at most the ratio, which is below two to the exponent plus one.
     var exponent = numerator.BitLength() as int - denominator.BitLength() as int;
     if exponent >= 0 {
-        if !scratch.Assign(denominator) || !scratch.ShiftLeft(exponent as uint) {
+        if !scratch.Assign(&denominator) || !scratch.ShiftLeft(exponent as uint) {
             AllocationFailed(AllocError::OutOfMemory);
         }
-        if numerator.Compare(scratch) < 0 {
+        if numerator.Compare(&scratch) < 0 {
             exponent = exponent - 1;
         }
     }
     else {
-        if !scratch.Assign(numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
+        if !scratch.Assign(&numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
             AllocationFailed(AllocError::OutOfMemory);
         }
-        if scratch.Compare(denominator) < 0 {
+        if scratch.Compare(&denominator) < 0 {
             exponent = exponent - 1;
         }
     }
@@ -152,21 +152,21 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     var remainder = BigNat::New(allocator);
     var divisor = BigNat::New(allocator);
     if exponent >= 0 {
-        if !remainder.Assign(numerator) || !divisor.Assign(denominator) || !divisor.ShiftLeft(exponent as uint) {
+        if !remainder.Assign(&numerator) || !divisor.Assign(&denominator) || !divisor.ShiftLeft(exponent as uint) {
             AllocationFailed(AllocError::OutOfMemory);
         }
     }
-    else if !remainder.Assign(numerator) || !remainder.ShiftLeft((0 - exponent) as uint) ||
-             !divisor.Assign(denominator) {
+    else if !remainder.Assign(&numerator) || !remainder.ShiftLeft((0 - exponent) as uint) ||
+             !divisor.Assign(&denominator) {
         AllocationFailed(AllocError::OutOfMemory);
     }
     var quotient: uint512 = 0;
     var position = wanted;
     while position > 0 {
         position = position - 1u;
-        if remainder.Compare(divisor) >= 0 {
+        if remainder.Compare(&divisor) >= 0 {
             quotient = quotient | (1u512 << position);
-            remainder.Subtract(divisor);
+            remainder.Subtract(&divisor);
         }
         if position > 0 && !remainder.ShiftLeft(1u) {
             AllocationFailed(AllocError::OutOfMemory);

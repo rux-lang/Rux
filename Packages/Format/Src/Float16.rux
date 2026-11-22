@@ -81,7 +81,7 @@ extend float16 : Display {
         // without moving it.
         var storage: char8[52];
         var cursor = ByteCursor::New(storage[2..52]);
-        WriteFloat(cursor, self);
+        WriteFloat(&var cursor, self);
         var rendered = cursor.Written();
         if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' {
             storage[1] = c8'+';

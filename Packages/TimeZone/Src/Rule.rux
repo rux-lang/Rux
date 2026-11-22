@@ -51,13 +51,13 @@ func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule ! TimeZoneErr
     var rule = NoRule();
     var at: uint = 0;
     rule.standard = ZoneType { offset: 0, daylight: false, abbreviation: 0, abbreviationLength: 0 };
-    ParseName(text, @at, names, rule.standard)!;
+    ParseName(text, @at, names, &var rule.standard)!;
     rule.standard.offset = -ParseOffset(text, @at, 24)!;
     rule.present = true;
     if at == text.length { return rule; }
     rule.hasDaylight = true;
     rule.daylight = ZoneType { offset: 0, daylight: true, abbreviation: 0, abbreviationLength: 0 };
-    ParseName(text, @at, names, rule.daylight)!;
+    ParseName(text, @at, names, &var rule.daylight)!;
     if at < text.length && text[at] != ',' {
         rule.daylight.offset = -ParseOffset(text, @at, 24)!;
     }

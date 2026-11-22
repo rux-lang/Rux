@@ -1,0 +1,66 @@
+// A loan is written where it starts. `&x` lends a place for reading and `&var x` for writing; neither moves or copies
+// it, and the owner keeps it afterwards. A loan reaches a reference parameter, a `let` alias, a `match` subject and
+// an `if let` subject, and lending a reference lends what it refers to.
+
+import Core::Diagnostics::Assert;
+
+var drops: int = 0;
+
+struct Counter {
+    count: int;
+}
+
+extend Counter {
+    func ~(&var self) {
+        drops += 1;
+    }
+}
+
+func Read(counter: &Counter) -> int {
+    return counter.count;
+}
+
+func Bump(counter: &var Counter) {
+    counter.count += 1;
+}
+
+// A reference parameter is lent on as it is, or written again as a loan of its referent.
+func BumpTwice(counter: &var Counter) {
+    Bump(counter);
+    Bump(&var counter);
+}
+
+func Add(total: &var int, amount: int) {
+    total += amount;
+}
+
+func Find(counter: &Counter) -> int? {
+    if counter.count > 0 { return counter.count; }
+    return none;
+}
+
+func Main() -> int {
+    var counter = Counter { count: 1 };
+    Bump(&var counter);
+    Assert(Read(&counter) == 2, "a loan for writing changes the owner's value");
+    BumpTwice(&var counter);
+    Assert(counter.count == 4, "a reference is lent on");
+
+    var total = 10;
+    Add(&var total, 5);
+    Assert(total == 15, "plain data lent for writing");
+
+    let alias = &counter;
+    Assert(alias.count == 4, "a 'let' alias reads through the loan");
+
+    let shown = match &counter {
+        Counter { count } => count,
+    };
+    Assert(shown == 4, "a match on a loan leaves the owner in place");
+
+    if let found? = Find(&counter) {
+        Assert(found == 4, "a loan reaches an 'if let' call");
+    }
+    Assert(drops == 0, "nothing was destroyed while lent");
+    return 0;
+}

@@ -121,7 +121,7 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
 
     // Safety: `state` points at a local of `Main`, which outlives this call.
     state.refusing = true;
-    Assert(Refused(vector, 4096) == AllocError::OutOfMemory, "a growth the allocator refuses is reported");
+    Assert(Refused(&var vector, 4096) == AllocError::OutOfMemory, "a growth the allocator refuses is reported");
     // Safety: `state` points at a local of `Main`, which outlives this call.
     state.refusing = false;
     Assert(vector.Length() == 4, "with every element still held");
@@ -190,12 +190,12 @@ func Main() -> int {
 
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
     var reserved = Vector<int64>::New(@hostile as Allocator);
-    Assert(Refused(reserved, 16) == AllocError::OutOfMemory, "asking a refusing allocator for capacity fails");
+    Assert(Refused(&var reserved, 16) == AllocError::OutOfMemory, "asking a refusing allocator for capacity fails");
     Assert(state.requests == 1, "having actually asked");
     // A container with no block yet meets the same refusal on its first growth.
     Assert(reserved.IsEmpty() && reserved.Capacity() == 0, "a container holding nothing");
     Assert(reserved.AsSlice().data == null, "with no block");
-    Assert(PushRefused(reserved, 1) == AllocError::OutOfMemory, "which still cannot grow");
+    Assert(PushRefused(&var reserved, 1) == AllocError::OutOfMemory, "which still cannot grow");
     Assert(reserved.IsEmpty(), "and is still empty afterwards");
     Assert(state.live == 0, "nothing was handed out, so nothing is out");
 
@@ -215,7 +215,7 @@ func Main() -> int {
     let outstanding = state.live;
 
     state.refusing = true;
-    Assert(Refused(populated, 1024) == AllocError::OutOfMemory,
+    Assert(Refused(&var populated, 1024) == AllocError::OutOfMemory,
            "a reservation the allocator refuses is reported as out of memory");
     Assert((populated.TryClone() !! none) == none, "and so is a copy it cannot make storage for");
     Assert(populated.AsSlice().data == block, "leaving the block where it was");

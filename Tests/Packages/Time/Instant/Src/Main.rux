@@ -19,7 +19,7 @@ func TicksShown(reading: Instant, ticks: &var uint64) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Instant = reading;
-    if (shown.WriteDebug(writer, FormatSpec::Plain()) !! none) == none { return false; }
+    if (shown.WriteDebug(&var writer, FormatSpec::Plain()) !! none) == none { return false; }
     let text = writer.Written();
     let opening = "Instant(nanoseconds: ";
     if text.length <= opening.length + 1 { return false; }
@@ -47,7 +47,7 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Instant = reading;
-    return (shown.WriteDebug(writer, spec) !! none) == none;
+    return (shown.WriteDebug(&var writer, spec) !! none) == none;
 }
 
 func Main() -> int {
@@ -86,9 +86,9 @@ func Main() -> int {
     // Debug shows the reading, named and in its unit, so nobody reads it as a moment on a calendar.
     var firstTicks: uint64 = 0;
     var lastTicks: uint64 = 0;
-    Assert(TicksShown(first, firstTicks), "Debug writes Instant(nanoseconds: N)");
+    Assert(TicksShown(first, &var firstTicks), "Debug writes Instant(nanoseconds: N)");
     let last = Instant::Now();
-    Assert(TicksShown(last, lastTicks), "for every reading, whatever the count happens to be");
+    Assert(TicksShown(last, &var lastTicks), "for every reading, whatever the count happens to be");
     Assert(lastTicks >= firstTicks, "and the number moves the way the clock does");
 
     // The number shown is the reading itself: the difference between two renderings is the span between them.

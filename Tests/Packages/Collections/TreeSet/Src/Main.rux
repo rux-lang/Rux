@@ -98,13 +98,13 @@ func Main() -> int {
     Assert(seen == 49 && previous == 49, "and reaches every element, ending at the largest");
 
     // Half-open at both ends, so two ranges meeting at a bound cover everything once.
-    Assert(CountRange(set, 10, 20) == 10, "a range hands back what lies between its bounds");
-    Assert(CountRange(set, 0, 25) + CountRange(set, 25, 50) == 49,
+    Assert(CountRange(&set, 10, 20) == 10, "a range hands back what lies between its bounds");
+    Assert(CountRange(&set, 0, 25) + CountRange(&set, 25, 50) == 49,
            "and two ranges meeting at a bound cover the set exactly once");
-    Assert(CountRange(set, 28, 34) == 5, "a range steps over the element that was removed");
-    Assert(CountRange(set, 20, 20) == 0, "a range whose bounds are equal is empty");
-    Assert(CountRange(set, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
-    Assert(CountRange(set, 47, 100) == 3, "one running past the end stops at the largest element");
+    Assert(CountRange(&set, 28, 34) == 5, "a range steps over the element that was removed");
+    Assert(CountRange(&set, 20, 20) == 0, "a range whose bounds are equal is empty");
+    Assert(CountRange(&set, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
+    Assert(CountRange(&set, 47, 100) == 3, "one running past the end stops at the largest element");
 
     // Three sets whose overlaps can be written down: the evens below twenty, the odds below twenty, and everything
     // below six.
@@ -127,45 +127,45 @@ func Main() -> int {
     Assert(evens.Length() == 10 && odds.Length() == 10 && small.Length() == 6, "the three sets are what they claim");
 
     var empty = TreeSet<int32>::New(allocator, CompareInt32);
-    Assert(empty.IsSubsetOf(evens), "the empty set is a subset of everything");
-    Assert(empty.IsSubsetOf(empty), "including itself");
-    Assert(evens.IsSupersetOf(empty), "and everything is a superset of it");
-    Assert(empty.IsDisjointFrom(evens) && empty.IsDisjointFrom(empty), "and it is disjoint from everything");
-    Assert(evens.IsDisjointFrom(odds), "the evens and the odds share nothing");
-    Assert(!evens.IsDisjointFrom(small), "the evens and the small numbers do share something");
-    Assert(!evens.IsSubsetOf(small), "neither of those contains the other");
-    Assert(!small.IsSubsetOf(evens), "in either direction");
-    Assert(evens.Equals(evens), "a set equals itself");
-    Assert(!evens.Equals(odds), "and not one of the same size holding different elements");
+    Assert(empty.IsSubsetOf(&evens), "the empty set is a subset of everything");
+    Assert(empty.IsSubsetOf(&empty), "including itself");
+    Assert(evens.IsSupersetOf(&empty), "and everything is a superset of it");
+    Assert(empty.IsDisjointFrom(&evens) && empty.IsDisjointFrom(&empty), "and it is disjoint from everything");
+    Assert(evens.IsDisjointFrom(&odds), "the evens and the odds share nothing");
+    Assert(!evens.IsDisjointFrom(&small), "the evens and the small numbers do share something");
+    Assert(!evens.IsSubsetOf(&small), "neither of those contains the other");
+    Assert(!small.IsSubsetOf(&evens), "in either direction");
+    Assert(evens.Equals(&evens), "a set equals itself");
+    Assert(!evens.Equals(&odds), "and not one of the same size holding different elements");
 
     // Intersection allocates nothing and can only make a set smaller.
     var intersection = evens.Clone();
-    Assert(intersection.Equals(evens), "and the copy holds what the original does");
-    intersection.IntersectWith(small);
+    Assert(intersection.Equals(&evens), "and the copy holds what the original does");
+    intersection.IntersectWith(&small);
     Assert(intersection.Length() == 3, "the intersection is the even numbers below six");
     Assert(intersection.Contains(0) && intersection.Contains(2) && intersection.Contains(4), "which are 0, 2 and 4");
     Assert(intersection.First() == 0 && intersection.Last() == 4, "and still in order");
 
     var difference = evens.Clone();
-    difference.Subtract(small);
+    difference.Subtract(&small);
     Assert(difference.Length() == 7, "subtracting the small numbers leaves the evens from six up");
     Assert(!difference.Contains(4) && difference.Contains(6), "with six the smallest of them");
 
     // Union and symmetric difference can grow, so they report.
     var joined = evens.Clone();
-    joined.UnionWith(odds);
+    joined.UnionWith(&odds);
     Assert(joined.Length() == 20, "and holds every element of both");
     Assert(joined.First() == 0 && joined.Last() == 19, "in order across both");
 
     var symmetric = evens.Clone();
-    symmetric.SymmetricDifferenceWith(small);
+    symmetric.SymmetricDifferenceWith(&small);
     Assert(symmetric.Length() == 10, "holding what is in exactly one of the two");
     Assert(!symmetric.Contains(0) && !symmetric.Contains(2) && !symmetric.Contains(4), "not what they share");
     Assert(symmetric.Contains(1) && symmetric.Contains(3) && symmetric.Contains(5), "the odd small numbers");
     Assert(symmetric.Contains(6) && symmetric.Contains(18), "and the evens above them");
 
     var mirror = evens.Clone();
-    mirror.SymmetricDifferenceWith(evens);
+    mirror.SymmetricDifferenceWith(&evens);
     Assert(mirror.IsEmpty(), "and comes out empty");
 
     // The consuming walk hands out ownership one element at a time, in the same order, and a walk stopped

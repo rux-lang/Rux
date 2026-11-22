@@ -77,7 +77,7 @@ extend float32 : Display {
         if spec.HasPrecision() {
             return WritePrecision(writer, spec, DecomposeFloat32(self))!;
         }
-        WriteFloat(cursor, self);
+        WriteFloat(&var cursor, self);
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
         if spec.ShowsSign() && rendered.length > 0 && rendered[0] != c8'-' && rendered[0] != c8'N' {

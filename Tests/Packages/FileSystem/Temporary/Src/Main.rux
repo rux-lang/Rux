@@ -62,11 +62,11 @@ func Run() -> int ! IoError {
     Assert(Exists(allocator, first.AsPath()) && Exists(allocator, second.AsPath()), "both exist");
 
     // It is a real file, open for reading and writing.
-    WriteAll(first.file, TextBytes("held briefly"))!;
+    WriteAll(&var first.file, TextBytes("held briefly"))!;
     Assert(first.file.Seek(SeekFrom::Start, 0)! == 0, "and rewinds");
     var storage: char8[16];
     let room = storage[..12];
-    ReadExact(first.file, room)!;
+    ReadExact(&var first.file, room)!;
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");
 
     // Close deletes it and says so; the name is free afterwards.

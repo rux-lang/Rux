@@ -193,6 +193,21 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return LowerExpr(*move->operand);
     }
+    // A written loan is the reference to its place that an implicit loan builds.
+    if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
+        HirExprPtr place = LowerExpr(*loan->operand);
+        const TypeRef type = SubstituteCurrentType(ResolvedExpressionType(expression));
+        if (place->type->kind == TypeRef::Kind::Reference) {
+            place->type = type;
+            return place;
+        }
+        auto borrowed = std::make_unique<HirUnaryExpr>();
+        borrowed->location = loan->location;
+        borrowed->op = TokenKind::At;
+        borrowed->type = type;
+        borrowed->operand = std::move(place);
+        return borrowed;
+    }
     if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         auto lowered = std::make_unique<HirLiteralExpr>();
         lowered->location = literal->location;

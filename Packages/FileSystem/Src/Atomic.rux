@@ -149,7 +149,7 @@ extend AtomicWrite : Writer {
 /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#write-atomically
 pub func WriteAtomically(allocator: Allocator, target: Path, contents: char8[..]) -> !IoError {
     var replacement = AtomicWrite::Begin(allocator, target)!;
-    WriteAll(replacement, contents) catch {
+    WriteAll(&var replacement, contents) catch {
         error => {
             replacement.Abandon(allocator) catch { _ => {} };
             throw error;

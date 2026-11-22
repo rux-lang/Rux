@@ -196,7 +196,7 @@ func Main() -> int {
 
     var point: Point | int32 = Point { x: 1i32, y: 2i32 };
     Assert(Sum(point) == 3i32, "a borrowed member read in place");
-    Shift(point);
+    Shift(&var point);
     Assert(Sum(point) == 13i32, "a member written through an exclusive borrow");
 
     Assert(Pick<int32, int64>(1i32) == 1i32, "the left parameter's member");

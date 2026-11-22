@@ -560,7 +560,7 @@ extend TomlParser {
     func ParseKeyPath(&var self, parts: &var Vector<String>) -> bool {
         while true {
             var part = String::New(self.allocator);
-            if !self.ParseKeyPart(part) {
+            if !self.ParseKeyPart(&var part) {
                 part.Clear();
                 return false;
             }
@@ -577,7 +577,7 @@ extend TomlParser {
     // call. This adds only to that table and the tables below it, so `into` stays valid throughout.
     func ParseKeyValue(&var self, into: *var TomlValue) {
         var parts = Vector<String>::New(self.allocator);
-        if !self.ParseKeyPath(parts) {
+        if !self.ParseKeyPath(&var parts) {
             parts.Clear();
             return;
         }
@@ -656,7 +656,7 @@ extend TomlParser {
             self.Advance();
         }
         var parts = Vector<String>::New(self.allocator);
-        if !self.ParseKeyPath(parts) {
+        if !self.ParseKeyPath(&var parts) {
             parts.Clear();
             return null;
         }

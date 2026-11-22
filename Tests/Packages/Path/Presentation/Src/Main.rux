@@ -126,8 +126,8 @@ func Main() -> int {
     let plainView = plain.View();
     Assert(Shown(plainView, FormatSpec::Plain(), "usr/local/bin"), "text renders as itself");
     Assert(Inspected(plainView, FormatSpec::Plain(), "\"usr/local/bin\""), "and Debug quotes it");
-    Assert(OwnedShown(plain, "usr/local/bin"), "the owning type renders the units it owns");
-    Assert(OwnedInspected(plain, "\"usr/local/bin\""), "in both forms");
+    Assert(OwnedShown(&plain, "usr/local/bin"), "the owning type renders the units it owns");
+    Assert(OwnedInspected(&plain, "\"usr/local/bin\""), "in both forms");
 
     // Non-ASCII text is text: it passes through untouched, since nothing here is invalid.
     let accented = OsString::FromText(allocator, "héllo/wörld");
@@ -168,12 +168,12 @@ func Main() -> int {
     // The owning native string renders its own units the same way.
     let hostileOwned = OsString::FromView(allocator, hostileView);
     when #target.os == .Windows {
-        Assert(OwnedShown(hostileOwned, "a�bc"), "an owning native string renders lossily too");
-        Assert(OwnedInspected(hostileOwned, "\"a\\u{d800}bc\""), "and exactly");
+        Assert(OwnedShown(&hostileOwned, "a�bc"), "an owning native string renders lossily too");
+        Assert(OwnedInspected(&hostileOwned, "\"a\\u{d800}bc\""), "and exactly");
     }
     else {
-        Assert(OwnedShown(hostileOwned, "a��c"), "an owning native string renders lossily too");
-        Assert(OwnedInspected(hostileOwned, "\"a\\x{80}\\x{c0}c\""), "and exactly");
+        Assert(OwnedShown(&hostileOwned, "a��c"), "an owning native string renders lossily too");
+        Assert(OwnedInspected(&hostileOwned, "\"a\\x{80}\\x{c0}c\""), "and exactly");
     }
 
     // The path layer renders the same units: it adds structure, not storage, and neither rendering normalizes a
@@ -190,8 +190,8 @@ func Main() -> int {
     }
 
     var buffer = PathBuffer::FromPath(allocator, path);
-    Assert(BufferShown(buffer, "usr/local/bin"), "and an owning path renders them");
-    Assert(BufferInspected(buffer, "\"usr/local/bin\""), "in both forms");
+    Assert(BufferShown(&buffer, "usr/local/bin"), "and an owning path renders them");
+    Assert(BufferInspected(&buffer, "\"usr/local/bin\""), "in both forms");
 
     // Debug escapes what would otherwise be ambiguous inside the quotes.
     let quoted = OsString::FromText(allocator, "a\"b");

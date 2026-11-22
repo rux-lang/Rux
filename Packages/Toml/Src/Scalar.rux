@@ -173,7 +173,7 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
     }
     var stripped = Stripped { digits: [c8'0'; 160], origin: [0; 160], length: 0, source: 0 };
     var badUnderscore: uint = 0;
-    if !StripUnderscores(text, stripped, badUnderscore) {
+    if !StripUnderscores(text, &var stripped, &var badUnderscore) {
         throw .Malformed(badUnderscore);
     }
     let digits = stripped.digits[..stripped.length];
@@ -258,7 +258,7 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     }
     var stripped = Stripped { digits: [c8'0'; 160], origin: [0; 160], length: 0, source: 0 };
     var badUnderscore: uint = 0;
-    if !StripUnderscores(text, stripped, badUnderscore) {
+    if !StripUnderscores(text, &var stripped, &var badUnderscore) {
         throw .Malformed(badUnderscore);
     }
     let digits = stripped.digits[..stripped.length];
@@ -284,7 +284,7 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
         return QuietNan64();
     }
     var shapeAt: uint = 0;
-    if !CheckFloatShape(digits, start, shapeAt) {
+    if !CheckFloatShape(digits, start, &var shapeAt) {
         throw .Malformed(stripped.Source(shapeAt));
     }
     // The shape is a float's; what the reader refused is the magnitude, which is the whole value rather than any
@@ -426,7 +426,7 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
     // Safety: the read happens only when `text.length` is at least 5, tested first.
     if text.length >= 5 && (text.data[2] as uint8) == 0x3A {
         var consumed: uint = 0;
-        if !ReadTime(text, 0, built.time, consumed, at) {
+        if !ReadTime(text, 0, &var built.time, &var consumed, &var at) {
             throw .Malformed(at);
         }
         if consumed != text.length {
@@ -438,7 +438,7 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
     if text.length < 10 {
         throw .Malformed(text.length);
     }
-    if !ReadDate(text, 0, built.date, at) {
+    if !ReadDate(text, 0, &var built.date, &var at) {
         throw .Malformed(at);
     }
     if text.length == 10 { return built; }
@@ -448,7 +448,7 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
         throw .Malformed(10);
     }
     var consumed: uint = 0;
-    if !ReadTime(text, 11, built.time, consumed, at) {
+    if !ReadTime(text, 11, &var built.time, &var consumed, &var at) {
         throw .Malformed(at);
     }
     if consumed == text.length {
@@ -457,7 +457,7 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
     }
     // Safety: `ReadTime` reads no further than the end of `text`, so `consumed` is at most `text.length`, and it is
     // not equal, checked above.
-    if !ReadOffset(text, consumed, built.offset, at) {
+    if !ReadOffset(text, consumed, &var built.offset, &var at) {
         throw .Malformed(at);
     }
     built.shape = TomlDateTimeShape::Offset;
@@ -475,11 +475,11 @@ func ReadDate(text: char8[..], at: uint, date: &var Date, stopped: &var uint) ->
     var year: uint32 = 0;
     var month: uint32 = 0;
     var day: uint32 = 0;
-    if !Digits(text, at, 4, year) { return false; }
+    if !Digits(text, at, 4, &var year) { return false; }
     stopped = at + 5;
-    if !Digits(text, at + 5, 2, month) { return false; }
+    if !Digits(text, at + 5, 2, &var month) { return false; }
     stopped = at + 8;
-    if !Digits(text, at + 8, 2, day) { return false; }
+    if !Digits(text, at + 8, 2, &var day) { return false; }
     // Safety: `at + 10` is at most `text.length`, checked above.
     if (text.data[at + 4] as uint8) != 0x2D {
         stopped = at + 4;
@@ -514,9 +514,9 @@ func ReadTime(text: char8[..], at: uint, time: &var TimeOfDay, consumed: &var ui
     var hour: uint32 = 0;
     var minute: uint32 = 0;
     var second: uint32 = 0;
-    if !Digits(text, at, 2, hour) { return false; }
+    if !Digits(text, at, 2, &var hour) { return false; }
     stopped = at + 3;
-    if !Digits(text, at + 3, 2, minute) { return false; }
+    if !Digits(text, at + 3, 2, &var minute) { return false; }
     // Safety: `at + 5` is at most `text.length`, checked above.
     if (text.data[at + 2] as uint8) != 0x3A {
         stopped = at + 2;
@@ -526,7 +526,7 @@ func ReadTime(text: char8[..], at: uint, time: &var TimeOfDay, consumed: &var ui
     // Safety: the read happens only when `index` is below `text.length`, tested first.
     if index < text.length && (text.data[index] as uint8) == 0x3A {
         stopped = index + 1;
-        if !Digits(text, index + 1, 2, second) { return false; }
+        if !Digits(text, index + 1, 2, &var second) { return false; }
         index = index + 3;
     }
     var nanosecond: uint32 = 0;
@@ -586,9 +586,9 @@ func ReadOffset(text: char8[..], at: uint, offset: &var UtcOffset, stopped: &var
     var hours: uint32 = 0;
     var minutes: uint32 = 0;
     stopped = at + 1;
-    if !Digits(text, at + 1, 2, hours) { return false; }
+    if !Digits(text, at + 1, 2, &var hours) { return false; }
     stopped = at + 4;
-    if !Digits(text, at + 4, 2, minutes) { return false; }
+    if !Digits(text, at + 4, 2, &var minutes) { return false; }
     if (text.data[at + 3] as uint8) != 0x3A {
         stopped = at + 3;
         return false;

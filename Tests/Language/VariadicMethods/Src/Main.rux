@@ -201,7 +201,7 @@ func Main() -> int {
     Assert(Total::Sum(total, word, half, byte) == 100i128, "a method through its type collects the rest");
     Assert(Total::Count(total, values...) == 3u, "a method through its type takes a spread after the receiver");
     Assert(Total::HighWords(total, word, half) == -2i128, "a method through its type widens its elements");
-    Total::Add(running, 16i32, word, half);
+    Total::Add(&var running, 16i32, word, half);
     Assert(running.count == 31i32 && running.base == 53i128, "a writable receiver is borrowed through its type");
     Assert(Total::Scaled(total, 3i128) == 106i128, "a default fills an omitted argument after the receiver");
     Assert(Total::Pick(total, 2u, 5i32, 6i32, 7i32) == 7i32, "a generic method through its type deduces its element");

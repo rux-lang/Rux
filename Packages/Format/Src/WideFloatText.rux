@@ -59,10 +59,10 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         }
         let produced = digits[..count];
         if exponent10 < -4 || exponent10 >= layout.DecimalDigits() as int {
-            WriteScientific(cursor, produced, count, exponent10);
+            WriteScientific(&var cursor, produced, count, exponent10);
         }
         else {
-            WriteFixed(cursor, produced, count, exponent10);
+            WriteFixed(&var cursor, produced, count, exponent10);
         }
     }
     var rendered = cursor.Written();

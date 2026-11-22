@@ -159,7 +159,7 @@ extend StreamWriter : TextWriter {
     pub func Write(&var self, bytes: char8[..]) -> !FormatError {
         // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over to outlive it.
         if *self.failure != none { throw .WriterFailure; }
-        WriteAll(self.sink, bytes) catch {
+        WriteAll(&var self.sink, bytes) catch {
             error => {
                 // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over
                 // to outlive it.

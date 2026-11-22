@@ -60,52 +60,52 @@ func Main() -> int {
 
     // The scalars.
     var nullValue = Parsed(allocator, "null");
-    var nullText = Written(allocator, nullValue, JsonStyle::Compact(), wrote);
+    var nullText = Written(allocator, &nullValue, JsonStyle::Compact(), &var wrote);
     let expectNull = View("null");
     Assert(wrote && nullText.View().Equals(expectNull), "null writes as null");
 
     var number = Parsed(allocator, "-1.5e3");
-    var numberText = Written(allocator, number, JsonStyle::Compact(), wrote);
+    var numberText = Written(allocator, &number, JsonStyle::Compact(), &var wrote);
     let expectNumber = View("-1.5e3");
     Assert(numberText.View().Equals(expectNumber),
            "a number writes exactly as it was written, since its text was kept");
 
     // Escapes: the required ones and no others.
     var escaped = Parsed(allocator, "\"a\\nb\\t\"");
-    var escapedText = Written(allocator, escaped, JsonStyle::Compact(), wrote);
+    var escapedText = Written(allocator, &escaped, JsonStyle::Compact(), &var wrote);
     let expectEscaped = View("\"a\\nb\\t\"");
     Assert(escapedText.View().Equals(expectEscaped), "and writes back with the short escapes");
 
     var solidus = Parsed(allocator, "\"a\\/b\"");
-    var solidusText = Written(allocator, solidus, JsonStyle::Compact(), wrote);
+    var solidusText = Written(allocator, &solidus, JsonStyle::Compact(), &var wrote);
     let expectSolidus = View("\"a/b\"");
     Assert(solidusText.View().Equals(expectSolidus),
            "a solidus is written unescaped, which is legal and is what every other writer does");
 
     var control = Parsed(allocator, "\"a\\u0001b\"");
-    var controlText = Written(allocator, control, JsonStyle::Compact(), wrote);
+    var controlText = Written(allocator, &control, JsonStyle::Compact(), &var wrote);
     let expectControl = View("\"a\\u0001b\"");
     Assert(controlText.View().Equals(expectControl),
            "a control character with no short escape takes the four-digit form");
 
     // Compact output has no whitespace anywhere.
     var document = Parsed(allocator, "{\"a\":[1,2],\"b\":{\"c\":true}}");
-    var compact = Written(allocator, document, JsonStyle::Compact(), wrote);
+    var compact = Written(allocator, &document, JsonStyle::Compact(), &var wrote);
     let expectCompact = View("{\"a\":[1,2],\"b\":{\"c\":true}}");
     Assert(compact.View().Equals(expectCompact), "and writes back byte for byte in the compact style");
 
     // Pretty output round-trips to the same value, which is the property that matters — the exact layout is a
     // presentation choice and the equality of the values is not.
-    var pretty = Written(allocator, document, JsonStyle::Pretty(), wrote);
+    var pretty = Written(allocator, &document, JsonStyle::Pretty(), &var wrote);
     Assert(wrote, "the pretty style writes");
     Assert(pretty.Length() > compact.Length(), "producing more bytes, since it adds layout");
     var reparsed = Parsed(allocator, pretty.View().Bytes());
-    var reflattened = Written(allocator, reparsed, JsonStyle::Compact(), wrote);
+    var reflattened = Written(allocator, &reparsed, JsonStyle::Compact(), &var wrote);
     Assert(reflattened.View().Equals(expectCompact), "to exactly the document it started as");
 
     // Empty containers stay on one line even when indenting.
     var empties = Parsed(allocator, "{\"a\":[],\"b\":{}}");
-    var prettyEmpties = Written(allocator, empties, JsonStyle::Pretty(), wrote);
+    var prettyEmpties = Written(allocator, &empties, JsonStyle::Pretty(), &var wrote);
     let expectEmpties = View("{\n  \"a\": [],\n  \"b\": {}\n}");
     Assert(prettyEmpties.View().Equals(expectEmpties),
            "an empty container is not spread over three lines, since a line holding a bracket says nothing");
@@ -115,7 +115,7 @@ func Main() -> int {
     Assert((JsonValue::Number(allocator, "NaN") !! none) == none, "a NaN is not a number that can be made");
     Assert((JsonValue::Number(allocator, "Infinity") !! none) == none, "and neither is an infinity");
     var ordinary = JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
-    var written999 = Written(allocator, ordinary, JsonStyle::Compact(), wrote);
+    var written999 = Written(allocator, &ordinary, JsonStyle::Compact(), &var wrote);
     Assert(wrote,
            "while an exponent past what a float holds is still a number JSON can spell, and is written");
 
@@ -128,7 +128,7 @@ func Main() -> int {
     var bounded = BufferWriter::New(room[..8]);
     let boundedSink: &var TextWriter = bounded;
     let overflowed: !FormatError =
-        WriteValue(boundedSink, wholeDocument, JsonStyle::Compact());
+        WriteValue(boundedSink, &wholeDocument, JsonStyle::Compact());
     let full = FormatError::InsufficientCapacity;
     Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
     Assert(bounded.Length() <= 8, "having written no more than it had");
@@ -138,7 +138,7 @@ func Main() -> int {
     var enough: char8[64];
     var roomy = BufferWriter::New(enough[..64]);
     let roomySink: &var TextWriter = roomy;
-    Assert((WriteValue(roomySink, wholeDocument, JsonStyle::Compact()) !! none) != none,
+    Assert((WriteValue(roomySink, &wholeDocument, JsonStyle::Compact()) !! none) != none,
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 26, "all twenty-six bytes of it");
 

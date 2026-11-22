@@ -94,33 +94,33 @@ func CheckedTwice<T>(value: T, ok: bool) -> T ! Overflow {
 
 func Main() -> int {
     var log = Log { calls: 0i32, last: 0i32 };
-    Assert((Sum(log, 1i32, 2i32, 3i32) !! none) == 6i32, "every call under one try runs");
+    Assert((Sum(&var log, 1i32, 2i32, 3i32) !! none) == 6i32, "every call under one try runs");
     Assert(log.calls == 3i32, "three calls");
 
     log = Log { calls: 0i32, last: 0i32 };
-    let failed = Sum(log, 1i32, 500i32, 3i32) catch { e => -e.limit };
+    let failed = Sum(&var log, 1i32, 500i32, 3i32) catch { e => -e.limit };
     Assert(failed == -100i32, "the error passes to the caller unchanged");
     Assert(log.calls == 2i32 && log.last == 500i32, "evaluation stops at the first call that throws");
 
     log = Log { calls: 0i32, last: 0i32 };
-    let missing = Combined(log, -1i32) catch {
+    let missing = Combined(&var log, -1i32) catch {
         _: Missing => 1i32,
         _: Overflow => 2i32,
     };
     Assert(missing == 1i32 && log.calls == 0i32, "an error thrown by an argument stops the outer call");
-    let overflow = Combined(log, 200i32) catch {
+    let overflow = Combined(&var log, 200i32) catch {
         _: Missing => 1i32,
         _: Overflow => 2i32,
     };
     Assert(overflow == 2i32, "each error widens into the sum");
-    Assert((Combined(log, 5i32) !! none) == 10i32, "the success continues");
+    Assert((Combined(&var log, 5i32) !! none) == 10i32, "the success continues");
 
     Assert((Chain(3i32) !! none) == 6i32, "a chain continues on the success");
     Assert((Chain(30i32) !! none) == none, "a chain stops where it throws");
 
     var counter = Counter { value: 0i32 };
-    Assert((Assigned(counter) !! none) == 3i32, "'!' in an assigned value");
-    Assert((Assigned(counter) !! none) == none, "a compound assignment that throws stops");
+    Assert((Assigned(&var counter) !! none) == 3i32, "'!' in an assigned value");
+    Assert((Assigned(&var counter) !! none) == none, "a compound assignment that throws stops");
 
     Assert((CheckedTwice(5i64, true) !! none) == 5i64, "a generic instance succeeds");
     Assert((CheckedTwice(5i32, false) catch { e => e.limit - 1i32 }) == -1i32, "a generic instance throws");

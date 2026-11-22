@@ -140,7 +140,7 @@ func Replace(slot: &var Tracked, log: *var Log) {
 
 func ThroughReference(log: *var Log) {
     var item = Track(log, 1i32);
-    Replace(item, log);
+    Replace(&var item, log);
     Mark(log);
     Assert(item.id == 2i32, "a temporary written through '&var' is installed as it stands");
 }

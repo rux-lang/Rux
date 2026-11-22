@@ -173,14 +173,14 @@ func Main() -> int {
     Assert(previous == 49, "ending at the largest key");
 
     // Half-open at both ends, so two ranges meeting at a bound cover everything once.
-    Assert(CountRange(map, 10, 20) == 10, "a range hands back what lies between its bounds");
-    Assert(CountRange(map, 0, 25) + CountRange(map, 25, 50) == 48,
+    Assert(CountRange(&map, 10, 20) == 10, "a range hands back what lies between its bounds");
+    Assert(CountRange(&map, 0, 25) + CountRange(&map, 25, 50) == 48,
            "and two ranges meeting at a bound cover the map exactly once");
-    Assert(CountRange(map, 28, 34) == 4, "a range steps over the keys that were removed");
-    Assert(CountRange(map, 20, 20) == 0, "a range whose bounds are equal is empty");
-    Assert(CountRange(map, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
-    Assert(CountRange(map, 100, 200) == 0, "a range past every key is empty");
-    Assert(CountRange(map, 47, 100) == 3, "and one running past the end stops at the largest key");
+    Assert(CountRange(&map, 28, 34) == 4, "a range steps over the keys that were removed");
+    Assert(CountRange(&map, 20, 20) == 0, "a range whose bounds are equal is empty");
+    Assert(CountRange(&map, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
+    Assert(CountRange(&map, 100, 200) == 0, "a range past every key is empty");
+    Assert(CountRange(&map, 47, 100) == 3, "and one running past the end stops at the largest key");
 
     // Cleared and used again. A tree keeps no capacity back, so an emptied map is exactly a fresh one.
     var reused = TreeMap<int32, int32>::New(allocator, CompareInt32);

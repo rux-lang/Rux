@@ -33,7 +33,7 @@ func Main() -> int {
     let alias: &Point = point;
     let local = @alias;
     Assert(local == direct, "a local alias");
-    Shift(point);
+    Shift(&var point);
     Assert(point.x == 11, "a write through the address of a '&var' parameter");
     return 0;
 }

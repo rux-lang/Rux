@@ -202,14 +202,14 @@ func Main() -> int {
 
     var destroyed: int32 = 0;
     var value = Owned { counter: @destroyed, tag: 7i32 };
-    Assert((WriteValueLine(out, value) !! none) != none, "a value writes itself into a stream");
+    Assert((WriteValueLine(out, &value) !! none) != none, "a value writes itself into a stream");
     Assert(Same(second.written[..second.length], "owned-7\n"), "with its newline after it");
     Assert(!(healthy != none), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
     Assert(destroyed == 0, "writing a value destroys nothing");
-    Assert((WriteValueLine(out, value) !! none) != none, "so the same value goes out again");
+    Assert((WriteValueLine(out, &value) !! none) != none, "so the same value goes out again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(second.written[..second.length], "owned-7\nowned-7\n"), "identically");
 
@@ -254,7 +254,7 @@ func Main() -> int {
     // Safety: `fourthSink` is a local of this function that outlives every use of the handle.
     var fourthAdapter = StreamWriter::New(@fourthSink as Writer, @fourthFailure);
     let fourthOut: &var TextWriter = fourthAdapter;
-    match WriteValueLine(fourthOut, value) {
+    match WriteValueLine(fourthOut, &value) {
         .Success(_) => {
             Assert(false,
                "a destination with room for the value but not the newline reports a writer failure");
@@ -283,7 +283,7 @@ func Main() -> int {
     var room: char8[4];
     var bounded = BufferWriter::New(room[..4]);
     let boundedOut: &var TextWriter = bounded;
-    match WriteValueLine(boundedOut, value) {
+    match WriteValueLine(boundedOut, &value) {
         .Success(_) => {
             Assert(true, "a destination that is merely full is not a destination that failed");
         },

@@ -95,7 +95,7 @@ extend EncodingWriter {
     func Emit(&var self, bytes: byte[..]) -> !IoError {
         var text: char8[512] = [c8' '; 512];
         let length = EncodeWith(self.codec, bytes, text[..])!;
-        WriteAll(self.sink, text[..length])!;
+        WriteAll(&var self.sink, text[..length])!;
     }
 
     /// Ends the text: encodes the bytes of an incomplete last group, with padding where the form uses it, and

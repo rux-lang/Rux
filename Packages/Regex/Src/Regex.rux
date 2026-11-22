@@ -126,7 +126,7 @@ extend Searcher {
             }
             var matched = false;
             if self.useDfa && self.text.length - self.at >= DfaMinimumLength {
-                matched = FindWithDfa(self.forward, self.backward, self.scratch, self.program, self.text, self.at, slots);
+                matched = FindWithDfa(&var self.forward, &var self.backward, &var self.scratch, self.program, self.text, self.at, slots);
             }
             else {
                 matched = self.scratch.Run(self.program, self.text, self.at, false, false, slots);
@@ -257,7 +257,7 @@ extend Regex {
             reverseStart: NoReverse
         };
         var parser = Parser { pattern, at: 0, flags: 0, nodes: Vector<Node>::New(allocator) };
-        let root = parser.ParseAlternation(regex, 0)!;
+        let root = parser.ParseAlternation(&var regex, 0)!;
         if parser.at < pattern.length { throw RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
         regex.CompileProgram(parser.nodes.AsSlice(), root)!;
         return move regex;
@@ -384,7 +384,7 @@ extend Regex {
         if program.reverseStart != NoReverse && text.length - start >= DfaMinimumLength {
             var forward = self.ForwardDfa(program);
             var backward = self.BackwardDfa(program);
-            matched = FindWithDfa(forward, backward, scratch, program, text, start, slots.AsMutableSlice());
+            matched = FindWithDfa(&var forward, &var backward, &var scratch, program, text, start, slots.AsMutableSlice());
         }
         else {
             matched = scratch.Run(program, text, start, false, false, slots.AsMutableSlice());
@@ -448,7 +448,7 @@ extend Regex {
         while (limit == 0u || count < limit) && searcher.Advance() {
             let slots = searcher.slots.AsSlice();
             builder.Append(text[last..slots[0]]);
-            if expands { self.Expand(builder, replacement, text, slots); }
+            if expands { self.Expand(&var builder, replacement, text, slots); }
             else { builder.Append(replacement); }
             last = slots[1];
             count = count + 1;

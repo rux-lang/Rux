@@ -612,6 +612,9 @@ void AnalysisContext::EndBorrowScope(const Scope &scope) {
 }
 
 const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) const {
+    if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
+        return ReferenceSourceAlias(*loan->operand);
+    }
     // A reference a call returned reaches what its source argument reaches.
     if (const Expr *source = BorrowResultSource(expression)) {
         return ReferenceSourceAlias(*source);
@@ -644,6 +647,10 @@ const Symbol *AnalysisContext::ReferenceSourceAlias(const Expr &expression) cons
 }
 
 std::optional<AnalysisContext::BorrowPlace> AnalysisContext::ResolveBorrowPlace(const Expr &expression) const {
+    // A written loan borrows the place it lends.
+    if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
+        return ResolveBorrowPlace(*loan->operand);
+    }
     // A reference a call returned lies somewhere in its source argument's storage, which is all that is known of it.
     if (const Expr *source = BorrowResultSource(expression)) {
         std::optional<BorrowPlace> place = ResolveBorrowPlace(*source);

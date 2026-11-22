@@ -240,7 +240,7 @@ func AtEnd(reader: &Reader) -> !TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/date#parse-date
 pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let date = ReadDate(reader)!;
+    let date = ReadDate(&var reader)!;
     AtEnd(reader)!;
     return date;
 }
@@ -253,7 +253,7 @@ pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/time-of-day#parse-time-of-day
 pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let time = ReadTime(reader)!;
+    let time = ReadTime(&var reader)!;
     AtEnd(reader)!;
     return time;
 }
@@ -268,9 +268,9 @@ pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/date-time#parse-date-time
 pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let date = ReadDate(reader)!;
-    ReadSeparator(reader)!;
-    let time = ReadTime(reader)!;
+    let date = ReadDate(&var reader)!;
+    ReadSeparator(&var reader)!;
+    let time = ReadTime(&var reader)!;
     AtEnd(reader)!;
     return DateTime { date, time };
 }
@@ -287,10 +287,10 @@ pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/offset-date-time#parse-rfc3339
 pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let date = ReadDate(reader)!;
-    ReadSeparator(reader)!;
-    let time = ReadTime(reader)!;
-    let offset = ReadOffset(reader)!;
+    let date = ReadDate(&var reader)!;
+    ReadSeparator(&var reader)!;
+    let time = ReadTime(&var reader)!;
+    let offset = ReadOffset(&var reader)!;
     AtEnd(reader)!;
     return
         OffsetDateTime::New(DateTime { date, time }, offset);

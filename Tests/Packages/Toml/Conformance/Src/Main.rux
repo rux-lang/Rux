@@ -1020,7 +1020,7 @@ func TreeScalars(value: &TomlValue) -> uint {
         var index: uint = 0;
         while index < (value.Length() ?? 0) {
             if let entry? = value.EntryAt(index) {
-                total = total + TreeScalars(entry.value);
+                total = total + TreeScalars(&entry.value);
             }
             index = index + 1;
         }
@@ -1086,9 +1086,9 @@ func Main() -> int {
     while index < ValidCount {
         let text = Valid(index);
         var parsed = Accepted(allocator, text, Label(index));
-        let once = Render(parsed, storage[..8192]);
+        let once = Render(&parsed, storage[..8192]);
         var again = Accepted(allocator, once, Reparsed(index));
-        let twice = Render(again, second[..8192]);
+        let twice = Render(&again, second[..8192]);
         Assert(Same(once, twice), Fixed(index));
         index = index + 1;
     }
@@ -1098,8 +1098,8 @@ func Main() -> int {
     while index < InvalidCount {
         let text = Invalid(index);
         let outcome: TomlValue ! TomlParseFailure = TomlParse(allocator, text);
-        Assert(Refused(outcome), Refusal(index));
-        Assert(Positioned(outcome), "reported at a position a reader can find, in bytes and in line and column");
+        Assert(Refused(&outcome), Refusal(index));
+        Assert(Positioned(&outcome), "reported at a position a reader can find, in bytes and in line and column");
         index = index + 1;
     }
 
@@ -1111,9 +1111,9 @@ func Main() -> int {
         let text = Valid(index);
         var parsed = Accepted(allocator, text, "the tree parser accepts it");
         var clean = false;
-        let streamed = StreamedScalars(text, clean);
+        let streamed = StreamedScalars(text, &var clean);
         Assert(clean, Differential(index));
-        Assert(streamed == TreeScalars(parsed), Differential(index));
+        Assert(streamed == TreeScalars(&parsed), Differential(index));
         index = index + 1;
     }
 
@@ -1126,10 +1126,10 @@ func Main() -> int {
         // The streaming reader is responsible for the grammar and not for the tables or the values: it cannot
         // know a table was defined twice without keeping every table it has seen, and it hands out the bytes of
         // a number rather than reading it, so `010` is the caller's to refuse when the caller decodes it.
-        let structural = IsStructural(outcome);
+        let structural = IsStructural(&outcome);
         if structural {
             var clean = false;
-            StreamedScalars(text, clean);
+            StreamedScalars(text, &var clean);
             Assert(!clean, Refusal(index));
         }
         index = index + 1;

@@ -91,7 +91,7 @@ func Put<T>(slot: &var T, value: T) { slot = move value; }
 
 func ReplaceInScope(log: *var Log) {
     var tracked = Tracked { log, id: 1i32 };
-    ReplaceTracked(tracked, log);
+    ReplaceTracked(&var tracked, log);
     Mark(log);
     Assert(tracked.id == 2i32, "the new value is installed in the caller's binding");
 }
@@ -99,28 +99,28 @@ func ReplaceInScope(log: *var Log) {
 func CopyInScope(log: *var Log) {
     var slot = Copied { log, id: 1i32 };
     let source = Copied { log, id: 2i32 };
-    CopyInto(slot, source);
+    CopyInto(&var slot, &source);
     Mark(log);
     Assert(slot.id == 2i32 && source.id == 2i32, "the clone is installed and its source kept");
 }
 
 func MoveInScope(log: *var Log) {
     var slot = Token { log, id: 1i32 };
-    MoveInto(slot, Token { log, id: 2i32 });
+    MoveInto(&var slot, Token { log, id: 2i32 });
     Mark(log);
     Assert(slot.id == 2i32, "the moved value is installed in the caller's binding");
 }
 
 func GenericInScope(log: *var Log) {
     var slot = Tracked { log, id: 1i32 };
-    Put(slot, Tracked { log, id: 2i32 });
+    Put(&var slot, Tracked { log, id: 2i32 });
     Mark(log);
     Assert(slot.id == 2i32, "a generic write installs the new value");
 }
 
 func Main() -> int {
     var pair = Pair { a: 1i32, b: 2i32 };
-    ReplacePair(pair);
+    ReplacePair(&var pair);
     Assert(pair.a == 3i32 && pair.b == 4i32, "a struct is replaced through a parameter");
     let alias: &var Pair = pair;
     alias = Pair { a: 5i32, b: 6i32 };
@@ -129,26 +129,26 @@ func Main() -> int {
     Assert(pair.a == 0i32 && pair.b == 0i32, "a struct is replaced through 'self: &var T'");
 
     var swapped = (1i32, 2i32);
-    SwapPair(swapped);
+    SwapPair(&var swapped);
     Assert(swapped.0 == 2i32 && swapped.1 == 1i32, "the new value reads the old one before it is stored");
     var tuple = (1i32, false);
-    ReplaceTuple(tuple);
+    ReplaceTuple(&var tuple);
     Assert(tuple.0 == 9i32 && tuple.1, "a tuple is replaced through a reference");
     var values = [1i32, 2i32, 3i32];
-    ReplaceArray(values);
+    ReplaceArray(&var values);
     Assert(values[0] == 7i32 && values[1] == 8i32 && values[2] == 9i32, "an array is replaced through a reference");
 
     var holder = Holder { pair: (1i32, false), values: [1i32, 2i32] };
-    ReplaceTuple(holder.pair);
-    ReplaceNarrowArray(holder.values);
+    ReplaceTuple(&var holder.pair);
+    ReplaceNarrowArray(&var holder.values);
     Assert(holder.pair.0 == 9i32 && holder.pair.1, "a tuple field is replaced through a reference");
     Assert(holder.values[0] == 5i32 && holder.values[1] == 6i32, "an array field is replaced through a reference");
 
     var number = 1;
-    Put(number, 5);
+    Put(&var number, 5);
     Assert(number == 5, "a generic write stores a scalar");
     var generic = Pair { a: 1i32, b: 1i32 };
-    Put(generic, Pair { a: 8i32, b: 9i32 });
+    Put(&var generic, Pair { a: 8i32, b: 9i32 });
     Assert(generic.a == 8i32 && generic.b == 9i32, "a generic write stores a struct");
 
     var log = Log { count: 0i32, order: 0i64 };

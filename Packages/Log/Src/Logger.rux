@@ -92,8 +92,8 @@ extend Logger {
     pub func Log(&var self, level: Level, message: char8[..], fields: Field[..]) {
         if !self.Enabled(level) { return; }
         self.buffer.Clear();
-        if !WriteRecord(self.buffer, self.format, self.timestamps, level, message, self.context, fields) { return; }
-        match WriteAll(self.sink, self.buffer.Bytes()) {
+        if !WriteRecord(&var self.buffer, self.format, self.timestamps, level, message, self.context, fields) { return; }
+        match WriteAll(&var self.sink, self.buffer.Bytes()) {
             .Success(_) => {},
             .Failure(error) => {
                 if self.failure == none { self.failure = error; }

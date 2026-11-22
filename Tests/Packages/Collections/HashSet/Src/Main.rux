@@ -89,7 +89,7 @@ func Main() -> int {
     var cursor: uint = 0;
     var walked: uint = 0;
     var total: int64 = 0;
-    while let seen? = set.NextElement(cursor) {
+    while let seen? = set.NextElement(&var cursor) {
         Assert(seen % 2 == 1, "every element a walk reports is one still in the set");
         total = total + (seen as int64);
         walked = walked + 1;
@@ -121,8 +121,8 @@ func Main() -> int {
     var firstCursor: uint = 0;
     var secondCursor: uint = 0;
     var differed = false;
-    while let firstValue? = first.NextElement(firstCursor) {
-        let secondNext = second.NextElement(secondCursor);
+    while let firstValue? = first.NextElement(&var firstCursor) {
+        let secondNext = second.NextElement(&var secondCursor);
         if secondNext == none {
             differed = true;
             break;
@@ -193,52 +193,52 @@ func Main() -> int {
 
     // Containment, including the two vacuous cases.
     var empty = HashSet<int32>::New(allocator, HashInt32, EqualsInt32);
-    Assert(empty.IsSubsetOf(evens), "the empty set is a subset of anything");
-    Assert(empty.IsSubsetOf(empty), "including itself");
-    Assert(evens.IsSubsetOf(evens), "and every set is a subset of itself");
-    Assert(!evens.IsSubsetOf(small), "a larger set is not a subset of a smaller one");
-    Assert(!small.IsSubsetOf(evens), "and a set with an element the other lacks is not one either");
-    Assert(evens.IsSupersetOf(empty), "a superset is a subset read the other way");
-    Assert(evens.IsDisjointFrom(odds), "evens and odds share nothing");
-    Assert(!evens.IsDisjointFrom(small), "while evens and the small set share their even members");
-    Assert(empty.IsDisjointFrom(evens), "the empty set is disjoint from everything");
-    Assert(evens.Equals(evens), "a set equals itself");
-    Assert(!evens.Equals(odds), "and not one with different elements");
+    Assert(empty.IsSubsetOf(&evens), "the empty set is a subset of anything");
+    Assert(empty.IsSubsetOf(&empty), "including itself");
+    Assert(evens.IsSubsetOf(&evens), "and every set is a subset of itself");
+    Assert(!evens.IsSubsetOf(&small), "a larger set is not a subset of a smaller one");
+    Assert(!small.IsSubsetOf(&evens), "and a set with an element the other lacks is not one either");
+    Assert(evens.IsSupersetOf(&empty), "a superset is a subset read the other way");
+    Assert(evens.IsDisjointFrom(&odds), "evens and odds share nothing");
+    Assert(!evens.IsDisjointFrom(&small), "while evens and the small set share their even members");
+    Assert(empty.IsDisjointFrom(&evens), "the empty set is disjoint from everything");
+    Assert(evens.Equals(&evens), "a set equals itself");
+    Assert(!evens.Equals(&odds), "and not one with different elements");
 
     // Union takes what the other has and keeps what it had.
     var everything = evens.Clone();
-    Assert(everything.Equals(evens), "and the clone holds the same elements");
-    everything.UnionWith(odds);
+    Assert(everything.Equals(&evens), "and the clone holds the same elements");
+    everything.UnionWith(&odds);
     Assert(everything.Length() == 20, "and holds both sides");
     value = 0;
     while value < 20 {
         Assert(everything.Contains(value), "every element of either side is in the union");
         value = value + 1;
     }
-    everything.UnionWith(evens);
+    everything.UnionWith(&evens);
     Assert(everything.Length() == 20, "and adds nothing");
 
     // Intersection keeps only what both have, and cannot fail.
     var shared = evens.Clone();
-    shared.IntersectWith(small);
+    shared.IntersectWith(&small);
     Assert(shared.Length() == 3, "the intersection is the even numbers below six");
     Assert(shared.Contains(0) && shared.Contains(2) && shared.Contains(4), "which are exactly those three");
     Assert(!shared.Contains(6), "and nothing above them");
-    shared.IntersectWith(odds);
+    shared.IntersectWith(&odds);
     Assert(shared.IsEmpty(), "intersecting with a disjoint set leaves nothing");
 
     // Difference removes what the other has.
     var without = evens.Clone();
-    without.Subtract(small);
+    without.Subtract(&small);
     Assert(without.Length() == 7, "the difference drops the even numbers below six");
     Assert(!without.Contains(0) && !without.Contains(4), "which are gone");
     Assert(without.Contains(6) && without.Contains(18), "while the rest remain");
-    without.Subtract(odds);
+    without.Subtract(&odds);
     Assert(without.Length() == 7, "and subtracting a disjoint set changes nothing");
 
     // The symmetric difference keeps what exactly one side has.
     var exclusive = small.Clone();
-    exclusive.SymmetricDifferenceWith(evens);
+    exclusive.SymmetricDifferenceWith(&evens);
     Assert(!exclusive.Contains(0) && !exclusive.Contains(2) && !exclusive.Contains(4), "shared elements leave");
     Assert(exclusive.Contains(1) && exclusive.Contains(3) && exclusive.Contains(5), "the small set keeps its own");
     Assert(exclusive.Contains(6) && exclusive.Contains(18), "and takes the ones only the other side had");
@@ -247,7 +247,7 @@ func Main() -> int {
     // A symmetric difference with itself leaves nothing, which is the identity worth checking.
     var mirrored = evens.Clone();
     var alsoEvens = evens.Clone();
-    mirrored.SymmetricDifferenceWith(alsoEvens);
+    mirrored.SymmetricDifferenceWith(&alsoEvens);
     Assert(mirrored.IsEmpty(), "and leaves nothing at all");
 
     // Ownership: elements are destroyed with the set, and a removed one is handed back.

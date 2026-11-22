@@ -134,8 +134,8 @@ func FillArena(arena: &var Arena, drops: *var int) {
 func Main() -> int {
     // A bound and a writable view reach the same concrete value; a temporary is lent to a read-only view.
     var tally = Tally { count: 0 };
-    Assert(BumpTwice(tally) == 2, "a bound resolves for the concrete type");
-    Assert(BumpThrough(tally) == 3, "a writable view writes the value it borrows");
+    Assert(BumpTwice(&var tally) == 2, "a bound resolves for the concrete type");
+    Assert(BumpThrough(&var tally) == 3, "a writable view writes the value it borrows");
     Assert(Read(tally) == 3, "a read-only view reads it");
     Assert(Read(Tally { count: 9 }) == 9, "a temporary is lent to a read-only view for the call");
 
@@ -166,14 +166,14 @@ func Main() -> int {
 
     // A stateful allocator's handle is kept by every container made from it; each block it hands out comes back.
     var counting = Counting { live: 0 };
-    ShareCounting(counting, @drops);
+    ShareCounting(&var counting, @drops);
     Assert(counting.live == 0, "every block is given back exactly once");
     Assert(drops == 5 + 4 + 1 + 2, "and every element destroyed exactly once");
 
     // An arena's handle is made from a pointer: its caller promises the arena outlives the containers that use it and
     // is neither moved nor reset while they hold its allocations, so the containers end first.
     var arena = Arena::New(SystemAllocator::New(), 256);
-    FillArena(arena, @drops);
+    FillArena(&var arena, @drops);
     Assert(drops == 20, "the container's elements are destroyed before the arena is reset");
     arena.Reset();
     Assert(arena.BytesUsed() == 0, "and the arena then reclaims everything at once");

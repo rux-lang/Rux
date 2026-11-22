@@ -140,7 +140,7 @@ func Main() -> int {
     source.interruptions = 10;
     var storage: char8[8];
     let into = storage[..8];
-    Assert((ReadExact(source, into) !! none) != none, "the exact read assembles from partial, interrupted reads");
+    Assert((ReadExact(&var source, into) !! none) != none, "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
     // Four two-byte reads, and an interruption before each of the three after the first.
     Assert(source.calls == 7, "asking once per short read and once per interruption");
@@ -150,7 +150,7 @@ func Main() -> int {
     interrupted.interruptions = 1;
     interrupted.pendingInterruption = true;
     var pair: char8[2];
-    Assert((ReadExact(interrupted, pair[..]) !! none) != none, "an interrupted read is retried");
+    Assert((ReadExact(&var interrupted, pair[..]) !! none) != none, "an interrupted read is retried");
     Assert(interrupted.calls == 2, "exactly once");
 
     // A stream that ends partway says so with its own kind, rather than succeeding by silence or looking like a
@@ -159,7 +159,7 @@ func Main() -> int {
     var bigStorage: char8[8];
     let big = bigStorage[..8];
     var caughtCut: IoError? = none;
-    match ReadExact(short, big) {
+    match ReadExact(&var short, big) {
         .Success(_) => {},
         .Failure(error) => { caughtCut = error; },
     }
@@ -171,7 +171,7 @@ func Main() -> int {
 
     // A stream that has already ended reports the clean end, so a loop reading records stops between them.
     var finished = Scripted("", 4);
-    match ReadExact(finished, big) {
+    match ReadExact(&var finished, big) {
         .Success(_) => {
             Panic("expected a failure");
         },
@@ -182,7 +182,7 @@ func Main() -> int {
     // A read of zero bytes is the end too, and is not asked again.
     var silent = Scripted("ab", 2);
     silent.endsSilently = true;
-    match ReadExact(silent, big) {
+    match ReadExact(&var silent, big) {
         .Success(_) => {
             Panic("expected a failure");
         },
@@ -192,7 +192,7 @@ func Main() -> int {
     Assert(silent.calls == 2, "taken from the first zero rather than retried");
     var mute = Scripted("", 2);
     mute.endsSilently = true;
-    match ReadExact(mute, big) {
+    match ReadExact(&var mute, big) {
         .Success(_) => {
             Panic("expected a failure");
         },
@@ -202,14 +202,14 @@ func Main() -> int {
 
     // A stream that is never ready is handed back after one call rather than spun on.
     var blocked = BlockedStream { calls: 0 };
-    match ReadExact(blocked, big) {
+    match ReadExact(&var blocked, big) {
         .Success(_) => {
             Panic("expected a failure");
         },
         .Failure(refusal) => Assert(refusal.kind == IoErrorKind::WouldBlock, "a would-block read is returned"),
     }
     Assert(blocked.calls == 1, "after a single attempt");
-    match WriteAll(blocked, TextBytes("data")) {
+    match WriteAll(&var blocked, TextBytes("data")) {
         .Success(_) => {
             Panic("expected a failure");
         },
@@ -227,7 +227,7 @@ func Main() -> int {
         interruptions: 2,
         calls: 0
     };
-    Assert((WriteAll(sink, TextBytes("hello world")) !! none) != none, "the whole write goes through partial writes");
+    Assert((WriteAll(&var sink, TextBytes("hello world")) !! none) != none, "the whole write goes through partial writes");
     Assert(sink.written == 11 && sinkStorage[10] == c8'd', "every byte in its place");
     // Two interruptions, then four writes of three, three, three and two bytes.
     Assert(sink.calls == 6, "asking once per short write and once per interruption");
@@ -242,7 +242,7 @@ func Main() -> int {
         interruptions: 0,
         calls: 0
     };
-    match WriteAll(stalled, TextBytes("data")) {
+    match WriteAll(&var stalled, TextBytes("data")) {
         .Success(_) => {
             Panic("expected a failure");
         },

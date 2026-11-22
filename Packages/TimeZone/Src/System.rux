@@ -104,7 +104,7 @@ extend TimeZone {
         var directory = Vector<char8>::New(allocator);
         match Variable("TZDIR") {
             value? => {
-                if AsciiText(value, directory) && directory.Length() > 0u {
+                if AsciiText(value, &var directory) && directory.Length() > 0u {
                     return Self::LoadFrom(allocator, directory.AsSlice(), name)!;
                 }
             },
@@ -155,7 +155,7 @@ extend TimeZone {
             var setting = Vector<char8>::New(allocator);
             match Variable("TZ") {
                 value? => {
-                    AsciiText(value, setting);
+                    AsciiText(value, &var setting);
                 },
                 none => {}
             }
@@ -196,14 +196,14 @@ extend TimeZone {
                 offset: -(information.bias + information.standardBias) * 60, daylight: false,
                 abbreviation: zone.names.Length(), abbreviationLength: 0
             };
-            rule.standard.abbreviationLength = AppendName(zone.names, information.standardName);
+            rule.standard.abbreviationLength = AppendName(&var zone.names, information.standardName);
             if information.daylightDate.month != 0u16 {
                 rule.hasDaylight = true;
                 rule.daylight = ZoneType {
                     offset: -(information.bias + information.daylightBias) * 60, daylight: true,
                     abbreviation: zone.names.Length(), abbreviationLength: 0
                 };
-                rule.daylight.abbreviationLength = AppendName(zone.names, information.daylightName);
+                rule.daylight.abbreviationLength = AppendName(&var zone.names, information.daylightName);
                 rule.start = WindowsDate(information.daylightDate);
                 rule.end = WindowsDate(information.standardDate);
             }

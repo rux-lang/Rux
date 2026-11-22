@@ -187,7 +187,7 @@ extend FixedNat {
         if self.length >= FixedNatLimbs {
             var work = FixedNat::New();
             work.Assign(self);
-            if !ScaleInPlace(work, factor, addend) { return false; }
+            if !ScaleInPlace(&var work, factor, addend) { return false; }
             self.Assign(work);
             return true;
         }
@@ -260,7 +260,7 @@ extend FixedNat {
         if wider >= FixedNatLimbs {
             var work = FixedNat::New();
             work.Assign(self);
-            if !AddInPlace(work, other) { return false; }
+            if !AddInPlace(&var work, other) { return false; }
             self.Assign(work);
             return true;
         }

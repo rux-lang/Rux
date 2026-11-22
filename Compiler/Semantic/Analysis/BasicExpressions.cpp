@@ -237,6 +237,55 @@ void AnalysisContext::ValidateCharLiteral(const Token &literal, const SourceLoca
               {}, std::move(help));
 }
 
+TypeRef AnalysisContext::CheckLoan(const LoanExpr &loan) {
+    const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
+    const TypeRef operandType = CheckExpr(*loan.operand);
+    if (operandType.IsUnknown()) {
+        return operandType;
+    }
+    // A reference already lends its referent, so lending it again lends the same referent.
+    const bool reference = operandType->kind == TypeRef::Kind::Reference && !operandType->inner.empty();
+    TypeRef referent = reference ? operandType->inner.front() : operandType;
+    const Expr &operand = *loan.operand;
+    const auto *unary = AstCast<const UnaryExpr>(&operand);
+    const auto *index = AstCast<const IndexExpr>(&operand);
+    const bool place = reference || AstCast<const IdentExpr>(&operand) || AstCast<const SelfExpr>(&operand) ||
+                       AstCast<const FieldExpr>(&operand) || (index && !IsIndexOperatorCall(*index)) ||
+                       (unary && unary->op == TokenKind::Star);
+    const std::string_view spelling = loan.writes ? "&var" : "&";
+    if (!place) {
+        EmitError(loan.location, std::format("'{}' lends a place, and this is a temporary value", spelling), {},
+                  "store the value in a local first and lend the local");
+        return TypeRef::MakeReference(referent);
+    }
+    RejectSubsetViewUse(operand, loan.location, "be lent");
+    if (!loan.writes) {
+        referent.isMut = false;
+        return TypeRef::MakeReference(referent);
+    }
+    if (reference) {
+        if (!operandType->inner.front().isMut) {
+            EmitError(loan.location, "'&var' lends for writing, but this reference is read-only", {},
+                      "take the reference as '&var' where it is declared");
+        }
+        return operandType;
+    }
+    checkingPlainAssignmentTarget = true;
+    referent.isMut = PlaceIsWritable(operand, referent);
+    checkingPlainAssignmentTarget = savedAssignmentTarget;
+    if (!referent.isMut) {
+        const MovePlace root = AnalyzeMovePlace(operand);
+        const Symbol *binding = root.IsNamedStorage() ? currentScope->Lookup(root.rootName) : nullptr;
+        EmitError(loan.location, "'&var' lends for writing, but this place is immutable", {},
+                  binding && binding->kind == Symbol::Kind::Var ? ImmutableBindingHelp(*binding) : std::nullopt);
+        referent.isMut = true;
+    }
+    else {
+        MarkTrackedAssignment(operand, loan.location);
+    }
+    return TypeRef::MakeReference(referent);
+}
+
 std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &expression) {
     if (const auto *literal = AstCast<const LiteralExpr>(&expression)) {
         if (!negatedIntegerLiterals.contains(literal)) {
@@ -316,6 +365,9 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             CheckConstantOverflow(TokenKind::Minus, result, nullptr, *unary->operand, unary->location);
         }
         return result;
+    }
+    if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
+        return CheckLoan(*loan);
     }
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         const TypeRef operandType = CheckExpr(*move->operand);

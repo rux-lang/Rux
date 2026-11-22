@@ -16,7 +16,7 @@ func Main() -> int {
 
     // The safe wrapper borrows one exact timespec, while the C declaration beneath it remains a raw ABI pointer.
     var current = timespec { tv_sec: 0, tv_nsec: 0 };
-    Assert(TimespecGet(current, TIME_UTC) == TIME_UTC, "TimespecGet accepts a writable value");
+    Assert(TimespecGet(&var current, TIME_UTC) == TIME_UTC, "TimespecGet accepts a writable value");
     let copied = current;
     Assert(copied.tv_sec == current.tv_sec && copied.tv_nsec == current.tv_nsec,
            "C value records are structurally copyable");

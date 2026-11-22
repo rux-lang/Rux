@@ -97,11 +97,11 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
                 url.userinfoStart = out.length;
                 var colon: uint = 0;
                 while colon < userinfo.length && userinfo[colon] != ':' { colon = colon + 1; }
-                AppendNormalized(out, userinfo[..colon], Component::Userinfo)!;
+                AppendNormalized(&var out, userinfo[..colon], Component::Userinfo)!;
                 url.usernameEnd = out.length;
                 if colon < userinfo.length {
                     out.Push(c8':');
-                    AppendNormalized(out, userinfo[colon + 1..], Component::Userinfo)!;
+                    AppendNormalized(&var out, userinfo[colon + 1..], Component::Userinfo)!;
                 }
                 url.userinfoEnd = out.length;
                 out.Push(c8'@');
@@ -114,14 +114,14 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             let groups = ParseIpv6(host[1..host.length - 1]) ?? throw .InvalidHost;
             out.Push(c8'[');
             url.hostStart = out.length;
-            AppendIpv6(out, groups);
+            AppendIpv6(&var out, groups);
             url.hostEnd = out.length;
             out.Push(c8']');
             url.hostKind = HostKind::Ipv6;
         }
         else {
             url.hostStart = out.length;
-            AppendNormalized(out, host, Component::Host)!;
+            AppendNormalized(&var out, host, Component::Host)!;
             url.hostEnd = out.length;
             url.hostKind = if ParseIpv4(out.View()[url.hostStart..url.hostEnd]) != none {
                 HostKind::Ipv4
@@ -148,7 +148,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
                         url.hasPort = true;
                         url.port = value as uint16;
                         url.portStart = out.length;
-                        AppendDecimal(out, value);
+                        AppendDecimal(&var out, value);
                         url.portEnd = out.length;
                     }
                 }
@@ -159,8 +159,8 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
 
     url.pathStart = out.length;
     var path = Bytes::New(allocator);
-    AppendNormalized(path, pieces.path, Component::Path)!;
-    RemoveDotSegments(out, path.View());
+    AppendNormalized(&var path, pieces.path, Component::Path)!;
+    RemoveDotSegments(&var out, path.View());
     if pieces.hasAuthority && network && out.length == url.pathStart { out.Push(c8'/'); }
     url.pathEnd = out.length;
 
@@ -169,7 +169,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             out.Push(c8'?');
             url.hasQuery = true;
             url.queryStart = out.length;
-            AppendNormalized(out, query, Component::Query)!;
+            AppendNormalized(&var out, query, Component::Query)!;
             url.queryEnd = out.length;
         },
         none => {}
@@ -179,7 +179,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             out.Push(c8'#');
             url.hasFragment = true;
             url.fragmentStart = out.length;
-            AppendNormalized(out, fragment, Component::Query)!;
+            AppendNormalized(&var out, fragment, Component::Query)!;
         },
         none => {}
     }
@@ -399,7 +399,7 @@ extend Url {
     /// @returns true when they are equal
     /// @see https://rux-lang.dev/docs/api/url/url#equals
     pub func Equals(&self, other: &Self) -> bool {
-        return self.text.Equals(other.text);
+        return self.text.Equals(&other.text);
     }
 
     /// An independent copy, with text of its own from the same allocator.

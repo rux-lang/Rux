@@ -18,7 +18,7 @@ func Run() -> int ! IoError {
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
     var missingHolder = OsString::New(allocator);
-    let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", missingHolder);
+    let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", &var missingHolder);
     match File::Open(allocator, missing, OpenOptions::Reading()) {
         .Success(_) => {
             Panic("expected a failure");
@@ -28,7 +28,7 @@ func Run() -> int ! IoError {
 
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
     var scratchHolder = OsString::New(allocator);
-    let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", scratchHolder);
+    let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", &var scratchHolder);
     var written = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(written.IsOpen(), "writing creates the missing file");
     written.Close()!;

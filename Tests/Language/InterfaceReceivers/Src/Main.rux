@@ -69,10 +69,10 @@ func Main() -> int {
     if Observe(knob) != 2i32 {
         return 1;
     }
-    if Advance(knob, 4i32) != 5i32 || knob.level != 5i32 {
+    if Advance(&var knob, 4i32) != 5i32 || knob.level != 5i32 {
         return 2;
     }
-    AdvanceBounded(knob, 10i32);
+    AdvanceBounded(&var knob, 10i32);
     if knob.level != 15i32 || ObserveBounded(knob) != 15i32 {
         return 3;
     }
@@ -87,7 +87,7 @@ func Main() -> int {
 
     var total = 7i32;
     var counter = Counter { total: @total };
-    if Advance(counter, 3i32) != 10i32 || total != 10i32 {
+    if Advance(&var counter, 3i32) != 10i32 || total != 10i32 {
         return 5;
     }
     return 0;

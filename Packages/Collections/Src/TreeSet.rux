@@ -341,7 +341,7 @@ extend TreeSet<T> {
             }
         }
 
-        self.Subtract(shared);
+        self.Subtract(&shared);
         var adding = other.Iterate();
         var addingMore = true;
         while addingMore {

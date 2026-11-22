@@ -158,21 +158,21 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         upperGap: FixedNat::New(),
         lowerGap: FixedNat::New()
     };
-    if !Prepare(state, significand, exponent, atBinadeBottom) { return false; }
+    if !Prepare(&var state, significand, exponent, atBinadeBottom) { return false; }
 
     // A decimal exactly on a gap boundary is acceptable when reading it back would round to this value, which for
     // an even significand it would: round-to-nearest-even lands on the even one. So every boundary test here is
     // inclusive for an even significand and strict for an odd one, in the scaling as well as in the generation.
     let inclusive = (significand % 2) == 0;
     var power: int = 0;
-    if !Scale(state, inclusive, @power) { return false; }
+    if !Scale(&var state, inclusive, @power) { return false; }
 
     var written: uint = 0;
     while written < MaximumShortestDigits {
         if !state.numerator.MultiplySmall(10) { return false; }
         if !state.upperGap.MultiplySmall(10) { return false; }
         if !state.lowerGap.MultiplySmall(10) { return false; }
-        var digit = NextDigit(state);
+        var digit = NextDigit(&var state);
 
         // Below the lower gap: what is left is nearer this value than the neighbour under it, so stopping here
         // still reads back correctly. Above the upper gap: the same on the other side, and the digit rounds up.

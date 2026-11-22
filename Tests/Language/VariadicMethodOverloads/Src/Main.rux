@@ -27,7 +27,7 @@ func Main() -> int {
     var totals = Totals { calls: 0 };
     Assert(totals.Sum(1i64, 2i64, 3i64) == 6, "the int64 overload");
     Assert(totals.Sum(1i128, 2i128) == 30, "the int128 overload");
-    Assert(Totals::Sum(totals, 4i64) == 4, "the int64 overload called as Type::Method");
+    Assert(Totals::Sum(&var totals, 4i64) == 4, "the int64 overload called as Type::Method");
     Assert(totals.calls == 102, "each call reached its own overload");
     return 0;
 }

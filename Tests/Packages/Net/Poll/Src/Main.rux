@@ -58,7 +58,7 @@ func Main() -> int {
     Assert(quiet == 0u, "nothing is ready before a connection");
 
     var client = TcpStream::Connect(address) catch { _ => Panic("the client connects") };
-    let incoming = WaitFor(poller, 1);
+    let incoming = WaitFor(&var poller, 1);
     Assert(incoming.readable, "a listener with a connection waiting is readable");
     var server = listener.Accept() catch { _ => Panic("the connection is accepted") };
 
@@ -72,21 +72,21 @@ func Main() -> int {
         .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "a read would block"),
     }
     poller.Register(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("the stream registers") };
-    WriteAll(client, "ping") catch { _ => Panic("the client writes") };
-    let data = WaitFor(poller, 2);
+    WriteAll(&var client, "ping") catch { _ => Panic("the client writes") };
+    let data = WaitFor(&var poller, 2);
     Assert(data.readable && !data.closed, "a stream with data is readable");
     let count = server.Read(buffer[..]) catch { _ => Panic("the data is read") };
     Assert(count == 4u && buffer[0] == c8'p' && buffer[3] == c8'g', "the data arrives");
 
     // A stream registered for writing is writable at once; changed back to reading, it is quiet again.
     poller.Modify(server.PollSource(), 3, Interest::Writable()) catch { _ => Panic("the registration changes") };
-    let room = WaitFor(poller, 3);
+    let room = WaitFor(&var poller, 3);
     Assert(room.writable, "a stream with room is writable");
     poller.Modify(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("and changes back") };
 
     // The peer closing is reported as readable, and the read then finds the end.
     Close(move client);
-    let ended = WaitFor(poller, 2);
+    let ended = WaitFor(&var poller, 2);
     Assert(ended.readable || ended.closed, "a closed peer is reported");
     match server.Read(buffer[..]) {
         .Success(_) => {
@@ -109,7 +109,7 @@ func Main() -> int {
     poller.Register(receiver.PollSource(), 4, Interest::Readable()) catch { _ => Panic("the receiver registers") };
     let sender = UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the sender binds") };
     sender.SendTo("datagram", target) catch { _ => Panic("the datagram is sent") };
-    let arrived = WaitFor(poller, 4);
+    let arrived = WaitFor(&var poller, 4);
     Assert(arrived.readable, "a socket with a datagram is readable");
     let datagram = receiver.ReceiveFrom(buffer[..]) catch { _ => Panic("the datagram is received") };
     Assert(datagram.length == 8u, "the whole datagram arrives");

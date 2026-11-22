@@ -92,7 +92,7 @@ extend TimeZone {
     /// @see https://rux-lang.dev/docs/api/timezone/zone#utc
     pub func Utc(allocator: Allocator) -> Self {
         var zone = Self::Empty(allocator, "UTC");
-        zone.rule = ParseRule("UTC0", zone.names) catch { _ => Panic("the UTC rule is refused") };
+        zone.rule = ParseRule("UTC0", &var zone.names) catch { _ => Panic("the UTC rule is refused") };
         return move zone;
     }
 
@@ -104,7 +104,7 @@ extend TimeZone {
     /// @see https://rux-lang.dev/docs/api/timezone/zone#from-rule
     pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> Self ! TimeZoneError {
         var zone = Self::Empty(allocator, name);
-        zone.rule = ParseRule(rule, zone.names)!;
+        zone.rule = ParseRule(rule, &var zone.names)!;
         return move zone;
     }
 
@@ -140,7 +140,7 @@ extend TimeZone {
         var cursor = at + 44u;
         var index: uint = 0;
         while index < transitionCount {
-            Grow(zone.transitions, BigEndian(data, cursor + index * width, width));
+            Grow(&var zone.transitions, BigEndian(data, cursor + index * width, width));
             index = index + 1;
         }
         cursor = cursor + transitionCount * width;
@@ -148,7 +148,7 @@ extend TimeZone {
         while index < transitionCount {
             let kind = data[cursor + index];
             if kind as uint >= typeCount { throw .InvalidData; }
-            Grow(zone.transitionTypes, kind);
+            Grow(&var zone.transitionTypes, kind);
             index = index + 1;
         }
         cursor = cursor + transitionCount;
@@ -157,10 +157,10 @@ extend TimeZone {
         let charactersAt = cursor;
         index = 0;
         while index < characters {
-            Grow(zone.names, data[charactersAt + index] as char8);
+            Grow(&var zone.names, data[charactersAt + index] as char8);
             index = index + 1;
         }
-        Grow(zone.names, c8'\0');
+        Grow(&var zone.names, c8'\0');
         index = 0;
         while index < typeCount {
             let record = typesAt + index * 6u;
@@ -168,7 +168,7 @@ extend TimeZone {
             if abbreviation > characters { throw .InvalidData; }
             var end = abbreviation;
             while end < characters && data[charactersAt + end] != 0u8 { end = end + 1; }
-            Grow(zone.types, ZoneType {
+            Grow(&var zone.types, ZoneType {
                 offset: BigEndian(data, record, 4) as int32, daylight: data[record + 4u] != 0u8,
                 abbreviation, abbreviationLength: end - abbreviation
             });
@@ -183,7 +183,7 @@ extend TimeZone {
             if close > end + 1u {
                 // Safety: `close` is below `data.length`, checked above, and a `char8` is one `byte`.
                 let text = (data.data as *char8)[end + 1u..close];
-                zone.rule = ParseRule(text, zone.names) catch { _ => throw .InvalidData };
+                zone.rule = ParseRule(text, &var zone.names) catch { _ => throw .InvalidData };
             }
         }
         return move zone;

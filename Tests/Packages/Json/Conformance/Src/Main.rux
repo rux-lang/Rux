@@ -94,7 +94,7 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
         while index < (value.Length() ?? 0) {
             names = names + 1;
             if let member? = value.MemberAt(index) {
-                TreeCounts(member.value, scalars, opens, names);
+                TreeCounts(&member.value, scalars, opens, names);
             }
             index = index + 1;
         }
@@ -110,26 +110,26 @@ func Main() -> int {
     // Well-formed documents: each parses, writes, parses again, and the two writings agree. That round
     // trip proves the writer and the parser agree about the document rather than each merely being
     // self-consistent. Each is also read by the streaming reader, which must see the same shape.
-    CheckRoundTrip(allocator, "{}", wrote);
-    CheckRoundTrip(allocator, "[]", wrote);
-    CheckRoundTrip(allocator, "null", wrote);
-    CheckRoundTrip(allocator, "true", wrote);
-    CheckRoundTrip(allocator, "false", wrote);
-    CheckRoundTrip(allocator, "0", wrote);
-    CheckRoundTrip(allocator, "-0", wrote);
-    CheckRoundTrip(allocator, "123", wrote);
-    CheckRoundTrip(allocator, "-1.5e-3", wrote);
-    CheckRoundTrip(allocator, "1e999", wrote);
-    CheckRoundTrip(allocator, "[1,2,3]", wrote);
-    CheckRoundTrip(allocator, "[[[[1]]]]", wrote);
-    CheckRoundTrip(allocator, "{\"a\":1}", wrote);
-    CheckRoundTrip(allocator, "{\"a\":{\"b\":{\"c\":[1,2,{\"d\":null}]}}}", wrote);
-    CheckRoundTrip(allocator, "[\"\",  \"x\", \"\\n\", \"\\u0041\", \"\\ud83d\\ude00\"]", wrote);
-    CheckRoundTrip(allocator, "{\"\":1}", wrote);
-    CheckRoundTrip(allocator, "[null,true,false]", wrote);
-    CheckRoundTrip(allocator, "{\"a\":[],\"b\":{}}", wrote);
-    CheckRoundTrip(allocator, "[{\"x\":1},{\"x\":2},{\"x\":3}]", wrote);
-    CheckRoundTrip(allocator, "{\"n\":-0.0,\"m\":1e-400}", wrote);
+    CheckRoundTrip(allocator, "{}", &var wrote);
+    CheckRoundTrip(allocator, "[]", &var wrote);
+    CheckRoundTrip(allocator, "null", &var wrote);
+    CheckRoundTrip(allocator, "true", &var wrote);
+    CheckRoundTrip(allocator, "false", &var wrote);
+    CheckRoundTrip(allocator, "0", &var wrote);
+    CheckRoundTrip(allocator, "-0", &var wrote);
+    CheckRoundTrip(allocator, "123", &var wrote);
+    CheckRoundTrip(allocator, "-1.5e-3", &var wrote);
+    CheckRoundTrip(allocator, "1e999", &var wrote);
+    CheckRoundTrip(allocator, "[1,2,3]", &var wrote);
+    CheckRoundTrip(allocator, "[[[[1]]]]", &var wrote);
+    CheckRoundTrip(allocator, "{\"a\":1}", &var wrote);
+    CheckRoundTrip(allocator, "{\"a\":{\"b\":{\"c\":[1,2,{\"d\":null}]}}}", &var wrote);
+    CheckRoundTrip(allocator, "[\"\",  \"x\", \"\\n\", \"\\u0041\", \"\\ud83d\\ude00\"]", &var wrote);
+    CheckRoundTrip(allocator, "{\"\":1}", &var wrote);
+    CheckRoundTrip(allocator, "[null,true,false]", &var wrote);
+    CheckRoundTrip(allocator, "{\"a\":[],\"b\":{}}", &var wrote);
+    CheckRoundTrip(allocator, "[{\"x\":1},{\"x\":2},{\"x\":3}]", &var wrote);
+    CheckRoundTrip(allocator, "{\"n\":-0.0,\"m\":1e-400}", &var wrote);
 
     // Malformed documents: every one refused, with no crash and no partial value handed back.
     CheckRefused(allocator, "");
@@ -231,14 +231,14 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
 
     var builder = StringBuilder::New(allocator);
     let sink: &var TextWriter = builder;
-    wrote = (WriteValue(sink, value, JsonStyle::Compact()) !! none) != none;
+    wrote = (WriteValue(sink, &value, JsonStyle::Compact()) !! none) != none;
     Assert(wrote, "and writes");
     var once = builder.TakeString();
 
     let again = Parse(allocator, once.View().Bytes()) catch { _ => Panic("and the written form parses") };
     var secondBuilder = StringBuilder::New(allocator);
     let secondSink: &var TextWriter = secondBuilder;
-    wrote = (WriteValue(secondSink, again, JsonStyle::Compact()) !! none) != none;
+    wrote = (WriteValue(secondSink, &again, JsonStyle::Compact()) !! none) != none;
     var twice = secondBuilder.TakeString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
@@ -247,12 +247,12 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
     var streamScalars: uint = 0;
     var streamOpens: uint = 0;
     var streamNames: uint = 0;
-    Assert(StreamCounts(allocator, text, streamScalars, streamOpens, streamNames),
+    Assert(StreamCounts(allocator, text, &var streamScalars, &var streamOpens, &var streamNames),
            "the streaming reader reaches the end of the same document");
     var treeScalars: uint = 0;
     var treeOpens: uint = 0;
     var treeNames: uint = 0;
-    TreeCounts(value, treeScalars, treeOpens, treeNames);
+    TreeCounts(&value, &var treeScalars, &var treeOpens, &var treeNames);
     Assert(streamScalars == treeScalars, "and counts the same scalars as the tree");
     Assert(streamOpens == treeOpens, "the same containers");
     Assert(streamNames == treeNames, "and the same member names");

@@ -50,11 +50,11 @@ func SignificantDigits(significand: uint64, exponent: int, wanted: uint, into: v
 
     var state = Quotient { numerator: FixedNat::New(), denominator: FixedNat::New() };
     var scaled: int = 0;
-    if !PrepareQuotient(state, significand, exponent, @scaled) { return false; }
+    if !PrepareQuotient(&var state, significand, exponent, @scaled) { return false; }
     var produced: uint = 0;
     while produced < wanted {
         if !state.numerator.MultiplySmall(10) { return false; }
-        let digit = (TakeDigit(state) + 0x30) as char8;
+        let digit = (TakeDigit(&var state) + 0x30) as char8;
         // Safety: `produced` is below `wanted`, the loop condition, which is below `into.length`, checked on entry.
         into.data[produced] = digit;
         produced = produced + 1;
@@ -178,7 +178,7 @@ pub func WriteScientificNotation(writer: &var TextWriter, spec: FormatSpec, part
     // room to spare; two bytes in front leave space for a requested sign.
     var storage: char8[1120];
     var cursor = ByteCursor::New(storage[2..1120]);
-    if !WriteScientificFloat(cursor, parts, spec.HasPrecision(), spec.Precision(), mark) || cursor.Overran() {
+    if !WriteScientificFloat(&var cursor, parts, spec.HasPrecision(), spec.Precision(), mark) || cursor.Overran() {
         throw .UnsupportedRequest;
     }
     var rendered = cursor.Written();
