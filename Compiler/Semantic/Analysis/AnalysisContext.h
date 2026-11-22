@@ -1205,6 +1205,8 @@ private:
     bool currentPatternTakesParts = false;
     /// The names the pattern being checked binds are `var`, as `if var count? = ...` makes them.
     bool currentPatternBindsMutable = false;
+    /// Where a local or a parameter was ended with `.~()`, so a later use names that rather than a move.
+    std::vector<SourceLocation> endedSites;
 
     /// Locals read as values; an assignment target is not a read.
     std::unordered_set<const Symbol *> readSymbols;
@@ -1721,6 +1723,8 @@ private:
     [[nodiscard]] static std::optional<std::string> ImmutableBindingHelp(const Symbol &binding);
     /// `&place` or `&var place`, whose type is a reference to the place.
     [[nodiscard]] TypeRef CheckLoan(const LoanExpr &loan);
+    /// `place.~()`: ends a local or a parameter, or destroys a value in place through a raw pointer.
+    [[nodiscard]] TypeRef CheckDestroy(const DestroyExpr &destroy);
     [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                                const FuncDecl &method);
     /// The check `CheckReceiverMutability` applies once a method is known to write through `declared`: a reference or

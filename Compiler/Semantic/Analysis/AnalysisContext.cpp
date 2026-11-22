@@ -24,10 +24,11 @@ namespace {
     }
     return AstCast<const IdentExpr>(&expression) || AstCast<const SelfExpr>(&expression) ||
            AstCast<const UnaryExpr>(&expression) || AstCast<const MoveExpr>(&expression) ||
-           AstCast<const LoanExpr>(&expression) || AstCast<const PostfixExpr>(&expression) ||
-           AstCast<const BinaryExpr>(&expression) || AstCast<const AssignExpr>(&expression) ||
-           AstCast<const IndexExpr>(&expression) || AstCast<const FieldExpr>(&expression) ||
-           AstCast<const CastExpr>(&expression) || AstCast<const IsExpr>(&expression);
+           AstCast<const LoanExpr>(&expression) || AstCast<const DestroyExpr>(&expression) ||
+           AstCast<const PostfixExpr>(&expression) || AstCast<const BinaryExpr>(&expression) ||
+           AstCast<const AssignExpr>(&expression) || AstCast<const IndexExpr>(&expression) ||
+           AstCast<const FieldExpr>(&expression) || AstCast<const CastExpr>(&expression) ||
+           AstCast<const IsExpr>(&expression);
 }
 } // namespace
 

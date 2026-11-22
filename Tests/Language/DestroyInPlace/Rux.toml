@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "DestroyInPlace"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: place.~() ends a local or destroys a value in place through a raw pointer"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

@@ -355,6 +355,12 @@ struct MoveExpr : Expr {
     ExprPtr operand;
 };
 
+/// `place.~()`: destroys the value where it lies. On a local or a parameter it ends the value's life; through a raw
+/// pointer it destroys what is there and leaves the slot empty.
+struct DestroyExpr : Expr {
+    ExprPtr operand;
+};
+
 /// `&place` or `&var place`: a loan written where it starts, read-only or for writing. It lends the place and never
 /// moves or copies it, and its type is `&T` or `&var T`.
 struct LoanExpr : Expr {

@@ -1,0 +1,32 @@
+// `place.~()` ends a local or a parameter, or destroys a value in place through a raw pointer. A part of a live value
+// and a value reached through a loan are not destroyed by themselves, a temporary needs no ending, and an ended value
+// is not used again.
+struct Tracked {
+    id: int;
+}
+
+extend Tracked {
+    func ~(&var self) {}
+}
+
+struct Pair {
+    first: Tracked;
+    second: Tracked;
+}
+
+func Lent(value: &Tracked) {
+    value.~();
+}
+
+func Make() -> Tracked {
+    return Tracked { id: 1 };
+}
+
+func Main() -> int {
+    let pair = Pair { first: Tracked { id: 1 }, second: Tracked { id: 2 } };
+    pair.first.~();
+    Make().~();
+    let ended = Tracked { id: 3 };
+    ended.~();
+    return ended.id;
+}

@@ -168,6 +168,14 @@ void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocatio
                   std::format("assign a value to '{}' before this use", symbol.name));
         return;
     }
+    if (issue->kind == MoveStateTracker::IssueKind::Moved &&
+        std::ranges::any_of(endedSites,
+                            [&](const SourceLocation &site) { return site == issue->previousTransition; })) {
+        EmitError(location, std::format("'{}' is used after it was destroyed", symbol.name),
+                  withParts(std::format("'{}' was destroyed with '.~()' at {}:{}", symbol.name,
+                                        issue->previousTransition.line, issue->previousTransition.column)));
+        return;
+    }
     if (issue->kind == MoveStateTracker::IssueKind::Moved) {
         EmitError(location, std::format("value '{}' is used after it was moved", symbol.name),
                   withParts(std::format("'{}' was moved at {}:{}", symbol.name, issue->previousTransition.line,

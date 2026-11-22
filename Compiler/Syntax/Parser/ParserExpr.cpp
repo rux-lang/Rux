@@ -692,6 +692,17 @@ ExprPtr Parser::ParsePostfix() {
         // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
         if (Match(TokenKind::Dot)) {
             const SourceLocation memberLocation = CurrentLocation();
+            // `place.~()` destroys the value where it lies.
+            if (Check(TokenKind::Tilde) && Peek(1).Is(TokenKind::LeftParen) && Peek(2).Is(TokenKind::RightParen)) {
+                Advance();
+                Advance();
+                Advance();
+                auto destroy = std::make_unique<DestroyExpr>();
+                destroy->location = memberLocation;
+                destroy->operand = std::move(left);
+                left = std::move(destroy);
+                continue;
+            }
             std::string name;
             if (Check(TokenKind::IntLiteral)) {
                 name = Advance().text;

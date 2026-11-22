@@ -193,6 +193,27 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         return LowerExpr(*move->operand);
     }
+    // `place.~()` takes the value as `let _ = move place;` would and destroys it there: an ended local is consumed,
+    // which clears its drop flag, and a place through a raw pointer is read out and destroyed with nothing tracked.
+    if (const auto *destroy = AstCast<const DestroyExpr>(&expression)) {
+        auto block = std::make_unique<HirBlockExpr>();
+        block->location = destroy->location;
+        block->type = TypeRef::MakeOpaque();
+        block->block.location = destroy->location;
+        HirExprPtr value = LowerExpr(*destroy->operand);
+        if (const DropGluePlan *glue = model.TryGetDropGlue(value->type)) {
+            auto taken = std::make_unique<HirLetStmt>();
+            taken->location = destroy->location;
+            auto wildcard = std::make_unique<HirWildcardPattern>();
+            wildcard->location = destroy->location;
+            wildcard->discardGlue = glue->symbol;
+            taken->pattern = std::move(wildcard);
+            taken->type = value->type;
+            taken->init = std::move(value);
+            block->block.stmts.push_back(std::move(taken));
+        }
+        return block;
+    }
     // A written loan is the reference to its place that an implicit loan builds.
     if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
         HirExprPtr place = LowerExpr(*loan->operand);

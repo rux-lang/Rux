@@ -184,6 +184,15 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
+    else if (const auto *destroy = AstCast<const DestroyExpr>(&expression)) {
+        Pad();
+        out << "DestroyExpr\n";
+        ++indent;
+        if (destroy->operand) {
+            Print(*destroy->operand);
+        }
+        --indent;
+    }
     else if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
         Pad();
         out << (loan->writes ? "LoanExpr &var\n" : "LoanExpr &\n");

@@ -1,0 +1,4 @@
+18:11: error: a value reached through a loan cannot be destroyed
+27:16: error: 'first' is a part of 'pair' and cannot be destroyed by itself
+28:12: error: '.~()' destroys a value that has a name
+31:12: error: 'ended' is used after it was destroyed

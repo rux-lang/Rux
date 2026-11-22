@@ -1,0 +1,79 @@
+// `place.~()` destroys a value where it lies: its `~` if it declares one, then its parts, and nothing for plain data.
+// On a local or a parameter it ends the value, which is not destroyed again where its scope ends. Through a raw
+// pointer it destroys what is there and leaves the slot empty, so a write through the pointer fills it again and
+// destroys nothing. Nothing is moved, so a value whose move is prohibited ends the same way.
+
+import Core::Diagnostics::Assert;
+
+var drops: int = 0;
+var order: int = 0;
+
+struct Tracked {
+    id: int;
+}
+
+extend Tracked {
+    func ~(&var self) {
+        drops += 1;
+        order = order * 10 + self.id;
+    }
+}
+
+#NoMove
+struct Pinned {
+    id: int;
+}
+
+extend Pinned {
+    func ~(&var self) {
+        drops += 1;
+    }
+}
+
+struct Pair {
+    first: Tracked;
+    second: Tracked;
+}
+
+func EndParameter(value: Tracked) -> int {
+    value.~();
+    return drops;
+}
+
+func Main() -> int {
+    let early = Tracked { id: 1 };
+    let late = Tracked { id: 2 };
+    early.~();
+    Assert(drops == 1 && order == 1, "a local ends where '.~()' is written");
+    late.~();
+    Assert(drops == 2 && order == 12, "in the order the endings are written");
+
+    if true {
+        let scoped = Tracked { id: 3 };
+        scoped.~();
+    }
+    Assert(drops == 3, "an ended local is not destroyed again at the end of its scope");
+
+    Assert(EndParameter(Tracked { id: 4 }) == 4, "a parameter ends inside the function");
+    Assert(drops == 4, "and nowhere else");
+
+    let pair = Pair { first: Tracked { id: 5 }, second: Tracked { id: 6 } };
+    order = 0;
+    pair.~();
+    Assert(drops == 6 && order == 65, "an aggregate destroys its parts, last declared first");
+
+    let pinned = Pinned { id: 7 };
+    pinned.~();
+    Assert(drops == 7, "a value whose move is prohibited ends without moving");
+
+    var slot = Tracked { id: 8 };
+    let pointer: *var Tracked = @slot;
+    (*pointer).~();
+    Assert(drops == 8, "a value is destroyed in place through a raw pointer");
+    *pointer = Tracked { id: 9 };
+    Assert(drops == 8, "and writing the empty slot destroys nothing");
+
+    let count = 10;
+    count.~();
+    return 0;
+}

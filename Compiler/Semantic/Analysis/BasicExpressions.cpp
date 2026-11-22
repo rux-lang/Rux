@@ -237,6 +237,78 @@ void AnalysisContext::ValidateCharLiteral(const Token &literal, const SourceLoca
               {}, std::move(help));
 }
 
+TypeRef AnalysisContext::CheckDestroy(const DestroyExpr &destroy) {
+    const TypeRef operandType = CheckExpr(*destroy.operand);
+    if (operandType.IsUnknown()) {
+        return TypeRef::MakeUnit();
+    }
+    // Walk in from the operand to what decides where the value lies: a raw pointer, a reference, or a local.
+    const auto typeOf = [&](const Expr &expression) {
+        const auto found = expressionTypes.find(&expression);
+        return found == expressionTypes.end() ? TypeRef::MakeUnknown() : found->second;
+    };
+    const Expr *current = destroy.operand.get();
+    bool part = false;
+    while (true) {
+        if (const auto *unary = AstCast<const UnaryExpr>(current); unary && unary->op == TokenKind::Star) {
+            // Through a raw pointer the value is destroyed where it is, and nothing tracks the slot.
+            return TypeRef::MakeUnit();
+        }
+        const Expr *object = nullptr;
+        if (const auto *field = AstCast<const FieldExpr>(current)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = AstCast<const IndexExpr>(current); index && !IsIndexOperatorCall(*index)) {
+            object = index->object.get();
+        }
+        if (!object) {
+            break;
+        }
+        const TypeRef objectType = typeOf(*object);
+        if (objectType->kind == TypeRef::Kind::Pointer) {
+            return TypeRef::MakeUnit();
+        }
+        if (objectType->kind == TypeRef::Kind::Reference) {
+            EmitError(destroy.location, "a value reached through a loan cannot be destroyed", {},
+                      "assign it a new value, which destroys the old one");
+            return TypeRef::MakeUnit();
+        }
+        part = true;
+        current = object;
+    }
+    const TypeRef rootType = typeOf(*current);
+    if (rootType->kind == TypeRef::Kind::Reference) {
+        EmitError(destroy.location, "a value reached through a loan cannot be destroyed", {},
+                  "assign it a new value, which destroys the old one");
+        return TypeRef::MakeUnit();
+    }
+    const MovePlace place = AnalyzeMovePlace(*destroy.operand);
+    if (part) {
+        const std::string name = place.projections.empty() ? std::string("part") : place.projections.back().value;
+        EmitError(destroy.location,
+                  std::format("'{}' is a part of '{}' and cannot be destroyed by itself", name, place.RootDisplay()),
+                  {}, "assign the part a new value, which destroys the old one");
+        return TypeRef::MakeUnit();
+    }
+    if (!place.IsNamedStorage()) {
+        EmitError(destroy.location, "'.~()' destroys a value that has a name", {},
+                  "a temporary is destroyed at the end of its statement already");
+        return TypeRef::MakeUnit();
+    }
+    // A local or a parameter ends here: its value is consumed, and a use after this is a use of an ended value. It is
+    // not moved, so a value whose move is prohibited ends the same way.
+    if (trackedFlowReachable && ValidateMoveSource(*destroy.operand, destroy.location)) {
+        endedSites.push_back(destroy.location);
+        if (!MoveTrackedExpression(*destroy.operand, destroy.location)) {
+            valueConsumptions.insert_or_assign(
+                destroy.operand.get(),
+                ValueConsumption{ValueConsumptionKind::ExplicitMove, operandType, destroy.location});
+        }
+    }
+
+    return TypeRef::MakeUnit();
+}
+
 TypeRef AnalysisContext::CheckLoan(const LoanExpr &loan) {
     const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
     const TypeRef operandType = CheckExpr(*loan.operand);
@@ -368,6 +440,9 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
     }
     if (const auto *loan = AstCast<const LoanExpr>(&expression)) {
         return CheckLoan(*loan);
+    }
+    if (const auto *destroy = AstCast<const DestroyExpr>(&expression)) {
+        return CheckDestroy(*destroy);
     }
     if (const auto *move = AstCast<const MoveExpr>(&expression)) {
         const TypeRef operandType = CheckExpr(*move->operand);
