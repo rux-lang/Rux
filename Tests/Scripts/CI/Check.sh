@@ -50,7 +50,7 @@ check_manifest_shape() {
     fi
 
     for key in TOOLCHAIN_CACHE_EPOCH CCACHE_MAXSIZE LLVM_VERSION CCACHE_VERSION FREEBSD_VERSION \
-        LLVM_BASE_URL BREW_LLVM_FORMULA BREW_LLVM_VERSION CCACHE_BASE_URL \
+        LLVM_BASE_URL CCACHE_BASE_URL \
         FREEBSD_PKG_LLVM FREEBSD_BASE_URL FREEBSD_BASE_ASSET SHA256_FREEBSD_BASE_AARCH64; do
         grep -q "^$key=" "$manifest" || fail "$manifest declares no $key"
     done
@@ -97,8 +97,14 @@ check_versions_agree() {
     23.*) ;;
     *) fail "the pinned LLVM version $LLVM_VERSION is outside major 23" ;;
     esac
-    [ "$BREW_LLVM_VERSION" = "$LLVM_VERSION" ] ||
-        fail "BREW_LLVM_VERSION $BREW_LLVM_VERSION does not match LLVM_VERSION $LLVM_VERSION"
+    # macOS and FreeBSD take their Clang from a rolling package source, which
+    # can be held to a major but not to a patch. A patch pin there fails the
+    # first cold pack after every LLVM patch release, so none may come back.
+    if grep -qE '^(BREW|FREEBSD_PKG)_[A-Z_]*VERSION=' "$manifest"; then
+        fail "$manifest pins a patch version for a rolling package source"
+    fi
+    grep -qF 'formula=llvm@$llvm_major' "$scripts/Toolchain/PackMacOS.sh" ||
+        fail 'PackMacOS.sh does not take the Homebrew formula from the pinned LLVM major'
     case "$LLVM_BASE_URL" in
     *"llvmorg-$LLVM_VERSION"*) ;;
     *) fail "LLVM_BASE_URL does not point at the llvmorg-$LLVM_VERSION release" ;;

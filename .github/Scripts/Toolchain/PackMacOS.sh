@@ -2,8 +2,12 @@
 
 # Pack the macOS toolchain prefix from Homebrew's llvm bottle.
 #
-# LLVM publishes no macOS archive for this release, so the source is Homebrew,
-# pinned by formula version: the pack fails if brew resolves any other LLVM.
+# LLVM publishes no macOS archive, so the source is Homebrew, whose formula
+# follows every LLVM patch release and keeps no older bottle installable. The
+# pin is therefore the major version alone: the pack takes whichever patch of
+# it Homebrew offers and records that version in the prefix's MANIFEST, the
+# way the FreeBSD guests take llvm23 from pkg. An exact pin here failed every
+# cold pack that followed a patch release.
 # Nothing is compiled here. The bottle is installed on the packing runner, the
 # tools Rux uses are copied out together with every library they load, and
 # each install name is rewritten so the prefix works wherever it is unpacked.
@@ -61,8 +65,7 @@ if grep -qvE '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=[A-Za-z0-9._:/+-]*$' "$manifest";
 fi
 . "$manifest"
 
-for pin in "LLVM_VERSION:${LLVM_VERSION:-}" "BREW_LLVM_FORMULA:${BREW_LLVM_FORMULA:-}" \
-    "BREW_LLVM_VERSION:${BREW_LLVM_VERSION:-}" "CCACHE_BASE_URL:${CCACHE_BASE_URL:-}" \
+for pin in "LLVM_VERSION:${LLVM_VERSION:-}" "CCACHE_BASE_URL:${CCACHE_BASE_URL:-}" \
     "CCACHE_VERSION:${CCACHE_VERSION:-}" "CCACHE_ASSET_MACOS:${CCACHE_ASSET_MACOS:-}" \
     "SHA256_CCACHE_MACOS:${SHA256_CCACHE_MACOS:-}"; do
     [ -n "${pin#*:}" ] || die "'$manifest' declares no ${pin%%:*}"
@@ -99,32 +102,36 @@ fetch() {
 
 # --- LLVM ---------------------------------------------------------------
 
+# llvm@<major> names the right formula at every point in a release cycle: it
+# is an alias of the rolling llvm formula while that major is current, and a
+# versioned formula of its own from the day llvm moves to the next major.
+formula=llvm@$llvm_major
+
 # The runner ships a formula index that lags the current release and does not
-# refresh itself, so without this the pack silently resolves an older LLVM.
+# refresh itself, so without this the pack resolves a formula that predates
+# the pinned major.
 brew update >/dev/null
-if brew list --versions "$BREW_LLVM_FORMULA" >/dev/null 2>&1; then
-    brew upgrade "$BREW_LLVM_FORMULA" >/dev/null 2>&1 || true
-else
-    brew install "$BREW_LLVM_FORMULA"
-fi
-llvm=$(brew --prefix "$BREW_LLVM_FORMULA")
-installed=$(brew list --versions "$BREW_LLVM_FORMULA" | awk '{ print $2 }')
+brew install "$formula"
+llvm=$(brew --prefix "$formula")
+[ -x "$llvm/bin/clang" ] || die "the $formula formula has no bin/clang"
+
+# The compiler is asked for its own version: an alias is listed by brew under
+# the name it resolves to, so the formula name is not a reliable key.
+installed=$("$llvm/bin/clang" --version | sed -n '1s/.*clang version \([0-9][0-9.]*\).*/\1/p')
 case "$installed" in
-"$BREW_LLVM_VERSION"*) ;;
-*)
-    die "Homebrew has $BREW_LLVM_FORMULA $installed but Toolchains.env pins $BREW_LLVM_VERSION; if the formula has moved on, point BREW_LLVM_FORMULA at the versioned formula rather than accepting a different compiler"
-    ;;
+"$llvm_major".*) ;;
+*) die "Homebrew's $formula is Clang '$installed', not Clang $llvm_major" ;;
 esac
+printf 'Packing Clang %s from %s\n' "$installed" "$formula"
 
 # clang++ in a bottle is a full copy of clang, not a symlink, so the prefix
 # ships one real binary and links the other spellings to it.
-[ -e "$llvm/bin/clang" ] || die "the $BREW_LLVM_FORMULA formula has no bin/clang"
 cp "$llvm/bin/clang" "$prefix/bin/clang"
 for alias in clang++ clang++-$llvm_major; do
     ln -sf clang "$prefix/bin/$alias"
 done
 for tool in clang-format clang-tidy llvm-size; do
-    [ -e "$llvm/bin/$tool" ] || die "the $BREW_LLVM_FORMULA formula has no bin/$tool"
+    [ -e "$llvm/bin/$tool" ] || die "the $formula formula has no bin/$tool"
     cp "$llvm/bin/$tool" "$prefix/bin/$tool-$llvm_major"
     ln -sf "$tool-$llvm_major" "$prefix/bin/$tool"
 done
@@ -133,7 +140,7 @@ chmod +x "$prefix"/bin/*
 # The resource headers are mandatory: clang-tidy cannot parse a translation
 # unit without them. Of the runtime libraries only the builtins, which the
 # Darwin driver always links, are kept; Rux uses no sanitizer or profiler.
-[ -d "$llvm/lib/clang/$llvm_major/include" ] || die "the $BREW_LLVM_FORMULA formula has no resource headers"
+[ -d "$llvm/lib/clang/$llvm_major/include" ] || die "the $formula formula has no resource headers"
 mkdir -p "$prefix/lib/clang"
 cp -R "$llvm/lib/clang/$llvm_major" "$prefix/lib/clang/$llvm_major"
 if [ -d "$prefix/lib/clang/$llvm_major/lib" ]; then
@@ -142,7 +149,7 @@ fi
 
 # Homebrew's clang++ links its own libc++, and its headers are needed to
 # compile against it.
-[ -d "$llvm/include/c++" ] || die "the $BREW_LLVM_FORMULA formula has no libc++ headers"
+[ -d "$llvm/include/c++" ] || die "the $formula formula has no libc++ headers"
 cp -R "$llvm/include/c++" "$prefix/include/c++"
 
 # --- Shared-library closure ----------------------------------------------
