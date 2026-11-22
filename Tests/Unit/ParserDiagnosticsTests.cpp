@@ -905,8 +905,6 @@ TEST_CASE("removed spellings report the form that replaced them") {
         {"func F() -> !E { fail E {}; }", "'fail' is not supported", "write 'throw value;'"},
         {"func F() -> int ! E { return G()? else (e => e); }", "'? else' is not supported",
          "write 'try value catch { e => throw mapped }'"},
-        {"func F() -> int { return G() catch { _ => 0 }; }", "'catch' must follow 'try'",
-         "write 'try value catch { ... }'"},
         {"func F() -> int { return match x { else => 0 }; }", "'else' is not a match arm",
          "use '_' for the default arm"},
         {"func F() -> int { return match x { v? => v, _ => 0 }; }", "a presence suffix is not a pattern",

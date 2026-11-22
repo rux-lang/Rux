@@ -46,7 +46,7 @@ Both read-only and writable slices support `values[i]` and `values[1..3]` direct
 
 ## Failure model
 
-Running out of memory terminates the program. `Push`, `Insert`, `Reserve`, `Clone` and every other operation that allocates either gets its storage or does not return, so a caller writes `numbers.Push(1);` and nothing more, and a capacity whose byte size cannot be represented terminates the same way. Code that can recover calls a `Try*` operation instead, which -> !the allocator's own `AllocError` and leaves the container exactly as it was:
+Running out of memory terminates the program. `Push`, `Insert`, `Reserve`, `Clone` and every other operation that allocates either gets its storage or does not return, so a caller writes `numbers.Push(1);` and nothing more, and a capacity whose byte size cannot be represented terminates the same way. Code that can recover calls a `Try*` operation instead, which throws the allocator's own `AllocError` and leaves the container exactly as it was:
 
 | Container   | Recoverable forms                         |
 | ----------- | ----------------------------------------- |

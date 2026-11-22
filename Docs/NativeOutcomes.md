@@ -9,7 +9,7 @@ This page records why the native outcome forms are shaped the way they are, why 
 | `variant Event { ... }` | Alternatives distinguished by meaningful case names, even with identical payload types.                   | Named case patterns.                                               |
 | `A \| B`                | One value of a set of distinct resolved types: a _sum_.                                                   | Typed patterns, qualified case patterns, `is`.                     |
 | `T?`                    | A present `T` or absence: an _optional_, preserving every level.                                          | `.Some(p)`, `none`, typed presence patterns, `is`, `?`, `??`.      |
-| `-> T ! E`         | A function that returns a `T` or -> !an `E`. `throws E` after the parameters alone returns nothing.     | `try`, `try?`, `try ... catch { arms }`, `try { ... } catch { arms }`. |
+| `-> T ! E`         | A function that returns a `T` or throws an `E`. `-> !E` returns nothing.     | `try`, `try?`, `try ... catch { arms }`, `try { ... } catch { arms }`. |
 | `Result<T, E>`          | Core's ordinary variant `Success(T)` / `Failure(E)`, for an outcome that must be kept as a value.          | Its case patterns and `is`, like any variant.                      |
 | `()`                    | The built-in empty tuple, the _unit_, whose only value is also `()`.                                      | The pattern `()` or a binding.                                     |
 | `union Storage { ... }` | Untagged overlapping storage.                                                                             | Field access.                                                      |
@@ -165,7 +165,7 @@ Idioms that worked well during the first-party migration:
   }
   ```
 
-- Cleanup whose outcome does not matter writes `try Close(file) catch { _ => {} };`. Inside a `defer` or a destructor no error may leave, so a call there that -> !is handled this way or with `try?`.
+- Cleanup whose outcome does not matter writes `try Close(file) catch { _ => {} };`. Inside a `defer` or a destructor no error may leave, so a call there that can fail is handled this way or with `try?`.
 - An assertion that a failed constructor "comes back empty" is dropped: no value comes back.
 
 Pitfalls:
@@ -179,4 +179,4 @@ Pitfalls:
 
 ## Regression Coverage
 
-The executable fixtures `Tests/Language/SumType`, `Optional`, `None`, `OptionalIteration`, `GenericSum`, `Coalescing`, `IsBinding`, and `Result` exercise sums, optionals and the stored outcome, and `Throw`, `Try`, `TryPropagation`, `TryCatch`, `TryOptional`, `TryDefer`, `ThrowsMain`, `ThrowsInterface`, and `ThrowingConstructor` exercise typed -> !end to end. The `NativeOutcomeSpellings`, `RemovedErrorSyntax`, `RemovedForms`, `RemovedLegacySyntax`, `Throws*` and `Try*` goldens pin the rejected spellings and the throw-site diagnostics, and the `Native*` and `Throws*` unit tests cover each compiler stage. Changing any decision above means updating the affected fixtures and goldens in the same change.
+The executable fixtures `Tests/Language/SumType`, `Optional`, `None`, `OptionalIteration`, `GenericSum`, `Coalescing`, `IsBinding`, and `Result` exercise sums, optionals and the stored outcome, and `Throw`, `Try`, `TryPropagation`, `TryCatch`, `TryOptional`, `TryDefer`, `ThrowsMain`, `ThrowsInterface`, and `ThrowingConstructor` exercise typed errors end to end. The `NativeOutcomeSpellings`, `RemovedErrorSyntax`, `RemovedForms`, `RemovedLegacySyntax`, `Throws*` and `Try*` goldens pin the rejected spellings and the throw-site diagnostics, and the `Native*` and `Throws*` unit tests cover each compiler stage. Changing any decision above means updating the affected fixtures and goldens in the same change.

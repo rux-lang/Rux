@@ -43,7 +43,7 @@ func Check(text: char8[..]) -> bool ! ParseError {
 func Main() -> int {
     // The fault is the second argument: the first fixes 'I' and 'T'.
     let kept = Keep(Numbers { left: 1 }, Curve);
-    // A fallible condition reads 'bool', the spelling the source wrote.
+    // A fallible condition is not its success: the error names the whole type, and the help the ways to handle it.
     if Check("x") {
         return 1;
     }

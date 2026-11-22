@@ -1,0 +1,3 @@
+12:27: error: operator '+' cannot combine left operand 'int32 ! Closed' with right operand 'int32'
+13:20: error: operator '==' cannot compare 'int32 ! Closed' with 'int32'
+16:17: error: cannot cast value of type 'int32 ! Closed' to 'int'

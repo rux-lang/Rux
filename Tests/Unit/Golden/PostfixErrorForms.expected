@@ -1,0 +1,6 @@
+20:20: error: '!' passes an error on, and 'int' has none
+21:20: error: '!' passes an error on, and 'int?' has none
+22:21: error: '!!' replaces an error, and 'int' has none
+23:21: error: '!!' replaces an error, and 'int?' has none
+24:21: error: 'catch' handles an error, and 'int' has none
+25:5: error: 'Parse' can fail with 'Fault', and the result is not used

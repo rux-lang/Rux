@@ -252,6 +252,9 @@ struct GuardedPattern : Pattern {
 // Expressions
 struct Expr {
     SourceLocation location;
+    /// Whether the source wrapped this expression in its own parentheses. Grouping never changes a value, but the
+    /// grammar refuses some unparenthesized mixes, such as `a !! b ?? c`, so the parser keeps the fact.
+    bool parenthesized = false;
     virtual ~Expr() = default;
     /// The node's dynamic type once a cast asked for it (`AstCast`), so later casts compare one pointer.
     mutable const std::type_info *cachedType = nullptr;
@@ -535,6 +538,13 @@ struct TryMarkExpr : Expr {
     ExprPtr operand;
     std::vector<MatchExpr::Arm> arms; // the `catch` arms of the `Catch` form
     SourceLocation catchLocation;
+    /// Written after its operand, as `x!`, `x catch { arms }` or `x !! v`: it handles the operand's own fallible
+    /// value, and a fallible nested inside the operand stays a value of its own.
+    bool postfix = false;
+    /// `x !! v`: the `Catch` form with one arm, `_ => v`, that cannot see the error.
+    bool replacesError = false;
+    /// `x !!;`: the error, and the success value with it, is dropped, so there is no arm at all.
+    bool ignoresError = false;
 };
 
 /// `fail value`, `throw value`, `return [value]`, `break [label]`, or `continue [label]` written where a value is

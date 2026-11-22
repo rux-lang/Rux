@@ -364,6 +364,10 @@ private:
     /// Report `...` where a range operator is read: the inclusive range is spelled `..=`.
     void RejectEllipsisRange();
     ExprPtr ParseCoalesce();
+    /// Whether a spaced `!!` follows: the binary operator that replaces an error, not two postfix marks.
+    [[nodiscard]] bool CheckReplaceError() const noexcept;
+    /// `x catch { arms }`, `x !! v` or `x !!;` after `operand`, with the current token on `catch` or the first `!`.
+    ExprPtr ParseErrorHandler(ExprPtr operand);
     ExprPtr ParseOr();
     ExprPtr ParseAnd();
     ExprPtr ParseBitOr();

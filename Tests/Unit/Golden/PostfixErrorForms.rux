@@ -1,0 +1,32 @@
+// The postfix error forms `x!`, `x !! v` and `x catch { arms }` each need a fallible operand, and a fallible written
+// as a statement on its own is refused because nothing would see its error.
+struct Fault {}
+
+func Parse(text: int) -> int ! Fault {
+    if text < 0 { throw Fault {}; }
+    return text;
+}
+
+func Find(key: int) -> int? {
+    if key < 0 { return none; }
+    return key;
+}
+
+func Plain() -> int {
+    return 1;
+}
+
+func Use() -> int ! Fault {
+    let a = Plain()!;
+    let b = Find(1)!;
+    let c = Plain() !! 0;
+    let d = Find(1) !! 0;
+    let e = Plain() catch { _ => 0 };
+    Parse(3);
+    Parse(4)!;
+    return a + c + e;
+}
+
+func Main() -> int {
+    return Use() !! 0;
+}

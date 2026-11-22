@@ -22,6 +22,10 @@
 #include <vector>
 
 namespace Rux::SemanticDetail {
+
+/// The help for a fallible used where its success is needed, or not used at all: the three ways to take it apart.
+inline constexpr std::string_view HandleErrorHelp =
+    "pass the error on with '!', replace it with '!!', or handle it with 'catch { ... }'";
 /// The name an interface uses for the type implementing it. There are no generic interfaces, so this is the only way
 /// an interface method can say that an operand or a result is the same type as its receiver.
 inline constexpr std::string_view SelfTypeName = "Self";
@@ -824,7 +828,13 @@ private:
         const TryStmt *block = nullptr;
         const TryMarkExpr *expression = nullptr;
         std::size_t sites = 0;
+        /// A postfix `x!`, `x catch { ... }` or `x !! v` marks only its operand: a fallible nested inside it stays a
+        /// value of its own.
+        const Expr *onlyOperand = nullptr;
     };
+
+    /// A postfix error handler written as a whole statement, `x !!;` or `x catch { ... };`, whose success is dropped.
+    const TryMarkExpr *statementHandler = nullptr;
 
     /// Whether a callee can throw, which makes every call to it a throw site that must be marked with `try`.
     struct ThrowingCallee {
@@ -888,6 +898,8 @@ private:
     /// A call or operator whose type is the fallible `outcome`: a throw site when a `try` covers it, whose value is
     /// the success payload, or an outcome value as before; an unmarked call of a `throws` callee is an error.
     [[nodiscard]] TypeRef CheckThrowSite(const Expr &expression, const TypeRef &outcome);
+    /// `x!`, `x catch { arms }`, `x !! v` and `x !!;`, which handle only their operand's own fallible.
+    [[nodiscard]] TypeRef CheckPostfixErrorForm(const TryMarkExpr &expression);
     /// Sends `error`, thrown at `location`, to the innermost handler or the function's `throws` channel, recording the
     /// flow edge and the target in `site`. False when it has nowhere to go, which has been reported.
     bool RouteThrownError(ResolvedThrowSite &site, const TypeRef &error, SourceLocation location,

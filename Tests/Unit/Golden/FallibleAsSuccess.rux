@@ -1,0 +1,17 @@
+// A call that can fail is a fallible value, `T ! E`, and is not its success: using it as one is a type error whose
+// help names the three ways to take it apart. A function value is called the same way.
+struct Closed {}
+
+func Halve(value: int32) -> int32 ! Closed {
+    return value / 2;
+}
+
+func Main() -> int {
+    let halve: func(int32) -> int32 ! Closed = Halve;
+    let half = halve(4i32);
+    let sum = Halve(2i32) + 1i32;
+    if Halve(0i32) == 0i32 {
+        return 1;
+    }
+    return half as int;
+}

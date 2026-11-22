@@ -315,6 +315,9 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
     if (type.IsOptional() && !type->inner.empty() && type->inner[0].IsBool()) {
         help = "give the absent case a value with '?\?', or match the optional";
     }
+    else if (type.IsFallible()) {
+        help = std::string(HandleErrorHelp);
+    }
     EmitError(location,
               std::format("{} must have type 'bool', but found '{}'",
                           construct == "pattern guard" ? std::string(construct)
@@ -325,7 +328,28 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
 
 void AnalysisContext::CheckStatement(const Stmt &statement) {
     if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
+        // A handler written as the whole statement drops the success value, so its arms may yield nothing.
+        if (const auto *handler = AstCast<const TryMarkExpr>(expressionStatement->expr.get());
+            handler && handler->postfix && handler->form == TryMarkExpr::Form::Catch) {
+            statementHandler = handler;
+        }
         const TypeRef type = CheckExpr(*expressionStatement->expr);
+        // A fallible that is not used drops its error with nothing written, so it is refused.
+        if (type.IsFallible() && !type.FallibleError().IsUnknown()) {
+            const auto *call = AstCast<const CallExpr>(expressionStatement->expr.get());
+            const auto binding = call ? callableBindings.find(call) : callableBindings.end();
+            const auto *function = binding != callableBindings.end()
+                                     ? AstCast<const FuncDecl>(binding->second.selectedDeclaration)
+                                     : nullptr;
+            const ThrowingCallee callee = ThrowingCalleeOf(*expressionStatement->expr);
+            EmitError(callee.spelling == ThrowingCallee::Spelling::None ? expressionStatement->expr->location
+                                                                        : callee.location,
+                      function ? std::format("'{}' can fail with '{}', and the result is not used", function->name,
+                                             type.FallibleError().DisplayString())
+                               : std::format("this value can fail with '{}', and it is not used",
+                                             type.FallibleError().DisplayString()),
+                      {}, "pass the error on with '!', ignore it with '!!;', or handle it with 'catch { ... }'");
+        }
         if (const auto *block = AstCast<const BlockExpr>(expressionStatement->expr.get())) {
             ReportUnusedBlockValue(*block, type);
         }

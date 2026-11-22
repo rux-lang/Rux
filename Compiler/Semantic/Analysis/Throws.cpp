@@ -117,19 +117,28 @@ TypeRef AnalysisContext::CheckThrowSite(const Expr &expression, const TypeRef &o
     if (&expression == outcomeOperand) {
         return outcome;
     }
-    const ThrowingCallee callee = ThrowingCalleeOf(expression);
+    // The operand of a postfix `x!`, `x catch { ... }` or `x !! v` is handled whatever it is: a call, or a fallible
+    // kept in a local.
+    const bool postfixOperand = !throwMarkFrames.empty() && throwMarkFrames.back().onlyOperand == &expression;
+    ThrowingCallee callee = ThrowingCalleeOf(expression);
     if (callee.spelling == ThrowingCallee::Spelling::None) {
-        return outcome;
+        if (!postfixOperand) {
+            return outcome;
+        }
+        callee.spelling = ThrowingCallee::Spelling::Throws;
+        callee.location = expression.location;
+        callee.description = "this value";
     }
     const TypeRef &success = outcome.FallibleSuccess();
     const TypeRef &error = outcome.FallibleError();
-    const bool covered =
-        !throwMarkFrames.empty() && (throwMarkFrames.back().block || throwMarkFrames.back().expression);
+    bool covered = false;
+    if (!throwMarkFrames.empty()) {
+        const ThrowMarkFrame &frame = throwMarkFrames.back();
+        covered = frame.block || (frame.expression && (!frame.onlyOperand || frame.onlyOperand == &expression));
+    }
+    // A fallible nothing marks is a value of its own: its error is handled where the value is used.
     if (!covered) {
-        EmitError(callee.location,
-                  std::format("{} can throw '{}' but is not marked with 'try'", callee.description, error.ToString()),
-                  {}, "write 'try' before the expression");
-        return success;
+        return outcome;
     }
     ThrowMarkFrame &mark = throwMarkFrames.back();
     ++mark.sites;
@@ -370,6 +379,9 @@ TypeRef AnalysisContext::CheckTryMark(const TryMarkExpr &expression) {
         }
         ExpectArmValue(*expression.operand, operandExpected);
     }
+    if (expression.postfix) {
+        return CheckPostfixErrorForm(expression);
+    }
     if (expression.form == TryMarkExpr::Form::Propagate) {
         throwMarkFrames.push_back({nullptr, &expression, 0});
         const TypeRef type = expression.operand ? CheckExpr(*expression.operand) : TypeRef::MakeUnknown();
@@ -409,16 +421,115 @@ TypeRef AnalysisContext::CheckTryMark(const TryMarkExpr &expression) {
         if (operandType.IsUnknown()) {
             return operandType;
         }
-        tryExpressionHandlers.insert_or_assign(&expression, ResolvedThrowHandler{error, operandType});
+        tryExpressionHandlers.insert_or_assign(&expression,
+                                               ResolvedThrowHandler{error, operandType, TypeRef::MakeUnknown(), false});
         return TypeRef::MakeOptional(operandType);
     }
     MergeTrackedFlows(frame.edges);
     CheckHandlerArms(expression.arms, error, operandType, expression.catchLocation, exits);
     MergeTrackedFlows(exits);
     if (!operandType.IsUnknown()) {
-        tryExpressionHandlers.insert_or_assign(&expression, ResolvedThrowHandler{error, operandType});
+        tryExpressionHandlers.insert_or_assign(&expression,
+                                               ResolvedThrowHandler{error, operandType, TypeRef::MakeUnknown(), false});
     }
     return operandType;
+}
+
+TypeRef AnalysisContext::CheckPostfixErrorForm(const TryMarkExpr &expression) {
+    const bool handles = expression.form == TryMarkExpr::Form::Catch;
+    const bool asStatement = std::exchange(statementHandler, nullptr) == &expression;
+    const std::string_view spelling = !handles ? "!" : expression.replacesError ? "!!" : "catch";
+    const auto rejectPlain = [&](const TypeRef &type) {
+        if (type.IsUnknown() || type.IsFallible()) {
+            return false;
+        }
+        if (spelling == "!") {
+            EmitError(expression.location,
+                      std::format("'!' passes an error on, and '{}' has none", type.DisplayString()), {},
+                      type.IsOptional() ? std::optional<std::string>("write '?' to leave with 'none'") : std::nullopt);
+        }
+        else if (spelling == "!!") {
+            EmitError(expression.location,
+                      std::format("'!!' replaces an error, and '{}' has none", type.DisplayString()), {},
+                      type.IsOptional() ? std::optional<std::string>("write '?"
+                                                                     "?' to fill an absence")
+                                        : std::nullopt);
+        }
+        else {
+            EmitError(expression.catchLocation,
+                      std::format("'catch' handles an error, and '{}' has none", type.DisplayString()));
+        }
+        return true;
+    };
+
+    if (!handles) {
+        throwMarkFrames.push_back({nullptr, &expression, 0, expression.operand.get()});
+        const TypeRef type = expression.operand ? CheckExpr(*expression.operand) : TypeRef::MakeUnknown();
+        const ThrowMarkFrame mark = throwMarkFrames.back();
+        throwMarkFrames.pop_back();
+        // A fallible operand is a throw site of the mark, which returned its success; anything else had no error.
+        if (mark.sites == 0) {
+            rejectPlain(type);
+        }
+        return type;
+    }
+
+    // `x catch { arms }`, `x !! v` and `x !!;` handle what their operand throws.
+    TypeRef expected = TypeRef::MakeUnknown();
+    if (const auto found = expectedExpressionTypes.find(&expression); found != expectedExpressionTypes.end()) {
+        expected = found->second;
+    }
+    ThrowHandlerFrame handler;
+    handler.expression = &expression;
+    handler.shape = SaveTrackedFlow();
+    throwHandlerFrames.push_back(std::move(handler));
+    throwMarkFrames.push_back({nullptr, &expression, 0, expression.operand.get()});
+    const TypeRef operandType = expression.operand ? CheckExpr(*expression.operand) : TypeRef::MakeUnknown();
+    throwMarkFrames.pop_back();
+    ThrowHandlerFrame frame = std::move(throwHandlerFrames.back());
+    throwHandlerFrames.pop_back();
+    if (frame.sites == 0) {
+        rejectPlain(operandType);
+    }
+    const TypeRef error = HandlerErrorType(frame);
+    if (!operandType.IsUnknown() && expression.operand && !asStatement) {
+        // The value the operand produces moves into the result.
+        ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::ConstructorOperand,
+                     expression.operand->location);
+    }
+    // The whole expression has the success type, or the type its context expects when the success converts to it,
+    // as `int?` for `ParsePort(text) !! none`. With no expected type, `x !! none` makes the success optional.
+    TypeRef result = operandType;
+    if (!asStatement && !operandType.IsUnknown()) {
+        if (!expected.IsUnknown() && expected != operandType &&
+            CanAssignExprTo(*expression.operand, operandType, expected)) {
+            result = expected;
+        }
+        else if (expected.IsUnknown() && expression.replacesError && expression.arms.size() == 1 &&
+                 AstCast<const NoneExpr>(expression.arms.front().body.get()) && !operandType.IsOptional()) {
+            result = TypeRef::MakeOptional(operandType);
+        }
+    }
+    const TrackedFlow succeeded = SaveTrackedFlow();
+    std::vector<TrackedFlow> exits = {succeeded};
+    MergeTrackedFlows(frame.edges);
+    if (expression.ignoresError) {
+        exits.push_back(SaveTrackedFlow());
+    }
+    else {
+        CheckHandlerArms(expression.arms, error, asStatement ? std::nullopt : std::optional<TypeRef>(result),
+                         expression.catchLocation, exits);
+    }
+    MergeTrackedFlows(exits);
+    if (!operandType.IsUnknown()) {
+        ResolvedThrowHandler resolved{error, operandType, TypeRef::MakeUnknown(), false};
+        if (result != operandType) {
+            resolved.resultType = result;
+        }
+        resolved.discardsValue = asStatement;
+        tryExpressionHandlers.insert_or_assign(&expression, resolved);
+    }
+    return asStatement ? TypeRef::MakeUnit() : result;
 }
 
 void AnalysisContext::CheckTryStatement(const TryStmt &statement) {
@@ -441,6 +552,7 @@ void AnalysisContext::CheckTryStatement(const TryStmt &statement) {
     MergeTrackedFlows(frame.edges);
     CheckHandlerArms(statement.arms, error, std::nullopt, statement.catchLocation, exits);
     MergeTrackedFlows(exits);
-    tryBlockHandlers.insert_or_assign(&statement, ResolvedThrowHandler{error, TypeRef::MakeUnit()});
+    tryBlockHandlers.insert_or_assign(&statement,
+                                      ResolvedThrowHandler{error, TypeRef::MakeUnit(), TypeRef::MakeUnknown(), false});
 }
 } // namespace Rux::SemanticDetail

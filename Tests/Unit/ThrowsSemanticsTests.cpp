@@ -89,15 +89,24 @@ const Expr &InitializerOf(const FuncDecl &function, const std::size_t index) {
 }
 } // namespace
 
-TEST_CASE("an unmarked call of a throws function is an error and a marked one evaluates to its success") {
-    const auto errors = Errors(WithDeclarations(R"(
-        func Main() -> int ! DigitError {
+TEST_CASE("an unmarked call is a fallible value, an unused one is an error, and a marked one is its success") {
+    const std::string keptSource = WithDeclarations(R"(
+        func Main() -> int {
             let a = ReadDigit('1');
-            return a;
+            return a !! 0;
+        }
+    )");
+    CHECK(Errors(keptSource).empty());
+    const Analyzed kept = Analyze(keptSource);
+    CHECK(ResolvedType(*kept.model, InitializerOf(Function(kept, "Main"), 0)).DisplayString() == "int ! DigitError");
+    const auto errors = Errors(WithDeclarations(R"(
+        func Main() -> int {
+            ReadDigit('1');
+            return 0;
         }
     )"));
     REQUIRE(errors.size() == 1);
-    CHECK(errors.front() == "call to 'ReadDigit' can throw 'DigitError' but is not marked with 'try'");
+    CHECK(errors.front() == "'ReadDigit' can fail with 'DigitError', and the result is not used");
 
     const Analyzed analyzed = Analyze(WithDeclarations(R"(
         func Main() -> int ! DigitError {
@@ -268,11 +277,11 @@ TEST_CASE("no error leaves a deferred statement or a destructor") {
 TEST_CASE("an arm needs its own try and the arms cover every error") {
     CHECK(AnyContains(Errors(WithDeclarations(R"(
         func Main() -> int {
-            try { ReadDigit('1'); } catch { _ => ReadDigit('2') }
+            try { ReadDigit('1'); } catch { _ => { ReadDigit('2'); } }
             return 0;
         }
     )")),
-                      "call to 'ReadDigit' can throw 'DigitError' but is not marked with 'try'"));
+                      "'ReadDigit' can fail with 'DigitError', and the result is not used"));
     CHECK(AnyContains(Errors(WithDeclarations(R"(
         func Main() -> int {
             try { ReadDigit('1'); } catch { .Blank => {} }

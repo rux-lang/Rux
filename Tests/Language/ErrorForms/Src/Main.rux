@@ -1,0 +1,133 @@
+// A fallible `T ! E` is a value, and four postfix forms take it apart where it is used. `x!` passes the error on to the
+// caller and continues with the success. `x !! v` replaces an error with `v`, which may itself leave with `return` or
+// `throw`; `x !! none` makes the success optional. `x !!;` drops the error and the success with it. `x catch { arms }`
+// handles the error with the arms of `match`, and as a whole statement its arms yield nothing. Each form handles only
+// its own operand: a fallible kept in a local is handled where the local is used, and its owned success is destroyed
+// exactly once on every path.
+
+import Core::Diagnostics::Assert;
+
+var drops: int = 0;
+
+struct Tracked {
+    value: int;
+}
+
+extend Tracked {
+    func ~(&var self) {
+        drops += 1;
+    }
+}
+
+variant ParseError {
+    Empty,
+    Invalid(int)
+}
+
+struct FlushError {
+    code: int;
+}
+
+func Parse(text: int) -> int ! ParseError {
+    if text == 0 { throw .Empty; }
+    if text < 0 { throw .Invalid(-text); }
+    return text;
+}
+
+func Make(value: int) -> Tracked ! ParseError {
+    if value < 0 { throw .Invalid(value); }
+    return Tracked { value };
+}
+
+func Flush(broken: bool) -> !FlushError {
+    if broken { throw FlushError { code: 5 }; }
+}
+
+func Sum(a: int, b: int) -> int ! ParseError {
+    return Parse(a)! + Parse(b)!;
+}
+
+func Classify(text: int) -> int {
+    return Parse(text) catch {
+        .Empty => -1,
+        .Invalid(at) if at > 50 => -2,
+        .Invalid(_) => -3,
+    };
+}
+
+func Rethrow(text: int) -> int ! ParseError {
+    return Parse(text) catch {
+        .Empty => 0,
+        e => throw e,
+    };
+}
+
+func Early(text: int) -> int {
+    let value = Parse(text) !! return 99;
+    return value * 2;
+}
+
+func Kept(text: int) -> int ! ParseError {
+    let outcome = Parse(text);
+    return outcome! + 1;
+}
+
+func Main() -> int {
+    // `x!` continues with the success and passes the error on.
+    Assert((Sum(2, 3) !! 0) == 5, "both succeed");
+    Assert((Sum(2, 0) !! -7) == -7, "the second fails");
+
+    // `x !! v` and a chain of replacements.
+    Assert((Parse(4) !! 0) == 4, "no error to replace");
+    Assert((Parse(-4) !! 9) == 9, "an error replaced");
+    Assert((Parse(0) !! Parse(-1) !! 3) == 3, "a chain tries each in turn");
+    Assert((Parse(0) !! Parse(6) !! 3) == 6, "the second link succeeds");
+
+    // `x !! none` makes the success optional.
+    let missing = Parse(0) !! none;
+    Assert(missing == none, "an error became an absence");
+    let present: int? = Parse(8) !! none;
+    Assert(present == 8, "a success stays present");
+
+    // `x !! return v` leaves the function.
+    Assert(Early(5) == 10, "no early return");
+    Assert(Early(0) == 99, "an early return");
+
+    // `x catch { arms }` as a value, with guards and a rethrow.
+    Assert(Classify(3) == 3, "caught nothing");
+    Assert(Classify(0) == -1, "caught empty");
+    Assert(Classify(-60) == -2, "caught a guarded case");
+    Assert(Classify(-5) == -3, "caught the rest");
+    Assert((Rethrow(0) !! -1) == 0, "handled in the arms");
+    Assert((Rethrow(-2) !! -1) == -1, "passed on from an arm");
+
+    // A fallible kept in a local is handled where it is used.
+    let kept = Parse(5);
+    Assert((kept !! 0) == 5, "a kept success");
+    let failed = Parse(0);
+    Assert((failed !! 4) == 4, "a kept failure");
+    Assert((Kept(1) !! 0) == 2, "a kept local passed on");
+    Assert((Kept(0) !! -1) == -1, "a kept failure passed on");
+
+    // `x !!;` and a statement `catch` drop the error and the success.
+    Flush(true) !!;
+    Flush(false) !!;
+    var handled = 0;
+    Flush(true) catch { e => { handled = e.code; } };
+    Assert(handled == 5, "a statement catch saw the error");
+    Parse(7) catch { _ => {} };
+
+    // An owned success is destroyed exactly once on every path.
+    drops = 0;
+    let made = Make(3) !! Tracked { value: 0 };
+    Assert(made.value == 3, "made a tracked value");
+    let replaced = Make(-1) !! Tracked { value: 1 };
+    Assert(replaced.value == 1, "replaced a tracked value");
+    Make(4) !!;
+    Assert(drops == 1, "a dropped success is destroyed");
+    Make(-4) !!;
+    Assert(drops == 1, "a dropped error destroys nothing owned");
+    let caught = Make(-2) catch { _ => Tracked { value: 2 } };
+    Assert(caught.value == 2, "a caught tracked value");
+    return 0;
+}

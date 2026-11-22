@@ -2,4 +2,3 @@
 11:17: error: 'throws' is not supported
 14:5: error: 'fail' is not supported
 18:20: error: '? else' is not supported
-22:19: error: 'catch' must follow 'try'

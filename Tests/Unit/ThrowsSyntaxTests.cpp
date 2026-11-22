@@ -180,7 +180,7 @@ TEST_CASE("try covers the whole expression to its right") {
     CHECK(dynamic_cast<const TryMarkExpr *>(call->args[1].get())->form == TryMarkExpr::Form::Optional);
 }
 
-TEST_CASE("catch after a try operand takes the arms, and a catch without try is reported") {
+TEST_CASE("catch after a try operand takes the arms, and a catch without try handles its left side") {
     const ParseResult result = ParseClean(R"(
         func Run() -> int {
             let value = try A() + B() catch { .Empty => 0, e: IoError if e.code > 1 => 1, _ => 2, };
@@ -196,7 +196,13 @@ TEST_CASE("catch after a try operand takes the arms, and a catch without try is 
     CHECK(dynamic_cast<const GuardedPattern *>(value->arms[1].pattern.get()) != nullptr);
     CHECK(dynamic_cast<const WildcardPattern *>(value->arms[2].pattern.get()) != nullptr);
 
-    CHECK(HasError(ParseSource("func F() { let v = Use(C() catch { _ => 3 }); }"), "'catch' must follow 'try'"));
+    const ParseResult postfix = ParseClean("func F() { let v = Use(C() catch { _ => 3 }); }");
+    const auto *handler = dynamic_cast<const TryMarkExpr *>(
+        dynamic_cast<const CallExpr &>(StatementExpression(Function(postfix, "F"), 0)).args.front().get());
+    REQUIRE(handler != nullptr);
+    CHECK(handler->postfix);
+    CHECK(handler->form == TryMarkExpr::Form::Catch);
+    CHECK(dynamic_cast<const CallExpr *>(handler->operand.get()) != nullptr);
 }
 
 TEST_CASE("a try block holds its statements and its catch arms") {

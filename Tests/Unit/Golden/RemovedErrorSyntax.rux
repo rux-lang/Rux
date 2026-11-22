@@ -18,10 +18,6 @@ func Mapped() -> int32 ! ParseError {
     return Read()? else (e => e);
 }
 
-func Recovered() -> int32 {
-    return Read() catch { _ => 0i32 };
-}
-
 func Main() -> int {
     return 0;
 }

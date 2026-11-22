@@ -80,6 +80,12 @@ HirExprPtr AstToHirContext::LowerThrowSite(const Expr &expression, const Resolve
     const Expr *savedRaw = std::exchange(rawThrowSite, &expression);
     HirExprPtr outcome = LowerExpr(expression);
     rawThrowSite = savedRaw;
+    // A fallible kept in a local is recorded with its success type, as the expression reads where it is handled; the
+    // read itself takes the whole outcome.
+    if (!outcome->type.IsFallible() && !AstCast<const CallExpr>(&expression)) {
+        outcome->type =
+            TypeRef::MakeFallible(SubstituteCurrentType(site.payloadType), SubstituteCurrentType(site.errorType));
+    }
     const TypeRef outcomeType = outcome->type;
     if (!outcomeType.IsFallible()) {
         return outcome;
@@ -262,7 +268,12 @@ HirExprPtr AstToHirContext::LowerTryMark(const TryMarkExpr &expression) {
     const TypeRef value = SubstituteCurrentType(handler->valueType);
     const TypeRef error = SubstituteCurrentType(handler->errorType);
     const bool optional = expression.form == TryMarkExpr::Form::Optional;
-    const TypeRef result = optional ? TypeRef::MakeOptional(value) : value;
+    // A handler written as a whole statement drops the success, and `x !! none` may produce what its context expects.
+    const bool discards = handler->discardsValue;
+    const TypeRef result = discards                         ? TypeRef::MakeOpaque()
+                         : optional                         ? TypeRef::MakeOptional(value)
+                         : !handler->resultType.IsUnknown() ? SubstituteCurrentType(handler->resultType)
+                                                            : value;
     // Nothing throws: the operand is the value, made present for `try?`.
     if (error.IsUnknown()) {
         HirExprPtr lowered = LowerExprAs(*expression.operand, value);
@@ -294,15 +305,46 @@ HirExprPtr AstToHirContext::LowerTryMark(const TryMarkExpr &expression) {
     match->type = result;
     match->subject = SlotSubject(active.slot, active.outcomeType, location);
     const std::string payloadName = std::format("$try.value.{}", ordinal);
+    // A wildcard that destroys what it matches: the part of the outcome a discarding handler drops.
+    const auto discarded = [&](const TypeRef &type) {
+        auto wildcard = std::make_unique<HirWildcardPattern>();
+        wildcard->location = location;
+        if (const DropGluePlan *glue = model.TryGetDropGlue(type)) {
+            wildcard->discardGlue = glue->symbol;
+        }
+        return wildcard;
+    };
+    const auto nothing = [&] {
+        auto empty = std::make_unique<HirBlockExpr>();
+        empty->location = location;
+        empty->type = TypeRef::MakeOpaque();
+        empty->block.location = location;
+        return empty;
+    };
     HirMatchArm succeeded;
     succeeded.location = location;
-    succeeded.pattern =
-        NativeCasePattern(active.outcomeType, NativeSuccessTag, value, Binding(payloadName, value, location), location);
-    HirExprPtr payload = TransferredBinding(payloadName, value, location);
-    succeeded.body =
-        optional ? MakeNativeCase(result, NativePresentTag, std::move(payload), location) : std::move(payload);
+    if (discards) {
+        // The success nobody takes is destroyed where it is matched, as a temporary nobody kept.
+        succeeded.pattern = NativeCasePattern(active.outcomeType, NativeSuccessTag, value, discarded(value), location);
+        succeeded.body = nothing();
+    }
+    else {
+        succeeded.pattern = NativeCasePattern(active.outcomeType, NativeSuccessTag, value,
+                                              Binding(payloadName, value, location), location);
+        HirExprPtr payload = TransferredBinding(payloadName, value, location);
+        succeeded.body = optional ? MakeNativeCase(result, NativePresentTag, std::move(payload), location)
+                                  : ConvertNative(std::move(payload), result, location);
+    }
     match->arms.push_back(std::move(succeeded));
-    if (optional) {
+    if (expression.ignoresError) {
+        // `x !!;` drops the error with the arm that ignores it.
+        HirMatchArm failed;
+        failed.location = location;
+        failed.pattern = NativeCasePattern(active.outcomeType, NativeFailureTag, error, discarded(error), location);
+        failed.body = nothing();
+        match->arms.push_back(std::move(failed));
+    }
+    else if (optional) {
         // The error is dropped with the arm that ignores it, and the result is absent.
         HirMatchArm failed;
         failed.location = location;
@@ -313,7 +355,8 @@ HirExprPtr AstToHirContext::LowerTryMark(const TryMarkExpr &expression) {
         match->arms.push_back(std::move(failed));
     }
     else {
-        LowerHandlerArms(expression.arms, active.outcomeType, value, match->arms);
+        LowerHandlerArms(expression.arms, active.outcomeType, discards ? std::nullopt : std::optional<TypeRef>(result),
+                         match->arms);
     }
     lowered->value = std::move(match);
     return lowered;

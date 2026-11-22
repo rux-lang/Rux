@@ -223,11 +223,75 @@ ExprPtr Parser::ParseConditionalOperator() {
     return cond;
 }
 
+bool Parser::CheckReplaceError() const noexcept {
+    return Check(TokenKind::Bang) && Peek().precededBySpace && Peek(1).Is(TokenKind::Bang) && !Peek(1).precededBySpace;
+}
+
+/// Whether `expression` is an unparenthesized `x !! v` or `x catch { ... }`, which `??` does not take as an operand.
+static bool IsUnparenthesizedErrorHandler(const Expr *expression) noexcept {
+    const auto *handler = AstCast<const TryMarkExpr>(expression);
+    return handler && !handler->parenthesized && handler->postfix && handler->form == TryMarkExpr::Form::Catch;
+}
+
+/// `x catch { arms }`, `x !! v` and `x !!;`, which bind as loosely as `??` and handle everything to their left.
+ExprPtr Parser::ParseErrorHandler(ExprPtr operand) {
+    auto handler = std::make_unique<TryMarkExpr>();
+    handler->location = CurrentLocation();
+    handler->form = TryMarkExpr::Form::Catch;
+    handler->postfix = true;
+    handler->operand = std::move(operand);
+    if (Match(TokenKind::CatchKeyword)) {
+        handler->catchLocation = Previous().location;
+        if (Match(TokenKind::LeftBrace)) {
+            ParseArmList(handler->arms, "catch");
+        }
+        else {
+            EmitExpected(CurrentLocation(), "'{' to start the catch arms");
+        }
+        return handler;
+    }
+    Advance(); // consume the first '!'
+    Advance(); // consume the second '!'
+    handler->catchLocation = handler->location;
+    handler->replacesError = true;
+    if (Check(TokenKind::Semicolon)) {
+        // `x !!;` drops the error, and the success value with it.
+        handler->ignoresError = true;
+        return handler;
+    }
+    // The replacement is a value or a leaving form, and a chain `a !! b !! c` tries each in turn.
+    ExprPtr replacement = CheckDivergingKeyword() ? ParseDivergingExpr() : ParseCoalesce();
+    if (!replacement) {
+        EmitMissingExpression("after '!!'");
+        return handler;
+    }
+    if (const auto *coalesce = AstCast<const BinaryExpr>(replacement.get());
+        coalesce && coalesce->op == TokenKind::QuestionQuestion && !coalesce->parenthesized) {
+        EmitError(coalesce->location,
+                  "'!!' and '?"
+                  "?' are mixed without parentheses",
+                  "group one of them, as in '(x !! none) ?"
+                  "? fallback'");
+    }
+    MatchExpr::Arm arm;
+    arm.location = replacement->location;
+    auto wildcard = std::make_unique<WildcardPattern>();
+    wildcard->location = replacement->location;
+    arm.pattern = std::move(wildcard);
+    arm.body = std::move(replacement);
+    handler->arms.push_back(std::move(arm));
+    return handler;
+}
+
 // right-associative: a ?? b ?? c  =>  a ?? (b ?? c)
 ExprPtr Parser::ParseCoalesce() {
     auto left = ParseOr();
     if (!left) {
         return nullptr;
+    }
+    // Inside the operand of `try`, `catch` belongs to that `try`.
+    if ((Check(TokenKind::CatchKeyword) && !tryOperandEndsAtCatch) || CheckReplaceError()) {
+        return ParseErrorHandler(std::move(left));
     }
     if (!Check(TokenKind::QuestionQuestion)) {
         return left;
@@ -239,6 +303,13 @@ ExprPtr Parser::ParseCoalesce() {
     auto right = CheckDivergingKeyword() ? ParseDivergingExpr() : ParseCoalesce();
     if (!right) {
         EmitMissingExpression(std::format("after '{}'", opToken.text));
+    }
+    else if (IsUnparenthesizedErrorHandler(right.get()) || IsUnparenthesizedErrorHandler(left.get())) {
+        EmitError(loc,
+                  "'!!' and '?"
+                  "?' are mixed without parentheses",
+                  "group one of them, as in '(x !! none) ?"
+                  "? fallback'");
     }
     auto expression = std::make_unique<BinaryExpr>();
     expression->location = loc;
@@ -770,17 +841,14 @@ ExprPtr Parser::ParsePostfix() {
             left = std::move(e);
             continue;
         }
-        // The removed postfix recovery `expr catch { ... }` is reported and its arms are read and dropped; `catch`
-        // follows `try`.
-        if (!tryOperandEndsAtCatch && Match(TokenKind::CatchKeyword)) {
-            EmitError(Previous().location, "'catch' must follow 'try'", "write 'try value catch { ... }'");
-            if (Match(TokenKind::LeftBrace)) {
-                std::vector<MatchExpr::Arm> discarded;
-                ParseArmList(discarded, "catch");
-            }
-            else {
-                EmitExpected(CurrentLocation(), "'{' to start the catch arms");
-            }
+        // `x!` passes the error of a fallible on. Only the tight form is postfix: a spaced `!!` is the binary
+        // operator that replaces an error, and `x!!` with no space is two postfix marks.
+        if (Check(TokenKind::Bang) && !Peek().precededBySpace) {
+            auto mark = std::make_unique<TryMarkExpr>();
+            mark->location = Advance().location;
+            mark->postfix = true;
+            mark->operand = std::move(left);
+            left = std::move(mark);
             continue;
         }
         // Post-increment / post-decrement: expr++ or expr--
@@ -1046,6 +1114,9 @@ ExprPtr Parser::ParsePrimary() {
         }
         structInitAllowed = savedStructInitAllowed;
         ExpectBefore(TokenKind::RightParen, "')' to close the grouped expression");
+        if (first) {
+            first->parenthesized = true;
+        }
         return first;
     }
     // `Self` inside `extend`: the extended type in a literal, a call, or a path.

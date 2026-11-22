@@ -609,7 +609,8 @@ void AnalysisContext::CheckCast(const TypeRef &operand, const TypeRef &target, c
             return;
         }
         EmitError(location,
-                  std::format("cannot cast value of type '{}' to '{}'", operand.ToString(), target.ToString()));
+                  std::format("cannot cast value of type '{}' to '{}'", operand.ToString(), target.ToString()), {},
+                  operand.IsFallible() ? std::optional<std::string>(HandleErrorHelp) : std::nullopt);
     }
 }
 
@@ -941,6 +942,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             notes.emplace_back("the operands differ in signedness, so neither converts to the other's type");
             help = "convert one operand with 'as' to the type the operation should use";
         }
+        else if (left.IsFallible() || right.IsFallible()) {
+            help = std::string(HandleErrorHelp);
+        }
         EmitError(location,
                   std::format("operator '{}' cannot {} left operand '{}' with right operand '{}'", operatorName, verb,
                               left.ToString(), right.ToString()),
@@ -1150,8 +1154,10 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                                           right.IsIncompleteNative() ? std::string("none") : right.ToString()),
                               {"both operands of a native comparison have the same type; a comparison never injects, "
                                "widens, or wraps an operand"},
-                              "write '.Some(...)' or another constructor, bind the member with a typed pattern, or "
-                              "match the value");
+                              left.IsFallible() || right.IsFallible()
+                                  ? std::string(HandleErrorHelp)
+                                  : std::string("write '.Some(...)' or another constructor, bind the member with a "
+                                                "typed pattern, or match the value"));
                     return TypeRef::MakeBool();
                 }
             }

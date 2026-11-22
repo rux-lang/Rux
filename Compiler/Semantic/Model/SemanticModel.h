@@ -222,6 +222,11 @@ struct ResolvedThrowSite {
 struct ResolvedThrowHandler {
     TypeRef errorType;
     TypeRef valueType;
+    /// The type of the whole `x !! v` or `x catch { arms }` when its context expects one the success converts to,
+    /// such as `int?` for an `int` success; unknown when it is the success type itself.
+    TypeRef resultType;
+    /// `x !!;` or a `catch` written as a statement: the success value is dropped, and the arms yield nothing.
+    bool discardsValue = false;
 };
 
 /// What one accepted `option ?? fallback` coalesces. Analysis checks the native optional and fixes the payload type,

@@ -1,0 +1,19 @@
+// `x !! v` and `x catch { arms }` bind as loosely as `??`, so a mix of the two is grouped by the writer. The spaced
+// `!!` replaces an error; a tight `x!!` is two postfix marks.
+struct Fault {}
+
+func Parse(text: int) -> int ! Fault {
+    return text;
+}
+
+func Find(key: int) -> int? {
+    return key;
+}
+
+func Main() -> int {
+    let f = Parse(1) !! none ?? 0;
+    let g = Find(1) ?? Parse(2) !! 0;
+    let h = (Parse(1) !! none) ?? 0;
+    let i = Find(1) ?? (Parse(2) !! 0);
+    return f + g + h + i;
+}
