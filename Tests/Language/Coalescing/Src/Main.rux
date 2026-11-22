@@ -45,7 +45,8 @@ func Generic<T>(option: T?, fallback: T) -> T {
 
 func Nested(present: bool) -> int32?? {
     if present {
-        return .Some(none);
+        let absent: int32? = none;
+        return absent;
     }
     return none;
 }
@@ -60,7 +61,7 @@ func Held(option: int32?) -> int32 {
 }
 
 func SomeDropCase(drops: *var int32, fallbackCalls: *var int32) {
-    let option: Tracked? = .Some(Tracked { value: 7i32, drops });
+    let option: Tracked? = Tracked { value: 7i32, drops };
     let selected = (move option) ?? CountedTracked(9i32, fallbackCalls, drops);
     Assert(selected.value == 7i32, "a present value should transfer its payload");
 }
@@ -83,24 +84,24 @@ func Main() -> int {
     Assert((absent ?? CountedFallback(11i32, @fallbackCalls)) == 11i32, "absence should select its fallback");
     Assert(fallbackCalls == 1i32, "absence should evaluate the fallback exactly once");
 
-    let reusable: int32? = .Some(3i32);
+    let reusable: int32? = 3i32;
     Assert((reusable ?? 0i32) == 3i32, "a copyable named optional should be reusable");
     Assert((reusable ?? 0i32) == 3i32, "coalescing should copy a copyable named optional");
 
-    let later: int32? = .Some(4i32);
+    let later: int32? = 4i32;
     Assert((absent ?? later ?? 5i32) == 4i32, "coalescing chains should associate to the right");
 
     let generic = Generic<int32>(none, 13i32);
     Assert(generic == 13i32, "generic optionals should coalesce after substitution");
 
-    let wideOption: Wide? = .Some(Wide { first: 1, second: 2, third: 3 });
+    let wideOption: Wide? = Wide { first: 1, second: 2, third: 3 };
     let wide = wideOption ?? Wide { first: 4, second: 5, third: 6 };
     Assert(wide.third == 3, "wide payloads should transfer through match lowering");
     let nothing: ()? = none;
     let unit = nothing ?? ();
 
     var pointee = 21i32;
-    let pointerOption: (*var int32)? = .Some(@pointee);
+    let pointerOption: (*var int32)? = @pointee;
     let pointer = pointerOption ?? null;
     // Safety: `pointer` is `@pointee`, a live local, once it is not null.
     Assert(pointer != null && *pointer == 21i32, "raw pointers should work as optional payloads");

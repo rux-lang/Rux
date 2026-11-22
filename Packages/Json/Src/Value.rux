@@ -392,7 +392,7 @@ extend JsonValue {
         var index: uint = 0;
         while index < self.members.Length() {
             var held = name;
-            if self.members.At(index) is .Some(member) && member.name.View().Equals(held) { return member.value; }
+            if let member? = self.members.At(index) && member.name.View().Equals(held) { return member.value; }
             index = index + 1;
         }
         return none;

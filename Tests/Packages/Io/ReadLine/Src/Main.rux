@@ -77,7 +77,7 @@ func CheckPauses(allocator: Allocator) {
     };
     var interruptedSource = PausingHandle { state: @interrupted };
     var first = StringBuilder::New(allocator);
-    Assert((ReadLineFrom(interruptedSource, first) !! none) is .Some(_),
+    Assert((ReadLineFrom(interruptedSource, first) !! none) != none,
            "an interrupted read is retried within the line");
     let ab = StringView::FromBytes("ab") ?? StringView::New();
     Assert(first.View().Equals(ab), "which arrives whole");
@@ -99,7 +99,7 @@ func CheckPauses(allocator: Allocator) {
         .Success(_) => {},
         .Failure(error) => { kind = error.kind; },
     }
-    Assert(kind == .Some(IoErrorKind::WouldBlock), "a source that is not ready is handed back");
+    Assert(kind == IoErrorKind::WouldBlock, "a source that is not ready is handed back");
     Assert(second.View().Equals(ab), "with the bytes read before it in the builder");
     Assert(blocked.calls == 3, "after a single attempt, not a spin");
     CheckLine(allocator, blockedSource, none, "");
@@ -163,11 +163,11 @@ func CheckScript(allocator: Allocator) {
         face[index] = bytes[7 + index];
     }
     CheckLine(allocator, source, none, face[0..4]);
-    CheckLine(allocator, source, .Some(IoErrorKind::InvalidText), "a");
-    CheckLine(allocator, source, .Some(IoErrorKind::InvalidText), "");
+    CheckLine(allocator, source, IoErrorKind::InvalidText, "a");
+    CheckLine(allocator, source, IoErrorKind::InvalidText, "");
     CheckLine(allocator, source, none, "ok");
-    CheckLine(allocator, source, .Some(IoErrorKind::InvalidText), "");
-    CheckLine(allocator, source, .Some(IoErrorKind::EndOfStream), "");
+    CheckLine(allocator, source, IoErrorKind::InvalidText, "");
+    CheckLine(allocator, source, IoErrorKind::EndOfStream, "");
 }
 
 func Main() -> int {

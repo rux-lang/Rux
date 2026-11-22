@@ -23,7 +23,7 @@ func HelpIs(spec: &CommandSpec, expected: char8[..]) -> bool {
     var storage: char8[2048];
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
-    if (WriteHelp(spec, sink) !! none) is none { return false; }
+    if (WriteHelp(spec, sink) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -42,13 +42,13 @@ func Main() -> int {
     var storage: char8[256];
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
-    if (WriteVersion(tool, sink) !! none) is none { return 2; }
+    if (WriteVersion(tool, sink) !! none) == none { return 2; }
     if !Same(writer.Written(), "tool 1.2.3\n") { return 3; }
 
     var usageStorage: char8[256];
     var usageWriter = BufferWriter::New(usageStorage[..]);
     let usageSink: &var TextWriter = usageWriter;
-    if (WriteUsage(tool, usageSink) !! none) is none { return 4; }
+    if (WriteUsage(tool, usageSink) !! none) == none { return 4; }
     if !Same(usageWriter.Written(), "Usage: tool [options] <input> [files...]\n") { return 5; }
 
     // A command with subcommands, and no version, so no `--version` is listed.
@@ -86,7 +86,7 @@ func Main() -> int {
     var subStorage: char8[512];
     var subWriter = BufferWriter::New(subStorage[..]);
     let subSink: &var TextWriter = subWriter;
-    if (sub.WriteHelp(subSink) !! none) is none { return 8; }
+    if (sub.WriteHelp(subSink) !! none) == none { return 8; }
     let buildHelp = "Compile\n\nUsage: git build [options] [target]\n\nArguments:\n  [target]  What to build\n\nOptions:\n  -r, --release  Optimize\n  -h, --help     Print this help\n";
     if !Same(subWriter.Written(), buildHelp) { return 9; }
     return 0;

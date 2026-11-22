@@ -44,7 +44,7 @@ func PushThenPop(allocator: Allocator, counter: *var int32, count: uint) {
         vector.Push(Tracked { counter, value: index as int32 });
         index++;
     }
-    while vector.Pop() is .Some(taken) {
+    while let taken? = vector.Pop() {
         // `taken` holds the element that was moved out, and is destroyed at the end of each round.
     }
     Assert(vector.IsEmpty(), "popping everything empties the vector");
@@ -67,7 +67,7 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: uint) -> uint 
     var draining = true;
     while draining {
         match taken.Next() {
-            .Some(element) => {
+            element? => {
                 yielded = yielded + 1;
             },
             none => {
@@ -91,7 +91,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAft
     var draining = true;
     while draining && yielded < stopAfter {
         match taken.Next() {
-            .Some(element) => {
+            element? => {
                 yielded = yielded + 1;
             },
             none => {
@@ -115,7 +115,7 @@ func Run() -> !CollectionError {
     Assert(numbers.Length() == 1, "and the vector holds it");
     Assert(numbers.Capacity() == MinimumVectorCapacity, "taking the minimum capacity rather than room for one");
 
-    Assert(numbers.Get(0) == .Some(10), "the element is where it was put");
+    Assert(numbers.Get(0) == 10, "the element is where it was put");
     Assert(numbers.Get(1) == none, "and there is nothing past it");
 
     // Capacity doubles rather than growing by one, so a run of pushes reallocates a handful of times.
@@ -138,7 +138,7 @@ func Run() -> !CollectionError {
     // Shrinking hands the spare back.
     numbers.ShrinkToFit();
     Assert(numbers.Capacity() == numbers.Length(), "leaving capacity equal to length");
-    Assert(numbers.Get(100) == .Some(99), "and every element still where it was");
+    Assert(numbers.Get(100) == 99, "and every element still where it was");
 
     // Truncating drops the tail and keeps the storage.
     let kept = numbers.Capacity();
@@ -163,10 +163,10 @@ func Run() -> !CollectionError {
     // A reservation that cannot be represented is refused as arithmetic, and changes nothing.
     numbers.Push(5);
     let survived = numbers.Capacity();
-    Assert((numbers.TryReserve(uint::Max) !! none) is none, "an impossible reservation is refused");
+    Assert((numbers.TryReserve(uint::Max) !! none) == none, "an impossible reservation is refused");
     Assert(numbers.Capacity() == survived, "leaving the capacity where it was");
     Assert(numbers.Length() == 1, "and the length");
-    Assert(numbers.Get(0) == .Some(5), "and the elements");
+    Assert(numbers.Get(0) == 5, "and the elements");
 
     // Construction from a slice, and cloning.
     var source: int32[4];
@@ -179,13 +179,13 @@ func Run() -> !CollectionError {
     let view = (@source[0])[..4];
     var copied = Vector::FromSlice<int32>(allocator, view);
     Assert(copied.Length() == 4, "holding every element");
-    Assert(copied.Get(3) == .Some(9), "in order");
+    Assert(copied.Get(3) == 9, "in order");
 
     var clone = copied.Clone();
     Assert(clone.Length() == copied.Length(), "with the same length");
     Assert(clone.AsSlice().data != copied.AsSlice().data, "over storage of its own");
     clone.Set(0, 77) catch { _ => Panic("writing to the clone succeeds") };
-    Assert(copied.Get(0) == .Some(0), "and leaves the original alone");
+    Assert(copied.Get(0) == 0, "and leaves the original alone");
 
     // Iteration reads what is there and stops at the length rather than the capacity.
     var total: int32 = 0;
@@ -272,11 +272,11 @@ func Run() -> !CollectionError {
         index++;
     }
     ordered.Insert(0, 99) catch { _ => Panic("inserting at the front succeeds") };
-    Assert(ordered.Get(0) == .Some(99), "putting the value there");
-    Assert(ordered.Get(1) == .Some(0), "and moving what was there along");
+    Assert(ordered.Get(0) == 99, "putting the value there");
+    Assert(ordered.Get(1) == 0, "and moving what was there along");
     Assert(ordered.Length() == 5, "with one more element than before");
     ordered.Insert(5, 55) catch { _ => Panic("inserting at exactly the length appends") };
-    Assert(ordered.Get(5) == .Some(55), "putting it at the end");
+    Assert(ordered.Get(5) == 55, "putting it at the end");
     match ordered.Insert(7, 1) {
         .Success(_) => {
             Panic("the operation was expected to fail");
@@ -287,29 +287,29 @@ func Run() -> !CollectionError {
     }
     Assert(ordered.Length() == 6, "changing nothing");
     ordered.Insert(3, 77) catch { _ => Panic("inserting in the middle succeeds") };
-    Assert(ordered.Get(3) == .Some(77), "putting the value there");
-    Assert(ordered.Get(4) == .Some(20), "and moving the rest along");
+    Assert(ordered.Get(3) == 77, "putting the value there");
+    Assert(ordered.Get(4) == 20, "and moving the rest along");
 
     // Removal keeps order and hands the element back.
     Assert(ordered.Length() == 7, "three insertions on four elements leave seven");
-    Assert(ordered.RemoveAt(3) == .Some(77), "removal hands back what it took");
-    Assert(ordered.Get(3) == .Some(20), "closing the gap behind it");
+    Assert(ordered.RemoveAt(3) == 77, "removal hands back what it took");
+    Assert(ordered.Get(3) == 20, "closing the gap behind it");
     Assert(ordered.Length() == 6, "with one fewer element");
     Assert(ordered.RemoveAt(6) == none, "removing past the end reports nothing");
     Assert(ordered.Length() == 6, "and changes nothing");
 
     // Swap-removal is constant time and does not keep order.
     let wasLast = ordered.Get(ordered.Length() - 1) ?? -1;
-    Assert(ordered.SwapRemoveAt(0) == .Some(99), "swap-removal hands back what it took");
+    Assert(ordered.SwapRemoveAt(0) == 99, "swap-removal hands back what it took");
     Assert((ordered.Get(0) ?? -1) == wasLast, "and moves the last element into the gap");
     Assert(ordered.SwapRemoveAt(ordered.Length()) == none, "swap-removing past the end reports nothing");
 
     // The ends, and what an empty vector has instead of them.
-    Assert(ordered.First() is .Some(_), "a non-empty vector has a first element");
-    Assert(ordered.Last() is .Some(_), "and a last one");
+    Assert(ordered.First() != none, "a non-empty vector has a first element");
+    Assert(ordered.Last() != none, "and a last one");
     var nothing = Vector<int32>::New(allocator);
-    Assert(nothing.First() is none, "an empty vector has no first element");
-    Assert(nothing.Last() is none, "and no last one");
+    Assert(nothing.First() == none, "an empty vector has no first element");
+    Assert(nothing.Last() == none, "and no last one");
 
     // Slicing is clamped rather than refused, so a caller need not check twice.
     var span = Vector<int32>::New(allocator);
@@ -358,7 +358,7 @@ func Run() -> !CollectionError {
     moving.Push(4);
     var fixed = (move moving).IntoArray();
     Assert(fixed.Length() == 2, "with every element");
-    Assert(fixed.Get(0) == .Some(3) && fixed.Get(1) == .Some(4), "in order");
+    Assert(fixed.Get(0) == 3 && fixed.Get(1) == 4, "in order");
     // The block itself is handed over rather than the elements copied, though the trim that precedes the handover
     // may move it: an array's length is its capacity, and a vector's spare has to go before it can be one.
     Assert(fixed.AsSlice().data != null, "over storage the array now owns");

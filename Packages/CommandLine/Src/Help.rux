@@ -55,7 +55,7 @@ func VersionOptionSpec() -> OptionSpec {
 // Whether the command declares an option of this long name itself.
 func Declares(spec: &CommandSpec, name: char8[..]) -> bool {
     return match OptionIndex(spec, name) {
-        .Some(_) => true,
+        _? => true,
         none => false
     };
 }

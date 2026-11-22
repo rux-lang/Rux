@@ -16,7 +16,7 @@ func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected
     var walking = true;
     while walking {
         match walker.Next() {
-            .Some(segment) => {
+            segment? => {
                 var piece = segment;
                 if seen == 0 {
                     good = good && piece.Equals(expected0);

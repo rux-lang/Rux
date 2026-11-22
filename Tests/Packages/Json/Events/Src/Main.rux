@@ -75,13 +75,13 @@ extend BrokenHandle : Reader {
 // Whether the next event arrives and is `expected`.
 func Arrives(reader: &var JsonEventReader, expected: JsonEvent) -> bool {
     let event = reader.Next() catch { _ => return false };
-    return event is .Some(arrived) && arrived == expected;
+    return if let arrived? = event && arrived == expected { true } else { false };
 }
 
 // Whether the document ends at the next call, with nothing wrong.
 func Ends(reader: &var JsonEventReader) -> bool {
     let event = reader.Next() catch { _ => return false };
-    return event is none;
+    return event == none;
 }
 
 // The error the next call throws, or `none` when an event arrives or the document ends.
@@ -101,7 +101,7 @@ func Refusal(allocator: Allocator, text: char8[..]) -> JsonReadError? {
     var steps: uint = 0;
     while steps < 64 {
         let event = reader.Next() catch { error => return error };
-        if event is none { return none; }
+        if event == none { return none; }
         steps = steps + 1;
     }
     return none;
@@ -110,7 +110,7 @@ func Refusal(allocator: Allocator, text: char8[..]) -> JsonReadError? {
 // How a failure renders: its case and, in parentheses, its offset.
 func Rendered(failure: &JsonParseError, writer: &var BufferWriter) -> char8[..] {
     let sink: &var TextWriter = writer;
-    if (failure.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return ""; }
+    if (failure.WriteDebug(sink, FormatSpec::Plain()) !! none) == none { return ""; }
     return writer.Written();
 }
 
@@ -138,7 +138,7 @@ func SameAsParser(allocator: Allocator, text: char8[..]) -> bool {
     let thrown = Refusal(allocator, text) ?? return false;
     let streamed = match thrown { .Malformed(reason) => reason, .Source(_, _) => return false };
     var parsedValue = Parse(allocator, text) !! none;
-    if parsedValue is .Some(_) { return false; }
+    if parsedValue != none { return false; }
     var parsed = JsonParseError::Unexpected(0);
     match Parse(allocator, text) {
         .Success(_) => {},
@@ -282,9 +282,9 @@ func Main() -> int {
     Assert(Arrives(broken, JsonEvent::ArrayStart), "the array opens");
     Assert(Arrives(broken, JsonEvent::Number), "and its first number arrives");
     let stopped = Thrown(broken) ?? Panic("then the broken source stops the reader");
-    Assert(stopped is .Source(reported, 4) && reported.kind == IoErrorKind::PermissionDenied && reported.raw == 13,
+    Assert(if let .Source(reported, 4) = stopped && reported.kind == IoErrorKind::PermissionDenied && reported.raw == 13 { true } else { false },
            "with the source's own failure, exactly as reported, where the unfinished token starts");
-    Assert(Thrown(broken) is .Some(.Source(_, _)), "and the reader stays stopped");
+    Assert(if let .Source(_, _)? = Thrown(broken) { true } else { false }, "and the reader stays stopped");
     broken.Release();
 
     // One that breaks before the first byte is an error too, not an empty document.
@@ -292,7 +292,8 @@ func Main() -> int {
     var silentHandle = BrokenHandle { state: @silentState };
     // Safety: `silentHandle` is a local of this function that outlives every use of the handle.
     var silent = JsonEventReader::New(allocator, @silentHandle as Reader, JsonLimits::Default());
-    Assert(Thrown(silent) is .Some(.Source(_, 0)), "a source broken from the start is not an empty document");
+    Assert(if let .Source(_, 0)? = Thrown(silent) { true } else { false },
+           "a source broken from the start is not an empty document");
     silent.Release();
 
     // Malformed input is refused with the case and offset the tree parser reports for the same text: separators,
@@ -313,7 +314,7 @@ func Main() -> int {
     Assert(SameAsParser(allocator, "01"), "a leading zero");
     Assert(SameAsParser(allocator, "[1e]"), "an empty exponent");
     Assert(SameAsParser(allocator, "[tru]"), "a misspelled literal");
-    Assert(Refusal(allocator, " [1, {\"a\": [true, null]}] ") is none, "while a well-formed document reads to its end");
+    Assert(Refusal(allocator, " [1, {\"a\": [true, null]}] ") == none, "while a well-formed document reads to its end");
 
     return 0;
 }

@@ -271,6 +271,8 @@ protected:
                                                     SourceLocation location);
     /// `value is T` on a native subject: a match testing the selection without binding or consuming anything.
     [[nodiscard]] HirExprPtr LowerNativeMembership(const IsExpr &expression);
+    /// `x == none` or `x != none`: a match on the outer level of `x` that compares no payload.
+    [[nodiscard]] HirExprPtr LowerNoneTest(const BinaryExpr &expression, bool negated);
     /// `throw value` or `fail value`: the error goes to its handler, or leaves as the function's outer failure.
     [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location, const ResolvedThrowSite *site);
     /// A diverging arm, mapping, or fallback body: the statement it spells, in a block that yields no value.

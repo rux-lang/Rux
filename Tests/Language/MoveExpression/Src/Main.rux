@@ -96,19 +96,19 @@ func Subjects() {
     Reset();
     let held: Token? = Token { id: 7 };
     let id = match move held {
-        .Some(token) => token.id,
+        token? => token.id,
         none => 0,
     };
     Assert(id == 7 && drops == 1, "a moved match subject is taken apart and destroyed once");
 
     let maybe: Token? = Token { id: 8 };
-    if move maybe is .Some(token) {
+    if let token? = move maybe {
         Assert(token.id == 8, "a moved 'is' subject binds its payload");
     }
     Assert(drops == 2, "the bound payload is destroyed once");
 
     let forwarded = Forward(Token { id: 9 });
-    Assert(forwarded is .Some(_) && drops == 2, "'(move value)?' moves before propagating");
+    Assert(forwarded != none && drops == 2, "'(move value)?' moves before propagating");
 }
 
 func AggregateScope() {

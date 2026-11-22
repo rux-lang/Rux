@@ -11,7 +11,7 @@ variant Shape {
 
 func Radius(shape: Shape?) -> int {
     return match shape {
-        .Some(.Circle(radius)) => radius,
+        .Circle(radius)? => radius,
         _ => 0,
     };
 }
@@ -37,9 +37,9 @@ func Succeeded(outcome: int ! bool) -> bool {
 }
 
 func Main() -> int {
-    let maybe: Shape? = .Some(.Circle(4));
+    let maybe: Shape? = .Circle(4);
     Assert(Radius(maybe) == 4, "an annotated optional");
-    Assert(Radius(.Some(.Circle(5))) == 5 && Radius(.Some(.Dot)) == 0, "an optional parameter");
+    Assert(Radius(.Circle(5)) == 5 && Radius(.Dot) == 0, "an optional parameter");
 
     Assert(ValueOr<int, bool>(4, 0) == 4, "a success converts to the written type arguments");
     Assert(ValueOr<int, bool>(Half(8), 0) == 4, "a fallible argument");

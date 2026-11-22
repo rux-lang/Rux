@@ -210,6 +210,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , variantEqualities(output.variantEqualities)
     , variantEqualityPlans(output.variantEqualityPlans)
     , aggregateEqualities(output.aggregateEqualities)
+    , noneTests(output.noneTests)
     , aggregateEqualityOperandTypes(output.aggregateEqualityOperandTypes)
     , aggregateEqualityPlans(output.aggregateEqualityPlans)
     , valueConsumptions(output.valueConsumptions)

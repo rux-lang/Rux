@@ -37,11 +37,11 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter::New(storage[..192]);
-    Assert((value.WriteDisplay(writer, spec) !! none) is .Some(_), "a constrained receiver renders");
+    Assert((value.WriteDisplay(writer, spec) !! none) != none, "a constrained receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Display = value;
-    Assert((shown.WriteDisplay(writer, spec) !! none) is .Some(_), "an interface receiver renders");
+    Assert((shown.WriteDisplay(writer, spec) !! none) != none, "an interface receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -49,11 +49,11 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 func Inspected<T: Debug>(value: &T, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter::New(storage[..192]);
-    Assert((value.WriteDebug(writer, FormatSpec::Plain()) !! none) is .Some(_), "a constrained debug receiver renders");
+    Assert((value.WriteDebug(writer, FormatSpec::Plain()) !! none) != none, "a constrained debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Debug = value;
-    Assert((shown.WriteDebug(writer, FormatSpec::Plain()) !! none) is .Some(_), "an interface debug receiver renders");
+    Assert((shown.WriteDebug(writer, FormatSpec::Plain()) !! none) != none, "an interface debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -61,14 +61,14 @@ func Inspected<T: Debug>(value: &T, expected: char8[..]) {
 func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
     var storage: char8[16];
     var writer = BufferWriter::New(storage[..16]);
-    return (value.WriteDisplay(writer, spec) !! none) is none;
+    return (value.WriteDisplay(writer, spec) !! none) == none;
 }
 
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
 func Rendered(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match move outcome {
-        .Some(text) => text.View().Equals(wanted),
+        text? => text.View().Equals(wanted),
         none => false
     };
 }

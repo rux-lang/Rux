@@ -250,7 +250,7 @@ extend Regex {
         pending.Push(0);
         var bytes: uint64[4] = [0u64, 0u64, 0u64, 0u64];
         var nonAscii = false;
-        while pending.Pop() is .Some(popped) {
+        while let popped? = pending.Pop() {
             let pc = popped as uint;
             if seen.AsSlice()[pc] { continue; }
             seen.AsMutableSlice()[pc] = true;

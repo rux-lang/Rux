@@ -12,12 +12,12 @@ struct Empty {}
 
 func Run() -> !AllocError {
     // A layout that exists is valid, so the refusals happen at construction.
-    Assert(!(Layout::Of(64, 0) is Layout), "an alignment of zero is not a layout");
-    Assert(!(Layout::Of(64, 3) is Layout), "and neither is one that is not a power of two");
-    Assert(Layout::Of(64, 8) is Layout, "an ordinary pair is a layout");
-    Assert(Layout::Of(0, 8) is Layout, "and so is a zero size");
-    Assert(!(Layout::Of(uint::Max, 8) is Layout), "a size whose rounding overflows is refused");
-    Assert(Layout::Of(uint::Max, 1) is Layout, "where an alignment of one has nothing to round");
+    Assert(!(Layout::Of(64, 0) != none), "an alignment of zero is not a layout");
+    Assert(!(Layout::Of(64, 3) != none), "and neither is one that is not a power of two");
+    Assert(Layout::Of(64, 8) != none, "an ordinary pair is a layout");
+    Assert(Layout::Of(0, 8) != none, "and so is a zero size");
+    Assert(!(Layout::Of(uint::Max, 8) != none), "a size whose rounding overflows is refused");
+    Assert(Layout::Of(uint::Max, 1) != none, "where an alignment of one has nothing to round");
 
     var layout = Layout::Of(64, 16) ?? Layout { size: 0, alignment: 1 };
     Assert(layout.size == 64 && layout.alignment == 16, "the layout holds what it was built with");
@@ -30,8 +30,8 @@ func Run() -> !AllocError {
     Assert(layout != odd, "and two asking different things are not");
 
     // An array layout has to check the multiplication, which is where a huge count turns into a small allocation.
-    Assert(Layout::ForArray<uint64>(8) is Layout, "an ordinary array layout");
-    Assert(!(Layout::ForArray<uint64>(uint::Max) is Layout), "a count that cannot fit is refused");
+    Assert(Layout::ForArray<uint64>(8) != none, "an ordinary array layout");
+    Assert(!(Layout::ForArray<uint64>(uint::Max) != none), "a count that cannot fit is refused");
     let single = Layout::ForValue<uint64>();
     Assert(single.size == 8 && single.alignment == 8, "a value's layout is its own size and alignment");
     let byteLayout = Layout::ForValue<ByteRun>();

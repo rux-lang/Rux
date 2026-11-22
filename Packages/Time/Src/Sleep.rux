@@ -64,7 +64,7 @@ pub func WaitChunkMilliseconds(span: Duration) -> int64 {
     let total = span.TotalMilliseconds();
     var whole = MaximumWaitMilliseconds;
     match total {
-        .Some(value) => { whole = value; },
+        value? => { whole = value; },
         none => { return MaximumWaitMilliseconds; }
     }
     if whole >= MaximumWaitMilliseconds { return MaximumWaitMilliseconds; }

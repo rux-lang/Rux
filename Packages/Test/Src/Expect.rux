@@ -109,7 +109,7 @@ pub func ExpectText(actual: char8[..], expected: char8[..]) -> !TestFailure {
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-some
 pub func ExpectSome<T>(value: T?, message: char8[..]) -> T ! TestFailure {
     match value {
-        .Some(present) => return present,
+        present? => return present,
         none => throw TestFailure::Of(message)
     }
 }
@@ -122,7 +122,7 @@ pub func ExpectSome<T>(value: T?, message: char8[..]) -> T ! TestFailure {
 /// @see https://rux-lang.dev/docs/api/test/expect#expect-none
 pub func ExpectNone<T>(value: T?, message: char8[..]) -> !TestFailure {
     match value {
-        .Some(_) => throw TestFailure::Of(message),
+        _? => throw TestFailure::Of(message),
         none => {}
     }
 }

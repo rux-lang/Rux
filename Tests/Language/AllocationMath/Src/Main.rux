@@ -78,14 +78,14 @@ func Main() -> int {
     Assert(SizeOfElement<Packed>() == 2u64, "Expected the unpadded size through a type parameter");
     Assert(AlignOfElement<Packed>() == 1u64, "Expected the unpadded alignment through a type parameter");
 
-    Assert(2u64.CheckedAdd(3u64) is .Some(5u64), "Expected 2 + 3 not to overflow");
+    Assert(2u64.CheckedAdd(3u64) == 5u64, "Expected 2 + 3 not to overflow");
     Assert(18446744073709551615u64.CheckedAdd(1u64) == none, "Expected the sum to overflow");
-    Assert(9u64.CheckedSub(4u64) is .Some(5u64), "Expected 9 - 4 not to overflow");
+    Assert(9u64.CheckedSub(4u64) == 5u64, "Expected 9 - 4 not to overflow");
     Assert(4u64.CheckedSub(9u64) == none, "Expected a negative difference to be reported");
-    Assert(ByteCount(4u64, sizeof(Header)) is .Some(64u64), "Expected four headers to need 64 bytes");
+    Assert(ByteCount(4u64, sizeof(Header)) == 64u64, "Expected four headers to need 64 bytes");
     Assert(ByteCount(18446744073709551615u64, 2u64) == none, "Expected an impossible allocation to be refused");
-    Assert(ByteCount(0u64, 18446744073709551615u64) is .Some(0u64), "Expected an empty allocation to need no bytes");
-    Assert(ByteCount(18446744073709551615u64, 1u64) is .Some(18446744073709551615u64),
+    Assert(ByteCount(0u64, 18446744073709551615u64) == 0u64, "Expected an empty allocation to need no bytes");
+    Assert(ByteCount(18446744073709551615u64, 1u64) == 18446744073709551615u64,
            "Expected the largest exact product to be accepted");
     return 0;
 }

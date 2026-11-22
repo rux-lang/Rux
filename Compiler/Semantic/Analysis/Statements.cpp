@@ -1128,7 +1128,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         symbol.name = identifierPattern->name;
         symbol.location = identifierPattern->location;
         symbol.type = subjectType;
-        symbol.isMut = false;
+        symbol.isMut = currentPatternBindsMutable;
         RecordPatternBinding(pattern, symbol, false);
         DefineTrackedLocal(std::move(symbol), true);
     }

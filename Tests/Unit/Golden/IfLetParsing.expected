@@ -1,0 +1,2 @@
+5:27: error: a binding does not combine with '||', because its names would be in scope where nothing was bound
+8:25: error: a binding comes first in an 'if' or 'while' condition, and never after '||' or as an operand

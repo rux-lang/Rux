@@ -18,7 +18,7 @@ func Displayed(error: DecodeError, expected: char8[..]) -> bool {
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: DecodeError = error;
-    if (shown.WriteDisplay(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (shown.WriteDisplay(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -27,7 +27,7 @@ func Inspected(error: DecodeError, expected: char8[..]) -> bool {
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let inspected: DecodeError = error;
-    if (inspected.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (inspected.WriteDebug(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -40,7 +40,7 @@ func Main() -> int {
     if (DecodeError::InvalidCharacter(5).Offset() ?? 99) != 5 { return 1; }
     if (DecodeError::NonCanonical(0).Offset() ?? 99) != 0 { return 2; }
     match DecodeError::InsufficientCapacity(12).Offset() {
-        .Some(_) => return 3,
+        _? => return 3,
         none => {}
     }
     if !Shown(DecodeError::InvalidCharacter(5), "invalid character at 5") { return 4; }

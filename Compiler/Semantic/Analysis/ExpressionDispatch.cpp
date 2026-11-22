@@ -335,6 +335,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         if (const std::optional<TypeRef> contextual = CheckContextualNativeCase(*construct)) {
             return *contextual;
         }
+        if (construct->kind == NativeConstructExpr::Kind::Some) {
+            EmitError(construct->location, "an optional has no case '.Some'", {},
+                      "write the value itself, which converts to the optional");
+        }
         // The level the context expects names what the operand is, so a case written without its type takes that.
         if (const auto expected = expectedExpressionTypes.find(construct);
             construct->operand && expected != expectedExpressionTypes.end()) {

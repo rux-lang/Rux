@@ -54,7 +54,7 @@ func Is(view: OsStringView?, text: char8[..]) -> bool {
 
 func Absent(view: OsStringView?) -> bool {
     return match view {
-        .Some(_) => false,
+        _? => false,
         none => true
     };
 }
@@ -119,8 +119,8 @@ func Main() -> int {
     if (jobs ?? 0) != 4 { return 6; }
     var files: uint = 0;
     for file in second.Positionals("files") {
-        if files == 0 && !Is(.Some(file), "x") { return 7; }
-        if files == 1 && !Is(.Some(file), "y") { return 8; }
+        if files == 0 && !Is(file, "x") { return 7; }
+        if files == 1 && !Is(file, "y") { return 8; }
         files = files + 1;
     }
     if files != 2 { return 9; }
@@ -135,8 +135,8 @@ func Main() -> int {
     if !Is(third.Value("output"), "final") { return 10; }
     var seen: uint = 0;
     for value in third.Values("output") {
-        if seen == 0 && !Is(.Some(value), "first") { return 11; }
-        if seen == 1 && !Is(.Some(value), "final") { return 12; }
+        if seen == 0 && !Is(value, "first") { return 11; }
+        if seen == 1 && !Is(value, "final") { return 12; }
         seen = seen + 1;
     }
     if seen != 2 { return 13; }

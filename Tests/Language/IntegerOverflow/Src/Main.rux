@@ -191,20 +191,20 @@ const WrappedConstant: uint8 = 200u8 +% 100u8;
 
 func CheckMethods() {
     let small: int8 = 100;
-    Assert(small.CheckedAdd(27) == .Some(127i8), "a sum that fits is some");
+    Assert(small.CheckedAdd(27) == 127i8, "a sum that fits is some");
     Assert(small.CheckedAdd(28) == none, "a sum that does not is none");
-    Assert(small.CheckedSub(-27) == .Some(127i8) && small.CheckedSub(-28) == none, "int8 difference");
-    Assert(small.CheckedMul(-1) == .Some(-100i8) && small.CheckedMul(2) == none, "int8 product");
+    Assert(small.CheckedSub(-27) == 127i8 && small.CheckedSub(-28) == none, "int8 difference");
+    Assert(small.CheckedMul(-1) == -100i8 && small.CheckedMul(2) == none, "int8 product");
     let minimum: int8 = int8::Min;
     Assert(minimum.CheckedMul(-1) == none, "the minimum has no negation");
     let byte: uint8 = 200;
-    Assert(byte.CheckedAdd(55) == .Some(255u8) && byte.CheckedAdd(56) == none, "uint8 sum");
-    Assert(byte.CheckedSub(201) == none && byte.CheckedSub(200) == .Some(0u8), "uint8 difference");
+    Assert(byte.CheckedAdd(55) == 255u8 && byte.CheckedAdd(56) == none, "uint8 sum");
+    Assert(byte.CheckedSub(201) == none && byte.CheckedSub(200) == 0u8, "uint8 difference");
     let word: uint64 = 0x100000000;
-    Assert(word.CheckedMul(0xFFFFFFFF) == .Some(0xFFFFFFFF00000000u64), "uint64 product that fits");
+    Assert(word.CheckedMul(0xFFFFFFFF) == 0xFFFFFFFF00000000u64, "uint64 product that fits");
     Assert(word.CheckedMul(0x100000000) == none, "uint64 product that does not");
     let wide: int128 = int128::Max;
-    Assert(wide.CheckedAdd(1) == none && wide.CheckedSub(1) == .Some(int128::Max - 1), "int128 checks");
+    Assert(wide.CheckedAdd(1) == none && wide.CheckedSub(1) == int128::Max - 1, "int128 checks");
 
     Assert(small.SaturatingAdd(100) == 127 && small.SaturatingSub(-100) == 127, "int8 saturates at the top");
     Assert(minimum.SaturatingSub(1) == -128 && minimum.SaturatingMul(2) == -128, "int8 saturates at the bottom");

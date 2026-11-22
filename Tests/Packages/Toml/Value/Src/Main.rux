@@ -19,21 +19,21 @@ func Main() -> int {
     // Each kind reports itself, and answers only the accessor that matches.
     var integer = TomlValue::Integer(allocator, -17);
     Assert(integer.Kind() == TomlKind::Integer, "an integer knows what it is");
-    Assert(integer.AsInteger() is .Some(-17i64), "and gives back what it was made with");
-    Assert(integer.AsFloat() is none, "an integer is not a float, which TOML distinguishes and JSON does not");
+    Assert(integer.AsInteger() == -17i64, "and gives back what it was made with");
+    Assert(integer.AsFloat() == none, "an integer is not a float, which TOML distinguishes and JSON does not");
 
     var number = TomlValue::Float(allocator, 1.0);
     Assert(number.Kind() == TomlKind::Float, "a whole float is still a float");
-    Assert(number.AsInteger() is none, "and does not answer as an integer");
+    Assert(number.AsInteger() == none, "and does not answer as an integer");
 
     var flag = TomlValue::Boolean(allocator, true);
-    Assert(flag.AsBoolean() is .Some(true), "a boolean");
-    Assert(integer.AsBoolean() is none, "which an integer is not");
+    Assert(flag.AsBoolean() == true, "a boolean");
+    Assert(integer.AsBoolean() == none, "which an integer is not");
 
     var text = TomlValue::Text(allocator, "hello") catch { _ => Panic("a string value is made") };
     Assert(text.Kind() == TomlKind::Text, "a string");
-    Assert(text.AsText() is .Some(view) && view.Length() == 5, "of the length it was given");
-    Assert(integer.AsText() is none, "while a non-string has no text rather than its bytes");
+    Assert(if let view? = text.AsText() && view.Length() == 5 { true } else { false }, "of the length it was given");
+    Assert(integer.AsText() == none, "while a non-string has no text rather than its bytes");
 
     // The four date-time kinds differ in which parts they have, and that is the whole point of having four.
     let date = (Date::FromParts(1979, 5, 27) ?? Date { year: 1970, month: 1, day: 1 });
@@ -41,18 +41,18 @@ func Main() -> int {
     let offset = (UtcOffset::Of(-8, 0) ?? UtcOffset::Utc());
 
     var moment = TomlValue::OffsetDateTime(allocator, date, time, offset);
-    Assert(moment.AsOffset() is .Some(readOffset) && readOffset.TotalSeconds() == -28800i32,
+    Assert(if let readOffset? = moment.AsOffset() && readOffset.TotalSeconds() == -28800i32 { true } else { false },
            "an offset date-time has the offset it was written with");
 
     var wall = TomlValue::LocalDateTime(allocator, date, time);
-    Assert(wall.AsOffset() is none, "a local date-time deliberately has none");
-    Assert(wall.AsDate() is .Some(readDate) && readDate.day == 27, "but it does have a date");
-    Assert(wall.AsTime() is .Some(readTime) && readTime.hour == 7, "and a time");
+    Assert(wall.AsOffset() == none, "a local date-time deliberately has none");
+    Assert(if let readDate? = wall.AsDate() && readDate.day == 27 { true } else { false }, "but it does have a date");
+    Assert(if let readTime? = wall.AsTime() && readTime.hour == 7 { true } else { false }, "and a time");
 
     var justDate = TomlValue::LocalDate(allocator, date);
-    Assert(justDate.AsTime() is none, "a local date has no time");
+    Assert(justDate.AsTime() == none, "a local date has no time");
     var justTime = TomlValue::LocalTime(allocator, time);
-    Assert(justTime.AsDate() is none, "and a local time has no date");
+    Assert(justTime.AsDate() == none, "and a local time has no date");
 
     // A table keeps its entries in the order they arrived, which is what makes a document round-trip
     // recognisably rather than alphabetically.
@@ -63,40 +63,40 @@ func Main() -> int {
     table.Insert(move apple, TomlValue::Integer(allocator, 2)) catch { _ => Panic("the kind is right") };
     var middle = String::FromBytes(allocator, "middle") catch { _ => Panic("the key is made") };
     table.Insert(move middle, TomlValue::Integer(allocator, 3)) catch { _ => Panic("the kind is right") };
-    Assert(table.Length() is .Some(3), "a table holds what it was given");
+    Assert(table.Length() == 3, "a table holds what it was given");
     let first = table.EntryAt(0) ?? Panic("the table holds three entries");
     Assert(first.key.View().Length() == 5, "the first entry is the first one added");
     var firstKey = first.key.View();
     Assert(firstKey.Bytes()[0] == c8'z', "which is zebra, not apple");
     let last = table.EntryAt(2) ?? Panic("the table holds three entries");
     Assert(last.key.View().Bytes()[0] == c8'm', "and the last is the last added");
-    Assert(table.EntryAt(3) is none, "past the end there is nothing");
+    Assert(table.EntryAt(3) == none, "past the end there is nothing");
 
     // Lookup finds by key, and reports absence rather than inventing an empty value.
     let found = table.Find(View("apple"));
-    Assert(found is .Some(_), "a key that is there is found");
-    Assert(found is .Some(apple) && apple.AsInteger() is .Some(2),
+    Assert(found != none, "a key that is there is found");
+    Assert(if let apple? = found && apple.AsInteger() == 2 { true } else { false },
            "with the value it was stored with");
-    Assert(table.Find(View("pear")) is none, "and a key that is not there is not");
+    Assert(table.Find(View("pear")) == none, "and a key that is not there is not");
 
     // An array keeps its order too, and a borrowed element can be modified in place — which is how an array of
     // tables grows a member after its header has already been read.
     var array = TomlValue::Array(allocator);
     array.Push(TomlValue::Integer(allocator, 10)) catch { _ => Panic("the kind is right") };
     array.Push(TomlValue::Integer(allocator, 20)) catch { _ => Panic("the kind is right") };
-    Assert(array.Length() is .Some(2), "an array holds what it was given");
-    Assert(array.At(1) is .Some(second) && second.AsInteger() is .Some(20), "in order");
+    Assert(array.Length() == 2, "an array holds what it was given");
+    Assert(if let second? = array.At(1) && second.AsInteger() == 20 { true } else { false }, "in order");
     let element = array.AtMutable(0) ?? Panic("the array holds two elements");
     element = TomlValue::Integer(allocator, 11);
-    Assert(array.At(0) is .Some(edited) && edited.AsInteger() is .Some(11),
+    Assert(if let edited? = array.At(0) && edited.AsInteger() == 11 { true } else { false },
            "and an element can be edited in place");
 
     // The kinds do not answer each other's questions.
-    Assert(array.Find(View("apple")) is none, "an array has no keys");
-    Assert(table.At(0) is none, "and a table has no elements");
-    Assert((table.Push(TomlValue::Integer(allocator, 1)) !! none) is none, "pushing onto a table is refused");
+    Assert(array.Find(View("apple")) == none, "an array has no keys");
+    Assert(table.At(0) == none, "and a table has no elements");
+    Assert((table.Push(TomlValue::Integer(allocator, 1)) !! none) == none, "pushing onto a table is refused");
     var stray = String::FromBytes(allocator, "stray") catch { _ => Panic("the key is made") };
-    Assert((array.Insert(move stray, TomlValue::Integer(allocator, 1)) !! none) is none,
+    Assert((array.Insert(move stray, TomlValue::Integer(allocator, 1)) !! none) == none,
            "and inserting into an array is too");
 
     // Ownership is the whole difficulty of a document tree: a table holding a table holding an array must
@@ -111,7 +111,7 @@ func Main() -> int {
     var innerKey = String::FromBytes(allocator, "inner") catch { _ => Panic("the key is made") };
     outer.Insert(move innerKey, move inner) catch { _ => Panic("the kind is right") };
     let list = (outer.Find(View("inner")) ?? Panic("the outer table holds the inner one")).Find(View("list"));
-    Assert(list is .Some(held) && held.Length() is .Some(2), "a nested tree is reachable all the way down");
+    Assert(if let held? = list && held.Length() == 2 { true } else { false }, "a nested tree is reachable all the way down");
 
     return 0;
 }

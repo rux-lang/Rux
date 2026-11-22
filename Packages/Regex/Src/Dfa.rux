@@ -260,7 +260,7 @@ extend Dfa {
         let instructions = self.program.all;
         self.stack.Clear();
         self.stack.Push(root);
-        while self.stack.Pop() is .Some(popped) {
+        while let popped? = self.stack.Pop() {
             var pc = popped as uint;
             while true {
                 let stamps = self.stamps.AsMutableSlice();

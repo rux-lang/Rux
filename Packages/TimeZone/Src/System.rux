@@ -103,7 +103,7 @@ extend TimeZone {
         if !IsZoneName(name) { throw .InvalidName; }
         var directory = Vector<char8>::New(allocator);
         match Variable("TZDIR") {
-            .Some(value) => {
+            value? => {
                 if AsciiText(value, directory) && directory.Length() > 0u {
                     return Self::LoadFrom(allocator, directory.AsSlice(), name)!;
                 }
@@ -154,7 +154,7 @@ extend TimeZone {
         else {
             var setting = Vector<char8>::New(allocator);
             match Variable("TZ") {
-                .Some(value) => {
+                value? => {
                     AsciiText(value, setting);
                 },
                 none => {}

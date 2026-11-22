@@ -67,7 +67,7 @@ extend TreeMap<K, V> {
         let node = self.tree.Find(key, self.compare);
         if node == null { return none; }
         // Safety: the tree invariant: `node` is non-null, checked above, and `Find` hands back only live nodes.
-        return .Some(node.value);
+        return node.value;
     }
 
     /// The value stored under `key`, borrowed where it sits, or `none`.
@@ -128,7 +128,7 @@ extend TreeMap<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
         let entry = self.tree.Detach(node);
-        return .Some(entry.value);
+        return entry.value;
     }
 
     /// Takes the entry stored under `key` out and hands back the key as well as the value, or `none`.
@@ -142,7 +142,7 @@ extend TreeMap<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Find` hands back only live nodes of this tree.
         let entry = self.tree.Detach(node);
-        return .Some(move entry);
+        return move entry;
     }
 
     /// Destroys every entry, leaving an empty map that is still usable.
@@ -156,7 +156,7 @@ extend TreeMap<K, V> {
     // Safety: `node` must be null or a live node of a tree.
     func EntryOf(node: *var TreeNode<K, V>) -> KeyValue<K, V>? {
         if node == null { return none; }
-        return .Some(KeyValue<K, V> { key: node.key, value: node.value });
+        return KeyValue<K, V> { key: node.key, value: node.value };
     }
 
     /// The entry with the smallest key, or `none` for an empty map.
@@ -312,7 +312,7 @@ extend TreeMapIterator<K, V> {
         // Safety: `node` is non-null, checked above, and a live node of the map: `Iterate` requires the map to
         // outlive the walk untouched, so every node it reached is still linked in.
         self.next = Tree::Successor<K, V>(node);
-        return .Some(KeyValue<K, V> { key: node.key, value: node.value });
+        return KeyValue<K, V> { key: node.key, value: node.value };
     }
 }
 
@@ -344,7 +344,7 @@ extend TreeMapRangeIterator<K, V> {
         }
         // Safety: `node` is still that live node of the map.
         self.next = Tree::Successor<K, V>(node);
-        return .Some(KeyValue<K, V> { key: node.key, value: node.value });
+        return KeyValue<K, V> { key: node.key, value: node.value };
     }
 }
 
@@ -372,6 +372,6 @@ extend TreeMapIntoIterator<K, V> {
         if node == null { return none; }
         // Safety: `node` is non-null, checked above, and `Minimum` of a live subtree is a live node of it.
         let entry = self.tree.Detach(node);
-        return .Some(move entry);
+        return move entry;
     }
 }

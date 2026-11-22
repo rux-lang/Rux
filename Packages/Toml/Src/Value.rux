@@ -382,7 +382,7 @@ extend TomlValue {
         var index: uint = 0;
         while index < self.entries.Length() {
             var held = key;
-            if self.entries.At(index) is .Some(entry) && entry.key.View().Equals(held) { return entry.value; }
+            if let entry? = self.entries.At(index) && entry.key.View().Equals(held) { return entry.value; }
             index = index + 1;
         }
         return none;
@@ -397,7 +397,7 @@ extend TomlValue {
         var index: uint = 0;
         while index < self.entries.Length() {
             var held = key;
-            if self.entries.AtMutable(index) is .Some(entry) && entry.key.View().Equals(held) { return entry.value; }
+            if let entry? = self.entries.AtMutable(index) && entry.key.View().Equals(held) { return entry.value; }
             index = index + 1;
         }
         return none;
@@ -444,7 +444,7 @@ extend TomlValue {
     func ~(&var self) {
         self.text.Clear();
         // Each element taken out dies at the end of its test, taking its own children with it.
-        while self.elements.Pop() is .Some(_) {}
+        while self.elements.Pop() != none {}
         self.entries.Clear();
     }
 }

@@ -312,7 +312,7 @@ extend Vector<T> {
         // Safety: the vector invariant: the element at the old last index is initialized, and it is now outside
         // `length`, so nothing destroys it again once it is moved out.
         let removed = move self.data[self.length];
-        return .Some(move removed);
+        return move removed;
     }
 
     /// The element at `index`, or `none` when there is no such index.
@@ -323,7 +323,7 @@ extend Vector<T> {
     pub func Get(&self, index: uint) -> T? {
         if index >= self.length { return none; }
         // Safety: the vector invariant: `index < self.length`, checked above, so the element is initialized.
-        return .Some(self.data[index]);
+        return self.data[index];
     }
 
     /// The element at `index`, borrowed where it sits, or `none` when there is no such index.
@@ -486,7 +486,7 @@ extend Vector<T> {
             position = position + 1;
         }
         self.length = self.length - 1;
-        return .Some(move removed);
+        return move removed;
     }
 
     /// Takes the element at `index` out and moves the last one into its place.
@@ -509,7 +509,7 @@ extend Vector<T> {
             self.data[index] = move self.data[last];
         }
         self.length = last;
-        return .Some(move removed);
+        return move removed;
     }
 
     /// The first element, borrowed where it sits, or `none` for an empty vector.
@@ -678,7 +678,7 @@ extend VectorIntoIterator<T> : Iterator {
         {
             let taken = move self.data[self.position];
             self.position = self.position + 1;
-            return .Some(move taken);
+            return move taken;
         }
     }
 }

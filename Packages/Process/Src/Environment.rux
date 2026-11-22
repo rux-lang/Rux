@@ -132,7 +132,7 @@ extend EnvironmentIterator : Iterator {
         HoldChanges();
         while !self.changes {
             match NativeEnvironmentEntry(self.next) {
-                .Some(entry) => {
+                entry? => {
                     self.next = self.next + 1;
                     let variable = SplitEntry(entry);
                     // Safety: this walk holds the table, taken at the top of `Next`.

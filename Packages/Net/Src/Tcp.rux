@@ -169,7 +169,7 @@ extend TcpStream {
 // A timeout as nanoseconds, zero for none; a timeout of zero or less is the shortest the system takes.
 func Nanoseconds(timeout: Duration?) -> int64 {
     match timeout {
-        .Some(span) => {
+        span? => {
             let nanoseconds = span.TotalNanoseconds() ?? 0x7FFFFFFFFFFFFFFFi64;
             return if nanoseconds < 1i64 { 1i64 } else { nanoseconds };
         },

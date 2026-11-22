@@ -74,7 +74,7 @@ var numbers = Vector<int32>::New(allocator);
 numbers.Push(1);
 numbers.TryReserve(1024) catch { _ => return 1 };
 
-if numbers.Pop() is .Some(last) {
+if let last? = numbers.Pop() {
     // ...
 }
 ```

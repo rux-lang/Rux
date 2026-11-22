@@ -41,7 +41,7 @@ func Main() -> int {
     }
     Assert(ordered && (small.Get(16) ?? -1) == 16 && small.Get(17) == none, "the order survives the move");
     small.AsMutableSlice()[0] = 100;
-    Assert(small.Pop() is .Some(last) && last == 16 && (small.Get(0) ?? -1) == 100, "writes and pops");
+    Assert(if let last? = small.Pop() && last == 16 && (small.Get(0) ?? -1) == 100 { true } else { false }, "writes and pops");
     small.Truncate(3);
     Assert(small.Length() == 3u, "truncates");
 

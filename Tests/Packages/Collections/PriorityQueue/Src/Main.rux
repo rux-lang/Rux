@@ -28,7 +28,7 @@ extend Owned {
 
 func Main() -> int {
     var queue = PriorityQueue<int32>::New(SystemAllocator::New());
-    Assert(queue.IsEmpty() && queue.Pop() == none && queue.Peek() is none, "an empty queue");
+    Assert(queue.IsEmpty() && queue.Pop() == none && queue.Peek() == none, "an empty queue");
     let values: int32[8] = [5, 1, 9, 3, 9, 7, 2, 8];
     for value in values[..] { queue.Push(value); }
     // Safety: `Peek` hands back the address of the front element, and the queue has not changed since.
@@ -49,7 +49,7 @@ func Main() -> int {
     owned.Push(Owned { value: 2 });
     owned.Push(Owned { value: 6 });
     match owned.Pop() {
-        .Some(top) => Assert(top.value == 6, "a move-only element is moved out"),
+        top? => Assert(top.value == 6, "a move-only element is moved out"),
         none => Assert(false, "something is there")
     }
     return 0;

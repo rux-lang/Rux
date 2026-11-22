@@ -1,5 +1,5 @@
-// The older spellings that the target syntax replaced: `else =>` arms, presence suffixes, receivers that name their
-// type, empty attribute parentheses, the conditional operator, and the `<-` transfer in its three roles.
+// The older spellings that the target syntax replaced: `else =>` arms, receivers that name their type, empty attribute
+// parentheses, the conditional operator, and the `<-` transfer in its three roles.
 
 struct Token {
     id: int32;

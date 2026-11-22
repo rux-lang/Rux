@@ -285,6 +285,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             }
             return LowerExpr(operand);
         };
+        if (const bool *negated = model.TryGetNoneTest(*binary)) {
+            return LowerNoneTest(*binary, *negated);
+        }
         // A native comparison has one type. An operand with no type of its own -- `none`, a native constructor, or an
         // unsuffixed literal -- is built as the other operand's type, the way analysis accepted it.
         if (binary->op == TokenKind::Equal || binary->op == TokenKind::BangEqual) {
@@ -306,8 +309,11 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
                 const auto untyped = [&](const Expr &operand, const TypeRef &type) {
                     return type.MentionsIncompleteNative() || contextual(operand);
                 };
-                const TypeRef compared =
-                    leftType == rightType || !untyped(*binary->left, leftType) ? leftType : rightType;
+                // A typed value compared with an optional of its type is made present, as analysis recorded.
+                const TypeRef *operandFact = model.TryGetAggregateEqualityOperandType(*binary);
+                const TypeRef compared = operandFact ? SubstituteCurrentType(*operandFact)
+                                       : leftType == rightType || !untyped(*binary->left, leftType) ? leftType
+                                                                                                    : rightType;
                 if (const bool *negated = model.TryGetAggregateEquality(*binary)) {
                     if (const VariantEqualityPayload *plan = model.TryGetAggregateEqualityPlan(compared)) {
                         auto lowered = std::make_unique<HirAggregateEqualityExpr>();

@@ -114,7 +114,7 @@ TEST_CASE("native arguments and results generate code for every AArch64 target")
         func UnitReturn() -> () {}
         func UnitParam(value: (), next: int32) -> int32 { return next; }
         func Value(value: float64?) -> float64 {
-            return match value { .Some(v) => v, none => 0.0f64 };
+            return match value { v? => v, none => 0.0f64 };
         }
         func Many(a: float64?, b: float64?, c: float64?, d: float64?, e: float64?, f: float64?) -> float64 {
             return Value(a) + Value(b) + Value(c) + Value(d) + Value(e) + Value(f);
@@ -130,7 +130,8 @@ TEST_CASE("native arguments and results generate code for every AArch64 target")
         }
         func Nest(stop: bool) -> int32?? ! E {
             if stop { throw E { code: 5i32 }; }
-            return .Some(none);
+            let absent: int32? = none;
+            return absent;
         }
         func Run() -> int ! E {
             let unit = UnitReturn();

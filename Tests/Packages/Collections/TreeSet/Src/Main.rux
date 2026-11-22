@@ -21,7 +21,7 @@ func CountRange(set: &TreeSet<int32>, start: int32, end: int32) -> uint {
     var walking = true;
     while walking {
         match walker.Next() {
-            .Some(found) => {
+            found? => {
                 Assert(found >= start, "a range never hands back an element below its start");
                 Assert(found < end, "nor one at or above its end");
                 Assert(found > previous, "and comes out sorted");
@@ -63,20 +63,20 @@ func Main() -> int {
     Assert(set.Length() == 50, "leaving the set the length it was");
 
     // The ordered questions, at the edges as well as in the middle.
-    Assert(set.First() == .Some(0), "the first element is the smallest");
-    Assert(set.Last() == .Some(49), "and the last is the largest");
-    Assert(set.Floor(30) == .Some(30), "a floor lands on an exact element");
-    Assert(set.Ceiling(30) == .Some(30), "and so does a ceiling");
-    Assert(set.Floor(100) == .Some(49), "a floor above every element is the largest");
-    Assert(set.Ceiling(-5) == .Some(0), "a ceiling below every element is the smallest");
+    Assert(set.First() == 0, "the first element is the smallest");
+    Assert(set.Last() == 49, "and the last is the largest");
+    Assert(set.Floor(30) == 30, "a floor lands on an exact element");
+    Assert(set.Ceiling(30) == 30, "and so does a ceiling");
+    Assert(set.Floor(100) == 49, "a floor above every element is the largest");
+    Assert(set.Ceiling(-5) == 0, "a ceiling below every element is the smallest");
     Assert(set.Floor(-5) == none, "there is no floor below every element");
     Assert(set.Ceiling(100) == none, "and no ceiling above every element");
 
     Assert(set.Remove(30), "an element in the set is removed");
     Assert(set.Length() == 49 && !set.Contains(30), "and is gone");
     Assert(!set.Remove(30), "removing it twice takes nothing the second time");
-    Assert(set.Floor(30) == .Some(29), "the floor of a missing element is the one below it");
-    Assert(set.Ceiling(30) == .Some(31), "and its ceiling is the one above");
+    Assert(set.Floor(30) == 29, "the floor of a missing element is the one below it");
+    Assert(set.Ceiling(30) == 31, "and its ceiling is the one above");
 
     // The walk comes out sorted, whatever order the elements arrived in.
     var walker = set.Iterate();
@@ -85,7 +85,7 @@ func Main() -> int {
     var walking = true;
     while walking {
         match walker.Next() {
-            .Some(found) => {
+            found? => {
                 Assert(found > previous, "the walk strictly increases");
                 previous = found;
                 seen = seen + 1;
@@ -144,7 +144,7 @@ func Main() -> int {
     intersection.IntersectWith(small);
     Assert(intersection.Length() == 3, "the intersection is the even numbers below six");
     Assert(intersection.Contains(0) && intersection.Contains(2) && intersection.Contains(4), "which are 0, 2 and 4");
-    Assert(intersection.First() == .Some(0) && intersection.Last() == .Some(4), "and still in order");
+    Assert(intersection.First() == 0 && intersection.Last() == 4, "and still in order");
 
     var difference = evens.Clone();
     difference.Subtract(small);
@@ -155,7 +155,7 @@ func Main() -> int {
     var joined = evens.Clone();
     joined.UnionWith(odds);
     Assert(joined.Length() == 20, "and holds every element of both");
-    Assert(joined.First() == .Some(0) && joined.Last() == .Some(19), "in order across both");
+    Assert(joined.First() == 0 && joined.Last() == 19, "in order across both");
 
     var symmetric = evens.Clone();
     symmetric.SymmetricDifferenceWith(small);
@@ -176,7 +176,7 @@ func Main() -> int {
     var draining = true;
     while draining {
         match consuming.Next() {
-            .Some(found) => {
+            found? => {
                 Assert(found > last, "the consuming walk is sorted too");
                 last = found;
                 consumed = consumed + 1;
@@ -193,7 +193,7 @@ func Main() -> int {
     var takenSoFar: int32 = 0;
     while takenSoFar < 4 {
         match walkedPartly.Next() {
-            .Some(found) => {
+            found? => {
                 Assert(found == takenSoFar * 2 + 1, "a partial walk starts at the smallest element");
             },
             none => {

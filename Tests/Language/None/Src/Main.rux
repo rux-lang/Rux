@@ -19,8 +19,8 @@ func SuccessfullyAbsent() -> int32? ! ParseError {
 
 func Describe(found: int32??) -> int32 {
     return match found {
-        .Some(.Some(value)) => value,
-        .Some(none) => -1i32,
+        value?? => value,
+        none? => -1i32,
         none => -2i32
     };
 }
@@ -29,11 +29,12 @@ func Main() -> int {
     let missing: int32? = none;
     Assert(missing == none, "an absent value equals none");
     Assert(Absent() == none, "a returned none");
-    Assert((SuccessfullyAbsent() !! .Some(0i32)) == none, "none inside a success level");
+    Assert((SuccessfullyAbsent() !! 0i32) == none, "none inside a success level");
 
     // Each optional level has its own absence: `none` is only the outermost one.
     let outer: int32?? = none;
-    let inner: int32?? = .Some(none);
+    let absent: int32? = none;
+    let inner: int32?? = absent;
     Assert(Describe(outer) == -2i32, "outer absence");
     Assert(Describe(inner) == -1i32, "a present absence");
     Assert(outer != inner, "the two absences are different values");

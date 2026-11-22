@@ -543,6 +543,55 @@ HirPatternPtr AstToHirContext::LowerNativePattern(const Pattern &pattern, const 
     return nullptr;
 }
 
+HirExprPtr AstToHirContext::LowerNoneTest(const BinaryExpr &expression, const bool negated) {
+    const Expr &tested = AstCast<const NoneExpr>(expression.left.get()) ? *expression.right : *expression.left;
+    TypeRef subjectType = ResolvedExpressionType(tested);
+    if (subjectType->kind == TypeRef::Kind::Reference && !subjectType->inner.empty()) {
+        subjectType = subjectType->inner.front();
+    }
+    const auto literal = [&](const bool value) {
+        auto result = std::make_unique<HirLiteralExpr>();
+        result->location = expression.location;
+        result->type = TypeRef::MakeBool();
+        result->value = value ? "true" : "false";
+        return result;
+    };
+    // A test inspects the subject in place and never consumes it.
+    auto match = std::make_unique<HirMatchExpr>();
+    match->location = expression.location;
+    match->type = TypeRef::MakeBool();
+    match->subject = LowerMatchSubject(tested);
+    match->subject->consumption.reset();
+    match->subject->consumedBindingId = 0;
+    HirMatchArm absent;
+    absent.location = expression.location;
+    absent.pattern = NativeCasePattern(subjectType, NativeAbsentTag, std::nullopt, nullptr, expression.location);
+    absent.body = literal(!negated);
+    HirMatchArm otherwise;
+    otherwise.location = expression.location;
+    auto wildcard = std::make_unique<HirWildcardPattern>();
+    wildcard->location = expression.location;
+    // A temporary is owned by the test, so a present value it holds is destroyed there, as nobody keeps it.
+    const bool place = AstCast<const IdentExpr>(&tested) || AstCast<const FieldExpr>(&tested) ||
+                       AstCast<const IndexExpr>(&tested) || AstCast<const SelfExpr>(&tested) ||
+                       (AstCast<const UnaryExpr>(&tested) && AstCast<const UnaryExpr>(&tested)->op == TokenKind::Star);
+    const TypeRef &payload = subjectType->inner.front();
+    const DropGluePlan *glue = place || subjectType.IsUnknown() ? nullptr : model.TryGetDropGlue(payload);
+    if (glue) {
+        match->subject->consumption = ValueConsumptionKind::MatchSubject;
+        wildcard->discardGlue = glue->symbol;
+        otherwise.pattern =
+            NativeCasePattern(subjectType, NativePresentTag, payload, std::move(wildcard), expression.location);
+    }
+    else {
+        otherwise.pattern = std::move(wildcard);
+    }
+    otherwise.body = literal(negated);
+    match->arms.push_back(std::move(absent));
+    match->arms.push_back(std::move(otherwise));
+    return match;
+}
+
 HirExprPtr AstToHirContext::LowerNativeMembership(const IsExpr &expression) {
     TypeRef subjectType = ResolvedExpressionType(*expression.operand);
     if (subjectType->kind == TypeRef::Kind::Reference && !subjectType->inner.empty()) {

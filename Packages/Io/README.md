@@ -56,8 +56,8 @@ func Main() -> int {
 
     // The type argument is required: the function is generic over the value so that it can borrow it rather than
     // take ownership, and a generic bound is not inferred from an interface value.
-    let written = (WriteValueLine<int32>(text, measurement) !! none) is .Some(_);
-    if failure is IoError || !written {
+    let written = (WriteValueLine<int32>(text, measurement) !! none) != none;
+    if failure != none || !written {
         return 1;
     }
     return 0;

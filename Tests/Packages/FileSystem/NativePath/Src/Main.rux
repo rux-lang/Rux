@@ -58,7 +58,7 @@ func Main() -> int {
     let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", missingHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
     let countedHandle = @counted as Allocator;
-    Assert((MakeDirectory(countedHandle, missing) !! none) is none, "a directory under a missing parent is refused");
+    Assert((MakeDirectory(countedHandle, missing) !! none) == none, "a directory under a missing parent is refused");
     Assert(state.taken == 1, "after the path was converted");
     Assert(state.live == 0, "and the converted path is given back exactly once");
 

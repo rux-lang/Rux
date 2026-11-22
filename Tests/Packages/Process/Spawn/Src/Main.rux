@@ -25,7 +25,7 @@ func Is(view: OsStringView, text: char8[..]) -> bool {
 
 func Present(value: OsStringView?) -> bool {
     match value {
-        .Some(_) => return true,
+        _? => return true,
         none => return false
     }
 }

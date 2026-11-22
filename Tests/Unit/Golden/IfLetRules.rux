@@ -1,0 +1,29 @@
+// `is` tests and binds nothing, an optional is tested with `== none` or `!= none`, `if let` on an optional needs the
+// presence pattern `name?`, and `.Some` is no case of an optional, as a value or as a pattern.
+variant Shape {
+    Dot,
+    Circle(int)
+}
+
+func Main() -> int {
+    let entry: int? = 3;
+    let shape = Shape::Circle(2);
+    if shape is .Circle(radius) {
+        return 1;
+    }
+    if entry is int {
+        return 2;
+    }
+    if let whole = entry {
+        return 3;
+    }
+    let present: int? = .Some(5);
+    let found = match entry {
+        .Some(v) => v,
+        none => 0,
+    };
+    if let radius? = entry && shape is .Circle(_) {
+        return radius;
+    }
+    return found;
+}

@@ -610,7 +610,7 @@ void AnalysisContext::CheckTypedPattern(const TypedPattern &pattern, const TypeR
         symbol.name = pattern.name;
         symbol.location = pattern.location;
         symbol.type = annotation;
-        symbol.isMut = false;
+        symbol.isMut = currentPatternBindsMutable;
         const NativeSelection selection = annotation.IsUnknown() || subjectType.IsUnknown()
                                             ? NativeSelection{}
                                             : ClassifyNativeSelection(subjectType, annotation);
@@ -628,6 +628,10 @@ void AnalysisContext::CheckNativeCasePattern(const EnumPattern &pattern, const T
     }
     else if (!fallible && name == "Some") {
         payload = subjectType->inner.front();
+        if (!pattern.presence) {
+            EmitError(pattern.location, "an optional has no case '.Some'", {},
+                      "match a present value with 'name?', as in 'value? => ...'");
+        }
     }
     else {
         const std::string &subject = subjectType.ToString();
@@ -766,6 +770,10 @@ void AnalysisContext::CheckMembershipTest(const IsExpr &expression, const TypeRe
 
 std::optional<AnalysisContext::PatternIssue>
 AnalysisContext::MembershipIssue(const TypeRef &subject, const TypeRef &tested, const SourceLocation location) const {
+    if (subject.IsOptional()) {
+        return PatternIssue{location, "'is' does not test an optional",
+                            "compare with '== none' or '!= none', or bind the value with 'if let name? = ...'"};
+    }
     if (ClassifyNativeSelection(subject, tested).kind != NativeSelection::Kind::Invalid) {
         return std::nullopt;
     }
@@ -1048,7 +1056,7 @@ std::string NativePatternTranslator::Describe(const Witness &witness, const Type
         return index < witness.fields.size() ? Describe(witness.fields[index], fieldType) : std::string("_");
     };
     if (type.IsOptional()) {
-        return witness.constructor == 0 ? std::string("none") : ".Some(" + field(0, type->inner.front()) + ")";
+        return witness.constructor == 0 ? std::string("none") : field(0, type->inner.front()) + "?";
     }
     if (type.IsFallible()) {
         // A side is spelled as the typed pattern that takes it, or as what is missing inside it.

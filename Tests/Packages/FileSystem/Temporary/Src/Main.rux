@@ -31,7 +31,7 @@ func SamePath(left: Path, right: Path) -> bool {
 }
 
 func Exists(allocator: Allocator, path: Path) -> bool {
-    return (MetadataOf(allocator, path, true) !! none) is .Some(_);
+    return (MetadataOf(allocator, path, true) !! none) != none;
 }
 
 // Makes a temporary file, writes to it, and lets it fall out of scope without a Close.

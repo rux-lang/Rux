@@ -61,7 +61,7 @@ func SumOfTwo(counter: *var Counter) -> int32 ! Problem {
 
 func Main() -> int {
     var counter = Counter { count: 0i32 };
-    Assert((Check(@counter, 4i32) !! none) == .Some(4i32), "a success is present");
+    Assert((Check(@counter, 4i32) !! none) == 4i32, "a success is present");
     Assert((Check(@counter, -4i32) !! none) == none, "an error is none");
     Assert(counter.count == 1i32, "the dropped error is destroyed once");
 
@@ -79,10 +79,10 @@ func Main() -> int {
 
     // An optional success gains a level only where the context expects one.
     let present: int32?? = Lookup(5i32) !! none;
-    Assert(present == .Some(.Some(5i32)), "present and present");
+    Assert(present == 5i32, "present and present");
     Assert((Lookup(0i32) !! -1i32) == none, "present and absent");
     Assert((Lookup(-1i32) !! none) == none, "thrown");
-    if (Lookup(9i32) !! none) is .Some(found) {
+    if let found? = (Lookup(9i32) !! none) {
         Assert(found == 9i32, "a binding test reads the result");
     }
     else {

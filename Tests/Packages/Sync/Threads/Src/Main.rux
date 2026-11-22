@@ -180,7 +180,7 @@ func Consume(channel: Channel<uint64>) -> uint64 {
     var total: uint64 = 0;
     while true {
         match channel.Receive() {
-            .Some(value) => total = total + value,
+            value? => total = total + value,
             none => return total
         }
     }

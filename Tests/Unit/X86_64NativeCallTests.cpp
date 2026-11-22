@@ -69,7 +69,7 @@ const std::string kCallProgram = R"(
     func UnitReturn() -> () {}
     func UnitParam(value: (), next: int32) -> int32 { return next; }
     func Value(value: int32?) -> int32 {
-        return match value { .Some(v) => v, none => 0i32 };
+        return match value { v? => v, none => 0i32 };
     }
     func Many(a: int32?, b: int32?, c: int32?, d: int32?, e: int32?, f: int32?, g: int32?, h: int32?) -> int32 {
         return Value(a) + Value(b) + Value(c) + Value(d) + Value(e) + Value(f) + Value(g) + Value(h);
@@ -84,11 +84,12 @@ const std::string kCallProgram = R"(
         return Big { a: seed, b: seed, c: seed, d: seed };
     }
     func Tag(flag: bool) -> ()? {
-        return if flag { .Some(()) } else { none };
+        return if flag { () } else { none };
     }
     func Nest(stop: bool) -> int32?? ! E {
         if stop { throw E { code: 5i32 }; }
-        return .Some(none);
+        let absent: int32? = none;
+        return absent;
     }
     func Collapse<T, U>(value: T) -> T | U {
         return value;

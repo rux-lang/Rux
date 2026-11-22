@@ -346,6 +346,8 @@ private:
     ExprPtr ParseExpr();
     ExprPtr ParseExprImpl();
     ExprPtr ParseRequiredExpr(std::string_view context = {});
+    /// The condition of `if` or `while`, which may start with `let pattern = subject` or `var pattern = subject`.
+    ExprPtr ParseCondition(std::string_view context);
     void EmitMissingExpression(std::string_view context = {});
     /// Reports the removed `try` or `try?` at the current token, consumes it, and names what replaced it.
     void RejectTry();

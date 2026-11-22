@@ -90,44 +90,6 @@ void RequireBackEndsAccept(HirPackage package) {
 }
 } // namespace
 
-TEST_CASE("the presence suffix lowers exactly like its constructor spelling") {
-    HirPackage package = LowerSource(R"(
-        func Suffix(found: int32??) -> int32 {
-            return match found {
-                .Some(.Some(value)) => value,
-                .Some(none) => 1i32,
-                none => 2i32
-            };
-        }
-        func Spelled(found: int32??) -> int32 {
-            return match found {
-                .Some(.Some(value)) => value,
-                .Some(none) => 1i32,
-                none => 2i32
-            };
-        }
-    )");
-    const auto &suffix = ReturnedMatchArms(RequireFunction(package, "Suffix"));
-    const auto &spelled = ReturnedMatchArms(RequireFunction(package, "Spelled"));
-    REQUIRE_EQ(suffix.size(), spelled.size());
-    for (std::size_t index = 0; index < suffix.size(); ++index) {
-        const HirEnumPattern &left =
-            Case(*suffix[index].pattern, *Case(*spelled[index].pattern, index == 2 ? "0" : "1").discriminant);
-        const auto &right = static_cast<const HirEnumPattern &>(*spelled[index].pattern);
-        CHECK_EQ(left.payloadTypes, right.payloadTypes);
-        REQUIRE_EQ(left.args.size(), right.args.size());
-        if (!left.args.empty()) {
-            const auto *innerLeft = dynamic_cast<const HirEnumPattern *>(left.args.front().get());
-            const auto *innerRight = dynamic_cast<const HirEnumPattern *>(right.args.front().get());
-            REQUIRE((innerLeft != nullptr) == (innerRight != nullptr));
-            if (innerLeft) {
-                CHECK_EQ(innerLeft->discriminant, innerRight->discriminant);
-            }
-        }
-    }
-    RequireBackEndsAccept(std::move(package));
-}
-
 TEST_CASE("typed patterns select members, subsets, and one presence level") {
     HirPackage package = LowerSource(R"(
         struct A {}
@@ -204,12 +166,12 @@ TEST_CASE("a borrowed exclusive subject binds its payloads as aliases") {
     RequireBackEndsAccept(std::move(package));
 }
 
-TEST_CASE("is tests a selection without consuming its subject") {
+TEST_CASE("is and != none test a selection without consuming their subject") {
     HirPackage package = LowerSource(R"(
         struct A {}
         struct B {}
         func Test(value: A | B, count: int32?) -> bool {
-            return value is A && count is int32;
+            return value is A && count != none;
         }
     )");
     const HirFunc &test = RequireFunction(package, "Test");
@@ -226,7 +188,7 @@ TEST_CASE("is tests a selection without consuming its subject") {
         CHECK(dynamic_cast<const HirWildcardPattern *>(match->arms[1].pattern.get()) != nullptr);
     }
     Case(*dynamic_cast<const HirMatchExpr *>(both->left.get())->arms[0].pattern, "0");
-    Case(*dynamic_cast<const HirMatchExpr *>(both->right.get())->arms[0].pattern, "1");
+    Case(*dynamic_cast<const HirMatchExpr *>(both->right.get())->arms[0].pattern, "0");
     RequireBackEndsAccept(std::move(package));
 }
 
@@ -271,7 +233,7 @@ TEST_CASE("an arm that never returns stores no value") {
         func ReadBig() -> Big ! IoError { return Big { a: 1, b: 2, c: 3 }; }
         func Read2() -> int32? { return 1i32; }
         func Matched() -> int32 {
-            let value = match Read2() { .Some(value) => value, none => Panic("failed") };
+            let value = match Read2() { value? => value, none => Panic("failed") };
             return value;
         }
         func Recovered() -> int64 {

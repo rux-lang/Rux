@@ -43,7 +43,7 @@ func Main() -> int {
     value = 0;
     while value < 40 {
         if value % 3 == 0 {
-            Assert(set.Remove(value) == .Some(value), "a value in the set is removed");
+            Assert(set.Remove(value) == value, "a value in the set is removed");
         }
         value = value + 1;
     }

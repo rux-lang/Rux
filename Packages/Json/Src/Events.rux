@@ -142,7 +142,9 @@ extend JsonEventReader {
     // of the document, however many times the buffer has been refilled.
     func Stopped(&self) -> JsonReadError {
         let at = self.consumedBefore + self.position;
-        if self.stop == JsonStop::Source && self.sourceFailure is .Some(error) { return .Source(error, at); }
+        if self.stop == JsonStop::Source {
+            if let error? = self.sourceFailure { return .Source(error, at); }
+        }
         return .Malformed(BuiltFailure(self.stop, self.lexical, at));
     }
 
@@ -229,7 +231,7 @@ extend JsonEventReader {
                 self.exhausted = true;
                 if !error.IsEnd() && self.stop == JsonStop::None {
                     self.stop = JsonStop::Source;
-                    self.sourceFailure = .Some(error);
+                    self.sourceFailure = error;
                 }
                 return false;
             },
@@ -392,7 +394,7 @@ extend JsonEventReader {
 
     // The byte a value must start with after a separator; the input ending there is a truncated document.
     func ValueByte(&var self) -> uint8 ! JsonReadError {
-        if self.Peek() is .Some(c) { return c; }
+        if let c? = self.Peek() { return c; }
         if self.stop != JsonStop::None { throw self.Stopped(); }
         throw self.Refuse(JsonStop::Truncated);
     }
@@ -413,7 +415,7 @@ extend JsonEventReader {
         if self.stop != JsonStop::None { throw self.Stopped(); }
         if self.state == JsonReadState::Done {
             // Only whitespace may follow the top-level value; anything else is a second value or trailing text.
-            if self.Peek() is .Some(_) { throw self.Refuse(JsonStop::TrailingContent); }
+            if self.Peek() != none { throw self.Refuse(JsonStop::TrailingContent); }
             if self.stop != JsonStop::None { throw self.Stopped(); }
             return none;
         }

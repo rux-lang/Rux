@@ -109,14 +109,14 @@ func Run() -> !AllocError {
     Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
     let taken = kept.Take();
-    Assert(taken is .Some(_), "taking the value out succeeds");
-    Assert(taken is .Some(value) && value == 9, "and gives back what went in");
+    Assert(taken != none, "taking the value out succeeds");
+    Assert(if let value? = taken && value == 9 { true } else { false }, "and gives back what went in");
     Assert(state.live == 0, "releasing the storage there and then");
 
     // Shared handles report a refusal the same way through `TryCreate`, and leak nothing.
     state.allowed = 0;
-    Assert((Rc::TryCreate<int64>(budget, 3) !! none) is none, "a counted handle refused by the allocator reports it");
-    Assert((Arc::TryCreate<int64>(budget, 4) !! none) is none, "and so does an atomically counted one");
+    Assert((Rc::TryCreate<int64>(budget, 3) !! none) == none, "a counted handle refused by the allocator reports it");
+    Assert((Arc::TryCreate<int64>(budget, 4) !! none) == none, "and so does an atomically counted one");
     Assert(state.live == 0, "leaving nothing allocated");
     state.allowed = 1;
     var shared = Rc::TryCreate<int64>(budget, 5) catch { _ => Rc<int64>::New(SystemAllocator::New(), 0) };

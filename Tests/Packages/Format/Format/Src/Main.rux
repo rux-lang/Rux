@@ -96,7 +96,7 @@ extend Filler : Display {
 func Matches(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match move outcome {
-        .Some(text) => text.View().Equals(wanted),
+        text? => text.View().Equals(wanted),
         none => false
     };
 }
@@ -104,7 +104,7 @@ func Matches(outcome: String?, expected: char8[..]) -> bool {
 // Consumes the outcome and reports the rendered length, or a length no check expects when it failed.
 func RenderedLength(outcome: String?) -> uint {
     return match move outcome {
-        .Some(text) => text.Length(),
+        text? => text.Length(),
         none => 0
     };
 }
@@ -216,7 +216,7 @@ func PropagationCases(allocator: Allocator) {
 
     writer.Clear();
     let checked: &var TextWriter = writer;
-    Assert((WriteFormat(checked, "prefix {} {:>>>}", refusing, 2) !! none) is none,
+    Assert((WriteFormat(checked, "prefix {} {:>>>}", refusing, 2) !! none) == none,
            "the whole pattern is validated first");
     Assert(calls == 2 && writer.Length() == 0, "late validation failure invokes no renderer and writes no prefix");
     // Safety: `counted` is a local of this function that outlives every use of the handle.
@@ -413,11 +413,11 @@ func Main() -> int {
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
     var second = BufferWriter::New(room[..8]);
     let other: &var TextWriter = second;
-    if (WriteFormat(other, "abc{", 1) !! none) is .Some(_) { return 92; }
+    if (WriteFormat(other, "abc{", 1) !! none) != none { return 92; }
     if second.Length() != 0 { return 93; }
     var third = BufferWriter::New(room[..8]);
     let last: &var TextWriter = third;
-    if (WriteFormat(last, Pattern("abc{}"), 1, 2) !! none) is .Some(_) { return 94; }
+    if (WriteFormat(last, Pattern("abc{}"), 1, 2) !! none) != none { return 94; }
     if third.Length() != 0 { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean

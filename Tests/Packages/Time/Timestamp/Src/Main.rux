@@ -36,7 +36,7 @@ func Main() -> int {
     let moved = (now.Plus(Duration::FromSeconds(3600)) ?? epoch);
     Assert((moved.Since(now) ?? Duration::Zero()).WholeSeconds() == 3600,
            "an hour forward is an hour apart");
-    Assert(!(now.Plus(Duration::FromSeconds(9223372036854775807)) is Timestamp), "and the far edge refuses");
+    Assert(!(now.Plus(Duration::FromSeconds(9223372036854775807)) != none), "and the far edge refuses");
 
     // A second reading is close to the first: within a minute, or the clock jumped mid-test, which is exactly the
     // kind of claim a wall clock is allowed to break — so the bound is generous rather than tight.

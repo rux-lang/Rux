@@ -27,7 +27,7 @@ func Main() -> int {
     let program = Argument(0) ?? OsStringView::New();
     if program.IsEmpty() { return 2; }
     match Argument(count) {
-        .Some(_) => return 3,
+        _? => return 3,
         none => {}
     }
 

@@ -23,7 +23,7 @@ func Main() -> int {
 
     let found = pair.Find(true);
     let writer = pair.SecondMutable();
-    if found is .Some(value) {
+    if let value? = found {
         let copy: int32 = value;
     }
 

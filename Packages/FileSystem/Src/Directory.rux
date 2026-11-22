@@ -237,7 +237,7 @@ extend DirectoryIterator {
                 if !IsDotEntry16(entry) {
                     let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view);
-                    return .Some(move name);
+                    return move name;
                 }
             }
         }
@@ -319,7 +319,7 @@ extend DirectoryIterator {
                 if !IsDotEntry8(entry) {
                     let view = OsStringView::FromUnits(entry);
                     var name = OsString::FromView(self.allocator, view);
-                    return .Some(move name);
+                    return move name;
                 }
             }
         }

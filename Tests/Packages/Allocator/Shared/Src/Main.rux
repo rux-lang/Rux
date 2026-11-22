@@ -45,7 +45,7 @@ func Counted() -> int {
     var first = Rc<Tracked>::New(SystemAllocator::New(), Tracked { value: 7 });
     Assert(first.Count() == 1u && first.Get().value == 7, "one handle");
     match first.GetMutable() {
-        .Some(value) => {
+        value? => {
             value.value = 8;
         },
         none => Assert(false, "a lone handle can write")
@@ -53,7 +53,7 @@ func Counted() -> int {
     var second = first.Clone();
     let secondValue = second.Get().value;
     Assert(first.Count() == 2u && second.SameAs(first) && secondValue == 8, "a clone shares the value");
-    Assert(first.GetMutable() is none, "a shared value cannot be written");
+    Assert(first.GetMutable() == none, "a shared value cannot be written");
     Assert(Keep(second.Clone()) == 3u && first.Count() == 2u, "a clone passed by value counts while it lives");
     second = Rc<Tracked>::New(SystemAllocator::New(), Tracked { value: 9 });
     Assert(first.Count() == 1u && !second.SameAs(first) && Destroys() == 0, "reassigning releases one count");
@@ -71,7 +71,7 @@ func Threaded() -> int {
     let sum = one.Join() + two.Join() + three.Join() + four.Join();
     Assert(sum == 80000 && shared.Count() == 1u && Destroys() == 2, "every thread's clones were counted and dropped");
     match shared.GetMutable() {
-        .Some(value) => {
+        value? => {
             value.value = 2;
         },
         none => Assert(false, "the last handle can write")

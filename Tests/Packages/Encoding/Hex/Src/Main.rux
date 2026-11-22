@@ -71,7 +71,7 @@ func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: HexView = ViewHex(bytes, letterCase);
-    if (shown.WriteDisplay(sink, Spec(spec)) !! none) is none { return false; }
+    if (shown.WriteDisplay(sink, Spec(spec)) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 

@@ -58,7 +58,7 @@ func Halve(value: int32) -> int32 ! Closed {
 
 func Main() -> int {
     var countdown = Countdown { left: 3i32 };
-    Assert((Drain(countdown) !! none) == .Some(3i32), "2 + 1 + 0 through the bound");
+    Assert((Drain(countdown) !! none) == 3i32, "2 + 1 + 0 through the bound");
     Assert(countdown.left == 3i32, "the source was reset");
     var negative = Countdown { left: -1i32 };
     Assert((Drain(negative) catch { e => e.reason }) == 2i32, "a requirement's error passes through");

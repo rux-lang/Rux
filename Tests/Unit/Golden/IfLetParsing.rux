@@ -1,0 +1,15 @@
+// A binding comes first in an `if` or `while` condition and joins further conditions with `&&`: under `||` its names
+// would be in scope where nothing was bound, and anywhere else it is no operand.
+func Main() -> int {
+    let entry: int? = 3;
+    if let value? = entry || entry != none {
+        return 1;
+    }
+    if entry != none || let other? = entry {
+        return 2;
+    }
+    if let value? = entry && value > 2 {
+        return value;
+    }
+    return 0;
+}

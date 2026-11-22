@@ -62,7 +62,7 @@ const std::string kTracked = R"(
 TEST_CASE("an instantiation composing a native level from its parameters gets glue") {
     const auto analyzed = Analyze(kTracked + R"(
         func Hold<T>(value: T) {
-            let wrapped: T? = .Some(move value);
+            let wrapped: T? = move value;
         }
         func Use(counter: *var Counter) {
             Hold<Tracked>(Tracked { counter: counter });

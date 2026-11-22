@@ -115,7 +115,7 @@ func Bucket(value: int32, small: bool) -> int32 {
 func Positive(value: int32) -> int32? {
     return match value {
         0 => none,
-        _ => .Some(value)
+        _ => value
     };
 }
 
@@ -287,19 +287,20 @@ func Main() -> int {
     let subject = 3i32;
     let annotated: int8? = match subject {
         0 => none,
-        3 => .Some(7),
+        3 => 7,
         _ => 9
     };
     Assert((annotated ?? 0i8) == 7i8, "an annotation types every arm, literals included");
-    let joined = match subject {
+    let absent: int32? = none;
+    let joined: int32? = match subject {
         0 => none,
-        _ => .Some(subject)
+        _ => subject
     };
-    Assert(OrZero(joined) == 3i32, "with no annotation the first whole arm types the match");
-    Assert(OrZero(match subject { 3 => none, _ => .Some(subject) }) == 0i32, "a parameter types an argument match");
+    Assert(OrZero(joined) == 3i32, "an annotation types a match whose first arm is 'none'");
+    Assert(OrZero(match subject { 3 => absent, _ => subject }) == 0i32, "a typed arm types an argument match");
     let nested: int32? = match subject {
-        3 => if subject > 0i32 { none } else { .Some(1i32) },
-        _ => .Some(subject)
+        3 => if subject > 0i32 { none } else { 1i32 },
+        _ => subject
     };
     Assert(nested == none, "a ternary arm is typed the same way");
 
@@ -323,11 +324,12 @@ func Main() -> int {
     }
     Assert(visited == 1i32, "an empty default arm does nothing");
 
-    // An optional is matched by its case spelling at every level.
-    Assert(Depth(.Some(.Some(4i32))) == 4i32, "'.Some(.Some(x))' reaches the inner value");
-    Assert(Depth(.Some(none)) == -1i32, "'.Some(none)' is a present outer level with an absent inner one");
+    // An optional is matched by its presence pattern at every level.
+    Assert(Depth(4i32) == 4i32, "'x??' reaches the inner value");
+    let presentAbsence: int32? = none;
+    Assert(Depth(presentAbsence) == -1i32, "'none?' is a present outer level with an absent inner one");
     Assert(Depth(none) == -2i32, "'none' is the absent outer level");
-    Assert(Sign(.Some(0i32)) == 0i32 && Sign(.Some(-3i32)) == -1i32 && Sign(.Some(8i32)) == 1i32,
+    Assert(Sign(0i32) == 0i32 && Sign(-3i32) == -1i32 && Sign(8i32) == 1i32,
            "'.Some(literal)' and a guarded '.Some(x)' choose by the present value");
     Assert(Sign(none) == 2i32, "and 'none' takes the absent value");
     Assert(Steps(Step::Back) == 1i32, "a case list may end with a comma");
@@ -348,17 +350,17 @@ func Steps(step: Step) -> int32 {
 
 func Depth(found: int32??) -> int32 {
     return match found {
-        .Some(.Some(value)) => value,
-        .Some(none) => -1i32,
+        value?? => value,
+        none? => -1i32,
         none => -2i32,
     };
 }
 
 func Sign(value: int32?) -> int32 {
     return match value {
-        .Some(0) => 0i32,
-        .Some(negative) if negative < 0i32 => -1i32,
-        .Some(_) => 1i32,
+        0? => 0i32,
+        negative? if negative < 0i32 => -1i32,
+        _? => 1i32,
         none => 2i32,
     };
 }

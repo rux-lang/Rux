@@ -189,10 +189,10 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *var int32) {
     var tree = Tree<int32, Tracked>::New(allocator);
     let first = tree.Attach(7, Tracked { counter, value: 1 }, CompareInt32);
-    Assert(!(first is Tracked), "nothing was displaced by a fresh key");
+    Assert(!(first != none), "nothing was displaced by a fresh key");
 
     let second = tree.Attach(7, Tracked { counter, value: 2 }, CompareInt32);
-    Assert(second is Tracked, "an equal key hands the old value back");
+    Assert(second != none, "an equal key hands the old value back");
     Assert(tree.Length() == 1, "and does not make the tree longer");
     // Safety: both point at locals of `Main`, which outlive this call.
     *afterReplacing = *counter;
@@ -275,7 +275,7 @@ func Main() -> int {
 
     // A key already present is replaced rather than added, and hands back what it displaced.
     let displaced = ascending.Attach(19, 1900, CompareInt32);
-    Assert(displaced == .Some(57), "and gives back the value it displaced");
+    Assert(displaced == 57, "and gives back the value it displaced");
     Assert(ascending.Length() == 64, "without making the tree longer");
     // Safety: key 19 was just replaced, so `Find` hands back its live node.
     Assert(ascending.Find(19, CompareInt32).value == 1900, "the new value is what is there now");

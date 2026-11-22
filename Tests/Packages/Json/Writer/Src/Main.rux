@@ -15,7 +15,7 @@ func View(bytes: char8[..]) -> StringView {
 func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: &var bool) -> String {
     var builder = StringBuilder::New(allocator);
     let sink: &var TextWriter = builder;
-    outcome = (WriteValue(sink, value, style) !! none) is .Some(_);
+    outcome = (WriteValue(sink, value, style) !! none) != none;
     return builder.TakeString();
 }
 
@@ -112,8 +112,8 @@ func Main() -> int {
 
     // A non-finite number cannot be made, because JSON cannot spell one, and the kind cannot be set without its text.
     let outOfRange = FormatError::ValueOutOfRange;
-    Assert((JsonValue::Number(allocator, "NaN") !! none) is none, "a NaN is not a number that can be made");
-    Assert((JsonValue::Number(allocator, "Infinity") !! none) is none, "and neither is an infinity");
+    Assert((JsonValue::Number(allocator, "NaN") !! none) == none, "a NaN is not a number that can be made");
+    Assert((JsonValue::Number(allocator, "Infinity") !! none) == none, "and neither is an infinity");
     var ordinary = JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), wrote);
     Assert(wrote,
@@ -138,7 +138,7 @@ func Main() -> int {
     var enough: char8[64];
     var roomy = BufferWriter::New(enough[..64]);
     let roomySink: &var TextWriter = roomy;
-    Assert((WriteValue(roomySink, wholeDocument, JsonStyle::Compact()) !! none) is .Some(_),
+    Assert((WriteValue(roomySink, wholeDocument, JsonStyle::Compact()) !! none) != none,
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 26, "all twenty-six bytes of it");
 

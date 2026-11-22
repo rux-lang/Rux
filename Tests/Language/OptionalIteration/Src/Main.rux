@@ -56,9 +56,10 @@ extend Sparse {
             return none;
         }
         if self.index % 2i32 == 0i32 {
-            return .Some(none);
+            let absent: int32? = none;
+            return absent;
         }
-        return .Some(.Some(self.index));
+        return self.index;
     }
 }
 
@@ -79,10 +80,10 @@ extend Checked {
         }
         if self.index == 2i32 {
             let missing = Lose();
-            return .Some(move missing);
+            return move missing;
         }
         let found: int32 ! Missing = self.index;
-        return .Some(move found);
+        return move found;
     }
 }
 
@@ -140,7 +141,7 @@ func Main() -> int {
     var absent = 0i32;
     for item in (Sparse { index: 0i32 }) {
         match item {
-            .Some(value) => {
+            value? => {
                 present = present + value;
             },
             none => {

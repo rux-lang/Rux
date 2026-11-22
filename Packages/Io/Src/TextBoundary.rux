@@ -107,7 +107,7 @@ extend ConsoleWriter : TextWriter {
     /// @see https://rux-lang.dev/docs/api/io/console-writer#write
     pub func Write(&var self, bytes: char8[..]) -> !FormatError {
         // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over to outlive it.
-        if *self.failure is IoError { throw .WriterFailure; }
+        if *self.failure != none { throw .WriterFailure; }
         PrintBytes(bytes) catch {
             error => {
                 // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over
@@ -158,7 +158,7 @@ extend StreamWriter : TextWriter {
     /// @see https://rux-lang.dev/docs/api/io/stream-writer#write
     pub func Write(&var self, bytes: char8[..]) -> !FormatError {
         // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over to outlive it.
-        if *self.failure is IoError { throw .WriterFailure; }
+        if *self.failure != none { throw .WriterFailure; }
         WriteAll(self.sink, bytes) catch {
             error => {
                 // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over

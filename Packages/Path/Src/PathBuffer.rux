@@ -219,7 +219,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer {
     var walking = true;
     while walking {
         match walker.Next() {
-            .Some(segment) => {
+            segment? => {
                 var piece = segment;
                 if piece.Length() == 0 {
                     // The root component, already written.

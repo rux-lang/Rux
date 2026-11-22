@@ -22,7 +22,7 @@ func Main() -> int {
     Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
     // Empty text is one byte of terminator, not a null pointer.
-    Assert((CString::FromView(allocator, StringView::New()) !! none) is .Some(_), "empty text crosses too");
+    Assert((CString::FromView(allocator, StringView::New()) !! none) != none, "empty text crosses too");
 
     // A zero byte in the middle is refused, not truncated.
     var smuggled: char8[8];
@@ -87,7 +87,7 @@ func Main() -> int {
 
     // Null is C's nothing, and nothing is not text.
     // Safety: the readability obligation covers only a non-null `raw`; a null one is refused before any read.
-    Assert((CString::FromRaw(allocator, null, 8) !! none) is none, "and a null pointer makes nothing");
+    Assert((CString::FromRaw(allocator, null, 8) !! none) == none, "and a null pointer makes nothing");
 
     return 0;
 }

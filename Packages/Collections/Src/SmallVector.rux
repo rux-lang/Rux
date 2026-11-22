@@ -147,7 +147,7 @@ extend SmallVector<T> {
         // Safety: the small-vector invariant: the old last element is initialized and now outside `length`, so
         // nothing destroys it again once it is moved out.
         let removed = move items[self.length];
-        return .Some(move removed);
+        return move removed;
     }
 
     /// A copy of the element at `index`.

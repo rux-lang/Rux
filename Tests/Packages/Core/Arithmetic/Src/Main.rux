@@ -10,11 +10,11 @@ import Core::Diagnostics::Assert;
 func CheckUnsigned8() -> int32 {
     let maximum = uint8::Max;
     if MaximumOf<uint8>(0) != maximum || MinimumOf<uint8>(0) != 0 { return 1; }
-    if 1u8.CheckedAdd(1) != .Some(2) { return 2; }
+    if 1u8.CheckedAdd(1) != 2 { return 2; }
     if maximum.CheckedAdd(1) != none { return 3; }
     if 0u8.CheckedSub(1) != none { return 4; }
-    if maximum.CheckedSub(maximum) != .Some(0) { return 5; }
-    if maximum.CheckedMul(2) != none || maximum.CheckedMul(1) != .Some(maximum) { return 6; }
+    if maximum.CheckedSub(maximum) != 0 { return 5; }
+    if maximum.CheckedMul(2) != none || maximum.CheckedMul(1) != maximum { return 6; }
     if maximum.SaturatingAdd(1) != maximum || 0u8.SaturatingSub(1) != 0 { return 7; }
     if maximum.SaturatingMul(2) != maximum || 1u8.SaturatingMul(2) != 2 { return 8; }
     if maximum +% 1 != 0 || 0u8 -% 1 != maximum || maximum *% 2 != maximum - 1 { return 9; }
@@ -24,7 +24,7 @@ func CheckUnsigned8() -> int32 {
 func CheckUnsigned64() -> int32 {
     let maximum = uint64::Max;
     if MaximumOf<uint64>(0) != maximum { return 1; }
-    if maximum.CheckedAdd(1) != none || maximum.CheckedAdd(0) != .Some(maximum) { return 2; }
+    if maximum.CheckedAdd(1) != none || maximum.CheckedAdd(0) != maximum { return 2; }
     if 0u64.CheckedSub(1) != none { return 3; }
     if maximum.CheckedMul(2) != none { return 4; }
     if maximum.SaturatingAdd(1) != maximum || maximum.SaturatingMul(2) != maximum { return 5; }
@@ -35,9 +35,9 @@ func CheckUnsigned64() -> int32 {
 func CheckUnsigned512() -> int32 {
     let maximum = uint512::Max;
     if MaximumOf<uint512>(0) != maximum { return 1; }
-    if maximum.CheckedAdd(1) != none || 1u512.CheckedAdd(1) != .Some(2) { return 2; }
+    if maximum.CheckedAdd(1) != none || 1u512.CheckedAdd(1) != 2 { return 2; }
     if 0u512.CheckedSub(1) != none { return 3; }
-    if maximum.CheckedMul(2) != none || maximum.CheckedMul(0) != .Some(0) { return 4; }
+    if maximum.CheckedMul(2) != none || maximum.CheckedMul(0) != 0 { return 4; }
     if maximum.SaturatingAdd(1) != maximum || 0u512.SaturatingSub(1) != 0 { return 5; }
     if maximum +% 1 != 0 { return 6; }
     return 0;
@@ -48,11 +48,11 @@ func CheckSigned8() -> int32 {
     let minimum = int8::Min;
     if MaximumOf<int8>(0) != maximum || MinimumOf<int8>(0) != minimum { return 1; }
     if maximum.CheckedAdd(1) != none || minimum.CheckedAdd(-1) != none { return 2; }
-    if maximum.CheckedAdd(-1) != .Some(maximum - 1) { return 3; }
+    if maximum.CheckedAdd(-1) != maximum - 1 { return 3; }
     if minimum.CheckedSub(1) != none || maximum.CheckedSub(-1) != none { return 4; }
-    if 0i8.CheckedSub(maximum) != .Some(-maximum) { return 5; }
+    if 0i8.CheckedSub(maximum) != -maximum { return 5; }
     if minimum.CheckedMul(-1) != none || (-1i8).CheckedMul(minimum) != none { return 6; }
-    if minimum.CheckedMul(1) != .Some(minimum) || maximum.CheckedMul(2) != none { return 7; }
+    if minimum.CheckedMul(1) != minimum || maximum.CheckedMul(2) != none { return 7; }
     if maximum.SaturatingAdd(1) != maximum || minimum.SaturatingAdd(-1) != minimum { return 8; }
     if minimum.SaturatingSub(1) != minimum || maximum.SaturatingSub(-1) != maximum { return 9; }
     if maximum.SaturatingMul(2) != maximum || minimum.SaturatingMul(2) != minimum { return 10; }
@@ -66,7 +66,7 @@ func CheckSigned64() -> int32 {
     let minimum = int64::Min;
     if MaximumOf<int64>(0) != maximum || MinimumOf<int64>(0) != minimum { return 1; }
     if maximum.CheckedAdd(1) != none || minimum.CheckedSub(1) != none { return 2; }
-    if minimum.CheckedMul(-1) != none || maximum.CheckedMul(-1) != .Some(minimum + 1) { return 3; }
+    if minimum.CheckedMul(-1) != none || maximum.CheckedMul(-1) != minimum + 1 { return 3; }
     if minimum.SaturatingMul(-1) != maximum { return 4; }
     if maximum +% 1 != minimum { return 5; }
     return 0;

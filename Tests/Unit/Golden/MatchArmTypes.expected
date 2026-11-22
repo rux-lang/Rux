@@ -1,4 +1,4 @@
-4:9: error: match arm type mismatch: expected 'int32?', found 'bool8?'
+4:9: error: match arm type mismatch: expected 'int32?', found 'bool8'
 10:14: error: case '.Failure' needs an enum or variant, but the expected type is 'int32?'
 19:14: error: case '.Failure' needs an enum or variant, but the expected type is 'int32?'
 25:14: error: case '.Success' needs an expected type to name its enum or variant

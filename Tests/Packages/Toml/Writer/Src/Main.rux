@@ -19,7 +19,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor::New(storage);
     let writer: &var TextWriter = cursor;
-    Assert((TomlWriteDocument(writer, value) !! none) is .Some(_), "writing succeeds");
+    Assert((TomlWriteDocument(writer, value) !! none) != none, "writing succeeds");
     return cursor.Written();
 }
 
@@ -90,9 +90,9 @@ func Main() -> int {
     var reread = Parsed(allocator, written, "and its output parses");
 
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(Member(reread, View("i")).AsInteger() is .Some(42), "the integer survives");
+    Assert(Member(reread, View("i")).AsInteger() == 42, "the integer survives");
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
-    Assert(Member(reread, View("tiny")).AsFloat() is .Some(0.1),
+    Assert(Member(reread, View("tiny")).AsFloat() == 0.1,
            "and a float comes back as exactly the same float, not merely a close one");
     // Safety: `reread` holds everything this looks up, so each lookup returns a non-null pointer into it.
     Assert(Member(reread, View("whole")).Kind() == TomlKind::Float,
@@ -106,7 +106,7 @@ func Main() -> int {
            "an offset date-time keeps its offset");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
     let restampedOffset = Member(restamped, View("m")).AsOffset();
-    Assert(restampedOffset is .Some(readOffset) && readOffset.TotalSeconds() == -28800i32,
+    Assert(if let readOffset? = restampedOffset && readOffset.TotalSeconds() == -28800i32 { true } else { false },
            "and the offset is the one it was written with");
     // Safety: `restamped` holds everything this looks up, so each lookup returns a non-null pointer into it.
     Assert(Member(restamped, View("w")).Kind() == TomlKind::LocalDateTime,
@@ -206,7 +206,7 @@ func Main() -> int {
     var enough: char8[128];
     var roomy = BufferWriter::New(enough[..128]);
     let roomySink: &var TextWriter = roomy;
-    Assert((TomlWriteDocument(roomySink, bounded) !! none) is .Some(_),
+    Assert((TomlWriteDocument(roomySink, bounded) !! none) != none,
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 23, "all twenty-three bytes of it");
 

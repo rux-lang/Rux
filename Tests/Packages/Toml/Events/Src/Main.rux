@@ -10,19 +10,19 @@ import Toml::{ TomlEvent, TomlEventReader };
 // Whether the next event arrives and is `expected`.
 func Arrives(reader: &var TomlEventReader, expected: TomlEvent) -> bool {
     let event = reader.Next() catch { _ => return false };
-    return event is .Some(arrived) && arrived == expected;
+    return if let arrived? = event && arrived == expected { true } else { false };
 }
 
 // Whether the document ends at the next call, with nothing wrong.
 func Ends(reader: &var TomlEventReader) -> bool {
     let event = reader.Next() catch { _ => return false };
-    return event is none;
+    return event == none;
 }
 
 // Reads past one event, which must arrive.
 func Skip(reader: &var TomlEventReader) {
     let event = reader.Next() catch { _ => Panic("an event arrives") };
-    Assert(event is .Some(_), "an event arrives");
+    Assert(event != none, "an event arrives");
 }
 
 // How many events `text` produces before it ends or is refused.
@@ -31,7 +31,7 @@ func Shape(text: char8[..]) -> uint {
     var count: uint = 0;
     while true {
         let event = reader.Next() catch { _ => return count };
-        if event is none { return count; }
+        if event == none { return count; }
         count = count + 1;
     }
     return count;
@@ -47,11 +47,11 @@ func FailsWith(text: char8[..], into: var char8[..]) -> uint {
             failure => {
                 var writer = BufferWriter::New(into);
                 let sink: &var TextWriter = writer;
-                Assert((failure.WriteDebug(sink, FormatSpec::Plain()) !! none) is .Some(_), "a failure renders");
+                Assert((failure.WriteDebug(sink, FormatSpec::Plain()) !! none) != none, "a failure renders");
                 return writer.Length();
             },
         };
-        if event is none { return 0; }
+        if event == none { return 0; }
     }
     return 0;
 }

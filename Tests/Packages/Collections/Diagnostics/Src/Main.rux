@@ -93,14 +93,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 func RenderHashMap(map: &HashMap<int32, int32>, into: var char8[..]) -> uint {
     var writer = BufferWriter::New(into);
     let sink: &var TextWriter = writer;
-    Assert((WriteHashMapDebug<int32, int32>(sink, map, FormatSpec::Plain()) !! none) is .Some(_), "the map is shown");
+    Assert((WriteHashMapDebug<int32, int32>(sink, map, FormatSpec::Plain()) !! none) != none, "the map is shown");
     return writer.Length();
 }
 
 func RenderHashSet(set: &HashSet<int32>, into: var char8[..]) -> uint {
     var writer = BufferWriter::New(into);
     let sink: &var TextWriter = writer;
-    Assert((WriteHashSetDebug<int32>(sink, set, FormatSpec::Plain()) !! none) is .Some(_), "the set is shown");
+    Assert((WriteHashSetDebug<int32>(sink, set, FormatSpec::Plain()) !! none) != none, "the set is shown");
     return writer.Length();
 }
 
@@ -109,7 +109,7 @@ func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8
     // Safety: `storage` is a local array of 256 elements.
     var writer = BufferWriter::New((@storage[0])[..256]);
     let sink: &var TextWriter = writer;
-    if (WriteTreeMapDebug<int32, int32>(sink, map, spec) !! none) is none { return false; }
+    if (WriteTreeMapDebug<int32, int32>(sink, map, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -118,7 +118,7 @@ func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -
     // Safety: `storage` is a local array of 256 elements.
     var writer = BufferWriter::New((@storage[0])[..256]);
     let sink: &var TextWriter = writer;
-    if (WriteTreeSetDebug<int32>(sink, set, spec) !! none) is none { return false; }
+    if (WriteTreeSetDebug<int32>(sink, set, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -128,7 +128,7 @@ func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -
     var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     let shown: CollectionError = error;
-    if (shown.WriteDisplay(sink, spec) !! none) is none { return false; }
+    if (shown.WriteDisplay(sink, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -138,7 +138,7 @@ func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..
     var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     let shown: CollectionError = error;
-    if (shown.WriteDebug(sink, spec) !! none) is none { return false; }
+    if (shown.WriteDebug(sink, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -274,9 +274,9 @@ func Main() -> int {
     // Safety: `ownedStorage` is a local array of 128 elements.
     var ownedWriter = BufferWriter::New((@ownedStorage[0])[..128]);
     let ownedSink: &var TextWriter = ownedWriter;
-    Assert((WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain) !! none) is .Some(_), "a move-only map is shown");
+    Assert((WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain) !! none) != none, "a move-only map is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
-    Assert((WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain) !! none) is .Some(_), "so it can be shown again");
+    Assert((WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain) !! none) != none, "so it can be shown again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(ownedWriter.Written(), "{1: T(1), 2: T(2)}{1: T(1), 2: T(2)}"), "twice, identically");
     Assert(owning.Length() == 2, "and the map still holds both entries");

@@ -92,7 +92,7 @@ func Exhaustive(form: Base64Variant, urlSafe: bool) -> bool {
         group[0] = c as uint8 as char8;
         var out: byte[3];
         let expected = Reference(c, urlSafe);
-        let valid = (Base64Decode(group[..], out[..], form) !! none) is .Some(_);
+        let valid = (Base64Decode(group[..], out[..], form) !! none) != none;
         if valid != (expected >= 0) { return false; }
         if valid && out[0] != ((expected as uint) << 2) as byte { return false; }
         c = c + 1;
@@ -146,7 +146,7 @@ func Shown(bytes: byte[..], form: Base64Variant, spec: char8[..], expected: char
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: Base64View = ViewBase64(bytes, form);
-    if (shown.WriteDisplay(sink, Spec(spec)) !! none) is none { return false; }
+    if (shown.WriteDisplay(sink, Spec(spec)) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 

@@ -31,7 +31,7 @@ func Main() -> int {
     Assert(map.Capacity() >= 128, "over a table the load factor grew for it");
     key = 0;
     while key < 96 {
-        Assert(map.Get(key) == .Some(key * 7), "and every key is findable at the fullest moment");
+        Assert(map.Get(key) == key * 7, "and every key is findable at the fullest moment");
         key = key + 1;
     }
 
@@ -44,7 +44,7 @@ func Main() -> int {
     while pass < 96 {
         at = (at + stride) % 96;
         if map.ContainsKey(at) {
-            Assert(map.Remove(at) == .Some(at * 7), "removal hands back the value it held");
+            Assert(map.Remove(at) == at * 7, "removal hands back the value it held");
             removed = removed + 1;
             Assert(!map.ContainsKey(at), "and the key is gone");
         }
@@ -58,7 +58,7 @@ func Main() -> int {
     var survivors: uint = 0;
     while key < 96 {
         if map.ContainsKey(key) {
-            Assert(map.Get(key) == .Some(key * 7), "every surviving key still reads back its value");
+            Assert(map.Get(key) == key * 7, "every surviving key still reads back its value");
             survivors = survivors + 1;
         }
         key = key + 1;
@@ -76,7 +76,7 @@ func Main() -> int {
     Assert(crowded.Length() == 60, "the crowded table holds every key");
     key = 0;
     while key < 60 {
-        Assert(crowded.Get(key) == .Some(key + 1000), "and finds every one of them");
+        Assert(crowded.Get(key) == key + 1000, "and finds every one of them");
         key = key + 1;
     }
     Assert(!crowded.ContainsKey(60), "while a key that was never inserted is still absent");
@@ -86,7 +86,7 @@ func Main() -> int {
     key = 0;
     while key < 60 {
         if key % 4 == 1 {
-            Assert(crowded.Remove(key) is int32, "every crowded removal finds its key");
+            Assert(crowded.Remove(key) != none, "every crowded removal finds its key");
         }
         key = key + 1;
     }
@@ -96,7 +96,7 @@ func Main() -> int {
             Assert(!crowded.ContainsKey(key), "a removed key is gone from a crowded table");
         }
         else {
-            Assert(crowded.Get(key) == .Some(key + 1000), "and every other key survived the shifting");
+            Assert(crowded.Get(key) == key + 1000, "and every other key survived the shifting");
         }
         key = key + 1;
     }
@@ -118,7 +118,7 @@ func Main() -> int {
     key = 0;
     while key < 60 {
         if key % 3 == 0 {
-            Assert(set.Remove(key) is int32, "every crowded set removal finds its element");
+            Assert(set.Remove(key) != none, "every crowded set removal finds its element");
         }
         key = key + 1;
     }

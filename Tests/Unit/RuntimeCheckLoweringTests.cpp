@@ -524,7 +524,7 @@ func Partial(n: int) {
 }
 
 func Present(value: int?) -> int {
-    return match value { .Some(v) => v, none => 0 };
+    return match value { v? => v, none => 0 };
 }
 )",
                                              BuildProfile::Debug);

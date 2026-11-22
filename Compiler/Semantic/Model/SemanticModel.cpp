@@ -247,6 +247,11 @@ const TypeRef *SemanticModel::TryGetAggregateEqualityOperandType(const BinaryExp
     return fact == facts.aggregateEqualityOperandTypes.end() ? nullptr : &fact->second;
 }
 
+const bool *SemanticModel::TryGetNoneTest(const BinaryExpr &expression) const noexcept {
+    const auto fact = facts.noneTests.find(&expression);
+    return fact == facts.noneTests.end() ? nullptr : &fact->second;
+}
+
 const bool *SemanticModel::TryGetAggregateEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.aggregateEqualities.find(&expression);
     return fact == facts.aggregateEqualities.end() ? nullptr : &fact->second;

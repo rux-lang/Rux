@@ -34,8 +34,8 @@ func RefusedNumber(allocator: Allocator, text: char8[..]) -> bool {
 // Whether `text` is accepted as a number by both public constructors, keeping exactly the text it was given.
 func AcceptedNumber(allocator: Allocator, text: char8[..]) -> bool {
     let want = View(text);
-    let number = if (JsonNumber::New(allocator, text) !! none) is .Some(made) { made.Text().Equals(want) } else { false };
-    let value = if (JsonValue::Number(allocator, text) !! none) is .Some(made) { made.Kind() == JsonKind::Number && Number(made).Text().Equals(want) } else { false };
+    let number = if let made? = (JsonNumber::New(allocator, text) !! none) { made.Text().Equals(want) } else { false };
+    let value = if let made? = (JsonValue::Number(allocator, text) !! none) { made.Kind() == JsonKind::Number && Number(made).Text().Equals(want) } else { false };
     return number && value;
 }
 
@@ -48,15 +48,15 @@ func Main() -> int {
     var trueValue = JsonValue::Boolean(allocator, true);
     var falseValue = JsonValue::Boolean(allocator, false);
     Assert(trueValue.Kind() == JsonKind::Boolean && !trueValue.IsNull(), "a boolean is a boolean");
-    Assert(trueValue.AsBoolean() is .Some(true), "and reads back as true");
-    Assert(falseValue.AsBoolean() is .Some(false), "or as false");
-    Assert(nullValue.AsBoolean() is none, "while null is not a boolean at all");
+    Assert(trueValue.AsBoolean() == true, "and reads back as true");
+    Assert(falseValue.AsBoolean() == false, "or as false");
+    Assert(nullValue.AsBoolean() == none, "while null is not a boolean at all");
 
     // Numbers keep their text, which is what makes them exact.
     var large = JsonValue::Number(allocator, "9007199254740993") catch {
         _ => Panic("a large integer is stored")
     };
-    Assert(Number(large).AsUint64() is .Some(9007199254740993),
+    Assert(Number(large).AsUint64() == 9007199254740993,
            "and reads back exactly -- one past two to the fifty-third, which a double would have rounded away");
     let asFloat = Number(large).AsFloat64() ?? Panic("it also reads as a float");
     Assert((asFloat as uint64) != 9007199254740993,
@@ -74,16 +74,16 @@ func Main() -> int {
     Assert(Number(whole).IsIntegral(), "42 is integral");
     Assert(!Number(pointZero).IsIntegral(), "42.0 is not, though its value is whole");
     Assert(!Number(exponent).IsIntegral(), "and neither is 4.2e1");
-    Assert(Number(pointZero).AsInt64() is none,
+    Assert(Number(pointZero).AsInt64() == none,
            "so 42.0 does not read as an integer, which keeps a distinction the document was making");
-    Assert(Number(pointZero).AsFloat64() is .Some(42.0), "while it reads fine as a float");
+    Assert(Number(pointZero).AsFloat64() == 42.0, "while it reads fine as a float");
 
     var negative = JsonValue::Number(allocator, "-9223372036854775808") catch {
         _ => Panic("the most negative signed integer is stored")
     };
-    Assert(Number(negative).AsInt64() is .Some(-9223372036854775808i64),
+    Assert(Number(negative).AsInt64() == -9223372036854775808i64,
            "the most negative signed integer reads back exactly");
-    Assert(Number(negative).AsUint64() is none, "and does not read as unsigned");
+    Assert(Number(negative).AsUint64() == none, "and does not read as unsigned");
 
     // A number made by hand is held to the grammar a parsed one is, so nothing the tree holds is a number only this
     // package would read.
@@ -123,32 +123,33 @@ func Main() -> int {
     var text = JsonValue::Text(allocator, "hello") catch { _ => Panic("a string is stored") };
     Assert(text.Kind() == JsonKind::Text, "a string is a string");
     let expectedHello = View("hello");
-    Assert(text.AsText() is .Some(hello) && hello.Equals(expectedHello), "and reads back");
-    Assert(nullValue.AsText() is none, "while a non-string has no text rather than reinterpreting bytes");
+    Assert(if let hello? = text.AsText() && hello.Equals(expectedHello) { true } else { false }, "and reads back");
+    Assert(nullValue.AsText() == none, "while a non-string has no text rather than reinterpreting bytes");
 
     // Arrays own their elements and keep their order.
     var array = JsonValue::Array(allocator);
-    Assert(array.Kind() == JsonKind::Array && array.Length() is .Some(0), "a new array is empty");
+    Assert(array.Kind() == JsonKind::Array && array.Length() == 0, "a new array is empty");
     var index: uint = 0;
     while index < 5 {
         var element = JsonValue::Boolean(allocator, (index % 2) == 0);
         array.Push(move element) catch { _ => Panic("elements append") };
         index = index + 1;
     }
-    Assert(array.Length() is .Some(5), "and the array grows");
+    Assert(array.Length() == 5, "and the array grows");
     index = 0;
     while index < 5 {
         let element = array.At(index);
-        Assert(element is .Some(_), "every index is reachable");
-        Assert(element is .Some(present) && present.AsBoolean() is .Some(value) && value == ((index % 2) == 0),
+        Assert(element != none, "every index is reachable");
+        let even = (index % 2) == 0;
+        Assert(if let present? = element && present.AsBoolean() == even { true } else { false },
                "and the elements are in the order they were added");
         index = index + 1;
     }
-    Assert(array.At(5) is none, "and one past the end is not");
+    Assert(array.At(5) == none, "and one past the end is not");
 
     // Objects keep insertion order, which is what lets a document be written back recognisably.
     var object = JsonValue::Object(allocator);
-    Assert(object.Kind() == JsonKind::Object && object.Length() is .Some(0), "a new object is empty");
+    Assert(object.Kind() == JsonKind::Object && object.Length() == 0, "a new object is empty");
     var zetaName = String::FromBytes(allocator, "zeta") catch { _ => Panic("a name is built") };
     var zetaValue = JsonValue::Number(allocator, "1") catch { _ => Panic("1 is stored") };
     object.Insert(move zetaName, move zetaValue) catch { _ => Panic("a member inserts") };
@@ -158,30 +159,32 @@ func Main() -> int {
     var muName = String::FromBytes(allocator, "mu") catch { _ => Panic("a name is built") };
     var muValue = JsonValue::Text(allocator, "found") catch { _ => Panic("a string is stored") };
     object.Insert(move muName, move muValue) catch { _ => Panic("and a third") };
-    Assert(object.Length() is .Some(3), "and the object grows");
+    Assert(object.Length() == 3, "and the object grows");
 
     let zeta = View("zeta");
-    Assert(object.MemberAt(0) is .Some(firstMember) && firstMember.name.View().Equals(zeta),
+    Assert(if let firstMember? = object.MemberAt(0) && firstMember.name.View().Equals(zeta) { true } else { false },
            "the first member is the first one added, not the alphabetically first");
     let alpha = View("alpha");
-    Assert(object.MemberAt(1) is .Some(secondMember) && secondMember.name.View().Equals(alpha),
+    Assert(if let secondMember? = object.MemberAt(1) && secondMember.name.View().Equals(alpha) { true } else { false },
            "and insertion order is kept");
 
     // Lookup by name.
     let mu = View("mu");
     let found = object.Find(mu);
-    Assert(found is .Some(member) && member.Kind() == JsonKind::Text, "a member is found by name");
+    Assert(if let member? = found && member.Kind() == JsonKind::Text { true } else { false }, "a member is found by name");
     let foundText = View("found");
-    Assert(found is .Some(member) && member.AsText() is .Some(value) && value.Equals(foundText),
-           "with the value it was given");
+    if let member? = found {
+        if let value? = member.AsText() { Assert(value.Equals(foundText), "with the value it was given"); }
+        else { Assert(false, "with the value it was given"); }
+    }
     let missing = View("absent");
-    Assert(object.Find(missing) is none, "and a name that is not there is not found");
-    Assert(array.Find(mu) is none, "looking for a member in an array finds nothing rather than misreading it");
+    Assert(object.Find(missing) == none, "and a name that is not there is not found");
+    Assert(array.Find(mu) == none, "looking for a member in an array finds nothing rather than misreading it");
 
     // Wrong-kind accessors return none, and wrong-kind changes throw, rather than reinterpreting.
-    Assert(array.At(0) is .Some(_) && object.At(0) is none, "indexing works on arrays and not on objects");
-    Assert(object.MemberAt(0) is .Some(_) && array.MemberAt(0) is none, "and members the other way round");
-    Assert(nullValue.Length() is none && text.Length() is none, "a scalar has no length");
+    Assert(array.At(0) != none && object.At(0) == none, "indexing works on arrays and not on objects");
+    Assert(object.MemberAt(0) != none && array.MemberAt(0) == none, "and members the other way round");
+    Assert(nullValue.Length() == none && text.Length() == none, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
     var pushWrongKind = false;
     match nullValue.Push(move pushRefused) {
@@ -199,9 +202,9 @@ func Main() -> int {
     Assert(insertWrongKind, "and so is inserting a member into an array");
 
     // Removing a member returns it, and removing one that is not there returns nothing.
-    Assert(object.RemoveFirst(zeta) is .Some(removed) && removed.name.View().Equals(zeta), "a member is removed");
-    Assert(object.RemoveFirst(zeta) is none && object.Length() is .Some(2), "only once");
-    Assert(array.RemoveFirst(zeta) is none, "and an array has no members to remove");
+    Assert(if let removed? = object.RemoveFirst(zeta) && removed.name.View().Equals(zeta) { true } else { false }, "a member is removed");
+    Assert(object.RemoveFirst(zeta) == none && object.Length() == 2, "only once");
+    Assert(array.RemoveFirst(zeta) == none, "and an array has no members to remove");
 
     return 0;
 }

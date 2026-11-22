@@ -238,7 +238,7 @@ extend Ipv6Address {
                 if count > 6u { return none; }
                 let tail = Ipv4Address::Parse(text[index..]);
                 match tail {
-                    .Some(v4) => {
+                    v4? => {
                         groups[count] = (v4.octets[0] as uint16 << 8) | v4.octets[1] as uint16;
                         groups[count + 1] = (v4.octets[2] as uint16 << 8) | v4.octets[3] as uint16;
                         count = count + 2;
@@ -252,7 +252,7 @@ extend Ipv6Address {
             var digits: uint = 0;
             while index < text.length && text[index] != ':' {
                 match HexValue(text[index]) {
-                    .Some(digit) => value = value * 16u + digit,
+                    digit? => value = value * 16u + digit,
                     none => return none
                 }
                 digits = digits + 1;
@@ -360,7 +360,7 @@ extend Ipv6Address {
     /// @see https://rux-lang.dev/docs/api/net/address#ipv6-write-text
     pub func WriteText(&self, into: var char8[..]) -> uint {
         match self.AsMappedIpv4() {
-            .Some(mapped) => {
+            mapped? => {
                 var at: uint = 0;
                 for c in "::ffff:" { at = Put(into, at, c); }
                 return at + mapped.WriteText(if at < into.length { into[at..] } else { into[into.length..] });
@@ -453,11 +453,11 @@ extend IpAddress {
     /// @see https://rux-lang.dev/docs/api/net/address#ip-parse
     pub func Parse(text: char8[..]) -> Self? {
         match Ipv4Address::Parse(text) {
-            .Some(v4) => return Self::FromIpv4(v4),
+            v4? => return Self::FromIpv4(v4),
             none => {}
         }
         match Ipv6Address::Parse(text) {
-            .Some(v6) => return Self::FromIpv6(v6),
+            v6? => return Self::FromIpv6(v6),
             none => return none
         }
     }
@@ -560,7 +560,7 @@ extend SocketAddress {
             while close < text.length && text[close] != ']' { close = close + 1; }
             if close + 1u >= text.length || text[close + 1u] != ':' { return none; }
             match Ipv6Address::Parse(text[1..close]) {
-                .Some(v6) => ip = IpAddress::FromIpv6(v6),
+                v6? => ip = IpAddress::FromIpv6(v6),
                 none => return none
             }
             portAt = close + 2u;
@@ -574,7 +574,7 @@ extend SocketAddress {
             }
             if colon == text.length { return none; }
             match Ipv4Address::Parse(text[..colon]) {
-                .Some(v4) => ip = IpAddress::FromIpv4(v4),
+                v4? => ip = IpAddress::FromIpv4(v4),
                 none => return none
             }
             portAt = colon + 1u;

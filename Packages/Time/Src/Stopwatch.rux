@@ -50,7 +50,7 @@ extend Stopwatch {
     /// @see https://rux-lang.dev/docs/api/time/stopwatch#start
     pub func Start(&var self) {
         if self.IsRunning() { return; }
-        self.startedAt = .Some(Instant::Now());
+        self.startedAt = Instant::Now();
     }
 
     /// Stops the stopwatch, adding the current stretch to its total.
@@ -86,7 +86,7 @@ extend Stopwatch {
     /// @see https://rux-lang.dev/docs/api/time/stopwatch#is-running
     pub func IsRunning(&self) -> bool {
         return match self.startedAt {
-            .Some(_) => true,
+            _? => true,
             none => false
         };
     }
@@ -98,7 +98,7 @@ extend Stopwatch {
     /// @see https://rux-lang.dev/docs/api/time/stopwatch#elapsed
     pub func Elapsed(&self) -> Duration {
         return match self.startedAt {
-            .Some(started) => Accumulate(self.finished, started.Elapsed()),
+            started? => Accumulate(self.finished, started.Elapsed()),
             none => self.finished
         };
     }

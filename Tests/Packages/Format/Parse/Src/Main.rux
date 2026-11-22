@@ -86,45 +86,45 @@ func Main() -> int {
     }
 
     // What is refused, and why.
-    if (ParseInt64("") !! none) is .Some(_) { return 20; }
-    if (ParseInt64("12a") !! none) is .Some(_) { return 21; }
-    if (ParseInt64("-") !! none) is .Some(_) { return 22; }
-    if (ParseInt64("0x") !! none) is .Some(_) { return 23; }
-    if (ParseUint64("-1") !! none) is .Some(_) { return 24; }
-    if (ParseUint64("0xG") !! none) is .Some(_) { return 25; }
-    if (ParseUint64("0b2") !! none) is .Some(_) { return 26; }
+    if (ParseInt64("") !! none) != none { return 20; }
+    if (ParseInt64("12a") !! none) != none { return 21; }
+    if (ParseInt64("-") !! none) != none { return 22; }
+    if (ParseInt64("0x") !! none) != none { return 23; }
+    if (ParseUint64("-1") !! none) != none { return 24; }
+    if (ParseUint64("0xG") !! none) != none { return 25; }
+    if (ParseUint64("0b2") !! none) != none { return 26; }
 
     // The bounds, narrow and wide: the largest in, one past it out.
     {
         let value = ParseInt8("127") catch { _ => return 31 };
         if value != 127 { return 30; }
     }
-    if (ParseInt8("128") !! none) is .Some(_) { return 32; }
+    if (ParseInt8("128") !! none) != none { return 32; }
     {
         let value = ParseInt8("-128") catch { _ => return 34 };
         if value != -128i8 { return 33; }
     }
-    if (ParseInt8("-129") !! none) is .Some(_) { return 35; }
+    if (ParseInt8("-129") !! none) != none { return 35; }
     {
         let value = ParseUint8("255") catch { _ => return 37 };
         if value != 255 { return 36; }
     }
-    if (ParseUint8("256") !! none) is .Some(_) { return 38; }
+    if (ParseUint8("256") !! none) != none { return 38; }
 
     {
         let value = ParseUint128("340282366920938463463374607431768211455") catch { _ => return 41 };
         if (value % 10) != 5 { return 40; }
     }
-    if (ParseUint128("340282366920938463463374607431768211456") !! none) is .Some(_) { return 42; }
+    if (ParseUint128("340282366920938463463374607431768211456") !! none) != none { return 42; }
     {
         let value = ParseInt128("-170141183460469231731687303715884105728") catch { _ => return 44 };
         if value >= 0 { return 43; }
     }
-    if (ParseInt128("170141183460469231731687303715884105728") !! none) is .Some(_) { return 45; }
+    if (ParseInt128("170141183460469231731687303715884105728") !! none) != none { return 45; }
 
     // The widest width takes its largest value, and one more digit is an overflow rather than a wrap.
-    if (ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095") !! none) is none { return 50; }
-    if (ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096") !! none) is .Some(_) { return 51; }
+    if (ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095") !! none) == none { return 50; }
+    if (ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096") !! none) != none { return 51; }
 
     // Booleans are the two words and nothing else.
     {
@@ -135,9 +135,9 @@ func Main() -> int {
         let value = ParseBool("false") catch { _ => return 63 };
         if value { return 62; }
     }
-    if (ParseBool("True") !! none) is .Some(_) { return 64; }
-    if (ParseBool("1") !! none) is .Some(_) { return 65; }
-    if (ParseBool("") !! none) is .Some(_) { return 66; }
+    if (ParseBool("True") !! none) != none { return 64; }
+    if (ParseBool("1") !! none) != none { return 65; }
+    if (ParseBool("") !! none) != none { return 66; }
 
     // A character is one whole scalar value.
     {
@@ -148,8 +148,8 @@ func Main() -> int {
         let value = ParseChar("€") catch { _ => return 73 };
         if (value as uint32) != 0x20AC { return 72; }
     }
-    if (ParseChar("ab") !! none) is .Some(_) { return 74; }
-    if (ParseChar("") !! none) is .Some(_) { return 75; }
+    if (ParseChar("ab") !! none) != none { return 74; }
+    if (ParseChar("") !! none) != none { return 75; }
 
     // Floats: the special spellings formatting writes, the exponent's edges, and the narrower width's bound.
     {
@@ -164,13 +164,13 @@ func Main() -> int {
         let value = ParseFloat64("-Inf") catch { _ => return 85 };
         if !IsInfinite(value) || value > 0.0 { return 84; }
     }
-    if (ParseFloat64("Infinity") !! none) is .Some(_) { return 86; }
+    if (ParseFloat64("Infinity") !! none) != none { return 86; }
 
     {
         let value = ParseFloat64("1.5e300") catch { _ => return 88 };
         if value < 1.0e300 { return 87; }
     }
-    if (ParseFloat64("1e400") !! none) is .Some(_) { return 89; }
+    if (ParseFloat64("1e400") !! none) != none { return 89; }
     {
         let value = ParseFloat64("1e-400") catch { _ => return 91 };
         if value != 0.0 { return 90; }
@@ -181,7 +181,7 @@ func Main() -> int {
         if value != 2.5f32 { return 92; }
     }
     // A value a float64 holds and a float32 does not is the narrow width's overflow, not a quiet infinity.
-    if (ParseFloat32("1e39") !! none) is .Some(_) { return 94; }
+    if (ParseFloat32("1e39") !! none) != none { return 94; }
     {
         let value = ParseFloat32("1e-39") catch { _ => return 96 };
         if value <= 0.0f32 { return 95; }
@@ -212,7 +212,7 @@ func Main() -> int {
         let value = ParseChar("\u{20AC}") catch { _ => return 109 };
         if value as uint32 != 0x20AC { return 108; }
     }
-    if (ParseInt64("nope") !! none) is .Some(_) { return 110; }
+    if (ParseInt64("nope") !! none) != none { return 110; }
 
     // Where each refusal happened. An empty text has one position and it is zero, which is also its length.
     match ParseInt64("") {

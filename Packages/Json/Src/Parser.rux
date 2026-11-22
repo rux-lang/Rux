@@ -505,7 +505,7 @@ extend JsonParser {
                 return move object;
             }
 
-            if object.Find(name.View()) is .Some(_) {
+            if object.Find(name.View()) != none {
                 if self.duplicates == DuplicateKeyPolicy::Reject {
                     name.Clear();
                     return self.Stop(JsonStop::DuplicateName);

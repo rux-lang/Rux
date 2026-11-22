@@ -19,7 +19,7 @@ pub func PrintLine() -> IoError? {
 // The terminator, written only if what came before it was. `first` is what the value's own write reported, and a
 // failed value keeps its own failure rather than being overwritten by whatever the newline would have said.
 func Terminate(first: IoError?) -> IoError? {
-    if first is IoError { return first; }
+    if first != none { return first; }
     return PrintLine();
 }
 

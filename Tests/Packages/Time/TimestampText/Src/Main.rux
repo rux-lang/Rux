@@ -37,7 +37,7 @@ func Shown(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
-    if (shown.WriteDisplay(writer, spec) !! none) is none { return false; }
+    if (shown.WriteDisplay(writer, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -46,7 +46,7 @@ func Inspected(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool 
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
-    if (shown.WriteDebug(writer, spec) !! none) is none { return false; }
+    if (shown.WriteDebug(writer, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -84,8 +84,8 @@ func RoundTrips(value: Timestamp) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: Timestamp = value;
-    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) is none { return false; }
-    return if (ParseRfc3339(writer.Written()) !! none) is .Some(parsed) { parsed.ToTimestamp().Equals(value) } else { false };
+    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) == none { return false; }
+    return if let parsed? = (ParseRfc3339(writer.Written()) !! none) { parsed.ToTimestamp().Equals(value) } else { false };
 }
 
 func Main() -> int {

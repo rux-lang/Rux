@@ -127,7 +127,7 @@ func Main() -> int {
     broken.Info("lost");
     broken.Info("lost too");
     match broken.Failure() {
-        .Some(error) => Assert(error.kind == IoErrorKind::BrokenPipe, "the first failure is kept"),
+        error? => Assert(error.kind == IoErrorKind::BrokenPipe, "the first failure is kept"),
         none => Assert(false, "the failure is reported")
     }
     Assert(timed.Failure() == none, "a logger that wrote everything reports nothing");

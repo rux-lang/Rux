@@ -81,7 +81,7 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
         opens = opens + 1;
         var index: uint = 0;
         while index < (value.Length() ?? 0) {
-            if value.At(index) is .Some(element) {
+            if let element? = value.At(index) {
                 TreeCounts(element, scalars, opens, names);
             }
             index = index + 1;
@@ -93,7 +93,7 @@ func TreeCounts(value: &JsonValue, scalars: &var uint, opens: &var uint, names: 
         var index: uint = 0;
         while index < (value.Length() ?? 0) {
             names = names + 1;
-            if value.MemberAt(index) is .Some(member) {
+            if let member? = value.MemberAt(index) {
                 TreeCounts(member.value, scalars, opens, names);
             }
             index = index + 1;
@@ -231,14 +231,14 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
 
     var builder = StringBuilder::New(allocator);
     let sink: &var TextWriter = builder;
-    wrote = (WriteValue(sink, value, JsonStyle::Compact()) !! none) is .Some(_);
+    wrote = (WriteValue(sink, value, JsonStyle::Compact()) !! none) != none;
     Assert(wrote, "and writes");
     var once = builder.TakeString();
 
     let again = Parse(allocator, once.View().Bytes()) catch { _ => Panic("and the written form parses") };
     var secondBuilder = StringBuilder::New(allocator);
     let secondSink: &var TextWriter = secondBuilder;
-    wrote = (WriteValue(secondSink, again, JsonStyle::Compact()) !! none) is .Some(_);
+    wrote = (WriteValue(secondSink, again, JsonStyle::Compact()) !! none) != none;
     var twice = secondBuilder.TakeString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
@@ -264,7 +264,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: &var bool) {
 // check is that whatever the parser built before it stopped was released rather than leaked, and the allocator
 // counting that is in the parser test.
 func CheckRefused(allocator: Allocator, text: char8[..]) {
-    Assert((Parse(allocator, text) !! none) is none, "a malformed document is refused");
+    Assert((Parse(allocator, text) !! none) == none, "a malformed document is refused");
 }
 
 // Whether an outcome is the refusal it should be, by the failure's own rendering, which names the case and the
@@ -273,7 +273,7 @@ func RefusedWith(reason: JsonParseError, expected: char8[..]) -> bool {
     var storage: char8[96];
     var writer = BufferWriter::New(storage[..96]);
     let sink: &var TextWriter = writer;
-    if (reason.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (reason.WriteDebug(sink, FormatSpec::Plain()) !! none) == none { return false; }
     let shown = writer.Written();
     if shown.length != expected.length { return false; }
     var index: uint = 0;

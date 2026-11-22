@@ -390,7 +390,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     s->isCompileTime = isCompileTime;
     bodiesNeedConditionalFolding = bodiesNeedConditionalFolding || isCompileTime;
     const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
-    auto subject = ParseRequiredExpr(isCompileTime ? "after 'when'" : "after 'if'");
+    auto subject = isCompileTime ? ParseRequiredExpr("after 'when'") : ParseCondition("after 'if'");
     structInitAllowed = savedStructInitAllowed;
 
     // Compile-time match: `when subject { pattern, ... => body, ... else => body }`.
@@ -501,7 +501,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
         }
         Advance(); // consume 'if' / 'when'
         structInitAllowed = false;
-        elif.condition = ParseRequiredExpr(isCompileTime ? "after 'else when'" : "after 'else if'");
+        elif.condition = isCompileTime ? ParseRequiredExpr("after 'else when'") : ParseCondition("after 'else if'");
         structInitAllowed = savedStructInitAllowed;
         elif.block = ParseBlock(isCompileTime ? "the 'else when' body" : "the 'else if' body", valueBranches);
         s->elseIfs.push_back(std::move(elif));
@@ -690,7 +690,7 @@ std::unique_ptr<WhileStmt> Parser::ParseWhileStmt() {
     auto s = std::make_unique<WhileStmt>();
     s->location = loc;
     const bool savedStructInitAllowed = std::exchange(structInitAllowed, false);
-    s->condition = ParseRequiredExpr("after 'while'");
+    s->condition = ParseCondition("after 'while'");
     structInitAllowed = savedStructInitAllowed;
     s->body = ParseBlock("the 'while' body");
     return s;

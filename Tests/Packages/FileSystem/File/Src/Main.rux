@@ -32,7 +32,7 @@ func Run() -> int ! IoError {
     var written = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(written.IsOpen(), "writing creates the missing file");
     written.Close()!;
-    Assert(!written.IsOpen() && (written.Close() !! none) is .Some(_), "a second close is a no-op");
+    Assert(!written.IsOpen() && (written.Close() !! none) != none, "a second close is a no-op");
 
     // Now that it exists: reading finds it, and a creation claim is refused.
     var opened = File::Open(allocator, scratch, OpenOptions::Reading())!;

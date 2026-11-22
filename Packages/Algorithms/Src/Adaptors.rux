@@ -278,7 +278,7 @@ extend Chained<I, J, T> {
     pub func Next(&var self) -> T? {
         if !self.firstDone {
             match self.first.Next() {
-                .Some(item) => return item,
+                item? => return item,
                 none => self.firstDone = true
             }
         }

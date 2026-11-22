@@ -133,7 +133,7 @@ func Major(version: &SemanticVersion) -> uint {
 
 func Main() -> int {
     let version = SemanticVersion::New(1, 2, 3);
-    let answer: int32? = .Some(42i32);
+    let answer: int32? = 42i32;
     Assert(Major(version) == 1u, "borrowed version");
     Assert((answer ?? 0i32) == 42i32, "present optional value");
     return 0;

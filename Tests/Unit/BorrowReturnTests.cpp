@@ -119,7 +119,7 @@ TEST_CASE("an optional reference is written '&T?' and a reference to an optional
         struct Pair { first: int32; second: int32; }
         extend Pair {
             func Find(&self) -> &int32? { return self.first; }
-            func Holds(&self, value: &(int32?)) -> bool { return value is none; }
+            func Holds(&self, value: &(int32?)) -> bool { return value == none; }
         }
     )");
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
@@ -204,7 +204,7 @@ TEST_CASE("the reference an optional reference holds borrows what the optional b
             }
         }
         func Use(pair: &var Pair) -> int32 {
-            if pair.Find(true) is .Some(value) {
+            if let value? = pair.Find(true) {
                 pair.first = 2i32;
                 return value;
             }
@@ -224,7 +224,7 @@ TEST_CASE("the reference an optional reference holds borrows what the optional b
         func Use(pair: &var Pair) -> int32 {
             let found = pair.Find(true);
             match found {
-                .Some(value) => {
+                value? => {
                     pair.second = 2i32;
                     let copy: int32 = value;
                 },

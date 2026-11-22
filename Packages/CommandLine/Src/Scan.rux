@@ -187,15 +187,15 @@ extend Scanner {
         if option == 0xFFFFFFFF { throw .UnknownOption(argument); }
         if !TakesValue(spec, option) {
             if equals < units.length { throw .UnexpectedValue(LongName(spec, option)); }
-            return .Some(Item::Option(option, none, at));
+            return Item::Option(option, none, at);
         }
         if equals < units.length {
-            return .Some(Item::Option(option, .Some(Part(units, equals + 1, units.length)), at));
+            return Item::Option(option, Part(units, equals + 1, units.length), at);
         }
         if self.index >= self.end { throw .MissingValue(LongName(spec, option)); }
         let value = self.source.At(self.index);
         self.index = self.index + 1;
-        return .Some(Item::Option(option, .Some(value), at));
+        return Item::Option(option, value, at);
     }
 
     // The next short option in the cluster that started at the argument before `index`.
@@ -212,16 +212,16 @@ extend Scanner {
         }
         if !TakesValue(spec, option) {
             self.cluster = if position + 1 < units.length { position + 1 } else { 0 };
-            return .Some(Item::Option(option, none, at));
+            return Item::Option(option, none, at);
         }
         self.cluster = 0;
         if position + 1 < units.length {
-            return .Some(Item::Option(option, .Some(Part(units, position + 1, units.length)), at));
+            return Item::Option(option, Part(units, position + 1, units.length), at);
         }
         if self.index >= self.end { throw .MissingValue(LongName(spec, option)); }
         let value = self.source.At(self.index);
         self.index = self.index + 1;
-        return .Some(Item::Option(option, .Some(value), at));
+        return Item::Option(option, value, at);
     }
 
     func Positional(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
@@ -231,7 +231,7 @@ extend Scanner {
             if command == 0xFFFFFFFF { throw .UnknownCommand(argument); }
             // Everything after the subcommand's name is the subcommand's to read.
             self.index = self.end;
-            return .Some(Item::Command(command, at));
+            return Item::Command(command, at);
         }
         let declared = spec.positionals.length;
         if declared == 0 { throw .UnexpectedArgument(argument); }
@@ -243,6 +243,6 @@ extend Scanner {
             slot = declared - 1;
         }
         self.positionals = self.positionals + 1;
-        return .Some(Item::Positional(slot, argument, at));
+        return Item::Positional(slot, argument, at);
     }
 }

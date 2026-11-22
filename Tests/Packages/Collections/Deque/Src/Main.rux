@@ -43,8 +43,8 @@ func Main() -> int {
     Assert(queue.Capacity() == 0, "and has no storage");
     Assert(queue.PopFront() == none, "with nothing to take from either end");
     Assert(queue.PopBack() == none, "front or back");
-    Assert(queue.Front() is none, "and nothing to look at");
-    Assert(queue.Back() is none, "at either end");
+    Assert(queue.Front() == none, "and nothing to look at");
+    Assert(queue.Back() == none, "at either end");
 
     // The first push takes the minimum capacity.
     queue.PushBack(1);
@@ -55,14 +55,14 @@ func Main() -> int {
     queue.PushBack(2);
     queue.PushFront(0);
     Assert(queue.Length() == 3, "the deque holds all three");
-    Assert(queue.Get(0) == .Some(0), "with the front-pushed element first");
-    Assert(queue.Get(1) == .Some(1), "and the rest in order");
-    Assert(queue.Get(2) == .Some(2), "to the back");
+    Assert(queue.Get(0) == 0, "with the front-pushed element first");
+    Assert(queue.Get(1) == 1, "and the rest in order");
+    Assert(queue.Get(2) == 2, "to the back");
     Assert(queue.Get(3) == none, "and nothing past it");
 
     // First in, first out, which is what this container is for.
-    Assert(queue.PopFront() == .Some(0), "the front comes off first");
-    Assert(queue.PopBack() == .Some(2), "and the back comes off last");
+    Assert(queue.PopFront() == 0, "the front comes off first");
+    Assert(queue.PopBack() == 2, "and the back comes off last");
     Assert(queue.Length() == 1, "leaving what was in the middle");
 
     // Wrapping: push and pop enough times that the ring goes round several times, checking the queue order each
@@ -75,7 +75,7 @@ func Main() -> int {
         queue.PushBack(pushed);
         pushed = pushed + 1;
         if queue.Length() > 3 {
-            Assert(queue.PopFront() == .Some(expected), "and every element comes back in the order it went in");
+            Assert(queue.PopFront() == expected, "and every element comes back in the order it went in");
             expected = expected + 1;
         }
         round++;
@@ -89,7 +89,7 @@ func Main() -> int {
     while round < 40 {
         queue.PushFront(round as int32);
         if queue.Length() > 3 {
-            Assert(queue.PopBack() == .Some((round - 3) as int32), "and the back gives them back in order");
+            Assert(queue.PopBack() == (round - 3) as int32, "and the back gives them back in order");
         }
         round++;
     }
@@ -138,9 +138,9 @@ func Main() -> int {
     queue.ShrinkToFit();
     Assert(queue.Capacity() < roomy, "giving back what the length does not need");
     Assert(queue.Capacity() == MinimumDequeCapacity, "down to the smallest power of two that holds it");
-    Assert(queue.Get(0) == .Some(7), "and keeping the element");
+    Assert(queue.Get(0) == 7, "and keeping the element");
 
-    Assert(queue.Get(0) == .Some(7), "and the elements");
+    Assert(queue.Get(0) == 7, "and the elements");
 
     // Construction from a slice, and cloning a wrapped deque.
     var source: int32[3];
@@ -151,14 +151,14 @@ func Main() -> int {
     let items = (@source[0])[..3];
     var built = Deque::FromSlice<int32>(allocator, items);
     Assert(built.Length() == 3, "holding every element");
-    Assert(built.Get(2) == .Some(3), "in order");
+    Assert(built.Get(2) == 3, "in order");
 
     built.PushFront(0);
     Assert(!built.IsContiguous(), "so the clone has a wrapped source to copy");
     var copy = built.Clone();
     Assert(copy.Length() == 4, "with every element");
-    Assert(copy.Get(0) == .Some(0), "in order");
-    Assert(copy.Get(3) == .Some(3), "front to back");
+    Assert(copy.Get(0) == 0, "in order");
+    Assert(copy.Get(3) == 3, "front to back");
     Assert(copy.IsContiguous(), "and the copy starts unwrapped whatever the original was doing");
 
     // Ownership: every element is destroyed exactly once, and pushing destroys none.

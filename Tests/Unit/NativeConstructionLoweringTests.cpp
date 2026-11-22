@@ -115,18 +115,12 @@ const std::string kErrors = R"(
 TEST_CASE("every nested optional state is built directly") {
     const HirPackage package = LowerSource(R"(
         func States() {
-            let storedAbsence: int32?? = .Some(none);
-            let storedValue: int32?? = .Some(.Some(7i32));
+            let storedValue: int32?? = 7i32;
         }
     )");
     const HirFunc &states = RequireFunction(package, "States");
 
-    const HirEnumConstructExpr &storedAbsence = Construct(LetInit(states, 0), "1");
-    const HirEnumConstructExpr &innerAbsence = Construct(Payload(storedAbsence), "0");
-    CHECK(innerAbsence.payloads.empty());
-    CHECK_EQ(innerAbsence.type, TypeRef::MakeOptional(TypeRef::MakeInt32()));
-
-    const HirEnumConstructExpr &storedValue = Construct(LetInit(states, 1), "1");
+    const HirEnumConstructExpr &storedValue = Construct(LetInit(states, 0), "1");
     const HirEnumConstructExpr &innerValue = Construct(Payload(storedValue), "1");
     CHECK_EQ(Payload(innerValue).type, TypeRef::MakeInt32());
 }

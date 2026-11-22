@@ -92,7 +92,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
     if pieces.hasAuthority {
         out.PushAll("//");
         match pieces.userinfo {
-            .Some(userinfo) => {
+            userinfo? => {
                 url.hasUserinfo = true;
                 url.userinfoStart = out.length;
                 var colon: uint = 0;
@@ -131,7 +131,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             if network && url.hostEnd == url.hostStart { throw .InvalidHost; }
         }
         match pieces.port {
-            .Some(port) => {
+            port? => {
                 if port.length > 0 {
                     var value: uint = 0;
                     var digit: uint = 0;
@@ -165,7 +165,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
     url.pathEnd = out.length;
 
     match pieces.query {
-        .Some(query) => {
+        query? => {
             out.Push(c8'?');
             url.hasQuery = true;
             url.queryStart = out.length;
@@ -175,7 +175,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         none => {}
     }
     match pieces.fragment {
-        .Some(fragment) => {
+        fragment? => {
             out.Push(c8'#');
             url.hasFragment = true;
             url.fragmentStart = out.length;
@@ -190,7 +190,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
 // Whether an optional piece of text is there.
 func IsSet(text: char8[..]?) -> bool {
     match text {
-        .Some(_) => return true,
+        _? => return true,
         none => return false
     }
 }

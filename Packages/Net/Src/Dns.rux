@@ -223,7 +223,7 @@ func ReadConfiguration(allocator: Allocator) -> Resolver {
         let keyword = NextField(line, @at);
         if SameName(keyword, "nameserver") && configuration.servers.Length() < MaximumServers {
             match IpAddress::Parse(NextField(line, @at)) {
-                .Some(ip) => configuration.servers.Push(SocketAddress { ip, port: 53 }),
+                ip? => configuration.servers.Push(SocketAddress { ip, port: 53 }),
                 none => {}
             }
         }

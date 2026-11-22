@@ -94,7 +94,7 @@ func Main() -> int {
     Assert(digit == ('7' as int32), "the other member of the sum is thrown");
 
     // A `throw` arm body.
-    Assert((Classify('a') !! none) == .Some(1i32), "a value arm");
+    Assert((Classify('a') !! none) == 1i32, "a value arm");
     Assert((Classify(' ') catch { e => Code(e) }) == 1i32, "a throw arm");
 
     // A `throw` reaches the caller's arms like a failed call.

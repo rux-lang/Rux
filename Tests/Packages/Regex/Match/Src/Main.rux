@@ -32,7 +32,7 @@ func Finds(pattern: char8[..], text: char8[..], start: uint, end: uint) -> bool 
     let regex = Compiled(pattern);
     let found = regex.Find(text);
     match found {
-        .Some(span) => return span.start == start && span.end == end,
+        span? => return span.start == start && span.end == end,
         none => return false
     }
 }
@@ -41,7 +41,7 @@ func FindsNothing(pattern: char8[..], text: char8[..]) -> bool {
     let regex = Compiled(pattern);
     let found = regex.Find(text);
     match found {
-        .Some(_) => return false,
+        _? => return false,
         none => return true
     }
 }
@@ -57,14 +57,14 @@ func Refuses(pattern: char8[..], kind: RegexErrorKind, offset: uint) -> bool {
 
 func Ended(part: char8[..]?) -> bool {
     match part {
-        .Some(_) => return false,
+        _? => return false,
         none => return true
     }
 }
 
 func GroupIs(span: Match?, start: uint, end: uint) -> bool {
     match span {
-        .Some(found) => return found.start == start && found.end == end,
+        found? => return found.start == start && found.end == end,
         none => return false
     }
 }
@@ -128,7 +128,7 @@ func Main() -> int {
            "groups");
     let captured = date.Capture("date: 2026-10-10.");
     match move captured {
-        .Some(groups) => {
+        groups? => {
             Assert(groups.Count() == 4u && GroupIs(groups.Group(0), 6, 16), "the whole match is group 0");
             Assert(GroupIs(groups.Named("year"), 6, 10) && GroupIs(groups.Named("month"), 11, 13) &&
                    GroupIs(groups.Group(3), 14, 16), "groups by name and number");
@@ -138,12 +138,12 @@ func Main() -> int {
     }
     let either = Compiled("(a)|(b)");
     match either.Capture("b") {
-        .Some(groups) => Assert(groups.Group(1) == none && GroupIs(groups.Group(2), 0, 1), "a group not taken"),
+        groups? => Assert(groups.Group(1) == none && GroupIs(groups.Group(2), 0, 1), "a group not taken"),
         none => Assert(false, "b matches")
     }
     let three = Compiled("(a|ab)(c|bcd)(d*)");
     match three.Capture("abcd") {
-        .Some(groups) => Assert(GroupIs(groups.Group(1), 0, 1) && GroupIs(groups.Group(2), 1, 4) &&
+        groups? => Assert(GroupIs(groups.Group(1), 0, 1) && GroupIs(groups.Group(2), 1, 4) &&
                                 GroupIs(groups.Group(3), 4, 4), "groups as Python gives them"),
         none => Assert(false, "abcd matches")
     }

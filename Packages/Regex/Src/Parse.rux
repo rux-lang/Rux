@@ -606,7 +606,7 @@ extend Parser {
             self.at = self.at + 1;
         }
         match NamedItem(name) {
-            .Some(item) => {
+            item? => {
                 var found = item;
                 found.negated = negate;
                 self.PushItem(regex, found);
@@ -762,7 +762,7 @@ extend Parser {
             }
             let at = self.at;
             match self.ParseClassCharacter(regex)! {
-                .Some(low) => {
+                low? => {
                     var high = low;
                     if self.Peek() == 0x2Du32 && self.PeekAt(1) != 0x5Du32 && self.PeekAt(1) != 0xFFFFFFFFu32 {
                         self.at = self.at + 1;

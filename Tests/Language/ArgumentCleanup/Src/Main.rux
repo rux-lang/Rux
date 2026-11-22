@@ -88,8 +88,8 @@ func Main() -> int {
     Reset();
     Assert((Nested(-1) catch { error => error }) == -1 && drops == 2 && order == 21, "a nested call's arguments");
     Reset();
-    Assert(Missing(-1) is none && drops == 1, "'?' on a missing value");
+    Assert(Missing(-1) == none && drops == 1, "'?' on a missing value");
     Reset();
-    Assert(Missing(1) == .Some(2) && drops == 1, "'?' on a present value");
+    Assert(Missing(1) == 2 && drops == 1, "'?' on a present value");
     return 0;
 }

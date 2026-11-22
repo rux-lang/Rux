@@ -41,7 +41,7 @@ func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var 
     let allocator = SystemAllocator::New();
     var cursor = ByteCursor::New(storage);
     let writer: &var TextWriter = cursor;
-    Assert((WriteWideFloat(allocator, writer, spec, bits, layout) !! none) is .Some(_), "rendering succeeds");
+    Assert((WriteWideFloat(allocator, writer, spec, bits, layout) !! none) != none, "rendering succeeds");
     return cursor.Written();
 }
 
@@ -64,7 +64,7 @@ func Bits(text: char8[..], layout: &FloatLayout) -> uint512 {
 
 func Refused(text: char8[..], layout: &FloatLayout) -> bool {
     let allocator = SystemAllocator::New();
-    return (ParseWideFloat(allocator, text, layout) !! none) is none;
+    return (ParseWideFloat(allocator, text, layout) !! none) == none;
 }
 
 func Main() -> int {
@@ -210,7 +210,7 @@ func Main() -> int {
     var cursor = ByteCursor::New(room);
     let writer: &var TextWriter = cursor;
     let one = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
-    Assert((one.FormatWith(allocator, writer, plain) !! none) is .Some(_), "the explicit entry point renders");
+    Assert((one.FormatWith(allocator, writer, plain) !! none) != none, "the explicit entry point renders");
     Assert(Same(cursor.Written(), "1.0"), "to the same text it always did");
 
     // A style is refused by the value, which the removed Display wrapper used to do on its way past.
@@ -218,7 +218,7 @@ func Main() -> int {
     styled = ParseFormatSpec("x") catch { _ => Panic("a base spec parses") };
     var second = ByteCursor::New(room);
     let other: &var TextWriter = second;
-    Assert((one.FormatWith(allocator, other, styled) !! none) is none, "and a style is still refused");
+    Assert((one.FormatWith(allocator, other, styled) !! none) == none, "and a style is still refused");
     let value = ParseFloat256(allocator, "2.5") catch { _ => Panic("the typed entry point reads") };
     Assert(value.IsFinite() && !value.IsNegative() && !value.IsNan(), "and answers the questions a caller asks");
     let tiny = ParseFloat80(allocator, "1e-4940") catch { _ => Panic("a float80 subnormal reads") };

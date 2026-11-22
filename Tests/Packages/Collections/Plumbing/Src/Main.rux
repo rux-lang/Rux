@@ -39,7 +39,7 @@ func Main() -> int {
     // An iterator driven to its end keeps reporting nothing.
     var drained = ValueIterator<int32>::New(items);
     seen = 0;
-    while drained.Next() is int32 {
+    while drained.Next() != none {
         seen = seen + 1;
     }
     Assert(seen == 5, "driving an iterator by hand yields every element");
@@ -52,7 +52,7 @@ func Main() -> int {
         seen = seen + 1;
         break;
     }
-    Assert(resumed.Next() is int32, "a loop that stops early leaves the iterator after the item it read");
+    Assert(resumed.Next() != none, "a loop that stops early leaves the iterator after the item it read");
     for value in resumed {
         seen = seen + 1;
     }

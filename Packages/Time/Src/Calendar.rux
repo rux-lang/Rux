@@ -158,12 +158,12 @@ extend TimeOfDay {
         if hour > 23 || minute > 59 || second > 59 || nanosecond > 999999999 {
             return none;
         }
-        return .Some(Self {
+        return Self {
             hour,
             minute,
             second,
             nanosecond
-        });
+        };
     }
 
     /// Midnight exactly.

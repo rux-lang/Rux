@@ -146,5 +146,5 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
         }
     }
     allocator.Deallocate(block, blockLayout) catch { _ => {} };
-    if failure is .Some(error) { throw error; }
+    if let error? = failure { throw error; }
 }

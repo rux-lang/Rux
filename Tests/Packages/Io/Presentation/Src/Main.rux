@@ -113,7 +113,7 @@ func IsUnsupported(reason: FormatError) -> bool {
 // Whether a failure slot holds a failure of `kind`.
 func Holds(slot: IoError?, kind: IoErrorKind) -> bool {
     return match slot {
-        .Some(error) => error.kind == kind,
+        error? => error.kind == kind,
         none => false
     };
 }
@@ -202,14 +202,14 @@ func Main() -> int {
 
     var destroyed: int32 = 0;
     var value = Owned { counter: @destroyed, tag: 7i32 };
-    Assert((WriteValueLine(out, value) !! none) is .Some(_), "a value writes itself into a stream");
+    Assert((WriteValueLine(out, value) !! none) != none, "a value writes itself into a stream");
     Assert(Same(second.written[..second.length], "owned-7\n"), "with its newline after it");
-    Assert(!(healthy is IoError), "and nothing recorded against the stream");
+    Assert(!(healthy != none), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
     Assert(destroyed == 0, "writing a value destroys nothing");
-    Assert((WriteValueLine(out, value) !! none) is .Some(_), "so the same value goes out again");
+    Assert((WriteValueLine(out, value) !! none) != none, "so the same value goes out again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(second.written[..second.length], "owned-7\nowned-7\n"), "identically");
 
@@ -232,16 +232,16 @@ func Main() -> int {
         .Failure(refusal) => Assert(IsUnsupported(refusal), "a value that refuses reports its own failure"),
     }
     Assert(third.length == 0, "and no newline follows it");
-    Assert(!(thirdFailure is IoError), "the destination being blameless");
+    Assert(!(thirdFailure != none), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
-    Assert((WriteFormatLine(thirdOut, "abc{") !! none) is none, "a pattern that does not parse is refused");
+    Assert((WriteFormatLine(thirdOut, "abc{") !! none) == none, "a pattern that does not parse is refused");
     Assert(third.length == 0, "with no newline after it");
-    Assert((WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32) !! none) is none, "and so is one short of arguments");
+    Assert((WriteFormatLine(thirdOut, Pattern("a {} b {}"), 1i32) !! none) == none, "and so is one short of arguments");
     Assert(third.length == 0, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.
-    Assert((WriteFormatLine(thirdOut, "n={}", 42i32) !! none) is .Some(_), "a pattern that is right writes its line");
+    Assert((WriteFormatLine(thirdOut, "n={}", 42i32) !! none) != none, "a pattern that is right writes its line");
     Assert(Same(third.written[..third.length], "n=42\n"), "terminator and all");
 
     // The line rule against a destination that fails partway: the value goes out, the newline does not, and the
@@ -300,7 +300,7 @@ func Main() -> int {
     let notFound = IoError { kind: IoErrorKind::NotFound, raw: 2 };
     let noListener = IoError::Of(IoErrorKind::ConnectionRefused);
     let negativeCode = IoError { kind: IoErrorKind::Other, raw: -5 };
-    Assert((WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode) !! none) is .Some(_),
+    Assert((WriteFormat(shownOut, "{}|{}|{:<10}|{}", notFound, noListener, IoErrorKind::TimedOut, negativeCode) !! none) != none,
            "I/O failures render");
     Assert(Same(shownWriter.Written(),
                 "not found (os error 2)|connection refused|timed out |other error (os error -5)"),

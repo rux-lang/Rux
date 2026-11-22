@@ -37,30 +37,30 @@ func Main() -> int {
     let empty = String::New(allocator);
     let shownPlain: StringView = empty.View();
     let plainWriter: &var TextWriter = builder;
-    if (shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain()) !! none) is none { return 20; }
+    if (shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain()) !! none) == none { return 20; }
     if builder.Length() != 0 { return 21; }
     let shownDebug: StringView = empty.View();
     let emptyDebugWriter: &var TextWriter = builder;
-    if (shownDebug.WriteDebug(emptyDebugWriter, FormatSpec::Plain()) !! none) is none { return 22; }
+    if (shownDebug.WriteDebug(emptyDebugWriter, FormatSpec::Plain()) !! none) == none { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
     // A character slice containing a text literal renders and quotes the same way.
     builder.Clear();
     let shownText: &Display = "Hello World!";
     let textWriter: &var TextWriter = builder;
-    if (shownText.WriteDisplay(textWriter, FormatSpec::Plain()) !! none) is none { return 30; }
+    if (shownText.WriteDisplay(textWriter, FormatSpec::Plain()) !! none) == none { return 30; }
     if !Matches(builder.View(), "Hello World!") { return 31; }
 
     builder.Clear();
     let shownTextDebug: &Debug = "";
     let textDebugWriter: &var TextWriter = builder;
-    if (shownTextDebug.WriteDebug(textDebugWriter, FormatSpec::Plain()) !! none) is none { return 32; }
+    if (shownTextDebug.WriteDebug(textDebugWriter, FormatSpec::Plain()) !! none) == none { return 32; }
     if !Matches(builder.View(), "\"\"") { return 33; }
 
     builder.Clear();
     let shownHello: StringView = hello.View();
     let helloDebugWriter: &var TextWriter = builder;
-    if (shownHello.WriteDebug(helloDebugWriter, FormatSpec::Plain()) !! none) is none { return 24; }
+    if (shownHello.WriteDebug(helloDebugWriter, FormatSpec::Plain()) !! none) == none { return 24; }
     if !Matches(builder.View(), "\"Hello World!\"") { return 25; }
 
     return 0;

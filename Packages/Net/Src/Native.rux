@@ -187,7 +187,7 @@ func Encode(address: SocketAddress) -> RawAddress {
     raw.bytes[2] = (address.port >> 8) as uint8;
     raw.bytes[3] = address.port.Truncate<uint8>();
     match address.ip.AsIpv4() {
-        .Some(v4) => {
+        v4? => {
             var index: uint = 0;
             while index < 4u {
                 raw.bytes[4u + index] = v4.octets[index];
@@ -395,7 +395,7 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
 func SendSocket(handle: uint64, bytes: char8[..], target: SocketAddress?) -> uint ! IoError {
     var raw = RawAddress { bytes: [0u8; 32], length: 0 };
     match target {
-        .Some(address) => raw = Encode(address),
+        address? => raw = Encode(address),
         none => {}
     }
     let address: *opaque = if raw.length == 0u32 { null } else { (@raw.bytes[0]) as *opaque };

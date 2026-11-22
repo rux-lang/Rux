@@ -3,23 +3,23 @@
 import Core::Diagnostics::Assert;
 
 func Main() -> int {
-    let optSome: int? = .Some(42);
+    let optSome: int? = 42;
     let optNone: int? = none;
 
-    Assert(optSome is int, "optSome should be present");
-    Assert(!(optNone is int), "optNone should be absent");
+    Assert(optSome != none, "optSome should be present");
+    Assert(!(optNone != none), "optNone should be absent");
 
     Assert((optSome ?? 0) == 42, "?? should return 42");
     Assert((optNone ?? 100) == 100, "?? should return fallback 100");
 
     let val = match optSome {
-        .Some(v) => v,
+        v? => v,
         none => 0
     };
     Assert(val == 42, "match on optSome should be 42");
 
     let noneVal = match optNone {
-        .Some(v) => v,
+        v? => v,
         none => 999
     };
     Assert(noneVal == 999, "match on optNone should be 999");

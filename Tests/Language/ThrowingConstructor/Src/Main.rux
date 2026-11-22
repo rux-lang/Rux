@@ -26,7 +26,7 @@ func Doubled(value: int32) -> int32 ! RangeError {
 func Main() -> int {
     let made = Positive::New(3) catch { _ => Positive { value: 0 } };
     Assert(made.value == 3, "a constructor that returns makes its value");
-    Assert((Positive::New(-1) !! none) is none, "a constructor that throws makes nothing");
+    Assert((Positive::New(-1) !! none) == none, "a constructor that throws makes nothing");
     Assert((Doubled(-4) catch { .Negative => -1 }) == -1, "the error passes to the caller with '!'");
     Assert((Doubled(4) catch { _ => 0 }) == 8, "and the value continues when it returns");
     return 0;

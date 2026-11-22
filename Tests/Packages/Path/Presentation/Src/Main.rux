@@ -38,7 +38,7 @@ func Shown(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: OsStringView = view;
-    if (shown.WriteDisplay(sink, spec) !! none) is none { return false; }
+    if (shown.WriteDisplay(sink, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -48,7 +48,7 @@ func Inspected(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> boo
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: OsStringView = view;
-    if (shown.WriteDebug(sink, spec) !! none) is none { return false; }
+    if (shown.WriteDebug(sink, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -59,7 +59,7 @@ func PathShown(path: Path, expected: char8[..]) -> bool {
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Path = path;
-    if (shown.WriteDisplay(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (shown.WriteDisplay(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -68,7 +68,7 @@ func PathInspected(path: Path, expected: char8[..]) -> bool {
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: Path = path;
-    if (shown.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (shown.WriteDebug(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -78,7 +78,7 @@ func OwnedShown(text: &OsString, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
-    if (text.WriteDisplay(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (text.WriteDisplay(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -86,7 +86,7 @@ func OwnedInspected(text: &OsString, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
-    if (text.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (text.WriteDebug(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -94,7 +94,7 @@ func BufferShown(buffer: &PathBuffer, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
-    if (buffer.WriteDisplay(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (buffer.WriteDisplay(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -102,7 +102,7 @@ func BufferInspected(buffer: &PathBuffer, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
-    if (buffer.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return false; }
+    if (buffer.WriteDebug(sink, FormatSpec::Plain()) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -111,11 +111,11 @@ func Refused(view: OsStringView, spec: FormatSpec) -> bool {
     var writer = BufferWriter::New(storage[..128]);
     let sink: &var TextWriter = writer;
     let shown: OsStringView = view;
-    if !((shown.WriteDisplay(sink, spec) !! none) is none) { return false; }
+    if !((shown.WriteDisplay(sink, spec) !! none) == none) { return false; }
     let inspected: OsStringView = view;
     var second = BufferWriter::New(storage[..128]);
     let other: &var TextWriter = second;
-    return (inspected.WriteDebug(other, spec) !! none) is none;
+    return (inspected.WriteDebug(other, spec) !! none) == none;
 }
 
 func Main() -> int {

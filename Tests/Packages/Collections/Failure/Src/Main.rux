@@ -39,7 +39,7 @@ func Main() -> int {
 
     // A count whose byte size cannot be addressed is rejected before anything is allocated.
     var empty = Vector<int64>::New(allocator);
-    if VectorRefusal(empty, uint::Max) != .Some(AllocError::Unsupported) { return 22; }
+    if VectorRefusal(empty, uint::Max) != AllocError::Unsupported { return 22; }
     if empty.Capacity() != 0 || empty.Length() != 0 { return 23; }
 
     // A populated Vector survives a rejected reservation untouched: the same
@@ -56,19 +56,19 @@ func Main() -> int {
     let capacity = populated.Capacity();
 
     // The length plus the request wraps.
-    if VectorRefusal(populated, uint::Max) != .Some(AllocError::Unsupported) { return 31; }
+    if VectorRefusal(populated, uint::Max) != AllocError::Unsupported { return 31; }
     if populated.AsSlice().data != block || populated.Length() != length { return 32; }
     if populated.Capacity() != capacity { return 33; }
 
     // The sum fits but its byte size does not, which is the other way the same
     // request fails.
-    if VectorRefusal(populated, uint::Max / 4) != .Some(AllocError::Unsupported) { return 34; }
+    if VectorRefusal(populated, uint::Max / 4) != AllocError::Unsupported { return 34; }
     if populated.AsSlice().data != block || populated.Length() != length { return 35; }
     if populated.Capacity() != capacity { return 36; }
 
     element = 0;
     while element < 8 {
-        if populated.Get(element as uint) != .Some(element) { return 37; }
+        if populated.Get(element as uint) != element { return 37; }
         element++;
     }
 
@@ -79,20 +79,20 @@ func Main() -> int {
     };
     if !rejected { return 50; }
     if populated.Length() != length || populated.AsSlice().data != block { return 51; }
-    if populated.Get(0) != .Some(0) { return 52; }
+    if populated.Get(0) != 0 { return 52; }
 
     // Reading past the end is an ordinary absence rather than a failure, and reads nothing.
-    if populated.Get(populated.Length()) is int64 { return 53; }
-    if populated.At(populated.Length()) is .Some(_) { return 54; }
+    if populated.Get(populated.Length()) != none { return 53; }
+    if populated.At(populated.Length()) != none { return 54; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
     var map = HashMap<int32, int32>::New(allocator, HashInt32, EqualsInt32);
     map.Insert(1, 10);
     map.Insert(2, 20);
     let mapCapacity = map.Capacity();
-    if MapRefusal(map, uint::Max) != .Some(AllocError::Unsupported) { return 72; }
+    if MapRefusal(map, uint::Max) != AllocError::Unsupported { return 72; }
     if map.Length() != 2 || map.Capacity() != mapCapacity { return 73; }
-    if map.Get(1) != .Some(10) { return 74; }
+    if map.Get(1) != 10 { return 74; }
 
     // Every container releases what it owns when its life ends; nothing here has a Free to call twice.
     return 0;

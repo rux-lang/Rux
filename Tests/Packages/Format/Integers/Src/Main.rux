@@ -25,7 +25,7 @@ import Text::{ FormatError, String, StringView };
 func Same(outcome: String?, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match move outcome {
-        .Some(text) => text.View().Equals(wanted),
+        text? => text.View().Equals(wanted),
         none => false
     };
 }
@@ -36,7 +36,7 @@ func Same(outcome: String?, expected: char8[..]) -> bool {
 func RunOf(outcome: String?, signed: bool, digit: char8, count: uint) -> bool {
     var ok = false;
     match move outcome {
-        .Some(text) => {
+        text? => {
             let bytes = text.View().Bytes();
             let lead = if signed { 1u } else { 0u };
             if bytes.length == count + lead {
@@ -62,7 +62,7 @@ func RunOf(outcome: String?, signed: bool, digit: char8, count: uint) -> bool {
 func TopBitHex(outcome: String?, zeros: uint) -> bool {
     var ok = false;
     match move outcome {
-        .Some(text) => {
+        text? => {
             let bytes = text.View().Bytes();
             if bytes.length == zeros + 2 && bytes[0] == c8'-' && bytes[1] == c8'8' {
                 ok = true;
@@ -227,9 +227,9 @@ func Main() -> int {
     Assert(Same(Render(allocator, "{:>8x}", 255u32) !! none, "      ff"), "alignment pads outside the digits");
 
     // A style that is not one of the four bases is refused by the value rather than ignored, at every width.
-    Assert((Render(allocator, "{:q}", 1i8) !! none) is none, "int8 refuses a style it does not have");
-    Assert((Render(allocator, "{:q}", 1u64) !! none) is none, "and so does uint64");
-    Assert((Render(allocator, "{:q}", 1i512) !! none) is none, "and so does the widest signed width");
+    Assert((Render(allocator, "{:q}", 1i8) !! none) == none, "int8 refuses a style it does not have");
+    Assert((Render(allocator, "{:q}", 1u64) !! none) == none, "and so does uint64");
+    Assert((Render(allocator, "{:q}", 1i512) !! none) == none, "and so does the widest signed width");
 
     return 0;
 }

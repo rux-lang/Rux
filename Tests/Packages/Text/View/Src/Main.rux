@@ -39,10 +39,10 @@ func Main() -> int {
     Assert(ascii.Length() == 2, "and spans what lies between them");
     Assert(ascii.ScalarCount() == 2, "which here is two characters");
 
-    Assert(!(held.Part(0, 3) is StringView), "a cut through the middle of a character is refused");
-    Assert(!(held.Part(3, 4) is StringView), "from either side of it");
-    Assert(!(held.Part(4, 2) is StringView), "a cut whose bounds are the wrong way round is refused");
-    Assert(!(held.Part(0, 12) is StringView), "and one past the end");
+    Assert(!(held.Part(0, 3) != none), "a cut through the middle of a character is refused");
+    Assert(!(held.Part(3, 4) != none), "from either side of it");
+    Assert(!(held.Part(4, 2) != none), "a cut whose bounds are the wrong way round is refused");
+    Assert(!(held.Part(0, 12) != none), "and one past the end");
     Assert((held.Part(2, 2) ?? held).IsEmpty(), "a cut at one point is empty rather than refused");
 
     let front = held.Part(0, 4) ?? StringView::New();
@@ -55,7 +55,7 @@ func Main() -> int {
     Assert(((held.ScalarAt(2) ?? (0u32 as char32)) as uint32) == 0xE9, "the two-byte one is U+00E9");
     Assert(((held.ScalarAt(4) ?? (0u32 as char32)) as uint32) == 0x20AC, "the three-byte one is U+20AC");
     Assert(((held.ScalarAt(7) ?? (0u32 as char32)) as uint32) == 0x1F600, "the four-byte one is U+1F600");
-    Assert(!(held.ScalarAt(3) is char32), "and there is no character starting mid-sequence");
+    Assert(!(held.ScalarAt(3) != none), "and there is no character starting mid-sequence");
 
     // Walking gives the same characters in the same order.
     var walker = held.Scalars();
@@ -64,7 +64,7 @@ func Main() -> int {
     var walking = true;
     while walking {
         match walker.Next() {
-            .Some(scalar) => {
+            scalar? => {
                 total = total + (scalar as uint32);
                 seen = seen + 1;
             },
@@ -81,10 +81,10 @@ func Main() -> int {
     broken[0] = 0xEDu8 as char8;
     broken[1] = 0xA0u8 as char8;
     broken[2] = 0x80u8 as char8;
-    Assert(!(StringView::FromBytes(broken[0..3]) is StringView), "a surrogate half makes no view");
+    Assert(!(StringView::FromBytes(broken[0..3]) != none), "a surrogate half makes no view");
     broken[0] = 0xE2u8 as char8;
     broken[1] = 0x82u8 as char8;
-    Assert(!(StringView::FromBytes(broken[0..2]) is StringView), "and neither does a sequence that runs out");
+    Assert(!(StringView::FromBytes(broken[0..2]) != none), "and neither does a sequence that runs out");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.
     let same = StringView::FromBytes(text) ?? StringView::New();

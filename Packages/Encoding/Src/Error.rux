@@ -39,11 +39,11 @@ extend DecodeError {
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#offset
     pub func Offset(&self) -> uint? {
         return match self {
-            .InvalidCharacter(at) => .Some(at),
-            .InvalidLength(at) => .Some(at),
-            .InvalidPadding(at) => .Some(at),
-            .NonCanonical(at) => .Some(at),
-            .InvalidEscape(at) => .Some(at),
+            .InvalidCharacter(at) => at,
+            .InvalidLength(at) => at,
+            .InvalidPadding(at) => at,
+            .NonCanonical(at) => at,
+            .InvalidEscape(at) => at,
             .InsufficientCapacity(_) => none
         };
     }

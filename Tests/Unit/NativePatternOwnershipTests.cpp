@@ -58,13 +58,13 @@ TEST_CASE("a borrowed subject is inspected in place and stays with its owner") {
             return verbose && again;
         }
         func Owner() {
-            let value: Owned? = .Some(Owned { handle: 1i32 });
+            let value: Owned? = Owned { handle: 1i32 };
             Read(value);
             Read(value);
         }
         func Read(value: &(Owned?)) -> bool {
             return match value {
-                .Some(owned) => Look(owned),
+                owned? => Look(owned),
                 none => false
             };
         }
@@ -132,7 +132,7 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
     CHECK(ErrorsIn(R"(
         func Transfer(value: Owned?) {
             match move value {
-                .Some(owned) => Keep(move owned),
+                owned? => Keep(move owned),
                 none => {}
             }
         }
@@ -148,7 +148,7 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
         }
         func Inspects(value: Owned?) -> bool {
             let present = match value {
-                .Some(_) => true,
+                _? => true,
                 none => false
             };
             let typed = match value {
@@ -156,7 +156,7 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
                 none => false
             };
             match move value {
-                .Some(owned) => Keep(move owned),
+                owned? => Keep(move owned),
                 none => {}
             }
             return present && typed;
@@ -167,7 +167,7 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
     const auto implicit = ErrorsIn(R"(
         func Implicit(value: Owned?) {
             match value {
-                .Some(owned) => Keep(move owned),
+                owned? => Keep(move owned),
                 none => {}
             }
         }
@@ -177,11 +177,11 @@ TEST_CASE("an owned subject is consumed once by a match that binds") {
     const auto twice = ErrorsIn(R"(
         func Twice(value: Owned?) {
             match move value {
-                .Some(owned) => Keep(move owned),
+                owned? => Keep(move owned),
                 none => {}
             }
             match move value {
-                .Some(owned) => Keep(move owned),
+                owned? => Keep(move owned),
                 none => {}
             }
         }
@@ -195,8 +195,8 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
         func Consume(owned: Owned) -> bool { return true; }
         func Guarded(value: Owned?) {
             match move value {
-                .Some(owned) if Consume(move owned) => {},
-                .Some(owned) => Keep(move owned),
+                owned? if Consume(move owned) => {},
+                owned? => Keep(move owned),
                 none => {}
             }
         }
@@ -206,8 +206,8 @@ TEST_CASE("a failed guard leaves its bindings for later arms") {
     CHECK(ErrorsIn(R"(
         func Guarded(value: Owned?) {
             match move value {
-                .Some(owned) if Look(owned) => Keep(move owned),
-                .Some(owned) => Keep(move owned),
+                owned? if Look(owned) => Keep(move owned),
+                owned? => Keep(move owned),
                 none => {}
             }
         }

@@ -41,6 +41,51 @@ void Parser::RejectTry() {
                   : "write '!' after a call to pass its error on, as in 'F()!', or 'F() catch { ... }' to handle it");
 }
 
+ExprPtr Parser::ParseCondition(const std::string_view context) {
+    if (!Check(TokenKind::LetKeyword) && !Check(TokenKind::VarKeyword)) {
+        return ParseRequiredExpr(context);
+    }
+    // `let pattern = subject` binds out of the subject where the pattern matches. The subject ends at the first `&&`
+    // outside parentheses, and further conditions follow it with `&&`, seeing the bound names.
+    auto binding = std::make_unique<IsExpr>();
+    binding->location = CurrentLocation();
+    binding->binds = true;
+    binding->mutableBindings = Advance().kind == TokenKind::VarKeyword;
+    // The `=` ends the pattern, so a braced payload in it cannot be taken for the body.
+    const bool savedStructInitAllowed = std::exchange(structInitAllowed, true);
+    binding->pattern = ParsePattern();
+    structInitAllowed = savedStructInitAllowed;
+    ExpectBefore(TokenKind::Assign, "'=' after the pattern of 'let'");
+    binding->operand = ParseBitOr();
+    if (!binding->operand) {
+        EmitMissingExpression("after '=' in the condition");
+    }
+    ExprPtr condition = std::move(binding);
+    while (Check(TokenKind::AmpAmp)) {
+        const auto location = CurrentLocation();
+        Advance();
+        auto right = ParseBitOr();
+        if (!right) {
+            EmitMissingExpression("after '&&'");
+        }
+        auto conjunction = std::make_unique<BinaryExpr>();
+        conjunction->location = location;
+        conjunction->op = TokenKind::AmpAmp;
+        conjunction->left = std::move(condition);
+        conjunction->right = std::move(right);
+        condition = std::move(conjunction);
+    }
+    if (Check(TokenKind::PipePipe)) {
+        EmitError(CurrentLocation(),
+                  "a binding does not combine with '||', because its names would be in scope where "
+                  "nothing was bound",
+                  "put the binding first and join further conditions with '&&'");
+        Advance();
+        static_cast<void>(ParseOr());
+    }
+    return condition;
+}
+
 ExprPtr Parser::ParseRequiredExpr(const std::string_view context) {
     auto expression = ParseExprImpl();
     if (!expression) {
@@ -568,6 +613,21 @@ ExprPtr Parser::ParseUnary() {
     if (Check(TokenKind::TryKeyword)) {
         RejectTry();
         return ParseUnary();
+    }
+    // A binding anywhere but at the start of an `if` or `while` condition would bind where nothing may have matched.
+    if (Check(TokenKind::LetKeyword) || Check(TokenKind::VarKeyword)) {
+        EmitError(CurrentLocation(),
+                  "a binding comes first in an 'if' or 'while' condition, and never after '||' or "
+                  "as an operand",
+                  "put the binding first and join further conditions with '&&'");
+        auto binding = std::make_unique<IsExpr>();
+        binding->location = CurrentLocation();
+        binding->binds = true;
+        binding->mutableBindings = Advance().kind == TokenKind::VarKeyword;
+        binding->pattern = ParsePattern();
+        ExpectBefore(TokenKind::Assign, "'=' after the pattern of 'let'");
+        binding->operand = ParseBitOr();
+        return binding;
     }
     // `move value` transfers ownership out of its operand, and binds as tightly as any other prefix operator: `move
     // a.b` moves the field and `move a + b` is `(move a) + b`. The removed prefix `<-` is reported and read as `move`.
@@ -1461,12 +1521,17 @@ PatternPtr Parser::ParseRequiredPattern(const std::string_view context) {
 }
 
 PatternPtr Parser::ParsePresenceSuffix(PatternPtr inner) {
+    // `p?` matches a present optional whose value `p` matches, and `p??` two present levels.
     while (Check(TokenKind::Question) || Check(TokenKind::QuestionQuestion)) {
-        // The removed presence suffix is reported and dropped, so the rest of the arm parses normally.
-        const bool twoLevels = Advance().kind == TokenKind::QuestionQuestion;
-        EmitError(Previous().location, "a presence suffix is not a pattern",
-                  twoLevels ? "write '.Some(.Some(p))' to match two present levels"
-                            : "write '.Some(p)' to match a present value");
+        const int levels = Advance().kind == TokenKind::QuestionQuestion ? 2 : 1;
+        for (int level = 0; level < levels; ++level) {
+            auto present = std::make_unique<EnumPattern>();
+            present->location = inner->location;
+            present->path = {"Some"};
+            present->presence = true;
+            present->args.push_back(std::move(inner));
+            inner = std::move(present);
+        }
     }
     return inner;
 }

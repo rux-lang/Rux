@@ -268,7 +268,7 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> !FormatError {
             if index > 0 {
                 Emit(writer, ", ")!;
             }
-            if value.At(index) is .Some(element) {
+            if let element? = value.At(index) {
                 EmitValue(writer, element)!;
             }
             index = index + 1;
@@ -285,7 +285,7 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> !FormatError {
             if index > 0 {
                 Emit(writer, ", ")!;
             }
-            if value.EntryAt(index) is .Some(entry) {
+            if let entry? = value.EntryAt(index) {
                 EmitKey(writer, entry.key.View().Bytes())!;
                 Emit(writer, " = ")!;
                 EmitValue(writer, entry.value)!;
@@ -310,7 +310,7 @@ func IsBodyEntry(value: &TomlValue) -> bool {
 func EmitBody(writer: &var TextWriter, table: &TomlValue) -> !FormatError {
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
-        if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
+        if let entry? = table.EntryAt(index) && IsBodyEntry(entry.value) {
             EmitKey(writer, entry.key.View().Bytes())!;
             Emit(writer, " = ")!;
             EmitValue(writer, entry.value)!;
@@ -340,7 +340,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
                   root: bool) -> !FormatError {
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
-        if table.EntryAt(index) is .Some(entry) {
+        if let entry? = table.EntryAt(index) {
             EmitSection(writer, entry, path, written, root)!;
         }
         index = index + 1;
@@ -430,7 +430,7 @@ func CountBodyEntries(table: &TomlValue) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
-        if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
+        if let entry? = table.EntryAt(index) && IsBodyEntry(entry.value) {
             count = count + 1;
         }
         index = index + 1;

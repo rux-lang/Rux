@@ -41,16 +41,16 @@ func Main() -> int {
     let single = storage[..1];
 
     var at: uint = 0;
-    Assert(MinIndex<int32>(items) == .Some(1), "the smallest element is found");
-    Assert(MaxIndex<int32>(items) == .Some(2), "and the largest");
-    Assert(MinIndex<int32>(single) == .Some(0), "a single element is both");
-    Assert(MaxIndex<int32>(single) == .Some(0), "smallest and largest");
+    Assert(MinIndex<int32>(items) == 1, "the smallest element is found");
+    Assert(MaxIndex<int32>(items) == 2, "and the largest");
+    Assert(MinIndex<int32>(single) == 0, "a single element is both");
+    Assert(MaxIndex<int32>(single) == 0, "smallest and largest");
     Assert(MinIndex<int32>(empty) == none, "an empty slice has no smallest element");
     Assert(MaxIndex<int32>(empty) == none, "and no largest");
 
     // Ties go to the earliest, which the repeated 2 and 9 above are there to show.
-    Assert(MinIndex<int32>(items) == .Some(1), "the earliest of equal smallest elements wins");
-    Assert(MaxIndex<int32>(items) == .Some(2), "and the earliest of equal largest ones");
+    Assert(MinIndex<int32>(items) == 1, "the earliest of equal smallest elements wins");
+    Assert(MaxIndex<int32>(items) == 2, "and the earliest of equal largest ones");
 
     // One pass gives both, and agrees with the two separate searches.
     var low: uint = 0;

@@ -56,7 +56,7 @@ TEST_CASE("the move keyword is a unary prefix with ordinary precedence in every 
             let propagated = (move opt)?;
             sum = move b;
             match move opt { _ => {} }
-            if move opt is .Some(v) {}
+            if move opt is v? {}
             return move left;
         }
     )",

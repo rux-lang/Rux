@@ -158,7 +158,7 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
     var walking = true;
     while walking {
         match rest.IndexOf(needle) {
-            .Some(at) => {
+            at? => {
                 let before = rest.Part(0, at) ?? StringView::New();
                 builder.Append(before);
                 builder.Append(replacement);

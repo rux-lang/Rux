@@ -9,12 +9,12 @@ extend Token {
 func Take(token: Token) -> int { return token.id; }
 
 func FromReference(holder: &(Token?)) -> int {
-    if holder is .Some(token) { return Take(move token); }
+    if let token? = holder { return Take(move token); }
     return 0;
 }
 
 func FromOwned(holder: Token?) -> int {
-    return match move holder { .Some(token) => Take(move token), none => 0 };
+    return match move holder { token? => Take(move token), none => 0 };
 }
 
 func Main() -> int {

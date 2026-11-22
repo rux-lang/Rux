@@ -605,7 +605,7 @@ extend TomlParser {
         }
         let last = parts.Length() - 1;
         let finalName = parts.AsSlice().data[last].View();
-        if (*target).Find(finalName) is .Some(_) {
+        if (*target).Find(finalName) != none {
             self.Stop(TomlStop::DuplicateKey);
             parts.Clear();
             return;

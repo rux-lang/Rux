@@ -11,7 +11,7 @@ func View(bytes: char8[..]) -> StringView {
 
 func Ended(line: StringView?) -> bool {
     match line {
-        .Some(_) => return false,
+        _? => return false,
         none => return true
     }
 }

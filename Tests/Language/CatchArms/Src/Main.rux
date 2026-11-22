@@ -74,7 +74,7 @@ func Main() -> int {
     Assert(Describe(-6i32) == -3i32, "a failed guard falls to the next arm");
     Assert(Describe(5000i32) == -3i32, "an alternative");
 
-    Assert((Rethrow(0i32) !! none) == .Some(0i32), "a recovered error");
+    Assert((Rethrow(0i32) !! none) == 0i32, "a recovered error");
     Assert((Rethrow(-4i32) catch { .Invalid(at) => at, _ => 0i32 }) == 4i32, "an arm rethrows to the caller");
     Assert((Translate(-1i32) catch { e => e.code }) == 9i32, "an arm throws a new error outward");
 

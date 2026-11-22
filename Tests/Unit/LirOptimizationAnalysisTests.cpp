@@ -788,7 +788,7 @@ TEST_CASE("Borrowed pattern addresses dominate arm uses without speculating load
     auto package = CompileToLir(R"(
         struct Payload { number: int; }
         func Bump(item: &var (Payload?)) {
-            match item { none => {}, .Some(value) => { value.number += 1; } }
+            match item { none => {}, value? => { value.number += 1; } }
         }
     )",
                                 BuildProfile::Debug);

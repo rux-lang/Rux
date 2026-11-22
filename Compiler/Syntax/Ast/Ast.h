@@ -207,6 +207,8 @@ struct EnumPattern : Pattern {
     std::vector<NamedArg> namedArgs;
     /// The payload is written with field names, `{ ... }`, so it may leave fields out.
     bool braced = false;
+    /// Written as the presence pattern `p?` of an optional rather than as `.Some(p)`, which the language does not have.
+    bool presence = false;
 };
 
 // Point { x: 0, y: 0 }
@@ -474,10 +476,16 @@ struct CastExpr : Expr {
 /// `expr is Type` tests the type of a sum member or an optional's level; `expr is pattern` tests the operand against
 /// any match pattern, and the names the pattern binds are in scope where the test is known to be true: the body of the
 /// `if` or `while` it conditions and the right side of `&&`. Exactly one of `type` and `pattern` is set.
+/// `subject is pattern` or `subject is Type`, a test that binds nothing. `if let pattern = subject` and `while let`
+/// are read as one that binds: its names are in scope where the test holds, the rest of an `&&` chain and the body.
 struct IsExpr : Expr {
     ExprPtr operand;
     TypeExprPtr type;
     PatternPtr pattern;
+    /// Written as `let pattern = subject` or `var pattern = subject` at the start of an `if` or `while` condition.
+    bool binds = false;
+    /// `var` in place of `let`: the bound names are mutable.
+    bool mutableBindings = false;
 };
 
 /// A block in value position: an `if` branch, or a match or catch arm body. It yields the expression it ends with when

@@ -86,18 +86,18 @@ func Main() -> int {
         index++;
     }
     Assert(filled.Get(6) == none, "one past the end has no element");
-    Assert(filled.At(6) is none, "and nothing to borrow either");
+    Assert(filled.At(6) == none, "and nothing to borrow either");
 
     // Setting replaces an element and refuses an index the array does not have.
     filled.Set(2, 99) catch { _ => Panic("setting an element in range succeeds") };
-    Assert(filled.Get(2) == .Some(99), "and replaces what was there");
+    Assert(filled.Get(2) == 99, "and replaces what was there");
     match filled.Set(6, 1) {
         .Success(_) => {
             Panic("the operation was expected to fail");
         },
         .Failure(refusal) => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
     }
-    Assert(filled.Get(5) == .Some(7), "changing nothing");
+    Assert(filled.Get(5) == 7, "changing nothing");
 
     // A borrowed view is what the algorithms take, and it sees the array's own storage.
     let view = filled.AsSlice();

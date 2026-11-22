@@ -180,7 +180,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
         var closeFailure: IoError? = none;
         source.Close() catch { error => { closeFailure = error; } };
         destination.Close() catch { error => { closeFailure = closeFailure ?? error; } };
-        if failure is .Some(error) { throw error; }
-        if closeFailure is .Some(error) { throw error; }
+        if let error? = failure { throw error; }
+        if let error? = closeFailure { throw error; }
     }
 }

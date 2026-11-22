@@ -61,6 +61,6 @@ func Main() -> int {
     let inner = Nested(6) !! Half(1);
     Assert((inner !! 0) == 3, "a fallible success");
     Assert(((Nested(5) !! Half(1)) !! 9) == 9, "its own failure");
-    Assert((Nested(-1) !! none) is none, "the outer error");
+    Assert((Nested(-1) !! none) == none, "the outer error");
     return 0;
 }

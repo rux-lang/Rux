@@ -171,7 +171,7 @@ extend HashMap<K, V> {
     pub func TryInsert(&var self, key: K, value: V) -> !AllocError {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         match self.table.FindHashed(key, hashed, self.equals) {
-            .Some(slot) => {
+            slot? => {
                 // Reading the old value into a local destroys it when the local's life ends, which is what keeps a
                 // replaced value from being leaked.
                 // Safety: the table invariant: `FindHashed` names only an occupied slot below the capacity, and its
@@ -264,7 +264,7 @@ extend HashMap<K, V> {
             if self.table.IsOccupied(index) {
                 cursor = index + 1;
                 // Safety: by the table invariant the slot, occupied and below the capacity, holds a key and a value.
-                return .Some(KeyValue<K, V> { key: self.table.keys[index], value: self.table.values[index] });
+                return KeyValue<K, V> { key: self.table.keys[index], value: self.table.values[index] };
             }
             index++;
         }
@@ -288,7 +288,7 @@ extend HashMap<K, V> {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         let found = self.table.FindHashed(key, hashed, self.equals);
         var slot: uint = 0;
-        if found is .Some(present) {
+        if let present? = found {
             slot = present;
         }
         else {
@@ -311,7 +311,7 @@ extend HashMap<K, V> {
     pub func Replace(&var self, key: K, value: V) -> V? {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         match self.table.FindHashed(key, hashed, self.equals) {
-            .Some(slot) => {
+            slot? => {
                 // Safety: the table invariant: `FindHashed` names only an occupied slot below the capacity, and its
                 // value is refilled right after it is moved out.
                 {
@@ -442,7 +442,7 @@ extend HashMapIterator<K, V> : Iterator {
                 self.cursor = index + 1;
                 // Safety: the same slot of the map's runs, occupied, checked above, so its key and value are
                 // initialized.
-                return .Some(KeyValue<K, V> { key: self.keys[index], value: self.values[index] });
+                return KeyValue<K, V> { key: self.keys[index], value: self.values[index] };
             }
             index++;
         }

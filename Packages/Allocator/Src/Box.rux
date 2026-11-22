@@ -111,7 +111,7 @@ extend Box<T> {
         // value is already out, and nothing the caller holds depends on the release.
         self.allocator.Deallocate(held as *var opaque, layout) catch { _ => {} };
         self.pointer = null;
-        return .Some(move value);
+        return move value;
     }
 
     /// Destroys the value and releases its storage, if the box still holds any.

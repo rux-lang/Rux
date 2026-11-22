@@ -22,16 +22,16 @@ func Main() -> int {
     if count == 0 { return 4; }
 
     match Variable("") {
-        .Some(_) => return 5,
+        _? => return 5,
         none => {}
     }
     match Variable("RUX_SURELY_NOT_A_VARIABLE_8F3A") {
-        .Some(_) => return 6,
+        _? => return 6,
         none => {}
     }
     // A name that is a prefix of a real name is a different name.
     match Variable("PAT") {
-        .Some(_) => return 7,
+        _? => return 7,
         none => {}
     }
     return 0;

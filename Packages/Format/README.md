@@ -47,7 +47,7 @@ func Show() -> int ! FormatError {
 
     // Or into a string of its own, which is the one place rendering allocates.
     let allocator = SystemAllocator::New();
-    return if (Render(allocator, "pi={:.2}", 3.14159f64) !! none) is .Some(_) { 0 } else { 1 };
+    return if (Render(allocator, "pi={:.2}", 3.14159f64) !! none) != none { 0 } else { 1 };
 }
 
 func Main() -> int {

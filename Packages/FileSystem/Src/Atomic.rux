@@ -50,7 +50,7 @@ extend AtomicWrite {
         let parent = target.Parent();
         var here: OsUnit[1];
         here[0] = DotSegmentUnit();
-        let parentPath = if parent is Path {
+        let parentPath = if parent != none {
             parent ?? Path::New()
         } else {
             Path::FromView(OsStringView::FromUnits(here[0..1]))

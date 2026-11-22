@@ -393,6 +393,9 @@ struct SemanticFacts {
     std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     // An expression records only whether to negate; each concrete instantiation owns its element recipe.
     std::unordered_map<const BinaryExpr *, bool> aggregateEqualities;
+    /// Every `x == none` or `x != none`, which tests the presence of `x`'s outer level and compares no payload; the
+    /// value is whether it is `!=`.
+    std::unordered_map<const BinaryExpr *, bool> noneTests;
     /// The one type both operands of a structural tuple comparison are built as, when one operand is a literal that
     /// takes the other's type, as in `pair == (3, true)`.
     std::unordered_map<const BinaryExpr *, TypeRef> aggregateEqualityOperandTypes;
@@ -501,6 +504,8 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;
     [[nodiscard]] const bool *TryGetAggregateEquality(const BinaryExpr &expression) const noexcept;
+    /// Whether `expression` is `x != none` (true) or `x == none` (false); null for any other comparison.
+    [[nodiscard]] const bool *TryGetNoneTest(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const TypeRef *TryGetAggregateEqualityOperandType(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPayload *TryGetAggregateEqualityPlan(const TypeRef &type) const noexcept;
 

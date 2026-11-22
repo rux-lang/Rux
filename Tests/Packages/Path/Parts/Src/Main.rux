@@ -51,11 +51,11 @@ func Main() -> int {
     Assert(Spells(grand, "/a"), "and again");
     let top = (grand.Parent() ?? Path::New());
     Assert(Spells(top, "/"), "the parent of /a is the root");
-    Assert(!(top.Parent() is Path), "and the root is inside nothing");
+    Assert(!(top.Parent() != none), "and the root is inside nothing");
     let bare = Native(allocator, "name");
     let barePath = PathOf(bare);
     Assert((barePath.Parent() ?? deepPath).IsEmpty(), "a bare segment's parent is the empty path");
-    Assert(!(Path::New().Parent() is Path), "which itself has none");
+    Assert(!(Path::New().Parent() != none), "which itself has none");
     let trailing = Native(allocator, "/a/b/");
     let trailingPath = PathOf(trailing);
     Assert(Spells((trailingPath.Parent() ?? Path::New()), "/a"), "trailing separators say nothing");
@@ -71,7 +71,7 @@ func Main() -> int {
     Assert(got.Equals(wanted), "through trailing separators");
     let rootOwned = Native(allocator, "/");
     let rootPath = PathOf(rootOwned);
-    Assert(!(rootPath.FileName() is OsStringView), "the root has no file name");
+    Assert(!(rootPath.FileName() != none), "the root has no file name");
 
     let stemOwned = Native(allocator, "c.tar");
     wanted = stemOwned.View();
@@ -88,10 +88,10 @@ func Main() -> int {
     wanted = hiddenName.View();
     got = (hiddenPath.Stem() ?? OsStringView::New());
     Assert(got.Equals(wanted), "a leading dot is a name, not a marker");
-    Assert(!(hiddenPath.Extension() is OsStringView), "so a dotfile has no extension");
+    Assert(!(hiddenPath.Extension() != none), "so a dotfile has no extension");
     let plainName = Native(allocator, "Makefile");
     let plainPath = PathOf(plainName);
-    Assert(!(plainPath.Extension() is OsStringView), "and neither does a name with no dot");
+    Assert(!(plainPath.Extension() != none), "and neither does a name with no dot");
 
     // Joining.
     let baseOwned = Native(allocator, "/a/b");

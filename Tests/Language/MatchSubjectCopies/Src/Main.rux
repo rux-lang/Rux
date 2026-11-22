@@ -149,7 +149,7 @@ func OptionalPayload(log: *var Log) {
     let source = Track(log, 1);
     let maybe: Tracked? = source.Clone();
     match move maybe {
-        .Some(item) => {
+        item? => {
             Mark(log);
             Assert(item.id == 11, "the arm binds the payload handed over");
         },

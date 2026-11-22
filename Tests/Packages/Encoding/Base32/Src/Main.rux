@@ -115,7 +115,7 @@ func Main() -> int {
         group[0] = c as uint8 as char8;
         var out: byte[1];
         let expected = Reference(c);
-        let valid = (Base32Decode(group[..], out[..], Base32Variant::StandardUnpadded) !! none) is .Some(_);
+        let valid = (Base32Decode(group[..], out[..], Base32Variant::StandardUnpadded) !! none) != none;
         if valid != (expected >= 0) { return 10; }
         if valid && out[0] != ((expected as uint) << 3) as byte { return 11; }
         c = c + 1;

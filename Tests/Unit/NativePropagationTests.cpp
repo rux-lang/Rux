@@ -56,7 +56,7 @@ TEST_CASE("'?' on an optional removes one presence level") {
         }
         func First<T>(value: T?) -> T? {
             let present = value?;
-            return .Some(present);
+            return present;
         }
         func Use(nested: int32??) {
             let first = First<int32?>(nested);

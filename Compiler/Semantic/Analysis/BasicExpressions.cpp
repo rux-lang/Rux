@@ -1127,6 +1127,19 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
         // `none`, a native constructor, or an unsuffixed literal -- takes the other operand's type; an operand that
         // already has a type is never injected, widened, or wrapped by a comparison. A constructor around an
         // unsuffixed literal, as in `index == .Some(6)`, has no type of its own either.
+        // `x == none` and `x != none` test the outer level of an optional and compare no payload, so they need no
+        // equality of the payload's type.
+        if ((operation == TK::Equal || operation == TK::BangEqual) && binaryExpression) {
+            const bool noneLeft = AstCast<const NoneExpr>(&leftExpression) != nullptr;
+            const bool noneRight = AstCast<const NoneExpr>(&rightExpression) != nullptr;
+            const TypeRef &tested = noneRight ? left : right;
+            const TypeRef testedValue =
+                tested->kind == TypeRef::Kind::Reference && !tested->inner.empty() ? tested->inner.front() : tested;
+            if (noneLeft != noneRight && (testedValue.IsOptional() || IsOptionalReference(testedValue))) {
+                noneTests.insert_or_assign(binaryExpression, operation == TK::BangEqual);
+                return TypeRef::MakeBool();
+            }
+        }
         if (MentionsNativeType(left) || MentionsNativeType(right)) {
             std::function<bool(const Expr &)> contextual = [&](const Expr &expression) {
                 if (IsUnsuffixedIntegerLiteral(expression)) {
@@ -1137,7 +1150,8 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             };
             const auto completes = [&](const Expr &expression, const TypeRef &type, const TypeRef &other) {
                 const bool untyped = type.IsIncompleteNative() || contextual(expression);
-                return untyped && !other.IsIncompleteNative() && CanAssignExprTo(expression, type, other);
+                const bool payload = other.IsOptional() && !type.IsUnknown() && !type.IsNoneValue();
+                return (untyped || payload) && !other.IsIncompleteNative() && CanAssignExprTo(expression, type, other);
             };
             TypeRef compared = left;
             if (left != right) {
@@ -1160,6 +1174,10 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                                                 "typed pattern, or match the value"));
                     return TypeRef::MakeBool();
                 }
+            }
+            // A typed value compared with an optional of its type is made present, which lowering reads.
+            if (left != right && compared.IsOptional() && binaryExpression) {
+                aggregateEqualityOperandTypes.insert_or_assign(binaryExpression, compared);
             }
             if (operation != TK::Equal && operation != TK::BangEqual) {
                 EmitError(location,

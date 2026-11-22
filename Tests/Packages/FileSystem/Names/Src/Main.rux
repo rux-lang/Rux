@@ -35,7 +35,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     while true {
         let next = walk.Next() catch { _ => Panic("the enumeration ends rather than fails") };
         match move next {
-            .Some(entry) => {
+            entry? => {
                 let view = entry.View();
                 if view.Equals(name) {
                     found = true;
@@ -110,7 +110,7 @@ func Run() -> int ! IoError {
         RoundTrip(allocator, dir, hostile, "a name that is not UTF-8 at all is created");
 
         // And its text conversion must fail rather than invent replacement characters.
-        Assert((hostile.ToText(allocator) !! none) is none,
+        Assert((hostile.ToText(allocator) !! none) == none,
                "and refuses to become text rather than being mangled into it");
     }
 

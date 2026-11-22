@@ -121,7 +121,7 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
 
     // Safety: `state` points at a local of `Main`, which outlives this call.
     state.refusing = true;
-    Assert(Refused(vector, 4096) == .Some(AllocError::OutOfMemory), "a growth the allocator refuses is reported");
+    Assert(Refused(vector, 4096) == AllocError::OutOfMemory, "a growth the allocator refuses is reported");
     // Safety: `state` points at a local of `Main`, which outlives this call.
     state.refusing = false;
     Assert(vector.Length() == 4, "with every element still held");
@@ -165,7 +165,7 @@ func Main() -> int {
         walked++;
     }
     Assert(walked == 5, "and iteration yields each of them");
-    Assert(empties.Pop() is .Some(_), "one comes back off the end");
+    Assert(empties.Pop() != none, "one comes back off the end");
     Assert(empties.Length() == 4, "leaving one fewer");
     empties.Clear();
     Assert(empties.IsEmpty(), "and clearing leaves none");
@@ -180,7 +180,7 @@ func Main() -> int {
     ring.PushBack(Nothing {});
     ring.PushFront(Nothing {});
     Assert(ring.Length() == 2, "counting both");
-    Assert(ring.PopFront() is Nothing && ring.PopBack() is Nothing, "and gives both back");
+    Assert(ring.PopFront() != none && ring.PopBack() != none, "and gives both back");
     Assert(ring.IsEmpty(), "leaving none");
 
     // A growth the allocator refuses, at the first of the plumbing's two sites: a container with no block yet.
@@ -190,12 +190,12 @@ func Main() -> int {
 
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
     var reserved = Vector<int64>::New(@hostile as Allocator);
-    Assert(Refused(reserved, 16) == .Some(AllocError::OutOfMemory), "asking a refusing allocator for capacity fails");
+    Assert(Refused(reserved, 16) == AllocError::OutOfMemory, "asking a refusing allocator for capacity fails");
     Assert(state.requests == 1, "having actually asked");
     // A container with no block yet meets the same refusal on its first growth.
     Assert(reserved.IsEmpty() && reserved.Capacity() == 0, "a container holding nothing");
     Assert(reserved.AsSlice().data == null, "with no block");
-    Assert(PushRefused(reserved, 1) == .Some(AllocError::OutOfMemory), "which still cannot grow");
+    Assert(PushRefused(reserved, 1) == AllocError::OutOfMemory, "which still cannot grow");
     Assert(reserved.IsEmpty(), "and is still empty afterwards");
     Assert(state.live == 0, "nothing was handed out, so nothing is out");
 
@@ -215,16 +215,16 @@ func Main() -> int {
     let outstanding = state.live;
 
     state.refusing = true;
-    Assert(Refused(populated, 1024) == .Some(AllocError::OutOfMemory),
+    Assert(Refused(populated, 1024) == AllocError::OutOfMemory,
            "a reservation the allocator refuses is reported as out of memory");
-    Assert((populated.TryClone() !! none) is none, "and so is a copy it cannot make storage for");
+    Assert((populated.TryClone() !! none) == none, "and so is a copy it cannot make storage for");
     Assert(populated.AsSlice().data == block, "leaving the block where it was");
     Assert(populated.Length() == length, "with the same length");
     Assert(populated.Capacity() == capacity, "and the same capacity");
     Assert(state.live == outstanding, "and the same block out: a refused growth neither takes nor gives back");
     var index: uint = 0;
     while index < length {
-        Assert(populated.Get(index) == .Some(index as int64), "and every element still where it was put");
+        Assert(populated.Get(index) == index as int64, "and every element still where it was put");
         index++;
     }
 
@@ -237,13 +237,13 @@ func Main() -> int {
     Assert(populated.Length() == length, "without disturbing what was already there");
     index = 0;
     while index < length {
-        Assert(populated.Get(index) == .Some(index as int64), "or where any of it was");
+        Assert(populated.Get(index) == index as int64, "or where any of it was");
         index++;
     }
 
     // The copy a willing allocator makes is independent of its source.
     var copy = populated.TryClone() catch { _ => Vector<int64>::New(plain) };
-    Assert(copy.Length() == length && copy.Get(0) == .Some(0), "a copy holds what its source holds");
+    Assert(copy.Length() == length && copy.Get(0) == 0, "a copy holds what its source holds");
     Assert(copy.AsSlice().data != populated.AsSlice().data, "in a block of its own");
 
     // A map's first insertion needs a table, and a refused one reports why and leaves the map empty.
@@ -256,13 +256,13 @@ func Main() -> int {
     Assert(table.Length() == 0, "and inserts nothing");
     state.refusing = false;
     table.TryInsert(1, 10) catch { _ => {} };
-    Assert(table.Get(1) == .Some(10), "the same insertion succeeds once the allocator is willing");
+    Assert(table.Get(1) == 10, "the same insertion succeeds once the allocator is willing");
 
     // A deque grows through the same plumbing.
     // Safety: `hostile` is a local of this function that outlives every use of the handle.
     var queue = Deque<int64>::New(@hostile as Allocator);
     queue.PushBack(7);
-    Assert(queue.Length() == 1 && queue.Get(0) == .Some(7), "a deque grows through the same plumbing");
+    Assert(queue.Length() == 1 && queue.Get(0) == 7, "a deque grows through the same plumbing");
 
     // Everything held is destroyed exactly once. `Clear` destroys what it drops, and nothing before that.
     var tally: int32 = 0;

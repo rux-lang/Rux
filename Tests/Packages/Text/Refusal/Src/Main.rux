@@ -60,10 +60,10 @@ func Main() -> int {
     builder.Append("hello");
     let capacity = builder.Capacity();
     state.refusing = true;
-    Assert(ReserveRefused(builder, 4096) == .Some(AllocError::OutOfMemory), "a refused reservation is reported");
+    Assert(ReserveRefused(builder, 4096) == AllocError::OutOfMemory, "a refused reservation is reported");
     Assert(builder.View().Equals(StringView::FromValidated("hello")), "leaving the text as it was");
     Assert(builder.Capacity() == capacity, "and the room");
-    Assert(ReserveRefused(builder, uint::Max) == .Some(AllocError::Unsupported),
+    Assert(ReserveRefused(builder, uint::Max) == AllocError::Unsupported,
            "and a size that cannot be expressed is refused as unsupported");
     state.refusing = false;
     Assert(ReserveRefused(builder, 4096) == none, "the same request succeeds once the allocator is willing");

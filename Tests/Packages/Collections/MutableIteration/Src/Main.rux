@@ -87,7 +87,7 @@ func Main() -> int {
         // Safety: the cursor yields addresses of the array's elements, and the array is untouched during the loop.
         *element = *element + 1;
     }
-    Assert(array.Get(0) == .Some(6) && array.Get(2) == .Some(6), "array elements are updated");
+    Assert(array.Get(0) == 6 && array.Get(2) == 6, "array elements are updated");
     var emptyArray = Array::Filled<int32>(allocator, 0, 0);
     var arrayCursor = emptyArray.MutableReferences();
     Assert(arrayCursor.Next() == none, "an empty array yields nothing");
@@ -102,7 +102,7 @@ func Main() -> int {
         *element = 42;
         seen = seen + 1;
     }
-    Assert(seen == 1 && vector.Get(0) == .Some(42), "iteration excludes uninitialized spare capacity");
+    Assert(seen == 1 && vector.Get(0) == 42, "iteration excludes uninitialized spare capacity");
 
     var destroyed: int32 = 0;
     ModifyOwners(allocator, @destroyed);

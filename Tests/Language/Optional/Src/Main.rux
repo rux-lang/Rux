@@ -30,15 +30,16 @@ func Lookup(key: int32) -> int32?? {
         return none;
     }
     if key == 1i32 {
-        return .Some(none);
+        let absent: int32? = none;
+        return absent;
     }
-    return .Some(.Some(key * 10i32));
+    return key * 10i32;
 }
 
 func Classify(found: int32??) -> int32 {
     return match found {
-        .Some(.Some(value)) => value,
-        .Some(none) => -1i32,
+        value?? => value,
+        none? => -1i32,
         none => -2i32
     };
 }
@@ -46,7 +47,7 @@ func Classify(found: int32??) -> int32 {
 func Typed(found: int32??) -> int32 {
     return match found {
         stored: int32? => match stored {
-            .Some(value) => value,
+            value? => value,
             none => -1i32
         },
         none => -2i32
@@ -56,7 +57,7 @@ func Typed(found: int32??) -> int32 {
 func First(values: int32?[..]) -> int32? {
     for value in values {
         match value {
-            .Some(present) => return present,
+            present? => return present,
             none => {}
         }
     }
@@ -78,7 +79,7 @@ func Expensive(calls: *var int32) -> int32 {
 }
 
 func Hold(counter: *var Counter) {
-    let held: Tracked? = .Some(Tracked { counter: counter, id: 1i32 });
+    let held: Tracked? = Tracked { counter: counter, id: 1i32 };
 }
 
 func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
@@ -90,7 +91,7 @@ func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
 func Present(values: int32?[..]) -> uint {
     var count: uint = 0;
     for value in values {
-        if value is int32 {
+        if value != none {
             count += 1;
         }
     }
@@ -112,13 +113,13 @@ func Main() -> int {
     // A plain value is present in an optional context, and an optional in an optional of optionals.
     let count: int32? = 4i32;
     let wrapped: int32?? = count;
-    Assert(wrapped == .Some(.Some(4i32)), "presence is constructed around the value");
+    Assert(wrapped == 4i32, "presence is constructed around the value");
 
-    Assert(First([none, 5i32, 6i32]) == .Some(5i32), "an absent element does not end anything");
+    Assert(First([none, 5i32, 6i32]) == 5i32, "an absent element does not end anything");
     Assert(First([none, none]) == none, "all absent");
 
-    Assert(Sum(.Some(1i32), .Some(2i32)) == .Some(3i32), "'?' continues with present values");
-    Assert(Sum(.Some(1i32), none) == none, "'?' returns absence");
+    Assert(Sum(1i32, 2i32) == 3i32, "'?' continues with present values");
+    Assert(Sum(1i32, none) == none, "'?' returns absence");
 
     // Coalescing evaluates its fallback only for absence.
     var calls = 0i32;
@@ -127,32 +128,33 @@ func Main() -> int {
     Assert((present ?? Expensive(@calls)) == 7i32 && calls == 0i32, "no fallback for a present value");
     Assert((absent ?? Expensive(@calls)) == 99i32 && calls == 1i32, "the fallback for absence, once");
     Assert((absent ?? present ?? 3i32) == 7i32, "coalescing associates to the right");
-    let nested: int32?? = .Some(none);
-    Assert((nested ?? .Some(1i32)) == none, "a present absence is a value, not absence");
+    let absentInner: int32? = none;
+    let nested: int32?? = absentInner;
+    Assert((nested ?? 1i32) == none, "a present absence is a value, not absence");
 
-    let found = Required(.Some(8i32)) catch { _ => -1i32 };
+    let found = Required(8i32) catch { _ => -1i32 };
     let notFound = Required(none) catch { _ => -1i32 };
     Assert(found == 8i32 && notFound == -1i32, "'?? fail' turns absence into failure");
 
     var total = 0i32;
     for index in 0i32..4i32 {
-        let value: int32? = if index == 2i32 { none } else { .Some(index) };
+        let value: int32? = if index == 2i32 { none } else { index };
         total = total + (value ?? continue);
     }
     Assert(total == 4i32, "'?? continue' skips an absent value");
     for index in 0i32..10i32 {
-        let value: int32? = if index == 3i32 { none } else { .Some(index) };
+        let value: int32? = if index == 3i32 { none } else { index };
         total = total + (value ?? break);
     }
     Assert(total == 7i32, "'?? break' leaves the loop");
 
-    let unit: ()? = .Some(());
+    let unit: ()? = ();
     Assert(unit != none, "a present unit");
 
     var counter = Counter { count: 0i32 };
     Hold(@counter);
     Assert(counter.count == 1i32, "a present payload is destroyed once");
-    Assert(Unwrap(@counter, .Some(Tracked { counter: @counter, id: 5i32 })) == 5i32, "coalescing moves the payload");
+    Assert(Unwrap(@counter, Tracked { counter: @counter, id: 5i32 }) == 5i32, "coalescing moves the payload");
     Assert(counter.count == 2i32, "which is destroyed once, with no fallback built");
     Assert(Unwrap(@counter, none) == 0i32, "the fallback for an absent owner");
     Assert(counter.count == 3i32, "the fallback is destroyed once");
@@ -164,7 +166,7 @@ func Main() -> int {
     // An annotation gives its type to every arm of a match, so 'none' and a plain value are both its arms.
     let n: int32 = 3;
     let annotated: int32? = match n { 0 => none, _ => n };
-    Assert(annotated == .Some(3i32), "a plain arm becomes the present value of the annotated optional");
+    Assert(annotated == 3i32, "a plain arm becomes the present value of the annotated optional");
     let zero: int32 = 0;
     let missing: int32? = match zero { 0 => none, _ => zero };
     Assert(missing == none, "a 'none' arm takes the annotated optional type");

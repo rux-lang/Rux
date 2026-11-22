@@ -55,8 +55,8 @@ func Main() -> int {
     // Cutting is by byte and only on character boundaries.
     Assert(text.IsBoundary(0) && text.IsBoundary(2) && text.IsBoundary(11), "characters start where they start");
     Assert(!text.IsBoundary(3) && !text.IsBoundary(9), "and their continuation bytes do not");
-    Assert(text.Part(0, 2) is StringView, "a cut on two boundaries is allowed");
-    Assert(!(text.Part(0, 3) is StringView), "a cut through the middle of a character is refused");
+    Assert(text.Part(0, 2) != none, "a cut on two boundaries is allowed");
+    Assert(!(text.Part(0, 3) != none), "a cut through the middle of a character is refused");
 
     let front = text.Substring(0, 4) catch { _ => Panic("an owning cut is made") };
     Assert(front.Length() == 4 && front.ScalarCount() == 3, "spanning what lies between the bounds");

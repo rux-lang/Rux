@@ -44,7 +44,7 @@ extend Slots<T> {
     }
     func FindMutable(&var self, index: uint) -> &var T? {
         if index >= self.count { return none; }
-        return .Some(self.items[index]);
+        return self.items[index];
     }
     func Last(&self) -> &T? {
         if self.count == 0 { return none; }
@@ -140,22 +140,22 @@ func Main() -> int {
     Assert(numbers.Front() == 1i32, "a local holding a returned reference is returned");
 
     let missing = numbers.Find(5);
-    Assert(missing is none, "an optional reference is absent");
+    Assert(missing == none, "an optional reference is absent");
     let found = numbers.Find(1);
-    if found is .Some(value) {
+    if let value? = found {
         Assert(value == 2i32, "binding 'is' takes the reference an optional reference holds");
     }
     else {
         Assert(false, "an element in range is found");
     }
     match numbers.Last() {
-        .Some(last) => Assert(last == 30i32, "a match binds the reference an optional reference holds"),
+        last? => Assert(last == 30i32, "a match binds the reference an optional reference holds"),
         none => Assert(false, "a non-empty collection has a last element"),
     }
     let fallback = 77i32;
     Assert((numbers.Find(9) ?? fallback) == 77i32, "'??' yields the fallback borrowed");
     Assert((numbers.Find(0) ?? fallback) == 1i32, "'??' yields the reference an optional reference holds");
-    if numbers.FindMutable(0) is .Some(written) {
+    if let written? = numbers.FindMutable(0) {
         written = 10i32;
     }
     Assert(numbers.items[0] == 10i32, "a mutable optional reference writes the element");
@@ -170,7 +170,7 @@ func Main() -> int {
     let middle = window.AtMutable(1);
     middle += 10i32;
     Assert(storage[1] == 16i32, "a mutable reference into raw storage writes the element");
-    Assert(window.Find(3) is none && (window.Find(0) ?? fallback) == 5i32, "an optional reference into raw storage");
+    Assert(window.Find(3) == none && (window.Find(0) ?? fallback) == 5i32, "an optional reference into raw storage");
 
     var drops = 0i32;
     People(@drops);

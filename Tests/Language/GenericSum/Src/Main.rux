@@ -94,16 +94,17 @@ func Main() -> int {
     }
     Assert(wrapped == 5000i32, "a named wrapper keeps the original cause");
 
-    Assert(Lookup<int32>(true, 3i32) == .Some(3i32), "a generic presence");
+    Assert(Lookup<int32>(true, 3i32) == 3i32, "a generic presence");
     Assert(Lookup<int32>(false, 3i32) == none, "a generic absence");
     let nestedOptional: int32?? = Lookup<int32?>(true, none);
-    Assert(nestedOptional == .Some(none), "a present absence through a type parameter");
-    Assert(Nest<int32, ParseError>(2i32, 4i32, ParseError { position: 1i32 }) is .Some(.Success(4i32)),
-           "a nested success");
-    Assert(Nest<int32, ParseError>(1i32, 4i32, ParseError { position: 1i32 }) is
-               .Some(.Failure(ParseError { position: 1i32 })),
+    let absent: int32? = none;
+    Assert(nestedOptional == absent, "a present absence through a type parameter");
+    let nestedSuccess = Nest<int32, ParseError>(2i32, 4i32, ParseError { position: 1i32 });
+    Assert(if let .Success(4i32)? = nestedSuccess { true } else { false }, "a nested success");
+    let nestedFailure = Nest<int32, ParseError>(1i32, 4i32, ParseError { position: 1i32 });
+    Assert(if let .Failure(ParseError { position: 1i32 })? = nestedFailure { true } else { false },
            "a nested failure is data");
-    Assert((Complete(true) !! none) is .Some(_), "a unit success across modules");
+    Assert((Complete(true) !! none) != none, "a unit success across modules");
 
     // A whole-subject typed pattern binds the whole value whatever the parameter stands for.
     Assert(Size<int32?>(none) == 1i32, "an optional argument");
@@ -113,14 +114,14 @@ func Main() -> int {
     // A pointer to an optional and an optional pointer are different things.
     var slot: int32? = 6i32;
     let pointerToOptional: *var int32? = @slot;
-    let optionalPointer: (*var int32?)? = .Some(pointerToOptional);
+    let optionalPointer: (*var int32?)? = pointerToOptional;
     match optionalPointer {
-        .Some(pointer) => {
+        pointer? => {
             // Safety: `pointer` is `@slot`, a live local.
-            *pointer = .Some((*pointer ?? 0i32) + 1i32);
+            *pointer = (*pointer ?? 0i32) + 1i32;
         },
         none => {}
     }
-    Assert(slot == .Some(7i32), "an optional pointer to an optional, written through");
+    Assert(slot == 7i32, "an optional pointer to an optional, written through");
     return 0;
 }

@@ -58,7 +58,7 @@ func Main() -> int {
     value = 0;
     while value < 200 {
         if value % 2 == 0 {
-            Assert(set.Remove(value) == .Some(value), "removal hands back what it took");
+            Assert(set.Remove(value) == value, "removal hands back what it took");
         }
         value = value + 1;
     }
@@ -79,7 +79,7 @@ func Main() -> int {
     var round: int32 = 0;
     while round < 500 {
         set.Insert(1000 + round);
-        Assert(set.Remove(1000 + round) is int32, "every churn removal finds what it just added");
+        Assert(set.Remove(1000 + round) != none, "every churn removal finds what it just added");
         round = round + 1;
     }
     Assert(set.Capacity() == settled, "churning at a steady size never grows the table");
@@ -89,7 +89,7 @@ func Main() -> int {
     var cursor: uint = 0;
     var walked: uint = 0;
     var total: int64 = 0;
-    while set.NextElement(cursor) is .Some(seen) {
+    while let seen? = set.NextElement(cursor) {
         Assert(seen % 2 == 1, "every element a walk reports is one still in the set");
         total = total + (seen as int64);
         walked = walked + 1;
@@ -121,9 +121,9 @@ func Main() -> int {
     var firstCursor: uint = 0;
     var secondCursor: uint = 0;
     var differed = false;
-    while first.NextElement(firstCursor) is .Some(firstValue) {
+    while let firstValue? = first.NextElement(firstCursor) {
         let secondNext = second.NextElement(secondCursor);
-        if secondNext is none {
+        if secondNext == none {
             differed = true;
             break;
         }
@@ -162,7 +162,7 @@ func Main() -> int {
     var draining = true;
     while draining {
         match moving.Next() {
-            .Some(element) => {
+            element? => {
                 moved = moved + 1;
             },
             none => {

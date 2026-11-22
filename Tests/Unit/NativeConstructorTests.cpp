@@ -70,28 +70,27 @@ std::vector<std::string> Errors(const Analyzed &analyzed) {
 
 } // namespace
 
-TEST_CASE("every nested optional state is constructible") {
+TEST_CASE("every nested optional state is constructible without a case") {
     const auto analyzed = Analyze(R"(
         func Use() {
             let missing: int32?? = none;
-            let storedAbsence: int32?? = .Some(none);
-            let storedValue: int32?? = .Some(.Some(7i32));
+            let absent: int32? = none;
+            let storedAbsence: int32?? = absent;
+            let storedValue: int32?? = 7i32;
         }
     )");
     CHECK(Errors(*analyzed).empty());
     const FuncDecl &use = Function(*analyzed, "Use");
     CHECK_EQ(RouteOf(*analyzed, Initializer(use, 0)), std::vector{Kind::Absent});
-    const auto *storedAbsence = dynamic_cast<const NativeConstructExpr *>(&Initializer(use, 1));
-    REQUIRE(storedAbsence != nullptr);
-    CHECK_EQ(RouteOf(*analyzed, *storedAbsence->operand), std::vector{Kind::Absent});
 }
 
-TEST_CASE("a native value without a written native type is an ordinary value") {
-    const auto analyzed = Analyze(R"(
+TEST_CASE("an optional has no '.Some' case to write") {
+    CHECK(std::ranges::any_of(
+        Errors(*Analyze(R"(
         func Main() -> int {
-            let value = .Some(1i32);
+            let value: int32? = .Some(1i32);
             return 0;
         }
-    )");
-    CHECK_FALSE(analyzed->model.HasErrors());
+    )")),
+        [](const std::string &message) { return message.starts_with("an optional has no case '.Some'"); }));
 }

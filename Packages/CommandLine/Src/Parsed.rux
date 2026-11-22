@@ -345,6 +345,6 @@ extend Parsed {
             if total == -9223372036854775807 - 1 { throw .InvalidValue(name, text); }
             total = -total;
         }
-        return .Some(total);
+        return total;
     }
 }

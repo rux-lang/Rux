@@ -160,7 +160,7 @@ func Main() -> int {
     Assert(radius == 4i32, "a case payload gives a nested case its type");
 
     let maybeColor: Color? = .Red;
-    Assert((match maybeColor { .Some(color) => Weight(color), none => 0i32 }) == 1i32,
+    Assert((match maybeColor { color? => Weight(color), none => 0i32 }) == 1i32,
            "an optional destination names the type of its present value");
 
     let lifted = Lift(5i32);
@@ -173,7 +173,7 @@ func Main() -> int {
     Assert((match filled { .Some(value) => value, .Empty => -1i32 }) == 7i32,
            "a variant that is the expected type takes '.Some' over the native constructor");
     Assert((match Fill(0i32) { .Some(value) => value, .Empty => -1i32 }) == -1i32, "and its other cases still work");
-    let native: int32? = .Some(3i32);
+    let native: int32? = 3i32;
     Assert((native ?? 0i32) == 3i32, "without such a variant '.Some' is the native optional");
 
     Assert((Load(0i32) catch { .NotFound => 1i32, _ => 0i32 }) == 1i32, "a 'throw' operand");
@@ -188,7 +188,7 @@ func Main() -> int {
     var assigned: Kept<int32, Problem> = .Success(0i32);
     assigned = .Failure(.Invalid(-1i32));
     Assert(assigned is .Failure(_), "and so does an assignment");
-    let optional: Kept<int32, Problem>? = .Some(.Success(Checked(2i32) !! 0i32));
-    Assert(optional is .Some(.Success(2i32)), "and '.Some' passes the optional's payload on");
+    let optional: Kept<int32, Problem>? = .Success(Checked(2i32) !! 0i32);
+    Assert(if let .Success(2i32)? = optional { true } else { false }, "and a present value passes its payload on");
     return 0;
 }

@@ -50,7 +50,8 @@ TEST_CASE("a comparison never injects, widens, or orders a native value") {
         }
     )");
     CHECK(AnyContains(errors, "operator '==' cannot compare 'A | B' with 'A'"));
-    CHECK(AnyContains(errors, "operator '==' cannot compare 'int32?' with 'int32'"));
+    // A value compared with an optional of its type is made present, as wherever an optional is expected.
+    CHECK_FALSE(AnyContains(errors, "operator '==' cannot compare 'int32?' with 'int32'"));
     CHECK(AnyContains(errors, "operator '==' cannot compare 'A | B' with 'A | B | int32'"));
     CHECK(AnyContains(errors, "operator '<' is not defined for 'int32?'"));
 }

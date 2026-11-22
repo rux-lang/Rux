@@ -1,0 +1,5 @@
+11:17: error: 'is' tests and does not bind 'radius'
+14:14: error: 'is' does not test an optional
+17:12: error: 'if let' binds the value of an optional, and the pattern has no '?'
+20:25: error: an optional has no case '.Some'
+22:9: error: an optional has no case '.Some'

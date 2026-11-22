@@ -1,7 +1,7 @@
 func Mismatch(value: int32) -> int32? {
     return match value {
-        0 => .Some(1i32),
-        _ => .Some(true)
+        0 => 1i32,
+        _ => true
     };
 }
 
@@ -9,7 +9,7 @@ func Late(value: int32) -> int32? {
     return match value {
         0 => .Failure(true),
         1 => none,
-        _ => .Some(1i32)
+        _ => 1i32
     };
 }
 
@@ -30,7 +30,7 @@ func Open(value: int32) {
 func Accepted(value: int32) -> int32? {
     let annotated: int32? = match value {
         0 => none,
-        _ => .Some(value)
+        _ => value
     };
     return match value {
         0 => none,

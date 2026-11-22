@@ -37,21 +37,21 @@ func Lookup(key: int) -> int? {
 }
 
 func Area(shape: Shape) -> int {
-    if shape is .Circle(radius) {
+    if let .Circle(radius) = shape {
         return radius * radius * 3;
     }
     // Where a brace would open the body, a braced payload is written inside parentheses.
-    else if (shape is .Rect { width, height }) && width > 0 {
+    else if let .Rect { width, height } = shape && width > 0 {
         return width * height;
     }
     return 0;
 }
 
 func Describe(value: int | bool) -> int {
-    if value is number: int {
+    if let number: int = value {
         return number;
     }
-    if value is flag: bool && flag {
+    if let flag: bool = value && flag {
         return 1;
     }
     return -1;
@@ -74,7 +74,7 @@ extend Countdown {
 func Drain(start: int) -> int {
     var countdown = Countdown { left: start };
     var total = 0;
-    while countdown.Next() is .Some(value) {
+    while let value? = countdown.Next() {
         total += value;
     }
     return total;
@@ -82,7 +82,7 @@ func Drain(start: int) -> int {
 
 func FirstLarge(values: int?[..]) -> int {
     for entry in values {
-        if entry is .Some(value) && value > 5 && value < 100 {
+        if let value? = entry && value > 5 && value < 100 {
             return value;
         }
     }
@@ -90,22 +90,18 @@ func FirstLarge(values: int?[..]) -> int {
 }
 
 func Chain(a: int?, b: int?) -> int {
-    if a is .Some(x) && b is .Some(y) {
-        return x + y;
-    }
-    else if a is .Some(x) {
+    if let x? = a {
+        if let y? = b { return x + y; }
         return x;
     }
-    else if b is .Some(y) && y > 100 {
+    if let y? = b && y > 100 {
         return -y;
     }
-    else {
-        return 0;
-    }
+    return 0;
 }
 
 func Doubled(a: int?) -> int {
-    let value = if a is .Some(x) && x > 0 { x * 2 } else if a is .Some(_) { return -5; } else { -1 };
+    let value = if let x? = a && x > 0 { x * 2 } else if a != none { return -5; } else { -1 };
     return value;
 }
 
@@ -126,32 +122,32 @@ extend Source {
 }
 
 func Origin(point: Point?) -> bool {
-    return point is .Some(Point { x: 0, y: 0 });
+    return if let Point { x: 0, y: 0 }? = point { true } else { false };
 }
 
 func Main() -> int {
     // An optional, its subject a call evaluated exactly once.
-    if Lookup(4) is .Some(found) {
+    if let found? = Lookup(4) {
         Assert(found == 40, "the payload is bound in the body");
     }
     else {
         Assert(false, "a present value takes the then branch");
     }
     Assert(calls == 1, "the subject is evaluated once");
-    if Lookup(-1) is .Some(_) {
+    if Lookup(-1) != none {
         Assert(false, "an absent value fails the test");
     }
 
     // A named subject keeps its value: the binding only borrows it.
     let stored: int? = 8;
-    if stored is .Some(inner) && inner == 8 {
+    if let inner? = stored && inner == 8 {
         Assert(stored == 8, "the subject is still usable while the binding is");
     }
     Assert(stored == 8, "the subject keeps its value after the test");
     // The borrow ends at the binding's last use, so the body may then replace the subject.
     var current: int? = 3;
     var steps = 0;
-    while current is .Some(left) {
+    while let left? = current {
         steps += 1;
         current = if left > 0 { left - 1 } else { none };
     }
@@ -177,7 +173,7 @@ func Main() -> int {
     // A test whose names reach the right side of '&&' outside a condition, and one that binds nothing.
     let values: int?[4] = [none, 3, 50, 7];
     Assert(FirstLarge(values[..]) == 50, "bindings and further tests chain with '&&'");
-    let ready = values[1] is .Some(v) && v == 3;
+    let ready = if let v? = values[1] && v == 3 { true } else { false };
     Assert(ready, "a binding conjunction is a 'bool' value");
     Assert(Origin(Point { x: 0, y: 0 }) && !Origin(Point { x: 1, y: 0 }), "nested patterns test without binding");
     Assert(!Origin(none), "an absent subject fails a nested pattern");
@@ -191,7 +187,7 @@ func Main() -> int {
     // A labeled loop over temporaries: `continue`, `break` and `defer` release what each pass bound.
     var source = Source { left: 5 };
     var seen = 0;
-    outer: while source.Next() is .Some(token) {
+    outer: while let token? = source.Next() {
         defer deferred += 1;
         if token.id == 3 {
             continue;
@@ -207,7 +203,7 @@ func Main() -> int {
 
     // A subject transferred with `move` is owned by the test: its payload is destroyed once, by whoever holds it.
     var owned: Token? = Token { id: 5 };
-    if move owned is .Some(token) {
+    if let token? = move owned {
         Assert(token.id == 5, "the transferred payload is bound");
     }
     Assert(drops == 1, "the bound payload is destroyed once at the end of the body");

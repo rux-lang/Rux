@@ -37,7 +37,7 @@
 pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
                                     spec: FormatSpec) -> !FormatError {
     match value {
-        .Some(payload) => {
+        payload? => {
             WriteBytes(writer, "Some(")!;
             payload.WriteDebug(writer, spec)!;
             return WriteAscii(writer, c8')')!;

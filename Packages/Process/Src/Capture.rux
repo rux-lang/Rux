@@ -90,7 +90,7 @@ extend Command {
         let status = child.Wait()!;
         if !outputRead { throw IoError::Of(IoErrorKind::Other); }
         match move drained {
-            .Some(errorBytes) => {
+            errorBytes? => {
                 return CapturedOutput { status, output: move outputBytes, error: move errorBytes };
             },
             none => throw IoError::Of(IoErrorKind::Other)

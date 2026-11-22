@@ -3,7 +3,7 @@ variant ParseError { Local(uint64) }
 func Main() -> int {
     let local = ParseError::Local(1234567890123);
     let valid = (ParseBool("true") !! none) ?? false;
-    if !valid || !((ParseBool("") !! none) is none) || !((ParseBool("false!") !! none) is none) { return 1; }
+    if !valid || !((ParseBool("") !! none) == none) || !((ParseBool("false!") !! none) == none) { return 1; }
     let payload = match local { .Local(value) => value };
     if payload != 1234567890123 { return 2; }
     return 0;

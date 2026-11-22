@@ -84,14 +84,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 func ShownOptional(value: &(StringView?), spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (WriteOptionalDebug<StringView>(writer, value, spec) !! none) is none { return false; }
+    if (WriteOptionalDebug<StringView>(writer, value, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (WriteSliceDebug<StringView>(writer, items, spec) !! none) is none { return false; }
+    if (WriteSliceDebug<StringView>(writer, items, spec) !! none) == none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -101,13 +101,13 @@ func Main() -> int {
 
     // An optional names its case and shows its payload the way the payload shows itself — quoted, here, because
     // that is what a string's Debug is.
-    var some: StringView? = .Some(hello);
+    var some: StringView? = hello;
     var absent: StringView? = none;
     Assert(ShownOptional(some, plain, "Some(\"hello\")"), "a present optional names its case around its payload");
     Assert(ShownOptional(absent, plain, "none"), "and an absent one is the absence alone");
 
     // The empty payload is where a wrapper that wrote nothing would be indistinguishable from one that worked.
-    var empty: StringView? = .Some(StringView::FromValidated(""));
+    var empty: StringView? = StringView::FromValidated("");
     Assert(ShownOptional(empty, plain, "Some(\"\")"), "an empty payload is still visibly a payload");
 
     // A run of elements, including the two edges: none at all, and exactly one, which is where a separator written
@@ -128,20 +128,20 @@ func Main() -> int {
     var spyStorage: char8[64];
     var spyWriter = BufferWriter::New(spyStorage[..64]);
     let spySink: &var TextWriter = spyWriter;
-    Assert((WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3")) !! none) is .Some(_), "a run of spies is shown");
+    Assert((WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3")) !! none) != none, "a run of spies is shown");
     Assert(Same(spyWriter.Written(), "[w7p3, w7p3]"), "and every element was handed the caller's own specification");
 
     // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
     // is the property counted rather than assumed.
     var destroyed: int32 = 0;
-    var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7 });
+    var held: Tracked? = Tracked { counter: @destroyed, tag: 7 };
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    Assert((WriteOptionalDebug<Tracked>(writer, held, plain) !! none) is .Some(_), "a move-only payload is shown");
+    Assert((WriteOptionalDebug<Tracked>(writer, held, plain) !! none) != none, "a move-only payload is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
-    Assert((WriteOptionalDebug<Tracked>(writer, held, plain) !! none) is .Some(_), "so it can be shown again");
+    Assert((WriteOptionalDebug<Tracked>(writer, held, plain) !! none) != none, "so it can be shown again");
     Assert(destroyed == 0, "still destroying nothing");
-    Assert(held is Tracked, "and the optional still holds its value");
+    Assert(held != none, "and the optional still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
 
     // The same for a run of them: every element is reached through a borrow.
@@ -150,7 +150,7 @@ func Main() -> int {
     var runStorage: char8[128];
     var runWriter = BufferWriter::New(runStorage[..128]);
     let runSink: &var TextWriter = runWriter;
-    Assert((WriteSliceDebug<Tracked>(runSink, elements[..], plain) !! none) is .Some(_), "a move-only run is shown");
+    Assert((WriteSliceDebug<Tracked>(runSink, elements[..], plain) !! none) != none, "a move-only run is shown");
     Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
     Assert(destroyed == 0, "and not one of them was destroyed");
 

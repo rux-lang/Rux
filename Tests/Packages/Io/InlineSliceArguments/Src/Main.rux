@@ -19,7 +19,7 @@ func Check(flag: bool) {
         "B"
     } else {
         ""
-    }) !! none) is .Some(_), "inline variadic formatting succeeds");
+    }) !! none) != none, "inline variadic formatting succeeds");
     Assert(Same(writer.Written(), if flag { "alpha//B" } else { "B/alpha/" }), "all selected slice bytes survive");
     var plainStorage: char8[32];
     var plainWriter = BufferWriter::New(plainStorage[..32]);
@@ -27,7 +27,7 @@ func Check(flag: bool) {
         "alpha"
     } else {
         "B"
-    }, FormatSpec::Plain()) !! none) is .Some(_), "an ordinary interface argument succeeds");
+    }, FormatSpec::Plain()) !! none) != none, "an ordinary interface argument succeeds");
     Assert(Same(plainWriter.Written(), if flag {
         "alpha"
     } else {
@@ -37,12 +37,12 @@ func Check(flag: bool) {
         "B"
     } else {
         ""
-    }) is IoError), "inline PrintLine succeeds");
+    }) != none), "inline PrintLine succeeds");
     Assert(!(PrintLine("{} {}", if flag { "alpha" } else { "B" }, if flag {
         "alpha"
     } else {
         "B"
-    }) is IoError), "repeated PrintLine arguments succeed");
+    }) != none), "repeated PrintLine arguments succeed");
 }
 func Main() -> int {
     var iteration = 0;

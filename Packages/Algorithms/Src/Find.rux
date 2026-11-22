@@ -21,7 +21,7 @@ import Core::Compare::Ordering;
 /// @returns whether any element equals `value`
 /// @see https://rux-lang.dev/docs/api/algorithms/searching#contains
 pub func Contains<T>(items: T[..], value: T) -> bool {
-    return IndexOf<T>(items, value) is uint;
+    return IndexOf<T>(items, value) != none;
 }
 
 /// How many elements of `items` equal `value`.
@@ -172,7 +172,7 @@ pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 /// @returns whether any element satisfies `predicate`; false for an empty sequence
 /// @see https://rux-lang.dev/docs/api/algorithms/searching#any-of
 pub func AnyOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
-    return IndexWhere<T>(items, predicate) is uint;
+    return IndexWhere<T>(items, predicate) != none;
 }
 
 /// Whether `predicate` accepts no element of `items`.
@@ -221,7 +221,7 @@ pub func Mismatch<T>(left: T[..], right: T[..]) -> uint? {
 /// @see https://rux-lang.dev/docs/api/algorithms/comparing#sequence-equal
 pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
     if left.length != right.length { return false; }
-    return !(Mismatch<T>(left, right) is uint);
+    return !(Mismatch<T>(left, right) != none);
 }
 
 /// How `left` orders against `right`, element by element.

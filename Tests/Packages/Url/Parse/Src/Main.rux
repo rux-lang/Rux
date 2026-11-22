@@ -17,14 +17,14 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 
 func Present(value: char8[..]?, expected: char8[..]) -> bool {
     match value {
-        .Some(text) => return Same(text, expected),
+        text? => return Same(text, expected),
         none => return false
     }
 }
 
 func Absent(value: char8[..]?) -> bool {
     match value {
-        .Some(_) => return false,
+        _? => return false,
         none => return true
     }
 }

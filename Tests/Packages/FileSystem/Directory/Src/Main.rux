@@ -69,7 +69,7 @@ func Run() -> int ! IoError {
     while true {
         let next = iterator.Next() catch { _ => Panic("the enumeration ends rather than fails") };
         match move next {
-            .Some(entry) => {
+            entry? => {
                 count = count + 1;
                 let view = entry.View();
                 if view.Equals(oneWant) {
@@ -92,7 +92,7 @@ func Run() -> int ! IoError {
     iterator.Release();
 
     // Deletion respects fullness: refused while anything is inside, clean once nothing is.
-    Assert((DeleteDirectory(allocator, dir) !! none) is none, "a full directory refuses deletion");
+    Assert((DeleteDirectory(allocator, dir) !! none) == none, "a full directory refuses deletion");
     DeleteFile(allocator, one)!;
     DeleteFile(allocator, two)!;
     DeleteFile(allocator, accent)!;
@@ -105,7 +105,7 @@ func Run() -> int ! IoError {
 
     var emptied = ReadDirectory(allocator, dir)!;
     let nothing = emptied.Next() catch { _ => Panic("the emptied directory reads without failing") };
-    Assert(!(nothing is OsString), "and holds nothing");
+    Assert(!(nothing != none), "and holds nothing");
     emptied.Release();
 
     DeleteDirectory(allocator, dir)!;

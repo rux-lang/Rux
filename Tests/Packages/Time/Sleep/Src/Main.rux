@@ -54,7 +54,7 @@ extend ScriptedWaiter : Waiter {
             }
 
             match self.state.outcome {
-                .Some(refusal) => { throw refusal; },
+                refusal? => { throw refusal; },
                 none => {}
             }
         }

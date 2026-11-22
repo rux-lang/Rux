@@ -13,7 +13,7 @@ extend Cursor<T> {
         // Safety: `position < length`, checked above, and `data` addresses a local array of `length` elements.
         let pointer = @self.data[self.position];
         self.position = self.position + 1;
-        return .Some(pointer);
+        return pointer;
     }
 
     func Read(&self) -> Option<*T> {
@@ -67,17 +67,17 @@ func Main() -> int {
     var sum = 0;
     loop {
         // Safety: `Next` yields only addresses of `values` elements, a live local array.
-        match again.Next() { .Some(pointer) => { sum = sum + *pointer; }, none => { break; } }
+        match again.Next() { pointer? => { sum = sum + *pointer; }, none => { break; } }
     }
     if sum != 36 { return 11; }
-    match cursor.Next() { .Some(_) => { return 4; }, none => {} }
-    match cursor.Next() { .Some(_) => { return 5; }, none => {} }
+    match cursor.Next() { _? => { return 4; }, none => {} }
+    match cursor.Next() { _? => { return 5; }, none => {} }
 
     var wide = 99i64;
     Change<int64>(@wide, 1234567890123i64);
     if Inspect<int64>(@wide) != 1234567890123i64 { return 6; }
     var empty = Cursor<int64> { data: @wide, length: 0, position: 0 };
-    match empty.Next() { .Some(_) => { return 7; }, none => {} }
+    match empty.Next() { _? => { return 7; }, none => {} }
     match empty.Read() { .Some(_) => { return 8; }, .None => {} }
     let writable = Wrap<*var int64>(@wide);
     let readable = Wrap<*int64>(@wide);

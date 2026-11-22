@@ -450,9 +450,28 @@ TypeRef AnalysisContext::CheckIsPattern(const IsExpr &expression, const bool rec
                                                         : PatternBorrow::Shared;
     }
 
+    if (!expression.binds) {
+        std::vector<std::string> bound;
+        CollectBoundNames(*expression.pattern, bound);
+        if (!bound.empty()) {
+            EmitError(expression.pattern->location, std::format("'is' tests and does not bind '{}'", bound.front()), {},
+                      "bind with 'if let', as in 'if let .Case(name) = subject { ... }', or write '_' to test only");
+        }
+        else if (subjectType.IsOptional()) {
+            EmitError(expression.location, "'is' does not test an optional", {},
+                      "compare with '== none' or '!= none', or bind the value with 'if let name? = ...'");
+        }
+    }
+    else if (subjectType.IsOptional() && (AstCast<const IdentPattern>(expression.pattern.get()) ||
+                                          AstCast<const TypedPattern>(expression.pattern.get()))) {
+        EmitError(expression.pattern->location, "'if let' binds the value of an optional, and the pattern has no '?'",
+                  {}, "add '?' after the name, as in 'if let name? = ...'");
+    }
     const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, borrow);
     const bool savedTakesParts = std::exchange(currentPatternTakesParts, takesParts);
+    const bool savedMutable = std::exchange(currentPatternBindsMutable, expression.mutableBindings);
     CheckPattern(*expression.pattern, subjectType);
+    currentPatternBindsMutable = savedMutable;
     currentPatternTakesParts = savedTakesParts;
     currentPatternBorrow = savedBorrow;
 

@@ -58,7 +58,7 @@ func CheckAlignment(allocator: Allocator, name: char8[..]) -> !AllocError {
     while alignment <= 256 {
         let layout = LayoutOr(64, alignment);
         // A refused allocation is allowed; a misaligned one is not.
-        if (allocator.Allocate(layout) !! none) is .Some(block) {
+        if let block? = (allocator.Allocate(layout) !! none) {
             Assert(block != null, "a successful allocation reports an address");
             Assert(layout.IsSatisfiedBy(block as uint), "a served allocation is aligned to what was asked for");
             // The whole block is writable, not merely its aligned first byte.
@@ -88,11 +88,11 @@ func CheckZeroSize(allocator: Allocator) -> !AllocError {
 
     // Growing out of nothing is an ordinary allocation, and shrinking back to nothing gives the empty address.
     let real = LayoutOr(32, 8);
-    if (allocator.Reallocate(block, zero, real) !! none) is .Some(grown) {
+    if let grown? = (allocator.Reallocate(block, zero, real) !! none) {
         Assert(!IsEmptyBlock(grown), "growing out of nothing gives real storage");
         // Safety: `grown` is a live allocation of at least 32 bytes, served just above.
         Fill(grown, 32);
-        if (allocator.Reallocate(grown, real, zero) !! none) is .Some(shrunk) {
+        if let shrunk? = (allocator.Reallocate(grown, real, zero) !! none) {
             Assert(IsEmptyBlock(shrunk), "and shrinking back to nothing gives the empty address again");
             // The address is only half of it. A zero-sized release must arrive with the empty block, so an
             // allocator that handed back the address it rewound off of would leave the caller holding
@@ -134,7 +134,7 @@ func CheckFailedReallocation(allocator: Allocator) -> !AllocError {
     // holds, which a mere 2^47 is not: FreeBSD gives an AArch64 process 256 TiB and promises any amount of anonymous
     // memory by default, so it served that request and the assertion below failed.
     let enormous = LayoutOr(0x1000000000000000, 8);
-    let refused = (allocator.Reallocate(block, original, enormous) !! none) is none;
+    let refused = (allocator.Reallocate(block, original, enormous) !! none) == none;
     Assert(refused, "growing past what any allocator can serve is refused");
     // Safety: `block` is a live allocation of at least 96 bytes, not yet released.
     Assert(Holds(block, 96), "and that refusal also left the original contents alone");
@@ -151,7 +151,7 @@ func CheckSuccessfulReallocation(allocator: Allocator) -> !AllocError {
     // Safety: `block` is a live allocation of at least 64 bytes, served just above.
     Fill(block, 64);
 
-    if (allocator.Reallocate(block, small, large) !! none) is .Some(grown) {
+    if let grown? = (allocator.Reallocate(block, small, large) !! none) {
         Assert(grown != null, "a successful growth reports where the block is now");
         // Safety: `grown` is a live allocation of at least 64 bytes, not yet released.
         Assert(Holds(grown, 64), "and the bytes that fit both layouts came across");
@@ -159,7 +159,7 @@ func CheckSuccessfulReallocation(allocator: Allocator) -> !AllocError {
         // Shrinking keeps the prefix and nothing is promised about the rest.
         // Safety: `grown` is a live allocation of at least 256 bytes, served just above.
         Fill(grown, 256);
-        if (allocator.Reallocate(grown, large, small) !! none) is .Some(shrunk) {
+        if let shrunk? = (allocator.Reallocate(grown, large, small) !! none) {
             // Safety: `shrunk` is a live allocation of at least 64 bytes, not yet released.
             Assert(Holds(shrunk, 64), "and shrinking keeps the prefix that still fits");
             allocator.Deallocate(shrunk, small)!;

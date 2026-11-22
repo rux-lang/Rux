@@ -104,8 +104,8 @@ func Measure(shape: Shape) -> int32 {
 
 func Pick(held: (int32, bool)?) -> int32 {
     return match held {
-        .Some((n, true)) => n,
-        .Some((n, false)) => -n,
+        (n, true)? => n,
+        (n, false)? => -n,
         none => 0
     };
 }
@@ -183,8 +183,8 @@ func Main() -> int {
     Assert(Measure(Shape::Labeled(4, (0, 6))) == 10, "tuple payload with a literal element");
     Assert(Measure(Shape::Labeled(2, (3, 4))) == 24, "tuple payload bound");
 
-    let yes: (int32, bool)? = .Some((5i32, true));
-    let no: (int32, bool)? = .Some((5i32, false));
+    let yes: (int32, bool)? = (5i32, true);
+    let no: (int32, bool)? = (5i32, false);
     Assert(Pick(yes) == 5, "tuple inside an optional, matched on its bool element");
     Assert(Pick(no) == -5, "tuple inside an optional, second arm");
     Assert(Pick(none) == 0, "absent optional");

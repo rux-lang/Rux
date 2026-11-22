@@ -11,7 +11,7 @@ func Check(value: float32, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: float32 = value;
-    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) is none {
+    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) == none {
         return code;
     }
     let actual = cursor.Written();

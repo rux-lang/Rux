@@ -11,7 +11,7 @@ func Check(value: float64, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor::New(storage[..64]);
     let writer: &var TextWriter = cursor;
     let shown: float64 = value;
-    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) is none {
+    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) == none {
         return code;
     }
     let actual = cursor.Written();
@@ -81,7 +81,7 @@ func CheckParseOverloads() -> int {
         value = parsedValue;
     }
     if value != 6.25 { return 122; }
-    if (ParseFloat64("invalid") !! none) is .Some(_) { return 123; }
+    if (ParseFloat64("invalid") !! none) != none { return 123; }
     if value != 6.25 { return 124; }
 
     text = StringView::FromBytes("-4.5") ?? StringView::New();
@@ -92,7 +92,7 @@ func CheckParseOverloads() -> int {
     if value != -4.5 { return 127; }
 
     text = StringView::FromBytes("bad") ?? StringView::New();
-    if (ParseFloat64(text) !! none) is .Some(_) { return 128; }
+    if (ParseFloat64(text) !! none) != none { return 128; }
     if value != -4.5 { return 129; }
     return 0;
 }

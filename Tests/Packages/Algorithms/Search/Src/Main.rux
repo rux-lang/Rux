@@ -76,7 +76,7 @@ func CheckBounds(items: int32[..], value: int32, wantLower: uint, wantUpper: uin
     else {
         at = BinarySearch<int32>(items, value) ?? Panic("a non-empty range means the value is present");
         Assert(at == wantLower, "and the first of the equal elements is the one reported");
-        Assert(BinarySearchBy<int32>(items, value, LessInt32) == .Some(wantLower),
+        Assert(BinarySearchBy<int32>(items, value, LessInt32) == wantLower,
                "which a comparator agrees with");
     }
 }

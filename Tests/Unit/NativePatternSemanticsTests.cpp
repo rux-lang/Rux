@@ -78,8 +78,8 @@ TEST_CASE("every nested optional state is a separate case") {
     CHECK(ErrorsIn(R"(
         func Lookup(found: int32??) -> int32 {
             return match found {
-                .Some(.Some(value)) => value,
-                .Some(none) => 1i32,
+                value?? => value,
+                none? => 1i32,
                 none => 2i32
             };
         }
@@ -89,12 +89,12 @@ TEST_CASE("every nested optional state is a separate case") {
     const auto missing = ErrorsIn(R"(
         func Lookup(found: int32??) -> int32 {
             return match found {
-                .Some(.Some(value)) => value,
+                value?? => value,
                 none => 2i32
             };
         }
     )");
-    CHECK(AnyContains(missing, "match on 'int32?\?' is not exhaustive; missing .Some(none)"));
+    CHECK(AnyContains(missing, "match on 'int32?\?' is not exhaustive; missing none?"));
 }
 
 TEST_CASE("typed patterns select members, one presence level, or the whole subject") {
@@ -494,7 +494,7 @@ TEST_CASE("is selects membership by the subject's form") {
             return value is Defaults && value is (Options | Defaults);
         }
         func Present(count: int32?, any: (Options | Defaults)?) -> bool {
-            return count is int32 && any is Options && any is (Options | Defaults);
+            return count != none && any != none;
         }
         func Exact(count: int32) -> bool {
             return count is int32;
@@ -528,7 +528,7 @@ TEST_CASE("is selects membership by the subject's form") {
         }
     )");
     CHECK(AnyContains(rejected, "type 'int32' is not a member or subset of sum 'Defaults | Options'"));
-    CHECK(AnyContains(rejected, "type 'int32' is neither the payload of optional 'int32?\?' nor a member of it"));
+    CHECK(AnyContains(rejected, "'is' does not test an optional"));
     CHECK(AnyContains(rejected, "'is int64' can never be true for a value of type 'int32'"));
 
     const auto instantiated = Errors(R"(
@@ -596,8 +596,8 @@ TEST_CASE("alternatives cover the union of what each one matches") {
         }
         func Count(found: int32?) -> int32 {
             return match found {
-                none | .Some(0i32) => 0i32,
-                .Some(value) => value
+                none | 0i32? => 0i32,
+                value? => value
             };
         }
         func Flag(flag: bool) -> int32 {
@@ -618,20 +618,20 @@ TEST_CASE("alternatives cover the union of what each one matches") {
         }
         func Count(found: int32??) -> int32 {
             return match found {
-                none | .Some(none) => 0i32,
-                .Some(.Some(0i32)) => 1i32
+                none | none? => 0i32,
+                0i32?? => 1i32
             };
         }
     )");
     CHECK(AnyContains(missing, "match on 'Os' is not exhaustive; missing Os::MacOS"));
-    CHECK(AnyContains(missing, "match on 'int32?\?' is not exhaustive; missing .Some(.Some(_))"));
+    CHECK(AnyContains(missing, "match on 'int32?\?' is not exhaustive; missing _??"));
 
     const auto repeated = ErrorsIn(R"(
         func Count(found: int32?) -> int32 {
             return match found {
-                none | .Some(0i32) => 0i32,
+                none | 0i32? => 0i32,
                 none => 1i32,
-                .Some(_) => 2i32
+                _? => 2i32
             };
         }
     )");
@@ -661,7 +661,7 @@ TEST_CASE("a match statement covers its subject as an expression does") {
                 true => {}
             }
             match found {
-                .Some(_) => {}
+                _? => {}
             }
         }
     )");
@@ -676,7 +676,7 @@ TEST_CASE("a match statement covers its subject as an expression does") {
                 _ => {}
             }
             match found {
-                .Some(_) => {}
+                _? => {}
                 none => {}
             }
         }
@@ -684,23 +684,23 @@ TEST_CASE("a match statement covers its subject as an expression does") {
               .empty());
 }
 
-TEST_CASE("'is' bindings are in scope only where the test is known true") {
+TEST_CASE("'if let' bindings are in scope only where the pattern matched, and 'is' binds nothing") {
     CHECK(ErrorsIn(R"(
         func Use(entry: int32?, other: int32?) -> int32 {
-            if entry is .Some(value) && value > 0i32 {
+            if let value? = entry && value > 0i32 {
                 return value;
             }
-            while other is .Some(next) {
+            while let next? = other {
                 return next;
             }
-            let ready = entry is .Some(first) && first == 1i32;
-            return if entry is .Some(v) { v } else { 0i32 };
+            let ready = if let first? = entry && first == 1i32 { true } else { false };
+            return if let v? = entry { v } else { 0i32 };
         }
     )")
               .empty());
     const auto errors = ErrorsIn(R"(
         func Use(entry: int32?) -> int32 {
-            if entry is .Some(value) {
+            if let value? = entry {
                 return value;
             }
             else {
@@ -708,31 +708,26 @@ TEST_CASE("'is' bindings are in scope only where the test is known true") {
             }
         }
         func After(entry: int32?) -> int32 {
-            let present = entry is .Some(found);
+            if let found? = entry {}
             return found;
         }
     )");
     CHECK_EQ(CountContaining(errors, "'value'"), 1);
     CHECK_EQ(CountContaining(errors, "'found'"), 1);
     CHECK(AnyContains(ErrorsIn(R"(
-        func Use(entry: int32?) -> bool {
-            return entry is .Some(value) || false;
+        variant Shape { Dot, Circle(int32) }
+        func Use(shape: Shape) -> bool {
+            return !(shape is .Circle(radius));
         }
     )"),
-                      "an 'is' test under '||' cannot bind names"));
-    CHECK(AnyContains(ErrorsIn(R"(
-        func Use(entry: int32?) -> bool {
-            return !(entry is .Some(value));
-        }
-    )"),
-                      "an 'is' test under '!' cannot bind names"));
+                      "'is' tests and does not bind 'radius'"));
 }
 
 TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred one is consumed") {
     CHECK(AnyContains(ErrorsIn(R"(
         func Use(entry: int32?) -> int32 {
             var held = entry;
-            if held is .Some(value) {
+            if let value? = held {
                 held = none;
                 return value;
             }
@@ -745,10 +740,10 @@ TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred o
         extend Token { func ~(&var self) {} }
         func Use(entry: Token?) -> int32 {
             var held = move entry;
-            if move held is .Some(token) {
+            if let token? = move held {
                 return token.id;
             }
-            if held is .Some(_) {
+            if held != none {
                 return 1i32;
             }
             return 0i32;

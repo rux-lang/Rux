@@ -513,7 +513,7 @@ extend Regex {
             if numeric { self.AppendGroup(builder, text, slots, number); }
             else {
                 match self.IndexOfName(name) {
-                    .Some(index) => self.AppendGroup(builder, text, slots, index as uint),
+                    index? => self.AppendGroup(builder, text, slots, index as uint),
                     none => {}
                 }
             }

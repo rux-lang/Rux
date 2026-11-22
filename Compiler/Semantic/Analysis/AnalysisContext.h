@@ -1203,12 +1203,15 @@ private:
     /// Whether the arm whose pattern is being checked owns what it binds: its match owns its subject, or it is a
     /// `catch` arm taking the error. A structure pattern binding a part there takes the value apart.
     bool currentPatternTakesParts = false;
+    /// The names the pattern being checked binds are `var`, as `if var count? = ...` makes them.
+    bool currentPatternBindsMutable = false;
 
     /// Locals read as values; an assignment target is not a read.
     std::unordered_set<const Symbol *> readSymbols;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;
+    std::unordered_map<const BinaryExpr *, bool> &noneTests;
     std::unordered_map<const BinaryExpr *, TypeRef> &aggregateEqualityOperandTypes;
     std::unordered_map<std::string, VariantEqualityPayload> &aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;

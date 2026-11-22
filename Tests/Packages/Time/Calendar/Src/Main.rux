@@ -21,10 +21,10 @@ func Main() -> int {
     Assert(DaysInMonth(2024, 13) == 0, "and a thirteenth month has none at all");
 
     // Construction refuses what does not exist.
-    Assert((Date::FromParts(2024, 2, 29) is Date), "the leap day exists in a leap year");
-    Assert(!(Date::FromParts(2023, 2, 29) is Date), "and not otherwise");
-    Assert(!(Date::FromParts(2024, 4, 31) is Date), "April has no thirty-first");
-    Assert(!(Date::FromParts(2024, 1, 0) is Date), "there is no zeroth day");
+    Assert((Date::FromParts(2024, 2, 29) != none), "the leap day exists in a leap year");
+    Assert(!(Date::FromParts(2023, 2, 29) != none), "and not otherwise");
+    Assert(!(Date::FromParts(2024, 4, 31) != none), "April has no thirty-first");
+    Assert(!(Date::FromParts(2024, 1, 0) != none), "there is no zeroth day");
 
     // The epoch conversion, at the values everyone can check.
     let epochDay = (Date::FromParts(1970, 1, 1) ?? Date::FromEpochDays(999));
@@ -57,15 +57,15 @@ func Main() -> int {
     Assert(epochDay.Equals((Date::FromParts(1970, 1, 1) ?? early)), "and a date equals itself");
 
     // The time of day refuses what a day does not hold; the leap second included, by policy.
-    Assert((TimeOfDay::FromParts(23, 59, 59, 999999999) is TimeOfDay), "the last nanosecond of the day exists");
-    Assert(!(TimeOfDay::FromParts(24, 0, 0, 0) is TimeOfDay), "the twenty-fourth hour does not");
-    Assert(!(TimeOfDay::FromParts(23, 59, 60, 0) is TimeOfDay), "and neither does the leap second, by policy");
+    Assert((TimeOfDay::FromParts(23, 59, 59, 999999999) != none), "the last nanosecond of the day exists");
+    Assert(!(TimeOfDay::FromParts(24, 0, 0, 0) != none), "the twenty-fourth hour does not");
+    Assert(!(TimeOfDay::FromParts(23, 59, 60, 0) != none), "and neither does the leap second, by policy");
 
     // Offsets carry their sign whole.
     Assert((UtcOffset::Of(5, 30) ?? UtcOffset::Utc()).TotalSeconds() == 19800, "plus five thirty");
     Assert((UtcOffset::Of(-5, -30) ?? UtcOffset::Utc()).TotalSeconds() == -19800i32, "and its mirror");
-    Assert(!(UtcOffset::Of(5, -30) is UtcOffset), "a torn sign is refused");
-    Assert(!(UtcOffset::Of(24, 0) is UtcOffset), "and a day-long offset");
+    Assert(!(UtcOffset::Of(5, -30) != none), "a torn sign is refused");
+    Assert(!(UtcOffset::Of(24, 0) != none), "and a day-long offset");
 
     // The timestamp conversion, against a value every Unix system agrees on.
     let moment = DateTime {
@@ -117,8 +117,8 @@ func Main() -> int {
     Assert(monthsBack.Equals((Date::FromParts(2022, 12, 15) ?? epochDay)),
            "months subtract across years");
 
-    Assert(!(base.PlusYears(9999) is Date), "arithmetic past the spellable years refuses");
-    Assert(!(epochDay.PlusDays(9223372036854775807) is Date), "and a day count past the range refuses");
+    Assert(!(base.PlusYears(9999) != none), "arithmetic past the spellable years refuses");
+    Assert(!(epochDay.PlusDays(9223372036854775807) != none), "and a day count past the range refuses");
 
     let gap = (Date::FromParts(2024, 3, 1) ?? epochDay);
     Assert(gap.DaysSince((Date::FromParts(2024, 2, 1) ?? epochDay)) == 29,

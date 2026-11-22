@@ -51,8 +51,8 @@ func Bucket(value: int32) -> int32 {
 
 func Present(found: int32?) -> int32 {
     return match found {
-        none | .Some(0i32) => 0i32,
-        .Some(value) => value,
+        none | 0i32? => 0i32,
+        value? => value,
     };
 }
 
@@ -97,8 +97,8 @@ func Main() -> int {
     Assert(Bucket(5i32) == 1i32 && Bucket(25i32) == 1i32, "range alternatives");
     Assert(Bucket(15i32) == 2i32, "a value between the ranges takes the default");
 
-    Assert(Present(none) == 0i32 && Present(.Some(0i32)) == 0i32, "an absent and a present alternative");
-    Assert(Present(.Some(4i32)) == 4i32, "the next arm binds what the alternatives leave");
+    Assert(Present(none) == 0i32 && Present(0i32) == 0i32, "an absent and a present alternative");
+    Assert(Present(4i32) == 4i32, "the next arm binds what the alternatives leave");
     Assert(Both(true) == 7i32 && Both(false) == 7i32, "one arm of alternatives covers a bool");
 
     Assert(Guarded(2i32, true) == 1i32, "a guard applies to every alternative");

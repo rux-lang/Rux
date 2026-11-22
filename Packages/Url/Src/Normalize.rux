@@ -237,7 +237,7 @@ func ParseIpv6(text: char8[..]) -> uint16[8]? {
         }
     }
     match compress {
-        .Some(at) => {
+        at? => {
             if count == 8u { return none; }
             // Move the groups after the gap to the end and fill the gap with zeros.
             let moved = count - at;

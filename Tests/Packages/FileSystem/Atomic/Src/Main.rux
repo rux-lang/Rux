@@ -44,7 +44,7 @@ func CountEntries(allocator: Allocator, directory: Path) -> uint {
     var count: uint = 0;
     while true {
         let next = walk.Next() catch { _ => Panic("and the count ends rather than fails") };
-        if !(next is OsString) { break; }
+        if !(next != none) { break; }
         count = count + 1;
     }
     walk.Release();
