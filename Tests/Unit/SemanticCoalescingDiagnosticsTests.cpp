@@ -208,3 +208,18 @@ TEST_CASE("coalescing a fallible points at the error forms") {
                                   "with absence, as in '(value !! none) ?"
                                   "? fallback'");
 }
+
+TEST_CASE("an absence cannot leave a deferred statement") {
+    // `?` propagates only an optional's absence, so the help is about an optional, never about errors.
+    const auto diagnostics = AnalyzeCoalescing(R"(
+        func Find() -> int32? { return none; }
+        func Use() -> int32? {
+            defer { let found = Find()?; }
+            return 1i32;
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "'?' cannot leave a deferred statement");
+    CHECK_EQ(diagnostics[0].help, "handle the absence inside the 'defer', with a fallback after '?"
+                                  "?' or with 'if let'");
+}

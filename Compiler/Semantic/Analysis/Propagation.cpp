@@ -79,8 +79,10 @@ TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const
 
 std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expression) {
     if (checkingDeferred) {
+        // `?` only propagates absence, so the help is about an optional: a fallback, or a test of its presence.
         EmitExitFromDeferred(expression.location, "?",
-                             "handle the failure inside the 'defer', with 'catch' or a 'match' on both channels");
+                             "handle the absence inside the 'defer', with a fallback after '?"
+                             "?' or with 'if let'");
     }
     const Expr *savedOutcomeOperand = std::exchange(outcomeOperand, expression.operand.get());
     const TypeRef operandType = CheckExpr(*expression.operand);
