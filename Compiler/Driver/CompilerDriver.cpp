@@ -70,6 +70,7 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
     compileTimeContext.profile = opts.profile;
     compileTimeContext.isTest = opts.isTest;
     compileTimeContext.checksEntryPoint = true;
+    compileTimeContext.semanticLints = opts.semanticLints;
     compileTimeContext.sourceRoot = root.lexically_normal();
     compileTimeContext.config = opts.manifest.build.ConfigValues();
     for (const auto &[name, value] : opts.defines) {

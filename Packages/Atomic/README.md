@@ -36,7 +36,7 @@ A call such as `Atomic::New(0u64)` is no compile-time value, so a module variabl
 
 The plain methods are sequentially consistent: every thread agrees on one order of all of them, which is never wrong. The `With` forms take a weaker `MemoryOrder` for code that has worked out it is enough, such as a relaxed counter or a release decrement of a reference count. An order an operation cannot have is strengthened to the nearest one it can, so `LoadWith(MemoryOrder::Release)` loads with `Acquire`. Because the intrinsics need their order written as a case, a `With` method selects among them; the plain methods involve no such choice.
 
-`CompareExchange` succeeds with the value it replaced and fails with the value it found, so a retry loop starts again from what is really there. It never fails spuriously.
+`CompareExchange` returns `!T`: it succeeds with nothing when it replaced the value, which was `expected`, and fails with the value it found, so a retry loop starts again from what is really there. It never fails spuriously.
 
 ## Documentation
 

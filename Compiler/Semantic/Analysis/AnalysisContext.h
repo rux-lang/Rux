@@ -300,6 +300,8 @@ private:
                    std::optional<std::string> help = {}) const;
     void EmitWarning(SourceLocation location, std::string message, std::vector<std::string> notes = {},
                      std::optional<std::string> help = {}) const;
+    /// A warning only `rux lint` asks for, which a build does not report.
+    void EmitLint(SourceLocation location, std::string message, std::optional<std::string> help = {}) const;
     void EmitUndefinedName(SourceLocation location, const std::string &name) const;
     [[nodiscard]] bool IsAccessible(const Symbol &symbol) const;
     [[nodiscard]] bool IsAccessible(const Decl &declaration) const;
@@ -1309,6 +1311,8 @@ private:
     [[nodiscard]] bool RejectDeferredTransfer(const Symbol &symbol, SourceLocation location);
     /// Reports a fallible whose error nothing uses: a statement, or a binding to `_` (F11, F20).
     void ReportUnusedFallible(const Expr &expression, const TypeRef &type);
+    /// Reports a read loan of plain data passed where the value binds bare (B3), for `rux lint`.
+    void LintRedundantLoans(const CallExpr &call, const FuncDecl &declaration);
     /// For each loop being checked, innermost last, the expressions its body has recorded types for.
     std::vector<std::vector<const Expr *>> loopCheckedExpressions;
     /// The parameters of the function whose default value is being checked, none of which a default may read.
@@ -1372,6 +1376,17 @@ private:
     const Stmt *joinDropStatement = nullptr;
     /// The loan a `let` binds directly, which may not lend a temporary.
     const LoanExpr *boundLoan = nullptr;
+
+    /// The fallible locals of the function being checked, for the lint that finds one nothing handles (F22).
+    struct FallibleLocal {
+        const Symbol *symbol = nullptr;
+        std::string name;
+        SourceLocation location;
+    };
+
+    std::vector<FallibleLocal> fallibleLocals;
+    /// The scopes that hold a `defer`, with where the first one was written, for the migration lint (O23).
+    std::unordered_map<const Scope *, SourceLocation> deferScopes;
     std::vector<const Stmt *> savedBorrowStatements;
     std::unordered_set<std::string> referenceStorageChecks;
     /// The types `UnsendablePart` is inside, so a recursive type ends its own walk.

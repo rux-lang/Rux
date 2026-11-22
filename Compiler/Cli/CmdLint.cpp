@@ -8,6 +8,7 @@
 #include "Cli/Testing/TestScheduler.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/CompilerDriver.h"
 #include "Linter/Linter.h"
 #include "Parallel/WorkerPool.h"
 #include "Reporting/Reporting.h"
@@ -19,6 +20,7 @@
 #include <format>
 #include <optional>
 #include <print>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -49,6 +51,28 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
     auto rootManifest = LoadManifest(*manifestPath);
     if (!rootManifest) {
         return 1;
+    }
+
+    // Workspace members resolve one another from their own directories, as a check of the workspace does.
+    std::vector<std::filesystem::path> localPackageRoots;
+    std::set<std::string> localNamespaces;
+    if (rootManifest->IsWorkspace()) {
+        const auto workspaceRoot = manifestPath->parent_path();
+        for (const auto &member : rootManifest->workspace.packages) {
+            const auto memberManifestPath = (workspaceRoot / member / "Rux.toml").lexically_normal();
+            std::error_code ec;
+            if (!std::filesystem::exists(memberManifestPath, ec)) {
+                continue;
+            }
+            auto memberResult = Manifest::Load(memberManifestPath);
+            if (!memberResult.Ok() || memberResult.manifest->IsWorkspace()) {
+                continue;
+            }
+            localPackageRoots.push_back(memberManifestPath.parent_path());
+            if (memberResult.manifest->package.ns) {
+                localNamespaces.insert(memberResult.manifest->package.ns->Normalized());
+            }
+        }
     }
 
     struct LintOutcome {
@@ -116,6 +140,28 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
                     }
                 }
             });
+
+        // The findings that need types come from analysis, which runs the package as a check would.
+        CompileOptions check;
+        check.manifestPath = packageManifestPath;
+        check.manifest = packageManifest;
+        check.target = Target::TargetTriple::Host();
+        check.localPackageRoots = localPackageRoots;
+        check.localNamespaces = localNamespaces;
+        check.checkOnly = true;
+        check.semanticLints = true;
+        check.useBuildCache = false;
+        check.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &lookup) {
+            std::print(stderr, "{}", RenderDiagnostic(diagnostic, diagnosticColor, lookup));
+            if (diagnostic.IsError()) {
+                ++outcome.errors;
+            }
+            else {
+                ++outcome.warnings;
+            }
+        };
+        CompilerDriver driver(std::move(check));
+        static_cast<void>(driver.Compile());
         return outcome;
     };
 

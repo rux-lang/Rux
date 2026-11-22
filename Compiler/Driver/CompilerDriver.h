@@ -40,7 +40,8 @@ struct CompileOptions {
     std::set<std::string> localNamespaces;
 
     bool isTest = false;
-    bool checkOnly = false; // stop after semantic analysis; keep going past
+    bool semanticLints = false; // also report the lints that need types, for `rux lint`
+    bool checkOnly = false;     // stop after semantic analysis; keep going past
     // frontend errors so all diagnostics are reported
     bool captureFrontend = false; // retain folded user ASTs in CompileResult
 

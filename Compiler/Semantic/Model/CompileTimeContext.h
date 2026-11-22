@@ -38,6 +38,10 @@ struct CompileTimeContext {
     /// Whether an executable's `Main` is held to the forms an entry point may take. A package build sets it; code
     /// analysed on its own, as the compiler's tests do, may name an ordinary function `Main`.
     bool checksEntryPoint = false;
+    /// Whether analysis also reports the style findings that need types, which `rux lint` asks for: an unhandled
+    /// fallible local, a redundant loan, an error type or a signature against the error conventions, and the places
+    /// whose behaviour the migration to static destruction and one cleanup sequence changed.
+    bool semanticLints = false;
 
     [[nodiscard]] constexpr std::string_view ProfileName() const noexcept {
         return ToString(profile);

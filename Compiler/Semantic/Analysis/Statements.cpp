@@ -157,6 +157,13 @@ void AnalysisContext::EmitError(const SourceLocation location, std::string messa
                      {}});
 }
 
+void AnalysisContext::EmitLint(const SourceLocation location, std::string message,
+                               std::optional<std::string> help) const {
+    if (context.semanticLints) {
+        EmitWarning(location, std::move(message), {}, std::move(help));
+    }
+}
+
 void AnalysisContext::EmitWarning(const SourceLocation location, std::string message, std::vector<std::string> notes,
                                   std::optional<std::string> help) const {
     for (std::string &note : notes) {
@@ -792,6 +799,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             // A deferred statement runs where its scope ends, so what it does to the flow here is only a check: the
             // values it lends are still there afterwards, and nothing it does is seen by the statements after it.
             const TrackedFlow registration = SaveTrackedFlow();
+            deferScopes.try_emplace(currentScope, deferStatement->location);
             // No error may leave a deferred statement: a call in it that can throw is handled there.
             CheckBehindThrowBarrier(ThrowHandlerFrame::Kind::Deferred,
                                     [&] { CheckStatement(*deferStatement->deferredStmt); });

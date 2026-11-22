@@ -106,20 +106,20 @@ extend Atomic<T> {
     }
 
     /// Replaces the value with `desired` if it is `expected`, as one step, with sequential consistency.
-    /// Succeeds with the value before, which is `expected`, when it replaced it, and fails with the value it found
-    /// otherwise, so a loop can retry from what is really there. Never fails spuriously.
+    /// Succeeds with nothing when it replaced it, since the value before was `expected`, and fails with the value it
+    /// found otherwise, so a loop can retry from what is really there. Never fails spuriously.
     /// @param expected the value that must be there
     /// @param desired the value to put there
-    /// @returns the value before, as success when it was replaced and as failure when it was not
+    /// @returns nothing when the value was replaced, or throws the value found when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange
-    pub func CompareExchange(&self, expected: T, desired: T) -> T ! T {
+    pub func CompareExchange(&self, expected: T, desired: T) -> !T {
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
         // atomic operations.
         let previous = {
             AtomicCompareExchange(self.Address(), expected, desired, MemoryOrder::SequentiallyConsistent,
                                   MemoryOrder::SequentiallyConsistent)
         };
-        if previous == expected { return previous; }
+        if previous == expected { return; }
         throw previous;
     }
 
@@ -132,10 +132,10 @@ extend Atomic<T> {
     /// @param desired the value to put there
     /// @param success the order when the value is replaced
     /// @param failure the order when it is not
-    /// @returns the value before, as success when it was replaced and as failure when it was not
+    /// @returns nothing when the value was replaced, or throws the value found when it was not
     /// @see https://rux-lang.dev/docs/api/atomic/atomic#compare-exchange-with
     pub func CompareExchangeWith(&self, expected: T, desired: T, success: MemoryOrder,
-                                 failure: MemoryOrder) -> T ! T {
+                                 failure: MemoryOrder) -> !T {
         let acquireOnFailure = failure == MemoryOrder::Acquire || failure == MemoryOrder::AcquireRelease ||
                                failure == MemoryOrder::SequentiallyConsistent;
         // Safety: the address is a live, aligned field of this atomic, which is only ever accessed through these
@@ -164,7 +164,7 @@ extend Atomic<T> {
                 }
             })
         };
-        if previous == expected { return previous; }
+        if previous == expected { return; }
         throw previous;
     }
 

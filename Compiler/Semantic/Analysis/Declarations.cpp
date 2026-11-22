@@ -98,6 +98,21 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
     if (!isMethod && d.name == "Main") {
         CheckMainSignature(d, retType);
     }
+    // E4 and E5: an error is plain data, and a public function does not declare the same type on both sides.
+    if (retType.IsFallible() && !retType.FallibleError().IsUnknown()) {
+        const TypeRef &error = retType.FallibleError();
+        const TypeRef &success = retType.FallibleSuccess();
+        if (const TypeProperties properties = ClassifyTypeProperties(error);
+            properties.IsResolved() && !properties.IsCopy() && !MentionsTypeParameter(error)) {
+            EmitLint(d.location,
+                     std::format("the error type '{}' of '{}' is not plain data", error.DisplayString(), d.name),
+                     "an error is a small struct of plain data, cheap to make and to drop");
+        }
+        if (d.isPublic && !success.IsUnit() && !success.IsUnknown() && success == error) {
+            EmitLint(d.location, std::format("'{}' declares '{}' on both sides", d.name, error.DisplayString()),
+                     "write '-> !T' when the success carries nothing, or return a variant with named cases");
+        }
+    }
 
     auto savedRet = currentReturnType;
     currentReturnType = retType;

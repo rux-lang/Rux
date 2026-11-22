@@ -1081,6 +1081,50 @@ void AnalysisContext::RecordFunctionBinding(const CallExpr &call, const FuncDecl
         binding.variadicBoundary = boundary;
     }
     callableBindings.insert_or_assign(&call, std::move(binding));
+    LintRedundantLoans(call, declaration);
+}
+
+void AnalysisContext::LintRedundantLoans(const CallExpr &call, const FuncDecl &declaration) {
+    // B3: plain data binds to a reference parameter bare, so a read loan of it says nothing, unless the result borrows
+    // from it (B9) or the parameter is of a type parameter (O11).
+    if (!context.semanticLints) {
+        return;
+    }
+    if (declaration.returnType && (AstCast<const ReferenceTypeExpr>(declaration.returnType->get()) ||
+                                   AstCast<const OptionalTypeExpr>(declaration.returnType->get()))) {
+        return;
+    }
+    std::vector<const Param *> parameters;
+    for (const Param &parameter : declaration.params) {
+        if (!parameter.IsReceiver()) {
+            parameters.push_back(&parameter);
+        }
+    }
+    const std::size_t count = std::min(call.args.size(), parameters.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto *loan = AstCast<const LoanExpr>(call.args[index].get());
+        const auto *reference = AstCast<const ReferenceTypeExpr>(parameters[index]->type.get());
+        if (!loan || loan->writes || !reference || reference->pointeeMut) {
+            continue;
+        }
+        if (const auto *named = AstCast<const NamedTypeExpr>(reference->pointee.get());
+            named && std::ranges::any_of(declaration.typeParams, [&](const TypeParameter &parameter) {
+                return parameter.name == named->name;
+            })) {
+            continue;
+        }
+        const auto found = expressionTypes.find(loan->operand.get());
+        if (found == expressionTypes.end() || found->second->kind == TypeRef::Kind::Reference ||
+            MentionsTypeParameter(found->second)) {
+            continue;
+        }
+        const TypeProperties properties = ClassifyTypeProperties(found->second);
+        const MovePlace lent = AnalyzeMovePlace(*loan->operand);
+        if (properties.IsResolved() && properties.IsCopy() && (lent.IsNamedStorage() || lent.IsBorrowedStorage())) {
+            EmitLint(loan->location, std::format("the '&' on '{}' is redundant", lent.Display()),
+                     "plain data binds to a reference parameter bare: remove the '&'");
+        }
+    }
 }
 
 void AnalysisContext::RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration) {

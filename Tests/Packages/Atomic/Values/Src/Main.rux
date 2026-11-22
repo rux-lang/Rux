@@ -22,10 +22,8 @@ func Main() -> int {
     if counter.FetchSub(20) != 15 || counter.Load() != -5 { return 4; }
     if counter.Exchange(7) != -5 { return 5; }
 
-    {
-        let previous = counter.CompareExchange(7, 8) catch { _ => return 7 };
-        if previous != 7 { return 6; }
-    }
+    counter.CompareExchange(7, 8) catch { _ => return 7 };
+    if counter.Load() != 8 { return 6; }
     match counter.CompareExchange(7, 9) {
         .Success(_) => {
             return 8;
@@ -50,14 +48,12 @@ func Main() -> int {
                 counter.CompareExchangeWith(expected, expected + 1, order, failure) catch { _ => return 14 };
             }
             expected = expected + 1;
-            match counter.CompareExchangeWith(-1, 0, order, failure) {
-                .Success(_) => {
-                    return 15;
-                },
-                .Failure(found) => {
+            counter.CompareExchangeWith(-1, 0, order, failure) catch {
+                found => {
                     if found != expected { return 16; }
-                },
-            }
+                }
+            };
+            if counter.Load() == 0 { return 15; }
         }
     }
 

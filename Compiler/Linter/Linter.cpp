@@ -379,6 +379,57 @@ private:
         }
     }
 
+    /// Whether a type expression names the type an extend block extends, as `Self` or by its name, alone or as the
+    /// success of a fallible.
+    static bool NamesExtendedType(const TypeExpr &type, const std::string_view typeName) {
+        if (const auto *fallible = AstCast<const FallibleTypeExpr>(&type); fallible && fallible->success) {
+            return NamesExtendedType(*fallible->success, typeName);
+        }
+        if (AstCast<const SelfTypeExpr>(&type)) {
+            return true;
+        }
+        const auto *named = AstCast<const NamedTypeExpr>(&type);
+        return named != nullptr && named->name == typeName;
+    }
+
+    /// K4: a constructor is a named function, and two with one name are two ways of making the value that the name no
+    /// longer tells apart.
+    void CheckConstructorOverloads(const ImplDecl &impl) {
+        std::vector<std::string> seen;
+        for (const auto &method : impl.methods) {
+            if (!method || method->Receiver() || !method->returnType ||
+                !NamesExtendedType(**method->returnType, impl.typeName)) {
+                continue;
+            }
+            if (std::ranges::find(seen, method->name) != seen.end()) {
+                Warn(method->location, std::format("constructor '{}' is overloaded", method->name),
+                     "give each constructor its own name that says what it starts from, such as 'FromBytes' or "
+                     "'WithCapacity'");
+                continue;
+            }
+            seen.push_back(method->name);
+        }
+    }
+
+    /// O19: a `defer` that only releases a local wants the local's type to own the resource, so its destructor
+    /// releases it wherever the value ends.
+    void CheckDeferredRelease(const DeferStmt &statement) {
+        static constexpr std::string_view kReleases[] = {"Release", "Close",   "Free",
+                                                         "Dispose", "Destroy", "Deallocate"};
+        const auto *expression =
+            statement.deferredStmt ? AstCast<const ExprStmt>(statement.deferredStmt.get()) : nullptr;
+        const auto *call = expression ? AstCast<const CallExpr>(expression->expr.get()) : nullptr;
+        const auto *member = call ? AstCast<const FieldExpr>(call->callee.get()) : nullptr;
+        const auto *owner = member ? AstCast<const IdentExpr>(member->object.get()) : nullptr;
+        if (!owner || !call->args.empty() || std::ranges::find(kReleases, member->field) == std::end(kReleases)) {
+            return;
+        }
+        Warn(statement.location,
+             std::format("'defer {}.{}()' releases what a destructor should", owner->name, member->field),
+             std::format("give the type of '{}' a destructor that calls '{}', and drop the 'defer'", owner->name,
+                         member->field));
+    }
+
     void CheckDocumentationIssues(const Syntax::Documentation &documentation) {
         for (const auto &issue : documentation.issues) {
             Warn(issue.range.start, issue.message);
@@ -581,6 +632,7 @@ private:
                     VisitDecl(*m, methodNames);
                 }
             }
+            CheckConstructorOverloads(*impl);
         }
         else if (const auto *mod = AstCast<const ModuleDecl>(&decl)) {
             if (!IsPascalCase(mod->name)) {
@@ -739,6 +791,7 @@ private:
             }
         }
         else if (const auto *defStmt = AstCast<const DeferStmt>(&stmt)) {
+            CheckDeferredRelease(*defStmt);
             if (defStmt->deferredStmt) {
                 VisitStmt(*defStmt->deferredStmt, scopeNames);
             }

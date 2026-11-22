@@ -5,8 +5,9 @@
 // bytes that came from a literal, and a literal lives on a read-only page. A type that promised mutation would have
 // to copy defensively on every write or fault on some of them. `StringBuilder` is where text is assembled; `String`
 // is what assembling it produces.
-// A `String` owns its block, so it is move-only: `=` from a named string gives the block away, and `Clone` makes an independent block from the same allocator, reporting a failed allocation instead of hiding
-// one. `StringView` borrows and copies no bytes; `View` creates one for free.
+// A `String` owns its block, so it is move-only: `=` from a named string gives the block away, and `Clone` makes an
+// independent block from the same allocator, reporting a failed allocation instead of hiding one. `StringView`
+// borrows and copies no bytes; `View` creates one for free.
 // Every `String` this package produces holds well-formed UTF-8, checked once where the bytes enter. Everything
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 

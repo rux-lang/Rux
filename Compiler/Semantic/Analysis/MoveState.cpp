@@ -57,6 +57,20 @@ Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialize
     if (defined && checkingDeferred) {
         deferredLocals.insert(defined);
     }
+    if (defined && !defined->isParameter) {
+        // F22: a fallible kept in a local is handled through it, or its error is lost when the local ends.
+        if (defined->type.IsFallible()) {
+            fallibleLocals.push_back({defined, defined->name, defined->location});
+        }
+        // O23: a local with a destructor declared after a `defer` of its scope is now destroyed before it runs.
+        if (const auto deferred = deferScopes.find(currentScope);
+            deferred != deferScopes.end() && ClassifyTypeProperties(defined->type).droppable) {
+            EmitLint(defined->location,
+                     std::format("'{}' is destroyed before the 'defer' at {}:{} runs", defined->name,
+                                 deferred->second.line, deferred->second.column),
+                     "the defers and the destructors of a scope now run as one sequence, the last declared first");
+        }
+    }
     if (defined) {
         // A new local starts with no views; its storage may reuse an address a finished scope's local had.
         functionLocals.insert(defined);
@@ -108,6 +122,14 @@ const FuncDecl *AnalysisContext::BeginTrackedFunction(const FuncDecl &function) 
 
 void AnalysisContext::EndTrackedFunction(const FuncDecl *previousFunction) {
     FinishBorrowAnalysis();
+    for (const FallibleLocal &local : fallibleLocals) {
+        if (!readSymbols.contains(local.symbol)) {
+            EmitLint(local.location, std::format("'{}' holds a fallible that nothing handles", local.name),
+                     "pass its error on with '!', handle it with 'catch { ... }', or drop it with '!!'");
+        }
+    }
+    fallibleLocals.clear();
+    deferScopes.clear();
     // The fields of a `~self` receiver are locals of the function that just ended.
     endingSelfFields.clear();
     currentFunctionDecl = previousFunction;
@@ -348,6 +370,12 @@ void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, c
         }
         if (entered->second->state == MoveStateTracker::State::Initialized) {
             // O7: the value is destroyed where the statement ends on the flows that still hold it, and is dead after.
+            if (ClassifyTypeProperties(symbol->type).droppable) {
+                EmitLint(gone.value_or(item.record.previousTransition),
+                         std::format("'{}' is given away on some paths only, and is now destroyed where they rejoin",
+                                     symbol->name),
+                         "check that destroying it there rather than at the end of its scope is what the code needs");
+            }
             if (joinDropStatement) {
                 std::vector<std::string> &names = joinDrops[joinDropStatement];
                 if (std::ranges::find(names, symbol->name) == names.end()) {

@@ -58,7 +58,21 @@ A type's own members live in one `extend Type { ... }` block per file, ordered b
 
 ## Constructors
 
-A constructor is an ordinary static function that returns its type. Name the everyday one `New`, called as `Vector<int>::New(allocator)`, and give any other a name that says what it starts from or does: `FromBytes`, `WithCapacity`, `Open`, `Parse`. Do not overload constructors: a second way to make the value gets a second name, so a call reads the same however many there are. `rux lint` does not check this yet.
+A constructor is an ordinary static function that returns its type. Name the everyday one `New`, called as `Vector<int>::New(allocator)`, and give any other a name that says what it starts from or does: `FromBytes`, `WithCapacity`, `Open`, `Parse`. Do not overload constructors: a second way to make the value gets a second name, so a call reads the same however many there are. `rux lint` reports `constructor 'New' is overloaded` for a second static function of the same name that returns the type.
+
+## Errors
+
+An error is a small struct of plain data that says what went wrong, and an error set is a sum of them, named with `type` when more than one signature uses it: `type ParseError = BadDigit | EmptyInput;`. Sets from two packages merge by widening the sum. A public module exposes one named error set, and an error struct is named after what went wrong (`BadDigit`, `EmptyInput`), never a bare general word such as `Empty` or `Invalid`, because error structs share the package's type namespace. An error type is plain data, cheap to make and to drop; `rux lint` reports `the error type 'E' of 'F' is not plain data`.
+
+A public function does not declare the same type on both sides of `!`. It writes `-> !T` when the success carries nothing, as `Atomic::CompareExchange` does with the value it found, or returns a variant with named cases when there are two real outcomes; `rux lint` reports `'F' declares 'T' on both sides`. A function that takes a callback has a `Try...` sibling for a callback that can fail, as `Push` has `TryPush`: `TryMap` takes `func(T) -> U ! E`, stops at the first error and returns `... ! E`, while the plain form, given a fallible callback, yields fallibles.
+
+## Method names
+
+A method that changes its receiver is named with a verb (`Sort`, `Push`, `Clear`), and one that returns a new value with a participle (`Sorted`, `Reversed`). The receiver is lent without a mark at the call, so the name is what tells the reader that `numbers.Sort()` writes.
+
+## Lints that need types
+
+`rux lint` also checks each package as `rux check` would and reports what needs types: a local of a fallible type that nothing handles (`'outcome' holds a fallible that nothing handles`), a read loan of plain data passed where the value binds bare (`the '&' on 'count' is redundant`), the two error conventions above, and a `defer` that only releases a local (`'defer buffer.Release()' releases what a destructor should`), whose type wants a destructor. For one release it also reports the two places whose behaviour changed with static destruction and the single cleanup sequence: a value with a destructor given away on some paths only, which is now destroyed where the paths rejoin, and a local with a destructor declared after a `defer` of its scope, which is now destroyed before the deferred statement runs.
 
 ## Parameter names
 

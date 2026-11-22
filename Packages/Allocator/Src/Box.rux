@@ -17,9 +17,9 @@ import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 
 /// One heap-allocated value of `T`, owned by exactly one holder.
 /// Move-only: its copy operation is prohibited and its destructor releases its allocation. A named box written bare is
-/// given away; the source is then empty and reading it is rejected while compiling rather than at run time. The storage is
-/// released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or overwriting assignment
-/// the value's life ends at.
+/// given away; the source is then empty and reading it is rejected while compiling rather than at run time. The
+/// storage is released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or overwriting
+/// assignment the value's life ends at.
 /// @typeParam T the type the box owns one of
 /// @see https://rux-lang.dev/docs/api/allocator/box
 pub struct Box<T> {

@@ -565,3 +565,27 @@ TEST_CASE("the removed docs API URL allowance is rejected") {
     CHECK_EQ(result.diagnostics.front().message,
              "unknown lint rule 'docs.api-url'; valid rules are: naming.type, naming.const, docs.missing");
 }
+
+TEST_CASE("linter flags an overloaded constructor and a defer that only releases a local") {
+    const auto result = Rux::Linting::Lint(R"(
+struct Buffer { size: int; }
+extend Buffer {
+    func New() -> Buffer { return Buffer { size: 0 }; }
+    func New(size: int) -> Self { return Buffer { size }; }
+    func FromSize(size: int) -> Buffer { return Buffer { size }; }
+    func Release(&var self) {}
+}
+func Use() {
+    var buffer = Buffer::New();
+    defer buffer.Release();
+}
+)",
+                                           "lints.rux");
+    const auto has = [&](const std::string_view message) {
+        return std::ranges::any_of(result.diagnostics,
+                                   [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
+    };
+    CHECK(has("constructor 'New' is overloaded"));
+    CHECK_FALSE(has("constructor 'FromSize' is overloaded"));
+    CHECK(has("'defer buffer.Release()' releases what a destructor should"));
+}
