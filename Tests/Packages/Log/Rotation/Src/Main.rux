@@ -5,7 +5,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Diagnostics::{ Assert, Panic };
 import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle };
-import Io::{ IoErrorKind };
+import Io::IoErrorKind;
 import Log::{ LogFormat, Logger, RotatingFile };
 import Path::{ Join, OsString, Path, PathBuffer };
 

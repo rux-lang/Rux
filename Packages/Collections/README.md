@@ -215,7 +215,8 @@ numbers.Truncate(kept);
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::Vector;
 import Collections::Presentation::WriteVectorDebug;
-import Io::{ ConsoleWriter, IoError };
+import Io::IoError;
+import Io::TextBoundary::ConsoleWriter;
 import Text::{ FormatError, FormatSpec, TextWriter };
 
 // `Rux/Format` is imported for its `Debug` implementations, not for a name: `WriteVectorDebug` is bound on

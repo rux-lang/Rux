@@ -10,6 +10,7 @@ import Format::WriteFormat;
 import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
+import Io::TextBoundary::{ ConsoleWriter, ToIoError };
 func PrintBytes(bytes: char8[..]) -> !IoError {
     var out = StandardOut::Acquire();
     WriteAll(&var out, bytes)!;

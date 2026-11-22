@@ -1,6 +1,7 @@
 import Allocator::SystemAllocator;
 import Core::Diagnostics::Assert;
-import Io::{ ByteReader, ByteWriter, Endian, IoErrorKind, ReadExact, ReadUint32, SeekFrom, WriteAll, WriteUint32 };
+import Io::{ ByteReader, ByteWriter, IoErrorKind, ReadExact, SeekFrom, WriteAll };
+import Io::Binary::{ Endian, ReadUint32, WriteUint32 };
 
 // A reader over bytes in memory ends with `EndOfStream`, seeks anywhere within them and refuses beyond; a writer
 // grows to hold anything written, overwrites after a seek back, and works with every `Io` helper.

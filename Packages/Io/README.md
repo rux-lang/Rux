@@ -39,7 +39,8 @@ Every stream operation that can fail throws an `IoError`, so every call to one i
 `Display` writes into a `TextWriter` and a stream takes bytes, so something has to stand between them. `ConsoleWriter` is that adapter over standard output and `StreamWriter` is it over any `Writer` — a file, a buffered writer, a pipe — which is what lets a value describe itself anywhere other than standard output or memory:
 
 ```rux
-import Io::{ IoError, StandardOut, StreamWriter, WriteValueLine, Writer };
+import Io::{ IoError, StandardOut, Writer };
+import Io::TextBoundary::{ StreamWriter, WriteValueLine };
 import Text::TextWriter;
 
 func Main() -> int {
