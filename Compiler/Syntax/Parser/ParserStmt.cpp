@@ -736,6 +736,15 @@ std::unique_ptr<ForStmt> Parser::ParseForStmt() {
 
     auto s = std::make_unique<ForStmt>();
     s->location = loc;
+    // The loop variable is bound fresh on every pass and takes no binding keyword; one written anyway is reported
+    // once and skipped, so the rest of the loop parses as it would without it.
+    if (Check(TokenKind::VarKeyword) || Check(TokenKind::LetKeyword)) {
+        const bool mutableBinding = Check(TokenKind::VarKeyword);
+        EmitError(CurrentLocation(), std::format("'{}' is not written before a 'for' variable", Peek().text),
+                  mutableBinding ? "declare a 'var' local from it in the body, as in 'var item = item;'"
+                                 : "remove 'let'");
+        Advance();
+    }
     // A pattern other than a name binds a hidden loop variable and takes it apart at the top of the body.
     PatternPtr pattern;
     if (Check(TokenKind::Ident) && Peek(1).Is(TokenKind::InKeyword)) {

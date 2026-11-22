@@ -1,0 +1,8 @@
+// A 'for' variable takes no binding keyword: one written anyway is reported once, and the loop parses as it would
+// without it.
+func Count() -> int {
+    var total = 0;
+    for var i in 0..3 { total += i; }
+    for let j in 0..3 { total += j; }
+    return total;
+}

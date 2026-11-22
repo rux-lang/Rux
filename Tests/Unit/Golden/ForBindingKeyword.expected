@@ -1,0 +1,2 @@
+5:9: error: 'var' is not written before a 'for' variable
+6:9: error: 'let' is not written before a 'for' variable
