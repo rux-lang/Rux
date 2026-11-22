@@ -442,7 +442,13 @@ TypeRef AnalysisContext::CheckIsPattern(const IsExpr &expression, const bool rec
     const bool takesNamed = expression.binds && !reference && place.IsNamedStorage() &&
                             !(subjectSymbol && subjectSymbol->isBorrowedBinding) &&
                             ClassifyTypeProperties(subjectType).IsMoveOnly();
-    const bool owned = takesNamed || (!reference && !place.IsNamedStorage() && !place.IsBorrowedStorage());
+    // `if var` over a named plain-data subject binds a copy it may write, as a match over one matches a copy, so the
+    // owner keeps its value whatever the body does with the names.
+    const bool copiesNamed = expression.binds && expression.mutableBindings && !reference && place.IsNamedStorage() &&
+                             !(subjectSymbol && subjectSymbol->isBorrowedBinding) &&
+                             ClassifyTypeProperties(subjectType).IsCopy();
+    const bool owned =
+        takesNamed || copiesNamed || (!reference && !place.IsNamedStorage() && !place.IsBorrowedStorage());
     bool takesParts = false;
     PatternBorrow borrow = PatternBorrow::Owned;
     if (owned) {
@@ -475,7 +481,10 @@ TypeRef AnalysisContext::CheckIsPattern(const IsExpr &expression, const bool rec
     const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, borrow);
     const bool savedTakesParts = std::exchange(currentPatternTakesParts, takesParts);
     const bool savedMutable = std::exchange(currentPatternBindsMutable, expression.mutableBindings);
+    const bool savedLent =
+        std::exchange(currentPatternLent, !owned && IsLentMatchSubject(*expression.operand, expressionType));
     CheckPattern(*expression.pattern, subjectType);
+    currentPatternLent = savedLent;
     currentPatternBindsMutable = savedMutable;
     currentPatternTakesParts = savedTakesParts;
     currentPatternBorrow = savedBorrow;

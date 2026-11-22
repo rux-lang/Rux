@@ -693,6 +693,7 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
                                       ? MatchSubjectBorrow(*expression.subject, expressionType)
                                       : PatternBorrow::Owned;
+    const bool armsLent = IsLentMatchSubject(*expression.subject, expressionType);
 
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;
@@ -718,7 +719,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         PushScope();
         const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
         const bool savedTakesParts = std::exchange(currentPatternTakesParts, armsTakeParts);
+        const bool savedLent = std::exchange(currentPatternLent, armsLent);
         CheckPattern(*arm.pattern, subjectType);
+        currentPatternLent = savedLent;
         currentPatternTakesParts = savedTakesParts;
         currentPatternBorrow = savedBorrow;
         if (IsOptionalReference(subjectType) && trackedFlowReachable) {

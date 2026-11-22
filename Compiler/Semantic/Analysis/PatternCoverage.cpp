@@ -333,8 +333,23 @@ AnalysisContext::PatternBorrow AnalysisContext::MatchSubjectBorrow(const Expr &s
     return AnalyzeMovePlace(subject).IsBorrowedStorage() ? PatternBorrow::Shared : PatternBorrow::Owned;
 }
 
+bool AnalysisContext::IsLentMatchSubject(const Expr &subject, const TypeRef &expressionType) const {
+    if (expressionType->kind == TypeRef::Kind::Reference || AnalyzeMovePlace(subject).IsBorrowedStorage()) {
+        return true;
+    }
+    const auto *name = AstCast<const IdentExpr>(&subject);
+    const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
+    return symbol && symbol->isBorrowedBinding;
+}
+
 void AnalysisContext::RecordPatternBinding(const Pattern &pattern, Symbol &symbol, const bool view) {
     if (currentPatternBorrow == PatternBorrow::Owned) {
+        // A case, tuple or structure pattern over a lent subject binds parts that still belong to the lender, so they
+        // are read and lent but never written or given away, as the bindings of a borrowed native subject are.
+        if (currentPatternLent) {
+            symbol.isBorrowedBinding = true;
+            symbol.isMut = false;
+        }
         return;
     }
     // A borrowed subject is never consumed, so its bindings refer to its storage. A payload that sits whole at its own

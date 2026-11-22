@@ -707,6 +707,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
                                           ? MatchSubjectBorrow(*matchStatement->subject, expressionType)
                                           : PatternBorrow::Owned;
+        const bool armsLent = IsLentMatchSubject(*matchStatement->subject, expressionType);
         const TrackedFlow matchEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;
@@ -718,7 +719,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             PushScope();
             const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
             const bool savedTakesParts = std::exchange(currentPatternTakesParts, armsTakeParts);
+            const bool savedLent = std::exchange(currentPatternLent, armsLent);
             CheckPattern(*arm.pattern, subjectType);
+            currentPatternLent = savedLent;
             currentPatternTakesParts = savedTakesParts;
             currentPatternBorrow = savedBorrow;
             if (IsOptionalReference(subjectType) && trackedFlowReachable) {
@@ -1216,7 +1219,9 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         // The guard runs with the arm's bindings in place but before the arm is chosen, so it reads them as an
         // ordinary expression and must leave them for whichever arm runs next.
         const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, PatternBorrow::Owned);
+        const bool savedLent = std::exchange(currentPatternLent, false);
         const TypeRef guardType = CheckExpr(*guardedPattern->guard);
+        currentPatternLent = savedLent;
         currentPatternBorrow = savedBorrow;
         CheckBooleanCondition(guardType, guardedPattern->guard->location, "pattern guard");
         CheckGuardKeepsBindings(*guardedPattern);
@@ -1346,8 +1351,17 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
         // A payload binds like a `let`, but it sits inside a match arm, so a refutable sub-pattern such as a literal,
         // a range or a tuple holding one is checked as a match pattern rather than refused as an unsupported binding.
+        // A binding there is `var` as the pattern's other names are, and one over a lent subject names a part of it,
+        // which it reads but never owns or gives away.
+        const bool lent = currentPatternLent || currentPatternBorrow != PatternBorrow::Owned;
         const auto checkPayload = [&](const Pattern &payload, const TypeRef &type) {
-            if (AstCast<const IdentPattern>(&payload) || AstCast<const WildcardPattern>(&payload)) {
+            if (const auto *identifier = AstCast<const IdentPattern>(&payload)) {
+                CheckLetPattern(payload, type, currentPatternBindsMutable && !lent);
+                if (Symbol *symbol = currentScope->LookupOwn(identifier->name); symbol && lent) {
+                    symbol->isBorrowedBinding = true;
+                }
+            }
+            else if (AstCast<const WildcardPattern>(&payload)) {
                 CheckLetPattern(payload, type, false);
             }
             else {

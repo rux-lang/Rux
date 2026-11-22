@@ -1,0 +1,44 @@
+// A case, tuple or structure pattern over a lent subject binds parts that still belong to the lender, so nothing it
+// binds is given away, positional, braced or nested; over a subject the match takes, the same patterns own what they
+// bind and may give it away.
+struct Token { id: int; }
+
+extend Token {
+    destructor {}
+}
+
+variant Slot {
+    Full(Token),
+    Named { token: Token; },
+    Pair((Token, int)),
+    Empty
+}
+
+func Keep(token: Token) -> int { return token.id; }
+
+func Positional(slot: &Slot) -> int {
+    return match slot { .Full(token) => Keep(token), _ => 0 };
+}
+
+func Braced(slot: &Slot) -> int {
+    return match slot { .Named { token } => Keep(token), _ => 0 };
+}
+
+func Nested(slot: &Slot) -> int {
+    return match slot { .Pair((token, _)) => Keep(token), _ => 0 };
+}
+
+func Present(slot: &(Slot?)) -> int {
+    return match slot { .Full(token)? => Keep(token), _ => 0 };
+}
+
+func Main() -> int {
+    let slot = Slot::Full(Token { id: 1 });
+    match &slot {
+        .Full(token) => { Keep(token); },
+        _ => {}
+    }
+    if let .Full(token) = &slot { Keep(token); }
+    let owned = Slot::Full(Token { id: 4 });
+    return match owned { .Full(token) => Keep(token), _ => 0 };
+}

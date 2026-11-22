@@ -983,7 +983,11 @@ private:
     [[nodiscard]] static bool DefaultLiteralReachesNative(const TypeRef &argument, const TypeRef &parameter);
     /// How the arms of a native match over `subject` hold it.
     [[nodiscard]] PatternBorrow MatchSubjectBorrow(const Expr &subject, const TypeRef &expressionType) const;
-    /// Gives a binding pattern under a borrowed native subject its binding mode.
+    /// Whether `subject` of a match or an `if let` is lent rather than owned: a reference, storage reached through one,
+    /// or a binding a pattern made over a lent subject. Its bindings name a part of it and own nothing.
+    [[nodiscard]] bool IsLentMatchSubject(const Expr &subject, const TypeRef &expressionType) const;
+    /// Gives a binding pattern under a borrowed native subject its binding mode, and marks a binding under any lent
+    /// subject as one that cannot be given away.
     void RecordPatternBinding(const Pattern &pattern, Symbol &symbol, bool view);
     /// Rejects `use` of a subset view, reporting it once; true when `expression` names one.
     bool RejectSubsetViewUse(const Expr &expression, SourceLocation location, std::string_view use);
@@ -1230,6 +1234,8 @@ private:
     bool currentPatternTakesParts = false;
     /// The names the pattern being checked binds are `var`, as `if var count? = ...` makes them.
     bool currentPatternBindsMutable = false;
+    /// The subject of the pattern being checked is lent, so its bindings name parts of it and give nothing away.
+    bool currentPatternLent = false;
     /// Where a local or a parameter was ended with `destroy`, so a later use names that rather than a move.
     std::vector<SourceLocation> endedSites;
 
