@@ -230,11 +230,11 @@ The source cutover is intentionally narrow. Scalar enums retain their syntax, di
 
 Three compiler-owned type forms describe values without a library declaration. Each has one purpose. Failure is not one of them: a function that can fail declares its error in its return type, `-> T ! E`, as [Errors](#errors-t--e-throw-and-the-error-forms) describes. The design decisions behind these forms and behind errors, and the migration from the retired forms, are recorded in [Native Sums, Optionals, and Errors](NativeOutcomes.md):
 
-| Form     | Meaning                                                                                                                            | Inspection                                                          |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `A \| B` | A _sum_: one value of a set of distinct types.                                                                                     | Typed patterns, qualified case patterns, `is`.                      |
-| `T?`     | An _optional_: a present `T` or absence. `T??` keeps both levels.                                                                  | `name?`, `none`, `if let`, `== none`, `?`, `??`.                     |
-| `()`     | The _unit_, the empty tuple, whose only value is also written `()`. A function that fails and returns nothing completes with it. | The pattern `()` or a binding.                                      |
+| Form     | Meaning                                                                                                                          | Inspection                                       |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `A \| B` | A _sum_: one value of a set of distinct types.                                                                                   | Typed patterns, qualified case patterns, `is`.   |
+| `T?`     | An _optional_: a present `T` or absence. `T??` keeps both levels.                                                                | `name?`, `none`, `if let`, `== none`, `?`, `??`. |
+| `()`     | The _unit_, the empty tuple, whose only value is also written `()`. A function that fails and returns nothing completes with it. | The pattern `()` or a binding.                   |
 
 `variant` remains the form for alternatives distinguished by case names, and `union` the untagged overlapping storage. An outcome that must be kept as a value, rather than handled at the call, is a fallible, `T ! E`, as [Fallible Values](#fallible-values) describes. In a type, the postfix `?` binds tightest, then `|`, then `!`. A suffix never reaches across `|` or `!`: an optional member is written `A | (B?)` and an optional sum `(A | B)?`, and an optional error `T ! (E?)`, while the ungrouped `A | B?` and `T ! E?` are errors that ask for the grouping. As for every postfix suffix, `*T?` is a pointer to an optional and `(*T)?` an optional pointer; a reference is the exception, `&T?` being the optional reference a function returning a borrow may return and `&(T?)` a reference to an optional. Likewise `int32?[..]` is a slice of optionals while `int32[..]?` is an optional slice.
 
@@ -277,12 +277,12 @@ A match consumes an owned subject, so arms that bind payloads own them and the p
 
 `value is Type` answers a question about the operand's type and never consumes, binds, or narrows it: after the test, `value` keeps its static type, and extracting a payload takes `if let`, as below. The tested type is a postfix type, so a sum target is grouped, as in `value is (A | B)`; an ungrouped `value is A | B` whose right operand names a type is rejected with that grouping as the fix. The right-hand type is resolved first, and its form and the subject's select the mode:
 
-| Subject                             | Meaning                                                                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| A sum `A \| B \| C`                 | The active member is the tested type, or one of the members of a tested subset sum. A type that is not a member or subset is rejected.      |
-| An optional `T?`                    | Rejected: `'is' does not test an optional`, with a help to compare with `== none` or `!= none`, or to bind with `if let name? = ...`.        |
-| Any other type                      | Exact type identity after alias resolution. A test that can never be true is a compile error, never a constant `false`.                     |
-| An interface on the right-hand side | Reported as unavailable: interface implementation tests are not implemented, and no native form implements an interface.                    |
+| Subject                             | Meaning                                                                                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| A sum `A \| B \| C`                 | The active member is the tested type, or one of the members of a tested subset sum. A type that is not a member or subset is rejected. |
+| An optional `T?`                    | Rejected: `'is' does not test an optional`, with a help to compare with `== none` or `!= none`, or to bind with `if let name? = ...`.  |
+| Any other type                      | Exact type identity after alias resolution. A test that can never be true is a compile error, never a constant `false`.                |
+| An interface on the right-hand side | Reported as unavailable: interface implementation tests are not implemented, and no native form implements an interface.               |
 
 A reference subject is tested through the reference without being consumed. A test whose subject or tested type mentions a type parameter is checked again for each instantiation, so `x is T` over `T | U` stays valid when `T` and `U` are the same type and the subject collapses to that type.
 
@@ -791,7 +791,7 @@ A call that can fail evaluates to its fallible, `T ! E`, which holds the success
 
 | Form               | What happens to the error                                                                                                           |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `x!`               | Passed on, out of the function; the expression continues with the success.                                                         |
+| `x!`               | Passed on, out of the function; the expression continues with the success.                                                          |
 | `x !! v`           | Replaced by `v`, a value of the success type or a leaving form such as `return` or `throw`. `x !! none` makes the success optional. |
 | `x !!;`            | Dropped, and the success with it. It is a statement on its own.                                                                     |
 | `x catch { arms }` | Handed to the arms of `match`. Written as a whole statement, the success is dropped and the arms yield nothing.                     |

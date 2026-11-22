@@ -10,26 +10,26 @@ rux add Rux/Windows
 
 ## What it provides
 
-| Module      | Covers                                                                              |
-| ----------- | ------------------------------------------------------------------------------------ |
-| `Types`     | `Handle`, `ModuleHandle`, `Bool`, `Dword`, `WideChar`, `NtStatus`, `FileTime`, `SystemTime`, and `InvalidHandleValue` |
-| `Constants` | the code pages and the file-creation dispositions                                      |
-| `Errors`            | the error codes `GetLastError` reports, and the three ways Win32 reports a failure |
-| `Kernel`    | the Kernel32 entry points, including the `A` forms kept for compatibility              |
-| `File`      | the Unicode `W` file, directory and console entry points, with the access, share and move flags |
-| `Memory`    | `VirtualAlloc`, `VirtualFree`, `VirtualProtect`, `VirtualLock`, and the state and protection flags |
-| `Entropy`   | `BCryptGenRandom` behind a `GetRandom` that either fills the buffer or fails            |
-| `Clock`     | `QueryPerformanceCounter`, `QueryPerformanceFrequency`, the precise wall clock, and the epoch conversion |
-| `Shell`     | `CommandLineToArgvW`, which splits the command line into arguments the way the C runtime does |
-| `Synch`     | `WaitOnAddress`, `WakeByAddressSingle` and `WakeByAddressAll`, from the synchronization API set |
-| `ProcessControl` | `CreateProcessW` and its structures, `CreatePipe`, handle inheritance, `GetExitCodeProcess`, `TerminateProcess` and `SetEnvironmentVariableW` |
-| `TimeZone`  | `GetTimeZoneInformation`, `TimeZoneInformation` and `TimeZoneRuleDate`                 |
-| `Winsock`   | `WSAStartup`, `WSAGetLastError`, the Ws2_32 socket calls, `ioctlsocket` with `FIONBIO`, `WSAPoll` with `WsaPollFd` and the `POLL*` flags, `getaddrinfo` and `freeaddrinfo`, `WsaData`, `AddressInfo` and the socket constants |
-| `Window`    | `RegisterClassExW`, `CreateWindowExW`, `DefWindowProcW`, the `GetMessageW` loop, `BeginPaint`/`EndPaint`, `MessageBoxW`, per-monitor DPI, `WindowClassEx`, `Message`, `PaintStruct`, `Rect` and the `WS_`, `WM_` and `SW_` values |
-| `Gdi`       | `CreateFontW`, `SelectObject`, `SetBkMode`, `SetTextColor`, `TextOutW` and `DeleteObject`, with the font weights and quality values |
-| `Registry`  | `RegGetValueW`, the predefined keys and the `RRF_RT_` type flags |
-| `Version`   | `RtlGetVersion` and `OsVersionInfoEx`, the true version of the running system |
-| `SystemInformation` | `GlobalMemoryStatusEx` with `MemoryStatusEx`, `GetPhysicallyInstalledSystemMemory`, `GetNativeSystemInfo`, and `GetLogicalProcessorInformationEx` for counting cores |
+| Module              | Covers                                                                                                                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Types`             | `Handle`, `ModuleHandle`, `Bool`, `Dword`, `WideChar`, `NtStatus`, `FileTime`, `SystemTime`, and `InvalidHandleValue`                                                                                                             |
+| `Constants`         | the code pages and the file-creation dispositions                                                                                                                                                                                 |
+| `Errors`            | the error codes `GetLastError` reports, and the three ways Win32 reports a failure                                                                                                                                                |
+| `Kernel`            | the Kernel32 entry points, including the `A` forms kept for compatibility                                                                                                                                                         |
+| `File`              | the Unicode `W` file, directory and console entry points, with the access, share and move flags                                                                                                                                   |
+| `Memory`            | `VirtualAlloc`, `VirtualFree`, `VirtualProtect`, `VirtualLock`, and the state and protection flags                                                                                                                                |
+| `Entropy`           | `BCryptGenRandom` behind a `GetRandom` that either fills the buffer or fails                                                                                                                                                      |
+| `Clock`             | `QueryPerformanceCounter`, `QueryPerformanceFrequency`, the precise wall clock, and the epoch conversion                                                                                                                          |
+| `Shell`             | `CommandLineToArgvW`, which splits the command line into arguments the way the C runtime does                                                                                                                                     |
+| `Synch`             | `WaitOnAddress`, `WakeByAddressSingle` and `WakeByAddressAll`, from the synchronization API set                                                                                                                                   |
+| `ProcessControl`    | `CreateProcessW` and its structures, `CreatePipe`, handle inheritance, `GetExitCodeProcess`, `TerminateProcess` and `SetEnvironmentVariableW`                                                                                     |
+| `TimeZone`          | `GetTimeZoneInformation`, `TimeZoneInformation` and `TimeZoneRuleDate`                                                                                                                                                            |
+| `Winsock`           | `WSAStartup`, `WSAGetLastError`, the Ws2_32 socket calls, `ioctlsocket` with `FIONBIO`, `WSAPoll` with `WsaPollFd` and the `POLL*` flags, `getaddrinfo` and `freeaddrinfo`, `WsaData`, `AddressInfo` and the socket constants     |
+| `Window`            | `RegisterClassExW`, `CreateWindowExW`, `DefWindowProcW`, the `GetMessageW` loop, `BeginPaint`/`EndPaint`, `MessageBoxW`, per-monitor DPI, `WindowClassEx`, `Message`, `PaintStruct`, `Rect` and the `WS_`, `WM_` and `SW_` values |
+| `Gdi`               | `CreateFontW`, `SelectObject`, `SetBkMode`, `SetTextColor`, `TextOutW` and `DeleteObject`, with the font weights and quality values                                                                                               |
+| `Registry`          | `RegGetValueW`, the predefined keys and the `RRF_RT_` type flags                                                                                                                                                                  |
+| `Version`           | `RtlGetVersion` and `OsVersionInfoEx`, the true version of the running system                                                                                                                                                     |
+| `SystemInformation` | `GlobalMemoryStatusEx` with `MemoryStatusEx`, `GetPhysicallyInstalledSystemMemory`, `GetNativeSystemInfo`, and `GetLogicalProcessorInformationEx` for counting cores                                                              |
 
 Every declaration lives in the module of its row, and the module is part of the import path: `import Windows::Kernel::{ CloseHandle, GetLastError };`.
 

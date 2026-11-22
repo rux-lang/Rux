@@ -10,14 +10,14 @@ rux add Rux/Log
 
 ## What it provides
 
-| File     | Covers                                                                                                      |
-| -------- | ----------------------------------------------------------------------------------------------------------- |
-| `Level`  | `Level` from `Trace` to `Error` with `Name`, `Label` and `Parse`, and `CompiledLevel` from the `LogLevel` define |
-| `Field`  | `Field` with `Text`, `Integer`, `Unsigned`, `Float` and `Boolean`, and its `Value`                              |
-| `Record` | `LogFormat`: `Text` or `JsonLines`                                                                            |
-| `Logger` | `Logger` over any `Io::Writer`, with a level, context fields, optional times, and `Trace` to `Error`            |
-| `Global` | the process-wide log on standard error: `Trace` to `Error`, `Log`, `SetLevel`, `SetFormat`, `SetTimestamps`, `Enabled` |
-| `Rotation` | `RotatingFile`, a log file moved aside for a fresh one before a write would take it past a size |
+| File       | Covers                                                                                                                 |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `Level`    | `Level` from `Trace` to `Error` with `Name`, `Label` and `Parse`, and `CompiledLevel` from the `LogLevel` define       |
+| `Field`    | `Field` with `Text`, `Integer`, `Unsigned`, `Float` and `Boolean`, and its `Value`                                     |
+| `Record`   | `LogFormat`: `Text` or `JsonLines`                                                                                     |
+| `Logger`   | `Logger` over any `Io::Writer`, with a level, context fields, optional times, and `Trace` to `Error`                   |
+| `Global`   | the process-wide log on standard error: `Trace` to `Error`, `Log`, `SetLevel`, `SetFormat`, `SetTimestamps`, `Enabled` |
+| `Rotation` | `RotatingFile`, a log file moved aside for a fresh one before a write would take it past a size                        |
 
 The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Log::Field;`.
 

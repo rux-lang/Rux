@@ -10,23 +10,23 @@ rux add Rux/Linux
 
 ## What it provides
 
-| Module    | Covers                                                                                  |
-| --------- | --------------------------------------------------------------------------------------- |
-| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `Timespec` |
-| `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                      |
-| `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`   |
-| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `FstatAt`, `Dup3`, `Pipe2`, the open flags, and the three standard descriptors |
-| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
-| `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, `ClockNanosleep`, and the clock identifiers |
-| `Process` | `Exit` and `GetPid`                                                                      |
-| `Entropy` | `GetRandom`, the only source here fit for a key or a token                                |
-| `Dynamic` | `dlopen`, `dlsym`, `dlclose`, `dlerror`, and the `RTLD_*` flags                          |
-| `Thread`  | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `gettid`, linked from libc |
+| Module    | Covers                                                                                                                                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `Timespec`                                                                                                                 |
+| `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                                                                                                                                                       |
+| `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`                                                                                                                                    |
+| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `FstatAt`, `Dup3`, `Pipe2`, the open flags, and the three standard descriptors                             |
+| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags                                                                                                             |
+| `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, `ClockNanosleep`, and the clock identifiers                                                                                                                            |
+| `Process` | `Exit` and `GetPid`                                                                                                                                                                                                       |
+| `Entropy` | `GetRandom`, the only source here fit for a key or a token                                                                                                                                                                |
+| `Dynamic` | `dlopen`, `dlsym`, `dlclose`, `dlerror`, and the `RTLD_*` flags                                                                                                                                                           |
+| `Thread`  | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `gettid`, linked from libc                                             |
 | `Sockets` | `Socket`, `Connect`, `Bind`, `Listen`, `Accept4`, `SendTo`, `ReceiveFrom`, `Shutdown`, `SetSocketOption`, `GetSocketName` and `GetPeerName` as system calls, with the address families, socket options and `MSG_NOSIGNAL` |
-| `Resolve` | `getaddrinfo`, `freeaddrinfo` and `AddressInfo`, linked from libc                         |
-| `Futex`   | `FutexWait` and `FutexWake`, the private `futex(2)` operations every lock in `Rux/Sync` sleeps on |
-| `Spawn`   | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill`, `fcntl` and `__errno_location`, linked from libc |
-| `Poll`    | `EpollCreate1`, `EpollControl` and `EpollWait` as system calls, the `EPOLL*` flags, the per-architecture `epoll_event` layout, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
+| `Resolve` | `getaddrinfo`, `freeaddrinfo` and `AddressInfo`, linked from libc                                                                                                                                                         |
+| `Futex`   | `FutexWait` and `FutexWake`, the private `futex(2)` operations every lock in `Rux/Sync` sleeps on                                                                                                                         |
+| `Spawn`   | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill`, `fcntl` and `__errno_location`, linked from libc                                                                                               |
+| `Poll`    | `EpollCreate1`, `EpollControl` and `EpollWait` as system calls, the `EPOLL*` flags, the per-architecture `epoll_event` layout, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK`                                  |
 
 Every declaration lives in the module of its row, and the module is part of the import path: `import Linux::File::{ Close, OpenAt };`.
 
@@ -40,7 +40,7 @@ The errno numbers and the `RTLD_*` flags keep the kernel's own spelling, because
 
 ## The shared POSIX contract
 
-Nothing here is interchangeable with the other POSIX packages, but the three are *spelled* the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.
+Nothing here is interchangeable with the other POSIX packages, but the three are _spelled_ the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.
 
 The values are the opposite: every constant is this system's own, and the same file asserts that the ones a reader might carry across really do differ.
 

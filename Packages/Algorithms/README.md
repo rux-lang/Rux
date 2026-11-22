@@ -12,13 +12,13 @@ rux add Rux/Algorithms
 
 ## Status
 
-| Module     | Takes                    | Requires on `T` | Provides                                                                              |
-| ---------- | ------------------------ | --------------- | ------------------------------------------------------------------------------------- |
-| `Query`    | `T[..]`                  | — or `==`/`<`   | Linear queries, sequence comparison, extremes and clamping                            |
-| `Sorting`  | `T[..]` or `var T[..]`   | `<`             | Introsort, selection, partial and stable sorting, heaps, bounds and binary search     |
-| `Modify`   | `var T[..]`              | — or `==`       | Reordering, bulk movement, removal, partitioning and transform                        |
-| `Numeric`  | `T[..]` or `var T[..]`   | — or `+`/`*`    | Folds in both directions, sum and product, running sums and scans, counting, midpoints |
-| `Adaptors` | a `Cursor<T>`            | —               | Lazy map, filter, take, skip, enumerate, zip and chain                                |
+| Module     | Takes                  | Requires on `T` | Provides                                                                               |
+| ---------- | ---------------------- | --------------- | -------------------------------------------------------------------------------------- |
+| `Query`    | `T[..]`                | — or `==`/`<`   | Linear queries, sequence comparison, extremes and clamping                             |
+| `Sorting`  | `T[..]` or `var T[..]` | `<`             | Introsort, selection, partial and stable sorting, heaps, bounds and binary search      |
+| `Modify`   | `var T[..]`            | — or `==`       | Reordering, bulk movement, removal, partitioning and transform                         |
+| `Numeric`  | `T[..]` or `var T[..]` | — or `+`/`*`    | Folds in both directions, sum and product, running sums and scans, counting, midpoints |
+| `Adaptors` | a `Cursor<T>`          | —               | Lazy map, filter, take, skip, enumerate, zip and chain                                 |
 
 Everything takes a view: a `T[..]` where it only reads, and a `var T[..]` where it writes.
 

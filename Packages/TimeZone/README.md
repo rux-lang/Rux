@@ -10,11 +10,11 @@ rux add Rux/TimeZone
 
 ## What it provides
 
-| File      | Covers                                                                                                |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| `Zone`    | `TimeZone` with `FromTzif`, `FromRule`, `Utc`, `StateAt`, `OffsetAt`, `ToLocal` and `Resolve`; `ZoneState` and `LocalTime` |
-| `System`  | `TimeZone::Load` by tz database name, and `TimeZone::Local`                                            |
-| `Error`   | `TimeZoneError`                                                                                        |
+| File     | Covers                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `Zone`   | `TimeZone` with `FromTzif`, `FromRule`, `Utc`, `StateAt`, `OffsetAt`, `ToLocal` and `Resolve`; `ZoneState` and `LocalTime` |
+| `System` | `TimeZone::Load` by tz database name, and `TimeZone::Local`                                                                |
+| `Error`  | `TimeZoneError`                                                                                                            |
 
 The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import TimeZone::TimeZone;`.
 

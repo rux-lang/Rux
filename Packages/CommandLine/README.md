@@ -10,13 +10,13 @@ rux add Rux/CommandLine
 
 ## What it provides
 
-| File     | Covers                                                                                                   |
-| -------- | -------------------------------------------------------------------------------------------------------- |
-| `Spec`   | `CommandSpec`, `OptionSpec`, `PositionalSpec`, and the `Command`, `Flag`, `ValueOption`, `Required`, `Optional` and `Remaining` builders |
+| File     | Covers                                                                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Spec`   | `CommandSpec`, `OptionSpec`, `PositionalSpec`, and the `Command`, `Flag`, `ValueOption`, `Required`, `Optional` and `Remaining` builders      |
 | `Parsed` | `Parse` and `ParseProcess`, and the `Parsed` queries: `Has`, `Count`, `Value`, `Values`, `Positional`, `Positionals`, `Integer`, `Subcommand` |
-| `Help`   | `WriteHelp`, `WriteUsage` and `WriteVersion`                                                              |
-| `Error`  | `CommandLineError`, which describes itself through `Display`                                              |
-| `Scan`   | `ArgumentSource`, the arguments a parse reads                                                             |
+| `Help`   | `WriteHelp`, `WriteUsage` and `WriteVersion`                                                                                                  |
+| `Error`  | `CommandLineError`, which describes itself through `Display`                                                                                  |
+| `Scan`   | `ArgumentSource`, the arguments a parse reads                                                                                                 |
 
 The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import CommandLine::Command;`.
 

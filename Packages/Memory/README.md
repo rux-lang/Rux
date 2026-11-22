@@ -12,19 +12,19 @@ rux add Rux/Memory
 
 ## What it provides
 
-| Function         | Purpose                                                          |
-| ---------------- | ---------------------------------------------------------------- |
-| `Alloc`          | Allocate an uninitialized block                                  |
-| `Realloc`        | Resize a block, preserving its contents                          |
-| `Free`           | Release a block                                                  |
-| `Copy`           | Copy bytes between blocks that do not overlap                    |
-| `Move`           | Copy bytes between blocks that may overlap in any way            |
-| `Set`            | Fill a block with a byte value                                   |
-| `Zero`           | Fill a block with zero                                           |
-| `Compare`        | Order two blocks lexicographically, returning an `Ordering`      |
-| `Equal`          | Whether two blocks hold the same bytes                           |
-| `MismatchOffset` | Where two blocks first differ, or their length when they do not  |
-| `Find`           | Where a byte first occurs, or the length when it does not        |
+| Function         | Purpose                                                         |
+| ---------------- | --------------------------------------------------------------- |
+| `Alloc`          | Allocate an uninitialized block                                 |
+| `Realloc`        | Resize a block, preserving its contents                         |
+| `Free`           | Release a block                                                 |
+| `Copy`           | Copy bytes between blocks that do not overlap                   |
+| `Move`           | Copy bytes between blocks that may overlap in any way           |
+| `Set`            | Fill a block with a byte value                                  |
+| `Zero`           | Fill a block with zero                                          |
+| `Compare`        | Order two blocks lexicographically, returning an `Ordering`     |
+| `Equal`          | Whether two blocks hold the same bytes                          |
+| `MismatchOffset` | Where two blocks first differ, or their length when they do not |
+| `Find`           | Where a byte first occurs, or the length when it does not       |
 
 | `PageSize` / `MinimumPageSize` / `PageAlign` | Asking the system its real page size, the documented floor, and rounding a length to that floor |
 | `PageAllocate` / `PageRelease` / `PageProtect` | Address space at the granularity the system hands it out in |
@@ -39,7 +39,7 @@ Windows differs in kind: it separates reserving address space from committing st
 
 `PageSize` asks the system, and reports whether it got an answer. Each platform package owns its own query — `GetSystemInfo` on Windows, `getpagesize` on Darwin, the `hw.pagesize` sysctl on FreeBSD, and `/proc/self/auxv` on Linux, whose kernel publishes the value in the auxiliary vector rather than behind a system call. Nothing is captured at process start and no libc is called. When the system will not answer — a container built without `/proc` is the ordinary way that happens — this reports `Unsupported` rather than substituting a number, because a caller asking for the real size is worse served by a wrong one than by a refusal.
 
-`PageAlign` rounds to `MinimumPageSize`, which is 4 KiB and is the floor on every supported cell rather than the size on any particular one: Apple Silicon uses 16 KiB, and a Linux kernel may be configured for 16 or 64. Rounding to a divisor of the real size cannot make an allocation wrong — every call here hands the length to a system that rounds again — and it keeps a file read out of an allocator's inner loop. A caller that needs whole *real* pages asks `PageSize` once, keeps the answer, and rounds with `AlignUp` itself.
+`PageAlign` rounds to `MinimumPageSize`, which is 4 KiB and is the floor on every supported cell rather than the size on any particular one: Apple Silicon uses 16 KiB, and a Linux kernel may be configured for 16 or 64. Rounding to a divisor of the real size cannot make an allocation wrong — every call here hands the length to a system that rounds again — and it keeps a file read out of an allocator's inner loop. A caller that needs whole _real_ pages asks `PageSize` once, keeps the answer, and rounds with `AlignUp` itself.
 
 None of the comparisons is constant-time: each stops at the first difference, so none may compare a secret.
 

@@ -11,22 +11,22 @@ rux add Rux/macOS
 
 ## What it provides
 
-| Module      | Covers                                                                                |
-| ----------- | ------------------------------------------------------------------------------------- |
-| `Types`     | the Darwin ABI's own types: `ProcessId`, `FileDescriptor`, `FileMode`, `UserId`, `Timespec`, `Timeval` |
-| `Errors`    | the errno numbers, `CurrentErrno`, and the `Normalize` / `IsError` / `Errno` fold      |
-| `LibSystem` | every libSystem entry point this package binds, under the symbol it exports, including `_NSGetArgc`, `_NSGetArgv` and `_NSGetEnviron` |
-| `File`      | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Dup2`, `Pipe`, the open flags, and the three standard descriptors |
-| `Memory`    | `Mmap`, `Munmap`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
-| `Clock`     | `ClockGetTime`, `ClockGetResolution`, `GetTimeOfDay`, `Nanosleep`, and the clock identifiers |
-| `Entropy`   | `GetRandom`, which cannot fail and has no short count                                   |
-| `Process`   | `Exit` and `GetPid`                                                                     |
-| `Dynamic`   | the `RTLD_*` flags; `dlopen`, `dlsym`, `dlclose` and `dlerror` are in `LibSystem`        |
+| Module      | Covers                                                                                                                                                                                          |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Types`     | the Darwin ABI's own types: `ProcessId`, `FileDescriptor`, `FileMode`, `UserId`, `Timespec`, `Timeval`                                                                                          |
+| `Errors`    | the errno numbers, `CurrentErrno`, and the `Normalize` / `IsError` / `Errno` fold                                                                                                               |
+| `LibSystem` | every libSystem entry point this package binds, under the symbol it exports, including `_NSGetArgc`, `_NSGetArgv` and `_NSGetEnviron`                                                           |
+| `File`      | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Dup2`, `Pipe`, the open flags, and the three standard descriptors                        |
+| `Memory`    | `Mmap`, `Munmap`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags                                                                                          |
+| `Clock`     | `ClockGetTime`, `ClockGetResolution`, `GetTimeOfDay`, `Nanosleep`, and the clock identifiers                                                                                                    |
+| `Entropy`   | `GetRandom`, which cannot fail and has no short count                                                                                                                                           |
+| `Process`   | `Exit` and `GetPid`                                                                                                                                                                             |
+| `Dynamic`   | the `RTLD_*` flags; `dlopen`, `dlsym`, `dlclose` and `dlerror` are in `LibSystem`                                                                                                               |
 | `Thread`    | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `pthread_threadid_np`, linked from libSystem |
-| `Ulock`     | `__ulock_wait`, `__ulock_wake` and their flags, the word operations every lock in `Rux/Sync` sleeps on |
-| `Spawn`     | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill` and `fcntl` |
-| `Sockets`   | the BSD socket calls behind the same wrappers as Linux and FreeBSD, `SO_NOSIGPIPE`, and `getaddrinfo`, `freeaddrinfo` and `AddressInfo` |
-| `Poll`      | `Kqueue` and `KeventCall` over libSystem's `kqueue` and `kevent`, `Kevent`, the `EVFILT_*` and `EV_*` flags, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
+| `Ulock`     | `__ulock_wait`, `__ulock_wake` and their flags, the word operations every lock in `Rux/Sync` sleeps on                                                                                          |
+| `Spawn`     | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill` and `fcntl`                                                                                                           |
+| `Sockets`   | the BSD socket calls behind the same wrappers as Linux and FreeBSD, `SO_NOSIGPIPE`, and `getaddrinfo`, `freeaddrinfo` and `AddressInfo`                                                         |
+| `Poll`      | `Kqueue` and `KeventCall` over libSystem's `kqueue` and `kevent`, `Kevent`, the `EVFILT_*` and `EV_*` flags, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK`                          |
 
 Every declaration lives in the module of its row, and the module is part of the import path: `import macOS::File::{ Close, OpenAt };`.
 
@@ -46,7 +46,7 @@ All of it compiles for both architectures, and none of it has ever run on a host
 
 ## The shared POSIX contract
 
-Nothing here is interchangeable with `Rux/Linux` or `Rux/FreeBSD`, but the three are *spelled* the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.
+Nothing here is interchangeable with `Rux/Linux` or `Rux/FreeBSD`, but the three are _spelled_ the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.
 
 The values are the opposite: every constant is this system's own, and the same file asserts that the ones a reader might carry across really do differ.
 

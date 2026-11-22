@@ -12,9 +12,9 @@ rux add Rux/NanoId
 
 | File       | Covers                                                                                         |
 | ---------- | ---------------------------------------------------------------------------------------------- |
-| `NanoId`   | the `NanoId` value: `Generate`, `Parse`, `Text`, `Equals`, `Compare`, `Display` and `Debug`     |
-| `Generate` | `GenerateNanoId` and `GenerateNanoIdFrom`, which fill a buffer of any length from any alphabet  |
-| `Alphabet` | `NanoIdAlphabet`, `NanoIdLength`, `NanoIdError` and `ValidateAlphabet`                          |
+| `NanoId`   | the `NanoId` value: `Generate`, `Parse`, `Text`, `Equals`, `Compare`, `Display` and `Debug`    |
+| `Generate` | `GenerateNanoId` and `GenerateNanoIdFrom`, which fill a buffer of any length from any alphabet |
+| `Alphabet` | `NanoIdAlphabet`, `NanoIdLength`, `NanoIdError` and `ValidateAlphabet`                         |
 
 The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import NanoId::GenerateNanoId;`.
 

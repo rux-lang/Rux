@@ -10,10 +10,10 @@ rux add Rux/Regex
 
 ## What it provides
 
-| File      | Covers                                                                                                     |
-| --------- | ---------------------------------------------------------------------------------------------------------- |
-| `Regex`   | `Regex` with `New`, `IsMatch`, `Find`, `FindAt`, `Capture`, `CaptureAt`, `FindAll`, `Split`, `Replace` and `ReplaceFirst`; `Match`, `Captures`, `MatchIterator`, `SplitIterator` and `Escape` |
-| `Error`   | `RegexError` and `RegexErrorKind`, with the offset in the pattern where it went wrong                        |
+| File    | Covers                                                                                                                                                                                        |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Regex` | `Regex` with `New`, `IsMatch`, `Find`, `FindAt`, `Capture`, `CaptureAt`, `FindAll`, `Split`, `Replace` and `ReplaceFirst`; `Match`, `Captures`, `MatchIterator`, `SplitIterator` and `Escape` |
+| `Error` | `RegexError` and `RegexErrorKind`, with the offset in the pattern where it went wrong                                                                                                         |
 
 The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Regex::Regex;`.
 

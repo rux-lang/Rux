@@ -8,18 +8,18 @@ Core is optional. Scalar types, arithmetic, arrays, inferred string literals, an
 
 Every declaration in Core lives in a module, and nothing stays at the root of the package:
 
-| Module | Contents |
-| --- | --- |
-| `Core::Primitives` | Only the `extend` blocks of the primitive types: their constants and methods. `import Core::Primitives::*;` brings in all of them and no other name. |
-| `Core::Diagnostics` | `Assert`, `DebugAssert`, `Panic`, `#Error`, `#Warn` |
+| Module              | Contents                                                                                                                                                                                                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Core::Primitives`  | Only the `extend` blocks of the primitive types: their constants and methods. `import Core::Primitives::*;` brings in all of them and no other name.                                                                                                                                                                     |
+| `Core::Diagnostics` | `Assert`, `DebugAssert`, `Panic`, `#Error`, `#Warn`                                                                                                                                                                                                                                                                      |
 | `Core::Compilation` | `#target`, `#build`, `#compiler`, `#config`, `#source` and their types: `Target`, `OperatingSystem`, `Architecture`, `ApplicationBinaryInterface`, `TargetFeature`, `Endianness`, `DataModel`, `ObjectFormat`, `Build`, `BuildMode`, `OptimizationMode`, `OutputKind`, `Compiler`, `SemanticVersion`, `Config`, `Source` |
-| `Core::Compare` | `Equatable`, `Comparable`, `Hashable`, `Ordering` |
-| `Core::Ownership` | `Copyable`, `Cloneable`, `Sendable`, `Replace`, `Swap` |
-| `Core::Iteration` | `Iterator`, `Iterable` |
-| `Core::Arithmetic` | `MaximumOf`, `MinimumOf` |
-| `Core::Bits` | The bit operations and the byte-order functions |
-| `Core::Convert` | `ConvertChecked`, `ConvertWrapping`, `ConvertSaturating`, `IsSignedType` and the float tests |
-| `Core::Machine` | The intrinsics that stand for a machine operation outside the primitives: `MemoryOrder`, the `Atomic...` operations, `Fence`, `SpinHint`, `Zeroize`, `ProcessStartFrame` |
+| `Core::Compare`     | `Equatable`, `Comparable`, `Hashable`, `Ordering`                                                                                                                                                                                                                                                                        |
+| `Core::Ownership`   | `Copyable`, `Cloneable`, `Sendable`, `Replace`, `Swap`                                                                                                                                                                                                                                                                   |
+| `Core::Iteration`   | `Iterator`, `Iterable`                                                                                                                                                                                                                                                                                                   |
+| `Core::Arithmetic`  | `MaximumOf`, `MinimumOf`                                                                                                                                                                                                                                                                                                 |
+| `Core::Bits`        | The bit operations and the byte-order functions                                                                                                                                                                                                                                                                          |
+| `Core::Convert`     | `ConvertChecked`, `ConvertWrapping`, `ConvertSaturating`, `IsSignedType` and the float tests                                                                                                                                                                                                                             |
+| `Core::Machine`     | The intrinsics that stand for a machine operation outside the primitives: `MemoryOrder`, the `Atomic...` operations, `Fence`, `SpinHint`, `Zeroize`, `ProcessStartFrame`                                                                                                                                                 |
 
 ```rux
 import Core::Compare::Ordering;

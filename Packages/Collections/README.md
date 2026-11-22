@@ -10,19 +10,19 @@ rux add Rux/Collections
 
 ## What it provides
 
-| Type            | Role                                      | Also known as |
-| --------------- | ----------------------------------------- | ------------- |
-| `Array<T>`      | Fixed-length owned heap storage           |               |
-| `Vector<T>`     | Growable contiguous sequence              | the stack     |
-| `Deque<T>`      | Double-ended queue over a circular buffer | the queue     |
-| `HashMap<K, V>` | Open-addressed associative table          |               |
-| `HashSet<T>`    | Open-addressed set of distinct values     |               |
-| `TreeMap<K, V>` | Ordered red-black-tree map                |               |
-| `TreeSet<T>`    | Ordered red-black-tree set                |               |
-| `PriorityQueue<T>` | Max-heap that hands out the largest first | the heap   |
-| `BitSet`        | Growable set of small integers, a bit each |              |
-| `SmallVector<T>` | Vector holding 64 bytes of elements inline |             |
-| `LruCache<K, V>` | Bounded map evicting the least recently used |           |
+| Type               | Role                                         | Also known as |
+| ------------------ | -------------------------------------------- | ------------- |
+| `Array<T>`         | Fixed-length owned heap storage              |               |
+| `Vector<T>`        | Growable contiguous sequence                 | the stack     |
+| `Deque<T>`         | Double-ended queue over a circular buffer    | the queue     |
+| `HashMap<K, V>`    | Open-addressed associative table             |               |
+| `HashSet<T>`       | Open-addressed set of distinct values        |               |
+| `TreeMap<K, V>`    | Ordered red-black-tree map                   |               |
+| `TreeSet<T>`       | Ordered red-black-tree set                   |               |
+| `PriorityQueue<T>` | Max-heap that hands out the largest first    | the heap      |
+| `BitSet`           | Growable set of small integers, a bit each   |               |
+| `SmallVector<T>`   | Vector holding 64 bytes of elements inline   |               |
+| `LruCache<K, V>`   | Bounded map evicting the least recently used |               |
 
 There is no `Stack` or `Queue` type. `Vector` already is the stack — `Push` and `Pop` work at the end that costs nothing to reach — and `Deque` already is the queue, with `PushBack` and `PopFront`. Wrapper types would duplicate them to add no safety Rux can enforce. There is no `Dictionary` either: `HashMap` is the one associative name.
 
@@ -48,10 +48,10 @@ Both read-only and writable slices support `values[i]` and `values[1..3]` direct
 
 Running out of memory terminates the program. `Push`, `Insert`, `Reserve`, `Clone` and every other operation that allocates either gets its storage or does not return, so a caller writes `numbers.Push(1);` and nothing more, and a capacity whose byte size cannot be represented terminates the same way. Code that can recover calls a `Try*` operation instead, which throws the allocator's own `AllocError` and leaves the container exactly as it was:
 
-| Container   | Recoverable forms                         |
-| ----------- | ----------------------------------------- |
-| `Vector<T>` | `TryPush`, `TryReserve`, `TryClone`       |
-| `HashMap<K, V>` | `TryInsert`, `TryReserve`             |
+| Container       | Recoverable forms                   |
+| --------------- | ----------------------------------- |
+| `Vector<T>`     | `TryPush`, `TryReserve`, `TryClone` |
+| `HashMap<K, V>` | `TryInsert`, `TryReserve`           |
 
 A `Try*` operation throws `Unsupported` for a size no allocator could serve, and otherwise what the allocator refused with; `AllocError::IsTransient` says whether trying again could help.
 
