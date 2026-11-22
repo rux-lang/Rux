@@ -1,5 +1,6 @@
 import Core::Diagnostics::Assert;
-import C::{ free, malloc, putchar, puts, sprintf, sscanf };
+import C::StdIo::{ putchar, puts, sprintf, sscanf };
+import C::StdLib::{ free, malloc };
 
 func Main() -> int {
     // Safety: `malloc` takes only a byte count; the 64 bytes outlast every format written below.

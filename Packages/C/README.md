@@ -15,7 +15,7 @@ rux add Rux/C
 | Module   | Covers                                                                     |
 | -------- | -------------------------------------------------------------------------- |
 | `Types`  | the C ABI's own types, `errno` access, and the opaque handles              |
-| `String` | `<char8[..].h>` — counted memory operations and terminated byte strings       |
+| `String` | `<string.h>` — counted memory operations and terminated byte strings       |
 | `StdIo`  | `<stdio.h>` — streams, `printf` family, `fopen`/`fclose`, positioning       |
 | `StdLib` | `<stdlib.h>` — allocation, conversion, process control, sorting, searching |
 | `Math`   | `<math.h>` — the elementary functions in both `double` and `float` forms   |
@@ -43,14 +43,16 @@ C ABI records such as `timespec` are ordinary structural values and copy by valu
 
 Two things are absent from `Math` on purpose. `fabsf`, `frexpf`, `ldexpf` and `hypotf` are header inlines in the Universal CRT rather than exported symbols, so declaring them would link on Unix and fail on Windows. The `nexttoward` pair takes a `long double`, which is a different type on every target — 64 bits under the Universal CRT, an 80-bit x87 value on x86-64 Unix, a 128-bit quad on AArch64 — so no one declaration is right everywhere. `Rux/Math` computes at every width without a C runtime and is the portable answer.
 
-The module names above describe where each declaration comes from; they are not part of an import path.
+Every declaration lives in the module of its row, and the module is part of the import path: `import C::StdIo::{ fclose, fopen };`.
 
 ## Example
 
 Declarations are flat under the package, so an import names the function rather than the header it came from:
 
 ```rux
-import C::{ CRuntimeArea, ErrnoFor, ErrnoLocationFor, free, malloc, puts };
+import C::StdIo::puts;
+import C::StdLib::{ free, malloc };
+import C::Types::{ CRuntimeArea, ErrnoFor, ErrnoLocationFor };
 
 func Main() -> int {
     // A Rux literal is a `char8[..]` and a C declaration takes a `*char8`, so the address is passed explicitly.

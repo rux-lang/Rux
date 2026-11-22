@@ -1,8 +1,10 @@
 import Core::Diagnostics::Assert;
-import C::{ BUFSIZ, EOF, EXIT_FAILURE, EXIT_SUCCESS, FILENAME_MAX, FOPEN_MAX, L_tmpnam, RAND_MAX, SEEK_CUR, SEEK_END,
-            SEEK_SET, TMP_MAX, _IOFBF, _IOLBF, _IONBF };
-import C::{ bsearch, free, malloc, qsort, rand, srand, strtod, strtof, strtol, strtoll, strtoul, strtoull };
-import C::{ fclose, fgetc, fopen, fseek, ftell, fwrite, memcmp, remove, strlen };
+import C::StdIo::{ BUFSIZ, EOF, FILENAME_MAX, FOPEN_MAX, L_tmpnam, SEEK_CUR, SEEK_END, SEEK_SET, TMP_MAX, _IOFBF,
+                   _IOLBF, _IONBF };
+import C::StdLib::{ EXIT_FAILURE, EXIT_SUCCESS, RAND_MAX };
+import C::StdLib::{ bsearch, free, malloc, qsort, rand, srand, strtod, strtof, strtol, strtoll, strtoul, strtoull };
+import C::StdIo::{ fclose, fgetc, fopen, fseek, ftell, fwrite, remove };
+import C::String::{ memcmp, strlen };
 
 // The conversion family is what this module exists to prefer over the `ato*` one, so each is checked for the two
 // things `atoi` cannot do: report where it stopped, and be asked for a base. The constants are checked against the
