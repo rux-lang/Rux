@@ -622,6 +622,31 @@ void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParamet
                 help = "keep the value on the thread that made it, or share it through a type made for threads, such "
                        "as 'Arc' in place of 'Rc'";
             }
+            else if (argument->second.IsFallible() || argument->second.IsOptional() || argument->second.IsSum()) {
+                // A native form implements no interface and is no 'extend' target, so the value inside it is what
+                // can satisfy the bound: the success once the error is handled, or the payload once it is present.
+                const TypeRef &argumentType = argument->second;
+                std::string unused;
+                const bool fallible = argumentType.IsFallible();
+                const bool inner =
+                    !argumentType.IsSum() &&
+                    TypeSatisfiesBound(fallible ? argumentType.FallibleSuccess() : argumentType->inner[0],
+                                       *bound.interface, unused, interfaceArguments);
+                if (inner && fallible) {
+                    help = "handle the error first: pass it on with '!', replace it with '!!', or handle it with "
+                           "'catch { ... }'";
+                }
+                else if (inner) {
+                    help = "take the value out first, with '?', '?"
+                           "?' or 'if let'";
+                }
+                else {
+                    help = std::format("pass a type that implements '{}'; {} implements no interface", bound.name,
+                                       fallible                    ? "a fallible"
+                                       : argumentType.IsOptional() ? "an optional"
+                                                                   : "a sum");
+                }
+            }
             else {
                 help =
                     std::format("implement the interface, as in 'extend {}: {} {{ ... }}'", argumentName, bound.name);

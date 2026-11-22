@@ -702,3 +702,27 @@ TEST_CASE("a generic copy of an owning field offers a bound, never a transfer") 
     CHECK_EQ(diagnostics[1].message, "cannot copy 'Plain', which owns resources");
     CHECK_EQ(diagnostics[1].help, "bound the type parameter by 'Copyable'");
 }
+
+TEST_CASE("a native form passed for a bound points at the value inside it") {
+    // A fallible or an optional implements no interface, so the help never offers to extend one.
+    const auto diagnostics = AnalyzeSource(R"(
+        interface Show { func Text(&self) -> int; }
+        extend int32: Show { func Text(&self) -> int { return 1; } }
+        enum Failure: int32 { Bad }
+        func Expect<T: Show>(value: T) {}
+        func Make() -> int32 ! Failure { return 1i32; }
+        func Find() -> int32? { return none; }
+        func Flag() -> bool? { return none; }
+        func Use() {
+            Expect(Make());
+            Expect(Find());
+            Expect(Flag());
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].help, "handle the error first: pass it on with '!', replace it with '!!', or handle it "
+                                  "with 'catch { ... }'");
+    CHECK_EQ(diagnostics[1].help, "take the value out first, with '?', '?"
+                                  "?' or 'if let'");
+    CHECK_EQ(diagnostics[2].help, "pass a type that implements 'Show'; an optional implements no interface");
+}
