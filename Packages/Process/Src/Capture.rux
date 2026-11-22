@@ -60,12 +60,12 @@ func DrainPipe(drain: Drain) -> Buffer<char8>? {
 func ReadAll(reader: &var PipeReader, bytes: &var Buffer<char8>) -> bool {
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
-        let count = try reader.Read(chunk[..]) catch {
+        let count = reader.Read(chunk[..]) catch {
             error => {
                 return error.kind == IoErrorKind::EndOfStream;
             },
         };
-        try bytes.PushAll(chunk[..count]) catch { _ => return false };
+        bytes.PushAll(chunk[..count]) catch { _ => return false };
     }
     return true;
 }
@@ -78,16 +78,16 @@ extend Command {
     /// @see https://rux-lang.dev/docs/api/process/command#capture
     pub func Capture(&self, allocator: Allocator) -> CapturedOutput ! IoError {
         if self.failure != none { throw self.failure ?? IoError::Of(IoErrorKind::Other); }
-        var child = try self.Launch(self.input, Stdio::Pipe, Stdio::Pipe);
+        var child = self.Launch(self.input, Stdio::Pipe, Stdio::Pipe)!;
         var output = child.TakeOutput() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
         let error = child.TakeError() ?? PipeReader { pipe: 0xFFFFFFFFFFFFFFFF };
-        var reader = try Spawn(DrainPipe, Drain { reader: move error, allocator })
+        var reader = Spawn(DrainPipe, Drain { reader: move error, allocator })
             catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
         var outputBytes = Buffer<char8>::New(allocator);
         let outputRead = ReadAll(output, outputBytes);
         output.Close();
         var drained = reader.Join();
-        let status = try child.Wait();
+        let status = child.Wait()!;
         if !outputRead { throw IoError::Of(IoErrorKind::Other); }
         match move drained {
             .Some(errorBytes) => {

@@ -206,7 +206,7 @@ extend Pool {
 
         let layout = Layout::Of(total, PoolAlignment) ?? throw .Unsupported;
 
-        let storage = try self.backing.Allocate(layout);
+        let storage = self.backing.Allocate(layout)!;
 
         let chunk = storage as *var PoolChunk;
         chunk.previous = self.chunks;
@@ -232,7 +232,7 @@ extend Pool {
             // Safety: as above, by the chunk invariant `chunk` is live until the release below.
             let total = chunk.total;
             let layout = Layout::Of(total, PoolAlignment) ?? Layout { size: total, alignment: PoolAlignment };
-            try self.backing.Deallocate(chunk as *var opaque, layout) catch { _ => {} };
+            self.backing.Deallocate(chunk as *var opaque, layout) catch { _ => {} };
             chunk = earlier;
         }
         self.chunks = null;
@@ -264,13 +264,13 @@ extend Pool : Allocator {
 
         let classIndex = ClassIndexFor(layout);
         if classIndex >= PoolClassCount {
-            return try self.backing.Allocate(layout);
+            return self.backing.Allocate(layout)!;
         }
 
         if self.free[classIndex] == 0 {
             // Safety: the chunk invariant: `chunks` and every `previous` link address a live chunk this pool took from
             // `backing`.
-            try self.TakeChunk(classIndex);
+            self.TakeChunk(classIndex)!;
         }
 
         let head = self.free[classIndex];
@@ -297,7 +297,7 @@ extend Pool : Allocator {
 
         let classIndex = ClassIndexFor(layout);
         if classIndex >= PoolClassCount {
-            return try self.backing.Deallocate(block, layout);
+            return self.backing.Deallocate(block, layout)!;
         }
 
         let address = block as uint;
@@ -329,20 +329,20 @@ extend Pool : Allocator {
         let oldClass = ClassIndexFor(oldLayout);
         let newClass = ClassIndexFor(newLayout);
         if oldClass >= PoolClassCount && newClass >= PoolClassCount {
-            return try self.backing.Reallocate(block, oldLayout, newLayout);
+            return self.backing.Reallocate(block, oldLayout, newLayout)!;
         }
         if oldClass == newClass && oldLayout.size != 0 && newLayout.size != 0 {
             return block;
         }
 
-        let fresh = try self.Allocate(newLayout);
+        let fresh = self.Allocate(newLayout)!;
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
         Copy(fresh, block as *opaque, keep);
         // The old block is this pool's or its backing allocator's with this layout, and the new one already holds
         // its contents, so a refused release could only leak it.
-        try self.Deallocate(block, oldLayout) catch { _ => {} };
+        self.Deallocate(block, oldLayout) catch { _ => {} };
         return fresh;
     }
 }

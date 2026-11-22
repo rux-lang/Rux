@@ -14,7 +14,7 @@ func Main() -> !PageError {
 
     // The real page size is asked of the system, and the query reports whether it got an answer rather than
     // substituting one. A system that will not answer is not a system to guess about.
-    let size = try PageSize();
+    let size = PageSize()!;
     Assert(size >= MinimumPageSize, "a real page is at least the documented minimum");
     Assert((size & (size - 1)) == 0, "and its size is a power of two");
 
@@ -44,7 +44,7 @@ func Main() -> !PageError {
     Assert(refused, "a zero-length allocation is refused");
 
     // An ordinary allocation, with a length that is not a whole number of pages.
-    let address = try PageAllocate(size + 1, PageRead | PageWrite);
+    let address = PageAllocate(size + 1, PageRead | PageWrite)!;
     Assert(address != null, "the allocation reports where it landed");
 
     // The whole rounded length is usable, not just the length asked for.
@@ -59,7 +59,7 @@ func Main() -> !PageError {
     Assert(last == 0xC3 as byte, "and so is the last of the rounded length");
 
     // Pages come zeroed, which the next allocation is what shows.
-    let second = try PageAllocate(size, PageRead | PageWrite);
+    let second = PageAllocate(size, PageRead | PageWrite)!;
     // Safety: retyping only; `second` is a live read-write mapping of one page of `size` bytes.
     let secondBytes = second as *var byte;
     // Safety: offsets 0 and `size - 1` are inside the live readable page at `second`.
@@ -68,11 +68,11 @@ func Main() -> !PageError {
 
     // Protection changes are accepted for a range that exists.
     // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
-    try PageProtect(second, size, PageRead);
+    PageProtect(second, size, PageRead)!;
     // Safety: the page at `second` is live and was just made readable.
     Assert(*secondBytes == 0 as byte, "narrowed to read-only, the pages are still readable");
     // Safety: `second` is the page-aligned base `PageAllocate` returned, and nothing else is touching its page.
-    try PageProtect(second, size, PageRead | PageWrite);
+    PageProtect(second, size, PageRead | PageWrite)!;
     // Safety: the page at `second` is live and was just made readable and writable again.
     let rewritten = {
         *secondBytes = 0x5A as byte;
@@ -108,15 +108,15 @@ func Main() -> !PageError {
     }
 
     // A protection of none is legal: it takes the space and refuses every access to it, which is a guard page.
-    let guarded = try PageAllocate(size, PageNone);
+    let guarded = PageAllocate(size, PageNone)!;
     Assert(guarded != null, "an inaccessible allocation still reports an address");
     // Safety: `guarded` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
-    try PageRelease(guarded, size);
+    PageRelease(guarded, size)!;
 
     // Safety: `second` is the base `PageAllocate` returned for `size` bytes, and nothing uses it afterwards.
-    try PageRelease(second, size);
+    PageRelease(second, size)!;
     // The first allocation is released by the length it asked for.
     // Safety: `address` is the base `PageAllocate` returned for `size + 1` bytes, and nothing uses it afterwards.
-    try PageRelease(address, size + 1);
+    PageRelease(address, size + 1)!;
 }
 

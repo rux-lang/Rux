@@ -46,11 +46,11 @@ func AppendText(buffer: &var Buffer<OsUnit>, text: char8[..]) -> !IoError {
             if scalar == 0u32 { throw IoError::Of(IoErrorKind::InvalidInput); }
             if scalar > 0xFFFFu32 {
                 let offset = scalar - 0x10000u32;
-                try buffer.Push((0xD800u32 + (offset >> 10)) as uint16);
-                try buffer.Push((0xDC00u32 + (offset & 0x3FFu32)) as uint16);
+                buffer.Push((0xD800u32 + (offset >> 10)) as uint16)!;
+                buffer.Push((0xDC00u32 + (offset & 0x3FFu32)) as uint16)!;
             }
             else {
-                try buffer.Push(scalar as uint16);
+                buffer.Push(scalar as uint16)!;
             }
         }
     }
@@ -60,7 +60,7 @@ func AppendText(buffer: &var Buffer<OsUnit>, text: char8[..]) -> !IoError {
             if text[index] as uint8 == 0u8 { throw IoError::Of(IoErrorKind::InvalidInput); }
             index = index + 1;
         }
-        try buffer.PushAll(text);
+        buffer.PushAll(text)!;
     }
 }
 
@@ -71,5 +71,5 @@ func AppendUnits(buffer: &var Buffer<OsUnit>, units: OsUnit[..]) -> !IoError {
         if units[index] == (0 as OsUnit) { throw IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
-    try buffer.PushAll(units);
+    buffer.PushAll(units)!;
 }

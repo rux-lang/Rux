@@ -56,7 +56,7 @@ func WriteUnsigned(writer: &var TextWriter, value: uint64) -> !FormatError {
     var index = count;
     while index > 0 {
         index = index - 1;
-        try WriteAscii(writer, digits[index]);
+        WriteAscii(writer, digits[index])!;
     }
     return;
 }
@@ -84,9 +84,9 @@ func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: Forma
         }
         if kept == 0 { return; }
     }
-    try WriteAscii(writer, c8'.');
+    WriteAscii(writer, c8'.')!;
     // Safety: `digits` is a local `char8[9]`, and `kept` is at most 9, checked above.
-    return try WriteBytes(writer, (@digits[0])[..kept]);
+    return WriteBytes(writer, (@digits[0])[..kept])!;
 }
 
 // The empty style is the default rendering and `seconds` names it explicitly. Nothing else is understood.
@@ -112,15 +112,15 @@ extend Duration : Display {
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
-        try RejectDurationStyle(spec);
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec)!; }
+        RejectDurationStyle(spec)!;
         var whole: uint64 = 0;
         var fraction: uint32 = 0;
         let negative = Magnitude(self, @whole, @fraction);
-        if negative { try WriteAscii(writer, c8'-'); }
-        try WriteUnsigned(writer, whole);
-        try WriteSecondsFraction(writer, fraction, spec);
-        return try WriteAscii(writer, c8's');
+        if negative { WriteAscii(writer, c8'-')!; }
+        WriteUnsigned(writer, whole)!;
+        WriteSecondsFraction(writer, fraction, spec)!;
+        return WriteAscii(writer, c8's')!;
     }
 }
 
@@ -132,7 +132,7 @@ extend Duration : Debug {
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }
 

@@ -51,7 +51,7 @@ func IsZoneName(name: char8[..]) -> bool {
 // The whole file at `path`, or fails with `NotFound` when it is not there.
 func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneError {
     let native = OsString::FromText(allocator, path);
-    var file = try File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
+    var file = File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
         error => {
             if error.kind == IoErrorKind::NotFound || error.kind == IoErrorKind::NotDirectory {
                 throw .NotFound;
@@ -105,7 +105,7 @@ extend TimeZone {
         match Variable("TZDIR") {
             .Some(value) => {
                 if AsciiText(value, directory) && directory.Length() > 0u {
-                    return try Self::LoadFrom(allocator, directory.AsSlice(), name);
+                    return Self::LoadFrom(allocator, directory.AsSlice(), name)!;
                 }
             },
             none => {}
@@ -136,8 +136,8 @@ extend TimeZone {
         path.PushSlice(directory);
         path.Push(c8'/');
         path.PushSlice(name);
-        let data = try ReadFile(allocator, path.AsSlice());
-        return try Self::FromTzif(allocator, name, data.AsSlice());
+        let data = ReadFile(allocator, path.AsSlice())!;
+        return Self::FromTzif(allocator, name, data.AsSlice())!;
     }
 
     /// The zone the system is set to.
@@ -149,7 +149,7 @@ extend TimeZone {
     /// @see https://rux-lang.dev/docs/api/timezone/zone#local
     pub func Local(allocator: Allocator) -> Self ! TimeZoneError {
         when #target.os == .Windows {
-            return try Self::WindowsLocal(allocator);
+            return Self::WindowsLocal(allocator)!;
         }
         else {
             var setting = Vector<char8>::New(allocator);
@@ -161,13 +161,13 @@ extend TimeZone {
             }
             var text = setting.AsSlice();
             if text.length == 0u {
-                let data = try ReadFile(allocator, "/etc/localtime");
-                return try Self::FromTzif(allocator, "Local", data.AsSlice());
+                let data = ReadFile(allocator, "/etc/localtime")!;
+                return Self::FromTzif(allocator, "Local", data.AsSlice())!;
             }
             if text[0] == ':' { text = text[1..]; }
             if text.length > 0u && text[0] == '/' {
-                let data = try ReadFile(allocator, text);
-                return try Self::FromTzif(allocator, text, data.AsSlice());
+                let data = ReadFile(allocator, text)!;
+                return Self::FromTzif(allocator, text, data.AsSlice())!;
             }
             try {
                 let zone = Self::Load(allocator, text);
@@ -175,7 +175,7 @@ extend TimeZone {
             } catch {
                 _ => {},
             }
-            return try Self::FromRule(allocator, text, text);
+            return Self::FromRule(allocator, text, text)!;
         }
     }
 

@@ -56,7 +56,7 @@ extend NanoId {
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#generate
     pub func Generate() -> Self ! EntropyError {
         var value = Self { text: ['A'; 21] };
-        try GenerateNanoId(value.text[..]);
+        GenerateNanoId(value.text[..])!;
         return value;
     }
 
@@ -131,9 +131,9 @@ extend NanoId : Display {
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
-        try RejectStyle(spec);
-        return try WriteBytes(writer, self.Text());
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec)!; }
+        RejectStyle(spec)!;
+        return WriteBytes(writer, self.Text())!;
     }
 }
 
@@ -145,6 +145,6 @@ extend NanoId : Debug {
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }

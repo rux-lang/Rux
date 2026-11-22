@@ -30,8 +30,8 @@ func Greeting(name: char8[..]) -> char8[..] {
 
 #Test
 func GreetsAnyone() -> !TestFailure {
-    try ExpectText(Greeting(""), "hello");
-    try ExpectEqual(Greeting("ann").length, 13u);
+    ExpectText(Greeting(""), "hello")!;
+    ExpectEqual(Greeting("ann").length, 13u)!;
 }
 ```
 

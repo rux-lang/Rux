@@ -60,7 +60,7 @@ func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec ! Fo
         return FormatSpec::Plain();
     }
     let body = format[found.bodyStart..found.bodyEnd];
-    return try ParseFormatSpec(body) catch { reason => throw match reason {
+    return ParseFormatSpec(body) catch { reason => throw match reason {
         .InvalidSpecification(offset) => FormatError::InvalidSpecification(found.bodyStart + offset),
         _ => reason
     } };
@@ -88,8 +88,8 @@ func ValidatePattern(format: char8[..]) -> uint ! FormatError {
             throw .InvalidSpecification(index);
         }
         if ch == c8'{' {
-            let found = try ReadPlaceholder(format, index);
-            try ReadSpecification(format, found);
+            let found = ReadPlaceholder(format, index)!;
+            ReadSpecification(format, found)!;
             placeholders = placeholders + 1;
             index = found.after;
             continue;
@@ -117,7 +117,7 @@ func ValidatePattern(format: char8[..]) -> uint ! FormatError {
 /// @returns success when the whole pattern and every argument were accepted
 /// @see https://rux-lang.dev/docs/api/format/write-format
 pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &Display...) -> !FormatError {
-    let expected = try ValidatePattern(format);
+    let expected = ValidatePattern(format)!;
     if expected != args.length {
         throw .ArgumentCountMismatch(expected, args.length);
     }
@@ -129,13 +129,13 @@ pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &
     while index < format.length {
         let ch = format[index];
         if ch == c8'{' && index + 1 < format.length && format[index + 1] == c8'{' {
-            try WriteAscii(writer, c8'{');
+            WriteAscii(writer, c8'{')!;
             index = index + 2;
             continue;
         }
         if ch == c8'}' {
             // Validation established that every closing brace here is the first of a `}}`, so there is a second.
-            try WriteAscii(writer, c8'}');
+            WriteAscii(writer, c8'}')!;
             index = index + 2;
             continue;
         }
@@ -143,22 +143,22 @@ pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &
             // The two reads cannot fail, since the same walk already succeeded above; the failure paths stay
             // written out rather than discarded, so a future change to one pass cannot silently diverge from the
             // other.
-            let found = try ReadPlaceholder(format, index);
-            let spec = try ReadSpecification(format, found);
-            try args[next].WriteDisplay(writer, spec);
+            let found = ReadPlaceholder(format, index)!;
+            let spec = ReadSpecification(format, found)!;
+            args[next].WriteDisplay(writer, spec)!;
             next = next + 1;
             index = found.after;
             continue;
         }
         if (ch as uint32) < 0x80 {
-            try WriteAscii(writer, ch);
+            WriteAscii(writer, ch)!;
             index += 1;
         } else {
             // Writers accept complete UTF-8 characters. Passing each byte through WriteAscii rejects valid text.
             var width: uint = 0;
-            let decoded = try DecodeAt(format, index) catch { _ => throw .TextFailure(TextFailureKind::InvalidUtf8) };
+            let decoded = DecodeAt(format, index) catch { _ => throw .TextFailure(TextFailureKind::InvalidUtf8) };
             width = decoded.width;
-            try WriteBytes(writer, format[index..index + width]);
+            WriteBytes(writer, format[index..index + width])!;
             index += width;
         }
     }
@@ -182,6 +182,6 @@ pub func Render(allocator: Allocator, #Format format: char8[..], args: &Display.
     var builder = StringBuilder::New(allocator);
     builder.Reserve(format.length + args.length * 8);
     let sink: &var TextWriter = builder;
-    try WriteFormat(sink, format, args...);
+    WriteFormat(sink, format, args...)!;
     return builder.TakeString();
 }

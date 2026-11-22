@@ -16,7 +16,7 @@ func View(bytes: char8[..]) -> StringView {
 func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: &var bool) -> String {
     var builder = StringBuilder::New(allocator);
     let sink: &var TextWriter = builder;
-    outcome = (try? WriteValue(sink, value, style)) is .Some(_);
+    outcome = (WriteValue(sink, value, style) !! none) is .Some(_);
     return builder.TakeString();
 }
 
@@ -54,7 +54,7 @@ func CaseOf(reason: &FormatError) -> int32 {
 
 // A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
 func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
-    return try Parse(allocator, text) catch { _ => Panic("the document parses") };
+    return Parse(allocator, text) catch { _ => Panic("the document parses") };
 }
 
 func Main() -> int {
@@ -115,9 +115,9 @@ func Main() -> int {
 
     // A non-finite number cannot be made, because JSON cannot spell one, and the kind cannot be set without its text.
     let outOfRange = FormatError::ValueOutOfRange;
-    Assert((try? JsonValue::Number(allocator, "NaN")) is none, "a NaN is not a number that can be made");
-    Assert((try? JsonValue::Number(allocator, "Infinity")) is none, "and neither is an infinity");
-    var ordinary = try JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
+    Assert((JsonValue::Number(allocator, "NaN") !! none) is none, "a NaN is not a number that can be made");
+    Assert((JsonValue::Number(allocator, "Infinity") !! none) is none, "and neither is an infinity");
+    var ordinary = JsonValue::Number(allocator, "1e999") catch { _ => Panic("1e999 is stored") };
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), wrote);
     Assert(wrote,
            "while an exponent past what a float holds is still a number JSON can spell, and is written");
@@ -141,7 +141,7 @@ func Main() -> int {
     var enough: char8[64];
     var roomy = BufferWriter::New(enough[..64]);
     let roomySink: &var TextWriter = roomy;
-    Assert((try? WriteValue(roomySink, wholeDocument, JsonStyle::Compact())) is .Some(_),
+    Assert((WriteValue(roomySink, wholeDocument, JsonStyle::Compact()) !! none) is .Some(_),
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 26, "all twenty-six bytes of it");
 

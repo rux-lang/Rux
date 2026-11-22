@@ -22,7 +22,7 @@ struct CountingAllocator {
 extend CountingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        let block = try (self.state.inner.Allocate(layout));
+        let block = (self.state.inner.Allocate(layout)!);
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         self.state.live = self.state.live + 1;
         self.state.taken = self.state.taken + 1;
@@ -31,7 +31,7 @@ extend CountingAllocator : Allocator {
 
     func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        try self.state.inner.Deallocate(block, layout);
+        self.state.inner.Deallocate(block, layout)!;
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         self.state.live = self.state.live - 1;
     }
@@ -39,7 +39,7 @@ extend CountingAllocator : Allocator {
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        return try self.state.inner.Reallocate(block, oldLayout, newLayout);
+        return self.state.inner.Reallocate(block, oldLayout, newLayout)!;
     }
 }
 
@@ -58,7 +58,7 @@ func Main() -> int {
     let missing = PathOf(base, "Bin/FileSystemNativePath.tmp/absent/child", missingHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
     let countedHandle = @counted as Allocator;
-    Assert((try? MakeDirectory(countedHandle, missing)) is none, "a directory under a missing parent is refused");
+    Assert((MakeDirectory(countedHandle, missing) !! none) is none, "a directory under a missing parent is refused");
     Assert(state.taken == 1, "after the path was converted");
     Assert(state.live == 0, "and the converted path is given back exactly once");
 
@@ -66,10 +66,10 @@ func Main() -> int {
     var madeHolder = OsString::New(base);
     let made = PathOf(base, "Bin/FileSystemNativePath.tmp", madeHolder);
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    try MakeDirectory(@counted as Allocator, made) catch { _ => Panic("a directory is made") };
+    MakeDirectory(@counted as Allocator, made) catch { _ => Panic("a directory is made") };
     Assert(state.live == 0, "a call that succeeds gives its copy back");
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    try DeleteDirectory(@counted as Allocator, made) catch { _ => Panic("and deleted") };
+    DeleteDirectory(@counted as Allocator, made) catch { _ => Panic("and deleted") };
     Assert(state.taken == 3 && state.live == 0, "and so does the call that undoes it");
     return 0;
 }

@@ -152,7 +152,7 @@ extend Arena {
         let total = sizeof(ArenaBlock) + block.capacity;
         let layout = Layout::Of(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
         // The block came from the backing allocator with this layout, and the arena is giving it up either way.
-        try self.backing.Deallocate(block as *var opaque, layout) catch { _ => {} };
+        self.backing.Deallocate(block as *var opaque, layout) catch { _ => {} };
     }
 
     // Takes a block able to hold `payload` bytes, chains it in front of the current one, and makes it current.
@@ -167,7 +167,7 @@ extend Arena {
         let total = header + capacity;
         let layout = Layout::Of(total, ArenaBlockAlignment) ?? throw .Unsupported;
 
-        let storage = try self.backing.Allocate(layout);
+        let storage = self.backing.Allocate(layout)!;
         let block = storage as *var ArenaBlock;
         block.previous = self.current;
         block.capacity = capacity;
@@ -235,7 +235,7 @@ extend Arena : Allocator {
         var address = self.Bump(layout);
         if address == 0 {
             // Safety: the chain invariant, as above.
-            try self.TakeBlock(layout.size + layout.alignment);
+            self.TakeBlock(layout.size + layout.alignment)!;
             // Safety: the chain invariant, as above; `TakeBlock` keeps it.
             address = self.Bump(layout);
             if address == 0 { throw .OutOfMemory; }
@@ -291,7 +291,7 @@ extend Arena : Allocator {
         // zero-sized release that arrives with anything else — so returning the real address would hand the caller
         // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
         if newLayout.size == 0 {
-            try self.Deallocate(block, oldLayout);
+            self.Deallocate(block, oldLayout)!;
             return EmptyBlockAddress();
         }
 
@@ -314,7 +314,7 @@ extend Arena : Allocator {
             }
         }
 
-        let fresh = try self.Allocate(newLayout);
+        let fresh = self.Allocate(newLayout)!;
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes, the `Allocator` contract makes `block` an
         // allocation of this arena with `oldLayout.size` bytes, and `offset` stays below the smaller of the two.

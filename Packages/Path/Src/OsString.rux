@@ -121,14 +121,14 @@ extend OsStringView {
                 if !DecodeUnit(units, index, @scalar, @width) {
                     throw .InvalidUtf8;
                 }
-                try builder.AppendScalar(scalar as char32);
+                builder.AppendScalar(scalar as char32)!;
                 index = index + width;
             }
             return builder.TakeString();
         }
         else {
             // Bytes: the check is the conversion.
-            return try String::FromBytes(allocator, self.units);
+            return String::FromBytes(allocator, self.units)!;
         }
     }
 }
@@ -169,7 +169,7 @@ extend OsString {
         let bytes = units.length * (sizeof(OsUnit) as uint);
         let layout = Layout::Of(bytes, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = allocator;
-        let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
+        let block = borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
         // Safety: `block` is a fresh allocation of `bytes` bytes aligned for `OsUnit`, so it has room for the copy,
         // does not overlap `units`, which is readable for its length, and may hold `OsUnit` values.
         let data = {
@@ -208,7 +208,7 @@ extend OsString {
             let bytes = self.length * (sizeof(OsUnit) as uint);
             let layout = Layout::Of(bytes, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch {
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch {
                 _ => {},
             };
         }
@@ -255,7 +255,7 @@ extend OsString {
             let bytes = needed * 2;
             let layout = Layout::Of(bytes, 2);
             var borrowed = allocator;
-            let block = try borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
+            let block = borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
                 error => AllocationFailed(error)
             };
             // Safety: `block` is a fresh allocation of `needed` two-byte units, aligned to two.
@@ -311,7 +311,7 @@ extend OsString : Cloneable {
         let bytes = self.length * (sizeof(OsUnit) as uint);
         let layout = Layout::Of(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
         var allocator = self.allocator;
-        let block = try allocator.Allocate(layout) catch { error => AllocationFailed(error) };
+        let block = allocator.Allocate(layout) catch { error => AllocationFailed(error) };
         // Safety: `block` is a fresh allocation of `bytes` bytes aligned for `OsUnit`, and the storage invariant
         // makes `self.data` readable for the `self.length` units those bytes hold.
         let data = {

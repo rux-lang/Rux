@@ -70,23 +70,23 @@ func Main() -> int {
     // bytes 0 to 20 give the alphabet's first twenty-one characters.
     var source = CountingSource { next: 0, failing: false, requests: 0 };
     var id: char8[21];
-    try GenerateNanoIdFrom(source, id[..]) catch { _ => return 1 };
+    GenerateNanoIdFrom(source, id[..]) catch { _ => return 1 };
     if !Same(id[..], NanoIdAlphabet[..21]) { return 2; }
     // Bytes 64 to 84 give the same characters again, since only the low six bits are used.
     source.next = 64;
-    try GenerateNanoIdFrom(source, id[..]) catch { _ => return 3 };
+    GenerateNanoIdFrom(source, id[..]) catch { _ => return 3 };
     if !Same(id[..], NanoIdAlphabet[..21]) { return 4; }
 
     // A custom alphabet of three: the mask is three, so a masked value of three is thrown away, not folded to `a`.
     source.next = 0;
     var short: char8[7];
-    try GenerateNanoIdFrom(source, short[..], "abc") catch { _ => return 5 };
+    GenerateNanoIdFrom(source, short[..], "abc") catch { _ => return 5 };
     if !Same(short[..], "abcabca") { return 6; }
     // Bytes 0..2 and 4..6 are accepted and 3 and 7 are not; the identifier is filled across however many requests
     // that takes.
     source.next = 0;
     var long: char8[300];
-    try GenerateNanoIdFrom(source, long[..], "abc") catch { _ => return 7 };
+    GenerateNanoIdFrom(source, long[..], "abc") catch { _ => return 7 };
     var index: uint = 0;
     while index < 300 {
         let expected: char8 = if index % 3 == 0 { 'a' } else if index % 3 == 1 { 'b' } else { 'c' };
@@ -134,7 +134,7 @@ func Main() -> int {
     var round: uint = 0;
     while round < 1000 {
         var fresh: char8[21];
-        try GenerateNanoId(fresh[..]) catch { _ => return 19 };
+        GenerateNanoId(fresh[..]) catch { _ => return 19 };
         for character in fresh {
             if !InAlphabet(character) { return 20; }
             counts[character as uint8 as uint] = counts[character as uint8 as uint] + 1;
@@ -145,7 +145,7 @@ func Main() -> int {
         if counts[member as uint8 as uint] == 0 { return 21; }
     }
     var digits: char8[12];
-    try GenerateNanoId(digits[..], "0123456789") catch { _ => return 22 };
+    GenerateNanoId(digits[..], "0123456789") catch { _ => return 22 };
     for character in digits {
         if character < '0' || character > '9' { return 23; }
     }

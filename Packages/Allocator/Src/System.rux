@@ -85,7 +85,7 @@ extend SystemAllocator : Allocator {
         let length = PageAlign(total);
         if length < total { throw .Unsupported; }
 
-        let base = try PageAllocate(length, PageRead | PageWrite) catch {
+        let base = PageAllocate(length, PageRead | PageWrite) catch {
             .OutOfMemory => throw .OutOfMemory,
             _ => throw .Unsupported
         };
@@ -127,7 +127,7 @@ extend SystemAllocator : Allocator {
         // Safety: `header` is the checked header of `block`; its `base` and `length` are what the page layer returned
         // and was given for this mapping, which is released only here.
         header.magic = 0;
-        try PageRelease(header.base as *var opaque, header.length) catch { _ => throw .InvalidBlock };
+        PageRelease(header.base as *var opaque, header.length) catch { _ => throw .InvalidBlock };
     }
 
     /// Changes the size of a block by taking a new one and copying what fits.
@@ -149,7 +149,7 @@ extend SystemAllocator : Allocator {
             return block;
         }
 
-        let fresh = try self.Allocate(newLayout);
+        let fresh = self.Allocate(newLayout)!;
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.
@@ -158,7 +158,7 @@ extend SystemAllocator : Allocator {
         // When the old block cannot be released, the new block is still good. Reporting the release failure would leave
         // the caller holding an address it was never told about, so the allocation stands and the leak is the lesser
         // outcome.
-        try self.Deallocate(block, oldLayout) catch { _ => {} };
+        self.Deallocate(block, oldLayout) catch { _ => {} };
         return fresh;
     }
 }

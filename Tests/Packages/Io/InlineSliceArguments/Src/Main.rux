@@ -15,19 +15,19 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 func Check(flag: bool) {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    Assert((try? WriteFormat(writer, "{}/{}/{}", if flag { "alpha" } else { "B" }, if flag { "" } else { "alpha" }, if flag {
+    Assert((WriteFormat(writer, "{}/{}/{}", if flag { "alpha" } else { "B" }, if flag { "" } else { "alpha" }, if flag {
         "B"
     } else {
         ""
-    })) is .Some(_), "inline variadic formatting succeeds");
+    }) !! none) is .Some(_), "inline variadic formatting succeeds");
     Assert(Same(writer.Written(), if flag { "alpha//B" } else { "B/alpha/" }), "all selected slice bytes survive");
     var plainStorage: char8[32];
     var plainWriter = BufferWriter::New(plainStorage[..32]);
-    Assert((try? WriteValue(plainWriter, if flag {
+    Assert((WriteValue(plainWriter, if flag {
         "alpha"
     } else {
         "B"
-    }, FormatSpec::Plain())) is .Some(_), "an ordinary interface argument succeeds");
+    }, FormatSpec::Plain()) !! none) is .Some(_), "an ordinary interface argument succeeds");
     Assert(Same(plainWriter.Written(), if flag {
         "alpha"
     } else {

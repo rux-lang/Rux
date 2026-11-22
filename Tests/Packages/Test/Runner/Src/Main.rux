@@ -10,47 +10,47 @@ import Test::{
 
 // The message of the failure `outcome` holds, or a failure of the test when it passed.
 func MessageOf(outcome: Result<(), TestFailure>) -> TestFailure ! TestFailure {
-    return try ExpectFailure(move outcome, "the check should have failed");
+    return ExpectFailure(move outcome, "the check should have failed")!;
 }
 
 #Test
 func ChecksThatHold() -> !TestFailure {
-    try Expect(1 + 1 == 2, "arithmetic");
-    try ExpectEqual(40 + 2, 42);
-    try ExpectNotEqual(3, 4);
-    try ExpectNear(0.1 + 0.2, 0.3, 0.000001);
-    try ExpectText("same", "same");
+    Expect(1 + 1 == 2, "arithmetic")!;
+    ExpectEqual(40 + 2, 42)!;
+    ExpectNotEqual(3, 4)!;
+    ExpectNear(0.1 + 0.2, 0.3, 0.000001)!;
+    ExpectText("same", "same")!;
     let found: int32? = 7;
-    try ExpectEqual(ExpectSome(found, "present"), 7);
+    ExpectEqual(ExpectSome(found, "present")!, 7)!;
     let missing: int32? = none;
-    try ExpectNone(missing, "absent");
+    ExpectNone(missing, "absent")!;
 }
 
 #Test
 func FailureMessages() -> !TestFailure {
     let flag: Result<(), TestFailure> = try .Success(Expect(false, "the flag is set")) catch { f => .Failure(f) };
-    try ExpectText(MessageOf(flag).Message(), "the flag is set");
+    ExpectText(MessageOf(flag)!.Message(), "the flag is set")!;
     let equal: Result<(), TestFailure> = try .Success(ExpectEqual(1, 2)) catch { f => .Failure(f) };
-    try ExpectText(MessageOf(equal).Message(), "expected 2, but got 1");
+    ExpectText(MessageOf(equal)!.Message(), "expected 2, but got 1")!;
     let unequal: Result<(), TestFailure> = try .Success(ExpectNotEqual(5, 5)) catch { f => .Failure(f) };
-    try ExpectText(MessageOf(unequal).Message(), "expected anything but 5");
+    ExpectText(MessageOf(unequal)!.Message(), "expected anything but 5")!;
     let near: Result<(), TestFailure> = try .Success(ExpectNear(1.0, 2.0, 0.5)) catch { f => .Failure(f) };
-    try ExpectText(MessageOf(near).Message(), "expected 2.0 within 0.5, but got 1.0");
+    ExpectText(MessageOf(near)!.Message(), "expected 2.0 within 0.5, but got 1.0")!;
     let text: Result<(), TestFailure> = try .Success(ExpectText("hello world", "hello there")) catch {
         f => .Failure(f),
     };
-    try ExpectText(MessageOf(text).Message(),
-                   "texts differ at byte 6 (expected 11 bytes, got 11)\n  expected \"hello there\"\n  but got  \"hello world\"");
+    ExpectText(MessageOf(text)!.Message(),
+                   "texts differ at byte 6 (expected 11 bytes, got 11)\n  expected \"hello there\"\n  but got  \"hello world\"")!;
 }
 
 #Test
 func OutcomeChecks() -> !TestFailure {
     let good: Result<int32, TestFailure> = .Success(3);
-    try ExpectEqual(ExpectSuccess(good, "succeeds"), 3);
+    ExpectEqual(ExpectSuccess(good, "succeeds")!, 3)!;
     let bad: Result<int32, TestFailure> = .Failure(TestFailure::Of("broken"));
-    try ExpectText(ExpectFailure(bad, "fails").Message(), "broken");
+    ExpectText(ExpectFailure(bad, "fails")!.Message(), "broken")!;
     let skip = TestFailure::Skip("later");
-    try Expect(skip.IsSkip() && !TestFailure::Of("x").IsSkip(), "skips are told apart");
+    Expect(skip.IsSkip() && !TestFailure::Of("x").IsSkip(), "skips are told apart")!;
 }
 
 #Test
@@ -69,7 +69,7 @@ module Nested {
 
     #Test
     func Inner() -> !TestFailure {
-        try ExpectEqual(Twice(4), 8);
+        ExpectEqual(Twice(4), 8)!;
     }
 
     func Twice(value: int32) -> int32 {
@@ -88,32 +88,32 @@ func Filtering() -> !TestFailure {
     let table = [TestCase { name: "Group::Passes", run: Passes }, TestCase { name: "Group::Fails", run: Fails }];
     var options = TestOptions::New();
     options.quiet = true;
-    try ExpectEqual(RunTestsWith(table[..], options), 1);
+    ExpectEqual(RunTestsWith(table[..], options), 1)!;
     options.skip = "Fails";
-    try ExpectEqual(RunTestsWith(table[..], options), 0);
+    ExpectEqual(RunTestsWith(table[..], options), 0)!;
     options.skip = "";
     options.filter = "Group::Pass";
-    try ExpectEqual(RunTestsWith(table[..], options), 0);
+    ExpectEqual(RunTestsWith(table[..], options), 0)!;
     options.exact = true;
     options.filter = "Group::Fails";
-    try ExpectEqual(RunTestsWith(table[..], options), 1);
+    ExpectEqual(RunTestsWith(table[..], options), 1)!;
     options.list = true;
-    try ExpectEqual(RunTestsWith(table[..], options), 0);
+    ExpectEqual(RunTestsWith(table[..], options), 0)!;
 
     // A filter that matches nothing reports so with a code of its own, listing or not, rather than passing with
     // nothing run.
     options.filter = "Fails";
-    try ExpectEqual(RunTestsWith(table[..], options), 3);
+    ExpectEqual(RunTestsWith(table[..], options), 3)!;
     options.list = false;
-    try ExpectEqual(RunTestsWith(table[..], options), 3);
+    ExpectEqual(RunTestsWith(table[..], options), 3)!;
 
     // Several filters choose every test any of them matches.
     options.exact = false;
     options.filter = "";
     let passing = ["Nothing", "Passes"];
     options.filters = passing[..];
-    try ExpectEqual(RunTestsWith(table[..], options), 0);
+    ExpectEqual(RunTestsWith(table[..], options), 0)!;
     let both = ["Passes", "Fails"];
     options.filters = both[..];
-    try ExpectEqual(RunTestsWith(table[..], options), 1);
+    ExpectEqual(RunTestsWith(table[..], options), 1)!;
 }

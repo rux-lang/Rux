@@ -159,7 +159,7 @@ pub func Base32Encode(bytes: byte[..], into: var char8[..],
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-encode
 pub func Base32Encode(text: char8[..], into: var char8[..],
                       form: Base32Variant = Base32Variant::Standard) -> uint ! FormatError {
-    return try Base32Encode(BytesOf(text), into, form);
+    return Base32Encode(BytesOf(text), into, form)!;
 }
 
 // Whether a count of data characters is one a final partial group can leave: zero, two, four, five or seven.
@@ -218,7 +218,7 @@ func DataCharacters(text: char8[..], form: Base32Variant) -> uint ! DecodeError 
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-decoded-length
 pub func Base32DecodedLength(text: char8[..], form: Base32Variant = Base32Variant::Standard)
     -> uint ! DecodeError {
-    let count = try DataCharacters(text, form);
+    let count = DataCharacters(text, form)!;
     return count * 5 / 8;
 }
 
@@ -235,7 +235,7 @@ pub func Base32DecodedLength(text: char8[..], form: Base32Variant = Base32Varian
 /// @see https://rux-lang.dev/docs/api/encoding/base32#base32-decode
 pub func Base32Decode(text: char8[..], into: var byte[..],
                       form: Base32Variant = Base32Variant::Standard) -> uint ! DecodeError {
-    let count = try DataCharacters(text, form);
+    let count = DataCharacters(text, form)!;
     let needed = count * 5 / 8;
     // Data characters sit at the front of RFC text; Crockford text interleaves them with hyphens to skip.
     let crockford = form == Base32Variant::Crockford;

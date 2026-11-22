@@ -39,7 +39,7 @@ extend Box<T> {
     /// @returns the box
     /// @see https://rux-lang.dev/docs/api/allocator/box#create
     pub func New(allocator: Allocator, value: T) -> Self {
-        return try Box::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
+        return Box::TryCreate<T>(allocator, move value) catch { error => AllocationFailed(error) };
     }
 
     /// Puts `value` on the heap and hands back the box that owns it, or throws why the allocator refused.
@@ -52,7 +52,7 @@ extend Box<T> {
     /// @see https://rux-lang.dev/docs/api/allocator/box#try-create
     pub func TryCreate(allocator: Allocator, value: T) -> Self ! AllocError {
         let layout = Layout::ForValue<T>();
-        let block = try allocator.Allocate(layout);
+        let block = allocator.Allocate(layout)!;
         // Safety: `block` was just allocated with `Layout::ForValue<T>()`, so it is aligned and large enough for a
         // `T`, and nothing else holds it or has written to it.
         let typed = block as *var T;
@@ -109,7 +109,7 @@ extend Box<T> {
         let layout = Layout::ForValue<T>();
         // The storage came from this allocator with this layout, so a refusal would be the allocator's own bug; the
         // value is already out, and nothing the caller holds depends on the release.
-        try self.allocator.Deallocate(held as *var opaque, layout) catch { _ => {} };
+        self.allocator.Deallocate(held as *var opaque, layout) catch { _ => {} };
         self.pointer = null;
         return .Some(move value);
     }
@@ -124,7 +124,7 @@ extend Box<T> {
             self.pointer = null;
             // Safety: `held` is this box's live value, and the box was cleared above so nothing reaches it again.
             DestroyBoxValue<T>(held);
-            try self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { _ => {} };
+            self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { _ => {} };
         }
     }
 }

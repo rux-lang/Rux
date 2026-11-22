@@ -19,7 +19,7 @@ func Main() -> int {
     // Text survives the round trip through native units, multi-byte characters included.
     let owned = PathText(allocator, "héllo/wörld");
     let view = owned.View();
-    let text = try view.ToText(allocator) catch { _ => Panic("text goes native and comes back") };
+    let text = view.ToText(allocator) catch { _ => Panic("text goes native and comes back") };
     let wanted = StringView::FromValidated("héllo/wörld");
     let textView = text.View();
     Assert(textView.Equals(wanted), "unchanged");

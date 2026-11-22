@@ -24,9 +24,9 @@ The module names describe where each declaration comes from; they are not part o
 import NanoId::{ GenerateNanoId, NanoId };
 
 func NewSessionToken() -> bool {
-    let id = try NanoId::Generate() catch { _ => return false };
+    let id = NanoId::Generate() catch { _ => return false };
     var code: char8[8];
-    try GenerateNanoId(code[..], "0123456789") catch { _ => return false };
+    GenerateNanoId(code[..], "0123456789") catch { _ => return false };
     return id.Text().length == 21;
 }
 ```

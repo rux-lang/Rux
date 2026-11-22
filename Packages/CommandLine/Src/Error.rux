@@ -52,7 +52,7 @@ func WriteNative(writer: &var TextWriter, view: OsStringView) -> !FormatError {
             if scalar >= 0xD800 && scalar <= 0xDFFF {
                 scalar = 0xFFFD;
             }
-            try WriteScalar(writer, scalar as char32);
+            WriteScalar(writer, scalar as char32)!;
         }
         else {
             let first = units[index] as uint8 as uint32;
@@ -84,11 +84,11 @@ func WriteNative(writer: &var TextWriter, view: OsStringView) -> !FormatError {
             valid = valid && scalar <= 0x10FFFF && !(scalar >= 0xD800 && scalar <= 0xDFFF);
             valid = valid && !(count == 3 && scalar < 0x800) && !(count == 4 && scalar < 0x10000);
             if valid {
-                try WriteScalar(writer, scalar as char32);
+                WriteScalar(writer, scalar as char32)!;
                 index = index + count;
             }
             else {
-                try WriteScalar(writer, 0xFFFD as char32);
+                WriteScalar(writer, 0xFFFD as char32)!;
                 index = index + 1;
             }
         }
@@ -106,47 +106,47 @@ extend CommandLineError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         match self {
             .UnknownOption(argument) => {
-                try WriteBytes(writer, "unknown option '");
-                try WriteNative(writer, argument);
-                try WriteBytes(writer, "'");
+                WriteBytes(writer, "unknown option '")!;
+                WriteNative(writer, argument)!;
+                WriteBytes(writer, "'")!;
             },
             .MissingValue(name) => {
-                try WriteBytes(writer, "option '--");
-                try WriteBytes(writer, name);
-                try WriteBytes(writer, "' needs a value");
+                WriteBytes(writer, "option '--")!;
+                WriteBytes(writer, name)!;
+                WriteBytes(writer, "' needs a value")!;
             },
             .UnexpectedValue(name) => {
-                try WriteBytes(writer, "option '--");
-                try WriteBytes(writer, name);
-                try WriteBytes(writer, "' takes no value");
+                WriteBytes(writer, "option '--")!;
+                WriteBytes(writer, name)!;
+                WriteBytes(writer, "' takes no value")!;
             },
             .UnknownCommand(word) => {
-                try WriteBytes(writer, "unknown command '");
-                try WriteNative(writer, word);
-                try WriteBytes(writer, "'");
+                WriteBytes(writer, "unknown command '")!;
+                WriteNative(writer, word)!;
+                WriteBytes(writer, "'")!;
             },
             .MissingCommand => {
-                try WriteBytes(writer, "a command is required");
+                WriteBytes(writer, "a command is required")!;
             },
             .MissingPositional(name) => {
-                try WriteBytes(writer, "missing argument <");
-                try WriteBytes(writer, name);
-                try WriteBytes(writer, ">");
+                WriteBytes(writer, "missing argument <")!;
+                WriteBytes(writer, name)!;
+                WriteBytes(writer, ">")!;
             },
             .UnexpectedArgument(argument) => {
-                try WriteBytes(writer, "unexpected argument '");
-                try WriteNative(writer, argument);
-                try WriteBytes(writer, "'");
+                WriteBytes(writer, "unexpected argument '")!;
+                WriteNative(writer, argument)!;
+                WriteBytes(writer, "'")!;
             },
             .InvalidValue(name, value) => {
-                try WriteBytes(writer, "invalid value '");
-                try WriteNative(writer, value);
-                try WriteBytes(writer, "' for '");
-                try WriteBytes(writer, name);
-                try WriteBytes(writer, "'");
+                WriteBytes(writer, "invalid value '")!;
+                WriteNative(writer, value)!;
+                WriteBytes(writer, "' for '")!;
+                WriteBytes(writer, name)!;
+                WriteBytes(writer, "'")!;
             }
         }
         return;
@@ -161,7 +161,7 @@ extend CommandLineError : Debug {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }
 

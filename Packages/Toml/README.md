@@ -14,11 +14,13 @@ rux add Rux/Toml
 - **Parsing** — dotted keys, tables, arrays of tables, and the duplicate-definition rules that make TOML's table syntax unambiguous. `TomlParse` returns a `TomlValue` and throws `TomlParseFailure`: a document or a reason, never both. A refusal releases whatever had been read rather than handing it back, because a program configured from half a file runs with some settings applied and some defaulted, which is a state nobody wrote down.
 
   ```rux
-  try {
-      Configure(TomlParse(allocator, bytes));
-  } catch {
-      failure => Report(failure),
-  }
+  let document = TomlParse(allocator, bytes) catch {
+      failure => {
+          Report(failure);
+          return;
+      }
+  };
+  Configure(document);
   ```
 
 - **Failures that name a rule and a place** — `TomlParseError` keeps all four table-definition cases apart, because `DuplicateKey`, `RedefinedTable`, `ExtendedInlineTable` and `ExtendedDottedTable` are four different mistakes with four different fixes. `Lexical` carries the lexer's reason and `BadValue` carries the scalar reader's, so a caller holding a failure cannot be holding half of one. `TomlParseFailure` adds the position three ways — a byte `offset` for a program to slice with, and `line` and `column` for a person — all naming the same byte, and `Debug` renders the lot: `TomlParseError::BadValue(TomlScalarError::Malformed(4)) at 1:12`. The position is where parsing *stopped*, which for a duplicate key is the value rather than the key, since the pair has to be read before the repeat is known.

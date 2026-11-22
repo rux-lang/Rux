@@ -161,7 +161,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/text#parse
 pub func Parse(text: StringView) -> Uuid ! UuidParseError {
-    return try Parse(text.Bytes());
+    return Parse(text.Bytes())!;
 }
 
 // Writes the canonical form into the first thirty-six bytes of `into`, which the caller has already checked is
@@ -263,12 +263,12 @@ extend Uuid : Display {
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
-        try AcceptsUuidSpec(spec);
-        if spec.StyleIs("urn") { try WriteBytes(writer, "urn:uuid:"); }
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec)!; }
+        AcceptsUuidSpec(spec)!;
+        if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")!; }
         var text: char8[36];
         WriteCanonicalInto(self, text[..UuidTextLength]);
-        return try WriteBytes(writer, text[..UuidTextLength]);
+        return WriteBytes(writer, text[..UuidTextLength])!;
     }
 }
 
@@ -280,6 +280,6 @@ extend Uuid : Debug {
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }

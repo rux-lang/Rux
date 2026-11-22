@@ -267,7 +267,7 @@ extend Child {
         when #target.os == .Windows {
             // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
             WaitForSingleObject(self.process as *opaque, INFINITE);
-            try self.Collect();
+            self.Collect()!;
         }
         else {
             var status: int32 = 0;
@@ -290,7 +290,7 @@ extend Child {
         when #target.os == .Windows {
             // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
             if WaitForSingleObject(self.process as *opaque, 0) == WAIT_TIMEOUT { return none; }
-            try self.Collect();
+            self.Collect()!;
         }
         else {
             var status: int32 = 0;

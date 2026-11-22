@@ -51,7 +51,7 @@ func Describe(text: int32) -> int32 {
 
 func Rethrow(text: int32) -> int32 ! ParseError {
     // Passing an error on is an arm of its own; it goes to the caller, not back into the same arms.
-    return try Parse(text) catch {
+    return Parse(text) catch {
         .Empty => 0i32,
         e => throw e,
     };
@@ -72,9 +72,9 @@ func Main() -> int {
     Assert(Describe(-6i32) == -3i32, "a failed guard falls to the next arm");
     Assert(Describe(5000i32) == -3i32, "an alternative");
 
-    Assert((try? Rethrow(0i32)) == .Some(0i32), "a recovered error");
-    Assert((try Rethrow(-4i32) catch { .Invalid(at) => at, _ => 0i32 }) == 4i32, "an arm rethrows to the caller");
-    Assert((try Translate(-1i32) catch { e => e.code }) == 9i32, "an arm throws a new error outward");
+    Assert((Rethrow(0i32) !! none) == .Some(0i32), "a recovered error");
+    Assert((Rethrow(-4i32) catch { .Invalid(at) => at, _ => 0i32 }) == 4i32, "an arm rethrows to the caller");
+    Assert((Translate(-1i32) catch { e => e.code }) == 9i32, "an arm throws a new error outward");
 
     // A block arm yields its last expression; the sum of the errors is matched by type.
     let value = try Parse(Read(0i32)) catch {

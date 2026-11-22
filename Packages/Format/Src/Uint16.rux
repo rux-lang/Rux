@@ -11,7 +11,7 @@ extend uint16 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/integer-text#uint16-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try WriteIntegerSpec(writer, spec, self as uint64, false);
+        return WriteIntegerSpec(writer, spec, self as uint64, false)!;
     }
 }
 
@@ -23,6 +23,6 @@ extend uint16 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/integer-text#uint16-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }

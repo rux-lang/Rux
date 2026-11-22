@@ -61,7 +61,7 @@ pub func HexEncode(bytes: byte[..], into: var char8[..], letterCase: HexCase = H
 /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-encode
 pub func HexEncode(text: char8[..], into: var char8[..], letterCase: HexCase = HexCase::Lower)
     -> uint ! FormatError {
-    return try HexEncode(BytesOf(text), into, letterCase);
+    return HexEncode(BytesOf(text), into, letterCase)!;
 }
 
 /// How many bytes the hexadecimal text decodes to, after checking that its length is even.
@@ -85,7 +85,7 @@ pub func HexDecodedLength(text: char8[..]) -> uint ! DecodeError {
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-decode
 pub func HexDecode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
-    let needed = try HexDecodedLength(text);
+    let needed = HexDecodedLength(text)!;
     var invalid: int32 = 0;
     var index: uint = 0;
     while index < text.length {
@@ -166,7 +166,7 @@ extend HexView : Display {
         var before: uint = 0;
         var after: uint = 0;
         PaddingAround(spec, HexEncodedLength(self.bytes.length), false, @before, @after);
-        try WriteFill(writer, spec, before);
+        WriteFill(writer, spec, before)!;
         var block: char8[128];
         var index: uint = 0;
         while index < self.bytes.length {
@@ -178,8 +178,8 @@ extend HexView : Display {
                 count = count + 2;
                 index = index + 1;
             }
-            try WriteBytes(writer, block[..count]);
+            WriteBytes(writer, block[..count])!;
         }
-        return try WriteFill(writer, spec, after);
+        return WriteFill(writer, spec, after)!;
     }
 }

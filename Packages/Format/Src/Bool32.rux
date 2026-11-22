@@ -11,8 +11,8 @@ extend bool32 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#bool32-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
-        return try WriteAligned(writer, spec, if self { "true" } else { "false" }, false);
+        RejectStyle(spec)!;
+        return WriteAligned(writer, spec, if self { "true" } else { "false" }, false)!;
     }
 }
 
@@ -24,6 +24,6 @@ extend bool32 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#bool32-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }

@@ -203,7 +203,7 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
         negative: false,
         special: 0
     };
-    try ScanDecimal(str, @reading);
+    ScanDecimal(str, @reading)!;
     if reading.special == 1 { return 0.0 / 0.0; }
     if reading.special == 2 {
         return if reading.negative { -1.0 / 0.0 } else { 1.0 / 0.0 };
@@ -236,7 +236,7 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float64
 pub func ParseFloat64(str: StringView) -> float64 ! ParseError {
-    return try ParseFloat64(str.Bytes());
+    return ParseFloat64(str.Bytes())!;
 }
 
 /// Reads `str` as the `float32` nearest what it spells, rounding to nearest with ties to even.
@@ -257,7 +257,7 @@ pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
         negative: false,
         special: 0
     };
-    try ScanDecimal(str, @reading);
+    ScanDecimal(str, @reading)!;
     if reading.special == 1 { return 0.0f32 / 0.0f32; }
     if reading.special == 2 {
         return if reading.negative { -1.0f32 / 0.0f32 } else { 1.0f32 / 0.0f32 };
@@ -285,5 +285,5 @@ pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float32
 pub func ParseFloat32(str: StringView) -> float32 ! ParseError {
-    return try ParseFloat32(str.Bytes());
+    return ParseFloat32(str.Bytes())!;
 }

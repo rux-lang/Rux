@@ -7,7 +7,7 @@ import Core::Compare::Ordering;
 import Time::{ Duration, SleepFor, Stopwatch };
 
 func Pause(milliseconds: int64) -> bool {
-    return (try? SleepFor(Duration::FromMilliseconds(milliseconds))) is .Some(_);
+    return (SleepFor(Duration::FromMilliseconds(milliseconds)) !! none) is .Some(_);
 }
 
 func AtLeast(span: Duration, milliseconds: int64) -> bool {

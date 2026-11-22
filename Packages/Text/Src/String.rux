@@ -58,7 +58,7 @@ extend String {
     /// @returns a string over those bytes, taken as valid without checking
     /// @see https://rux-lang.dev/docs/api/text/string#from-validated
     pub func FromValidated(allocator: Allocator, bytes: char8[..]) -> Self {
-        return try Self::TryFromValidated(allocator, bytes) catch { error => AllocationFailed(error) };
+        return Self::TryFromValidated(allocator, bytes) catch { error => AllocationFailed(error) };
     }
 
     // `FromValidated`, throwing the allocator's refusal instead of terminating the program.
@@ -68,7 +68,7 @@ extend String {
         let layout = Layout::Of(bytes.length, 1) ?? throw .Unsupported;
 
         var borrowed = allocator;
-        let block = try borrowed.Allocate(layout);
+        let block = borrowed.Allocate(layout)!;
 
         // Safety: `block` is a fresh allocation of `bytes.length` bytes, so it has room for the copy and does not
         // overlap `bytes`, which is readable for its length; it holds bytes, so viewing it as `char8` reinterprets
@@ -94,7 +94,7 @@ extend String {
     /// @returns a string over those bytes, or an empty one when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string#from-bytes
     pub func FromBytes(allocator: Allocator, bytes: char8[..]) -> Self ! TextError {
-        try Validate(bytes) catch { _ => throw .InvalidUtf8 };
+        Validate(bytes) catch { _ => throw .InvalidUtf8 };
         return Self::FromValidated(allocator, bytes);
     }
 
@@ -183,7 +183,7 @@ extend String {
     /// @returns an independent copy, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/text/string#try-clone
     pub func TryClone(&self) -> Self ! AllocError {
-        return try Self::TryFromValidated(self.allocator, self.Bytes());
+        return Self::TryFromValidated(self.allocator, self.Bytes())!;
     }
 
     /// Whether two strings hold the same bytes.
@@ -214,7 +214,7 @@ extend String {
         if self.data != null {
             let layout = Layout::Of(self.capacity, 1);
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque,
+            borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;

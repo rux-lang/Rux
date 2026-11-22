@@ -17,10 +17,10 @@ extend char64 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char64-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let value = self as uint64;
-        if !IsWideScalarValue(value) { return try FormatScalar(writer, spec, ReplacementCharacter); }
-        return try FormatScalar(writer, spec, (value as uint32) as char32);
+        if !IsWideScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter)!; }
+        return FormatScalar(writer, spec, (value as uint32) as char32)!;
     }
 }
 
@@ -32,6 +32,6 @@ extend char64 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char64-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try WriteCharacterDebug(writer, self as uint64, IsWideScalarValue(self as uint64));
+        return WriteCharacterDebug(writer, self as uint64, IsWideScalarValue(self as uint64))!;
     }
 }

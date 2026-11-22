@@ -17,13 +17,13 @@ func Main() -> int {
     Assert(empty.ScalarCount() == 0, "and no characters");
 
     // Eleven bytes, five characters: ASCII, two-byte, three-byte and four-byte.
-    let text = try String::FromBytes(allocator, "hié€😀") catch { _ => Panic("well-formed bytes make a string") };
+    let text = String::FromBytes(allocator, "hié€😀") catch { _ => Panic("well-formed bytes make a string") };
     Assert(text.Length() == 11, "which spans every byte");
     Assert(text.ScalarCount() == 5, "and holds five characters, which is not the same number");
 
     // A string owns its block, so it moves: `move` hands the block over without copying a byte, and the source
     // is gone afterwards.
-    let original = try String::FromBytes(allocator, "moved") catch { _ => Panic("well-formed bytes make a string") };
+    let original = String::FromBytes(allocator, "moved") catch { _ => Panic("well-formed bytes make a string") };
     let block = original.Bytes().data;
     var assigned = String::New(allocator);
     assigned = move original;
@@ -58,7 +58,7 @@ func Main() -> int {
     Assert(text.Part(0, 2) is StringView, "a cut on two boundaries is allowed");
     Assert(!(text.Part(0, 3) is StringView), "a cut through the middle of a character is refused");
 
-    let front = try text.Substring(0, 4) catch { _ => Panic("an owning cut is made") };
+    let front = text.Substring(0, 4) catch { _ => Panic("an owning cut is made") };
     Assert(front.Length() == 4 && front.ScalarCount() == 3, "spanning what lies between the bounds");
     try {
         text.Substring(0, 3);
@@ -77,13 +77,13 @@ func Main() -> int {
 
     // Text needs no checking on the way in, so a string built from text is built from the same overloads under
     // the same names.
-    let fromText = try String::FromBytes(allocator, "hié€😀") catch { _ => Panic("text makes a string") };
+    let fromText = String::FromBytes(allocator, "hié€😀") catch { _ => Panic("text makes a string") };
     Assert(fromText.Equals(text), "holding what the same bytes hold");
     let vouched = String::FromValidated(allocator, "hié€😀");
     Assert(vouched.Equals(text), "and so does the unchecked spelling");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.
-    let shorter = try String::FromBytes(allocator, "hi") catch { _ => Panic("a shorter string is built") };
+    let shorter = String::FromBytes(allocator, "hi") catch { _ => Panic("a shorter string is built") };
     Assert(!shorter.Equals(text), "different text is not equal");
     Assert(shorter.Compare(text).IsLess(), "a prefix orders before what extends it");
     Assert(text.Compare(shorter).IsGreater(), "and the other way round");

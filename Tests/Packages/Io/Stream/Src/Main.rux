@@ -141,7 +141,7 @@ func Main() -> int {
     source.interruptions = 10;
     var storage: char8[8];
     let into = storage[..8];
-    Assert((try? ReadExact(source, into)) is .Some(_), "the exact read assembles from partial, interrupted reads");
+    Assert((ReadExact(source, into) !! none) is .Some(_), "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
     // Four two-byte reads, and an interruption before each of the three after the first.
     Assert(source.calls == 7, "asking once per short read and once per interruption");
@@ -151,7 +151,7 @@ func Main() -> int {
     interrupted.interruptions = 1;
     interrupted.pendingInterruption = true;
     var pair: char8[2];
-    Assert((try? ReadExact(interrupted, pair[..])) is .Some(_), "an interrupted read is retried");
+    Assert((ReadExact(interrupted, pair[..]) !! none) is .Some(_), "an interrupted read is retried");
     Assert(interrupted.calls == 2, "exactly once");
 
     // A stream that ends partway says so with its own kind, rather than succeeding by silence or looking like a
@@ -229,7 +229,7 @@ func Main() -> int {
         interruptions: 2,
         calls: 0
     };
-    Assert((try? WriteAll(sink, TextBytes("hello world"))) is .Some(_), "the whole write goes through partial writes");
+    Assert((WriteAll(sink, TextBytes("hello world")) !! none) is .Some(_), "the whole write goes through partial writes");
     Assert(sink.written == 11 && sinkStorage[10] == c8'd', "every byte in its place");
     // Two interruptions, then four writes of three, three, three and two bytes.
     Assert(sink.calls == 6, "asking once per short write and once per interruption");

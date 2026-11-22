@@ -117,7 +117,7 @@ extend StringBuilder {
     /// @see https://rux-lang.dev/docs/api/text/string-builder#try-reserve
     pub func TryReserve(&var self, additional: uint) -> !AllocError {
         // Safety: the three addresses are this builder's own fields, which hold the storage invariant.
-        try TryReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional);
+        TryReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional)!;
     }
 
     /// Appends bytes the caller vouches are UTF-8.
@@ -156,7 +156,7 @@ extend StringBuilder {
     /// @returns nothing when the bytes were appended, after checking they are valid UTF-8, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder#append-bytes
     pub func AppendBytes(&var self, bytes: char8[..]) -> !TextError {
-        try Validate(bytes) catch { _ => throw .InvalidUtf8 };
+        Validate(bytes) catch { _ => throw .InvalidUtf8 };
         self.AppendValidated(bytes);
     }
 
@@ -170,7 +170,7 @@ extend StringBuilder {
         var encoded: char8[4];
         var written: uint = 0;
         let sink = encoded[..];
-        written = try Encode(scalar, sink) catch { _ => throw .InvalidUtf8 };
+        written = Encode(scalar, sink) catch { _ => throw .InvalidUtf8 };
         self.AppendValidated(encoded[..written]);
     }
 
@@ -200,7 +200,7 @@ extend StringBuilder {
         if self.data != null {
             let layout = Layout::Of(self.capacity, 1);
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque,
+            borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;
@@ -275,10 +275,10 @@ func TryReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *va
         let want = layout;
         var borrowed = allocator;
         let have = Layout::Of(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
-        let block = try if *data == null {
-            borrowed.Allocate(want)
+        let block = if *data == null {
+            borrowed.Allocate(want)!
         } else {
-            borrowed.Reallocate(*data as *var opaque, have, want)
+            borrowed.Reallocate(*data as *var opaque, have, want)!
         };
         *data = block as *var char8;
         *capacity = wanted;
@@ -288,7 +288,7 @@ func TryReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *va
 // Safety: as for `TryReserveBuilderStorage`.
 func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
                            additional: uint) {
-    try TryReserveBuilderStorage(data, length, capacity, allocator, additional) catch {
+    TryReserveBuilderStorage(data, length, capacity, allocator, additional) catch {
         error => AllocationFailed(error)
     };
 }

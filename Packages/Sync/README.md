@@ -34,8 +34,8 @@ func AddOne(total: Mutex<uint64>) -> () {
 
 func Main() -> int {
     let total = Mutex<uint64>::New(0u64);
-    var first = try Spawn(AddOne, total.Clone()) catch { _ => return 1 };
-    var second = try Spawn(AddOne, total.Clone()) catch { _ => return 1 };
+    var first = Spawn(AddOne, total.Clone()) catch { _ => return 1 };
+    var second = Spawn(AddOne, total.Clone()) catch { _ => return 1 };
     first.Join();
     second.Join();
     let guard = total.Lock();

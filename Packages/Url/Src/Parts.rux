@@ -60,7 +60,7 @@ func SplitReference(input: char8[..]) -> Pieces ! UrlError {
             if c == '/' || c == '?' || c == '#' { break; }
             end = end + 1;
         }
-        try SplitAuthority(text[start..end], @pieces);
+        SplitAuthority(text[start..end], @pieces)!;
         at = end;
     }
 

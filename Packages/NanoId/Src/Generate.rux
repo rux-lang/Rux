@@ -26,7 +26,7 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
         let take = if wanted > BatchSize { BatchSize } else { wanted };
         // Safety: `batch` is a local array of `BatchSize` bytes and `take` is at most `BatchSize`; on failure,
         // `into.data` addresses the `into.length` writable bytes of the caller's slice, which is not empty there.
-        try FillFrom(source, (@batch[0]) as *var opaque, take) catch {
+        FillFrom(source, (@batch[0]) as *var opaque, take) catch {
             error => {
                 ZeroizeBlock((@batch[0]) as *var opaque, BatchSize);
                 if into.length > 0 { ZeroizeBlock(into.data as *var opaque, into.length); }
@@ -58,7 +58,7 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
 pub func GenerateNanoId(into: var char8[..]) -> !EntropyError {
     var system = SystemEntropy::New();
-    return try Fill(system, into, NanoIdAlphabet);
+    return Fill(system, into, NanoIdAlphabet)!;
 }
 
 /// Fills the whole of `into` with an identifier drawn from `alphabet`, using the operating system's generator.
@@ -71,7 +71,7 @@ pub func GenerateNanoId(into: var char8[..]) -> !EntropyError {
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
 pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> !NanoIdError {
     var system = SystemEntropy::New();
-    return try GenerateNanoIdFrom(system, into, alphabet);
+    return GenerateNanoIdFrom(system, into, alphabet)!;
 }
 
 /// Fills the whole of `into` with an identifier drawn from `alphabet`, using random bytes from `source`.
@@ -86,8 +86,8 @@ pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> !NanoIdErro
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id-from
 pub func GenerateNanoIdFrom(source: &var EntropySource, into: var char8[..],
                             alphabet: char8[..] = NanoIdAlphabet) -> !NanoIdError {
-    try ValidateAlphabet(alphabet);
-    try Fill(source, into, alphabet) catch {
+    ValidateAlphabet(alphabet)!;
+    Fill(source, into, alphabet) catch {
         error => throw .Entropy(error)
     };
     return;

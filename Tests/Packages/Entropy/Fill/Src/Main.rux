@@ -61,7 +61,7 @@ func Main() -> !EntropyError {
     var working = Scripted(EntropyError::Failed, 0);
     let workingSource: &var EntropySource = working;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    try FillFrom(workingSource, @storage[0] as *var opaque, 64);
+    FillFrom(workingSource, @storage[0] as *var opaque, 64)!;
     Assert(working.calls == 1, "in a single call");
     Assert(AllBytesAre(storage[..64], 0x7E), "and what it wrote is what came back");
 
@@ -95,7 +95,7 @@ func Main() -> !EntropyError {
     var signalled = Scripted(EntropyError::Interrupted, 2);
     let signalledSource: &var EntropySource = signalled;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    try FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4);
+    FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4)!;
     Assert(signalled.calls == 3, "taking exactly the two failures and the attempt that worked");
     Assert(AllBytesAre(storage[..64], 0x7E), "and the successful attempt is what the caller keeps");
 
@@ -132,7 +132,7 @@ func Main() -> !EntropyError {
     var untouched = Scripted(EntropyError::Failed, 100);
     let untouchedSource: &var EntropySource = untouched;
     // Safety: a zero length asks for no bytes, so nothing is written.
-    try FillFrom(untouchedSource, @storage[0] as *var opaque, 0);
+    FillFrom(untouchedSource, @storage[0] as *var opaque, 0)!;
     // Safety: a null buffer is refused before the source is asked, which is the behaviour under test.
     var caughtNullRefusal: EntropyError? = none;
     try {
@@ -146,7 +146,7 @@ func Main() -> !EntropyError {
 
     // The real generator, reached the way a caller reaches it.
     // Safety: `storage` is a local array of exactly 64 bytes.
-    try Fill(@storage[0] as *var opaque, 64);
+    Fill(@storage[0] as *var opaque, 64)!;
     Assert(!AllBytesAre(storage[..64], 0), "with something other than zeros");
     Assert(!AllBytesAre(storage[..64], 0x7E), "and something other than the scripted pattern");
 
@@ -154,11 +154,11 @@ func Main() -> !EntropyError {
     var system = SystemEntropy::New();
     let systemSource: &var EntropySource = system;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    try FillFrom(systemSource, @storage[0] as *var opaque, 64);
+    FillFrom(systemSource, @storage[0] as *var opaque, 64)!;
 
     // A seed is a draw like any other, and two of them differ.
-    let firstSeed = try NextUint64();
-    let secondSeed = try NextUint64();
+    let firstSeed = NextUint64()!;
+    let secondSeed = NextUint64()!;
     Assert(firstSeed != secondSeed, "and two seeds differ");
 }
 

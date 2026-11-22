@@ -125,7 +125,7 @@ pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint ! FormatErro
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
 pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint ! FormatError {
-    return try Base58Encode(BytesOf(text), into);
+    return Base58Encode(BytesOf(text), into)!;
 }
 
 /// Reads Base58 text in the Bitcoin alphabet into the front of `into`.

@@ -92,7 +92,7 @@ extend TimeZone {
     /// @see https://rux-lang.dev/docs/api/timezone/zone#utc
     pub func Utc(allocator: Allocator) -> Self {
         var zone = Self::Empty(allocator, "UTC");
-        zone.rule = try ParseRule("UTC0", zone.names) catch { _ => Panic("the UTC rule is refused") };
+        zone.rule = ParseRule("UTC0", zone.names) catch { _ => Panic("the UTC rule is refused") };
         return move zone;
     }
 
@@ -104,7 +104,7 @@ extend TimeZone {
     /// @see https://rux-lang.dev/docs/api/timezone/zone#from-rule
     pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> Self ! TimeZoneError {
         var zone = Self::Empty(allocator, name);
-        zone.rule = try ParseRule(rule, zone.names);
+        zone.rule = ParseRule(rule, zone.names)!;
         return move zone;
     }
 
@@ -125,7 +125,7 @@ extend TimeZone {
         var width: uint = 4;
         if version >= 0x32u8 {
             // Skip the 32-bit section; the 64-bit one after it says the same for a wider range.
-            let size = try SectionSize(data, 0, 4);
+            let size = SectionSize(data, 0, 4)!;
             at = 44u + size;
             width = 8;
             if data.length < at + 44u || data[at] != 0x54u8 { throw .InvalidData; }
@@ -135,7 +135,7 @@ extend TimeZone {
         let typeCount = BigEndian(data, at + 36u, 4) as uint;
         let characters = BigEndian(data, at + 40u, 4) as uint;
         if typeCount == 0u || typeCount > 256u { throw .InvalidData; }
-        let size = try SectionSize(data, at, width);
+        let size = SectionSize(data, at, width)!;
         var zone = Self::Empty(allocator, name);
         var cursor = at + 44u;
         var index: uint = 0;
@@ -183,7 +183,7 @@ extend TimeZone {
             if close > end + 1u {
                 // Safety: `close` is below `data.length`, checked above, and a `char8` is one `byte`.
                 let text = (data.data as *char8)[end + 1u..close];
-                zone.rule = try ParseRule(text, zone.names) catch { _ => throw .InvalidData };
+                zone.rule = ParseRule(text, zone.names) catch { _ => throw .InvalidData };
             }
         }
         return move zone;

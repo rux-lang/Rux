@@ -26,10 +26,10 @@ func SameBytes(actual: byte[..], expected: byte[..]) -> bool {
 
 func Vector(bytes: byte[..], encoded: char8[..]) -> bool {
     var room: char8[64];
-    let written = try Base58Encode(bytes, room[..]) catch { _ => return false };
+    let written = Base58Encode(bytes, room[..]) catch { _ => return false };
     if !Same(room[..written], encoded) { return false; }
     var back: byte[64];
-    let read = try Base58Decode(encoded, back[..]) catch { _ => return false };
+    let read = Base58Decode(encoded, back[..]) catch { _ => return false };
     return SameBytes(back[..read], bytes);
 }
 
@@ -72,7 +72,7 @@ func Main() -> int {
     // The bound holds for the largest value of a length, which needs the most digits.
     var largest: byte[32] = [0xFF; 32];
     var room: char8[45];
-    let written = try Base58Encode(largest[..], room[..Base58EncodedMaxLength(32)]) catch { _ => return 6 };
+    let written = Base58Encode(largest[..], room[..Base58EncodedMaxLength(32)]) catch { _ => return 6 };
     if written != 44 { return 7; }
 
     // The look-alike characters the alphabet leaves out are refused where they stand.

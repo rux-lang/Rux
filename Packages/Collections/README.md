@@ -72,7 +72,7 @@ import Collections::Vector;
 let allocator = SystemAllocator::New();
 var numbers = Vector<int32>::New(allocator);
 numbers.Push(1);
-try numbers.TryReserve(1024) catch { _ => return 1 };
+numbers.TryReserve(1024) catch { _ => return 1 };
 
 if numbers.Pop() is .Some(last) {
     // ...
@@ -230,7 +230,7 @@ func Show() -> !FormatError {
     var failure: IoError? = none;
     var console = ConsoleWriter::New(@failure);
     let sink: &var TextWriter = console;
-    try WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());
+    WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain())!;
 }
 ```
 

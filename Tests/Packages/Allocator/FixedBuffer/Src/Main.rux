@@ -19,19 +19,19 @@ func Main() -> !AllocError {
 
     // A zero-sized layout costs the buffer nothing.
     let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
-    let empty = try allocator.Allocate(zero);
+    let empty = allocator.Allocate(zero)!;
     Assert(IsEmptyBlock(empty), "and gives the shared empty block");
     Assert(buffer.BytesUsed() == 0, "without consuming any of the buffer");
 
     // The first request comes out of the front of the buffer.
     let small = Layout::Of(32, 8) ?? zero;
-    let first = try allocator.Allocate(small);
+    let first = allocator.Allocate(small)!;
     Assert(first != null, "and reports an address");
     Assert(buffer.BytesUsed() == 32, "consuming exactly what was asked for");
     Assert(buffer.BytesRemaining() == 480, "and leaving the rest");
 
     // The next one lands immediately after it, since both are already aligned.
-    var second = try allocator.Allocate(small);
+    var second = allocator.Allocate(small)!;
     Assert((second as uint) == (first as uint) + 32, "landing immediately after the first");
 
     // Writing through both addresses must not disturb either.
@@ -49,27 +49,27 @@ func Main() -> !AllocError {
     // A stricter alignment is honoured, and the padding it needs is counted as used.
     let usedBefore = buffer.BytesUsed();
     let aligned = Layout::Of(8, 64) ?? zero;
-    let strict = try allocator.Allocate(aligned);
+    let strict = allocator.Allocate(aligned)!;
     Assert(IsPointerAligned(strict as *opaque, 64), "and satisfies its alignment");
     Assert(buffer.BytesUsed() >= usedBefore + 8, "with the padding counted as used");
     Assert((strict as uint) % 64 == 0, "the address itself is a multiple of the alignment");
 
     // The most recent allocation is the one a release can rewind.
     let beforeRelease = buffer.BytesUsed();
-    try allocator.Deallocate(strict, aligned);
+    allocator.Deallocate(strict, aligned)!;
     Assert(buffer.BytesUsed() < beforeRelease, "and gives its space back");
 
     // An ordinary release is accepted and does nothing, so a fixed buffer can stand in for any allocator.
     let steady = buffer.BytesUsed();
-    try allocator.Deallocate(first, small);
+    allocator.Deallocate(first, small)!;
     Assert(buffer.BytesUsed() == steady, "and changes nothing");
 
     // Growing the most recent allocation extends it in place rather than moving it.
     var grown: *var opaque = null;
     let bigger = Layout::Of(64, 8) ?? zero;
-    second = try allocator.Allocate(small);
+    second = allocator.Allocate(small)!;
     let growFrom = buffer.BytesUsed();
-    grown = try allocator.Reallocate(second, small, bigger);
+    grown = allocator.Reallocate(second, small, bigger)!;
     Assert((grown as uint) == (second as uint), "without moving it");
     Assert(buffer.BytesUsed() == growFrom + 32, "taking only the difference");
 
@@ -89,7 +89,7 @@ func Main() -> !AllocError {
     var refusal = AllocError::Unsupported;
     var exhausted = false;
     while guard < 64 {
-        let block = try allocator.Allocate(small) catch {
+        let block = allocator.Allocate(small) catch {
             error => {
                 refusal = error;
                 exhausted = true;
@@ -114,13 +114,13 @@ func Main() -> !AllocError {
     } catch {
         refusal => Assert(refusal == AllocError::OutOfMemory, "an exhausted buffer keeps refusing"),
     }
-    again = try allocator.Allocate(zero);
+    again = allocator.Allocate(zero)!;
 
     // A reset makes the whole buffer available again.
     buffer.Reset();
     Assert(buffer.BytesUsed() == 0, "a reset rewinds everything");
     Assert(buffer.BytesRemaining() == 512, "making the whole buffer available");
-    let afterReset = try allocator.Allocate(small);
+    let afterReset = allocator.Allocate(small)!;
     Assert((afterReset as uint) == (first as uint), "starting from the front of the buffer once more");
 
     // An allocator over no storage is a usable allocator that refuses everything.
@@ -136,7 +136,7 @@ func Main() -> !AllocError {
     } catch {
         refusal => Assert(refusal == AllocError::OutOfMemory, "and refuses every request"),
     }
-    refused = try empties.Allocate(zero);
+    refused = empties.Allocate(zero)!;
 
 }
 

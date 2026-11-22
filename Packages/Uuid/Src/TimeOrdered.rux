@@ -21,7 +21,7 @@ import Time::Timestamp;
 pub func TimeOrdered() -> Uuid ! EntropyError {
     let now = Timestamp::Now();
     let milliseconds = (now.UnixSeconds() as uint64) * 1000 + ((now.SubsecondNanoseconds() / 1000000) as uint64);
-    return try TimeOrderedAt(milliseconds);
+    return TimeOrderedAt(milliseconds)!;
 }
 
 /// A version 7 UUID for a given millisecond, with entropy in the rest.
@@ -32,7 +32,7 @@ pub func TimeOrdered() -> Uuid ! EntropyError {
 pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
     var bytes: byte[16];
     // Safety: `bytes` is a local array of sixteen bytes, exactly the sixteen `Fill` is asked to write.
-    try Fill(@bytes[0] as *var opaque, 16);
+    Fill(@bytes[0] as *var opaque, 16)!;
     var value = Uuid::FromBytes(bytes[..16]);
     // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;
@@ -89,7 +89,7 @@ extend MonotonicUuid {
     ///   unavailable
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#next
     pub func Next(&var self) -> Uuid ! EntropyError {
-        let candidate = try TimeOrdered();
+        let candidate = TimeOrdered()!;
         if !self.started {
             self.previous = candidate;
             self.started = true;

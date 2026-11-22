@@ -45,7 +45,7 @@ func AddLength(current: uint, additional: uint) -> uint ! AllocError {
 // doubled capacity too large to size in bytes: a request that fits must never
 // be rejected merely because the next power of two does not.
 func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uint) -> uint ! AllocError {
-    try ByteSize(required, elementSize);
+    ByteSize(required, elementSize)!;
 
     var grown = current;
     if grown < minimum {
@@ -61,7 +61,7 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
         grown = doubled;
     }
 
-    if grown > required && (try? ByteSize(grown, elementSize)) == none {
+    if grown > required && (ByteSize(grown, elementSize) !! none) == none {
         grown = required;
     }
     return grown;
@@ -82,6 +82,6 @@ func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint) -> uin
         grown = doubled;
     }
 
-    try ByteSize(grown, elementSize);
+    ByteSize(grown, elementSize)!;
     return grown;
 }

@@ -235,7 +235,7 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
 pub func Validate(bytes: char8[..]) -> !Utf8Failure {
     var index: uint = 0;
     while index < bytes.length {
-        let decoded = try DecodeAt(bytes, index) catch { reason => throw Utf8Failure { reason, index } };
+        let decoded = DecodeAt(bytes, index) catch { reason => throw Utf8Failure { reason, index } };
         index = index + decoded.width;
     }
 }

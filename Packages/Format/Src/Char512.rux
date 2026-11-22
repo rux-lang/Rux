@@ -16,10 +16,10 @@ extend char512 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char512-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let value = (self as uint512) as uint512;
-        if !IsScalarValue512(value) { return try FormatScalar(writer, spec, ReplacementCharacter); }
-        return try FormatScalar(writer, spec, (value as uint32) as char32);
+        if !IsScalarValue512(value) { return FormatScalar(writer, spec, ReplacementCharacter)!; }
+        return FormatScalar(writer, spec, (value as uint32) as char32)!;
     }
 }
 
@@ -33,6 +33,6 @@ extend char512 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char512-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try WriteWideCharacterDebug(writer, (self as uint512) as uint512);
+        return WriteWideCharacterDebug(writer, (self as uint512) as uint512)!;
     }
 }

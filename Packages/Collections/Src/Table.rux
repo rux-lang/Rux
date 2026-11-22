@@ -73,8 +73,8 @@ extend TableSeed {
     /// @returns a seed drawn from the system, so two tables in one process iterate differently
     /// @see https://rux-lang.dev/docs/api/collections/table-seed#random
     pub func Random() -> Self {
-        let low = try NextUint64() catch { _ => 0x9E3779B97F4A7C15 };
-        let high = try NextUint64() catch { _ => 0xBF58476D1CE4E5B9 };
+        let low = NextUint64() catch { _ => 0x9E3779B97F4A7C15 };
+        let high = NextUint64() catch { _ => 0xBF58476D1CE4E5B9 };
         return Self { low, high };
     }
 
@@ -333,7 +333,7 @@ extend Table<K, V> {
         let required = (length * 4 + 2) / 3;
         // An element size of one: this sizes slots, and each parallel run has its own byte size checked where it is
         // allocated.
-        return try PowerOfTwoCapacity(required, MinimumTableCapacity, 1);
+        return PowerOfTwoCapacity(required, MinimumTableCapacity, 1)!;
     }
 
     /// Rebuilds the table at `capacity` slots, reinserting every entry.
@@ -346,7 +346,7 @@ extend Table<K, V> {
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @see https://rux-lang.dev/docs/api/collections/table#rehash
     pub func Rehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64) {
-        try self.TryRehash(capacity, hash) catch { error => AllocationFailed(error) };
+        self.TryRehash(capacity, hash) catch { error => AllocationFailed(error) };
     }
 
     /// Rebuilds the table at `capacity` slots, reinserting every entry, or throws why the new runs could not be had.
@@ -361,21 +361,21 @@ extend Table<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/table#try-rehash
     pub func TryRehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64)
         -> !AllocError {
-        let keys = try TryAllocateBlock<K>(self.allocator, capacity);
-        let values = try TryAllocateBlock<V>(self.allocator, capacity) catch {
+        let keys = TryAllocateBlock<K>(self.allocator, capacity)!;
+        let values = TryAllocateBlock<V>(self.allocator, capacity) catch {
             error => {
                 ReleaseBlock<K>(self.allocator, keys, capacity);
                 throw error;
             },
         };
-        var states = try TryAllocateBlock<uint8>(self.allocator, capacity) catch {
+        var states = TryAllocateBlock<uint8>(self.allocator, capacity) catch {
             error => {
                 ReleaseBlock<K>(self.allocator, keys, capacity);
                 ReleaseBlock<V>(self.allocator, values, capacity);
                 throw error;
             },
         };
-        let tags = try TryAllocateBlock<uint8>(self.allocator, capacity) catch {
+        let tags = TryAllocateBlock<uint8>(self.allocator, capacity) catch {
             error => {
                 ReleaseBlock<K>(self.allocator, keys, capacity);
                 ReleaseBlock<V>(self.allocator, values, capacity);
@@ -431,7 +431,7 @@ extend Table<K, V> {
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @see https://rux-lang.dev/docs/api/collections/table#ensure-room
     pub func EnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) {
-        try self.TryReserve(1, hash) catch { error => AllocationFailed(error) };
+        self.TryReserve(1, hash) catch { error => AllocationFailed(error) };
     }
 
     /// Makes sure one more entry will fit, growing the table when it will not, or throws why it could not grow.
@@ -441,7 +441,7 @@ extend Table<K, V> {
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/table#try-ensure-room
     pub func TryEnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) -> !AllocError {
-        try self.TryReserve(1, hash);
+        self.TryReserve(1, hash)!;
     }
 
     /// Makes room for `additional` more entries on top of those already present.
@@ -451,7 +451,7 @@ extend Table<K, V> {
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @see https://rux-lang.dev/docs/api/collections/table#reserve
     pub func Reserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64) {
-        try self.TryReserve(additional, hash) catch { error => AllocationFailed(error) };
+        self.TryReserve(additional, hash) catch { error => AllocationFailed(error) };
     }
 
     /// Makes room for `additional` more entries on top of those already present, or throws why it could not.
@@ -462,10 +462,10 @@ extend Table<K, V> {
     /// @see https://rux-lang.dev/docs/api/collections/table#try-reserve
     pub func TryReserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64)
         -> !AllocError {
-        let wanted = try Table::CapacityFor<K, V>(AddLength(self.length, additional));
+        let wanted = Table::CapacityFor<K, V>(AddLength(self.length, additional)!)!;
         if wanted <= self.capacity { return; }
         // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
-        try self.TryRehash(wanted, hash);
+        self.TryRehash(wanted, hash)!;
     }
 
     /// Releases the capacity the entry count does not need.
@@ -478,7 +478,7 @@ extend Table<K, V> {
             self.Release();
             return;
         }
-        let wanted = try Table::CapacityFor<K, V>(self.length) catch { error => AllocationFailed(error) };
+        let wanted = Table::CapacityFor<K, V>(self.length) catch { error => AllocationFailed(error) };
         if wanted >= self.capacity { return; }
         // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.
         self.Rehash(wanted, hash);

@@ -43,10 +43,10 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
         index = index + 1;
     }
     when #target.os == .Linux {
-        return try ResolveOnLinux(allocator, host, port);
+        return ResolveOnLinux(allocator, host, port)!;
     }
     else {
-        return try ResolveWithSystem(allocator, host, port, move addresses);
+        return ResolveWithSystem(allocator, host, port, move addresses)!;
     }
 }
 

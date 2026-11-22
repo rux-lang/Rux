@@ -53,9 +53,9 @@ func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSp
     var whole: uint64 = 0;
     var fraction: uint32 = 0;
     let negative = Magnitude(span, @whole, @fraction);
-    if negative { try WriteAscii(writer, c8'-'); }
-    try WriteUnsigned(writer, whole);
-    return try WriteSecondsFraction(writer, fraction, spec);
+    if negative { WriteAscii(writer, c8'-')!; }
+    WriteUnsigned(writer, whole)!;
+    return WriteSecondsFraction(writer, fraction, spec)!;
 }
 
 // Writes the calendar form, refusing first for a moment the calendar cannot spell.
@@ -65,7 +65,7 @@ func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatS
     if !value.IsInCalendarRange() { throw FormatError::ValueOutOfRange; }
     let moment = Timestamp { seconds: value.seconds, nanoseconds: value.nanoseconds };
     let shown = OffsetDateTime::New(DateTime::FromTimestamp(moment, UtcOffset::Utc()), UtcOffset::Utc());
-    return try shown.WriteDisplay(writer, spec);
+    return shown.WriteDisplay(writer, spec)!;
 }
 
 extend Timestamp : Display {
@@ -84,10 +84,10 @@ extend Timestamp : Display {
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
-        try RejectTimestampStyle(spec);
-        if spec.StyleIs("unix") { return try WriteUnixSeconds(writer, self, spec); }
-        return try WriteCalendarForm(writer, self, spec);
+        if spec.Width() > 0u { return WriteDisplayAligned(writer, self, spec)!; }
+        RejectTimestampStyle(spec)!;
+        if spec.StyleIs("unix") { return WriteUnixSeconds(writer, self, spec)!; }
+        return WriteCalendarForm(writer, self, spec)!;
     }
 }
 
@@ -99,6 +99,6 @@ extend Timestamp : Debug {
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }

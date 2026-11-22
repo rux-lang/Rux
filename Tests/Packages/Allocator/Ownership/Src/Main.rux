@@ -58,7 +58,7 @@ func CheckAlignment(allocator: Allocator, name: char8[..]) -> !AllocError {
     while alignment <= 256 {
         let layout = LayoutOr(64, alignment);
         // A refused allocation is allowed; a misaligned one is not.
-        if (try? allocator.Allocate(layout)) is .Some(block) {
+        if (allocator.Allocate(layout) !! none) is .Some(block) {
             Assert(block != null, "a successful allocation reports an address");
             Assert(layout.IsSatisfiedBy(block as uint), "a served allocation is aligned to what was asked for");
             // The whole block is writable, not merely its aligned first byte.
@@ -66,7 +66,7 @@ func CheckAlignment(allocator: Allocator, name: char8[..]) -> !AllocError {
             Fill(block, 64);
             // Safety: `block` is a live allocation of at least 64 bytes, not yet released.
             Assert(Holds(block, 64), "and the whole block holds what was written to it");
-            try allocator.Deallocate(block, layout);
+            allocator.Deallocate(block, layout)!;
         }
         alignment = alignment * 2;
     }
@@ -76,32 +76,32 @@ func CheckAlignment(allocator: Allocator, name: char8[..]) -> !AllocError {
 /// The fourth promise: a zero-sized layout is legal, gives the shared empty address, and must still be released.
 func CheckZeroSize(allocator: Allocator) -> !AllocError {
     let zero = LayoutOr(0, 8);
-    let block = try allocator.Allocate(zero);
+    let block = allocator.Allocate(zero)!;
     Assert(block != null, "and is not null, so no caller has to branch on it");
     Assert(IsEmptyBlock(block), "and is the shared empty address");
     Assert(block == EmptyBlockAddress(), "which is the same address on every allocator");
     Assert(LayoutOr(0, 256).IsSatisfiedBy(block as uint), "aligned to anything, so it satisfies every layout");
-    try allocator.Deallocate(block, zero);
+    allocator.Deallocate(block, zero)!;
 
     // Releasing it twice is still a success, because nothing was ever taken: there is no storage to lose track of.
-    try allocator.Deallocate(block, zero);
+    allocator.Deallocate(block, zero)!;
 
     // Growing out of nothing is an ordinary allocation, and shrinking back to nothing gives the empty address.
     let real = LayoutOr(32, 8);
-    if (try? allocator.Reallocate(block, zero, real)) is .Some(grown) {
+    if (allocator.Reallocate(block, zero, real) !! none) is .Some(grown) {
         Assert(!IsEmptyBlock(grown), "growing out of nothing gives real storage");
         // Safety: `grown` is a live allocation of at least 32 bytes, served just above.
         Fill(grown, 32);
-        if (try? allocator.Reallocate(grown, real, zero)) is .Some(shrunk) {
+        if (allocator.Reallocate(grown, real, zero) !! none) is .Some(shrunk) {
             Assert(IsEmptyBlock(shrunk), "and shrinking back to nothing gives the empty address again");
             // The address is only half of it. A zero-sized release must arrive with the empty block, so an
             // allocator that handed back the address it rewound off of would leave the caller holding
             // something `Deallocate` refuses — which is exactly what Arena and FixedBuffer did until this
             // test was written.
-            try allocator.Deallocate(shrunk, zero);
+            allocator.Deallocate(shrunk, zero)!;
         }
         else {
-            try allocator.Deallocate(grown, real);
+            allocator.Deallocate(grown, real)!;
         }
     }
 }
@@ -113,7 +113,7 @@ func CheckZeroSize(allocator: Allocator) -> !AllocError {
 /// alignment.
 func CheckFailedReallocation(allocator: Allocator) -> !AllocError {
     let original = LayoutOr(96, 8);
-    let block = try allocator.Allocate(original);
+    let block = allocator.Allocate(original)!;
     // Safety: `block` is a live allocation of at least 96 bytes, served just above.
     Fill(block, 96);
     let before = block;
@@ -134,24 +134,24 @@ func CheckFailedReallocation(allocator: Allocator) -> !AllocError {
     // holds, which a mere 2^47 is not: FreeBSD gives an AArch64 process 256 TiB and promises any amount of anonymous
     // memory by default, so it served that request and the assertion below failed.
     let enormous = LayoutOr(0x1000000000000000, 8);
-    let refused = (try? allocator.Reallocate(block, original, enormous)) is none;
+    let refused = (allocator.Reallocate(block, original, enormous) !! none) is none;
     Assert(refused, "growing past what any allocator can serve is refused");
     // Safety: `block` is a live allocation of at least 96 bytes, not yet released.
     Assert(Holds(block, 96), "and that refusal also left the original contents alone");
 
     // Still the caller's, which is the half of the promise a return value cannot express.
-    try allocator.Deallocate(block, original);
+    allocator.Deallocate(block, original)!;
 }
 
 /// A successful reallocation preserves the first `min(old, new)` bytes, whether it moved the block or not.
 func CheckSuccessfulReallocation(allocator: Allocator) -> !AllocError {
     let small = LayoutOr(64, 8);
     let large = LayoutOr(256, 8);
-    let block = try allocator.Allocate(small);
+    let block = allocator.Allocate(small)!;
     // Safety: `block` is a live allocation of at least 64 bytes, served just above.
     Fill(block, 64);
 
-    if (try? allocator.Reallocate(block, small, large)) is .Some(grown) {
+    if (allocator.Reallocate(block, small, large) !! none) is .Some(grown) {
         Assert(grown != null, "a successful growth reports where the block is now");
         // Safety: `grown` is a live allocation of at least 64 bytes, not yet released.
         Assert(Holds(grown, 64), "and the bytes that fit both layouts came across");
@@ -159,33 +159,33 @@ func CheckSuccessfulReallocation(allocator: Allocator) -> !AllocError {
         // Shrinking keeps the prefix and nothing is promised about the rest.
         // Safety: `grown` is a live allocation of at least 256 bytes, served just above.
         Fill(grown, 256);
-        if (try? allocator.Reallocate(grown, large, small)) is .Some(shrunk) {
+        if (allocator.Reallocate(grown, large, small) !! none) is .Some(shrunk) {
             // Safety: `shrunk` is a live allocation of at least 64 bytes, not yet released.
             Assert(Holds(shrunk, 64), "and shrinking keeps the prefix that still fits");
-            try allocator.Deallocate(shrunk, small);
+            allocator.Deallocate(shrunk, small)!;
         }
         else {
-            try allocator.Deallocate(grown, large);
+            allocator.Deallocate(grown, large)!;
         }
     }
     else {
         // Safety: `block` is a live allocation of at least 64 bytes, not yet released.
         Assert(Holds(block, 64), "a refused growth left the original alone");
-        try allocator.Deallocate(block, small);
+        allocator.Deallocate(block, small)!;
     }
 
     // Reallocating to the same layout is a no-op that reports the same address, which is what lets a caller call it
     // unconditionally rather than comparing sizes first.
     var same: *var opaque = null;
     var steady: *var opaque = null;
-    same = try allocator.Allocate(small);
+    same = allocator.Allocate(small)!;
     // Safety: `same` is a live allocation of at least 64 bytes, served just above.
     Fill(same, 64);
-    steady = try allocator.Reallocate(same, small, small);
+    steady = allocator.Reallocate(same, small, small)!;
     Assert(steady == same, "reporting the same address");
     // Safety: `steady` is a live allocation of at least 64 bytes, not yet released.
     Assert(Holds(steady, 64), "with its contents untouched");
-    try allocator.Deallocate(steady, small);
+    allocator.Deallocate(steady, small)!;
 }
 
 func Main() -> !AllocError {
@@ -193,36 +193,36 @@ func Main() -> !AllocError {
 
     // --- The contract, asked of each allocator ------------------------------------------------------------------
 
-    try CheckAlignment(real, "SystemAllocator");
-    try CheckZeroSize(real);
-    try CheckFailedReallocation(real);
-    try CheckSuccessfulReallocation(real);
+    CheckAlignment(real, "SystemAllocator")!;
+    CheckZeroSize(real)!;
+    CheckFailedReallocation(real)!;
+    CheckSuccessfulReallocation(real)!;
 
     var arena = Arena::New(real, 65536);
     // Safety: `arena` is a local that outlives `arenaAllocator` and is never moved.
     let arenaAllocator = arena.Handle();
-    try CheckAlignment(arenaAllocator, "Arena");
-    try CheckZeroSize(arenaAllocator);
-    try CheckFailedReallocation(arenaAllocator);
-    try CheckSuccessfulReallocation(arenaAllocator);
+    CheckAlignment(arenaAllocator, "Arena")!;
+    CheckZeroSize(arenaAllocator)!;
+    CheckFailedReallocation(arenaAllocator)!;
+    CheckSuccessfulReallocation(arenaAllocator)!;
 
     var pool = Pool::New(real, 16);
     // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
     let poolAllocator = pool.Handle();
-    try CheckAlignment(poolAllocator, "Pool");
-    try CheckZeroSize(poolAllocator);
-    try CheckFailedReallocation(poolAllocator);
-    try CheckSuccessfulReallocation(poolAllocator);
+    CheckAlignment(poolAllocator, "Pool")!;
+    CheckZeroSize(poolAllocator)!;
+    CheckFailedReallocation(poolAllocator)!;
+    CheckSuccessfulReallocation(poolAllocator)!;
 
     var storage: byte[65536];
     // Safety: `storage` is a local array of 65536 bytes, touched only through `buffer` until `buffer` is done.
     var buffer = FixedBuffer::New(@storage[0] as *var opaque, 65536);
     // Safety: `buffer` is a local that outlives `bufferAllocator` and is never moved.
     let bufferAllocator = buffer.Handle();
-    try CheckAlignment(bufferAllocator, "FixedBuffer");
-    try CheckZeroSize(bufferAllocator);
-    try CheckFailedReallocation(bufferAllocator);
-    try CheckSuccessfulReallocation(bufferAllocator);
+    CheckAlignment(bufferAllocator, "FixedBuffer")!;
+    CheckZeroSize(bufferAllocator)!;
+    CheckFailedReallocation(bufferAllocator)!;
+    CheckSuccessfulReallocation(bufferAllocator)!;
 
     // --- Adapters share their owner's state ---------------------------------------------------------------------
 
@@ -236,11 +236,11 @@ func Main() -> !AllocError {
     let firstAllocator: Allocator = first;
 
     let unit = LayoutOr(128, 8);
-    let throughFirst = try firstAllocator.Allocate(unit);
+    let throughFirst = firstAllocator.Allocate(unit)!;
     let afterFirst = counted.BytesUsed();
     Assert(afterFirst >= 128, "which the arena itself accounts for");
 
-    let throughSecond = try secondAllocator.Allocate(unit);
+    let throughSecond = secondAllocator.Allocate(unit)!;
     Assert(counted.BytesUsed() > afterFirst, "advancing the same arena rather than a copy of it");
     Assert(throughSecond != throughFirst, "and handing out a different address");
     Assert(counted.BlockCount() == 1, "both came out of the one block the arena took");
@@ -254,7 +254,7 @@ func Main() -> !AllocError {
     Assert(counted.BytesUsed() == 0, "a reset rewinds the arena completely");
     Assert(counted.BlockCount() == 1, "keeping the block it already had");
 
-    let afterReset = try firstAllocator.Allocate(unit);
+    let afterReset = firstAllocator.Allocate(unit)!;
     Assert(afterReset == throughFirst, "and hands back the address the reset reclaimed, which is what invalidated it");
     Assert(counted.BytesUsed() == afterFirst, "with the accounting where it was after the first request");
 
@@ -269,7 +269,7 @@ func Main() -> !AllocError {
 
     // Safety: `relocated` is a local that outlives `movedAllocator` and is not moved again.
     let movedAllocator = relocated.Handle();
-    let fromMoved = try movedAllocator.Allocate(unit);
+    let fromMoved = movedAllocator.Allocate(unit)!;
     Assert(relocated.BytesUsed() > afterFirst, "advancing the arena at its new home");
     Assert(fromMoved != afterReset, "with an address distinct from the one still outstanding");
 
@@ -279,14 +279,14 @@ func Main() -> !AllocError {
     var moving = FixedBuffer::New(@storage[0] as *var opaque, 65536);
     // Safety: `beforeMoveAllocator` is last used before `moving` moves into `carried` below.
     let beforeMoveAllocator = moving.Handle();
-    let early = try beforeMoveAllocator.Allocate(unit);
+    let early = beforeMoveAllocator.Allocate(unit)!;
     let earlyUsed = moving.BytesUsed();
 
     var carried = move moving;
     Assert(carried.BytesUsed() == earlyUsed, "a moved fixed buffer carries its accounting");
     // Safety: `carried` is a local that outlives `lateAllocator` and is not moved again.
     let lateAllocator = carried.Handle();
-    let late = try lateAllocator.Allocate(unit);
+    let late = lateAllocator.Allocate(unit)!;
     Assert(late != early, "handing out storage it had not already given away");
     Assert((late as uint) >= (@storage[0] as uint), "out of the caller's own bytes, which never moved");
     Assert((late as uint) < (@storage[0] as uint) + 65536, "and stays inside them");

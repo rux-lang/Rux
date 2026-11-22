@@ -61,7 +61,7 @@ func Parse(value: int) -> int ! int {
 }
 
 func Recover(value: int) -> int {
-    return try Parse(value) catch {
+    return Parse(value) catch {
         error => {
             let magnitude = -error;
             match magnitude {

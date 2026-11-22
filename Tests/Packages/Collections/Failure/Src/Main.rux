@@ -24,13 +24,13 @@ import Collections::{ EqualsInt32, HashInt32 };
 
 // What a reservation the test expects to be refused was refused with, or `none` when it was granted.
 func VectorRefusal(vector: &var Vector<int64>, additional: uint) -> AllocError? {
-    try vector.TryReserve(additional) catch { error => return error };
+    vector.TryReserve(additional) catch { error => return error };
     return none;
 }
 
 // The same, for a map.
 func MapRefusal(map: &var HashMap<int32, int32>, additional: uint) -> AllocError? {
-    try map.TryReserve(additional) catch { error => return error };
+    map.TryReserve(additional) catch { error => return error };
     return none;
 }
 
@@ -74,7 +74,7 @@ func Main() -> int {
 
     // A rejected index is reported as itself, and the container is left alone.
     var rejected = false;
-    try populated.Set(populated.Length(), 99) catch {
+    populated.Set(populated.Length(), 99) catch {
         error => { rejected = error == CollectionError::IndexOutOfRange; }
     };
     if !rejected { return 50; }

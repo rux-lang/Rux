@@ -97,11 +97,11 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
                 url.userinfoStart = out.length;
                 var colon: uint = 0;
                 while colon < userinfo.length && userinfo[colon] != ':' { colon = colon + 1; }
-                try AppendNormalized(out, userinfo[..colon], Component::Userinfo);
+                AppendNormalized(out, userinfo[..colon], Component::Userinfo)!;
                 url.usernameEnd = out.length;
                 if colon < userinfo.length {
                     out.Push(c8':');
-                    try AppendNormalized(out, userinfo[colon + 1..], Component::Userinfo);
+                    AppendNormalized(out, userinfo[colon + 1..], Component::Userinfo)!;
                 }
                 url.userinfoEnd = out.length;
                 out.Push(c8'@');
@@ -121,7 +121,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
         }
         else {
             url.hostStart = out.length;
-            try AppendNormalized(out, host, Component::Host);
+            AppendNormalized(out, host, Component::Host)!;
             url.hostEnd = out.length;
             url.hostKind = if ParseIpv4(out.View()[url.hostStart..url.hostEnd]) != none {
                 HostKind::Ipv4
@@ -159,7 +159,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
 
     url.pathStart = out.length;
     var path = Bytes::New(allocator);
-    try AppendNormalized(path, pieces.path, Component::Path);
+    AppendNormalized(path, pieces.path, Component::Path)!;
     RemoveDotSegments(out, path.View());
     if pieces.hasAuthority && network && out.length == url.pathStart { out.Push(c8'/'); }
     url.pathEnd = out.length;
@@ -169,7 +169,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             out.Push(c8'?');
             url.hasQuery = true;
             url.queryStart = out.length;
-            try AppendNormalized(out, query, Component::Query);
+            AppendNormalized(out, query, Component::Query)!;
             url.queryEnd = out.length;
         },
         none => {}
@@ -179,7 +179,7 @@ func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
             out.Push(c8'#');
             url.hasFragment = true;
             url.fragmentStart = out.length;
-            try AppendNormalized(out, fragment, Component::Query);
+            AppendNormalized(out, fragment, Component::Query)!;
         },
         none => {}
     }
@@ -221,8 +221,8 @@ extend Url {
     /// @returns the URL, or fails with what is wrong with it; a relative reference fails with `MissingScheme`
     /// @see https://rux-lang.dev/docs/api/url/url#parse
     pub func Parse(allocator: Allocator, text: char8[..]) -> Self ! UrlError {
-        let pieces = try SplitReference(text);
-        return try Compose(allocator, pieces);
+        let pieces = SplitReference(text)!;
+        return Compose(allocator, pieces)!;
     }
 
     /// Resolves `reference` against this URL, as a browser resolves a link on a page, following section 5 of
@@ -232,8 +232,8 @@ extend Url {
     /// @returns the resolved URL, kept with this URL's allocator
     /// @see https://rux-lang.dev/docs/api/url/url#resolve
     pub func Resolve(&self, reference: char8[..]) -> Self ! UrlError {
-        var target = try SplitReference(reference);
-        if IsSet(target.scheme) { return try Compose(self.allocator, target); }
+        var target = SplitReference(reference)!;
+        if IsSet(target.scheme) { return Compose(self.allocator, target)!; }
         var merged = Bytes::New(self.allocator);
         target.scheme = self.Scheme();
         if !target.hasAuthority {
@@ -256,7 +256,7 @@ extend Url {
                 target.path = merged.View();
             }
         }
-        return try Compose(self.allocator, target);
+        return Compose(self.allocator, target)!;
     }
 
     /// The whole URL, in normalized form.
@@ -371,7 +371,7 @@ extend Url {
         if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/'); }
         rooted.PushAll(path);
         pieces.path = rooted.View();
-        self = try move Compose(self.allocator, pieces);
+        self = move Compose(self.allocator, pieces)!;
     }
 
     /// Replaces the query, or removes it with none.
@@ -381,7 +381,7 @@ extend Url {
     pub func SetQuery(&var self, query: char8[..]?) -> !UrlError {
         var pieces = self.Pieces();
         pieces.query = query;
-        self = try move Compose(self.allocator, pieces);
+        self = move Compose(self.allocator, pieces)!;
     }
 
     /// Replaces the fragment, or removes it with none.
@@ -391,7 +391,7 @@ extend Url {
     pub func SetFragment(&var self, fragment: char8[..]?) -> !UrlError {
         var pieces = self.Pieces();
         pieces.fragment = fragment;
-        self = try move Compose(self.allocator, pieces);
+        self = move Compose(self.allocator, pieces)!;
     }
 
     /// Whether two URLs are the same, which after normalization means the same text.

@@ -285,7 +285,7 @@ func Main() -> int {
     map.ShrinkToFit();
     Assert(map.Capacity() < 1000, "giving back what the entries do not need");
     Assert(map.Get(11) == .Some(33), "and keeping every entry");
-    Assert((try? map.TryReserve(uint::Max)) is none, "an impossible reservation is refused");
+    Assert((map.TryReserve(uint::Max) !! none) is none, "an impossible reservation is refused");
     Assert(map.Length() == 200, "leaving the map as it was");
 
     map.Clear();

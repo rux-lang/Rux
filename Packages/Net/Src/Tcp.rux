@@ -40,10 +40,10 @@ extend TcpListener {
     /// @returns the listener, or fails with `AddressInUse`, `AddressUnavailable` or `PermissionDenied`
     /// @see https://rux-lang.dev/docs/api/net/tcp#bind
     pub func Bind(address: SocketAddress) -> Self ! IoError {
-        let handle = try OpenSocket(address, true);
+        let handle = OpenSocket(address, true)!;
         var listener = Self { handle };
-        try BindSocket(handle, address, true);
-        try ListenSocket(handle);
+        BindSocket(handle, address, true)!;
+        ListenSocket(handle)!;
         return move listener;
     }
 
@@ -52,7 +52,7 @@ extend TcpListener {
     /// @see https://rux-lang.dev/docs/api/net/tcp#accept
     pub func Accept(&self) -> TcpStream ! IoError {
         var peer = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Unspecified()), port: 0 };
-        let handle = try AcceptSocket(self.handle, @peer);
+        let handle = AcceptSocket(self.handle, @peer)!;
         return TcpStream { handle };
     }
 
@@ -60,7 +60,7 @@ extend TcpListener {
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/tcp#listener-local-address
     pub func LocalAddress(&self) -> SocketAddress ! IoError {
-        return try SocketName(self.handle, false);
+        return SocketName(self.handle, false)!;
     }
 
     /// Makes calls on the listener fail with `WouldBlock` when they would wait, or wait again.
@@ -70,7 +70,7 @@ extend TcpListener {
     /// @returns success when the mode is set
     /// @see https://rux-lang.dev/docs/api/net/tcp#listener-set-non-blocking
     pub func SetNonBlocking(&self, enabled: bool) -> !IoError {
-        try SetSocketNonBlocking(self.handle, enabled);
+        SetSocketNonBlocking(self.handle, enabled)!;
     }
 
     /// The listener as a `Poller` watches it, valid while the listener is open.
@@ -92,9 +92,9 @@ extend TcpStream {
     /// @returns the stream, or fails with `ConnectionRefused`, `Unreachable` or `TimedOut`
     /// @see https://rux-lang.dev/docs/api/net/tcp#connect
     pub func Connect(address: SocketAddress) -> Self ! IoError {
-        let handle = try OpenSocket(address, true);
+        let handle = OpenSocket(address, true)!;
         var stream = Self { handle };
-        try ConnectSocket(handle, address);
+        ConnectSocket(handle, address)!;
         return move stream;
     }
 
@@ -102,14 +102,14 @@ extend TcpStream {
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/tcp#local-address
     pub func LocalAddress(&self) -> SocketAddress ! IoError {
-        return try SocketName(self.handle, false);
+        return SocketName(self.handle, false)!;
     }
 
     /// The address of the other end.
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/tcp#peer-address
     pub func PeerAddress(&self) -> SocketAddress ! IoError {
-        return try SocketName(self.handle, true);
+        return SocketName(self.handle, true)!;
     }
 
     /// Ends one or both directions of the connection while the socket stays open.
@@ -117,7 +117,7 @@ extend TcpStream {
     /// @returns nothing, or fails when the connection is already gone
     /// @see https://rux-lang.dev/docs/api/net/tcp#shutdown
     pub func Shutdown(&self, direction: ShutdownDirection) -> !IoError {
-        try ShutdownSocket(self.handle, direction as int32);
+        ShutdownSocket(self.handle, direction as int32)!;
     }
 
     /// Sends small writes at once rather than gathering them, which suits request and response exchanges.
@@ -125,7 +125,7 @@ extend TcpStream {
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-no-delay
     pub func SetNoDelay(&self, enabled: bool) -> !IoError {
-        try SetIntegerOption(self.handle, 6, 1, if enabled { 1 } else { 0 });
+        SetIntegerOption(self.handle, 6, 1, if enabled { 1 } else { 0 })!;
     }
 
     /// How long a read may wait before failing with `TimedOut`, or none to wait without a limit.
@@ -133,7 +133,7 @@ extend TcpStream {
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-read-timeout
     pub func SetReadTimeout(&self, timeout: Duration?) -> !IoError {
-        try SetTimeout(self.handle, true, Nanoseconds(timeout));
+        SetTimeout(self.handle, true, Nanoseconds(timeout))!;
     }
 
     /// How long a write may wait before failing with `TimedOut`, or none to wait without a limit.
@@ -141,7 +141,7 @@ extend TcpStream {
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-write-timeout
     pub func SetWriteTimeout(&self, timeout: Duration?) -> !IoError {
-        try SetTimeout(self.handle, false, Nanoseconds(timeout));
+        SetTimeout(self.handle, false, Nanoseconds(timeout))!;
     }
 
     /// Makes calls on the stream fail with `WouldBlock` when they would wait, or wait again.
@@ -150,7 +150,7 @@ extend TcpStream {
     /// @returns success when the mode is set
     /// @see https://rux-lang.dev/docs/api/net/tcp#set-non-blocking
     pub func SetNonBlocking(&self, enabled: bool) -> !IoError {
-        try SetSocketNonBlocking(self.handle, enabled);
+        SetSocketNonBlocking(self.handle, enabled)!;
     }
 
     /// The stream as a `Poller` watches it, valid while the stream is open.
@@ -184,7 +184,7 @@ extend TcpStream : Reader {
     /// @see https://rux-lang.dev/docs/api/net/tcp#read
     pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if into.length == 0u { return 0; }
-        let count = try ReceiveSocket(self.handle, into, null);
+        let count = ReceiveSocket(self.handle, into, null)!;
         if count == 0u { throw IoError::Of(IoErrorKind::EndOfStream); }
         return count;
     }
@@ -197,7 +197,7 @@ extend TcpStream : Writer {
     /// @see https://rux-lang.dev/docs/api/net/tcp#write
     pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if bytes.length == 0u { return 0; }
-        return try SendSocket(self.handle, bytes, none);
+        return SendSocket(self.handle, bytes, none)!;
     }
 
     /// Does nothing: a stream sends what is written to it without holding any back.

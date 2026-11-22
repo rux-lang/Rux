@@ -51,15 +51,15 @@ func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule ! TimeZoneErr
     var rule = NoRule();
     var at: uint = 0;
     rule.standard = ZoneType { offset: 0, daylight: false, abbreviation: 0, abbreviationLength: 0 };
-    try ParseName(text, @at, names, rule.standard);
-    rule.standard.offset = try -ParseOffset(text, @at, 24);
+    ParseName(text, @at, names, rule.standard)!;
+    rule.standard.offset = -ParseOffset(text, @at, 24)!;
     rule.present = true;
     if at == text.length { return rule; }
     rule.hasDaylight = true;
     rule.daylight = ZoneType { offset: 0, daylight: true, abbreviation: 0, abbreviationLength: 0 };
-    try ParseName(text, @at, names, rule.daylight);
+    ParseName(text, @at, names, rule.daylight)!;
     if at < text.length && text[at] != ',' {
-        rule.daylight.offset = try -ParseOffset(text, @at, 24);
+        rule.daylight.offset = -ParseOffset(text, @at, 24)!;
     }
     else {
         rule.daylight.offset = rule.standard.offset + 3600;
@@ -72,10 +72,10 @@ func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule ! TimeZoneErr
     }
     if text[at] != ',' { throw .InvalidRule; }
     at = at + 1;
-    rule.start = try ParseDate(text, @at);
+    rule.start = ParseDate(text, @at)!;
     if at >= text.length || text[at] != ',' { throw .InvalidRule; }
     at = at + 1;
-    rule.end = try ParseDate(text, @at);
+    rule.end = ParseDate(text, @at)!;
     if at != text.length { throw .InvalidRule; }
     return rule;
 }
@@ -125,17 +125,17 @@ func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 !
         if text[cursor] == '-' { sign = -1; }
         cursor = cursor + 1;
     }
-    let hours = try ParseNumber(text, @cursor, 3);
+    let hours = ParseNumber(text, @cursor, 3)!;
     if hours > maximumHours { throw .InvalidRule; }
     var seconds = hours * 3600;
     if cursor < text.length && text[cursor] == ':' {
         cursor = cursor + 1;
-        let minutes = try ParseNumber(text, @cursor, 2);
+        let minutes = ParseNumber(text, @cursor, 2)!;
         if minutes > 59 { throw .InvalidRule; }
         seconds = seconds + minutes * 60;
         if cursor < text.length && text[cursor] == ':' {
             cursor = cursor + 1;
-            let rest = try ParseNumber(text, @cursor, 2);
+            let rest = ParseNumber(text, @cursor, 2)!;
             if rest > 59 { throw .InvalidRule; }
             seconds = seconds + rest;
         }
@@ -170,34 +170,34 @@ func ParseDate(text: char8[..], at: *var uint) -> RuleDate ! TimeZoneError {
     if cursor < text.length && text[cursor] == 'J' {
         cursor = cursor + 1;
         date.kind = 0;
-        let day = try ParseNumber(text, @cursor, 3);
+        let day = ParseNumber(text, @cursor, 3)!;
         if day < 1 || day > 365 { throw .InvalidRule; }
         date.day = day as uint16;
     }
     else if cursor < text.length && text[cursor] == 'M' {
         cursor = cursor + 1;
         date.kind = 2;
-        let month = try ParseNumber(text, @cursor, 2);
+        let month = ParseNumber(text, @cursor, 2)!;
         if cursor >= text.length || text[cursor] != '.' { throw .InvalidRule; }
         cursor = cursor + 1;
-        let week = try ParseNumber(text, @cursor, 1);
+        let week = ParseNumber(text, @cursor, 1)!;
         if cursor >= text.length || text[cursor] != '.' { throw .InvalidRule; }
         cursor = cursor + 1;
-        let weekday = try ParseNumber(text, @cursor, 1);
+        let weekday = ParseNumber(text, @cursor, 1)!;
         if month < 1 || month > 12 || week < 1 || week > 5 || weekday > 6 { throw .InvalidRule; }
         date.month = month as uint8;
         date.week = week as uint8;
         date.weekday = weekday as uint8;
     }
     else {
-        let day = try ParseNumber(text, @cursor, 3);
+        let day = ParseNumber(text, @cursor, 3)!;
         if day > 365 { throw .InvalidRule; }
         date.day = day as uint16;
     }
     if cursor < text.length && text[cursor] == '/' {
         cursor = cursor + 1;
         // Version 3 of the TZif format lets the time run from -167 to 167 hours.
-        date.time = try ParseOffset(text, @cursor, 167);
+        date.time = ParseOffset(text, @cursor, 167)!;
     }
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
     *at = cursor;

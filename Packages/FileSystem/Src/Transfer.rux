@@ -28,8 +28,8 @@ when #target.os {
 /// @returns success when the file is at its new path
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#rename
 pub func Rename(allocator: Allocator, from: Path, to: Path) -> !IoError {
-    let fromNative = try NativePath::New(allocator, from);
-    let toNative = try NativePath::New(allocator, to);
+    let fromNative = NativePath::New(allocator, from)!;
+    let toNative = NativePath::New(allocator, to)!;
     when #target.os == .Windows {
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
@@ -58,8 +58,8 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> !IoError {
 /// @returns success when the new name refers to the same file
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-hard-link
 pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> !IoError {
-    let existingNative = try NativePath::New(allocator, existing);
-    let linkNative = try NativePath::New(allocator, link);
+    let existingNative = NativePath::New(allocator, existing)!;
+    let linkNative = NativePath::New(allocator, link)!;
     when #target.os == .Windows {
         // Safety: `linkNative` and `existingNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
@@ -90,8 +90,8 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> !Io
 /// @returns success when the link was created; Windows needs a privilege for this
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-symbolic-link
 pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> !IoError {
-    let targetNative = try NativePath::New(allocator, target);
-    let linkNative = try NativePath::New(allocator, link);
+    let targetNative = NativePath::New(allocator, target)!;
+    let linkNative = NativePath::New(allocator, link)!;
     when #target.os == .Windows {
         var flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
         if targetIsDirectory {
@@ -124,8 +124,8 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#copy-file
 pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
     when #target.os == .Windows {
-        let fromNative = try NativePath::New(allocator, from);
-        let toNative = try NativePath::New(allocator, to);
+        let fromNative = NativePath::New(allocator, from)!;
+        let toNative = NativePath::New(allocator, to)!;
         // Safety: `fromNative` and `toNative` are the NUL-terminated UTF-16 copies `NativePath` made above, live
         // while they are in scope, and a `uint16` unit is a `char16`.
         if CopyFileW(fromNative.Pointer() as *char16, toNative.Pointer() as *char16, 0) == 0 {
@@ -135,12 +135,12 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
     }
     else {
         // A file opened here and abandoned by a failure is closed by its destructor.
-        var source = try File::Open(allocator, from, OpenOptions::Reading());
-        var destination = try File::Open(allocator, to, OpenOptions::Writing());
+        var source = File::Open(allocator, from, OpenOptions::Reading())!;
+        var destination = File::Open(allocator, to, OpenOptions::Writing())!;
 
         let layout = Layout { size: 65536, alignment: 8 };
         var borrowed = allocator;
-        let block = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
+        let block = borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `block` is a fresh allocation of `layout`, 65536 bytes, released only after the loop below.
         let buffer = (block as *var char8)[..65536];
 
@@ -155,7 +155,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
                 }
                 else {
                     let piece = buffer[0..filled];
-                    try WriteAll(destination, piece) catch {
+                    WriteAll(destination, piece) catch {
                         error => {
                             failure = error;
                             copying = false;
@@ -175,11 +175,11 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
             }
         }
 
-        try borrowed.Deallocate(block, layout) catch { _ => {} };
+        borrowed.Deallocate(block, layout) catch { _ => {} };
         // Both files close whatever happened; a close failure is reported only when the copy itself went through.
         var closeFailure: IoError? = none;
-        try source.Close() catch { error => { closeFailure = error; } };
-        try destination.Close() catch { error => { closeFailure = closeFailure ?? error; } };
+        source.Close() catch { error => { closeFailure = error; } };
+        destination.Close() catch { error => { closeFailure = closeFailure ?? error; } };
         if failure is .Some(error) { throw error; }
         if closeFailure is .Some(error) { throw error; }
     }

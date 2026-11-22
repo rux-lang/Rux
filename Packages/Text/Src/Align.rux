@@ -54,7 +54,7 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
 pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> !FormatError {
     var written: uint = 0;
     while written < count {
-        try WriteAscii(writer, spec.Fill());
+        WriteAscii(writer, spec.Fill())!;
         written = written + 1;
     }
     return;
@@ -74,14 +74,14 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> !F
 pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8[..],
                       numeric: bool) -> !FormatError {
     let occupied = CountScalars(rendered);
-    if spec.Width() <= occupied { return try WriteBytes(writer, rendered); }
+    if spec.Width() <= occupied { return WriteBytes(writer, rendered)!; }
 
     var before: uint = 0;
     var after: uint = 0;
     PaddingAround(spec, occupied, numeric, @before, @after);
-    try WriteFill(writer, spec, before);
-    try WriteBytes(writer, rendered);
-    return try WriteFill(writer, spec, after);
+    WriteFill(writer, spec, before)!;
+    WriteBytes(writer, rendered)!;
+    return WriteFill(writer, spec, after)!;
 }
 
 /// Writes `value`'s text under `spec`, applying the spec's width, fill and alignment around the text the value writes
@@ -99,7 +99,7 @@ pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8
 pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: FormatSpec) -> !FormatError {
     var unpadded = spec;
     unpadded.width = 0;
-    if spec.width == 0u { return try value.WriteDisplay(writer, unpadded); }
+    if spec.width == 0u { return value.WriteDisplay(writer, unpadded)!; }
     var room: char8[256];
     var buffer = BufferWriter::New(room[..]);
     let into: &var TextWriter = buffer;
@@ -108,8 +108,8 @@ pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: For
     } catch {
         error => {
             if error != FormatError::InsufficientCapacity { throw error; }
-            return try value.WriteDisplay(writer, unpadded);
+            return value.WriteDisplay(writer, unpadded)!;
         },
     }
-    return try WriteAligned(writer, spec, buffer.Written(), false);
+    return WriteAligned(writer, spec, buffer.Written(), false)!;
 }

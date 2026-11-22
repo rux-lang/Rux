@@ -13,9 +13,9 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func Touch(allocator: Allocator, path: Path) {
-    var made = try File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
+    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
     Assert(made.IsOpen(), "a file is made");
-    try made.Close() catch { _ => Panic("and closed") };
+    made.Close() catch { _ => Panic("and closed") };
 }
 
 func NameOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> OsStringView {
@@ -36,13 +36,13 @@ func Main() -> int ! IoError {
     let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", accentHolder);
 
     // Fresh ground: an earlier run may have left the tree behind, and cleanup is not the thing under test yet.
-    try DeleteFile(allocator, one) catch { _ => {} };
-    try DeleteFile(allocator, two) catch { _ => {} };
-    try DeleteFile(allocator, accent) catch { _ => {} };
-    try DeleteDirectory(allocator, dir) catch { _ => {} };
+    DeleteFile(allocator, one) catch { _ => {} };
+    DeleteFile(allocator, two) catch { _ => {} };
+    DeleteFile(allocator, accent) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
 
     // Made once; a second claim on the name is refused with the reason named.
-    try MakeDirectory(allocator, dir);
+    MakeDirectory(allocator, dir)!;
     try {
         MakeDirectory(allocator, dir);
         Panic("expected a failure");
@@ -55,7 +55,7 @@ func Main() -> int ! IoError {
     Touch(allocator, accent);
 
     // Read back: three names, each one expected, the accent intact in the system's own units.
-    var iterator = try ReadDirectory(allocator, dir);
+    var iterator = ReadDirectory(allocator, dir)!;
     var oneWantHolder = OsString::New(allocator);
     let oneWant = NameOf(allocator, "one.txt", oneWantHolder);
     var twoWantHolder = OsString::New(allocator);
@@ -67,7 +67,7 @@ func Main() -> int ! IoError {
     var seenAccent = false;
     var count: uint = 0;
     while true {
-        let next = try iterator.Next() catch { _ => Panic("the enumeration ends rather than fails") };
+        let next = iterator.Next() catch { _ => Panic("the enumeration ends rather than fails") };
         match move next {
             .Some(entry) => {
                 count = count + 1;
@@ -92,10 +92,10 @@ func Main() -> int ! IoError {
     iterator.Release();
 
     // Deletion respects fullness: refused while anything is inside, clean once nothing is.
-    Assert((try? DeleteDirectory(allocator, dir)) is none, "a full directory refuses deletion");
-    try DeleteFile(allocator, one);
-    try DeleteFile(allocator, two);
-    try DeleteFile(allocator, accent);
+    Assert((DeleteDirectory(allocator, dir) !! none) is none, "a full directory refuses deletion");
+    DeleteFile(allocator, one)!;
+    DeleteFile(allocator, two)!;
+    DeleteFile(allocator, accent)!;
     try {
         DeleteFile(allocator, one);
         Panic("expected a failure");
@@ -103,12 +103,12 @@ func Main() -> int ! IoError {
         refusal => Assert(refusal.kind == IoErrorKind::NotFound, "deleting it again is NotFound"),
     }
 
-    var emptied = try ReadDirectory(allocator, dir);
-    let nothing = try emptied.Next() catch { _ => Panic("the emptied directory reads without failing") };
+    var emptied = ReadDirectory(allocator, dir)!;
+    let nothing = emptied.Next() catch { _ => Panic("the emptied directory reads without failing") };
     Assert(!(nothing is OsString), "and holds nothing");
     emptied.Release();
 
-    try DeleteDirectory(allocator, dir);
+    DeleteDirectory(allocator, dir)!;
     try {
         ReadDirectory(allocator, dir);
         Panic("expected a failure");

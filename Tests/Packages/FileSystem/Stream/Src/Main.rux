@@ -32,23 +32,23 @@ func Main() -> int ! IoError {
     let scratch = Path::FromView(holder.View());
 
     // Write a known body and make it durable.
-    var written = try File::Open(allocator, scratch, OpenOptions::Writing());
+    var written = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(written.IsOpen(), "the scratch file opens for writing");
-    try WriteAll(written, TextBytes("0123456789"));
-    try written.Sync();
-    try Assert(written.Size() == 10, "ten bytes long, measured while open");
-    try written.Close();
+    WriteAll(written, TextBytes("0123456789"))!;
+    written.Sync()!;
+    Assert(written.Size()! == 10, "ten bytes long, measured while open");
+    written.Close()!;
 
     // Read it back: from the start, from the end, from the middle.
-    var reading = try File::Open(allocator, scratch, OpenOptions::Reading());
+    var reading = File::Open(allocator, scratch, OpenOptions::Reading())!;
     Assert(reading.IsOpen(), "it reopens for reading");
     var storage: char8[16];
     let head = storage[..4];
-    try ReadExact(reading, head);
+    ReadExact(reading, head)!;
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
 
-    try Assert(reading.Seek(SeekFrom::End, -4) == 6, "four back from the end is position six");
-    try ReadExact(reading, head);
+    Assert(reading.Seek(SeekFrom::End, -4)! == 6, "four back from the end is position six");
+    ReadExact(reading, head)!;
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     let room = storage[..4];
     try {
@@ -57,46 +57,46 @@ func Main() -> int ! IoError {
     } catch {
         refusal => Assert(refusal.IsEnd(), "past them is the end"),
     }
-    try Assert(reading.Seek(SeekFrom::Current, 0) == 10, "and the position says so");
-    try reading.Close();
+    Assert(reading.Seek(SeekFrom::Current, 0)! == 10, "and the position says so");
+    reading.Close()!;
 
     // Cutting the file discards the tail and nothing else.
     var cutOptions = OpenOptions::New();
     cutOptions.write = true;
-    var cutting = try File::Open(allocator, scratch, cutOptions);
+    var cutting = File::Open(allocator, scratch, cutOptions)!;
     Assert(cutting.IsOpen(), "it reopens for cutting");
-    try cutting.SetLength(4);
-    try Assert(cutting.Size() == 4, "four bytes remain");
-    try cutting.Close();
+    cutting.SetLength(4)!;
+    Assert(cutting.Size()! == 4, "four bytes remain");
+    cutting.Close()!;
 
     // Appended writes land at the end no matter where the position was seeked.
-    var appending = try File::Open(allocator, scratch, OpenOptions::Appending());
+    var appending = File::Open(allocator, scratch, OpenOptions::Appending())!;
     Assert(appending.IsOpen(), "it reopens for appending");
-    try Assert(appending.Seek(SeekFrom::Start, 0) == 0, "the position moves to the start");
-    try WriteAll(appending, TextBytes("XY"));
-    try Assert(appending.Size() == 6, "at the end, not the position");
-    try appending.Close();
+    Assert(appending.Seek(SeekFrom::Start, 0)! == 0, "the position moves to the start");
+    WriteAll(appending, TextBytes("XY"))!;
+    Assert(appending.Size()! == 6, "at the end, not the position");
+    appending.Close()!;
 
     // The buffered machinery stacks on a file without knowing it left memory.
-    var lines = try File::Open(allocator, scratch, OpenOptions::Writing());
+    var lines = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(lines.IsOpen(), "the file opens once more for line content");
-    try WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma"));
-    try lines.Close();
-    var back = try File::Open(allocator, scratch, OpenOptions::Reading());
+    WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma"))!;
+    lines.Close()!;
+    var back = File::Open(allocator, scratch, OpenOptions::Reading())!;
     // Safety: `back` is a local of this function that outlives `buffered`, the only holder of the handle.
-    var buffered = try BufferedReader::New(allocator, @back as Reader, 8);
+    var buffered = BufferedReader::New(allocator, @back as Reader, 8)!;
     var builder = StringBuilder::New(allocator);
-    try ReadTextLine(buffered, builder, 64);
+    ReadTextLine(buffered, builder, 64)!;
     let alpha = builder.TakeString();
     let alphaWant = View("alpha");
     Assert(alpha.View().Equals(alphaWant), "normalized across the CRLF");
     var second = StringBuilder::New(allocator);
-    try ReadTextLine(buffered, second, 64);
+    ReadTextLine(buffered, second, 64)!;
     let beta = second.TakeString();
     let betaWant = View("beta");
     Assert(beta.View().Equals(betaWant), "exactly");
     var third = StringBuilder::New(allocator);
-    try ReadTextLine(buffered, third, 64);
+    ReadTextLine(buffered, third, 64)!;
     let gamma = third.TakeString();
     let gammaWant = View("gamma");
     Assert(gamma.View().Equals(gammaWant), "with everything before the end");
@@ -109,17 +109,17 @@ func Main() -> int ! IoError {
     }
     last.Release();
     buffered.Release();
-    try back.Close();
+    back.Close()!;
 
     // A handle to a file that has since been closed is not unsafe, it is refused: the file checks its own handle, so
     // every operation through the interface value reports `InvalidHandle` rather than reaching a closed one. This is
     // worth pinning, because it is what makes the dangerous case — outliving the file itself — the *only* dangerous
     // case.
-    var closed = try File::Open(allocator, scratch, OpenOptions::Reading());
+    var closed = File::Open(allocator, scratch, OpenOptions::Reading())!;
     Assert(closed.IsOpen(), "a file opens");
     // Safety: `closed` is a local of this function that outlives `stale`.
     var stale = @closed as Reader;
-    try closed.Close();
+    closed.Close()!;
     var storage2: char8[4];
     storage2[0] = c8'z';
     var caughtRefused: IoError? = none;
@@ -133,13 +133,13 @@ func Main() -> int ! IoError {
     Assert(storage2[0] == c8'z', "having read nothing");
 
     // And the handle addresses the file, not a copy of it: what goes out through one is what the other reports.
-    var shared = try File::Open(allocator, scratch, OpenOptions::Writing());
+    var shared = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(shared.IsOpen(), "a file opens for writing");
     // Safety: `shared` is a local of this function that outlives `held`.
     var held = @shared as Writer;
-    try WriteAll(held, TextBytes("abcd"));
-    try Assert(shared.Size() == 4, "and the file itself measures them");
-    try shared.Close();
+    WriteAll(held, TextBytes("abcd"))!;
+    Assert(shared.Size()! == 4, "and the file itself measures them");
+    shared.Close()!;
 
     return 0;
 }

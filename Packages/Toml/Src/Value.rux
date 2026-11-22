@@ -138,7 +138,7 @@ extend TomlValue {
     pub func Text(allocator: Allocator, value: char8[..]) -> Self ! TextError {
         var held = Self::Table(allocator);
         held.kind = TomlKind::Text;
-        held.text = try String::FromBytes(allocator, value);
+        held.text = String::FromBytes(allocator, value)!;
         return move held;
     }
 

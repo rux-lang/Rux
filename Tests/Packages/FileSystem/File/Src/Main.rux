@@ -29,16 +29,16 @@ func Main() -> int ! IoError {
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
     var scratchHolder = OsString::New(allocator);
     let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", scratchHolder);
-    var written = try File::Open(allocator, scratch, OpenOptions::Writing());
+    var written = File::Open(allocator, scratch, OpenOptions::Writing())!;
     Assert(written.IsOpen(), "writing creates the missing file");
-    try written.Close();
-    Assert(!written.IsOpen() && (try? written.Close()) is .Some(_), "a second close is a no-op");
+    written.Close()!;
+    Assert(!written.IsOpen() && (written.Close() !! none) is .Some(_), "a second close is a no-op");
 
     // Now that it exists: reading finds it, and a creation claim is refused.
-    var opened = try File::Open(allocator, scratch, OpenOptions::Reading());
+    var opened = File::Open(allocator, scratch, OpenOptions::Reading())!;
     var readable = move opened;
     Assert(readable.IsOpen(), "the created file reads");
-    try readable.Close();
+    readable.Close()!;
     var claimed = OpenOptions::New();
     claimed.write = true;
     claimed.createNew = true;
@@ -51,9 +51,9 @@ func Main() -> int ! IoError {
     }
 
     // Appending opens what Writing made.
-    var appended = try File::Open(allocator, scratch, OpenOptions::Appending());
+    var appended = File::Open(allocator, scratch, OpenOptions::Appending())!;
     Assert(appended.IsOpen(), "appending opens the existing file");
-    try appended.Close();
+    appended.Close()!;
 
     // The contradictions are refused before the platform is asked.
     var nothing = OpenOptions::New();

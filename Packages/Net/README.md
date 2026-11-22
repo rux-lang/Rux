@@ -29,11 +29,11 @@ import Io::{ IoError, ReadExact, WriteAll };
 import Net::{ Resolve, TcpStream };
 
 func Greet(host: char8[..]) -> !IoError {
-    let addresses = try Resolve(SystemAllocator::New(), host, 7);
-    var stream = try TcpStream::Connect(addresses.AsSlice()[0]);
-    try WriteAll(stream, "hello");
+    let addresses = Resolve(SystemAllocator::New(), host, 7)!;
+    var stream = TcpStream::Connect(addresses.AsSlice()[0])!;
+    WriteAll(stream, "hello")!;
     var echoed: char8[5] = ['\0'; 5];
-    try ReadExact(stream, echoed[..]);
+    ReadExact(stream, echoed[..])!;
 }
 ```
 

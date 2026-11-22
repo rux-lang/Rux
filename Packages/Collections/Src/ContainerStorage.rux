@@ -26,7 +26,7 @@ func ElementLayout<T>(count: uint) -> Layout ! AllocError {
     // faults, however few bytes it writes. One byte apiece gives the run a real address; every index lands on the
     // same one, which is exactly right for a type with nothing to distinguish.
     let elementSize = if sizeof(T) == 0 { 1u } else { sizeof(T) };
-    let bytes = try ByteSize(count, elementSize);
+    let bytes = ByteSize(count, elementSize)!;
 
     let alignment = if alignof(T) == 0 { 1u } else { alignof(T) };
     // A layout the allocator's own rules reject has a rounded size past the end of the address space. The element's
@@ -37,8 +37,8 @@ func ElementLayout<T>(count: uint) -> Layout ! AllocError {
 // Storage for `count` elements, uninitialized, or why there is none. Nothing is written to it: a container fills
 // what it hands out.
 func TryAllocateBlock<T>(allocator: Allocator, count: uint) -> (*var T) ! AllocError {
-    let layout = try ElementLayout<T>(count);
-    let block = try allocator.Allocate(layout);
+    let layout = ElementLayout<T>(count)!;
+    let block = allocator.Allocate(layout)!;
     // Safety: the allocator answered `ElementLayout<T>(count)`, so the block is aligned for `T` and has room for
     // `count` of them.
     return block as *var T;
@@ -46,7 +46,7 @@ func TryAllocateBlock<T>(allocator: Allocator, count: uint) -> (*var T) ! AllocE
 
 // Storage for `count` elements, uninitialized; terminates the program when there is none.
 func AllocateBlock<T>(allocator: Allocator, count: uint) -> *var T {
-    return try TryAllocateBlock<T>(allocator, count) catch { error => AllocationFailed(error) };
+    return TryAllocateBlock<T>(allocator, count) catch { error => AllocationFailed(error) };
 }
 
 // Storage for `newCount` elements holding what the first `min(oldCount, newCount)` of the old block held. On failure
@@ -54,9 +54,9 @@ func AllocateBlock<T>(allocator: Allocator, count: uint) -> *var T {
 // and leave its container as it was.
 func TryReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, newCount: uint)
     -> (*var T) ! AllocError {
-    let oldLayout = try ElementLayout<T>(oldCount);
-    let newLayout = try ElementLayout<T>(newCount);
-    let moved = try allocator.Reallocate(block as *var opaque, oldLayout, newLayout);
+    let oldLayout = ElementLayout<T>(oldCount)!;
+    let newLayout = ElementLayout<T>(newCount)!;
+    let moved = allocator.Reallocate(block as *var opaque, oldLayout, newLayout)!;
     // Safety: the allocator answered `ElementLayout<T>(newCount)`, so the block is aligned for `T` and has room for
     // `newCount` of them.
     return moved as *var T;
@@ -64,7 +64,7 @@ func TryReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, 
 
 // Storage for `newCount` elements holding what the old block held; terminates the program when there is none.
 func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, newCount: uint) -> *var T {
-    return try TryReallocateBlock<T>(allocator, block, oldCount, newCount) catch { error => AllocationFailed(error) };
+    return TryReallocateBlock<T>(allocator, block, oldCount, newCount) catch { error => AllocationFailed(error) };
 }
 
 // Gives back storage this package took for `count` elements. The elements themselves are the container's business:
@@ -72,7 +72,7 @@ func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, new
 func ReleaseBlock<T>(allocator: Allocator, block: *var T, count: uint) {
     // The layout that allocated it computed cleanly, so this one does too; there is no honest way to release a block
     // whose size cannot be named, and nothing to report it to.
-    let layout = try ElementLayout<T>(count) catch { _ => return };
+    let layout = ElementLayout<T>(count) catch { _ => return };
     // The block came from this allocator with this layout, and there is no caller to report a refusal to.
-    try allocator.Deallocate(block as *var opaque, layout) catch { _ => {} };
+    allocator.Deallocate(block as *var opaque, layout) catch { _ => {} };
 }

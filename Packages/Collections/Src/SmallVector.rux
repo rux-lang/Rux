@@ -103,7 +103,7 @@ extend SmallVector<T> {
     // Moves the elements to a block of at least `required` elements.
     func Grow(&var self, required: uint) {
         if required <= self.Capacity() { return; }
-        let capacity = try GrowCapacity(self.Capacity(), required, MinimumVectorCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
+        let capacity = GrowCapacity(self.Capacity(), required, MinimumVectorCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
         if self.heap != null {
             self.heap = ReallocateBlock<T>(self.allocator, self.heap, self.heapCapacity, capacity);
             self.heapCapacity = capacity;
@@ -128,7 +128,7 @@ extend SmallVector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/small-vector#push
     pub func Push(&var self, value: T) {
         if self.length == self.Capacity() {
-            self.Grow(try AddLength(self.length, 1) catch { error => AllocationFailed(error) });
+            self.Grow(AddLength(self.length, 1) catch { error => AllocationFailed(error) });
         }
         let items = self.WritableItems();
         // Safety: the small-vector invariant: `length < Capacity()`, checked or grown above, so the slot is room the

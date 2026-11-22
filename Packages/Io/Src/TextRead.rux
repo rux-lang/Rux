@@ -32,7 +32,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
     var sawAnything = false;
     while true {
         var ended = false;
-        try reader.Fill() catch {
+        reader.Fill() catch {
             error if error.IsEnd() => {
                 ended = true;
             },
@@ -48,7 +48,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 if appended + 1 > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
-                else if (try? builder.AppendAscii(c8'\r')) is none {
+                else if (builder.AppendAscii(c8'\r') !! none) is none {
                     failure = IoErrorKind::Other;
                 }
             }
@@ -131,7 +131,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 if appended + 1 > limit {
                     failure = IoErrorKind::LimitExceeded;
                 }
-                else if (try? builder.AppendAscii(c8'\r')) is none {
+                else if (builder.AppendAscii(c8'\r') !! none) is none {
                     failure = IoErrorKind::Other;
                 }
                 else {
@@ -172,7 +172,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 var probe = content;
                 var valid = true;
                 var reason = Utf8Error::InvalidStart;
-                try Validate(piece) catch {
+                Validate(piece) catch {
                     problem => {
                         probe = problem.index;
                         reason = problem.reason;

@@ -25,21 +25,21 @@ func Main() -> int {
 
     let key = 7;
     let value = 2.5;
-    Expect(allocator, try? Render(allocator, "{key} = {value}"), "7 = 2.5", "two bindings");
-    Expect(allocator, try? Render(allocator, "{key} = {value}"),
-           Rendered(allocator, try? Render(allocator, "{} = {}", key, value)),
+    Expect(allocator, Render(allocator, "{key} = {value}") !! none, "7 = 2.5", "two bindings");
+    Expect(allocator, Render(allocator, "{key} = {value}") !! none,
+           Rendered(allocator, Render(allocator, "{} = {}", key, value) !! none),
            "as the positional call");
 
     let point = Point { x: 3, y: -4 };
-    Expect(allocator, try? Render(allocator, "({point.x}, {point.y})"), "(3, -4)", "field paths");
-    Expect(allocator, try? Render(allocator, "[{point.x:>4}]"), "[   3]", "a field path with a spec");
+    Expect(allocator, Render(allocator, "({point.x}, {point.y})") !! none, "(3, -4)", "field paths");
+    Expect(allocator, Render(allocator, "[{point.x:>4}]") !! none, "[   3]", "a field path with a spec");
     let labeled = Labeled { name: StringView::FromValidated("origin"), at: Point { x: 0, y: 1 } };
-    Expect(allocator, try? Render(allocator, "{labeled.name} at {labeled.at.y}"), "origin at 1", "a nested field path");
+    Expect(allocator, Render(allocator, "{labeled.name} at {labeled.at.y}") !! none, "origin at 1", "a nested field path");
 
-    Expect(allocator, try? Render(allocator, "{{key}} is {key}"), "{key} is 7", "doubled braces stay literal");
-    Expect(allocator, try? Render(allocator, "{Greeting}!"), "42!", "a module constant");
-    Expect(allocator, try? Render(allocator, "{key}{key}"), "77", "a name written twice");
-    Expect(allocator, try? Render(allocator, "no placeholders"), "no placeholders", "a literal without placeholders");
+    Expect(allocator, Render(allocator, "{{key}} is {key}") !! none, "{key} is 7", "doubled braces stay literal");
+    Expect(allocator, Render(allocator, "{Greeting}!") !! none, "42!", "a module constant");
+    Expect(allocator, Render(allocator, "{key}{key}") !! none, "77", "a name written twice");
+    Expect(allocator, Render(allocator, "no placeholders") !! none, "no placeholders", "a literal without placeholders");
     return 0;
 }
 

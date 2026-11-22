@@ -993,7 +993,7 @@ func StreamedScalars(text: char8[..], clean: &var bool) -> uint {
     var reader = TomlEventReader::New(text);
     var count: uint = 0;
     while true {
-        let next = try reader.Next() catch {
+        let next = reader.Next() catch {
             _ => {
                 clean = false;
                 return count;
@@ -1046,7 +1046,7 @@ func TreeScalars(value: &TomlValue) -> uint {
 // A document this test knows TOML accepts. A refusal hands back nothing, so there is nothing to fall back on and
 // the assertion is what stops the run.
 func Accepted(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    return try TomlParse(allocator, text) catch { _ => Panic(note) };
+    return TomlParse(allocator, text) catch { _ => Panic(note) };
 }
 
 // Whether a document was refused, asked without consuming the outcome so the refusal can be inspected after.

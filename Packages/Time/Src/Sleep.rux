@@ -180,7 +180,7 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> !TimeError {
     var attempts: uint = 0;
     while attempts < MaximumWaitAttempts {
         attempts = attempts + 1;
-        let remaining = try waiter.WaitFor(left);
+        let remaining = waiter.WaitFor(left)!;
         if remaining.IsZero() || remaining.IsNegative() { return; }
         // A waiter that hands back everything it was given, without failing, has not waited. Counting the attempt
         // rather than trusting it is what bounds the loop.
@@ -205,5 +205,5 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> !TimeError {
 pub func SleepFor(span: Duration) -> !TimeError {
     var waiter = SystemWaiter::New();
     // A named value auto-borrows into the generic's `&var W`; taking its address would be a pointer.
-    return try SleepUsing<SystemWaiter>(waiter, span);
+    return SleepUsing<SystemWaiter>(waiter, span)!;
 }

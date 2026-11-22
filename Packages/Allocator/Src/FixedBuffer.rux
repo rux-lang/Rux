@@ -150,7 +150,7 @@ extend FixedBuffer : Allocator {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
-        return try self.Take(layout);
+        return self.Take(layout)!;
     }
 
     /// Accepts a release and rewinds only the most recent allocation.
@@ -188,7 +188,7 @@ extend FixedBuffer : Allocator {
         // zero-sized release that arrives with anything else — so returning the real address would hand the caller
         // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
         if newLayout.size == 0 {
-            try self.Deallocate(block, oldLayout);
+            self.Deallocate(block, oldLayout)!;
             return EmptyBlockAddress();
         }
 
@@ -196,7 +196,7 @@ extend FixedBuffer : Allocator {
             return block;
         }
 
-        let fresh = try self.Allocate(newLayout);
+        let fresh = self.Allocate(newLayout)!;
         let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
         // Safety: `fresh` was just allocated with `newLayout.size` bytes and the `Allocator` contract makes `block` a
         // distinct live allocation of `oldLayout.size` bytes, so both hold `keep` bytes and do not overlap.

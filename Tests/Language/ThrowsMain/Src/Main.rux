@@ -16,9 +16,9 @@ func Parse(text: int32) -> int32 ! Fault {
 }
 
 func Main() -> int ! Fault {
-    let parsed = try Parse(5i32);
+    let parsed = Parse(5i32)!;
     Assert(parsed == 5i32, "a success continues");
-    let recovered = try Parse(-1i32) catch { e => -e.code };
+    let recovered = Parse(-1i32) catch { e => -e.code };
     Assert(recovered == 1i32, "an error handled inside Main never reaches the exit");
-    return try Parse(0i32) * 7;
+    return Parse(0i32)! * 7;
 }

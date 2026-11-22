@@ -9,7 +9,7 @@ func Check(bits: uint512, expected: char8[..]) {
     var storage: char8[256];
     var cursor = ByteCursor::New(storage[..256]);
     let writer: &var TextWriter = cursor;
-    Assert((try? WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout)) is .Some(_),
+    Assert((WriteWideFloat(allocator, writer, FormatSpec::Plain(), bits, layout) !! none) is .Some(_),
            "extreme value renders");
     let text = cursor.Written();
     Assert(text.length == expected.length, "shortest limit text length");

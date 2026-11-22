@@ -61,7 +61,7 @@ module GenericSum::Shapes {
     }
 
     pub func Load(text: int32) -> int32 ! LoadError {
-        return try Read(text) catch { e => throw LoadError::Unreadable(e) };
+        return Read(text) catch { e => throw LoadError::Unreadable(e) };
     }
 
     pub func Lookup<T>(present: bool, value: T) -> T? {

@@ -30,13 +30,13 @@ func FailureOf(reason: WideDigitFailure) -> FormatError {
 pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
                     layout: &FloatLayout) -> !FormatError {
     let value = UnpackWide(bits, layout);
-    if value.class == WideClass::NaN { return try WriteAligned(writer, spec, "NaN", true); }
-    if value.class == WideClass::Infinity { return try WriteAligned(writer, spec, if value.negative {
+    if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true)!; }
+    if value.class == WideClass::Infinity { return WriteAligned(writer, spec, if value.negative {
         "-Inf"
     } else {
         "Inf"
-    }, true); }
-    if spec.HasPrecision() { return try WriteWidePrecision(allocator, writer, spec, value, layout); }
+    }, true)!; }
+    if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout)!; }
     var storage: char8[256];
     var digits: char8[160];
     var cursor = ByteCursor::New(storage[2..256]);
@@ -70,7 +70,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         storage[1] = c8'+';
         rendered = storage[1..rendered.length + 2];
     }
-    return try WriteAligned(writer, spec, rendered, true);
+    return WriteAligned(writer, spec, rendered, true)!;
 }
 
 // Fixed notation with exactly the requested precision in digits after the point. The text can be as long as the
@@ -84,7 +84,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let empty = Layout { size: 0, alignment: 1 };
     let blockLayout = Layout::Of(digitRoom + textRoom, 1u) ?? (empty);
     if blockLayout.size == 0 { AllocationFailed(AllocError::Unsupported); }
-    let block = try allocator.Allocate(blockLayout) catch { error => AllocationFailed(error) };
+    let block = allocator.Allocate(blockLayout) catch { error => AllocationFailed(error) };
     // Safety: `block` came from `Allocate` above with `digitRoom + textRoom` bytes at alignment one, every bit
     // pattern is a valid `char8`, and the block stays live until the `Deallocate` at the end; the first `digitRoom`
     // bytes hold the digits.
@@ -142,9 +142,9 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             failure = FormatError::ValueOutOfRange;
         }
         else {
-            try WriteAligned(writer, spec, rendered, true) catch { error => { failure = error; } };
+            WriteAligned(writer, spec, rendered, true) catch { error => { failure = error; } };
         }
     }
-    try allocator.Deallocate(block, blockLayout) catch { _ => {} };
+    allocator.Deallocate(block, blockLayout) catch { _ => {} };
     if failure is .Some(error) { throw error; }
 }

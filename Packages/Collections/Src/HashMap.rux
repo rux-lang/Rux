@@ -157,7 +157,7 @@ extend HashMap<K, V> {
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#insert
     pub func Insert(&var self, key: K, value: V) {
-        try self.TryInsert(move key, move value) catch { error => AllocationFailed(error) };
+        self.TryInsert(move key, move value) catch { error => AllocationFailed(error) };
     }
 
     /// Stores `value` under `key`, replacing whatever was there, or throws why the table could not grow.
@@ -184,13 +184,13 @@ extend HashMap<K, V> {
             },
             none => {}
         }
-        try self.Place(move key, move value, hashed);
+        self.Place(move key, move value, hashed)!;
     }
 
     // Places an entry whose key is absent, growing the table first when it is full, and reports the slot it took.
     // A failure leaves the table as it was; `key` and `value` are then destroyed here.
     func Place(&var self, key: K, value: V, hashed: uint64) -> uint ! AllocError {
-        try self.table.TryEnsureRoom(self.hash);
+        self.table.TryEnsureRoom(self.hash)!;
         // The table has room and the probe can still run past what a distance byte holds, when the keys collide
         // badly enough that a larger table would spread the same collisions over more slots.
         // Safety: `TryEnsureRoom` succeeded, so the capacity is nonzero.
@@ -232,7 +232,7 @@ extend HashMap<K, V> {
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-reserve
     pub func TryReserve(&var self, additional: uint) -> !AllocError {
-        try self.table.TryReserve(additional, self.hash);
+        self.table.TryReserve(additional, self.hash)!;
     }
 
     /// Releases the capacity the entry count does not need.
@@ -292,7 +292,7 @@ extend HashMap<K, V> {
             slot = present;
         }
         else {
-            slot = try self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
+            slot = self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
         }
         // Safety: by the table invariant `FindHashed` and `Place` name only an occupied slot below the capacity, and
         // the reference borrows `self`, so nothing can move the slot while it is in use.
@@ -323,7 +323,7 @@ extend HashMap<K, V> {
             none => {}
         }
 
-        try self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
+        self.Place(move key, move value, hashed) catch { error => AllocationFailed(error) };
         return none;
     }
 

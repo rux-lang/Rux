@@ -54,7 +54,7 @@ import Process::Command;
 func Version() -> bool ! IoError {
     var command = Command::New(SystemAllocator::New(), "git");
     command.Argument("--version");
-    let captured = try command.Capture(SystemAllocator::New());
+    let captured = command.Capture(SystemAllocator::New())!;
     return captured.Status().Success() && captured.Output().length > 0;
 }
 ```

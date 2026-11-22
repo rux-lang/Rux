@@ -36,9 +36,9 @@ extend Tracked {
 
 extend Tracked : Debug {
     func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try WriteBytes(writer, "T(");
-        try WriteNumber(writer, self.tag);
-        return try WriteAscii(writer, c8')');
+        WriteBytes(writer, "T(")!;
+        WriteNumber(writer, self.tag)!;
+        return WriteAscii(writer, c8')')!;
     }
 }
 
@@ -50,19 +50,19 @@ struct Spy {}
 
 extend Spy : Debug {
     func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try WriteAscii(writer, c8'w');
-        try WriteNumber(writer, spec.Width());
-        try WriteAscii(writer, c8'p');
-        return try WriteNumber(writer, spec.Precision());
+        WriteAscii(writer, c8'w')!;
+        WriteNumber(writer, spec.Width())!;
+        WriteAscii(writer, c8'p')!;
+        return WriteNumber(writer, spec.Precision())!;
     }
 }
 
 // A decimal count, written here because this package converts no numbers and depends on nothing that does.
 func WriteNumber(writer: &var TextWriter, value: uint) -> !FormatError {
     if value >= 10 {
-        try WriteNumber(writer, value / 10);
+        WriteNumber(writer, value / 10)!;
     }
-    return try WriteAscii(writer, ((value % 10) + 0x30) as char8);
+    return WriteAscii(writer, ((value % 10) + 0x30) as char8)!;
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -77,7 +77,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -85,21 +85,21 @@ func Spec(text: char8[..]) -> FormatSpec {
 func ShownOptional(value: &(StringView?), spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (try? WriteOptionalDebug<StringView>(writer, value, spec)) is none { return false; }
+    if (WriteOptionalDebug<StringView>(writer, value, spec) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownResult(value: &Result<StringView, StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (try? WriteResultDebug<StringView, StringView>(writer, value, spec)) is none { return false; }
+    if (WriteResultDebug<StringView, StringView>(writer, value, spec) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    if (try? WriteSliceDebug<StringView>(writer, items, spec)) is none { return false; }
+    if (WriteSliceDebug<StringView>(writer, items, spec) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -142,7 +142,7 @@ func Main() -> int {
     var spyStorage: char8[64];
     var spyWriter = BufferWriter::New(spyStorage[..64]);
     let spySink: &var TextWriter = spyWriter;
-    Assert((try? WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3"))) is .Some(_), "a run of spies is shown");
+    Assert((WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3")) !! none) is .Some(_), "a run of spies is shown");
     Assert(Same(spyWriter.Written(), "[w7p3, w7p3]"), "and every element was handed the caller's own specification");
 
     // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
@@ -151,9 +151,9 @@ func Main() -> int {
     var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7 });
     var storage: char8[128];
     var writer = BufferWriter::New(storage[..128]);
-    Assert((try? WriteOptionalDebug<Tracked>(writer, held, plain)) is .Some(_), "a move-only payload is shown");
+    Assert((WriteOptionalDebug<Tracked>(writer, held, plain) !! none) is .Some(_), "a move-only payload is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
-    Assert((try? WriteOptionalDebug<Tracked>(writer, held, plain)) is .Some(_), "so it can be shown again");
+    Assert((WriteOptionalDebug<Tracked>(writer, held, plain) !! none) is .Some(_), "so it can be shown again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(held is Tracked, "and the optional still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
@@ -164,7 +164,7 @@ func Main() -> int {
     var runStorage: char8[128];
     var runWriter = BufferWriter::New(runStorage[..128]);
     let runSink: &var TextWriter = runWriter;
-    Assert((try? WriteSliceDebug<Tracked>(runSink, elements[..], plain)) is .Some(_), "a move-only run is shown");
+    Assert((WriteSliceDebug<Tracked>(runSink, elements[..], plain) !! none) is .Some(_), "a move-only run is shown");
     Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
     Assert(destroyed == 0, "and not one of them was destroyed");
 

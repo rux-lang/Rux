@@ -187,7 +187,7 @@ extend StandardIn : Reader {
         }
         if served == into.length { return served; }
         when #target.os == .Windows {
-            if self.console { return try self.ReadConsole(into, served); }
+            if self.console { return self.ReadConsole(into, served)!; }
             var read: uint32 = 0;
             let room = into.length - served;
             let count = if room > 0x100000 { 0x100000u32 } else { room as uint32 };
@@ -330,7 +330,7 @@ extend StandardOut : Writer {
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-out#write
     pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        return try WriteRaw(self.handle, self.console, bytes);
+        return WriteRaw(self.handle, self.console, bytes)!;
     }
 
     /// Nothing: these writes hold nothing back.
@@ -374,7 +374,7 @@ extend StandardError : Writer {
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-error#write
     pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
-        return try WriteRaw(self.handle, self.console, bytes);
+        return WriteRaw(self.handle, self.console, bytes)!;
     }
 
     /// Nothing: these writes hold nothing back.

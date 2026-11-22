@@ -94,7 +94,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
     let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103) / 100000) as int + 3);
     if magnitude > largest { throw ParseError::Overflow(str.length); }
     if magnitude < smallest { return PackWide(negative, 0, 0, layout); }
-    return try RoundRatio(allocator, digits, decimalExponent, negative, layout, str.length);
+    return RoundRatio(allocator, digits, decimalExponent, negative, layout, str.length)!;
 }
 
 // The bits nearest to `digits` times ten to `decimalExponent`, found by exact division.
@@ -207,7 +207,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float80
 pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 ! ParseError {
     let layout = FloatLayout::Extended80();
-    let parsed = try ParseWideFloat(allocator, str, layout);
+    let parsed = ParseWideFloat(allocator, str, layout)!;
     return Float80::FromBits(parsed as uint128);
 }
 
@@ -218,7 +218,7 @@ pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 ! ParseEr
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float128
 pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 ! ParseError {
     let layout = FloatLayout::Binary128();
-    let parsed = try ParseWideFloat(allocator, str, layout);
+    let parsed = ParseWideFloat(allocator, str, layout)!;
     return Float128::FromBits(parsed as uint128);
 }
 
@@ -229,7 +229,7 @@ pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 ! Parse
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float256
 pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 ! ParseError {
     let layout = FloatLayout::Binary256();
-    let parsed = try ParseWideFloat(allocator, str, layout);
+    let parsed = ParseWideFloat(allocator, str, layout)!;
     return Float256::FromBits(parsed as uint256);
 }
 
@@ -240,6 +240,6 @@ pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 ! Parse
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float512
 pub func ParseFloat512(allocator: Allocator, str: char8[..]) -> Float512 ! ParseError {
     let layout = FloatLayout::Binary512();
-    let parsed = try ParseWideFloat(allocator, str, layout);
+    let parsed = ParseWideFloat(allocator, str, layout)!;
     return Float512::FromBits(parsed as uint512);
 }

@@ -15,11 +15,13 @@ rux add Rux/Json
 - **A document or a reason, never both** — `Parse` and `ParseWith` return a `JsonValue` and throw `JsonParseError`. A refusal hands back no value at all, which is the distinction the old shape could not make: it answered a refused parse with `null`, and `null` is a perfectly good document, so a caller who did not read the outcome beside it could not tell one from the other. Whatever the parser had built when it stopped is released rather than handed over, so a caller is never left holding a partial tree.
 
   ```rux
-  try {
-      Use(Parse(allocator, bytes));
-  } catch {
-      reason => Report(reason.Offset(), reason),
-  }
+  let document = Parse(allocator, bytes) catch {
+      reason => {
+          Report(reason.Offset(), reason);
+          return;
+      }
+  };
+  Use(document);
   ```
 
 - **Failures carry where, and the lexer's reason with them** — every case of `JsonParseError` holds the zero-based byte offset where parsing stopped, reachable through `Text::ParseFailure`, and `Lexical` nests the `JsonLexError` inside itself so a caller holding the failure cannot be holding half of it. `Display` gives the description and `Debug` names the case with its position: `JsonParseError::Lexical(MalformedNumber, 1)`.

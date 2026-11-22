@@ -316,7 +316,7 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {
         // Safety: `index + 1` is below `text.length`, checked above, so `index` is too.
         let fill = text.data[index];
-        if !IsFillByte(fill) { return try Malformed(index); }
+        if !IsFillByte(fill) { return Malformed(index)!; }
         spec.fill = fill;
         spec.align = align;
         index = index + 2;
@@ -347,7 +347,7 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
 
     var width: uint = 0;
     var after: uint = index;
-    if !ReadNumber(text, index, @width, @after) { return try Malformed(after); }
+    if !ReadNumber(text, index, @width, @after) { return Malformed(after)!; }
     spec.width = width;
     index = after;
 
@@ -355,9 +355,9 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     if index < text.length && text.data[index] == c8'.' {
         index = index + 1;
         // Safety: the read happens only when `index` is below `text.length`, checked first.
-        if index >= text.length || !IsDigit(text.data[index]) { return try Malformed(index); }
+        if index >= text.length || !IsDigit(text.data[index]) { return Malformed(index)!; }
         var precision: uint = 0;
-        if !ReadNumber(text, index, @precision, @after) { return try Malformed(after); }
+        if !ReadNumber(text, index, @precision, @after) { return Malformed(after)!; }
         spec.hasPrecision = true;
         spec.precision = precision;
         index = after;
@@ -365,13 +365,13 @@ pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
 
     if index < text.length {
         // Safety: `index` is below `text.length`, checked above.
-        if !IsStyleStart(text.data[index]) { return try Malformed(index); }
+        if !IsStyleStart(text.data[index]) { return Malformed(index)!; }
         let start = index;
         // Safety: `index` is below `text.length`, checked first in the same condition.
         while index < text.length && IsStyleByte(text.data[index]) {
             index = index + 1;
         }
-        if index != text.length { return try Malformed(index); }
+        if index != text.length { return Malformed(index)!; }
         // Safety: `start` is below `index`, which equals `text.length`, so the style lies inside `text`.
         spec.style = (@text.data[start])[..index - start];
         spec.base = BaseOfStyle(spec.style);

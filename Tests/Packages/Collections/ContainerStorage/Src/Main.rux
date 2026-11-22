@@ -44,7 +44,7 @@ extend RefusingAllocator : Allocator {
         // Safety: `state` points at the test's live `StorageState`.
         if self.state.refusing { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `StorageState`.
-        let block = try self.state.backing.Allocate(layout);
+        let block = self.state.backing.Allocate(layout)!;
         // Safety: `state` points at the test's live `StorageState`.
         self.state.live = self.state.live + 1;
         return block;
@@ -52,7 +52,7 @@ extend RefusingAllocator : Allocator {
 
     func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` points at the test's live `StorageState`.
-        try self.state.backing.Deallocate(block, layout);
+        self.state.backing.Deallocate(block, layout)!;
         // Safety: `state` points at the test's live `StorageState`.
         self.state.live = self.state.live - 1;
     }
@@ -64,7 +64,7 @@ extend RefusingAllocator : Allocator {
         // Safety: `state` points at the test's live `StorageState`.
         if self.state.refusing { throw .OutOfMemory; }
         // Safety: `state` points at the test's live `StorageState`.
-        return try self.state.backing.Reallocate(block, oldLayout, newLayout);
+        return self.state.backing.Reallocate(block, oldLayout, newLayout)!;
     }
 }
 
@@ -132,13 +132,13 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
 // What a reservation the test expects to be refused was refused with, or `none` when it was granted, so an expected
 // refusal cannot pass by accident.
 func Refused<T>(vector: &var Vector<T>, additional: uint) -> AllocError? {
-    try vector.TryReserve(additional) catch { error => return error };
+    vector.TryReserve(additional) catch { error => return error };
     return none;
 }
 
 // The same, for an append.
 func PushRefused(vector: &var Vector<int64>, value: int64) -> AllocError? {
-    try vector.TryPush(value) catch { error => return error };
+    vector.TryPush(value) catch { error => return error };
     return none;
 }
 
@@ -217,7 +217,7 @@ func Main() -> int {
     state.refusing = true;
     Assert(Refused(populated, 1024) == .Some(AllocError::OutOfMemory),
            "a reservation the allocator refuses is reported as out of memory");
-    Assert((try? populated.TryClone()) is none, "and so is a copy it cannot make storage for");
+    Assert((populated.TryClone() !! none) is none, "and so is a copy it cannot make storage for");
     Assert(populated.AsSlice().data == block, "leaving the block where it was");
     Assert(populated.Length() == length, "with the same length");
     Assert(populated.Capacity() == capacity, "and the same capacity");
@@ -242,7 +242,7 @@ func Main() -> int {
     }
 
     // The copy a willing allocator makes is independent of its source.
-    var copy = try populated.TryClone() catch { _ => Vector<int64>::New(plain) };
+    var copy = populated.TryClone() catch { _ => Vector<int64>::New(plain) };
     Assert(copy.Length() == length && copy.Get(0) == .Some(0), "a copy holds what its source holds");
     Assert(copy.AsSlice().data != populated.AsSlice().data, "in a block of its own");
 
@@ -251,11 +251,11 @@ func Main() -> int {
     var table = HashMap<int32, int32>::New(@hostile as Allocator, HashInt32, EqualsInt32);
     state.refusing = true;
     var insertRefused = false;
-    try table.TryInsert(1, 10) catch { error => { insertRefused = error == AllocError::OutOfMemory; } };
+    table.TryInsert(1, 10) catch { error => { insertRefused = error == AllocError::OutOfMemory; } };
     Assert(insertRefused, "a refused insertion is reported");
     Assert(table.Length() == 0, "and inserts nothing");
     state.refusing = false;
-    try table.TryInsert(1, 10) catch { _ => {} };
+    table.TryInsert(1, 10) catch { _ => {} };
     Assert(table.Get(1) == .Some(10), "the same insertion succeeds once the allocator is willing");
 
     // A deque grows through the same plumbing.

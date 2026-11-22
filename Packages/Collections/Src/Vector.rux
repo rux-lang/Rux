@@ -115,7 +115,7 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-clone
     pub func TryClone(&self) -> Self ! AllocError {
         var vector = Vector<T>::New(self.allocator);
-        try vector.TryReserve(self.length);
+        vector.TryReserve(self.length)!;
         vector.PushSlice(self.AsSlice());
         return move vector;
     }
@@ -150,14 +150,14 @@ extend Vector<T> {
     func TryGrow(&var self, required: uint) -> !AllocError {
         if required <= self.capacity { return; }
 
-        let capacity = try GrowCapacity(self.capacity, required, MinimumVectorCapacity, sizeof(T));
+        let capacity = GrowCapacity(self.capacity, required, MinimumVectorCapacity, sizeof(T))!;
 
         // Into a local first. A failed reallocation leaves the original block valid and the vector's own, so writing
         // the result straight into the field would drop the only pointer to the elements on failure.
-        let resized = try if self.data == null {
-            TryAllocateBlock<T>(self.allocator, capacity)
+        let resized = if self.data == null {
+            TryAllocateBlock<T>(self.allocator, capacity)!
         } else {
-            TryReallocateBlock<T>(self.allocator, self.data, self.capacity, capacity)
+            TryReallocateBlock<T>(self.allocator, self.data, self.capacity, capacity)!
         };
 
         self.data = resized;
@@ -166,7 +166,7 @@ extend Vector<T> {
 
     // `TryGrow`, terminating the program when the storage cannot be had.
     func Grow(&var self, required: uint) {
-        try self.TryGrow(required) catch { error => AllocationFailed(error) };
+        self.TryGrow(required) catch { error => AllocationFailed(error) };
     }
 
     /// Makes room for `additional` more elements on top of those already present.
@@ -176,7 +176,7 @@ extend Vector<T> {
     /// @param additional how many more elements to make room for
     /// @see https://rux-lang.dev/docs/api/collections/vector#reserve
     pub func Reserve(&var self, additional: uint) {
-        try self.TryReserve(additional) catch { error => AllocationFailed(error) };
+        self.TryReserve(additional) catch { error => AllocationFailed(error) };
     }
 
     /// Makes room for `additional` more elements on top of those already present, or throws why it could not.
@@ -188,7 +188,7 @@ extend Vector<T> {
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-reserve
     pub func TryReserve(&var self, additional: uint) -> !AllocError {
-        try self.TryGrow(AddLength(self.length, additional));
+        self.TryGrow(AddLength(self.length, additional)!)!;
     }
 
     /// Releases the capacity past the length.
@@ -262,7 +262,7 @@ extend Vector<T> {
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/vector#push
     pub func Push(&var self, value: T) {
-        try self.TryPush(move value) catch { error => AllocationFailed(error) };
+        self.TryPush(move value) catch { error => AllocationFailed(error) };
     }
 
     /// Appends one element, growing the storage when it is full, or throws why the storage could not grow.
@@ -274,7 +274,7 @@ extend Vector<T> {
     /// @see https://rux-lang.dev/docs/api/collections/vector#try-push
     pub func TryPush(&var self, value: T) -> !AllocError {
         if self.length == self.capacity {
-            try self.TryGrow(AddLength(self.length, 1));
+            self.TryGrow(AddLength(self.length, 1)!)!;
         }
         // Safety: the vector invariant: `length < capacity` now, checked or grown above, so the slot is allocated and
         // holds nothing yet.

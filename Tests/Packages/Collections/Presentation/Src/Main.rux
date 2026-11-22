@@ -38,10 +38,10 @@ extend Tracked {
 
 extend Tracked : Debug {
     func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try WriteBytes(writer, "T(");
+        WriteBytes(writer, "T(")!;
         let tag: int32 = self.tag;
-        try tag.WriteDebug(writer, spec);
-        return try WriteAscii(writer, c8')');
+        tag.WriteDebug(writer, spec)!;
+        return WriteAscii(writer, c8')')!;
     }
 }
 
@@ -58,7 +58,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -67,7 +67,7 @@ func ShownVector(value: &Vector<int32>, spec: FormatSpec, expected: char8[..]) -
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if (try? WriteVectorDebug<int32>(sink, value, spec)) is none { return false; }
+    if (WriteVectorDebug<int32>(sink, value, spec) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -76,7 +76,7 @@ func ShownArray(value: &Array<int32>, spec: FormatSpec, expected: char8[..]) -> 
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if (try? WriteArrayDebug<int32>(sink, value, spec)) is none { return false; }
+    if (WriteArrayDebug<int32>(sink, value, spec) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -85,7 +85,7 @@ func ShownDeque(value: &Deque<int32>, spec: FormatSpec, expected: char8[..]) -> 
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if (try? WriteDequeDebug<int32>(sink, value, spec)) is none { return false; }
+    if (WriteDequeDebug<int32>(sink, value, spec) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -154,9 +154,9 @@ func Main() -> int {
     // Safety: `storage` is a local array of 128 elements.
     var writer = BufferWriter::New((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    Assert((try? WriteVectorDebug<Tracked>(sink, owned, plain)) is .Some(_), "a move-only vector is shown");
+    Assert((WriteVectorDebug<Tracked>(sink, owned, plain) !! none) is .Some(_), "a move-only vector is shown");
     Assert(destroyed == 0, "and nothing was destroyed to show it");
-    Assert((try? WriteVectorDebug<Tracked>(sink, owned, plain)) is .Some(_), "so it can be shown again");
+    Assert((WriteVectorDebug<Tracked>(sink, owned, plain) !! none) is .Some(_), "so it can be shown again");
     Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(writer.Written(), "[T(0), T(1), T(2)][T(0), T(1), T(2)]"), "twice, identically");
     Assert(owned.Length() == 3, "and the vector still holds every element");
@@ -173,7 +173,7 @@ func Main() -> int {
     // Safety: `ringStorage` is a local array of 128 elements.
     var ringWriter = BufferWriter::New((@ringStorage[0])[..128]);
     let ringSink: &var TextWriter = ringWriter;
-    Assert((try? WriteDequeDebug<Tracked>(ringSink, ring, plain)) is .Some(_), "a wrapped move-only deque is shown");
+    Assert((WriteDequeDebug<Tracked>(ringSink, ring, plain) !! none) is .Some(_), "a wrapped move-only deque is shown");
     Assert(Same(ringWriter.Written(), "[T(0), T(1), T(2)]"), "front to back across the split");
     Assert(destroyed == 0, "and destroyed none of them");
 

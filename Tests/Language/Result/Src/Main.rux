@@ -42,8 +42,8 @@ func Main() -> int {
 
     Assert(Store(8) is .Success(4), "a returned value is stored as a success");
     Assert(Store(7) is .Failure(7), "a thrown error is stored as a failure");
-    Assert((try Checked(8) catch { _ => .Failure(0) }) is .Success(4), "a returned case takes the success type");
-    Assert((try Checked(3) catch { _ => .Failure(0) }) is .Failure(3), "on either path");
-    Assert((try? Checked(-1)) is none, "while the error still leaves through 'throws'");
+    Assert((Checked(8) catch { _ => .Failure(0) }) is .Success(4), "a returned case takes the success type");
+    Assert((Checked(3) catch { _ => .Failure(0) }) is .Failure(3), "on either path");
+    Assert((Checked(-1) !! none) is none, "while the error still leaves through 'throws'");
     return 0;
 }

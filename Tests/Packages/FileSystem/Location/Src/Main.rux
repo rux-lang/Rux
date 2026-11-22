@@ -14,9 +14,9 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func Touch(allocator: Allocator, path: Path) {
-    var made = try File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
+    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { _ => Panic("a file is made") };
     Assert(made.IsOpen(), "a file is made");
-    try made.Close() catch { _ => Panic("and closed") };
+    made.Close() catch { _ => Panic("and closed") };
 }
 
 // Whether `buffer` ends with `tail`, which is how a path whose front is the machine's own is checked.
@@ -43,7 +43,7 @@ func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     // The working directory is absolute, and reading it does not disturb anything.
-    var here = try CurrentDirectory(allocator);
+    var here = CurrentDirectory(allocator)!;
     Assert(!here.IsEmpty(), "and is not empty");
     Assert(IsAbsolute(Path::FromView(here.View())), "and is absolute");
 
@@ -51,19 +51,19 @@ func Main() -> int ! IoError {
     let dir = PathOf(allocator, "Bin/FileSystemLoc.tmp", dirHolder);
     var fileHolder = OsString::New(allocator);
     let file = PathOf(allocator, "Bin/FileSystemLoc.tmp/real.txt", fileHolder);
-    try DeleteFile(allocator, file) catch { _ => {} };
-    try DeleteDirectory(allocator, dir) catch { _ => {} };
-    try MakeDirectory(allocator, dir);
+    DeleteFile(allocator, file) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
+    MakeDirectory(allocator, dir)!;
     Touch(allocator, file);
 
     // Absolute is arithmetic: it answers for a relative name, and it answers for one that does not exist.
-    var made = try Absolute(allocator, file);
+    var made = Absolute(allocator, file)!;
     Assert(IsAbsolute(made.AsPath()), "and is absolute");
     Assert(EndsWith(made, "FileSystemLoc.tmp/real.txt"), "ending in what was asked for");
 
     var absentHolder = OsString::New(allocator);
     let absent = PathOf(allocator, "Bin/FileSystemLoc.tmp/never-existed.txt", absentHolder);
-    var imagined = try Absolute(allocator, absent) catch {
+    var imagined = Absolute(allocator, absent) catch {
         _ => Panic("a path that does not exist is still made absolute"),
     };
     Assert(EndsWith(imagined, "never-existed.txt"), "keeping the name it was given");
@@ -71,11 +71,11 @@ func Main() -> int ! IoError {
     // The dot segments are simplified lexically, without asking anything.
     var noisyHolder = OsString::New(allocator);
     let noisy = PathOf(allocator, "Bin/./FileSystemLoc.tmp/../FileSystemLoc.tmp/real.txt", noisyHolder);
-    var tidied = try Absolute(allocator, noisy);
+    var tidied = Absolute(allocator, noisy)!;
     Assert(EndsWith(tidied, "FileSystemLoc.tmp/real.txt"), "the dot segments simplify away");
 
     // Canonicalize is a question: it agrees for a file that is there, and refuses for one that is not.
-    var truth = try Canonicalize(allocator, file);
+    var truth = Canonicalize(allocator, file)!;
     Assert(IsAbsolute(truth.AsPath()), "to an absolute name");
     Assert(EndsWith(truth, "FileSystemLoc.tmp/real.txt"), "ending in the file's real name");
 
@@ -88,7 +88,7 @@ func Main() -> int ! IoError {
     }
 
     // Canonicalizing what is already canonical changes nothing.
-    var again = try Canonicalize(allocator, truth.AsPath());
+    var again = Canonicalize(allocator, truth.AsPath())!;
     Assert(again.Length() == truth.Length(), "canonicalization is settled after one pass");
 
     made.Release();
@@ -96,8 +96,8 @@ func Main() -> int ! IoError {
     tidied.Release();
     truth.Release();
     again.Release();
-    try DeleteFile(allocator, file);
-    try DeleteDirectory(allocator, dir);
+    DeleteFile(allocator, file)!;
+    DeleteDirectory(allocator, dir)!;
 
     return 0;
 }

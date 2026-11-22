@@ -29,7 +29,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = try ParseFormatSpec(text) catch { _ => Panic("the test's specification is valid") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the test's specification is valid") };
     return spec;
 }
 
@@ -37,11 +37,11 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter::New(storage[..192]);
-    Assert((try? value.WriteDisplay(writer, spec)) is .Some(_), "a constrained receiver renders");
+    Assert((value.WriteDisplay(writer, spec) !! none) is .Some(_), "a constrained receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Display = value;
-    Assert((try? shown.WriteDisplay(writer, spec)) is .Some(_), "an interface receiver renders");
+    Assert((shown.WriteDisplay(writer, spec) !! none) is .Some(_), "an interface receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -49,11 +49,11 @@ func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
 func Inspected<T: Debug>(value: &T, expected: char8[..]) {
     var storage: char8[192];
     var writer = BufferWriter::New(storage[..192]);
-    Assert((try? value.WriteDebug(writer, FormatSpec::Plain())) is .Some(_), "a constrained debug receiver renders");
+    Assert((value.WriteDebug(writer, FormatSpec::Plain()) !! none) is .Some(_), "a constrained debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
     writer.Clear();
     let shown: &Debug = value;
-    Assert((try? shown.WriteDebug(writer, FormatSpec::Plain())) is .Some(_), "an interface debug receiver renders");
+    Assert((shown.WriteDebug(writer, FormatSpec::Plain()) !! none) is .Some(_), "an interface debug receiver renders");
     Assert(Same(writer.Written(), expected), expected);
 }
 
@@ -61,7 +61,7 @@ func Inspected<T: Debug>(value: &T, expected: char8[..]) {
 func Refused<T: Display>(value: &T, spec: FormatSpec) -> bool {
     var storage: char8[16];
     var writer = BufferWriter::New(storage[..16]);
-    return (try? value.WriteDisplay(writer, spec)) is none;
+    return (value.WriteDisplay(writer, spec) !! none) is none;
 }
 
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
@@ -78,10 +78,10 @@ func InspectedEscape<T: Debug>(value: &T, high: char8[..], low: char8[..]) {
     var storage: char8[192];
     var expected = BufferWriter::New(storage[..192]);
     let sink: &var TextWriter = expected;
-    Assert((try? WriteBytes(sink, "'\\u{")) is .Some(_), "the expected prefix fits");
-    Assert((try? WriteBytes(sink, high)) is .Some(_), "the expected high digits fit");
-    Assert((try? WriteBytes(sink, low)) is .Some(_), "the expected low digits fit");
-    Assert((try? WriteBytes(sink, "}'")) is .Some(_), "the expected suffix fits");
+    Assert((WriteBytes(sink, "'\\u{") !! none) is .Some(_), "the expected prefix fits");
+    Assert((WriteBytes(sink, high) !! none) is .Some(_), "the expected high digits fit");
+    Assert((WriteBytes(sink, low) !! none) is .Some(_), "the expected low digits fit");
+    Assert((WriteBytes(sink, "}'") !! none) is .Some(_), "the expected suffix fits");
     Inspected<T>(value, expected.Written());
 }
 
@@ -136,8 +136,8 @@ func Main() -> int {
 
     // Through Render, as an ordinary variadic argument.
     let allocator = SystemAllocator::New();
-    Assert(Rendered(try? Render(allocator, "[{}]", letter), "[A]"), "a char512 is a Render argument");
-    Assert(Rendered(try? Render(allocator, "{:>4}|{}", face, accented), "   😀|é"), "padded, beside another");
+    Assert(Rendered(Render(allocator, "[{}]", letter) !! none, "[A]"), "a char512 is a Render argument");
+    Assert(Rendered(Render(allocator, "{:>4}|{}", face, accented) !! none, "   😀|é"), "padded, beside another");
 
     // Values below 2^64 that are not characters render as a char64 of the same number does: the replacement
     // under Display, and the number itself under Debug.

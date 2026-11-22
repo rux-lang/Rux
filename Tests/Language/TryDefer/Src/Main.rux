@@ -46,7 +46,7 @@ func Passes(journal: *var Journal) -> int32 ! Failure {
     let guard = Guard { journal, id: 30i32 };
     // Safety: `journal` is `@journal` from `Main`, which outlives this call.
     defer (*journal).Note(31i32);
-    try Fail(1i32);
+    Fail(1i32)!;
     // Safety: `journal` is `@journal` from `Main`, which outlives this call.
     (*journal).Note(99i32);
     return guard.id;
@@ -58,7 +58,7 @@ struct Pair {
 }
 
 func Swallow(code: int32) -> int32 {
-    return (try? Fail(code)) ?? -1i32;
+    return (Fail(code) !! none) ?? -1i32;
 }
 
 func Main() -> int {
@@ -90,7 +90,7 @@ func Main() -> int {
 
     // An error passing to the caller runs the function's defers and destroys its locals.
     journal = Journal { entries: [0i32; 8], count: 0i32 };
-    Assert((try? Passes(@journal)) == none, "the error reached the caller");
+    Assert((Passes(@journal) !! none) == none, "the error reached the caller");
     Assert(journal.count == 2i32, "no statement after the throw ran");
     Assert(journal.entries[0] == 31i32 && journal.entries[1] == 30i32, "defer, then destructor");
 
@@ -108,10 +108,10 @@ func Main() -> int {
     journal = Journal { entries: [0i32; 8], count: 0i32 };
     if true {
         defer if true {
-            let code = try Fail(4i32) catch { e => e.code };
+            let code = Fail(4i32) catch { e => e.code };
             journal.Note(code);
         }
-        defer journal.Note((try? Fail(0i32)) ?? 6i32);
+        defer journal.Note((Fail(0i32) !! none) ?? 6i32);
     }
     Assert(journal.count == 2i32, "both deferred statements ran");
     Assert(journal.entries[0] == 0i32 && journal.entries[1] == 4i32, "each handled its own error");

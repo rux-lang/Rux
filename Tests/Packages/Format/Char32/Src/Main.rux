@@ -13,7 +13,7 @@ func Check(value: char32, length: uint, bytes: uint64, code: int) -> int {
     var cursor = ByteCursor::New(storage[..8]);
     let writer: &var TextWriter = cursor;
     let shown: char32 = value;
-    if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none {
+    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) is none {
         return code;
     }
     let actual = cursor.Written();

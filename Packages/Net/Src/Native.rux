@@ -346,7 +346,7 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
         let accepted = accept(handle, (@raw.bytes[0]) as *var opaque, @length);
         if accepted == INVALID_SOCKET { throw LastFailure(0); }
         KeepFromChildren(accepted);
-        try SetSocketNonBlocking(accepted, false) catch { _ => {} };
+        SetSocketNonBlocking(accepted, false) catch { _ => {} };
         // Safety: the documented contract makes `peer` a non-null pointer to the caller's writable
         // `SocketAddress`, and `raw` is a 32-byte local the system filled with a `sockaddr`.
         *peer = Decode(@raw.bytes[0]) ?? *peer;
@@ -360,7 +360,7 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
                 let result = Accept4(handle as int32, (@raw.bytes[0]) as *var opaque, @length, 0);
                 if result >= 0 {
                     KeepFromChildren(result as uint64);
-                    try SetSocketNonBlocking(result as uint64, false) catch { _ => {} };
+                    SetSocketNonBlocking(result as uint64, false) catch { _ => {} };
                     // Safety: the documented contract makes `peer` a non-null pointer to the caller's writable
                     // `SocketAddress`, and `raw` is a 32-byte local the system filled with a `sockaddr`.
                     *peer = Decode(@raw.bytes[0]) ?? *peer;
@@ -376,7 +376,7 @@ func AcceptSocket(handle: uint64, peer: *var SocketAddress) -> uint64 ! IoError 
                 };
                 if result >= 0 {
                     when #target.os == .FreeBSD {
-                        try SetSocketNonBlocking(result as uint64, false) catch { _ => {} };
+                        SetSocketNonBlocking(result as uint64, false) catch { _ => {} };
                     }
                     // Safety: the documented contract makes `peer` a non-null pointer to the caller's writable
                     // `SocketAddress`, and `raw` is a 32-byte local the system filled with a `sockaddr`.

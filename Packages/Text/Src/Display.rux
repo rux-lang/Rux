@@ -55,7 +55,7 @@ pub interface Debug {
 /// @returns whatever the value's implementation reported
 /// @see https://rux-lang.dev/docs/api/text/display#write-value
 pub func WriteValue(writer: &var TextWriter, value: &Display, spec: FormatSpec) -> !FormatError {
-    return try value.WriteDisplay(writer, spec);
+    return value.WriteDisplay(writer, spec)!;
 }
 
 /// Writes `value` under `spec` through its `Debug` implementation.
@@ -65,5 +65,5 @@ pub func WriteValue(writer: &var TextWriter, value: &Display, spec: FormatSpec) 
 /// @returns whatever the value's implementation reported
 /// @see https://rux-lang.dev/docs/api/text/debug#write-debug-value
 pub func WriteDebugValue(writer: &var TextWriter, value: &Debug, spec: FormatSpec) -> !FormatError {
-    return try value.WriteDebug(writer, spec);
+    return value.WriteDebug(writer, spec)!;
 }

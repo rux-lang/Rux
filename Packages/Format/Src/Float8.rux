@@ -64,19 +64,19 @@ extend float8 : Display {
     /// @see https://rux-lang.dev/docs/api/format/float-text#float8-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         var mark = c8'e';
-        let scientific = try ScientificMark(spec, @mark);
+        let scientific = ScientificMark(spec, @mark)!;
         // A NaN or an infinity has no digits for a precision or an exponent to place, so it renders the same under
         // every placeholder, with only the sign and the alignment applied.
         if !IsFinite(self) {
-            return try WriteNonFinite(writer, spec, IsNan(self), (BitsOfFloat8(self) & SignBit8) != 0);
+            return WriteNonFinite(writer, spec, IsNan(self), (BitsOfFloat8(self) & SignBit8) != 0)!;
         }
         if scientific {
-            return try WriteScientificNotation(writer, spec, DecomposeFloat8(self), mark);
+            return WriteScientificNotation(writer, spec, DecomposeFloat8(self), mark)!;
         }
         // Precision means digits after the decimal point, exactly, with ties to even, and a request past the
         // supported bound is refused rather than clamped.
         if spec.HasPrecision() {
-            return try WritePrecision(writer, spec, DecomposeFloat8(self));
+            return WritePrecision(writer, spec, DecomposeFloat8(self))!;
         }
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
@@ -88,7 +88,7 @@ extend float8 : Display {
             storage[1] = c8'+';
             rendered = storage[1..rendered.length + 2];
         }
-        return try WriteAligned(writer, spec, rendered, true);
+        return WriteAligned(writer, spec, rendered, true)!;
     }
 }
 
@@ -100,7 +100,7 @@ extend float8 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float-text#float8-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }
 

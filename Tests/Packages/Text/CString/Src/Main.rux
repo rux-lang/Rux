@@ -12,7 +12,7 @@ func Main() -> int {
 
     // Out: ordinary text picks up its terminator, invisible from the Rux side.
     let text = StringView::FromValidated("hello");
-    let kept = try CString::FromView(allocator, text) catch { _ => Panic("ordinary text crosses the boundary") };
+    let kept = CString::FromView(allocator, text) catch { _ => Panic("ordinary text crosses the boundary") };
     Assert(kept.Length() == 5, "the length counts the text alone");
     // Safety: `kept` is a live C string of five bytes, so its block holds indexes 0 through 5, the terminator last.
     let (terminator, first) = (kept.Raw()[5], kept.Raw()[0]);
@@ -22,7 +22,7 @@ func Main() -> int {
     Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
     // Empty text is one byte of terminator, not a null pointer.
-    Assert((try? CString::FromView(allocator, StringView::New())) is .Some(_), "empty text crosses too");
+    Assert((CString::FromView(allocator, StringView::New()) !! none) is .Some(_), "empty text crosses too");
 
     // A zero byte in the middle is refused, not truncated.
     var smuggled: char8[8];
@@ -46,7 +46,7 @@ func Main() -> int {
 
     // In: reading back from a raw pointer, to the terminator and no further.
     // Safety: `kept.Raw()` addresses the live six-byte block of `kept`, terminated within the 64-byte limit.
-    let arrived = try (CString::FromRaw(allocator, kept.Raw(), 64))
+    let arrived = (CString::FromRaw(allocator, kept.Raw(), 64))
         catch { _ => Panic("C text with a terminator in reach comes in") };
     Assert(arrived.Length() == 5, "read to the terminator and no further");
 
@@ -79,7 +79,7 @@ func Main() -> int {
     }
 
     // Text crosses the boundary the same way a view does, since a view is what it becomes.
-    let crossed = try CString::FromText(allocator, "crossing") catch { _ => Panic("text makes a C string") };
+    let crossed = CString::FromText(allocator, "crossing") catch { _ => Panic("text makes a C string") };
     Assert(crossed.Length() == 8, "spanning what it was given");
     // Safety: `crossed` is a live C string of eight bytes, so index 8 is the terminator inside its block.
     let crossedEnd = crossed.Raw()[8];
@@ -87,7 +87,7 @@ func Main() -> int {
 
     // Null is C's nothing, and nothing is not text.
     // Safety: the readability obligation covers only a non-null `raw`; a null one is refused before any read.
-    Assert((try? CString::FromRaw(allocator, null, 8)) is none, "and a null pointer makes nothing");
+    Assert((CString::FromRaw(allocator, null, 8) !! none) is none, "and a null pointer makes nothing");
 
     return 0;
 }

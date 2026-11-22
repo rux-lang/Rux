@@ -46,7 +46,7 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
     var seen: uint = 0;
     var scanner = Scan(spec, source, start, end);
     while true {
-        let item = try scanner.Next() ?? break;
+        let item = scanner.Next()! ?? break;
         match item {
             .Option(option, _, _) => {
                 if option == HelpOption { parsed.help = true; }
@@ -68,7 +68,7 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
     // documented contract keeps alive for as long as the parse.
     let declared = *spec;
     if parsed.command != NoCommand {
-        try ParseLevel(@declared.commands[parsed.command], spec, source, parsed.commandAt + 1);
+        ParseLevel(@declared.commands[parsed.command], spec, source, parsed.commandAt + 1)!;
         return parsed;
     }
     if declared.commands.length > 0 { throw .MissingCommand; }
@@ -93,7 +93,7 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
 /// @returns the parse, or why the arguments do not match
 /// @see https://rux-lang.dev/docs/api/commandline/parsed#parse
 pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed ! CommandLineError {
-    return try ParseLevel(spec, null, ArgumentSource::Given(arguments), 0);
+    return ParseLevel(spec, null, ArgumentSource::Given(arguments), 0)!;
 }
 
 /// Checks the process's own arguments against `spec`.
@@ -103,7 +103,7 @@ pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed ! Comm
 /// @returns the parse, or why the arguments do not match
 /// @see https://rux-lang.dev/docs/api/commandline/parsed#parse-process
 pub func ParseProcess(spec: *CommandSpec) -> Parsed ! CommandLineError {
-    return try ParseLevel(spec, null, ArgumentSource::ProcessArguments, 0);
+    return ParseLevel(spec, null, ArgumentSource::ProcessArguments, 0)!;
 }
 
 // The index of the option with long name `name`, or none.
@@ -166,7 +166,7 @@ extend ValueIterator : Iterator {
     pub func Next(&var self) -> OsStringView? {
         while true {
             // The arguments were validated, so the walk cannot fail; a failure ends it like the end of the arguments.
-            let step = try self.scanner.Next() catch { _ => return none };
+            let step = self.scanner.Next() catch { _ => return none };
             let item = step ?? return none;
             match item {
                 .Option(option, value, _) => {
@@ -311,7 +311,7 @@ extend Parsed {
     pub func Subcommand(&self) -> Self? {
         if self.command == NoCommand { return none; }
         let declared = self.Declared();
-        return try ParseLevel(@declared.commands[self.command], self.spec, self.source, self.commandAt + 1)
+        return ParseLevel(@declared.commands[self.command], self.spec, self.source, self.commandAt + 1)
             catch { _ => return none };
     }
 

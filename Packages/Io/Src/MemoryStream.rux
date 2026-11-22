@@ -132,7 +132,7 @@ extend ByteWriter {
     pub func Release(&var self) {
         if self.data != null {
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
+            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
                 _ => {}
             };
         }
@@ -151,13 +151,13 @@ extend ByteWriter {
             wanted = wanted * 2;
         }
         var borrowed = self.allocator;
-        let block = try borrowed.Allocate(Layout { size: wanted, alignment: 1 }) catch {
+        let block = borrowed.Allocate(Layout { size: wanted, alignment: 1 }) catch {
             _ => throw IoError::Of(IoErrorKind::LimitExceeded)
         };
         if self.data != null {
             // Safety: `block` is a fresh allocation of `wanted` bytes, more than the `length` bytes `data` holds.
             Copy(block, self.data as *opaque, self.length);
-            try borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
+            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 1 }) catch {
                 _ => {}
             };
         }
@@ -184,7 +184,7 @@ extend ByteWriter : Writer {
         let start = self.data as uint;
         let owned = self.data != null && (bytes.data as uint) >= start && (bytes.data as uint) < start + self.capacity;
         let offset = if owned { (bytes.data as uint) - start } else { 0 };
-        try self.Grow(end);
+        self.Grow(end)!;
         // Safety: an owned slice lies inside the storage, so its offset is still inside the grown block, which holds
         // the same bytes.
         let source = if owned { { (self.data as uint + offset) as *char8 } } else { bytes.data as *char8 };

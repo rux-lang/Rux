@@ -36,7 +36,7 @@ extend CString {
     /// @returns the terminated copy, or a failure when the text holds an interior zero byte
     /// @see https://rux-lang.dev/docs/api/text/c-string#from-text
     pub func FromText(allocator: Allocator, text: char8[..]) -> Self ! TextError {
-        return try Self::FromView(allocator, StringView::FromValidated(text));
+        return Self::FromView(allocator, StringView::FromValidated(text))!;
     }
 
     /// A terminated copy of `view`, or why the text cannot cross the boundary.
@@ -64,7 +64,7 @@ extend CString {
         }
         let layout = Layout::Of(bytes.length + 1, 1) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = allocator;
-        let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
+        let block = borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
 
         // Safety: `block` is a fresh allocation of bytes, so viewing it as `char8` reinterprets nothing.
         let data = block as *var char8;
@@ -114,9 +114,9 @@ extend CString {
             length = length + 1;
         }
         let bytes = (raw)[..length];
-        try Validate(bytes) catch { _ => throw .InvalidUtf8 };
+        Validate(bytes) catch { _ => throw .InvalidUtf8 };
         let checked = StringView::FromValidated(bytes);
-        return try Self::FromView(allocator, checked);
+        return Self::FromView(allocator, checked)!;
     }
 
     /// How many bytes of text come before the terminator.
@@ -152,7 +152,7 @@ extend CString {
         if self.data != null {
             let layout = Layout::Of(self.length + 1, 1);
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque,
+            borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.length + 1, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;

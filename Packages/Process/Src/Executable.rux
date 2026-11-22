@@ -37,7 +37,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
     var room: uint = 260;
     while room <= LongestPath {
         units.Clear();
-        try units.Reserve(room);
+        units.Reserve(room)!;
         when #target.os == .Windows {
             // Safety: `Reserve` gave `units` room for `room` units, the size passed.
             let written = GetModuleFileNameW(null, units.data, room as uint32) as uint;
@@ -46,7 +46,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
             // A path that fills the buffer was cut short, terminator and all.
             if written < room {
                 units.length = written;
-                return try ToPathBuffer(allocator, units.View());
+                return ToPathBuffer(allocator, units.View())!;
             }
         }
         else when #target.os == .Linux {
@@ -56,7 +56,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
             // The link's text is not terminated, and a text that fills the buffer may have been cut.
             if (written as uint) < room {
                 units.length = written as uint;
-                return try ToPathBuffer(allocator, units.View());
+                return ToPathBuffer(allocator, units.View())!;
             }
         }
         else when #target.os == .FreeBSD {
@@ -71,7 +71,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
             if status < 0 { throw FailureOf(-status); }
             // The length counts the terminator.
             units.length = if length > 0u { length - 1u } else { 0u };
-            return try ToPathBuffer(allocator, units.View());
+            return ToPathBuffer(allocator, units.View())!;
         }
         else {
             var size = room as uint32;
@@ -84,7 +84,7 @@ pub func CurrentExecutable(allocator: Allocator) -> PathBuffer ! IoError {
                     length = length + 1;
                 }
                 units.length = length;
-                return try ToPathBuffer(allocator, units.View());
+                return ToPathBuffer(allocator, units.View())!;
             }
             // Too short: the size needed is reported, so the next attempt fits.
             room = if size as uint > room { size as uint } else { room * 2u };

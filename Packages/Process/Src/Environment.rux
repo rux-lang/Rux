@@ -377,10 +377,10 @@ func CheckName(name: char8[..]) -> !IoError {
 /// @returns nothing, or fails with `InvalidInput` for a name or value the environment cannot hold
 /// @see https://rux-lang.dev/docs/api/process/environment#set-variable
 pub func SetVariable(name: char8[..], value: char8[..]) -> !IoError {
-    try CheckName(name);
-    let nativeName = try PermanentText(name);
-    let nativeValue = try PermanentText(value);
-    try RecordChange(nativeName, nativeValue, false);
+    CheckName(name)!;
+    let nativeName = PermanentText(name)!;
+    let nativeValue = PermanentText(value)!;
+    RecordChange(nativeName, nativeValue, false)!;
     when #target.os == .Windows {
         // Safety: `PermanentText` keeps both name and value followed by a NUL, in storage that is never freed.
         SetEnvironmentVariableW(nativeName.Units().data, nativeValue.Units().data);
@@ -393,9 +393,9 @@ pub func SetVariable(name: char8[..], value: char8[..]) -> !IoError {
 /// @returns nothing, or fails with `InvalidInput` for a name the environment cannot hold
 /// @see https://rux-lang.dev/docs/api/process/environment#remove-variable
 pub func RemoveVariable(name: char8[..]) -> !IoError {
-    try CheckName(name);
-    let nativeName = try PermanentText(name);
-    try RecordChange(nativeName, OsStringView::New(), true);
+    CheckName(name)!;
+    let nativeName = PermanentText(name)!;
+    RecordChange(nativeName, OsStringView::New(), true)!;
     when #target.os == .Windows {
         // Safety: `PermanentText` keeps the name followed by a NUL, in storage that is never freed, and a null value
         // asks for removal.

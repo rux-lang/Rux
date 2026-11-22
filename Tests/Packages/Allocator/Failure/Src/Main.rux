@@ -32,7 +32,7 @@ extend FailingAllocator : Allocator {
                 throw .OutOfMemory;
             }
             self.state.allowed = self.state.allowed - 1;
-            let block = try self.state.backing.Allocate(layout);
+            let block = self.state.backing.Allocate(layout)!;
             if layout.size != 0 {
                 self.state.live = self.state.live + 1;
             }
@@ -42,7 +42,7 @@ extend FailingAllocator : Allocator {
 
     func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
-        try self.state.backing.Deallocate(block, layout);
+        self.state.backing.Deallocate(block, layout)!;
         if layout.size != 0 && !IsEmptyBlock(block) {
             self.state.live = self.state.live - 1;
         }
@@ -56,7 +56,7 @@ extend FailingAllocator : Allocator {
             throw .OutOfMemory;
         }
         self.state.allowed = self.state.allowed - 1;
-        return try self.state.backing.Reallocate(block, oldLayout, newLayout);
+        return self.state.backing.Reallocate(block, oldLayout, newLayout)!;
     }
 }
 
@@ -84,16 +84,16 @@ func Main() -> !AllocError {
     Assert(state.live == 0, "and handed out nothing");
 
     state.allowed = 1;
-    let block = try starved.Allocate(small);
+    let block = starved.Allocate(small)!;
     Assert(state.live == 1, "counting the block as out");
-    try starved.Deallocate(block, small);
+    starved.Deallocate(block, small)!;
     Assert(state.live == 0, "leaving nothing out");
 
     // A box that cannot be created reports why through `TryCreate`, and leaks nothing.
     state.allowed = 0;
     state.attempts = 0;
     var refused = AllocError::InvalidBlock;
-    var unboxed = try Box::TryCreate<int64>(budget, 7) catch {
+    var unboxed = Box::TryCreate<int64>(budget, 7) catch {
         error => {
             refused = error;
             Box<int64>::New(SystemAllocator::New(), 0)
@@ -115,11 +115,11 @@ func Main() -> !AllocError {
 
     // Shared handles report a refusal the same way through `TryCreate`, and leak nothing.
     state.allowed = 0;
-    Assert((try? Rc::TryCreate<int64>(budget, 3)) is none, "a counted handle refused by the allocator reports it");
-    Assert((try? Arc::TryCreate<int64>(budget, 4)) is none, "and so does an atomically counted one");
+    Assert((Rc::TryCreate<int64>(budget, 3) !! none) is none, "a counted handle refused by the allocator reports it");
+    Assert((Arc::TryCreate<int64>(budget, 4) !! none) is none, "and so does an atomically counted one");
     Assert(state.live == 0, "leaving nothing allocated");
     state.allowed = 1;
-    var shared = try Rc::TryCreate<int64>(budget, 5) catch { _ => Rc<int64>::New(SystemAllocator::New(), 0) };
+    var shared = Rc::TryCreate<int64>(budget, 5) catch { _ => Rc<int64>::New(SystemAllocator::New(), 0) };
     let sharedValue: int64 = shared.Get();
     Assert(sharedValue == 5 && state.live == 1, "with a budget the handle is made from it");
 
@@ -142,7 +142,7 @@ func Main() -> !AllocError {
 
     // With one block's worth of budget it serves what fits and refuses what does not.
     state.allowed = 1;
-    fromArena = try arenaAllocator.Allocate(small);
+    fromArena = arenaAllocator.Allocate(small)!;
     Assert(arena.BlockCount() == 1, "having taken one block");
     let large = Layout::Of(4096, 8) ?? small;
     try {
@@ -153,7 +153,7 @@ func Main() -> !AllocError {
             "and refuses one that needs another block it cannot take"),
     }
     Assert(arena.BlockCount() == 1, "still holding just the one");
-    fromArena = try arenaAllocator.Allocate(small);
+    fromArena = arenaAllocator.Allocate(small)!;
 
     // A pool that cannot take a chunk refuses, and takes nothing.
     state.allowed = 0;
@@ -174,7 +174,7 @@ func Main() -> !AllocError {
 
     // With one chunk's budget it serves that class and refuses another.
     state.allowed = 1;
-    fromPool = try poolAllocator.Allocate(small);
+    fromPool = poolAllocator.Allocate(small)!;
     Assert(pool.ChunkCount() == 1, "having taken one chunk");
     let otherClass = Layout::Of(16, 8) ?? small;
     try {
@@ -184,7 +184,7 @@ func Main() -> !AllocError {
         refusal => Assert(refusal == AllocError::OutOfMemory, "and refuses a class whose chunk it cannot take"),
     }
     Assert(pool.ChunkCount() == 1, "still holding just the one");
-    fromPool = try poolAllocator.Allocate(small);
+    fromPool = poolAllocator.Allocate(small)!;
 
     // A refused release is not a refusal to release: the pool gives its chunks back whatever the budget is.
     state.allowed = 0;

@@ -83,7 +83,7 @@ func Fails(spec: *CommandSpec, line: &Line, code: int) -> bool {
 }
 
 func Must(spec: *CommandSpec, line: &Line) -> Parsed {
-    return try Parse(spec, line.Arguments()) catch { _ => Panic("the arguments parse") };
+    return Parse(spec, line.Arguments()) catch { _ => Panic("the arguments parse") };
 }
 
 func Main() -> int {
@@ -117,7 +117,7 @@ func Main() -> int {
     let second = Must(@tool, rich);
     if second.Count("verbose") != 3 || !second.Has("dry-run") { return 3; }
     if !Is(second.Value("output"), "a.txt") || !Is(second.Positional("input"), "in") { return 4; }
-    let jobs = try second.Integer("jobs") catch { _ => return 5 };
+    let jobs = second.Integer("jobs") catch { _ => return 5 };
     if (jobs ?? 0) != 4 { return 6; }
     var files: uint = 0;
     for file in second.Positionals("files") {
@@ -195,7 +195,7 @@ func Main() -> int {
     var low = NewLine();
     low.Add("--jobs=-9223372036854775808");
     low.Add("in");
-    let lowest = try Must(@tool, low).Integer("jobs") catch { _ => return 24 };
+    let lowest = Must(@tool, low).Integer("jobs") catch { _ => return 24 };
     if (lowest ?? 0) != -9223372036854775807 - 1 { return 25; }
     var high = NewLine();
     high.Add("--jobs=9223372036854775808");

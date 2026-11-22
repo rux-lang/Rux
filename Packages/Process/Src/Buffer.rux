@@ -28,7 +28,7 @@ extend Buffer<T> {
         let wanted = Layout::ForArray<T>(capacity);
         if wanted == none { throw IoError::Of(IoErrorKind::LimitExceeded); }
         var allocator = self.allocator;
-        let block = try allocator.Allocate(wanted ?? Layout::ForValue<T>()) catch {
+        let block = allocator.Allocate(wanted ?? Layout::ForValue<T>()) catch {
             _ => throw IoError::Of(IoErrorKind::LimitExceeded)
         };
         if self.data != null {
@@ -36,7 +36,7 @@ extend Buffer<T> {
             // values in a separate allocation.
             Copy(block, self.data as *opaque, self.length * sizeof(T));
             let layout = Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>();
-            try allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
+            allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
         }
         // Safety: `block` comes from the allocator with the layout of `capacity` values of `T`.
         self.data = block as *var T;
@@ -44,14 +44,14 @@ extend Buffer<T> {
     }
 
     func Push(&var self, value: T) -> !IoError {
-        try self.Reserve(1);
+        self.Reserve(1)!;
         // Safety: `Reserve` made room for one value past `length` in `self.data`.
         self.data[self.length] = value;
         self.length = self.length + 1;
     }
 
     func PushAll(&var self, values: T[..]) -> !IoError {
-        try self.Reserve(values.length);
+        self.Reserve(values.length)!;
         var index: uint = 0;
         while index < values.length {
             // Safety: `Reserve` made room for `values.length` values past `length`, and `index` is below that.
@@ -76,7 +76,7 @@ extend Buffer<T> {
         if self.data == null { return; }
         var allocator = self.allocator;
         let layout = Layout::ForArray<T>(self.capacity) ?? Layout::ForValue<T>();
-        try allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
+        allocator.Deallocate(self.data as *var opaque, layout) catch { _ => {} };
         self.data = null;
     }
 }

@@ -109,7 +109,7 @@ pub func Base64Encode(bytes: byte[..], into: var char8[..],
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
 pub func Base64Encode(text: char8[..], into: var char8[..],
                       form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
-    return try Base64Encode(BytesOf(text), into, form);
+    return Base64Encode(BytesOf(text), into, form)!;
 }
 
 // How many characters at the end of a padded text are padding, after checking that only the last two may be and
@@ -145,7 +145,7 @@ pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Varian
     -> uint ! DecodeError {
     if IsPadded(form) {
         if text.length % 4 != 0 { throw .InvalidLength(text.length); }
-        let padding = try CountPadding(text);
+        let padding = CountPadding(text)!;
         return text.length / 4 * 3 - padding;
     }
     var index: uint = 0;
@@ -171,7 +171,7 @@ pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Varian
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decode
 pub func Base64Decode(text: char8[..], into: var byte[..],
                       form: Base64Variant = Base64Variant::Standard) -> uint ! DecodeError {
-    let needed = try Base64DecodedLength(text, form);
+    let needed = Base64DecodedLength(text, form)!;
     let urlSafe = IsUrlSafe(form);
     // The characters that carry data: everything before the padding, whose shape is already checked.
     var digits = text.length;
@@ -257,22 +257,22 @@ extend Base64View : Display {
     /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-view-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.HasPrecision() { throw .UnsupportedRequest; }
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         var before: uint = 0;
         var after: uint = 0;
         PaddingAround(spec, Base64EncodedLength(self.bytes.length, self.form), false, @before, @after);
-        try WriteFill(writer, spec, before);
+        WriteFill(writer, spec, before)!;
         // Ninety-six bytes is a whole number of groups, so only the last block can end in a partial one.
         var block: char8[128];
         var index: uint = 0;
         while index < self.bytes.length {
             let end = if self.bytes.length - index > 96 { index + 96 } else { self.bytes.length };
-            let written = try Base64Encode(self.bytes[index..end], block[..], self.form) catch {
+            let written = Base64Encode(self.bytes[index..end], block[..], self.form) catch {
                 _ => throw .InsufficientCapacity
             };
-            try WriteBytes(writer, block[..written]);
+            WriteBytes(writer, block[..written])!;
             index = end;
         }
-        return try WriteFill(writer, spec, after);
+        return WriteFill(writer, spec, after)!;
     }
 }

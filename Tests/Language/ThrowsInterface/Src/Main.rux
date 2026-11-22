@@ -39,15 +39,15 @@ extend Countdown : Source {
 func Drain<S: Source>(source: &var S) -> int32 ! Closed {
     var total = 0i32;
     loop {
-        let value = try source.Next() catch { _ => break };
+        let value = source.Next() catch { _ => break };
         total = total + value;
     }
-    try source.Reset();
+    source.Reset()!;
     return total;
 }
 
 func Twice(step: func(int32) -> int32 ! Closed, value: int32) -> int32 ! Closed {
-    return try step(value) + step(value + 1i32);
+    return step(value)! + step(value + 1i32)!;
 }
 
 func Halve(value: int32) -> int32 ! Closed {
@@ -59,14 +59,14 @@ func Halve(value: int32) -> int32 ! Closed {
 
 func Main() -> int {
     var countdown = Countdown { left: 3i32 };
-    Assert((try? Drain(countdown)) == .Some(3i32), "2 + 1 + 0 through the bound");
+    Assert((Drain(countdown) !! none) == .Some(3i32), "2 + 1 + 0 through the bound");
     Assert(countdown.left == 3i32, "the source was reset");
     var negative = Countdown { left: -1i32 };
-    Assert((try Drain(negative) catch { e => e.reason }) == 2i32, "a requirement's error passes through");
+    Assert((Drain(negative) catch { e => e.reason }) == 2i32, "a requirement's error passes through");
 
     let halve: func(int32) -> int32 ! Closed = Halve;
-    Assert((try Twice(halve, 4i32) catch { e => -e.reason }) == -5i32, "a function value throws");
-    let reason = try halve(3i32) catch { e => e.reason };
+    Assert((Twice(halve, 4i32) catch { e => -e.reason }) == -5i32, "a function value throws");
+    let reason = halve(3i32) catch { e => e.reason };
     Assert(reason == 3i32, "a call through a function value is a throw site like any other");
     return 0;
 }

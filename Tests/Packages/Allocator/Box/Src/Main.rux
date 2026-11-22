@@ -82,10 +82,10 @@ func Main() -> !AllocError {
     Assert(destination.Take() is .Some(emptied) && emptied == 7, "and it is still takeable from there");
 
     var destroyed: int32 = 0;
-    try BoxAndDestroy(allocator, @destroyed);
+    BoxAndDestroy(allocator, @destroyed)!;
     Assert(destroyed == 1, "destroying a box destroys its move-only value exactly once");
 
     destroyed = 0;
-    try BoxAndTake(allocator, @destroyed);
+    BoxAndTake(allocator, @destroyed)!;
     Assert(destroyed == 1, "a value taken from a box is destroyed by its new owner exactly once");
 }

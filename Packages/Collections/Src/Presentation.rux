@@ -39,10 +39,10 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
     var index: uint = 0;
     while index < items.length {
         if written + index != 0 {
-            try WriteBytes(writer, ", ");
+            WriteBytes(writer, ", ")!;
         }
         // Safety: `index < items.length`, checked by the loop, so the slice holds an element there.
-        try items.data[index].WriteDebug(writer, spec);
+        items.data[index].WriteDebug(writer, spec)!;
         index = index + 1;
     }
     return;
@@ -63,7 +63,7 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
 /// @see https://rux-lang.dev/docs/api/collections/vector#write-vector-debug
 pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
                                     spec: FormatSpec) -> !FormatError {
-    return try WriteSliceDebug<T>(writer, value.AsSlice(), spec);
+    return WriteSliceDebug<T>(writer, value.AsSlice(), spec)!;
 }
 
 /// Writes a borrowed array as `[first, second, third]`.
@@ -79,7 +79,7 @@ pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
 /// @see https://rux-lang.dev/docs/api/collections/array#write-array-debug
 pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
                                    spec: FormatSpec) -> !FormatError {
-    return try WriteSliceDebug<T>(writer, value.AsSlice(), spec);
+    return WriteSliceDebug<T>(writer, value.AsSlice(), spec)!;
 }
 
 /// Writes a borrowed deque as `[front, ..., back]`, front element first.
@@ -100,10 +100,10 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
                                    spec: FormatSpec) -> !FormatError {
     let (front, back) = value.AsSlices();
 
-    try WriteAscii(writer, c8'[');
-    try WriteRun<T>(writer, front, spec, 0);
-    try WriteRun<T>(writer, back, spec, front.length);
-    return try WriteAscii(writer, c8']');
+    WriteAscii(writer, c8'[')!;
+    WriteRun<T>(writer, front, spec, 0)!;
+    WriteRun<T>(writer, back, spec, front.length)!;
+    return WriteAscii(writer, c8']')!;
 }
 
 /// Writes a borrowed hash map as `{key: value, key: value}`.
@@ -125,25 +125,25 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
 /// @see https://rux-lang.dev/docs/api/collections/hash-map#write-hash-map-debug
 pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
                                                spec: FormatSpec) -> !FormatError {
-    try WriteAscii(writer, c8'{');
+    WriteAscii(writer, c8'{')!;
     var index: uint = 0;
     var written: uint = 0;
     while index < value.table.Capacity() {
         if value.table.IsOccupied(index) {
             if written != 0 {
-                try WriteBytes(writer, ", ");
+                WriteBytes(writer, ", ")!;
             }
             // Safety: `index` is below the table's capacity, checked by the loop, and the slot is occupied, checked
             // above, so both the key and the value there are initialized.
-            try value.table.keys[index].WriteDebug(writer, spec);
-            try WriteBytes(writer, ": ");
+            value.table.keys[index].WriteDebug(writer, spec)!;
+            WriteBytes(writer, ": ")!;
             // Safety: the same occupied slot below the table's capacity.
-            try value.table.values[index].WriteDebug(writer, spec);
+            value.table.values[index].WriteDebug(writer, spec)!;
             written = written + 1;
         }
         index = index + 1;
     }
-    return try WriteAscii(writer, c8'}');
+    return WriteAscii(writer, c8'}')!;
 }
 
 /// Writes a borrowed hash set as `{first, second, third}`.
@@ -160,22 +160,22 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @see https://rux-lang.dev/docs/api/collections/hash-set#write-hash-set-debug
 pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>,
                                      spec: FormatSpec) -> !FormatError {
-    try WriteAscii(writer, c8'{');
+    WriteAscii(writer, c8'{')!;
     var index: uint = 0;
     var written: uint = 0;
     while index < value.table.Capacity() {
         if value.table.IsOccupied(index) {
             if written != 0 {
-                try WriteBytes(writer, ", ");
+                WriteBytes(writer, ", ")!;
             }
             // Safety: `index` is below the table's capacity, checked by the loop, and the slot is occupied, checked
             // above, so the key there is initialized.
-            try value.table.keys[index].WriteDebug(writer, spec);
+            value.table.keys[index].WriteDebug(writer, spec)!;
             written = written + 1;
         }
         index = index + 1;
     }
-    return try WriteAscii(writer, c8'}');
+    return WriteAscii(writer, c8'}')!;
 }
 
 /// Writes a borrowed ordered map as `{key: value, key: value}`, in key order.
@@ -194,25 +194,25 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
 /// @see https://rux-lang.dev/docs/api/collections/tree-map#write-tree-map-debug
 pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
                                                spec: FormatSpec) -> !FormatError {
-    try WriteAscii(writer, c8'{');
+    WriteAscii(writer, c8'{')!;
     // Safety: the tree invariant: the map's `root` is null or a live node of its tree.
     var node = Tree::Minimum<K, V>(value.tree.root);
     var written: uint = 0;
     while node != null {
         if written != 0 {
-            try WriteBytes(writer, ", ");
+            WriteBytes(writer, ", ")!;
         }
         // Safety: the tree invariant: `node` is non-null, checked by the loop, and a live node of the map, which is
         // borrowed and so unchanged for the whole walk.
-        try node.key.WriteDebug(writer, spec);
-        try WriteBytes(writer, ": ");
+        node.key.WriteDebug(writer, spec)!;
+        WriteBytes(writer, ": ")!;
         // Safety: `node` is still that live node.
-        try node.value.WriteDebug(writer, spec);
+        node.value.WriteDebug(writer, spec)!;
         written = written + 1;
         // Safety: `node` is still that live node.
         node = Tree::Successor<K, V>(node);
     }
-    return try WriteAscii(writer, c8'}');
+    return WriteAscii(writer, c8'}')!;
 }
 
 /// Writes a borrowed ordered set as `{first, second, third}`, in order.
@@ -228,28 +228,28 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @see https://rux-lang.dev/docs/api/collections/tree-set#write-tree-set-debug
 pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
                                      spec: FormatSpec) -> !FormatError {
-    try WriteAscii(writer, c8'{');
+    WriteAscii(writer, c8'{')!;
     // Safety: the tree invariant: the set's `root` is null or a live node of its tree.
     var node = Tree::Minimum<T, ()>(value.tree.root);
     var written: uint = 0;
     while node != null {
         if written != 0 {
-            try WriteBytes(writer, ", ");
+            WriteBytes(writer, ", ")!;
         }
         // Safety: the tree invariant: `node` is non-null, checked by the loop, and a live node of the set, which is
         // borrowed and so unchanged for the whole walk.
-        try node.key.WriteDebug(writer, spec);
+        node.key.WriteDebug(writer, spec)!;
         written = written + 1;
         // Safety: `node` is still that live node.
         node = Tree::Successor<T, ()>(node);
     }
-    return try WriteAscii(writer, c8'}');
+    return WriteAscii(writer, c8'}')!;
 }
 
 // Whether the specification is one an error description can answer. Neither a style nor a precision is: a
 // description has one form, and truncating it produces a sentence that says something else.
 func AcceptsErrorSpec(spec: FormatSpec) -> !FormatError {
-    try RejectStyle(spec);
+    RejectStyle(spec)!;
     if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
     return;
 }
@@ -264,9 +264,9 @@ extend CollectionError : Display {
     /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
                           spec: FormatSpec) -> !FormatError {
-        try AcceptsErrorSpec(spec);
+        AcceptsErrorSpec(spec)!;
         return match self {
-            .IndexOutOfRange => try WriteBytes(writer, "index the collection does not have")
+            .IndexOutOfRange => WriteBytes(writer, "index the collection does not have")!
         };
     }
 }
@@ -280,10 +280,10 @@ extend CollectionError : Debug {
     /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
                         spec: FormatSpec) -> !FormatError {
-        try AcceptsErrorSpec(spec);
-        try WriteBytes(writer, "CollectionError::");
+        AcceptsErrorSpec(spec)!;
+        WriteBytes(writer, "CollectionError::")!;
         return match self {
-            .IndexOutOfRange => try WriteBytes(writer, "IndexOutOfRange")
+            .IndexOutOfRange => WriteBytes(writer, "IndexOutOfRange")!
         };
     }
 }

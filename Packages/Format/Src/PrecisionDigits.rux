@@ -273,5 +273,5 @@ pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatP
         storage[1] = c8'+';
         rendered = storage[1..rendered.length + 2];
     }
-    return try WriteAligned(writer, spec, rendered, true);
+    return WriteAligned(writer, spec, rendered, true)!;
 }

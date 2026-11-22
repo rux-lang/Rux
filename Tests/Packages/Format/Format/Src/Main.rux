@@ -32,7 +32,7 @@ struct CountingAllocator {
 
 extend CountingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
-        let block = try self.inner.Allocate(layout);
+        let block = self.inner.Allocate(layout)!;
         // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
         self.counts.live += 1;
         self.counts.allocations += 1;
@@ -40,7 +40,7 @@ extend CountingAllocator : Allocator {
     }
 
     func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
-        try self.inner.Deallocate(block, layout) catch {
+        self.inner.Deallocate(block, layout) catch {
             error => {
                 // Safety: `counts` points at the test's local `AllocationCounts`, which outlives this allocator.
                 self.counts.invalidReleases += 1;
@@ -54,7 +54,7 @@ extend CountingAllocator : Allocator {
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque ! AllocError {
-        return try self.inner.Reallocate(block, oldLayout, newLayout);
+        return self.inner.Reallocate(block, oldLayout, newLayout)!;
     }
 }
 
@@ -66,13 +66,13 @@ struct Point {
 
 extend Point : Display {
     func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try WriteAscii(writer, c8'(');
+        WriteAscii(writer, c8'(')!;
         let first: int32 = self.x;
-        try first.WriteDisplay(writer, FormatSpec::Plain());
-        try WriteBytes(writer, ", ");
+        first.WriteDisplay(writer, FormatSpec::Plain())!;
+        WriteBytes(writer, ", ")!;
         let second: int32 = self.y;
-        try second.WriteDisplay(writer, FormatSpec::Plain());
-        return try WriteAscii(writer, c8')');
+        second.WriteDisplay(writer, FormatSpec::Plain())!;
+        return WriteAscii(writer, c8')')!;
     }
 }
 
@@ -85,7 +85,7 @@ extend Filler : Display {
     func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         var remaining = self.count;
         while remaining > 0 {
-            try WriteBytes(writer, "0123456789abcdef");
+            WriteBytes(writer, "0123456789abcdef")!;
             remaining = remaining - 1;
         }
         return;
@@ -143,7 +143,7 @@ extend RefusingValue : Display {
     func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         // Safety: `calls` points at the test's local counter, which outlives every render of this value.
         *self.calls += 1;
-        try WriteBytes(writer, "partial");
+        WriteBytes(writer, "partial")!;
         throw .InvalidSpecification(73);
     }
 }
@@ -218,11 +218,11 @@ func PropagationCases(allocator: Allocator) {
 
     writer.Clear();
     let checked: &var TextWriter = writer;
-    Assert((try? WriteFormat(checked, "prefix {} {:>>>}", refusing, 2)) is none,
+    Assert((WriteFormat(checked, "prefix {} {:>>>}", refusing, 2) !! none) is none,
            "the whole pattern is validated first");
     Assert(calls == 2 && writer.Length() == 0, "late validation failure invokes no renderer and writes no prefix");
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    Assert(Matches(try? Render(@counted as Allocator, "é 😀 {{}} {}", 12), "é 😀 {} 12"),
+    Assert(Matches(Render(@counted as Allocator, "é 😀 {{}} {}", 12) !! none, "é 😀 {} 12"),
            "successful Unicode rendering preserves its output");
     Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
            "a successful returned string releases its transferred allocation once");
@@ -253,15 +253,15 @@ func Main() -> int {
     PropagationCases(allocator);
 
     // Text outside a placeholder is copied through, and a pattern with nothing to substitute is copied entire.
-    if !Matches(try? Render(allocator, ""), "") { return 10; }
-    if !Matches(try? Render(allocator, "hello"), "hello") { return 11; }
+    if !Matches(Render(allocator, "") !! none, "") { return 10; }
+    if !Matches(Render(allocator, "hello") !! none, "hello") { return 11; }
 
     // Each placeholder takes the next argument, in the order they are written.
-    if !Matches(try? Render(allocator, "point = ({}, {})", 3, 4), "point = (3, 4)") { return 20; }
-    if !Matches(try? Render(allocator, "{}{}{}", 1, 2, 3), "123") { return 21; }
+    if !Matches(Render(allocator, "point = ({}, {})", 3, 4) !! none, "point = (3, 4)") { return 20; }
+    if !Matches(Render(allocator, "{}{}{}", 1, 2, 3) !! none, "123") { return 21; }
 
     // Arguments of different types in one call, each rendered its own way.
-    if !Matches(try? Render(allocator, "{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A") { return 22; }
+    if !Matches(Render(allocator, "{} {} {} {}", 42, 0.5, true, c8'A') !! none, "42 0.5 true A") { return 22; }
 
     // The argument count has to match the placeholder count exactly, in both directions, and the failure carries
     // both numbers — expected first, supplied second — because which way the mismatch runs is what a caller fixes.
@@ -299,8 +299,8 @@ func Main() -> int {
     // Escaped braces are the only way to write one, and a lone brace of either kind is now a refusal rather than
     // literal text. The offset is the brace itself: that is where the pattern went wrong, not where the scan
     // noticed.
-    if !Matches(try? Render(allocator, "{{}}"), "{}") { return 40; }
-    if !Matches(try? Render(allocator, "{{{}}}", 7), "{7}") { return 41; }
+    if !Matches(Render(allocator, "{{}}") !! none, "{}") { return 40; }
+    if !Matches(Render(allocator, "{{{}}}", 7) !! none, "{7}") { return 41; }
     try {
         Render(allocator, "{");
         if !(false) { return 50; }
@@ -386,18 +386,18 @@ func Main() -> int {
     if !refusedStyle { return 63; }
 
     // A valid specification still works, which is what makes the refusals above about the malformed ones.
-    if !Matches(try? Render(allocator, "[{:>6}]", "ab"), "[    ab]") { return 64; }
-    if !Matches(try? Render(allocator, "{:04}", 7), "0007") { return 65; }
+    if !Matches(Render(allocator, "[{:>6}]", "ab") !! none, "[    ab]") { return 64; }
+    if !Matches(Render(allocator, "{:04}", 7) !! none, "0007") { return 65; }
 
     // A type of this package's own, reached through the interface.
-    if !Matches(try? Render(allocator, "at {}", Point { x: -1, y: 2 }), "at (-1, 2)") { return 70; }
+    if !Matches(Render(allocator, "at {}", Point { x: -1, y: 2 }) !! none, "at (-1, 2)") { return 70; }
 
     // Text as the pattern and as an argument. A string renders itself, which is what makes it usable as a
     // variadic argument at all.
-    if !Matches(try? Render(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
+    if !Matches(Render(allocator, "{} and {}", "text", 1) !! none, "text and 1") { return 71; }
 
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.
-    if RenderedLength(try? Render(allocator, "<{}>", Filler { count: 100 })) != 1602 { return 80; }
+    if RenderedLength(Render(allocator, "<{}>", Filler { count: 100 }) !! none) != 1602 { return 80; }
 
     // A destination that runs out of room reports it, and stops: what a refused write did not accept is not
     // written, and nothing after the failing placeholder is either.
@@ -418,11 +418,11 @@ func Main() -> int {
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
     var second = BufferWriter::New(room[..8]);
     let other: &var TextWriter = second;
-    if (try? WriteFormat(other, "abc{", 1)) is .Some(_) { return 92; }
+    if (WriteFormat(other, "abc{", 1) !! none) is .Some(_) { return 92; }
     if second.Length() != 0 { return 93; }
     var third = BufferWriter::New(room[..8]);
     let last: &var TextWriter = third;
-    if (try? WriteFormat(last, Pattern("abc{}"), 1, 2)) is .Some(_) { return 94; }
+    if (WriteFormat(last, Pattern("abc{}"), 1, 2) !! none) is .Some(_) { return 94; }
     if third.Length() != 0 { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean
@@ -431,7 +431,7 @@ func Main() -> int {
     var counting = CountingAllocator { inner: allocator, counts: @counts };
     var counted: CountingAllocator = counting;
     // Safety: `counted` is a local of this function that outlives every use of the handle.
-    if !Matches(try? Render(@counted as Allocator, "{} ok", 1), "1 ok") { return 100; }
+    if !Matches(Render(@counted as Allocator, "{} ok", 1) !! none, "1 ok") { return 100; }
     if counts.live != 0 { return 101; }
     try {
         // Safety: `counted` is a local of this function that outlives every use of the handle.

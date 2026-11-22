@@ -64,7 +64,7 @@ func Rendered(moment: OffsetDateTime, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter::New(storage[..64]);
     let shown: OffsetDateTime = moment;
-    if (try? shown.WriteDisplay(writer, FormatSpec::Plain())) is none { return false; }
+    if (shown.WriteDisplay(writer, FormatSpec::Plain()) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -156,10 +156,10 @@ func Main() -> int {
            moment.dateTime.time.second == 45, "and the time is what was written");
     Assert(moment.offset.TotalSeconds() == 0, "and Z is UTC");
 
-    Assert((try? ParseRfc3339("2024-02-29t12:30:45.5z")) is .Some(_), "the lower-case letters parse too");
-    Assert((try? ParseRfc3339("2024-02-29 12:30:45.123456789+05:30")) is .Some(_), "a space separator parses");
-    Assert((try? ParseRfc3339("1970-01-01T00:00:00-08:00")) is .Some(_), "a negative offset parses");
-    Assert((try? ParseRfc3339("2024-01-01T00:00:00.000000000Z")) is .Some(_), "nine fraction digits parse");
+    Assert((ParseRfc3339("2024-02-29t12:30:45.5z") !! none) is .Some(_), "the lower-case letters parse too");
+    Assert((ParseRfc3339("2024-02-29 12:30:45.123456789+05:30") !! none) is .Some(_), "a space separator parses");
+    Assert((ParseRfc3339("1970-01-01T00:00:00-08:00") !! none) is .Some(_), "a negative offset parses");
+    Assert((ParseRfc3339("2024-01-01T00:00:00.000000000Z") !! none) is .Some(_), "nine fraction digits parse");
 
     // The leap second parses and folds, which is the one lossy acceptance this package makes on purpose.
     let leap: Result<OffsetDateTime, TimeParseError> = try .Success(ParseRfc3339("2016-12-31T23:59:60Z")) catch {
@@ -201,12 +201,12 @@ func Main() -> int {
     Assert(FailsAt("2024-01-01T00:00:00", 1, 19) == 0, "a missing offset runs out rather than defaulting to UTC");
 
     // The three narrower parsers read what they name and nothing more.
-    Assert((try? ParseDate("2024-02-29")) is .Some(_), "a date parses on its own");
-    Assert((try? ParseDate("2024-02-29T00:00:00Z")) is none, "and refuses a whole moment");
-    Assert((try? ParseTimeOfDay("12:30:45")) is .Some(_), "a time parses on its own");
-    Assert((try? ParseTimeOfDay("12:30:45.25")) is .Some(_), "with a fraction");
-    Assert((try? ParseDateTime("2024-02-29T12:30:45")) is .Some(_), "a local date-time parses without an offset");
-    Assert((try? ParseDateTime("2024-02-29T12:30:45Z")) is none,
+    Assert((ParseDate("2024-02-29") !! none) is .Some(_), "a date parses on its own");
+    Assert((ParseDate("2024-02-29T00:00:00Z") !! none) is none, "and refuses a whole moment");
+    Assert((ParseTimeOfDay("12:30:45") !! none) is .Some(_), "a time parses on its own");
+    Assert((ParseTimeOfDay("12:30:45.25") !! none) is .Some(_), "with a fraction");
+    Assert((ParseDateTime("2024-02-29T12:30:45") !! none) is .Some(_), "a local date-time parses without an offset");
+    Assert((ParseDateTime("2024-02-29T12:30:45Z") !! none) is none,
            "and refuses one with an offset, having nowhere to keep it");
 
     // The round trip: what Display writes, ParseRfc3339 reads back to the same moment.

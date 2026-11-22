@@ -29,7 +29,7 @@ func Main() -> int {
     let missing: int32? = none;
     Assert(missing == none, "an absent value equals none");
     Assert(Absent() == none, "a returned none");
-    Assert((try? SuccessfullyAbsent()) == .Some(none), "none inside a success level");
+    Assert((SuccessfullyAbsent() !! .Some(0i32)) == none, "none inside a success level");
 
     // Each optional level has its own absence: `none` is only the outermost one.
     let outer: int32?? = none;

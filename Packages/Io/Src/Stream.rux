@@ -80,7 +80,7 @@ pub func ReadExact(reader: &var Reader, into: var char8[..]) -> !IoError {
     var at: uint = 0;
     while at < into.length {
         let rest = into[at..into.length];
-        let filled = try reader.Read(rest) catch {
+        let filled = reader.Read(rest) catch {
             error if error.IsInterrupted() => continue,
             error if error.IsEnd() => 0,
             error => throw error
@@ -109,7 +109,7 @@ pub func WriteAll(writer: &var Writer, bytes: char8[..]) -> !IoError {
     var stalled: uint = 0;
     while at < bytes.length {
         let rest = bytes[at..bytes.length];
-        let taken = try writer.Write(rest) catch {
+        let taken = writer.Write(rest) catch {
             error if error.IsInterrupted() => continue,
             error => throw error
         };

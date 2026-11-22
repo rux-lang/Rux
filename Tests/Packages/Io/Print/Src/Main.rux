@@ -62,7 +62,7 @@ func Main() -> int {
     Print(*((@wideBits) as *char512)); Separator();
 
     let allocator = SystemAllocator::New();
-    let text = try String::FromBytes(allocator, "string-value") catch { _ => return 1 };
+    let text = String::FromBytes(allocator, "string-value") catch { _ => return 1 };
     Print(text); Separator();
     Print("slice-value"); Separator();
     Print("formatted {} {} {{ok}}", 7, 2.5); Separator();

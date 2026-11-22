@@ -32,7 +32,7 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     var array = (move items).IntoArray();
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(*destroyed == 0, "moving the elements into the array destroys none of them");
-    try array.Set(0, Tracked { counter: replacements, value: 10 }) catch { _ => Panic("setting an element succeeds") };
+    array.Set(0, Tracked { counter: replacements, value: 10 }) catch { _ => Panic("setting an element succeeds") };
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
     Assert(*destroyed == 1, "setting destroys the element it replaces");
     // Safety: `replacements` points at a local of `Main`, which outlives this call.
@@ -45,7 +45,7 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     }
     // Safety: `replacements` points at a local of `Main`, which outlives this call.
     Assert(*replacements == 1, "destroying the refused value rather than leaking it");
-    var previous = try array.Replace(1, Tracked { counter: destroyed, value: 20 }) catch {
+    var previous = array.Replace(1, Tracked { counter: destroyed, value: 20 }) catch {
         _ => Panic("replacing an element succeeds")
     };
     // Safety: `destroyed` points at a local of `Main`, which outlives this call.
@@ -89,7 +89,7 @@ func Main() -> int {
     Assert(filled.At(6) is none, "and nothing to borrow either");
 
     // Setting replaces an element and refuses an index the array does not have.
-    try filled.Set(2, 99) catch { _ => Panic("setting an element in range succeeds") };
+    filled.Set(2, 99) catch { _ => Panic("setting an element in range succeeds") };
     Assert(filled.Get(2) == .Some(99), "and replaces what was there");
     try {
         filled.Set(6, 1);

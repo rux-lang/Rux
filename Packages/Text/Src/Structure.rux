@@ -41,12 +41,12 @@ pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
                                     spec: FormatSpec) -> !FormatError {
     match value {
         .Some(payload) => {
-            try WriteBytes(writer, "Some(");
-            try payload.WriteDebug(writer, spec);
-            return try WriteAscii(writer, c8')');
+            WriteBytes(writer, "Some(")!;
+            payload.WriteDebug(writer, spec)!;
+            return WriteAscii(writer, c8')')!;
         },
         none => {
-            return try WriteBytes(writer, "none");
+            return WriteBytes(writer, "none")!;
         }
     }
 }
@@ -67,14 +67,14 @@ pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &R
                                               spec: FormatSpec) -> !FormatError {
     match value {
         .Success(payload) => {
-            try WriteBytes(writer, "Success(");
-            try payload.WriteDebug(writer, spec);
-            return try WriteAscii(writer, c8')');
+            WriteBytes(writer, "Success(")!;
+            payload.WriteDebug(writer, spec)!;
+            return WriteAscii(writer, c8')')!;
         },
         .Failure(reason) => {
-            try WriteBytes(writer, "Failure(");
-            try reason.WriteDebug(writer, spec);
-            return try WriteAscii(writer, c8')');
+            WriteBytes(writer, "Failure(")!;
+            reason.WriteDebug(writer, spec)!;
+            return WriteAscii(writer, c8')')!;
         }
     }
 }
@@ -97,15 +97,15 @@ pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &R
 /// @see https://rux-lang.dev/docs/api/text/debug#write-slice-debug
 pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
                                    spec: FormatSpec) -> !FormatError {
-    try WriteAscii(writer, c8'[');
+    WriteAscii(writer, c8'[')!;
     var index: uint = 0;
     while index < items.length {
         if index != 0 {
-            try WriteBytes(writer, ", ");
+            WriteBytes(writer, ", ")!;
         }
         // Safety: `index` is below `items.length`, the loop condition.
-        try items.data[index].WriteDebug(writer, spec);
+        items.data[index].WriteDebug(writer, spec)!;
         index = index + 1;
     }
-    return try WriteAscii(writer, c8']');
+    return WriteAscii(writer, c8']')!;
 }

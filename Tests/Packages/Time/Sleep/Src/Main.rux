@@ -119,7 +119,7 @@ func Main() -> int {
     var waiter = Scripted(@state);
     let hundredDays = (Duration::FromHours(2400) ?? Duration::Zero());
     Assert(!hundredDays.IsZero(), "a hundred days is a duration this package can hold");
-    try SleepUsing<ScriptedWaiter>(waiter, hundredDays) catch { _ => Panic("a hundred-day sleep completes") };
+    SleepUsing<ScriptedWaiter>(waiter, hundredDays) catch { _ => Panic("a hundred-day sleep completes") };
     Assert(state.calls == 3, "in three waits, because one wait cannot express more than about fifty days");
     Assert(state.longestChunk == MaximumWaitMilliseconds, "no single wait longer than the ceiling");
     Assert(state.longestHanded > MaximumWaitMilliseconds,
@@ -127,7 +127,7 @@ func Main() -> int {
 
     // A span that fits in one wait takes exactly one.
     state = Fresh();
-    try SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(5)) catch {
+    SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(5)) catch {
         _ => Panic("a five-second sleep completes"),
     };
     Assert(state.calls == 1, "in a single wait");
@@ -137,9 +137,9 @@ func Main() -> int {
 
     // The plan's own rule: a negative or zero span succeeds immediately, having asked the system for nothing.
     state = Fresh();
-    try SleepUsing<ScriptedWaiter>(waiter, Duration::Zero()) catch { _ => Panic("a zero span succeeds") };
+    SleepUsing<ScriptedWaiter>(waiter, Duration::Zero()) catch { _ => Panic("a zero span succeeds") };
     Assert(state.calls == 0, "without waiting at all");
-    try SleepUsing<ScriptedWaiter>(waiter, Duration::FromMilliseconds(-1)) catch {
+    SleepUsing<ScriptedWaiter>(waiter, Duration::FromMilliseconds(-1)) catch {
         _ => Panic("a negative span succeeds"),
     };
     Assert(state.calls == 0, "also without waiting");
@@ -150,7 +150,7 @@ func Main() -> int {
     // time. A caller asked for a span, not for a span unless the process happened to receive a signal.
     state = Fresh();
     state.interruptions = 3;
-    try SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(10)) catch {
+    SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(10)) catch {
         _ => Panic("three interruptions still leave a completed sleep"),
     };
     Assert(state.calls == 4, "having gone back for the remainder after each");
@@ -214,21 +214,21 @@ func Main() -> int {
 
     // What a real clock can confirm quickly: the span is not undershot, and the degenerate cases cost nothing.
     let before = Instant::Now();
-    try SleepFor(Duration::FromMilliseconds(50)) catch { _ => Panic("a real fifty-millisecond sleep completes") };
+    SleepFor(Duration::FromMilliseconds(50)) catch { _ => Panic("a real fifty-millisecond sleep completes") };
     let slept = before.Elapsed();
     Assert(!slept.Compare(Duration::FromMilliseconds(50)).IsLess(), "and takes at least the span asked for");
 
     let mark = Instant::Now();
-    try SleepFor(Duration::Zero()) catch { _ => Panic("a real zero sleep succeeds") };
-    try SleepFor(Duration::FromMilliseconds(-100)) catch { _ => Panic("and so does a negative one") };
+    SleepFor(Duration::Zero()) catch { _ => Panic("a real zero sleep succeeds") };
+    SleepFor(Duration::FromMilliseconds(-100)) catch { _ => Panic("and so does a negative one") };
     Assert(mark.Elapsed().Compare(Duration::FromSeconds(1)).IsLess(), "neither of them having waited");
 
     // A sub-millisecond span still waits, because the chunk rounds up rather than truncating to zero.
-    try SleepFor(Duration::FromMicroseconds(200)) catch { _ => Panic("a sub-millisecond sleep completes") };
+    SleepFor(Duration::FromMicroseconds(200)) catch { _ => Panic("a sub-millisecond sleep completes") };
 
     // The system waiter reports the same way through the generic entry point as through SleepFor.
     var system = SystemWaiter::New();
-    try SleepUsing<SystemWaiter>(system, Duration::FromMilliseconds(1)) catch {
+    SleepUsing<SystemWaiter>(system, Duration::FromMilliseconds(1)) catch {
         _ => Panic("the system waiter drives the same loop"),
     };
 

@@ -156,7 +156,7 @@ extend Scanner {
 
     // The next item, none at the end, or why the arguments do not match.
     func Next(&var self) -> Item? ! CommandLineError {
-        if self.cluster > 0 { return try self.NextShort(); }
+        if self.cluster > 0 { return self.NextShort()!; }
         if self.index >= self.end { return none; }
         let at = self.index;
         let argument = self.source.At(at);
@@ -166,14 +166,14 @@ extend Scanner {
             if UnitAt(units, 1) == 0x2D {
                 if units.length == 2 {
                     self.optionsEnded = true;
-                    return try self.Next();
+                    return self.Next()!;
                 }
-                return try self.Long(argument, at);
+                return self.Long(argument, at)!;
             }
             self.cluster = 1;
-            return try self.NextShort();
+            return self.NextShort()!;
         }
-        return try self.Positional(argument, at);
+        return self.Positional(argument, at)!;
     }
 
     func Long(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {

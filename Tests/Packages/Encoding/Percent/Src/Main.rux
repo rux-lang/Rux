@@ -16,13 +16,13 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
     var room: char8[128];
-    let written = try PercentEncode(text, room[..], set) catch { _ => return false };
+    let written = PercentEncode(text, room[..], set) catch { _ => return false };
     return written == PercentEncodedLength(text, set) && Same(room[..written], expected);
 }
 
 func Decoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
     var room: byte[128];
-    let written = try PercentDecode(text, room[..], set) catch { _ => return false };
+    let written = PercentDecode(text, room[..], set) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {

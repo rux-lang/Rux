@@ -124,7 +124,7 @@ pub func PercentEncode(bytes: byte[..], into: var char8[..],
 /// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encode
 pub func PercentEncode(text: char8[..], into: var char8[..],
                        set: PercentSet = PercentSet::Component) -> uint ! FormatError {
-    return try PercentEncode(BytesOf(text), into, set);
+    return PercentEncode(BytesOf(text), into, set)!;
 }
 
 /// How many bytes percent-encoded text decodes to, after checking that every escape is well formed.
@@ -165,7 +165,7 @@ pub func PercentDecodedLength(text: char8[..]) -> uint ! DecodeError {
 /// @see https://rux-lang.dev/docs/api/encoding/percent#percent-decode
 pub func PercentDecode(text: char8[..], into: var byte[..],
                        set: PercentSet = PercentSet::Component) -> uint ! DecodeError {
-    let needed = try PercentDecodedLength(text);
+    let needed = PercentDecodedLength(text)!;
     if into.length < needed { throw .InsufficientCapacity(needed); }
     var to: uint = 0;
     var index: uint = 0;

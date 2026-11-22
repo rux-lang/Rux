@@ -42,24 +42,24 @@ func Both(first: Tracked, second: Tracked, value: int) -> int {
 }
 
 func Thrown(value: int) -> int ! int {
-    return Take(Tracked { value: 1 }, try Parse(value));
+    return Take(Tracked { value: 1 }, Parse(value)!);
 }
 
 func Moved(value: int) -> int ! int {
     let kept = Tracked { value: 1 };
-    return Take(move kept, try Parse(value));
+    return Take(move kept, Parse(value)!);
 }
 
 func Receiver(value: int) -> int ! int {
-    return Tracked { value: 1 }.Consume(try Parse(value));
+    return Tracked { value: 1 }.Consume(Parse(value)!);
 }
 
 func Handled(value: int) -> int {
-    return try Both(Tracked { value: 1 }, Tracked { value: 2 }, Parse(value)) catch { error => error };
+    return Both(Tracked { value: 1 }, Tracked { value: 2 }, Parse(value) catch { error => return error });
 }
 
 func Nested(value: int) -> int ! int {
-    return Take(Tracked { value: 1 }, Take(Tracked { value: 2 }, try Parse(value)));
+    return Take(Tracked { value: 1 }, Take(Tracked { value: 2 }, Parse(value)!));
 }
 
 func Missing(value: int) -> int? {
@@ -72,21 +72,21 @@ func Reset() {
 }
 
 func Main() -> int {
-    Assert((try Thrown(-1) catch { error => error }) == -1 && drops == 1, "a temporary argument is destroyed");
+    Assert((Thrown(-1) catch { error => error }) == -1 && drops == 1, "a temporary argument is destroyed");
     Reset();
-    Assert((try Thrown(2) catch { error => error }) == 3 && drops == 1, "the callee destroys it otherwise");
+    Assert((Thrown(2) catch { error => error }) == 3 && drops == 1, "the callee destroys it otherwise");
     Reset();
-    Assert((try Moved(-1) catch { error => error }) == -1 && drops == 1, "a value moved into an argument");
+    Assert((Moved(-1) catch { error => error }) == -1 && drops == 1, "a value moved into an argument");
     Reset();
-    Assert((try Moved(2) catch { error => error }) == 3 && drops == 1, "a moved value, once otherwise");
+    Assert((Moved(2) catch { error => error }) == 3 && drops == 1, "a moved value, once otherwise");
     Reset();
-    Assert((try Receiver(-1) catch { error => error }) == -1 && drops == 1, "a consumed receiver");
+    Assert((Receiver(-1) catch { error => error }) == -1 && drops == 1, "a consumed receiver");
     Reset();
     Assert(Handled(-1) == -1 && drops == 2 && order == 21, "two arguments to a handler, last first");
     Reset();
     Assert(Handled(1) == 4 && drops == 2, "two arguments, once otherwise");
     Reset();
-    Assert((try Nested(-1) catch { error => error }) == -1 && drops == 2 && order == 21, "a nested call's arguments");
+    Assert((Nested(-1) catch { error => error }) == -1 && drops == 2 && order == 21, "a nested call's arguments");
     Reset();
     Assert(Missing(-1) is none && drops == 1, "'?' on a missing value");
     Reset();

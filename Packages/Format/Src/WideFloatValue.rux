@@ -124,9 +124,9 @@ extend Float80 {
     /// @see https://rux-lang.dev/docs/api/format/float80#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let layout = FloatLayout::Extended80();
-        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout)!;
     }
 }
 
@@ -232,9 +232,9 @@ extend Float128 {
     /// @see https://rux-lang.dev/docs/api/format/float128#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let layout = FloatLayout::Binary128();
-        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout)!;
     }
 }
 
@@ -340,9 +340,9 @@ extend Float256 {
     /// @see https://rux-lang.dev/docs/api/format/float256#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let layout = FloatLayout::Binary256();
-        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout)!;
     }
 }
 
@@ -448,8 +448,8 @@ extend Float512 {
     /// @see https://rux-lang.dev/docs/api/format/float512#format-with
     pub func FormatWith(&self, allocator: Allocator, writer: &var TextWriter,
                         spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let layout = FloatLayout::Binary512();
-        return try WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
+        return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout)!;
     }
 }

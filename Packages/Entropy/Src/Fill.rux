@@ -60,7 +60,7 @@ extend SystemEntropy : EntropySource {
     pub func Fill(&var self, buffer: *var opaque, length: uint) -> !EntropyError {
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes, which is exactly
         // what `FillFromSource` asks of its caller.
-        return try FillFromSource(buffer, length);
+        return FillFromSource(buffer, length)!;
     }
 }
 
@@ -87,7 +87,7 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
         let remaining = length - filled;
         let take = if remaining > MaxEntropyRequest { MaxEntropyRequest } else { remaining };
         let target = ((buffer as uint) + filled) as *var opaque;
-        try source.Fill(target, take) catch {
+        source.Fill(target, take) catch {
             error => {
                 ZeroizeBlock(buffer, length);
                 throw error;
@@ -116,7 +116,7 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
     -> !EntropyError {
     var remaining = attempts;
     while true {
-        try FillFrom(source, buffer, length) catch {
+        FillFrom(source, buffer, length) catch {
             error => {
                 var reason = error;
                 if !reason.IsTransient() || remaining == 0 {
@@ -142,7 +142,7 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
 pub func Fill(buffer: *var opaque, length: uint) -> !EntropyError {
     var system = SystemEntropy::New();
     let source: &var EntropySource = system;
-    return try FillFrom(source, buffer, length);
+    return FillFrom(source, buffer, length)!;
 }
 
 /// An unpredictable 64-bit value, which is what a generator wants for a seed.
@@ -153,7 +153,7 @@ pub func Fill(buffer: *var opaque, length: uint) -> !EntropyError {
 pub func NextUint64() -> uint64 ! EntropyError {
     var value: uint64 = 0;
     // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
-    try (Fill(@value as *var opaque, 8)) catch {
+    (Fill(@value as *var opaque, 8)) catch {
         error => {
             // Safety: `value` is a local `uint64`, so its address is writable for exactly 8 bytes.
             ZeroizeBlock(@value as *var opaque, 8);

@@ -12,12 +12,12 @@ import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter 
 // The one write under everything here.
 func PrintBytes(bytes: char8[..]) -> !IoError {
     var out = StandardOut::Acquire();
-    try WriteAll(out, bytes);
+    WriteAll(out, bytes)!;
 }
 
 // The failure a write reported, as the optional every printing call returns.
 func PrintFailure(bytes: char8[..]) -> IoError? {
-    try PrintBytes(bytes) catch { error => return error };
+    PrintBytes(bytes) catch { error => return error };
     return none;
 }
 
@@ -46,7 +46,7 @@ pub func PrintValue(value: &Display) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter::New(@failure);
     let writer: &var TextWriter = sink;
-    try value.WriteDisplay(writer, FormatSpec::Plain()) catch { reason => return Reported(failure, reason) };
+    value.WriteDisplay(writer, FormatSpec::Plain()) catch { reason => return Reported(failure, reason) };
     return failure;
 }
 
@@ -103,7 +103,7 @@ pub func Print(#Format format: char8[..], args: &Display...) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter::New(@failure);
     let writer: &var TextWriter = sink;
-    try WriteFormat(writer, format, args...) catch { reason => return Reported(failure, reason) };
+    WriteFormat(writer, format, args...) catch { reason => return Reported(failure, reason) };
     return failure;
 }
 

@@ -26,7 +26,7 @@ import Time::Timestamp;
 import TimeZone::{ TimeZone, TimeZoneError };
 
 func KyivOffset() -> int32 ! TimeZoneError {
-    let zone = try TimeZone::Load(SystemAllocator::New(), "Europe/Kyiv");
+    let zone = TimeZone::Load(SystemAllocator::New(), "Europe/Kyiv")!;
     return zone.OffsetAt(Timestamp::Now()).seconds;
 }
 ```

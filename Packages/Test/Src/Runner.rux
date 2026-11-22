@@ -174,7 +174,7 @@ pub func RunTests(tests: TestCase[..]) -> int {
     let count = ArgumentCount();
     while index < count {
         let view = Argument(index) ?? break;
-        let text = try view.ToText(SystemAllocator::New()) catch { _ => return 2 };
+        let text = view.ToText(SystemAllocator::New()) catch { _ => return 2 };
         texts.Push(move text);
         index = index + 1;
     }

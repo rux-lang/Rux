@@ -131,7 +131,7 @@ extend JsonEventReader {
         };
         var borrowed = allocator;
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
-        let block = try borrowed.Allocate(chunk) catch { error => AllocationFailed(error) };
+        let block = borrowed.Allocate(chunk) catch { error => AllocationFailed(error) };
         // Safety: `block` was just allocated with `JsonStreamChunk` bytes, and `char8` has size and alignment 1.
         reader.data = block as *var char8;
         reader.capacity = JsonStreamChunk;
@@ -205,7 +205,7 @@ extend JsonEventReader {
             }
             var borrowed = self.allocator;
             let bigger = Layout { size: wanted, alignment: 1 };
-            let block = try borrowed.Allocate(bigger) catch { error => AllocationFailed(error) };
+            let block = borrowed.Allocate(bigger) catch { error => AllocationFailed(error) };
             // Safety: `block` was just allocated with `wanted` bytes, and `char8` has size and alignment 1.
             let grown = block as *var char8;
             var copied: uint = 0;
@@ -216,7 +216,7 @@ extend JsonEventReader {
                 copied = copied + 1;
             }
             let previous = Layout { size: self.capacity, alignment: 1 };
-            try borrowed.Deallocate(self.data as *var opaque, previous) catch { _ => {} };
+            borrowed.Deallocate(self.data as *var opaque, previous) catch { _ => {} };
             self.data = grown;
             self.capacity = wanted;
         }
@@ -224,7 +224,7 @@ extend JsonEventReader {
         // Safety: `self.filled` is at most `self.capacity`, the size of the live buffer `self.data`, so the room after
         // it lies inside the buffer.
         let room = (@self.data[self.filled])[..self.capacity - self.filled];
-        let read = try self.source.Read(room) catch {
+        let read = self.source.Read(room) catch {
             error => {
                 self.exhausted = true;
                 if !error.IsEnd() && self.stop == JsonStop::None {
@@ -244,7 +244,7 @@ extend JsonEventReader {
         if self.data != null {
             var borrowed = self.allocator;
             let held = Layout { size: self.capacity, alignment: 1 };
-            try borrowed.Deallocate(self.data as *var opaque, held) catch { _ => {} };
+            borrowed.Deallocate(self.data as *var opaque, held) catch { _ => {} };
             self.data = null;
             self.capacity = 0;
         }
@@ -417,18 +417,18 @@ extend JsonEventReader {
             if self.stop != JsonStop::None { throw self.Stopped(); }
             return none;
         }
-        var c = try self.ValueByte();
+        var c = self.ValueByte()!;
         // The separator due here, which a caller never sees.
         if self.state == JsonReadState::Colon {
             if c != 0x3A { throw self.Refuse(JsonStop::Unexpected); }
             self.position = self.position + 1;
             self.state = JsonReadState::Value;
-            c = try self.ValueByte();
+            c = self.ValueByte()!;
         }
         else if self.state == JsonReadState::Separator && c == 0x2C {
             self.position = self.position + 1;
             self.state = if self.InObject() { JsonReadState::Name } else { JsonReadState::Value };
-            c = try self.ValueByte();
+            c = self.ValueByte()!;
         }
         if c == 0x7D || c == 0x5D {
             let wantsObject = c == 0x7D;

@@ -63,8 +63,8 @@ func Code(error: DigitError) -> int32 {
 }
 
 func Main() -> int {
-    Assert((try? ReadDigit('3')) == 3, "a digit is read");
-    Assert((try? ReadDigit(' ')) == none, "a blank throws");
+    Assert((ReadDigit('3') !! none) == 3, "a digit is read");
+    Assert((ReadDigit(' ') !! none) == none, "a blank throws");
     var thrown = 0i32;
     try {
         Check(true);
@@ -76,22 +76,22 @@ func Main() -> int {
     Assert(thrown == 1i32, "a throws clause without a return type throws through it");
 
     // A sum error: each member leaves as itself.
-    let found = try Lookup(4i32) catch { _ => -1i32 };
+    let found = Lookup(4i32) catch { _ => -1i32 };
     Assert(found == 8i32, "a present value is returned");
-    let missing = try Lookup(-3i32) catch {
+    let missing = Lookup(-3i32) catch {
         e: NotFound => e.key,
         _: DigitError => 0i32,
     };
     Assert(missing == -3i32, "'?? throw' throws the fallback error");
-    let digit = try Lookup(7i32) catch {
+    let digit = Lookup(7i32) catch {
         _: NotFound => 0i32,
         e: DigitError => Code(e),
     };
     Assert(digit == ('7' as int32), "the other member of the sum is thrown");
 
     // A `throw` arm body.
-    Assert((try? Classify('a')) == .Some(1i32), "a value arm");
-    Assert((try Classify(' ') catch { e => Code(e) }) == 1i32, "a throw arm");
+    Assert((Classify('a') !! none) == .Some(1i32), "a value arm");
+    Assert((Classify(' ') catch { e => Code(e) }) == 1i32, "a throw arm");
 
     // A `throw` inside a `try` block goes to its arms, with its case taking the type the block's calls throw.
     var caught = 0i32;
@@ -117,6 +117,6 @@ func Main() -> int {
     Assert(owner == 1i32, "a qualified throw needs no call before it");
 
     // The older spelling sends its error to the same place.
-    Assert((try? OlderSpelling(' ')) == none, "'fail' still leaves the function");
+    Assert((OlderSpelling(' ') !! none) == none, "'fail' still leaves the function");
     return 0;
 }

@@ -80,13 +80,13 @@ extend PathBuffer {
         let unitSize = sizeof(OsUnit) as uint;
         let layout = Layout::Of(wanted * unitSize, alignof(OsUnit) as uint) ?? AllocationFailed(AllocError::Unsupported);
         var borrowed = self.allocator;
-        let block = try borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
+        let block = borrowed.Allocate(layout) catch { error => AllocationFailed(error) };
         if self.data != null {
             // Safety: `block` is a fresh allocation of `wanted >= length` units, and the storage invariant makes
             // `self.data` readable for `self.length` units.
             Copy(block, self.data as *opaque, self.length * unitSize);
             let old = Layout::Of(self.capacity * unitSize, alignof(OsUnit) as uint);
-            try borrowed.Deallocate(self.data as *var opaque,
+            borrowed.Deallocate(self.data as *var opaque,
                                 (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         // Safety: `block` is aligned for `OsUnit` and holds `wanted` of them.
@@ -157,7 +157,7 @@ extend PathBuffer {
             let unitSize = sizeof(OsUnit) as uint;
             let layout = Layout::Of(self.capacity * unitSize, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque,
+            borrowed.Deallocate(self.data as *var opaque,
                                 (layout ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { _ => {} };
         }
         self.data = null;

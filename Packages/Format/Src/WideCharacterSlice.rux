@@ -61,25 +61,25 @@ extend char16[..] : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let units = self[..];
         var before: uint = 0;
         var after: uint = 0;
         MeasurePadding(spec, CountUtf16(units), @before, @after);
-        try WriteFill(writer, spec, before);
+        WriteFill(writer, spec, before)!;
         var index: uint = 0;
         while index < units.length {
             var scalar: uint32 = 0;
             var width: uint = 0;
             if DecodeUtf16(units, index, @scalar, @width) {
-                try WriteScalar(writer, scalar as char32);
+                WriteScalar(writer, scalar as char32)!;
             }
             else {
-                try WriteScalar(writer, ReplacementCharacter);
+                WriteScalar(writer, ReplacementCharacter)!;
             }
             index = index + width;
         }
-        return try WriteFill(writer, spec, after);
+        return WriteFill(writer, spec, after)!;
     }
 }
 
@@ -94,22 +94,22 @@ extend char16[..] : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let units = self[..];
-        try WriteAscii(writer, c8'"');
+        WriteAscii(writer, c8'"')!;
         var index: uint = 0;
         while index < units.length {
             var scalar: uint32 = 0;
             var width: uint = 0;
             if DecodeUtf16(units, index, @scalar, @width) {
-                try WriteEscapedScalar(writer, scalar);
+                WriteEscapedScalar(writer, scalar)!;
             }
             else {
-                try WriteInvalidEscape(writer, scalar as uint64);
+                WriteInvalidEscape(writer, scalar as uint64)!;
             }
             index = index + width;
         }
-        return try WriteAscii(writer, c8'"');
+        return WriteAscii(writer, c8'"')!;
     }
 }
 
@@ -123,25 +123,25 @@ extend char32[..] : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let units = self[..];
         var before: uint = 0;
         var after: uint = 0;
         MeasurePadding(spec, units.length, @before, @after);
-        try WriteFill(writer, spec, before);
+        WriteFill(writer, spec, before)!;
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
             let value = units.data[index] as uint32;
             if IsWideScalarValue(value as uint64) {
-                try WriteScalar(writer, value as char32);
+                WriteScalar(writer, value as char32)!;
             }
             else {
-                try WriteScalar(writer, ReplacementCharacter);
+                WriteScalar(writer, ReplacementCharacter)!;
             }
             index = index + 1;
         }
-        return try WriteFill(writer, spec, after);
+        return WriteFill(writer, spec, after)!;
     }
 }
 
@@ -153,21 +153,21 @@ extend char32[..] : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let units = self[..];
-        try WriteAscii(writer, c8'"');
+        WriteAscii(writer, c8'"')!;
         var index: uint = 0;
         while index < units.length {
             // Safety: `index` is below `units.length`, the loop condition.
             let value = units.data[index] as uint32;
             if IsWideScalarValue(value as uint64) {
-                try WriteEscapedScalar(writer, value);
+                WriteEscapedScalar(writer, value)!;
             }
             else {
-                try WriteInvalidEscape(writer, value as uint64);
+                WriteInvalidEscape(writer, value as uint64)!;
             }
             index = index + 1;
         }
-        return try WriteAscii(writer, c8'"');
+        return WriteAscii(writer, c8'"')!;
     }
 }

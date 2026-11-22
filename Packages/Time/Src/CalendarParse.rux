@@ -115,16 +115,16 @@ func ReadSeparator(reader: &var Reader) -> !TimeParseError {
 
 // Reads `YYYY-MM-DD` and validates it against the calendar.
 func ReadDate(reader: &var Reader) -> Date ! TimeParseError {
-    let year = try Digits(reader, 4);
-    try Literal(reader, c8'-');
+    let year = Digits(reader, 4)!;
+    Literal(reader, c8'-')!;
     let monthAt = reader.at;
-    let month = try Digits(reader, 2);
+    let month = Digits(reader, 2)!;
     if month < 1 || month > 12 {
         throw .InvalidMonth(monthAt);
     }
-    try Literal(reader, c8'-');
+    Literal(reader, c8'-')!;
     let dayAt = reader.at;
-    let day = try Digits(reader, 2);
+    let day = Digits(reader, 2)!;
     let made = Date::FromParts(year as int32, month as uint8, day as uint8);
     if made == none {
         // The month was already checked, so what is left is a day the month does not have.
@@ -136,19 +136,19 @@ func ReadDate(reader: &var Reader) -> Date ! TimeParseError {
 // Reads `HH:MM:SS` with an optional fraction, folding second 60 as the package policy requires.
 func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
     let hourAt = reader.at;
-    let hour = try Digits(reader, 2);
+    let hour = Digits(reader, 2)!;
     if hour > 23 {
         throw .InvalidTime(hourAt);
     }
-    try Literal(reader, c8':');
+    Literal(reader, c8':')!;
     let minuteAt = reader.at;
-    let minute = try Digits(reader, 2);
+    let minute = Digits(reader, 2)!;
     if minute > 59 {
         throw .InvalidTime(minuteAt);
     }
-    try Literal(reader, c8':');
+    Literal(reader, c8':')!;
     let secondAt = reader.at;
-    var second = try Digits(reader, 2);
+    var second = Digits(reader, 2)!;
     if second > 60 {
         throw .InvalidTime(secondAt);
     }
@@ -207,9 +207,9 @@ func ReadOffset(reader: &var Reader) -> UtcOffset ! TimeParseError {
         throw .InvalidSyntax(reader.at);
     }
     reader.at = reader.at + 1;
-    let hours = try Digits(reader, 2);
-    try Literal(reader, c8':');
-    let minutes = try Digits(reader, 2);
+    let hours = Digits(reader, 2)!;
+    Literal(reader, c8':')!;
+    let minutes = Digits(reader, 2)!;
     var signedHours = hours as int32;
     var signedMinutes = minutes as int32;
     if mark == c8'-' {
@@ -240,8 +240,8 @@ func AtEnd(reader: &Reader) -> !TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/date#parse-date
 pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let date = try ReadDate(reader);
-    try AtEnd(reader);
+    let date = ReadDate(reader)!;
+    AtEnd(reader)!;
     return date;
 }
 
@@ -253,8 +253,8 @@ pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/time-of-day#parse-time-of-day
 pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let time = try ReadTime(reader);
-    try AtEnd(reader);
+    let time = ReadTime(reader)!;
+    AtEnd(reader)!;
     return time;
 }
 
@@ -268,10 +268,10 @@ pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/date-time#parse-date-time
 pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let date = try ReadDate(reader);
-    try ReadSeparator(reader);
-    let time = try ReadTime(reader);
-    try AtEnd(reader);
+    let date = ReadDate(reader)!;
+    ReadSeparator(reader)!;
+    let time = ReadTime(reader)!;
+    AtEnd(reader)!;
     return DateTime { date, time };
 }
 
@@ -287,11 +287,11 @@ pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
 /// @see https://rux-lang.dev/docs/api/time/offset-date-time#parse-rfc3339
 pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime ! TimeParseError {
     var reader = Reader { text, at: 0 };
-    let date = try ReadDate(reader);
-    try ReadSeparator(reader);
-    let time = try ReadTime(reader);
-    let offset = try ReadOffset(reader);
-    try AtEnd(reader);
+    let date = ReadDate(reader)!;
+    ReadSeparator(reader)!;
+    let time = ReadTime(reader)!;
+    let offset = ReadOffset(reader)!;
+    AtEnd(reader)!;
     return
         OffsetDateTime::New(DateTime { date, time }, offset);
 }

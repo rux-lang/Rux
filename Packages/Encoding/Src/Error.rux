@@ -71,18 +71,18 @@ extend DecodeError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
-        try WriteBytes(writer, DescribeDecodeError(self));
+        RejectStyle(spec)!;
+        WriteBytes(writer, DescribeDecodeError(self))!;
         var digits: char8[20];
         var count: uint = 0;
         var value: uint = 0;
         match self {
             .InsufficientCapacity(needed) => {
-                try WriteBytes(writer, ", need ");
+                WriteBytes(writer, ", need ")!;
                 value = needed;
             },
             _ => {
-                try WriteBytes(writer, " at ");
+                WriteBytes(writer, " at ")!;
                 value = self.Offset() ?? 0;
             }
         }
@@ -96,10 +96,10 @@ extend DecodeError : Display {
             digits[20 - count] = (48 + (value % 10)) as char8;
             value = value / 10;
         }
-        try WriteBytes(writer, digits[20 - count..]);
+        WriteBytes(writer, digits[20 - count..])!;
         match self {
             .InsufficientCapacity(needed) => {
-                try WriteBytes(writer, if needed == 1 { " byte" } else { " bytes" });
+                WriteBytes(writer, if needed == 1 { " byte" } else { " bytes" })!;
             },
             _ => {}
         }
@@ -115,6 +115,6 @@ extend DecodeError : Debug {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try self.WriteDisplay(writer, spec);
+        return self.WriteDisplay(writer, spec)!;
     }
 }

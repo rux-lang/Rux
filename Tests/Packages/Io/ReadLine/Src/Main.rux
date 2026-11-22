@@ -77,7 +77,7 @@ func CheckPauses(allocator: Allocator) {
     };
     var interruptedSource = PausingHandle { state: @interrupted };
     var first = StringBuilder::New(allocator);
-    Assert((try? ReadLineFrom(interruptedSource, first)) is .Some(_),
+    Assert((ReadLineFrom(interruptedSource, first) !! none) is .Some(_),
            "an interrupted read is retried within the line");
     let ab = StringView::FromBytes("ab") ?? StringView::New();
     Assert(first.View().Equals(ab), "which arrives whole");

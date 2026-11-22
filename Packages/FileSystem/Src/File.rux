@@ -141,7 +141,7 @@ extend NativePath {
         let layout = Layout::Of((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))
                      ?? throw IoError::Of(IoErrorKind::InvalidInput);
         var borrowed = allocator;
-        let raw = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
+        let raw = borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `raw` is a fresh allocation of `layout`: `units.length + 1` units at the alignment of `OsUnit`.
         let copied = raw as *var OsUnit;
         index = 0;
@@ -170,7 +170,7 @@ extend NativePath {
     func ~(&var self) {
         let layout = Layout { size: (self.length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
         var borrowed = self.allocator;
-        try borrowed.Deallocate(self.units as *var opaque, layout) catch { _ => {} };
+        borrowed.Deallocate(self.units as *var opaque, layout) catch { _ => {} };
     }
 }
 
@@ -184,8 +184,8 @@ extend File {
     /// @returns the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open
     pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self ! IoError {
-        try options.Validate();
-        let native = try NativePath::New(allocator, path);
+        options.Validate()!;
+        let native = NativePath::New(allocator, path)!;
         when #target.os == .Windows {
             var access: uint32 = 0;
             if options.read {
@@ -284,7 +284,7 @@ extend File {
     /// Closes with the outcome discarded: the safety net, not the contract.
     /// @see https://rux-lang.dev/docs/api/filesystem/file#destructor
     func ~(&var self) {
-        try self.Close() catch { _ => {} };
+        self.Close() catch { _ => {} };
     }
 }
 

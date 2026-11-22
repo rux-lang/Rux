@@ -12,10 +12,10 @@ extend char32 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-write-display
     pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         let value = self as uint32;
-        if !IsScalarValue(value) { return try FormatScalar(writer, spec, ReplacementCharacter); }
-        return try FormatScalar(writer, spec, value as char32);
+        if !IsScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter)!; }
+        return FormatScalar(writer, spec, value as char32)!;
     }
 }
 
@@ -29,6 +29,6 @@ extend char32 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-text#char32-write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        return try WriteCharacterDebug(writer, self as uint32 as uint64, IsScalarValue(self as uint32));
+        return WriteCharacterDebug(writer, self as uint32 as uint64, IsScalarValue(self as uint32))!;
     }
 }

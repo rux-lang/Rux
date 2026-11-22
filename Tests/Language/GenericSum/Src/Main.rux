@@ -108,7 +108,7 @@ func Main() -> int {
     Assert(Nest<int32, ParseError>(1i32, 4i32, ParseError { position: 1i32 }) is
                .Some(.Failure(ParseError { position: 1i32 })),
            "a nested failure is data");
-    Assert((try? Complete(true)) is .Some(_), "a unit success across modules");
+    Assert((Complete(true) !! none) is .Some(_), "a unit success across modules");
 
     // A whole-subject typed pattern binds the whole value whatever the parameter stands for.
     Assert(Size<int32?>(none) == 1i32, "an optional argument");

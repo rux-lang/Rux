@@ -47,8 +47,8 @@ extend RotatingFile {
             throw IoError::Of(IoErrorKind::InvalidInput);
         }
         var owned = PathBuffer::FromPath(allocator, path);
-        var file = try File::Open(allocator, owned.AsPath(), OpenOptions::Appending());
-        let size = try file.Size();
+        var file = File::Open(allocator, owned.AsPath(), OpenOptions::Appending())!;
+        let size = file.Size()!;
         return Self { file: move file, path: move owned, limit, keep, size, allocator };
     }
 
@@ -65,16 +65,16 @@ extend RotatingFile {
     /// @returns success when an empty current file is open
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#rotate
     pub func Rotate(&var self) -> !IoError {
-        try self.file.Close();
+        self.file.Close()!;
         var index = self.keep;
         while index > 1 {
-            try MoveAside(self.allocator, self.path.AsPath(), index - 1, index);
+            MoveAside(self.allocator, self.path.AsPath(), index - 1, index)!;
             index = index - 1;
         }
         if self.keep > 0 {
-            try MoveAside(self.allocator, self.path.AsPath(), 0, 1);
+            MoveAside(self.allocator, self.path.AsPath(), 0, 1)!;
         }
-        var reopened = try File::Open(self.allocator, self.path.AsPath(), OpenOptions::Writing());
+        var reopened = File::Open(self.allocator, self.path.AsPath(), OpenOptions::Writing())!;
         self.file = move reopened;
         self.size = 0;
     }
@@ -83,7 +83,7 @@ extend RotatingFile {
     /// @returns success when the file is closed
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#close
     pub func Close(&var self) -> !IoError {
-        return try self.file.Close();
+        return self.file.Close()!;
     }
 }
 
@@ -95,9 +95,9 @@ extend RotatingFile : Writer {
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#write
     pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.size > 0 && self.size + (bytes.length as uint64) > self.limit {
-            try self.Rotate();
+            self.Rotate()!;
         }
-        let written = try self.file.Write(bytes);
+        let written = self.file.Write(bytes)!;
         self.size = self.size + (written as uint64);
         return written;
     }
@@ -106,7 +106,7 @@ extend RotatingFile : Writer {
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/log/rotating-file#flush
     pub func Flush(&var self) -> !IoError {
-        return try self.file.Flush();
+        return self.file.Flush()!;
     }
 }
 

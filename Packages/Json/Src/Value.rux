@@ -141,14 +141,14 @@ extend JsonNumber {
     /// @returns the value, or `none` when the text is not an integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-int64
     pub func AsInt64(&self) -> int64? {
-        return try? ParseInt64(self.text.View().Bytes());
+        return ParseInt64(self.text.View().Bytes()) !! none;
     }
 
     /// The value as an unsigned integer, or `none` if it does not fit one.
     /// @returns the value, or `none` when the text is not a non-negative integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-uint64
     pub func AsUint64(&self) -> uint64? {
-        return try? ParseUint64(self.text.View().Bytes());
+        return ParseUint64(self.text.View().Bytes()) !! none;
     }
 
     /// The value as a float, or `none` if the text is not a number at all.
@@ -157,7 +157,7 @@ extend JsonNumber {
     /// @returns the nearest representable value, or `none` when the text did not convert
     /// @see https://rux-lang.dev/docs/api/json/json-number#as-float64
     pub func AsFloat64(&self) -> float64? {
-        return try? ParseFloat64(self.text.View().Bytes());
+        return ParseFloat64(self.text.View().Bytes()) !! none;
     }
 
     /// Whether the text has no fraction and no exponent, so it denotes an integer.
@@ -254,7 +254,7 @@ extend JsonValue {
     pub func Number(allocator: Allocator, text: char8[..]) -> Self ! JsonError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Number;
-        held.number = try JsonNumber::New(allocator, text);
+        held.number = JsonNumber::New(allocator, text)!;
         return move held;
     }
 
@@ -275,7 +275,7 @@ extend JsonValue {
     pub func Text(allocator: Allocator, value: char8[..]) -> Self ! TextError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Text;
-        held.text = try String::FromBytes(allocator, value);
+        held.text = String::FromBytes(allocator, value)!;
         return move held;
     }
 

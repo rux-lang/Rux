@@ -257,9 +257,9 @@ extend Regex {
             reverseStart: NoReverse
         };
         var parser = Parser { pattern, at: 0, flags: 0, nodes: Vector<Node>::New(allocator) };
-        let root = try parser.ParseAlternation(regex, 0);
+        let root = parser.ParseAlternation(regex, 0)!;
         if parser.at < pattern.length { throw RegexError::At(RegexErrorKind::UnopenedGroup, parser.at); }
-        try regex.CompileProgram(parser.nodes.AsSlice(), root);
+        regex.CompileProgram(parser.nodes.AsSlice(), root)!;
         return move regex;
     }
 

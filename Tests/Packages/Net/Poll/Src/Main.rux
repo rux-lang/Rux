@@ -20,7 +20,7 @@ func WaitFor(poller: &var Poller, token: uint64) -> PollEvent {
     var events: PollEvent[8] = [PollEvent::New(); 8];
     var attempts: uint = 0;
     while attempts < 20u {
-        let count = try poller.Wait(events[..], Duration::FromMilliseconds(50)) catch { _ => Panic("the wait works") };
+        let count = poller.Wait(events[..], Duration::FromMilliseconds(50)) catch { _ => Panic("the wait works") };
         var index: uint = 0;
         while index < count {
             if events[index].token == token { return events[index]; }
@@ -35,9 +35,9 @@ func WaitFor(poller: &var Poller, token: uint64) -> PollEvent {
 func Close(stream: TcpStream) {}
 
 func Main() -> int {
-    let listener = try TcpListener::Bind(Loopback(0)) catch { _ => Panic("the listener binds") };
-    let address = try listener.LocalAddress() catch { _ => Panic("it has an address") };
-    try listener.SetNonBlocking(true) catch { _ => Panic("the listener becomes non-blocking") };
+    let listener = TcpListener::Bind(Loopback(0)) catch { _ => Panic("the listener binds") };
+    let address = listener.LocalAddress() catch { _ => Panic("it has an address") };
+    listener.SetNonBlocking(true) catch { _ => Panic("the listener becomes non-blocking") };
     try {
         listener.Accept();
         Panic("no connection is waiting yet");
@@ -45,8 +45,8 @@ func Main() -> int {
         error => Assert(error.kind == IoErrorKind::WouldBlock, "accept would block"),
     }
 
-    var poller = try Poller::New(SystemAllocator::New()) catch { _ => Panic("a poller is made") };
-    try poller.Register(listener.PollSource(), 1, Interest::Readable()) catch { _ => Panic("the listener registers") };
+    var poller = Poller::New(SystemAllocator::New()) catch { _ => Panic("a poller is made") };
+    poller.Register(listener.PollSource(), 1, Interest::Readable()) catch { _ => Panic("the listener registers") };
     try {
         poller.Register(listener.PollSource(), 9, Interest::Readable());
         Panic("a socket registers once");
@@ -54,16 +54,16 @@ func Main() -> int {
         error => Assert(error.kind == IoErrorKind::AlreadyExists, "a second registration is refused"),
     }
     var events: PollEvent[4] = [PollEvent::New(); 4];
-    let quiet = try poller.Wait(events[..], Duration::FromMilliseconds(20)) catch { _ => Panic("the wait works") };
+    let quiet = poller.Wait(events[..], Duration::FromMilliseconds(20)) catch { _ => Panic("the wait works") };
     Assert(quiet == 0u, "nothing is ready before a connection");
 
-    var client = try TcpStream::Connect(address) catch { _ => Panic("the client connects") };
+    var client = TcpStream::Connect(address) catch { _ => Panic("the client connects") };
     let incoming = WaitFor(poller, 1);
     Assert(incoming.readable, "a listener with a connection waiting is readable");
-    var server = try listener.Accept() catch { _ => Panic("the connection is accepted") };
+    var server = listener.Accept() catch { _ => Panic("the connection is accepted") };
 
     // The accepted stream blocks, whatever its listener does; made non-blocking, it has nothing to read yet.
-    try server.SetNonBlocking(true) catch { _ => Panic("the stream becomes non-blocking") };
+    server.SetNonBlocking(true) catch { _ => Panic("the stream becomes non-blocking") };
     var buffer: char8[16] = ['\0'; 16];
     try {
         server.Read(buffer[..]);
@@ -71,18 +71,18 @@ func Main() -> int {
     } catch {
         error => Assert(error.kind == IoErrorKind::WouldBlock, "a read would block"),
     }
-    try poller.Register(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("the stream registers") };
-    try WriteAll(client, "ping") catch { _ => Panic("the client writes") };
+    poller.Register(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("the stream registers") };
+    WriteAll(client, "ping") catch { _ => Panic("the client writes") };
     let data = WaitFor(poller, 2);
     Assert(data.readable && !data.closed, "a stream with data is readable");
-    let count = try server.Read(buffer[..]) catch { _ => Panic("the data is read") };
+    let count = server.Read(buffer[..]) catch { _ => Panic("the data is read") };
     Assert(count == 4u && buffer[0] == c8'p' && buffer[3] == c8'g', "the data arrives");
 
     // A stream registered for writing is writable at once; changed back to reading, it is quiet again.
-    try poller.Modify(server.PollSource(), 3, Interest::Writable()) catch { _ => Panic("the registration changes") };
+    poller.Modify(server.PollSource(), 3, Interest::Writable()) catch { _ => Panic("the registration changes") };
     let room = WaitFor(poller, 3);
     Assert(room.writable, "a stream with room is writable");
-    try poller.Modify(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("and changes back") };
+    poller.Modify(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("and changes back") };
 
     // The peer closing is reported as readable, and the read then finds the end.
     Close(move client);
@@ -94,7 +94,7 @@ func Main() -> int {
     } catch {
         error => Assert(error.kind == IoErrorKind::EndOfStream, "the read finds the end"),
     }
-    try poller.Deregister(server.PollSource()) catch { _ => Panic("the stream deregisters") };
+    poller.Deregister(server.PollSource()) catch { _ => Panic("the stream deregisters") };
     try {
         poller.Deregister(server.PollSource());
         Panic("a socket deregisters once");
@@ -103,15 +103,15 @@ func Main() -> int {
     }
 
     // A datagram makes a UDP socket readable.
-    let receiver = try UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the receiver binds") };
-    let target = try receiver.LocalAddress() catch { _ => Panic("it has an address") };
-    try receiver.SetNonBlocking(true) catch { _ => Panic("the receiver becomes non-blocking") };
-    try poller.Register(receiver.PollSource(), 4, Interest::Readable()) catch { _ => Panic("the receiver registers") };
-    let sender = try UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the sender binds") };
-    try sender.SendTo("datagram", target) catch { _ => Panic("the datagram is sent") };
+    let receiver = UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the receiver binds") };
+    let target = receiver.LocalAddress() catch { _ => Panic("it has an address") };
+    receiver.SetNonBlocking(true) catch { _ => Panic("the receiver becomes non-blocking") };
+    poller.Register(receiver.PollSource(), 4, Interest::Readable()) catch { _ => Panic("the receiver registers") };
+    let sender = UdpSocket::Bind(Loopback(0)) catch { _ => Panic("the sender binds") };
+    sender.SendTo("datagram", target) catch { _ => Panic("the datagram is sent") };
     let arrived = WaitFor(poller, 4);
     Assert(arrived.readable, "a socket with a datagram is readable");
-    let datagram = try receiver.ReceiveFrom(buffer[..]) catch { _ => Panic("the datagram is received") };
+    let datagram = receiver.ReceiveFrom(buffer[..]) catch { _ => Panic("the datagram is received") };
     Assert(datagram.length == 8u, "the whole datagram arrives");
     try {
         receiver.Receive(buffer[..]);
@@ -120,7 +120,7 @@ func Main() -> int {
         error => Assert(error.kind == IoErrorKind::WouldBlock, "the next receive would block"),
     }
 
-    try poller.Deregister(receiver.PollSource()) catch { _ => Panic("the receiver deregisters") };
-    try poller.Deregister(listener.PollSource()) catch { _ => Panic("the listener deregisters") };
+    poller.Deregister(receiver.PollSource()) catch { _ => Panic("the receiver deregisters") };
+    poller.Deregister(listener.PollSource()) catch { _ => Panic("the listener deregisters") };
     return 0;
 }

@@ -20,31 +20,31 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
 }
 
 func WriteWhole(allocator: Allocator, path: Path, content: char8[..]) {
-    var file = try File::Open(allocator, path, OpenOptions::Writing()) catch {
+    var file = File::Open(allocator, path, OpenOptions::Writing()) catch {
         _ => Panic("the file opens for writing")
     };
     Assert(file.IsOpen(), "the file opens for writing");
-    try WriteAll(file, content) catch { _ => Panic("and takes its content") };
-    try file.Close() catch { _ => Panic("and closes") };
+    WriteAll(file, content) catch { _ => Panic("and takes its content") };
+    file.Close() catch { _ => Panic("and closes") };
 }
 
 // Reads the whole file and checks it equals `expected`, byte for byte, length included.
 func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
-    var file = try File::Open(allocator, path, OpenOptions::Reading()) catch {
+    var file = File::Open(allocator, path, OpenOptions::Reading()) catch {
         _ => Panic("the file opens for reading")
     };
     Assert(file.IsOpen(), "the file opens for reading");
     var storage: char8[64];
-    let size = try file.Size() catch { _ => Panic("the size is known") };
+    let size = file.Size() catch { _ => Panic("the size is known") };
     Assert(size == expected.length as uint64, "it is exactly as long as expected");
     let room = storage[..expected.length];
-    try ReadExact(file, room) catch { _ => Panic("and reads whole") };
+    ReadExact(file, room) catch { _ => Panic("and reads whole") };
     var index: uint = 0;
     while index < expected.length {
         Assert(storage[index] == expected[index], "byte for byte");
         index = index + 1;
     }
-    try file.Close() catch { _ => Panic("and closes") };
+    file.Close() catch { _ => Panic("and closes") };
 }
 
 func Main() -> int ! IoError {
@@ -66,24 +66,24 @@ func Main() -> int ! IoError {
     let s = PathOf(allocator, "Bin/FileSystemXfer.tmp/s.txt", sHolder);
 
     // Fresh ground.
-    try DeleteFile(allocator, a) catch { _ => {} };
-    try DeleteFile(allocator, b) catch { _ => {} };
-    try DeleteFile(allocator, c) catch { _ => {} };
-    try DeleteFile(allocator, d) catch { _ => {} };
-    try DeleteFile(allocator, h) catch { _ => {} };
-    try DeleteFile(allocator, s) catch { _ => {} };
-    try DeleteDirectory(allocator, dir) catch { _ => {} };
-    try MakeDirectory(allocator, dir);
+    DeleteFile(allocator, a) catch { _ => {} };
+    DeleteFile(allocator, b) catch { _ => {} };
+    DeleteFile(allocator, c) catch { _ => {} };
+    DeleteFile(allocator, d) catch { _ => {} };
+    DeleteFile(allocator, h) catch { _ => {} };
+    DeleteFile(allocator, s) catch { _ => {} };
+    DeleteDirectory(allocator, dir) catch { _ => {} };
+    MakeDirectory(allocator, dir)!;
 
     // A copy is the bytes, not an alias: mutate the original and the copy stands still.
     WriteWhole(allocator, a, "the original bytes");
-    try CopyFile(allocator, a, b);
+    CopyFile(allocator, a, b)!;
     CheckWhole(allocator, b, "the original bytes");
     WriteWhole(allocator, a, "changed afterwards");
     CheckWhole(allocator, b, "the original bytes");
 
     // A rename is the same content under a new name, the old name gone.
-    try Rename(allocator, b, c);
+    Rename(allocator, b, c)!;
     CheckWhole(allocator, c, "the original bytes");
     try {
         File::Open(allocator, b, OpenOptions::Reading());
@@ -94,12 +94,12 @@ func Main() -> int ! IoError {
 
     // Renaming onto an existing name replaces it.
     WriteWhole(allocator, d, "doomed");
-    try Rename(allocator, c, d);
+    Rename(allocator, c, d)!;
     CheckWhole(allocator, d, "the original bytes");
 
     // A hard link is a second equal name: delete the first and the content lives under the second.
-    try CreateHardLink(allocator, a, h);
-    try DeleteFile(allocator, a);
+    CreateHardLink(allocator, a, h)!;
+    DeleteFile(allocator, a)!;
     CheckWhole(allocator, h, "changed afterwards");
 
     // A symbolic link follows on open and deletes as itself. Creation is privilege-gated on Windows, so a
@@ -112,7 +112,7 @@ func Main() -> int ! IoError {
     match linked {
         .Success(_) => {
             CheckWhole(allocator, s, "changed afterwards");
-            try DeleteFile(allocator, s);
+            DeleteFile(allocator, s)!;
             CheckWhole(allocator, h, "changed afterwards");
         },
         .Failure(linkError) => {
@@ -121,9 +121,9 @@ func Main() -> int ! IoError {
     }
 
     // Clean ground behind us.
-    try DeleteFile(allocator, d);
-    try DeleteFile(allocator, h);
-    try DeleteDirectory(allocator, dir);
+    DeleteFile(allocator, d)!;
+    DeleteFile(allocator, h)!;
+    DeleteDirectory(allocator, dir)!;
 
     return 0;
 }

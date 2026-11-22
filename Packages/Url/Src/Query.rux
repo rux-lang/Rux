@@ -81,7 +81,7 @@ pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) ->
         out.Push(if form && c == '+' { c8' ' } else { c });
         index = index + 1;
     }
-    return try String::FromBytes(allocator, out.View()) catch { _ => throw .InvalidText };
+    return String::FromBytes(allocator, out.View()) catch { _ => throw .InvalidText };
 }
 
 /// Builds a query from `name=value` pairs, encoding each the way HTML forms do.

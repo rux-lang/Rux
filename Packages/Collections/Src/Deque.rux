@@ -167,7 +167,7 @@ extend Deque<T> {
     func Grow(&var self, required: uint) {
         if required <= self.capacity { return; }
 
-        var capacity = try PowerOfTwoCapacity(required, MinimumDequeCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
+        var capacity = PowerOfTwoCapacity(required, MinimumDequeCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
 
         // A fresh block rather than a reallocation: the elements may wrap, and unwrapping them in place would need a
         // rotation the new block gets for free. Nothing is released until the relocation has happened.
@@ -190,7 +190,7 @@ extend Deque<T> {
     /// @param additional how many more elements to make room for
     /// @see https://rux-lang.dev/docs/api/collections/deque#reserve
     pub func Reserve(&var self, additional: uint) {
-        self.Grow(try AddLength(self.length, additional) catch { error => AllocationFailed(error) });
+        self.Grow(AddLength(self.length, additional) catch { error => AllocationFailed(error) });
     }
 
     /// Releases the capacity the length does not need.
@@ -209,7 +209,7 @@ extend Deque<T> {
             return;
         }
 
-        var capacity = try PowerOfTwoCapacity(self.length, MinimumDequeCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
+        var capacity = PowerOfTwoCapacity(self.length, MinimumDequeCapacity, sizeof(T)) catch { error => AllocationFailed(error) };
         if capacity == self.capacity { return; }
 
         var block = AllocateBlock<T>(self.allocator, capacity);
@@ -260,7 +260,7 @@ extend Deque<T> {
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/deque#push-front
     pub func PushFront(&var self, value: T) {
-        self.Grow(try AddLength(self.length, 1) catch { error => AllocationFailed(error) });
+        self.Grow(AddLength(self.length, 1) catch { error => AllocationFailed(error) });
 
         // One step back around the ring, which for a head of zero is the last slot.
         self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
@@ -276,7 +276,7 @@ extend Deque<T> {
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/collections/deque#push-back
     pub func PushBack(&var self, value: T) {
-        self.Grow(try AddLength(self.length, 1) catch { error => AllocationFailed(error) });
+        self.Grow(AddLength(self.length, 1) catch { error => AllocationFailed(error) });
 
         // Safety: the ring invariant: `Grow` left `length < capacity`, so the slot just past the last element is
         // allocated and holds nothing.

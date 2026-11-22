@@ -158,7 +158,7 @@ extend Poller {
     /// @returns success, or `AlreadyExists` when the socket is registered already
     /// @see https://rux-lang.dev/docs/api/net/poller#register
     pub func Register(&var self, source: PollSource, token: uint64, interest: Interest) -> !IoError {
-        try self.Change(source, token, interest, true);
+        self.Change(source, token, interest, true)!;
     }
 
     /// Changes what a registered socket is watched for, and the token it is reported with.
@@ -168,7 +168,7 @@ extend Poller {
     /// @returns success, or `NotFound` when the socket is not registered
     /// @see https://rux-lang.dev/docs/api/net/poller#modify
     pub func Modify(&var self, source: PollSource, token: uint64, interest: Interest) -> !IoError {
-        try self.Change(source, token, interest, false);
+        self.Change(source, token, interest, false)!;
     }
 
     /// Stops watching a socket.
@@ -190,7 +190,7 @@ extend Poller {
         }
         else {
             let index = self.Find(source.handle) ?? throw IoError::Of(IoErrorKind::NotFound);
-            try self.Apply(source.handle, 0, Interest { readable: false, writable: false });
+            self.Apply(source.handle, 0, Interest { readable: false, writable: false })!;
             self.registrations.SwapRemoveAt(index);
         }
     }
@@ -205,7 +205,7 @@ extend Poller {
         let capacity = if events.length > 1024u { 1024u } else { events.length };
         let milliseconds = TimeoutMilliseconds(timeout);
         when #target.os == .Linux {
-            try self.Reserve(capacity * EpollEventBytes);
+            self.Reserve(capacity * EpollEventBytes)!;
             // Safety: `Reserve` made the buffer at least `capacity * EpollEventBytes` bytes long, and its words are
             // viewed as the bytes they hold.
             let base = self.buffer.AsMutableSlice().data as *var uint8;
@@ -239,7 +239,7 @@ extend Poller {
             if count == 0u {
                 throw IoError::Of(IoErrorKind::InvalidInput);
             }
-            try self.Reserve(count * 16);
+            self.Reserve(count * 16)!;
             // Safety: `Reserve` made the buffer of 8-byte-aligned words room for `count` 16-byte `WsaPollFd`s.
             let polled = self.buffer.AsMutableSlice().data as *var WsaPollFd;
             var index: uint = 0;
@@ -273,7 +273,7 @@ extend Poller {
             return filled;
         }
         else {
-            try self.Reserve(capacity * sizeof(Kevent) as uint);
+            self.Reserve(capacity * sizeof(Kevent) as uint)!;
             // Safety: `Reserve` made the buffer of 8-byte-aligned words room for `capacity` `Kevent`s.
             let reported = self.buffer.AsMutableSlice().data as *var Kevent;
             var span = Timespec { seconds: 0, nanoseconds: 0 };
@@ -343,7 +343,7 @@ extend Poller {
             let found = self.Find(source.handle);
             if adding && found != none { throw IoError::Of(IoErrorKind::AlreadyExists); }
             if !adding && found == none { throw IoError::Of(IoErrorKind::NotFound); }
-            try self.Apply(source.handle, token, interest);
+            self.Apply(source.handle, token, interest)!;
             let registration = Registration { handle: source.handle, token, interest };
             match found {
                 .Some(index) => self.registrations.AsMutableSlice()[index] = registration,

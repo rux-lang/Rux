@@ -56,7 +56,7 @@ func Main() -> int {
 
     // The type argument is required: the function is generic over the value so that it can borrow it rather than
     // take ownership, and a generic bound is not inferred from an interface value.
-    let written = (try? WriteValueLine<int32>(text, measurement)) is .Some(_);
+    let written = (WriteValueLine<int32>(text, measurement) !! none) is .Some(_);
     if failure is IoError || !written {
         return 1;
     }
@@ -83,7 +83,7 @@ func Main() -> int {
     let allocator = SystemAllocator::New();
     var name = StringBuilder::New(allocator);
     PrintLine("What is your name?");
-    try ReadLine(name) catch { _ => return 1 };
+    ReadLine(name) catch { _ => return 1 };
     let text = name.TakeString();
     PrintLine(text);
     return 0;

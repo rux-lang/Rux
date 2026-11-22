@@ -68,7 +68,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
 /// @returns success when the working directory changed
 /// @see https://rux-lang.dev/docs/api/filesystem/location#set-current-directory
 pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> !IoError {
-    let native = try NativePath::New(allocator, path);
+    let native = NativePath::New(allocator, path)!;
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
         // in scope, and a `uint16` unit is a `char16`.
@@ -98,7 +98,7 @@ pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     if IsAbsolute(path) {
         return Normalize(allocator, path);
     }
-    var here = try CurrentDirectory(allocator);
+    var here = CurrentDirectory(allocator)!;
     var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()));
     joined.Push(path.name);
     var simplified = Normalize(allocator, joined.AsPath());
@@ -111,7 +111,7 @@ when #target.os != .Windows {
     // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
     // is the answer the walk below asks for at every component.
     func ReadLinkText(allocator: Allocator, path: Path) -> OsString? ! IoError {
-        let native = try NativePath::New(allocator, path);
+        let native = NativePath::New(allocator, path)!;
         var units: OsUnit[4096];
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope, and
         // `units` is a local array of 4096 units, the length passed.
@@ -181,7 +181,7 @@ when #target.os != .Windows {
                 }
                 else {
                     resolved.Push(segment);
-                    match try ReadLinkText(allocator, resolved.AsPath()) {
+                    match ReadLinkText(allocator, resolved.AsPath())! {
                         .Some(target) => {
                             // Safety: `followed` is the address of `Canonicalize`'s local count, which outlives
                             // the whole walk.
@@ -192,7 +192,7 @@ when #target.os != .Windows {
                             if count > SymbolicLinkLimit { throw IoError::Of(IoErrorKind::LimitExceeded); }
                             // The link's own name is replaced by whatever it holds, resolved in turn.
                             resolved.Pop();
-                            try ResolveInto(allocator, Path::FromView(target.View()), resolved, followed);
+                            ResolveInto(allocator, Path::FromView(target.View()), resolved, followed)!;
                         },
                         none => {}
                     }
@@ -218,7 +218,7 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
         // carries no access rights, which is enough here and works on a file this process may not read.
-        let native = try NativePath::New(allocator, path);
+        let native = NativePath::New(allocator, path)!;
         let handle = OpenForQuery(native, true);
         if (handle as uint64) == InvalidHandleValue {
             // Safety: `GetLastError` takes nothing and reads this thread's last error code.
@@ -240,14 +240,14 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
     else {
         // No Unix kernel resolves a whole path for a caller — `realpath` is library code over `readlink` — so
         // the walk is done here, component by component, against what each link actually points at.
-        var started = try Absolute(allocator, path);
+        var started = Absolute(allocator, path)!;
         var resolved = PathBuffer::New(allocator);
         var followed: uint = 0;
-        try ResolveInto(allocator, started.AsPath(), resolved, @followed);
+        ResolveInto(allocator, started.AsPath(), resolved, @followed)!;
         started.Release();
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".
-        try MetadataOf(allocator, resolved.AsPath(), true);
+        MetadataOf(allocator, resolved.AsPath(), true)!;
         return move resolved;
     }
 }

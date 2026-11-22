@@ -74,13 +74,13 @@ extend BrokenHandle : Reader {
 
 // Whether the next event arrives and is `expected`.
 func Arrives(reader: &var JsonEventReader, expected: JsonEvent) -> bool {
-    let event = try reader.Next() catch { _ => return false };
+    let event = reader.Next() catch { _ => return false };
     return event is .Some(arrived) && arrived == expected;
 }
 
 // Whether the document ends at the next call, with nothing wrong.
 func Ends(reader: &var JsonEventReader) -> bool {
-    let event = try reader.Next() catch { _ => return false };
+    let event = reader.Next() catch { _ => return false };
     return event is none;
 }
 
@@ -102,7 +102,7 @@ func Refusal(allocator: Allocator, text: char8[..]) -> JsonReadError? {
     var reader = JsonEventReader::New(allocator, @handle as Reader, JsonLimits::Default());
     var steps: uint = 0;
     while steps < 64 {
-        let event = try reader.Next() catch { error => return error };
+        let event = reader.Next() catch { error => return error };
         if event is none { return none; }
         steps = steps + 1;
     }
@@ -112,7 +112,7 @@ func Refusal(allocator: Allocator, text: char8[..]) -> JsonReadError? {
 // How a failure renders: its case and, in parentheses, its offset.
 func Rendered(failure: &JsonParseError, writer: &var BufferWriter) -> char8[..] {
     let sink: &var TextWriter = writer;
-    if (try? failure.WriteDebug(sink, FormatSpec::Plain())) is none { return ""; }
+    if (failure.WriteDebug(sink, FormatSpec::Plain()) !! none) is none { return ""; }
     return writer.Written();
 }
 
@@ -139,7 +139,7 @@ func StoppedAt(failure: JsonReadError?, expected: char8[..]) -> bool {
 func SameAsParser(allocator: Allocator, text: char8[..]) -> bool {
     let thrown = Refusal(allocator, text) ?? return false;
     let streamed = match thrown { .Malformed(reason) => reason, .Source(_, _) => return false };
-    var parsedValue = try? Parse(allocator, text);
+    var parsedValue = Parse(allocator, text) !! none;
     if parsedValue is .Some(_) { return false; }
     var parsed = JsonParseError::Unexpected(0);
     try {

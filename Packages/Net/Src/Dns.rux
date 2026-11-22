@@ -365,19 +365,19 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
 // Asks `server` for `host`'s records of `kind` over TCP, as an answer too long for a datagram must be fetched.
 func AskOverTcp(server: SocketAddress, query: uint8[..], timeout: Duration, answer: var uint8[..])
     -> uint ! IoError {
-    var stream = try TcpStream::Connect(server);
-    try stream.SetReadTimeout(timeout);
-    try stream.SetWriteTimeout(timeout);
+    var stream = TcpStream::Connect(server)!;
+    stream.SetReadTimeout(timeout)!;
+    stream.SetWriteTimeout(timeout)!;
     var prefix: char8[2] = [(query.length >> 8) as char8, query.length as char8];
-    try WriteAll(stream, prefix[..]);
+    WriteAll(stream, prefix[..])!;
     // Safety: `query` is a slice of `query.length` bytes, and `char8` has the layout of `uint8`.
-    try WriteAll(stream, (query.data as *char8)[..query.length]);
+    WriteAll(stream, (query.data as *char8)[..query.length])!;
     var size: char8[2] = [c8'\0'; 2];
-    try ReadExact(stream, size[..]);
+    ReadExact(stream, size[..])!;
     let length = (size[0] as uint << 8) | size[1] as uint;
     if length > answer.length { throw IoError::Of(IoErrorKind::LimitExceeded); }
     // Safety: `length` is at most `answer.length`, checked above, and `char8` has the layout of `uint8`.
-    try ReadExact(stream, (answer.data as *var char8)[..length]);
+    ReadExact(stream, (answer.data as *var char8)[..length])!;
     return length;
 }
 
@@ -395,12 +395,12 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         },
         port: 0
     };
-    let socket = try UdpSocket::Bind(local) catch { _ => return Outcome::Failed };
-    try socket.Connect(server) catch { _ => return Outcome::Failed };
-    try socket.SetReadTimeout(timeout) catch { _ => return Outcome::Failed };
+    let socket = UdpSocket::Bind(local) catch { _ => return Outcome::Failed };
+    socket.Connect(server) catch { _ => return Outcome::Failed };
+    socket.SetReadTimeout(timeout) catch { _ => return Outcome::Failed };
     // Safety: `WriteQuery` wrote `length` bytes, at most the 512 of the local `query`, and `char8` has the layout of
     // `uint8`.
-    try socket.Send(((@query[0]) as *char8)[..length]) catch { _ => return Outcome::Failed };
+    socket.Send(((@query[0]) as *char8)[..length]) catch { _ => return Outcome::Failed };
     var answer: uint8[65535] = [0u8; 65535];
     // An answer to an earlier query, or from somewhere else, is read past until the timeout.
     let started = Instant::Now();
@@ -408,7 +408,7 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         // Safety: `answer` is a local of 65535 bytes, so its first 512 are writable, and `char8` has the layout of
         // `uint8`.
         let datagram = ((@answer[0]) as *var char8)[..512];
-        let received = try socket.Receive(datagram) catch { _ => return Outcome::Failed };
+        let received = socket.Receive(datagram) catch { _ => return Outcome::Failed };
         let message = answer[..received];
         if received < 12u || Word16(message, 0) != id {
             let spent = Instant::Now().Since(started) ?? Duration::Zero();
@@ -417,7 +417,7 @@ func Ask(server: SocketAddress, host: char8[..], kind: uint16, id: uint16, port:
         }
         // Truncated: the whole answer comes over TCP.
         if (message[2] & 0x02u8) != 0u8 {
-            let whole = try AskOverTcp(server, query[..length], timeout, answer[..]) catch {
+            let whole = AskOverTcp(server, query[..length], timeout, answer[..]) catch {
                 _ => return Outcome::Failed,
             };
             return ReadAnswer(answer[..whole], id, kind, port, found);
@@ -452,5 +452,5 @@ func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vect
         return move found;
     }
     let resolver = Resolver::FromSystem(allocator);
-    return try resolver.Lookup(allocator, host, port);
+    return resolver.Lookup(allocator, host, port)!;
 }

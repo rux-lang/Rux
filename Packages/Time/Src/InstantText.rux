@@ -24,10 +24,10 @@ extend Instant : Debug {
     /// @returns success when the whole reading was accepted
     /// @see https://rux-lang.dev/docs/api/time/instant#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
-        try RejectStyle(spec);
+        RejectStyle(spec)!;
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
-        try WriteBytes(writer, "Instant(nanoseconds: ");
-        try WriteUnsigned(writer, self.ticks);
-        return try WriteAscii(writer, c8')');
+        WriteBytes(writer, "Instant(nanoseconds: ")!;
+        WriteUnsigned(writer, self.ticks)!;
+        return WriteAscii(writer, c8')')!;
     }
 }

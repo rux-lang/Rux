@@ -15,7 +15,7 @@ func Main() -> !EntropyError {
 
     // A zero-length request succeeds without touching anything.
     // Safety: a zero length asks for no bytes, so nothing is written through the null buffer.
-    try FillFromSource(null, 0);
+    FillFromSource(null, 0)!;
 
     // A null buffer with a real length is refused rather than written through.
     // Safety: the null buffer is refused before anything is written, which is the behaviour under test.
@@ -48,7 +48,7 @@ func Main() -> !EntropyError {
 
     let start = @storage[8] as *var opaque;
     // Safety: `start` is `storage[8]`, and `storage` holds 80 bytes, so the 64 bytes from there end at index 72.
-    try FillFromSource(start, 64);
+    FillFromSource(start, 64)!;
 
     index = 0;
     while index < 8 {
@@ -74,8 +74,8 @@ func Main() -> !EntropyError {
     var firstDraw: byte[64];
     var secondDraw: byte[64];
     // Safety: `firstDraw` and `secondDraw` are local arrays of exactly 64 bytes.
-    try FillFromSource(@firstDraw[0] as *var opaque, 64);
-    try FillFromSource(@secondDraw[0] as *var opaque, 64);
+    FillFromSource(@firstDraw[0] as *var opaque, 64)!;
+    FillFromSource(@secondDraw[0] as *var opaque, 64)!;
 
     var identical = true;
     index = 0;
@@ -103,7 +103,7 @@ func Main() -> !EntropyError {
     var one: byte[1];
     one[0] = 0x5A;
     // Safety: `one` is a local array of exactly one byte.
-    try FillFromSource(@one[0] as *var opaque, 1);
+    FillFromSource(@one[0] as *var opaque, 1)!;
 
     // A request larger than any single kernel call is filled completely, which is what the loop is for.
     var large: byte[4096];
@@ -113,7 +113,7 @@ func Main() -> !EntropyError {
         index++;
     }
     // Safety: `large` is a local array of exactly 4096 bytes.
-    try FillFromSource(@large[0] as *var opaque, 4096);
+    FillFromSource(@large[0] as *var opaque, 4096)!;
 
     var stillPattern: uint = 0;
     index = 0;

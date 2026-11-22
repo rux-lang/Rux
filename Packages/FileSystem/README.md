@@ -15,7 +15,7 @@ rux add Rux/FileSystem
 - **A file is a stream, and a stream is usually a borrow** — `File` implements `Reader`, `Writer` and `Seeker`, so anything wanting a stream for the length of a call takes the file:
 
   ```rux
-  try WriteAll(file, contents);
+  WriteAll(file, contents)!;
   ```
 
   The borrow is checked and ends at the call, which means the compiler also refuses reading the file through while a borrow of it is still live. A value that keeps its stream past the call that made it, such as a `BufferedReader`, keeps a `Reader` or `Writer` handle, made from the file's address as `@file as Reader`: the handle addresses the file and copies nothing, and its maker promises that the file outlives the handle and is not moved while it exists. A handle to a *closed* file is harmless: the file checks its own handle, so every operation refuses with `InvalidHandle`. `AtomicWrite` is itself a `Writer`, so replacing a file needs no adapter at all.

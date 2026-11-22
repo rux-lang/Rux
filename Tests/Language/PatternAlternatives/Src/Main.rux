@@ -77,7 +77,7 @@ func Read(code: int32) -> int32 ! ReadError {
 }
 
 func Recovered(code: int32) -> int32 {
-    return try Read(code) catch {
+    return Read(code) catch {
         ReadError { code: 1 } | ReadError { code: 2 } => -1i32,
         _ => -2i32,
     };

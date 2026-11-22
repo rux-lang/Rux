@@ -20,14 +20,14 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Encoded(bytes: byte[..], letterCase: HexCase, expected: char8[..]) -> bool {
     var room: char8[64];
-    let written = try HexEncode(bytes, room[..], letterCase) catch { _ => return false };
+    let written = HexEncode(bytes, room[..], letterCase) catch { _ => return false };
     return written == expected.length && Same(room[..written], expected);
 }
 
 // Whether `text` decodes to exactly the bytes of `expected`.
 func Decoded(text: char8[..], expected: char8[..]) -> bool {
     var room: byte[64];
-    let written = try HexDecode(text, room[..]) catch { _ => return false };
+    let written = HexDecode(text, room[..]) catch { _ => return false };
     if written != expected.length { return false; }
     var index: uint = 0;
     while index < written {
@@ -62,7 +62,7 @@ func Refusal(text: char8[..], room: uint, at: uint) -> int {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec = try ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
+    spec = ParseFormatSpec(text) catch { _ => Panic("the spec parses") };
     return spec;
 }
 
@@ -72,7 +72,7 @@ func Shown(bytes: byte[..], letterCase: HexCase, spec: char8[..], expected: char
     var writer = BufferWriter::New(storage[..]);
     let sink: &var TextWriter = writer;
     let shown: HexView = ViewHex(bytes, letterCase);
-    if (try? shown.WriteDisplay(sink, Spec(spec))) is none { return false; }
+    if (shown.WriteDisplay(sink, Spec(spec)) !! none) is none { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -120,12 +120,12 @@ func Main() -> int {
     while value < 256 {
         let one: byte[1] = [value as byte];
         var room: char8[2];
-        try HexEncode(one[..], room[..]) catch { _ => return 8 };
+        HexEncode(one[..], room[..]) catch { _ => return 8 };
         if room[0] != lower[value >> 4] || room[1] != lower[value & 15] { return 9; }
-        try HexEncode(one[..], room[..], HexCase::Upper) catch { _ => return 10 };
+        HexEncode(one[..], room[..], HexCase::Upper) catch { _ => return 10 };
         if room[0] != upper[value >> 4] || room[1] != upper[value & 15] { return 11; }
         var back: byte[1];
-        let read = try HexDecode(room[..], back[..]) catch { _ => return 12 };
+        let read = HexDecode(room[..], back[..]) catch { _ => return 12 };
         if read != 1 || back[0] != (value as byte) { return 13; }
         value = value + 1;
     }
@@ -196,7 +196,7 @@ func Main() -> int {
 
     // The text overload encodes the UTF-8 bytes.
     var room: char8[8];
-    let written = try HexEncode("é!", room[..]) catch { _ => return 29 };
+    let written = HexEncode("é!", room[..]) catch { _ => return 29 };
     if !Same(room[..written], "c3a921") { return 30; }
 
     // The view renders through a placeholder, takes its case from the spec, and pads to a width.

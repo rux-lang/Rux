@@ -55,7 +55,7 @@ extend BufferedReader {
         let wanted = if capacity == 0 { DefaultBufferCapacity } else { capacity };
         let layout = Layout::Of(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
-        let block = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
+        let block = borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
         reader.data = block as *var char8;
         reader.capacity = wanted;
@@ -98,7 +98,7 @@ extend BufferedReader {
         self.end = 0;
         while true {
             // Safety: `data` is non-null, checked above, and holds `capacity` bytes.
-            let filled = try self.source.Read((self.data)[..self.capacity]) catch {
+            let filled = self.source.Read((self.data)[..self.capacity]) catch {
                 error if error.IsInterrupted() => continue,
                 error => throw error
             };
@@ -119,7 +119,7 @@ extend BufferedReader {
         if self.Available() == 0 && into.length >= self.capacity {
             // The bypass: copying a buffer-sized read through the buffer would be pure overhead.
             while true {
-                let filled = try self.source.Read(into) catch {
+                let filled = self.source.Read(into) catch {
                     error if error.IsInterrupted() => continue,
                     error => throw error
                 };
@@ -127,7 +127,7 @@ extend BufferedReader {
                 return filled;
             }
         }
-        try self.Fill();
+        self.Fill()!;
         var give = self.Available();
         if give > into.length {
             give = into.length;
@@ -145,7 +145,7 @@ extend BufferedReader {
         if self.data != null {
             let layout = Layout::Of(self.capacity, 1);
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: self.capacity, alignment: 1 }))
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: self.capacity, alignment: 1 }))
                 catch { _ => {} };
         }
         self.data = null;
@@ -191,7 +191,7 @@ extend BufferedWriter {
         let wanted = if capacity == 0 { DefaultBufferCapacity } else { capacity };
         let layout = Layout::Of(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
-        let block = try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
+        let block = borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::Other) };
         // Safety: `block` is a fresh allocation of `wanted` bytes at alignment 1, so it holds `wanted` `char8`s.
         writer.data = block as *var char8;
         writer.capacity = wanted;
@@ -209,8 +209,8 @@ extend BufferedWriter {
     /// @returns success when everything buffered reached the sink
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#flush
     pub func Flush(&var self) -> !IoError {
-        try self.SendHeld();
-        return try self.sink.Flush();
+        self.SendHeld()!;
+        return self.sink.Flush()!;
     }
 
     // Sends whatever is gathered, so that the bytes written after it keep their order.
@@ -218,7 +218,7 @@ extend BufferedWriter {
         if self.length == 0 { return; }
         // Safety: a non-zero `length` means the buffer is live, and `length` never passes its `capacity` bytes.
         let held = (self.data)[..self.length];
-        try WriteAll(self.sink, held);
+        WriteAll(self.sink, held)!;
         self.length = 0;
     }
 
@@ -230,12 +230,12 @@ extend BufferedWriter {
         if bytes.length == 0 { return 0; }
         if self.data == null || bytes.length >= self.capacity {
             // The bypass, after clearing what order requires: bytes gathered earlier go first.
-            try self.SendHeld();
-            try WriteAll(self.sink, bytes);
+            self.SendHeld()!;
+            WriteAll(self.sink, bytes)!;
             return bytes.length;
         }
         if self.length + bytes.length > self.capacity {
-            try self.SendHeld();
+            self.SendHeld()!;
         }
         // Safety: `data` is non-null and holds `capacity` bytes, and `length + bytes.length` fits in `capacity`
         // (the held bytes were sent above if it would not); `bytes` is the caller's slice, not this buffer.
@@ -252,7 +252,7 @@ extend BufferedWriter {
             let layout = Layout::Of(self.capacity, 1);
             let fallback = Layout { size: self.capacity, alignment: 1 };
             var borrowed = self.allocator;
-            try borrowed.Deallocate(self.data as *var opaque, (layout ?? fallback)) catch { _ => {} };
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? fallback)) catch { _ => {} };
         }
         self.data = null;
         self.capacity = 0;
@@ -263,7 +263,7 @@ extend BufferedWriter {
     /// gives the buffer back.
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#destructor
     func ~(&var self) {
-        try self.Flush() catch { _ => {} };
+        self.Flush() catch { _ => {} };
         self.Abandon();
     }
 }

@@ -16,15 +16,15 @@ func Main() -> int {
     Assert(builder.IsEmpty() && builder.Length() == 0, "a new builder holds nothing");
     Assert(builder.Capacity() == 0, "and has taken no room");
 
-    try builder.AppendAscii(c8'h') catch { _ => Panic("an ASCII byte is appended") };
-    try builder.AppendAscii(c8'i') catch { _ => Panic("and another") };
+    builder.AppendAscii(c8'h') catch { _ => Panic("an ASCII byte is appended") };
+    builder.AppendAscii(c8'i') catch { _ => Panic("and another") };
     Assert(builder.Length() == 2, "the builder holds both");
     Assert(builder.Capacity() >= 2, "with room for them");
     let firstCapacity = builder.Capacity();
 
-    try builder.AppendScalar(0xE9u32 as char32) catch { _ => Panic("a two-byte character is appended") };
+    builder.AppendScalar(0xE9u32 as char32) catch { _ => Panic("a two-byte character is appended") };
     Assert(builder.Length() == 4, "taking two bytes");
-    try builder.AppendScalar(0x1F600u32 as char32) catch { _ => Panic("and a four-byte one") };
+    builder.AppendScalar(0x1F600u32 as char32) catch { _ => Panic("and a four-byte one") };
     Assert(builder.Length() == 8, "taking four");
     Assert(builder.View().ScalarCount() == 4, "so four characters sit in eight bytes");
 
@@ -60,7 +60,7 @@ func Main() -> int {
     // Growth is by doubling, so a run of appends does not reallocate on every one.
     var index: uint = 0;
     while index < 200 {
-        try builder.AppendAscii(c8'x') catch { _ => Panic("there is room for every byte") };
+        builder.AppendAscii(c8'x') catch { _ => Panic("there is room for every byte") };
         index = index + 1;
     }
     Assert(builder.Length() == 208, "the builder holds everything appended");
@@ -99,7 +99,7 @@ func Main() -> int {
     let sizedCapacity = sized.Capacity();
     index = 0;
     while index < 64 {
-        try sized.AppendAscii(c8'y') catch { _ => Panic("the sized builder takes every byte") };
+        sized.AppendAscii(c8'y') catch { _ => Panic("the sized builder takes every byte") };
         index = index + 1;
     }
     Assert(sized.Capacity() == sizedCapacity, "and filling it exactly needs no more room");

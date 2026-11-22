@@ -52,10 +52,10 @@ func Streamed(codec: StreamCodec, data: char8[..], chunk: uint, into: *var Captu
     var at: uint = 0;
     while at < data.length {
         let end = if at + chunk < data.length { at + chunk } else { data.length };
-        try WriteAll(writer, data[at..end]) catch { _ => return false };
+        WriteAll(writer, data[at..end]) catch { _ => return false };
         at = end;
     }
-    try writer.Finish() catch { _ => return false };
+    writer.Finish() catch { _ => return false };
     return true;
 }
 
@@ -104,13 +104,13 @@ func Main() -> int {
         for length in lengths[..] {
             var whole: uint = 0;
             match codec {
-                StreamCodec::Hex(letterCase) => whole = try HexEncode(bytes[..length], expected[..], letterCase) catch {
+                StreamCodec::Hex(letterCase) => whole = HexEncode(bytes[..length], expected[..], letterCase) catch {
                     _ => return 1,
                 },
-                StreamCodec::Base64(form) => whole = try Base64Encode(bytes[..length], expected[..], form) catch {
+                StreamCodec::Base64(form) => whole = Base64Encode(bytes[..length], expected[..], form) catch {
                     _ => return 2,
                 },
-                StreamCodec::Base32(form) => whole = try Base32Encode(bytes[..length], expected[..], form) catch {
+                StreamCodec::Base32(form) => whole = Base32Encode(bytes[..length], expected[..], form) catch {
                     _ => return 3,
                 }
             }
@@ -148,7 +148,7 @@ func Main() -> int {
     // Safety: `byteReader` is a local of this function that outlives every use of the handle.
     var crockford = DecodingReader::New(@byteReader as Reader, StreamCodec::Base32(Base32Variant::Crockford));
     var hello: char8[5] = [c8' '; 5];
-    try ReadExact(crockford, hello[..]) catch { _ => return 4 };
+    ReadExact(crockford, hello[..]) catch { _ => return 4 };
     Assert(Same(hello[..], "Hello"), "Crockford with a hyphen");
     return 0;
 }

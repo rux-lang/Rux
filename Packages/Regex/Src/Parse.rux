@@ -329,13 +329,13 @@ extend Parser {
 
     // Alternatives separated by `|`.
     func ParseAlternation(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
-        let first = try self.ParseConcat(regex, depth);
+        let first = self.ParseConcat(regex, depth)!;
         if self.Peek() != 0x7Cu32 { return first; }
         let alternation = self.AddNode(NodeKind::Alternate, 0, 0, 0, 0, first);
         var last = first;
         while self.Peek() == 0x7Cu32 {
             self.at = self.at + 1;
-            let next = try self.ParseConcat(regex, depth);
+            let next = self.ParseConcat(regex, depth)!;
             self.Link(last, next);
             last = next;
         }
@@ -351,7 +351,7 @@ extend Parser {
             self.SkipLayout();
             let byte = self.Peek();
             if byte == 0xFFFFFFFFu32 || byte == 0x7Cu32 || byte == 0x29u32 { break; }
-            let item = try self.ParseRepeat(regex, depth);
+            let item = self.ParseRepeat(regex, depth)!;
             if item == NoNode { continue; }
             if first == NoNode { first = item; }
             else { self.Link(last, item); }
@@ -394,7 +394,7 @@ extend Parser {
 
     // An atom and the repetitions that follow it.
     func ParseRepeat(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
-        var atom = try self.ParseAtom(regex, depth);
+        var atom = self.ParseAtom(regex, depth)!;
         while true {
             self.SkipLayout();
             let byte = self.Peek();
@@ -414,13 +414,13 @@ extend Parser {
             }
             else if byte == 0x7Bu32 && self.AtCount() {
                 self.at = self.at + 1;
-                low = try self.ParseNumber();
+                low = self.ParseNumber()!;
                 high = low;
                 if self.pattern[self.at] == c8',' {
                     self.at = self.at + 1;
                     high = Unbounded;
                     if self.pattern[self.at] != c8'}' {
-                        high = try self.ParseNumber();
+                        high = self.ParseNumber()!;
                         if high < low { throw self.Fail(RegexErrorKind::InvalidCount, start); }
                     }
                 }
@@ -451,8 +451,8 @@ extend Parser {
     func ParseAtom(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let start = self.at;
         let byte = self.Peek();
-        if byte == 0x28u32 { return try self.ParseGroup(regex, depth); }
-        if byte == 0x5Bu32 { return try self.ParseClass(regex); }
+        if byte == 0x28u32 { return self.ParseGroup(regex, depth)!; }
+        if byte == 0x5Bu32 { return self.ParseClass(regex)!; }
         if byte == 0x2Eu32 {
             self.at = self.at + 1;
             let dotAll = (self.flags & FlagDotAll) != 0u8;
@@ -473,7 +473,7 @@ extend Parser {
         }
         if byte == 0x5Cu32 {
             let first = regex.items.Length();
-            let escape = try self.ParseEscape(regex, false);
+            let escape = self.ParseEscape(regex, false)!;
             match escape.kind {
                 EscapeKind::Scalar => return self.Literal(escape.value),
                 EscapeKind::Assertion => return self.AddNode(NodeKind::Assertion, 0, escape.value, 0, 0, NoNode),
@@ -508,7 +508,7 @@ extend Parser {
                 if after == 0x3Du32 || after == 0x21u32 { throw self.Fail(RegexErrorKind::Unsupported, start); }
                 regex.groupCount = regex.groupCount + 1u32;
                 capture = regex.groupCount;
-                try self.ParseName(regex, capture);
+                self.ParseName(regex, capture)!;
             }
             else if byte == 0x3Du32 || byte == 0x21u32 || byte == 0x3Eu32 || byte == 0x23u32 {
                 throw self.Fail(RegexErrorKind::Unsupported, start);
@@ -552,7 +552,7 @@ extend Parser {
             capture = regex.groupCount;
         }
         if depth >= MaximumDepth { throw self.Fail(RegexErrorKind::TooLarge, start); }
-        let child = try self.ParseAlternation(regex, depth + 1);
+        let child = self.ParseAlternation(regex, depth + 1)!;
         if self.Peek() != 0x29u32 { throw self.Fail(RegexErrorKind::UnclosedGroup, start); }
         self.at = self.at + 1;
         self.flags = saved;
@@ -665,7 +665,7 @@ extend Parser {
             item = ClassItem { kind: ItemKind::Property, negated: byte == 0x53u32, low: PropertyWhiteSpace, high: 0 };
         }
         else if byte == 0x70u32 || byte == 0x50u32 {
-            try self.ParseProperty(regex, byte == 0x50u32, start);
+            self.ParseProperty(regex, byte == 0x50u32, start)!;
             return Escaped { kind: EscapeKind::Class, value: 0 };
         }
         else {
@@ -693,8 +693,8 @@ extend Parser {
         else if byte == 0x61u32 { scalar = 0x07; }
         else if byte == 0x65u32 { scalar = 0x1B; }
         else if byte == 0x30u32 { scalar = 0x00; }
-        else if byte == 0x78u32 { scalar = try self.ParseHex(2, start); }
-        else if byte == 0x75u32 { scalar = try self.ParseHex(4, start); }
+        else if byte == 0x78u32 { scalar = self.ParseHex(2, start)!; }
+        else if byte == 0x75u32 { scalar = self.ParseHex(4, start)!; }
         else if byte >= 0x31u32 && byte <= 0x39u32 { throw self.Fail(RegexErrorKind::Unsupported, start); }
         else if byte == 0x6Bu32 { throw self.Fail(RegexErrorKind::Unsupported, start); }
         else if byte < 0x80u32 && byte > 0x20u32 && byte != 0x7Fu32 && !(byte >= 0x30u32 && byte <= 0x39u32) &&
@@ -711,7 +711,7 @@ extend Parser {
     func ParseClassCharacter(&var self, regex: &var Regex) -> uint32? ! RegexError {
         let start = self.at;
         if self.Peek() == 0x5Cu32 {
-            let escape = try self.ParseEscape(regex, true);
+            let escape = self.ParseEscape(regex, true)!;
             if escape.kind == EscapeKind::Class { return none; }
             return escape.value;
         }
@@ -761,12 +761,12 @@ extend Parser {
                 continue;
             }
             let at = self.at;
-            match try self.ParseClassCharacter(regex) {
+            match self.ParseClassCharacter(regex)! {
                 .Some(low) => {
                     var high = low;
                     if self.Peek() == 0x2Du32 && self.PeekAt(1) != 0x5Du32 && self.PeekAt(1) != 0xFFFFFFFFu32 {
                         self.at = self.at + 1;
-                        high = try self.ParseClassCharacter(regex) ?? throw self.Fail(RegexErrorKind::InvalidRange, at);
+                        high = self.ParseClassCharacter(regex)! ?? throw self.Fail(RegexErrorKind::InvalidRange, at);
                         if high < low { throw self.Fail(RegexErrorKind::InvalidRange, at); }
                     }
                     self.PushItem(regex, ClassItem { kind: ItemKind::Range, negated: false, low, high });

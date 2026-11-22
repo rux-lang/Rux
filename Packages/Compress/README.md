@@ -27,8 +27,8 @@ import Compress::{ Compress, Decompress, Format };
 import Io::IoError;
 
 func RoundTrip(data: byte[..]) -> bool ! IoError {
-    let packed = try Compress(SystemAllocator::New(), data, Format::Gzip);
-    let unpacked = try Decompress(SystemAllocator::New(), packed.AsSlice(), Format::Gzip);
+    let packed = Compress(SystemAllocator::New(), data, Format::Gzip)!;
+    let unpacked = Decompress(SystemAllocator::New(), packed.AsSlice(), Format::Gzip)!;
     return unpacked.Length() == data.length;
 }
 ```

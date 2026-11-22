@@ -24,7 +24,7 @@ func Element(array: &TomlValue, index: uint) -> &TomlValue {
 }
 
 func Accepts(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    return try TomlParse(allocator, text) catch { _ => Panic(note) };
+    return TomlParse(allocator, text) catch { _ => Panic(note) };
 }
 
 // The rendering of whatever refused a document: the case, whatever it carries, and where it happened. One string
@@ -35,7 +35,7 @@ func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..])
         .Failure(failure) => {
             var writer = BufferWriter::New(into);
             let sink: &var TextWriter = writer;
-            Assert((try? failure.WriteDebug(sink, FormatSpec::Plain())) is .Some(_), "a failure renders");
+            Assert((failure.WriteDebug(sink, FormatSpec::Plain()) !! none) is .Some(_), "a failure renders");
             return writer.Length();
         }
     };
@@ -106,7 +106,7 @@ struct CountingAllocator {
 extend CountingAllocator : Allocator {
     func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        let block = try (self.state.inner.Allocate(layout));
+        let block = (self.state.inner.Allocate(layout)!);
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         self.state.live = self.state.live + 1;
         return block;
@@ -114,7 +114,7 @@ extend CountingAllocator : Allocator {
 
     func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        try self.state.inner.Deallocate(block, layout);
+        self.state.inner.Deallocate(block, layout)!;
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         self.state.live = self.state.live - 1;
     }
@@ -122,7 +122,7 @@ extend CountingAllocator : Allocator {
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> *var opaque ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
-        return try self.state.inner.Reallocate(block, oldLayout, newLayout);
+        return self.state.inner.Reallocate(block, oldLayout, newLayout)!;
     }
 }
 

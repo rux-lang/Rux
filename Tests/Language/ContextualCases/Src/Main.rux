@@ -175,10 +175,10 @@ func Main() -> int {
     let native: int32? = .Some(3i32);
     Assert((native ?? 0i32) == 3i32, "without such a variant '.Some' is the native optional");
 
-    Assert((try Load(0i32) catch { .NotFound => 1i32, _ => 0i32 }) == 1i32, "a 'throw' operand");
-    Assert((try Load(-2i32) catch { .Invalid(value) => value, _ => 0i32 }) == -2i32,
+    Assert((Load(0i32) catch { .NotFound => 1i32, _ => 0i32 }) == 1i32, "a 'throw' operand");
+    Assert((Load(-2i32) catch { .Invalid(value) => value, _ => 0i32 }) == -2i32,
            "a 'throw' operand with a payload");
-    Assert((try Load(4i32) catch { _ => 0i32 }) == 4i32, "a success passes through");
+    Assert((Load(4i32) catch { _ => 0i32 }) == 4i32, "a success passes through");
 
     Assert(Keep(6i32) is .Success(6i32), "a 'try' operand takes the expected type");
     Assert(Keep(-3i32) is .Failure(.Invalid(-3i32)), "and so does a 'catch' arm");
