@@ -495,6 +495,21 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         const std::size_t diagnosticsBeforeLookup = diags.size();
         if (const FuncDecl *method =
                 LookupMethodCall(receiverType, field->field, *e, argTypes, 0, methodSubstitutions)) {
+            // A function without a receiver belongs to the type, not to a value of it: called through a value, the
+            // value would be evaluated and then ignored.
+            if (!method->Receiver()) {
+                const TypeRef owner = receiverType->kind == TypeRef::Kind::Reference && !receiverType->inner.empty()
+                                        ? receiverType->inner.front()
+                                        : receiverType;
+                const std::string ownerName = NamedBaseTypeName(owner);
+                EmitError(field->location,
+                          std::format("'{}' is an associated function of '{}' and takes no receiver", field->field,
+                                      owner.DisplayString()),
+                          {},
+                          std::format("call it as '{}::{}(...)'", ownerName.empty() ? owner.DisplayString() : ownerName,
+                                      field->field));
+                return TypeRef::MakeUnknown();
+            }
             bool callAccepted = true;
             NoteDeclarationUse(*method, CallSiteLocation(*e));
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);

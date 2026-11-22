@@ -1,0 +1,2 @@
+19:22: error: 'FromMinutes' is an associated function of 'Time' and takes no receiver
+21:21: error: 'FromMinutes' is an associated function of 'Time' and takes no receiver

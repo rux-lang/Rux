@@ -1,0 +1,23 @@
+// A function without a receiver belongs to its type: it is called as 'Type::Name(...)', and a value written before it
+// would be evaluated and ignored, so a call through a value is an error.
+struct Time {
+    minutes: int;
+}
+
+extend Time {
+    func FromMinutes(minutes: int) -> Time {
+        return Time { minutes: minutes };
+    }
+
+    func Minutes(&self) -> int {
+        return self.minutes;
+    }
+}
+
+func Main() -> int {
+    let start = Time::FromMinutes(1);
+    let later = start.FromMinutes(3);
+    let view = &start;
+    let again = view.FromMinutes(4);
+    return start.Minutes() + Time::Minutes(start) - 2;
+}
