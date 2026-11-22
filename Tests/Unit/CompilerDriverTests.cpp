@@ -33,8 +33,10 @@ pub struct Target { pub bits: uint; }
 pub intrinsic #target: Target;
 )");
     fixture.SetApplicationSource(R"(
+import Dependency::Target;
 func Main() -> int {
-    return 0;
+    let target = Target { bits: 64u };
+    return (target.bits as int) - 64;
 }
 )");
     std::vector<Diagnostic> diagnostics;
