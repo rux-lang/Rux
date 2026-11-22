@@ -241,6 +241,11 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirExprStmt>();
         lowered->location = statement->location;
         lowered->expr = LowerExpr(*statement->expr);
+        // An owning value the statement makes and nobody keeps, such as `MakeKey(9);`, is a temporary like any other
+        // and is destroyed where the statement ends. An assignment has stored its value, which it does not yield.
+        if (!AstCast<const AssignExpr>(statement->expr.get())) {
+            lowered->expr = KeepTemporary(std::move(lowered->expr), [](HirExprPtr kept) { return kept; });
+        }
         return lowered;
     }
 

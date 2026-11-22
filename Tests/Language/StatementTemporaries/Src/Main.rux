@@ -1,11 +1,14 @@
 // An owning temporary that is not given away is destroyed where the statement that made it ends. A temporary may be
-// lent to a call, as a receiver or as an argument, for that long, and the last made is destroyed first.
+// lent to a call, as a receiver or as an argument, for that long, and the last made is destroyed first. The value of an
+// expression statement that nobody keeps is such a temporary too.
 
 import Core::Diagnostics::Assert;
 var log: int = 0;
 struct Token { id: int; }
+struct Pair { first: Token; second: Token; }
 extend Token {
     func Look(&self) -> int { return self.id; }
+    func Copy(&self) -> Token { return Token { id: self.id + 1 }; }
     destructor { log = log * 10 + self.id; }
 }
 func Make(id: int) -> Token { return Token { id }; }
@@ -21,5 +24,19 @@ func Main() -> int {
     log = log * 10 + 9;
     Assert(peeked == 5, "lent temporaries are read");
     Assert(log == 329, "lent temporaries end with their statement, the last made first");
+    log = 0;
+    Make(4);
+    log = log * 10 + 9;
+    Assert(log == 49, "a call's unused result is destroyed where its statement ends");
+    log = 0;
+    Token { id: 5 };
+    Pair { first: Token { id: 6 }, second: Token { id: 7 } };
+    log = log * 10 + 9;
+    Assert(log == 5769, "an unused literal is destroyed where its statement ends, its fields last declared first");
+    log = 0;
+    let kept = Make(1);
+    kept.Copy();
+    log = log * 10 + 9;
+    Assert(log == 29, "a method's unused result is destroyed and its receiver is left alone");
     return 0;
 }
