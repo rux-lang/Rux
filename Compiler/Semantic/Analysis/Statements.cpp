@@ -377,7 +377,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         boundLoan = savedBoundLoan;
         // Binding a fallible to `_` keeps nothing, so it drops the error as a statement would (F20).
         if (letStatement->init && AstCast<const WildcardPattern>(letStatement->pattern.get())) {
-            ReportUnusedFallible(*letStatement->init, initializerType);
+            ReportUnusedFallible(*letStatement->init, initializerType, true);
         }
         TypeRef declarationType = letStatement->type ? annotatedType : initializerType;
         // With nothing to give it a width, an unsuffixed literal is an `int`, so one too large for that is reported
@@ -562,7 +562,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
             exits.push_back(bodyExit);
         }
-        MergeTrackedFlows(exits, loopEntry);
+        MergeTrackedFlows(exits, loopEntry, true);
         if (binds) {
             PopScope();
         }
@@ -600,7 +600,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (!alwaysTrue) {
             exits.push_back(SaveTrackedFlow());
         }
-        MergeTrackedFlows(exits, loopEntry);
+        MergeTrackedFlows(exits, loopEntry, true);
 
         if (!doWhileStatement->label.empty()) {
             ExitLoopLabel(doWhileStatement->label);
@@ -694,7 +694,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         std::vector<TrackedFlow> exits = {loopEntry, bodyExit};
         exits.insert(exits.end(), loop.breaks.begin(), loop.breaks.end());
         exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
-        MergeTrackedFlows(exits, loopEntry);
+        MergeTrackedFlows(exits, loopEntry, true);
     }
     else if (const auto *matchStatement = AstCast<const MatchStmt>(&statement)) {
         const TypeRef expressionType = CheckExpr(*matchStatement->subject);
@@ -817,7 +817,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
     }
 }
 
-void AnalysisContext::ReportUnusedFallible(const Expr &expression, const TypeRef &type) {
+void AnalysisContext::ReportUnusedFallible(const Expr &expression, const TypeRef &type, const bool discarded) {
     // A fallible that is not used drops its error with nothing written, so it is refused.
     if (!type.IsFallible() || type.FallibleError().IsUnknown()) {
         return;
@@ -828,10 +828,11 @@ void AnalysisContext::ReportUnusedFallible(const Expr &expression, const TypeRef
         binding != callableBindings.end() ? AstCast<const FuncDecl>(binding->second.selectedDeclaration) : nullptr;
     const ThrowingCallee callee = ThrowingCalleeOf(expression);
     EmitError(callee.spelling == ThrowingCallee::Spelling::None ? expression.location : callee.location,
-              function ? std::format("'{}' can fail with '{}', and the result is not used", function->name,
-                                     type.FallibleError().DisplayString())
-                       : std::format("this value can fail with '{}', and it is not used",
-                                     type.FallibleError().DisplayString()),
+              function
+                  ? std::format("'{}' can fail with '{}', and {}", function->name, type.FallibleError().DisplayString(),
+                                discarded ? "'_' discards the result" : "the result is not used")
+                  : std::format("this value can fail with '{}', and {}", type.FallibleError().DisplayString(),
+                                discarded ? "'_' discards it" : "it is not used"),
               {}, "pass the error on with '!', ignore it with '!!;', or handle it with 'catch { ... }'");
 }
 

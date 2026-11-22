@@ -484,7 +484,7 @@ TEST_CASE("references cannot transfer borrowed ownership") {
         }
     )");
 
-    CHECK(HasErrorContaining(diagnostics, "out of borrowed reference storage"));
+    CHECK(HasErrorContaining(diagnostics, "is reached through a loan and cannot be given away"));
     CHECK(
         HasErrorContaining(diagnostics, "cannot pass value behind reference '&Holder' to by-value receiver of 'Take'"));
 }

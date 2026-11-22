@@ -340,8 +340,27 @@ TypeRef AnalysisContext::CheckLoan(const LoanExpr &loan) {
     // A temporary lives until the end of the statement that made it, so it may be lent for that long, as to a call,
     // but a loan of it is never bound to a name that would outlive it (O8).
     if (!place && boundLoan == &loan) {
-        EmitError(loan.location, std::format("a loan of a temporary cannot be bound to a name"), {},
-                  "store the value in a local first and lend the local");
+        std::string maker;
+        if (const auto *call = AstCast<const CallExpr>(&operand)) {
+            if (const auto *name = AstCast<const IdentExpr>(call->callee.get())) {
+                maker = name->name;
+            }
+            else if (const auto *member = AstCast<const FieldExpr>(call->callee.get())) {
+                maker = member->field;
+            }
+            else if (const auto *path = AstCast<const PathExpr>(call->callee.get()); path && !path->segments.empty()) {
+                maker = path->segments.back();
+            }
+        }
+        EmitError(loan.location,
+                  maker.empty()
+                      ? std::format("this loan would outlive the temporary '{}', which is destroyed when the statement "
+                                    "ends",
+                                    referent.DisplayString())
+                      : std::format("this loan would outlive the '{}' made by '{}', which is destroyed when the "
+                                    "statement ends",
+                                    referent.DisplayString(), maker),
+                  {}, "store the value in a local first and lend the local");
         return TypeRef::MakeReference(referent);
     }
     if (!place) {

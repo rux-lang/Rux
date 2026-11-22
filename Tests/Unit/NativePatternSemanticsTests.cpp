@@ -749,7 +749,7 @@ TEST_CASE("a named 'is' subject is borrowed by the bindings, and a transferred o
             return 0i32;
         }
     )"),
-                      "used after it was moved"));
+                      "used after it was given away"));
 }
 
 TEST_CASE("a value block yields its last expression, and the branches of an 'if' unify in any order") {

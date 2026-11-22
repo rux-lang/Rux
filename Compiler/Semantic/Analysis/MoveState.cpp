@@ -211,19 +211,31 @@ void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocatio
         return;
     }
     if (issue->kind == MoveStateTracker::IssueKind::Moved) {
-        EmitError(location, std::format("value '{}' is used after it was moved", symbol.name),
-                  withParts(std::format("'{}' was moved at {}:{}", symbol.name, issue->previousTransition.line,
+        EmitError(location, std::format("'{}' is used after it was given away", symbol.name),
+                  withParts(std::format("'{}' was given away at {}:{}", symbol.name, issue->previousTransition.line,
                                         issue->previousTransition.column)),
-                  std::format("clone '{}' before moving it if both uses are required", symbol.name));
+                  std::format("lend it with '&{}' where it is only read, or clone it where both uses need a value",
+                              symbol.name));
         return;
     }
 
+    // Joins settle every owning value as live or dead, so what is left undecided is the back edge of a loop: a value
+    // one pass gave away, which the next pass would use again.
+    if (issue->kind == MoveStateTracker::IssueKind::PossiblyMoved && loopDepth > 0) {
+        EmitError(location,
+                  std::format("'{}' is given away inside a loop, and the next pass would use it again", symbol.name),
+                  withParts(std::format("'{}' is given away at {}:{}", symbol.name, issue->previousTransition.line,
+                                        issue->previousTransition.column)),
+                  std::format("give '{}' a new value before the pass ends, or leave the loop after giving it away",
+                              symbol.name));
+        return;
+    }
     std::string condition = "may be unavailable";
     if (issue->kind == MoveStateTracker::IssueKind::PossiblyUninitialized) {
         condition = "may be uninitialized";
     }
     else if (issue->kind == MoveStateTracker::IssueKind::PossiblyMoved) {
-        condition = "may have been moved";
+        condition = "may have been given away";
     }
     EmitError(location, std::format("value '{}' {} on some control-flow paths", symbol.name, condition),
               withParts(std::format("one unavailable path for '{}' originates at {}:{}", symbol.name,
@@ -315,7 +327,8 @@ void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows) {
     trackedFlowReachable = true;
 }
 
-void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, const TrackedFlow &entry) {
+void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, const TrackedFlow &entry,
+                                        const bool loop) {
     MergeTrackedFlows(flows);
     if (!trackedFlowReachable || !entry.reachable) {
         return;
@@ -353,6 +366,7 @@ void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, c
         }
         bool live = false;
         std::optional<SourceLocation> gone;
+        std::optional<SourceLocation> assigned;
         for (const auto &path : paths) {
             const auto found = path.find(item.identity.address);
             if (found == path.end()) {
@@ -360,6 +374,7 @@ void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, c
             }
             if (found->second->state == MoveStateTracker::State::Initialized) {
                 live = true;
+                assigned = assigned.value_or(found->second->previousTransition);
             }
             else if (!gone) {
                 gone = found->second->previousTransition;
@@ -388,10 +403,12 @@ void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, c
             continue;
         }
         // O20: with no drop flag, nothing could tell at run time whether the local holds a value after the join.
-        EmitError(gone.value_or(item.record.previousTransition),
-                  std::format("'{}' holds a value on some paths only where they rejoin", symbol->name),
-                  {std::format("'{}' was empty before the paths split, and a value that may be absent is a '{}?'",
-                               symbol->name, symbol->type.DisplayString())},
+        EmitError(assigned.value_or(item.record.previousTransition),
+                  loop ? std::format("'{}' is empty before the loop and assigned inside it", symbol->name)
+                       : std::format("'{}' is assigned on this path only, so nothing could tell later whether it holds "
+                                     "a value",
+                                     symbol->name),
+                  {std::format("a value that may be absent is a '{}?'", symbol->type.DisplayString())},
                   std::format("assign '{}' on every path or on none", symbol->name));
     }
 }
@@ -936,7 +953,7 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
             std::format("'{}' was declared without a value at {}:{}", symbol->name, transition.line, transition.column);
         break;
     case State::Moved:
-        note = std::format("'{}' was moved at {}:{}", symbol->name, transition.line, transition.column);
+        note = std::format("'{}' was given away at {}:{}", symbol->name, transition.line, transition.column);
         break;
     case State::MaybeMoved:
         note = std::format("'{}' may have been moved on some control-flow paths; one originates at {}:{}", symbol->name,
@@ -1043,8 +1060,8 @@ bool AnalysisContext::RejectDeferredTransfer(const Symbol &symbol, const SourceL
         return false;
     }
     EmitError(location,
-              std::format("'{}' is lent by the 'defer' at {}:{}, which runs after this", symbol.name,
-                          loan->location.line, loan->location.column),
+              std::format("'{}' is given away here, and the deferred statement on line {} still lends it", symbol.name,
+                          loan->location.line),
               {"a deferred statement runs where its scope ends, after the value being returned or given away is gone"},
               std::format("give '{}' away after the scope ends, or assign it a new value instead", symbol.name));
     return true;
@@ -1086,9 +1103,9 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     if (const auto *identifier = AstCast<const IdentExpr>(root)) {
         if (const Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->isBorrowedBinding) {
             EmitError(location,
-                      std::format("cannot move out of '{}', which a pattern bound to borrowed storage", symbol->name),
-                      {"a pattern over a borrowed subject names the subject's storage rather than owning a value"},
-                      "match an owned value to take its payload, as in 'match move subject', or clone the binding");
+                      std::format("'{}' names a part of a lent subject and cannot be given away", symbol->name),
+                      {"a pattern over a lent subject names the subject's storage rather than owning a value"},
+                      "match the owner itself, which the match then takes, or clone the binding");
             return false;
         }
     }
@@ -1124,8 +1141,8 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     const bool rawPointerStorage = ReachedThroughRawPointer(expression);
     if (usesReferenceStorage(expression) && !rawPointerStorage) {
         const MovePlace place = AnalyzeMovePlace(expression);
-        EmitError(location, std::format("cannot move '{}' out of borrowed reference storage", place.Display()),
-                  {"references do not transfer ownership of the value they borrow"},
+        EmitError(location, std::format("'{}' is reached through a loan and cannot be given away", place.Display()),
+                  {"a loan does not own the value it reaches"},
                   std::format("take it with 'Replace(&var {}, value)' or 'Swap', or clone it", place.Display()));
         return false;
     }
@@ -1136,8 +1153,8 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     }
     const MovePlace place = AnalyzeMovePlace(expression);
     if (place.IsBorrowedStorage()) {
-        EmitError(location, std::format("cannot move '{}' out of borrowed pointer storage", place.Display()),
-                  {"borrowed pointers do not transfer ownership of the value they address"},
+        EmitError(location, std::format("'{}' is reached through a loan and cannot be given away", place.Display()),
+                  {"a loan does not own the value it reaches"},
                   std::format("take it with 'Replace(&var {}, value)' or 'Swap', or clone it", place.Display()));
         return false;
     }
@@ -1145,12 +1162,17 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         return true;
     }
 
-    EmitError(location,
-              std::format("cannot move {} out of '{}', which is destroyed as a whole",
-                          place.LastProjectionDescription(), place.ContainerDisplay()),
-              {"partial moves would leave the aggregate with only some fields initialized when it is destroyed"},
-              std::format("take it with 'Replace(&var {}, value)' or 'Swap', or take '{}' apart with a pattern",
-                          place.Display(), place.ContainerDisplay()));
+    const bool field =
+        !place.projections.empty() && place.projections.back().kind == MovePlace::Projection::Kind::Field;
+    EmitError(
+        location,
+        field ? std::format("'{}' is a field of '{}' and cannot be given away by itself",
+                            place.projections.back().value, place.ContainerDisplay())
+              : std::format("{} of '{}' cannot be given away by itself", place.LastProjectionDescription(),
+                            place.ContainerDisplay()),
+        {"only a local, a parameter or a temporary is given away; the rest of the value would be left without it"},
+        std::format("take it with 'Replace(&var {}, value)' or 'Swap', or take '{}' apart with a pattern",
+                    place.Display(), place.ContainerDisplay()));
     return false;
 }
 
@@ -1159,7 +1181,7 @@ bool AnalysisContext::RejectSelfMove(const Expr &target, const Expr &value, cons
         return false;
     }
     const std::string place = AnalyzeMovePlace(target).Display();
-    EmitError(location, std::format("cannot move '{}' into itself", place),
+    EmitError(location, std::format("cannot give '{}' to itself", place),
               {"the assignment source and destination identify the same move-only storage"},
               "remove the assignment or assign a distinct value");
     return true;
@@ -1329,7 +1351,7 @@ void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef
         return;
     }
     if (type->kind == TypeRef::Kind::Reference) {
-        EmitError(location, "cannot move a non-owning reference",
+        EmitError(location, "a reference cannot be given away",
                   {"references borrow storage but do not own the value they address"},
                   "lend the value it refers to, or give away the owning value instead");
         return;

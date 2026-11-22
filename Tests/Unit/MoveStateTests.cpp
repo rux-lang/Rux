@@ -264,7 +264,7 @@ func Main(holder: Holder) {
     CHECK_EQ(moved.location.line, 12);
     CHECK_EQ(moved.message, "cannot write field 'handle' of 'moved', which holds no value");
     REQUIRE_FALSE(moved.notes.empty());
-    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:5");
+    CHECK_EQ(moved.notes[0], "'moved' was given away at 11:5");
     REQUIRE(moved.help.has_value());
     CHECK_EQ(*moved.help, "initialize 'moved' whole, as in 'moved = Holder { ... }'");
 }

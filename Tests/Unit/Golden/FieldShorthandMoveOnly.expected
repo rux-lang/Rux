@@ -1,1 +1,1 @@
-34:21: error: value 'buffer' is used after it was moved
+34:21: error: 'buffer' is used after it was given away

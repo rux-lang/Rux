@@ -191,7 +191,7 @@ TEST_CASE("propagation records an explicit operand transfer for later reads") {
             return value;
         }
     )");
-    RequireDiagnostic(diagnostics, "value 'input' is used after it was moved");
+    RequireDiagnostic(diagnostics, "'input' is used after it was given away");
 }
 
 TEST_CASE("propagation validates hidden payload transfers at generic instantiation") {

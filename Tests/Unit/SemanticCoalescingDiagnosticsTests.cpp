@@ -114,7 +114,7 @@ TEST_CASE("coalescing gives its operands away with branch-sensitive ownership") 
             Take(fallback);
         }
     )");
-    CHECK(HasCoalescingError(conditionalMove, "value 'fallback' is used after it was moved"));
+    CHECK(HasCoalescingError(conditionalMove, "'fallback' is used after it was given away"));
 
     const auto borrowMerge = AnalyzeCoalescing(R"(
         struct Item { value: int32; }

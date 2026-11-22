@@ -1,8 +1,8 @@
-19:18: error: value 'held' may have been moved on some control-flow paths
-20:14: error: value 'held' may have been moved on some control-flow paths
-27:14: error: value 'held' may have been moved on some control-flow paths
-34:14: error: value 'held' may have been moved on some control-flow paths
-41:14: error: value 'held' may have been moved on some control-flow paths
-49:18: error: value 'held' may have been moved on some control-flow paths
-52:18: error: value 'held' may have been moved on some control-flow paths
-59:24: error: value 'next' may have been moved on some control-flow paths
+19:18: error: 'held' is given away inside a loop, and the next pass would use it again
+20:14: error: 'held' is given away inside a loop, and the next pass would use it again
+27:14: error: 'held' is given away inside a loop, and the next pass would use it again
+34:14: error: 'held' is given away inside a loop, and the next pass would use it again
+41:14: error: 'held' is given away inside a loop, and the next pass would use it again
+49:18: error: 'held' is given away inside a loop, and the next pass would use it again
+52:18: error: 'held' is given away inside a loop, and the next pass would use it again
+59:24: error: 'next' is given away inside a loop, and the next pass would use it again

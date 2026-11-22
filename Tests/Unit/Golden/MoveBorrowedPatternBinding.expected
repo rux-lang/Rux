@@ -1,1 +1,1 @@
-12:42: error: cannot move out of 'token', which a pattern bound to borrowed storage
+12:42: error: 'token' names a part of a lent subject and cannot be given away

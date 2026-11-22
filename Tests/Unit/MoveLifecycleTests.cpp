@@ -155,7 +155,7 @@ TEST_CASE("a bodyless '=' and '#NoCopy' make the same move-only type") {
 
     for (const auto *diagnostics : {&attribute, &operation}) {
         REQUIRE_EQ(diagnostics->size(), 1);
-        CHECK_EQ(diagnostics->front().message, "value 'target' is used after it was moved");
+        CHECK_EQ(diagnostics->front().message, "'target' is used after it was given away");
     }
 }
 
@@ -369,5 +369,5 @@ TEST_CASE("consuming a move-only variant reports later use while borrowed inspec
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "value 'value' is used after it was moved");
+    CHECK_EQ(diagnostics.front().message, "'value' is used after it was given away");
 }

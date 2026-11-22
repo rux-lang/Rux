@@ -427,7 +427,7 @@ TEST_CASE("private capability prohibitions apply across packages") {
         func Main() { let value = OwningValue(); let given = value; let again = value; }
     )"}},
                                         {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(owning, "value 'value' is used after it was moved"), Messages(owning));
+    CHECK_MESSAGE(HasMessage(owning, "'value' is used after it was given away"), Messages(owning));
     CHECK_FALSE(HasMessage(owning, "private to package"));
 
     const auto prohibited = AnalyzePackages({{"main.rux", R"(
@@ -435,7 +435,7 @@ TEST_CASE("private capability prohibitions apply across packages") {
         func Main() { let value = NoCopyValue(); let given = value; let again = value; }
     )"}},
                                             {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(prohibited, "value 'value' is used after it was moved"), Messages(prohibited));
+    CHECK_MESSAGE(HasMessage(prohibited, "'value' is used after it was given away"), Messages(prohibited));
     CHECK_FALSE(HasMessage(prohibited, "private to package"));
 
     // An attribute belongs to the type, so it applies wherever the type is used.
@@ -444,7 +444,7 @@ TEST_CASE("private capability prohibitions apply across packages") {
         func Main() { let value = MarkedValue(); let given = value; let again = value; }
     )"}},
                                         {{"api.rux", dependency}});
-    CHECK_MESSAGE(HasMessage(marked, "value 'value' is used after it was moved"), Messages(marked));
+    CHECK_MESSAGE(HasMessage(marked, "'value' is used after it was given away"), Messages(marked));
     CHECK_FALSE(HasMessage(marked, "private to package"));
 }
 

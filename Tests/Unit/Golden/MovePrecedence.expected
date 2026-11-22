@@ -1,1 +1,1 @@
-23:5: error: cannot move field 'buffer' out of 'holder', which is destroyed as a whole
+23:5: error: 'buffer' is a field of 'holder' and cannot be given away by itself

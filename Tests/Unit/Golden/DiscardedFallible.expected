@@ -1,1 +1,1 @@
-12:13: error: 'Fails' can fail with 'Oops', and the result is not used
+12:13: error: 'Fails' can fail with 'Oops', and '_' discards the result

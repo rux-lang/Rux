@@ -163,8 +163,8 @@ TEST_CASE("a bare transfer keeps every ownership guarantee") {
 
     // Plain data copies and a reference is passed on, so only the owning value is given away.
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "value 'source' is used after it was moved");
-    CHECK_EQ(diagnostics[1].message, "cannot move 'target' into itself");
+    CHECK_EQ(diagnostics[0].message, "'source' is used after it was given away");
+    CHECK_EQ(diagnostics[1].message, "cannot give 'target' to itself");
 }
 
 TEST_CASE("only a local, a parameter, a temporary or a read through a raw pointer is given away") {
@@ -199,9 +199,9 @@ TEST_CASE("only a local, a parameter, a temporary or a read through a raw pointe
     )");
 
     const std::vector<std::string> expected = {
-        "cannot move 'holder.handle' out of borrowed reference storage",
+        "'holder.handle' is reached through a loan and cannot be given away",
         "cannot move 'handle' while it is immutably borrowed",
-        "cannot move field 'handle' out of 'holder', which is destroyed as a whole",
+        "'handle' is a field of 'holder' and cannot be given away by itself",
     };
     REQUIRE_EQ(diagnostics.size(), expected.size());
     for (std::size_t index = 0; index < expected.size(); ++index) {
@@ -363,11 +363,11 @@ TEST_CASE("a bare owning value is consumed in every by-value context") {
     )");
 
     const std::vector<std::string> expected = {
-        "value 'initialized' is used after it was moved",  "value 'assigned' is used after it was moved",
-        "value 'argument' is used after it was moved",     "value 'field' is used after it was moved",
-        "value 'arrayValue' is used after it was moved",   "value 'tupleValue' is used after it was moved",
-        "value 'receiver' is used after it was moved",     "value 'ternaryLeft' is used after it was moved",
-        "value 'ternaryRight' is used after it was moved", "value 'reusable' is used after it was moved",
+        "'initialized' is used after it was given away",  "'assigned' is used after it was given away",
+        "'argument' is used after it was given away",     "'field' is used after it was given away",
+        "'arrayValue' is used after it was given away",   "'tupleValue' is used after it was given away",
+        "'receiver' is used after it was given away",     "'ternaryLeft' is used after it was given away",
+        "'ternaryRight' is used after it was given away", "'reusable' is used after it was given away",
     };
     REQUIRE_EQ(diagnostics.size(), expected.size());
     for (std::size_t index = 0; index < expected.size(); ++index) {
@@ -649,7 +649,7 @@ TEST_CASE("assignment transfers a temporary or a named owning value and never a 
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics[0].message, "cannot move field 'item' out of 'holder', which is destroyed as a whole");
+    CHECK_EQ(diagnostics[0].message, "'item' is a field of 'holder' and cannot be given away by itself");
 }
 
 TEST_CASE("rejected by-value contexts do not move their operands") {
@@ -679,7 +679,7 @@ TEST_CASE("rejected by-value contexts do not move their operands") {
 
     REQUIRE_EQ(diagnostics.size(), 3);
     for (const SemanticDiagnostic &diagnostic : diagnostics) {
-        CHECK(diagnostic.message.find("used after it was moved") == std::string::npos);
+        CHECK(diagnostic.message.find("used after it was given away") == std::string::npos);
     }
 }
 
@@ -706,10 +706,10 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
     )");
 
     const std::vector<std::string> expected = {
-        "cannot move field 'handle' out of 'owner', which is destroyed as a whole",
-        "cannot move indexed element [0] out of 'values', which is destroyed as a whole",
-        "cannot move 'handle' into itself",
-        "cannot move 'owner.handle' into itself",
+        "'handle' is a field of 'owner' and cannot be given away by itself",
+        "indexed element [0] of 'values' cannot be given away by itself",
+        "cannot give 'handle' to itself",
+        "cannot give 'owner.handle' to itself",
     };
     REQUIRE_EQ(diagnostics.size(), expected.size());
     for (std::size_t index = 0; index < expected.size(); ++index) {

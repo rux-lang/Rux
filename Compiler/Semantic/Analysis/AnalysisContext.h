@@ -735,7 +735,7 @@ private:
     /// `entry` and was given away on some of the flows only is dead after the join, and it is destroyed where the
     /// enclosing statement ends on the flows that still hold it (O7). An owning local that was empty at `entry` and is
     /// assigned on some of the flows only is an error (O20).
-    void MergeTrackedFlows(const std::vector<TrackedFlow> &flows, const TrackedFlow &entry);
+    void MergeTrackedFlows(const std::vector<TrackedFlow> &flows, const TrackedFlow &entry, bool loop = false);
 
     struct TrackedLoop {
         std::string label;
@@ -1310,7 +1310,7 @@ private:
     /// Reports giving away `symbol` from a deferred statement (O18) or while a `defer` lends it (O21).
     [[nodiscard]] bool RejectDeferredTransfer(const Symbol &symbol, SourceLocation location);
     /// Reports a fallible whose error nothing uses: a statement, or a binding to `_` (F11, F20).
-    void ReportUnusedFallible(const Expr &expression, const TypeRef &type);
+    void ReportUnusedFallible(const Expr &expression, const TypeRef &type, bool discarded = false);
     /// Reports a read loan of plain data passed where the value binds bare (B3), for `rux lint`.
     void LintRedundantLoans(const CallExpr &call, const FuncDecl &declaration);
     /// For each loop being checked, innermost last, the expressions its body has recorded types for.

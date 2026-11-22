@@ -1,3 +1,3 @@
-36:10: error: value 'text' is used after it was moved
-37:28: error: value 'text' is used after it was moved
-41:12: error: value 'text' is used after it was moved
+36:10: error: 'text' is used after it was given away
+37:28: error: 'text' is used after it was given away
+41:12: error: 'text' is used after it was given away
