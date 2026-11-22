@@ -1,0 +1,61 @@
+// A plain binding arm binds the whole subject, whatever its type: a variant, an optional, a sum or a fallible is read
+// whole, not only the tag that chose the arm. `if var` binds names it may write: over a named plain-data subject they
+// are a copy, so the subject keeps its value.
+
+import Core::Diagnostics::Assert;
+
+struct Oops {
+    code: int;
+}
+
+variant Slot {
+    Full(int, int),
+    Empty
+}
+
+func Make(broken: bool) -> int ! Oops {
+    if broken { throw Oops { code: 7 }; }
+    return 5;
+}
+
+func Count() -> int? {
+    return 4;
+}
+
+func Main() -> int {
+    let slot = Slot::Full(7, 9);
+    let fromSlot = match slot { whole => match whole { .Full(x, y) => x * 10 + y, .Empty => 0 } };
+    Assert(fromSlot == 79, "a binding arm holds the whole variant");
+    let present: (int, int)? = (7, 9);
+    let fromOptional = match present { whole => match whole { pair? => pair.0 * 10 + pair.1, none => 0 } };
+    Assert(fromOptional == 79, "a binding arm holds the whole optional");
+    let member: int | bool = 5;
+    let fromSum = match member { whole => match whole { number: int => number, _: bool => 0 } };
+    Assert(fromSum == 5, "a binding arm holds the whole sum");
+    let failed = Make(true);
+    Assert(match failed { whole => whole is Oops }, "a binding arm over a failure holds the failure");
+    Assert(!(match failed { whole => whole is int }), "a binding arm over a failure does not hold a success");
+    let code = match failed { whole => whole catch { error => error.code } };
+    Assert(code == 7, "the failure is read whole");
+
+    let count: int? = 4;
+    var total = 0;
+    if var n? = count {
+        n += 1;
+        total += n;
+    }
+    if var n? = Count() {
+        n += 1;
+        total += n;
+    }
+    let choice = Slot::Full(2, 3);
+    if var .Full(a, b) = choice {
+        a += 1;
+        b += 1;
+        total += a * b;
+    }
+    Assert(total == 22, "'if var' binds names the body may write");
+    Assert(count == 4, "the optional keeps its value");
+    Assert(match choice { .Full(a, b) => a == 2 && b == 3, .Empty => false }, "the variant keeps its value");
+    return 0;
+}

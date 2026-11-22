@@ -558,9 +558,14 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
                       p->bindingId);
             return EmitConst("1", TypeRef::MakeBool());
         }
+        // A match reads an addressable enum's tag alone to choose an arm, so a binding of the whole value reads all of
+        // it from where it lies.
+        const LirReg value = subjectSlot != LirNoReg && IsAggregateEnumType(subjectType) && p->type == subjectType
+                               ? EmitLoad(subjectSlot, p->type)
+                               : subjectVal;
         LirReg bindSlot = EmitAlloca(p->type);
         BindLocal(p->name, bindSlot, p->bindingId);
-        EmitStore(subjectVal, bindSlot, p->type);
+        EmitStore(value, bindSlot, p->type);
         // Live once it holds something. A binding that does not own what it took carries no identifier at all, so
         // this is a no-op for it and no cleanup was recorded for it either.
         MarkBindingLive(p->bindingId, true);
