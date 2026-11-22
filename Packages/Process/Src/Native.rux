@@ -16,7 +16,7 @@ import Path::{ OsStringView, OsUnit };
 when #target.os {
     .Linux => import Core::Machine::ProcessStartFrame,
     .FreeBSD => import Core::Machine::ProcessStartFrame,
-    .macOS => import macOS::{ _NSGetArgc, _NSGetArgv, _NSGetEnviron },
+    .macOS => import macOS::LibSystem::{ _NSGetArgc, _NSGetArgv, _NSGetEnviron },
     .Windows => import Windows::{ CommandLineToArgvW, GetCommandLineW, GetEnvironmentStringsW },
     _ => #Error("Unsupported operating system")
 }

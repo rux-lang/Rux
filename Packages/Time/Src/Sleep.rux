@@ -29,7 +29,11 @@ when #target.os {
         import Linux::Errors::{ EINTR, Errno, IsError };
         import Linux::Types::Timespec;
     },
-    .macOS => import macOS::{ EINTR, Errno, IsError, Nanosleep, Timespec },
+    .macOS => {
+        import macOS::Clock::Nanosleep;
+        import macOS::Errors::{ EINTR, Errno, IsError };
+        import macOS::Types::Timespec;
+    },
     .Windows => import Windows::Sleep,
     _ => #Error("Unsupported operating system")
 }

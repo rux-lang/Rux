@@ -21,10 +21,11 @@ when #target.os {
                                   pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach,
                                   pthread_getthreadid_np, pthread_join, sched_yield, sysconf };
     },
-    .macOS => import macOS::{
-        EAGAIN, EINVAL, PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy, pthread_attr_init,
-        pthread_attr_setstacksize, pthread_create, pthread_detach, pthread_join, pthread_threadid_np, sched_yield,
-        sysconf
+    .macOS => {
+        import macOS::Errors::{ EAGAIN, EINVAL };
+        import macOS::Thread::{ PThread, PThreadAttributes, SC_NPROCESSORS_ONLN, pthread_attr_destroy,
+                                pthread_attr_init, pthread_attr_setstacksize, pthread_create, pthread_detach,
+                                pthread_join, pthread_threadid_np, sched_yield, sysconf };
     },
     .Windows => import Windows::{
         ALL_PROCESSOR_GROUPS, CloseHandle, CreateThread, GetActiveProcessorCount, GetCurrentThreadId, INFINITE,

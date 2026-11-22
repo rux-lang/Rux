@@ -20,7 +20,11 @@ when #target.os {
         import FreeBSD::File::{ Close, Read, Write };
         import FreeBSD::Spawn::{ SIGKILL, WNOHANG, __error, kill, waitpid };
     },
-    .macOS => import macOS::{ Close, CurrentErrno, IsError, Read, SIGKILL, WNOHANG, Write, kill, waitpid },
+    .macOS => {
+        import macOS::Errors::{ CurrentErrno, IsError };
+        import macOS::File::{ Close, Read, Write };
+        import macOS::Spawn::{ SIGKILL, WNOHANG, kill, waitpid };
+    },
     .Windows => import Windows::{
         CloseHandle, ERROR_BROKEN_PIPE, GetExitCodeProcess, GetLastError, INFINITE, ReadFile, TerminateProcess,
         WAIT_TIMEOUT, WaitForSingleObject, WriteFile

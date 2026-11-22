@@ -25,7 +25,7 @@ when #target.os {
         import Linux::Entropy::GetRandom;
         import Linux::Errors::{ EAGAIN, EINTR, ENOSYS, Errno, IsError };
     },
-    .macOS => import macOS::GetRandom,
+    .macOS => import macOS::Entropy::GetRandom,
     .Windows => import Windows::GetRandom,
     _ => #Error("Unsupported operating system")
 }

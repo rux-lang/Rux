@@ -19,8 +19,8 @@ when #target.os {
                                         OpenReadWrite, OpenTruncate, OpenWriteOnly },
     .Linux => import Linux::File::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
                                     OpenReadWrite, OpenTruncate, OpenWriteOnly },
-    .macOS => import macOS::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
-                              OpenReadWrite, OpenTruncate, OpenWriteOnly },
+    .macOS => import macOS::File::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
+                                    OpenReadWrite, OpenTruncate, OpenWriteOnly },
     .Windows => import Windows::{ CloseHandle, CreateFileW, CreationDisposition, FILE_APPEND_DATA,
                                   FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
                                   GENERIC_READ, GENERIC_WRITE, GetLastError, InvalidHandleValue }

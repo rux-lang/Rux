@@ -1,5 +1,6 @@
 import Core::Compilation::{ #target, OperatingSystem };
-import macOS::{ RTLD_NOW, dlclose, dlerror, dlopen, dlsym };
+import macOS::Dynamic::RTLD_NOW;
+import macOS::LibSystem::{ dlclose, dlerror, dlopen, dlsym };
 
 when #target.os == OperatingSystem::macOS {
 func Main() -> int {

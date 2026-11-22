@@ -18,7 +18,10 @@ when #target.os {
         import FreeBSD::Types::Timespec;
         import FreeBSD::Umtx::{ UmtxWait, UmtxWake };
     },
-    .macOS => import macOS::{ ETIMEDOUT, UL_COMPARE_AND_WAIT, ULF_NO_ERRNO, ULF_WAKE_ALL, __ulock_wait, __ulock_wake },
+    .macOS => {
+        import macOS::Errors::ETIMEDOUT;
+        import macOS::Ulock::{ ULF_NO_ERRNO, ULF_WAKE_ALL, UL_COMPARE_AND_WAIT, __ulock_wait, __ulock_wake };
+    },
     .Windows => import Windows::{ INFINITE, WaitOnAddress, WakeByAddressAll, WakeByAddressSingle },
     _ => #Error("Unsupported operating system")
 }

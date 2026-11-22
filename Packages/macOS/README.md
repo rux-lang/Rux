@@ -25,10 +25,10 @@ rux add Rux/macOS
 | `Thread`    | `pthread_create`, `pthread_join`, `pthread_detach`, the `pthread_attr_*` stack-size calls, `sched_yield`, `sysconf` and `SC_NPROCESSORS_ONLN`, and `pthread_threadid_np`, linked from libSystem |
 | `Ulock`     | `__ulock_wait`, `__ulock_wake` and their flags, the word operations every lock in `Rux/Sync` sleeps on |
 | `Spawn`     | `posix_spawnp`, the `posix_spawn_file_actions_*` calls, `waitpid`, `kill` and `fcntl` |
-| `Socket`    | the BSD socket calls behind the same wrappers as Linux and FreeBSD, `SO_NOSIGPIPE`, and `getaddrinfo`, `freeaddrinfo` and `AddressInfo` |
+| `Sockets`   | the BSD socket calls behind the same wrappers as Linux and FreeBSD, `SO_NOSIGPIPE`, and `getaddrinfo`, `freeaddrinfo` and `AddressInfo` |
 | `Poll`      | `Kqueue` and `KeventCall` over libSystem's `kqueue` and `kevent`, `Kevent`, the `EVFILT_*` and `EV_*` flags, and `FcntlInt` with `F_GETFL`, `F_SETFL` and `O_NONBLOCK` |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+Every declaration lives in the module of its row, and the module is part of the import path: `import macOS::File::{ Close, OpenAt };`.
 
 **Apple does not support calling the kernel directly.** The trap numbers are private, they have changed between releases, and on Apple Silicon the trap interface is not reachable from ordinary code at all. libSystem is the ABI, and this package binds it — which is what makes it different in kind from `Rux/Linux` and `Rux/FreeBSD`, whose kernels publish a stable numbering.
 
@@ -66,7 +66,7 @@ macOS only. Guard use behind a compile-time check, so a build for another target
 import Core::Compilation::#target;
 
 when #target.os == .macOS {
-    import macOS::{ StdOut, Write };
+    import macOS::File::{ StdOut, Write };
 }
 ```
 

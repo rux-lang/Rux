@@ -15,7 +15,7 @@ import Net::{ Decode, IpAddress, ResolveOnLinux, SocketAddress, StartNetworking 
 when #target.os {
     .Linux => {},
     .FreeBSD => import FreeBSD::Resolve::{ AddressInfo, freeaddrinfo, getaddrinfo },
-    .macOS => import macOS::{ AddressInfo, freeaddrinfo, getaddrinfo },
+    .macOS => import macOS::Sockets::{ AddressInfo, freeaddrinfo, getaddrinfo },
     .Windows => import Windows::{ AddressInfo, freeaddrinfo, getaddrinfo },
     _ => #Error("Unsupported operating system")
 }

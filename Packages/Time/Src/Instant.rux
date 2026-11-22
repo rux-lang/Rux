@@ -18,7 +18,10 @@ when #target.os {
         import Linux::Clock::{ ClockGetTime, ClockMonotonic };
         import Linux::Types::Timespec;
     },
-    .macOS => import macOS::{ ClockGetTime, ClockMonotonic, Timespec },
+    .macOS => {
+        import macOS::Clock::{ ClockGetTime, ClockMonotonic };
+        import macOS::Types::Timespec;
+    },
     .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency },
     _ => #Error("Unsupported operating system")
 }

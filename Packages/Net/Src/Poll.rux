@@ -29,9 +29,12 @@ when #target.os {
         import FreeBSD::Spawn::{ FD_CLOEXEC, F_SETFD };
         import FreeBSD::Types::Timespec;
     },
-    .macOS => import macOS::{
-        Close, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FD_CLOEXEC, F_SETFD,
-        FcntlInt, Kevent, KeventCall, Kqueue, Timespec
+    .macOS => {
+        import macOS::File::Close;
+        import macOS::Poll::{ EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR, EV_RECEIPT, FcntlInt,
+                              Kevent, KeventCall, Kqueue };
+        import macOS::Spawn::{ FD_CLOEXEC, F_SETFD };
+        import macOS::Types::Timespec;
     },
     .Windows => import Windows::{ POLLERR, POLLHUP, POLLNVAL, POLLRDNORM, POLLWRNORM, WSAPoll, WsaPollFd },
     _ => #Error("Unsupported operating system")

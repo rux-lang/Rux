@@ -15,10 +15,12 @@ import Core::Compilation::{ #target, OperatingSystem };
 import Core::Diagnostics::Assert;
 
 when #target.os == OperatingSystem::macOS {
-    import macOS::{ AtFdCwd, Close, EBADF, EEXIST, EINVAL, ENOENT, Errno, FileMode, Fsync, Ftruncate, IsError, Lseek,
-                    MkdirAt, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate,
-                    OpenWriteOnly, Read, RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn,
-                    StdOut, UnlinkAt, Write };
+    import macOS::Errors::{ EBADF, EEXIST, EINVAL, ENOENT, Errno, IsError };
+    import macOS::File::{ AtFdCwd, Close, Fsync, Ftruncate, Lseek, MkdirAt, OpenAppend, OpenAt, OpenCreate,
+                          OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate, OpenWriteOnly, Read,
+                          RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn, StdOut, UnlinkAt,
+                          Write };
+    import macOS::Types::FileMode;
 
     const ScratchPath = "Bin/macOSDescriptors.tmp";
     const RenamedPath = "Bin/macOSDescriptorsRenamed.tmp";

@@ -14,8 +14,8 @@ when #target.os {
                                         RemoveDirectory, UnlinkAt },
     .Linux => import Linux::File::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                                     RemoveDirectory, UnlinkAt },
-    .macOS => import macOS::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
-                              RemoveDirectory, UnlinkAt },
+    .macOS => import macOS::File::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                                    RemoveDirectory, UnlinkAt },
     .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
                                   FindNextFileW, GetLastError, InvalidHandleValue, RemoveDirectoryW }
 }

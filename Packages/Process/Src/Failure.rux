@@ -10,7 +10,7 @@ import Process::{ Buffer, NextScalar };
 when #target.os {
     .Linux => import Linux::Errors::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .FreeBSD => import FreeBSD::Errors::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
-    .macOS => import macOS::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
+    .macOS => import macOS::Errors::{ EACCES, EAGAIN, EINTR, EINVAL, ENOENT, ENOMEM, ENOTDIR, EPERM, ESRCH },
     .Windows => {},
     _ => #Error("Unsupported operating system")
 }

@@ -1,24 +1,26 @@
 // What a process can ask or say about itself.
 
-import macOS::{ ProcessId, _exit, getpid };
+import macOS::LibSystem::{ _exit, getpid };
+import macOS::Types::ProcessId;
 
-/// Ends the calling process with `code`.
-/// Only the low eight bits reach a waiting parent. Does not return.
-/// This is `_exit` rather than `exit`: nothing registered with `atexit` runs and no stream is flushed, which matches
-/// what the Linux and FreeBSD packages do and is what a raw binding should do. A program wanting the other behaviour
-/// should call C's `exit` through `Rux/C`.
-/// @param code the status to report to the parent
-/// @see https://rux-lang.dev/docs/api/macos/process#exit
-pub func Exit(code: int32) {
-    // Safety: _exit takes only a status number and touches no memory of the caller's.
-    _exit(code);
-}
+pub module Process {
+    /// Ends the calling process with `code`.
+    /// Only the low eight bits reach a waiting parent. Does not return. This is `_exit` rather than `exit`: nothing
+    /// registered with `atexit` runs and no stream is flushed, which matches what the Linux and FreeBSD packages do and
+    /// is what a raw binding should do. A program wanting the other behaviour should call C's `exit` through `Rux/C`.
+    /// @param code the status to report to the parent
+    /// @see https://rux-lang.dev/docs/api/macos/process#exit
+    pub func Exit(code: int32) {
+        // Safety: _exit takes only a status number and touches no memory of the caller's.
+        _exit(code);
+    }
 
-/// The calling process's own identifier.
-/// Cannot fail. Runs in constant time and allocates nothing.
-/// @returns the calling process's identifier
-/// @see https://rux-lang.dev/docs/api/macos/process#get-pid
-pub func GetPid() -> ProcessId {
-    // Safety: getpid takes no arguments and only reports the caller's identifier.
-    return getpid();
+    /// The calling process's own identifier.
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    /// @returns the calling process's identifier
+    /// @see https://rux-lang.dev/docs/api/macos/process#get-pid
+    pub func GetPid() -> ProcessId {
+        // Safety: getpid takes no arguments and only reports the caller's identifier.
+        return getpid();
+    }
 }
