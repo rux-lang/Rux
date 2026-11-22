@@ -10,7 +10,7 @@ rux add Rux/Log
 
 ## What it provides
 
-| Module   | Covers                                                                                                      |
+| File     | Covers                                                                                                      |
 | -------- | ----------------------------------------------------------------------------------------------------------- |
 | `Level`  | `Level` from `Trace` to `Error` with `Name`, `Label` and `Parse`, and `CompiledLevel` from the `LogLevel` define |
 | `Field`  | `Field` with `Text`, `Integer`, `Unsigned`, `Float` and `Boolean`, and its `Value`                              |
@@ -19,7 +19,7 @@ rux add Rux/Log
 | `Global` | the process-wide log on standard error: `Trace` to `Error`, `Log`, `SetLevel`, `SetFormat`, `SetTimestamps`, `Enabled` |
 | `Rotation` | `RotatingFile`, a log file moved aside for a fresh one before a write would take it past a size |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Log::Field;`.
 
 ## Example
 

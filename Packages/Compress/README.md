@@ -10,14 +10,14 @@ rux add Rux/Compress
 
 ## What it provides
 
-| Module     | Covers                                                                                       |
+| File       | Covers                                                                                       |
 | ---------- | -------------------------------------------------------------------------------------------- |
 | `Inflate`  | `DecompressReader`, an `Io::Reader` that decompresses another reader                          |
 | `Deflate`  | `CompressWriter`, an `Io::Writer` that compresses into another writer, with `Flush` and `Finish` |
 | `Buffers`  | `Compress` and `Decompress` for data already in memory, as bytes or as the `char8` text the Io streams carry |
 | `Format`   | `Format` (`Raw`, `Zlib`, `Gzip`) and `Level` (`Store`, `Fastest`, `Default`, `Best`)          |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Compress::Compress;`.
 
 ## Example
 

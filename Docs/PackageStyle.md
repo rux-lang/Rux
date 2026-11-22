@@ -56,6 +56,19 @@ when #target.os {
 
 The packed form keeps a platform `when` block short enough to compare its arms at a glance. Arms with module names of different lengths can still break at different names, which is the cost of a rule that needs no judgment. `rux fmt` does not reflow import lists yet, and no checker enforces this rule, so it is applied by hand until the formatter owns it.
 
+## Modules
+
+Every first-party package follows one rule for what lives in a module, so that an import path says the same thing in every package:
+
+1. A module is a topic noun, declared as `pub module Name { ... }` around the whole of each file that belongs to it; one module may span several files. It is never named like its package or like an item inside it (`Sockets`, not `Socket`, because `Socket` is a function).
+2. The API a package is named for, and that most of its importers use, stays at the package root: `Allocator::Allocator`, `Collections::Vector`, `Text::String`, `Math::Sin`.
+3. Secondary topics, helper families and building blocks go in modules: `Allocator::Strategies::Arena`, `Text::Utf8::Validate`, `Math::Constants::Pi`.
+4. A package with no single identity puts every declaration in a module: Core, Algorithms, Memory, Unicode, C, and the four platform packages, whose modules mirror their files.
+5. A package with fewer than about thirty public names, or with no second topic beyond its identity, stays flat. So does a package whose names already carry their topic as a prefix (`Base64Encode`, `Sha256Of`, `Crc32Of`), where a module would only repeat it.
+6. `extend` blocks of the primitive types stay where they are, because moving one into a module changes how a dependent imports the methods it adds.
+
+The header comment and the file's imports stay outside the module, and so does a `when` block that only selects imports. A file reaches a declaration in another module of its own package by importing it, as `import Memory::Block::Copy;`; declarations in the same module, and those at the package root, need no import.
+
 ## Extend blocks
 
 A type's own members live in one `extend Type { ... }` block per file, ordered by topic. A block boundary is kept only where it means something: each interface conformance is its own block holding the methods that carry that interface, so `Next` sits in `extend MyCursor : Iterator { ... }` even though `Iterator` declares no members, and a block with a different header, such as a constrained one, stays separate. Members that belong together are grouped by order and, where a group needs naming, by a `//` comment inside the block rather than by a closing and reopening of the block.

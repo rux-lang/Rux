@@ -10,7 +10,7 @@ rux add Rux/Process
 
 ## What it provides
 
-| Module        | Covers                                                                                    |
+| File          | Covers                                                                                    |
 | ------------- | ----------------------------------------------------------------------------------------- |
 | `Arguments`   | `ArgumentCount`, `Argument`, and `Arguments` for walking them in order                    |
 | `Environment` | `Variable` for one value by name, `Environment` for walking every `EnvironmentVariable`, and `SetVariable` and `RemoveVariable` |
@@ -20,7 +20,7 @@ rux add Rux/Process
 | `Child`       | `Child` with `Wait`, `TryWait` and `Kill`, its `ExitStatus`, and the `PipeReader` and `PipeWriter` streams |
 | `Capture`     | `Command::Capture`, which runs a program and keeps its output, error and status           |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Process::ArgumentCount;`.
 
 ## Example
 

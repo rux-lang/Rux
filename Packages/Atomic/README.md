@@ -10,11 +10,11 @@ rux add Rux/Atomic
 
 ## What it provides
 
-| Module   | Covers                                                                                                 |
+| File     | Covers                                                                                                 |
 | -------- | ------------------------------------------------------------------------------------------------------ |
 | `Atomic` | `Atomic<T>` with `Load`, `Store`, `Exchange`, `CompareExchange` and `FetchAdd`/`Sub`/`And`/`Or`/`Xor`, and `With` forms that take a `MemoryOrder`; `Zero` for every integer width and `False` for `bool` |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Atomic::Atomic;`.
 
 ## Example
 

@@ -10,14 +10,14 @@ rux add Rux/Test
 
 ## What it provides
 
-| Module    | Covers                                                                                                     |
+| File      | Covers                                                                                                     |
 | --------- | ---------------------------------------------------------------------------------------------------------- |
 | `Expect`  | `Expect`, `ExpectEqual`, `ExpectNotEqual`, `ExpectNear`, `ExpectText`, `ExpectSome`, `ExpectNone`, `ExpectSuccess` and `ExpectFailure` |
 | `Failure` | `TestFailure`, a failure with its message or a skip with its reason                                          |
 | `Runner`  | `TestCase`, `TestOptions`, `RunTests`, which reads its filters from the command line, and `RunTestsWith`      |
 | `Benchmark` | `BenchmarkCase`, `BenchmarkOptions`, `BenchmarkResult`, `Measure`, `Consume`, `RunBenchmarks` and `RunBenchmarksWith` |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Test::ExpectEqual;`.
 
 ## Example
 

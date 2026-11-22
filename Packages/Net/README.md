@@ -10,7 +10,7 @@ rux add Rux/Net
 
 ## What it provides
 
-| Module    | Covers                                                                                                                                                                                           |
+| File      | Covers                                                                                                                                                                                           |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Address` | `Ipv4Address`, `Ipv6Address`, `IpAddress` and `SocketAddress`, each with `Parse`, `WriteText`, `Equals` and `Display`                                                                            |
 | `Tcp`     | `TcpListener` with `Bind`, `Accept` and `LocalAddress`; `TcpStream`, an `Io` reader and writer, with `Connect`, `Shutdown`, `SetNoDelay` and timeouts; `SetNonBlocking` and `PollSource` on both |
@@ -19,7 +19,7 @@ rux add Rux/Net
 | `Dns`     | `Resolver`, a DNS client with `WithServers`, `FromSystem`, `SetTimeout`, `SetAttempts` and `Lookup`                                                                                              |
 | `Poll`    | `Poller` with `Register`, `Modify`, `Deregister` and `Wait`; `Interest`, `PollSource` and `PollEvent`                                                                                            |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Net::Resolve;`.
 
 ## Example
 

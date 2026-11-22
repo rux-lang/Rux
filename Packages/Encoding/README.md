@@ -10,7 +10,7 @@ rux add Rux/Encoding
 
 ## What it provides
 
-| Module    | Covers                                                                                                   |
+| File      | Covers                                                                                                   |
 | --------- | -------------------------------------------------------------------------------------------------------- |
 | `Hex`     | `HexEncode`, `HexDecode`, their length functions, `HexCase`, and the `ViewHex` display adapter            |
 | `Base64`  | `Base64Encode`, `Base64Decode`, their length functions, the four `Base64Variant`s, and `ViewBase64`       |
@@ -20,7 +20,7 @@ rux add Rux/Encoding
 | `Stream`  | `EncodingWriter` and `DecodingReader`, which encode and decode hexadecimal, Base64 and Base32 through `Io` streams |
 | `Error`   | `DecodeError`, shared by every decoder                                                                   |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Encoding::Base64Decode;`.
 
 ## Example
 

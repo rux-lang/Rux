@@ -10,13 +10,13 @@ rux add Rux/Thread
 
 ## What it provides
 
-| Module    | Covers                                                                                      |
+| File      | Covers                                                                                      |
 | --------- | ------------------------------------------------------------------------------------------- |
 | `Spawn`   | `Spawn`, `SpawnWith`, `ThreadOptions` with a stack size, and `JoinHandle<R>` with `Join` and `Detach` |
 | `Current` | `CurrentId`, `Yield` and `AvailableParallelism`                                             |
 | `Error`   | `ThreadError`, why a thread could not be started                                            |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import Thread::Spawn;`.
 
 ## Example
 

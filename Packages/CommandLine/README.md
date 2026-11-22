@@ -10,7 +10,7 @@ rux add Rux/CommandLine
 
 ## What it provides
 
-| Module   | Covers                                                                                                   |
+| File     | Covers                                                                                                   |
 | -------- | -------------------------------------------------------------------------------------------------------- |
 | `Spec`   | `CommandSpec`, `OptionSpec`, `PositionalSpec`, and the `Command`, `Flag`, `ValueOption`, `Required`, `Optional` and `Remaining` builders |
 | `Parsed` | `Parse` and `ParseProcess`, and the `Parsed` queries: `Has`, `Count`, `Value`, `Values`, `Positional`, `Positionals`, `Integer`, `Subcommand` |
@@ -18,7 +18,7 @@ rux add Rux/CommandLine
 | `Error`  | `CommandLineError`, which describes itself through `Display`                                              |
 | `Scan`   | `ArgumentSource`, the arguments a parse reads                                                             |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The files above only organize the source: the package has no modules, so every declaration is imported from its root, as in `import CommandLine::Command;`.
 
 ## Example
 
