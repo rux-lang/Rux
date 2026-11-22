@@ -1,4 +1,4 @@
-// `rux lint`: run source-level lint checks for the current package.
+// `rux lint`: analyze the current package and report its lint diagnostics.
 
 #include "Cli/BuildReport.h"
 #include "Cli/Cli.h"

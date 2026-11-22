@@ -365,10 +365,13 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
 
     CommandDoc{.name = "lint"sv,
                .shortDesc = "Lint package source files"sv,
-               .description = "Run source-level diagnostics without emitting build artifacts"sv,
+               .description = "Analyze package source files and report lint diagnostics without emitting build "
+                              "artifacts"sv,
                .usage = Data::lint_usage,
                .postUsage = {},
-               .footer = "Use 'rux check' for complete package or workspace semantic validation."sv,
+               .footer = "Each package is analyzed as 'rux check' analyzes it, so an error the analysis finds fails "
+                         "the lint too. Naming, documentation and design-convention warnings are reported beside "
+                         "it."sv,
                .examples = Data::lint_exs,
                .options = Data::lint_opts,
                .conflicts = {}},
