@@ -23,7 +23,7 @@ pub module Formatting {
     }
 
     /// Why a formatting operation did not produce the text it was asked for.
-    /// Failure-only: every case is a failure, and success is what an operation that `throws FormatError` returns
+    /// Failure-only: every case is a failure, and success is what an operation declared `-> T ! FormatError` returns
     /// rather than a case here. Which case arises says who must fix it, so the
     /// categories are not interchangeable and a writer may not invent the ones that belong to the parser or the value.
     /// Copy, and cheap to return: the widest payload is a pair of counts.

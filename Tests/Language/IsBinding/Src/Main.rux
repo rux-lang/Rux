@@ -1,5 +1,5 @@
-// `subject is pattern`: a test that takes a value apart where it holds.
-// The names a pattern binds are in scope where the test is known to be true: the body of the `if` or `while` it
+// `if let pattern = subject`: a binding that takes a value apart where it holds; `is` only tests.
+// The names a pattern binds are in scope where the binding is known to hold: the body of the `if` or `while` it
 // conditions and the right side of `&&`. The subject is evaluated once; `if let` takes a named owning subject as it
 // takes a temporary, and `if let p = &x` lends it, so the bindings borrow from it. `x is T` still tests a
 // type, and a test that binds nothing is an ordinary `bool`.

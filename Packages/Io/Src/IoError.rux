@@ -7,7 +7,7 @@
 // something that needed more bytes is a failure, and has a kind of its own.
 // The set is deliberately the meanings shared by every platform, with the raw code carried beside the meaning:
 // translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
-// can fail declares `throws IoError`, and `IoError` is only ever what it throws.
+// can fail declares `! IoError`, and `IoError` is only ever what it throws.
 
 import Text::{ Display, TextWriter };
 import Text::Formatting::{ FormatError, FormatSpec, RejectStyle, WriteAligned };

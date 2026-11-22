@@ -2,7 +2,7 @@
 // An owning type does not copy with `=`; duplicating one is an ordinary method call that may allocate, so the cost
 // is visible where it is paid. A `Clone` that allocates terminates the program when the allocation fails, as every
 // owning type does when it runs out of memory; a type whose callers may need to recover also offers
-// `TryClone() -> Self throws AllocError`, which is not part of this bound.
+// `TryClone() -> Self ! AllocError`, which is not part of this bound.
 
 pub module Ownership {
     /// A type whose values can be duplicated by calling `Clone`: the bound generic code writes before it duplicates an

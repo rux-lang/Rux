@@ -108,7 +108,7 @@ pub module Spawn {
         /// @param status receives the encoded status
         /// @param options zero to wait, or `WNOHANG` to return at once when the child is still running
         /// @returns the child's identifier, zero with `WNOHANG` when it is still running, or -1 with the reason in
-        /// errno
+        ///   errno
         /// @see https://rux-lang.dev/docs/api/freebsd/spawn#waitpid
         /// @see https://man.freebsd.org/cgi/man.cgi?query=waitpid&sektion=2
         pub func waitpid(pid: int32, status: *var int32, options: int32) -> int32;

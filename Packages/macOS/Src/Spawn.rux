@@ -107,7 +107,7 @@ pub module Spawn {
         /// @param status receives the encoded status
         /// @param options zero to wait, or `WNOHANG` to return at once when the child is still running
         /// @returns the child's identifier, zero with `WNOHANG` when it is still running, or -1 with the reason in
-        /// errno
+        ///   errno
         /// @see https://rux-lang.dev/docs/api/macos/spawn#waitpid
         /// @see https://keith.github.io/xcode-man-pages/waitpid.2.html
         pub func waitpid(pid: int32, status: *var int32, options: int32) -> int32;
