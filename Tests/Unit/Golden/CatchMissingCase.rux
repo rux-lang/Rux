@@ -1,0 +1,18 @@
+// The arms of `catch` match the error as a `match` does, and must cover every error.
+variant ParseError {
+    Empty,
+    Invalid(int32)
+}
+
+func Parse(text: int32) -> int32 ! ParseError {
+    if text == 0i32 {
+        throw .Empty;
+    }
+    return text;
+}
+
+func Main() -> int {
+    Parse(1i32) catch { .Empty => {} };
+    let recovered = Parse(2i32) catch { .Invalid(at) => at };
+    return 0;
+}

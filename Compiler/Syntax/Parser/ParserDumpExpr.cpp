@@ -412,11 +412,11 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
-    else if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
+    else if (const auto *marked = AstCast<const ErrorFormExpr>(&expression)) {
         Pad();
-        out << (marked->form == TryMarkExpr::Form::Optional ? "TryMarkExpr try?\n"
-                : marked->form == TryMarkExpr::Form::Catch  ? "TryMarkExpr try catch\n"
-                                                            : "TryMarkExpr try\n");
+        out << (marked->form == ErrorFormExpr::Form::Catch
+                    ? (marked->replacesError ? "ErrorFormExpr !!\n" : "ErrorFormExpr catch\n")
+                    : "ErrorFormExpr !\n");
         ++indent;
         if (marked->operand) {
             Print(*marked->operand);

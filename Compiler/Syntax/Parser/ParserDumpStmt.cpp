@@ -59,27 +59,6 @@ void StatementPrinter::Print(const Stmt &statement) {
             --indent;
         }
     }
-    else if (const auto *tryStatement = AstCast<const TryStmt>(&statement)) {
-        Pad();
-        out << "TryStmt\n";
-        ++indent;
-        if (tryStatement->body) {
-            PrintBlock(*tryStatement->body);
-        }
-        for (const auto &arm : tryStatement->arms) {
-            Pad();
-            out << "CatchArm\n";
-            ++indent;
-            if (arm.pattern) {
-                PrintPattern(*arm.pattern);
-            }
-            if (arm.body) {
-                printExpression(*arm.body);
-            }
-            --indent;
-        }
-        --indent;
-    }
     else if (const auto *deferStatement = AstCast<const DeferStmt>(&statement)) {
         PrintDeferStmt(*deferStatement);
     }

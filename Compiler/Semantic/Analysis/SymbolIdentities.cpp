@@ -397,17 +397,21 @@ TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
             CheckBorrowReturnCall(*call, type);
         }
     }
-    // A call whose callee throws evaluates to its success where a `try` marks it. A call already reported has lost its
-    // callee, so it reads as its success too, and counts as a site of the `try` that marks it, which is then not
-    // reported as covering nothing on top of the error.
-    if (callFailed && !throwMarkFrames.empty()) {
+    // A fallible call is a throw site where it is the operand of a postfix error form, and evaluates to its success
+    // there. A call already reported has lost its callee, so it reads as its success too, and counts as a site of the
+    // form, which is then not reported as handling nothing on top of the error.
+    const bool markedOperand = !throwMarkFrames.empty() && throwMarkFrames.back().operand == &expr;
+    if (callFailed && markedOperand) {
         ++throwMarkFrames.back().sites;
-        if (!throwHandlerFrames.empty()) {
-            ++throwHandlerFrames.back().sites;
+        const ErrorFormExpr *form = throwMarkFrames.back().expression;
+        if (const auto handler = std::ranges::find(throwHandlerFrames, form, &ThrowHandlerFrame::expression);
+            handler != throwHandlerFrames.end()) {
+            ++handler->sites;
         }
     }
     if (type.IsFallible() && !type.IsIncompleteNative()) {
-        type = callFailed && !type.FallibleSuccess().IsUnknown() ? type.FallibleSuccess() : CheckThrowSite(expr, type);
+        type = callFailed && markedOperand && !type.FallibleSuccess().IsUnknown() ? type.FallibleSuccess()
+                                                                                  : CheckThrowSite(expr, type);
     }
     RecordCheckedExpression(expr, type);
     return type;

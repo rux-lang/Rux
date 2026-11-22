@@ -8,7 +8,7 @@ import Entropy::EntropyError;
 import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid,
                UuidVariant };
 
-func Main() -> !EntropyError {
+func Run() -> !EntropyError {
 
     // Version 4: well-formed, and distinct across many draws.
     var previous = Uuid::Nil();
@@ -126,4 +126,9 @@ func Main() -> !EntropyError {
     Assert(!timedSwapped.Equals(timed), "a swapped identifier is a different identifier");
     Assert(MillisecondOf(timedSwapped) != MillisecondOf(timed),
            "and its timestamp reads as something else entirely, which is why this is never automatic");
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }

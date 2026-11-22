@@ -369,8 +369,8 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
     }
 
-    if (const auto *marked = AstCast<const TryMarkExpr>(&expr)) {
-        return CheckTryMark(*marked);
+    if (const auto *marked = AstCast<const ErrorFormExpr>(&expr)) {
+        return CheckErrorForm(*marked);
     }
 
     // `none` has a placeholder type until its context completes it, so its conversion is checked like any other

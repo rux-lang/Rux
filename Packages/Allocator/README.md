@@ -33,7 +33,7 @@ Four promises hold for every allocator here:
 - **A release must match its allocation** — the same pointer, and an equal layout. The allocator needs the size to know what it is taking back.
 - **A failure leaves everything alone.** A failed reallocation leaves the original block valid and still the caller's.
 
-Every operation can throw `AllocError`: `Allocate` and `Reallocate` return a `*var opaque` and throw `AllocError`, and `Deallocate` returns nothing and throws `AllocError`. Every `AllocError` case is a failure, so a caller passes it on with `try`, handles it with `try ... catch`, and a call left unmarked is a compile error. A release on a cleanup path that has nobody to report to says so explicitly with `try allocator.Deallocate(block, layout) catch { _ => {} };`.
+Every operation can throw `AllocError`: `Allocate` and `Reallocate` return a `*var opaque` and throw `AllocError`, and `Deallocate` returns nothing and throws `AllocError`. Every `AllocError` case is a failure, so a caller passes it on with `!` or handles it with `catch`, and a call whose result is not used is a compile error. A release on a cleanup path that has nobody to report to says so explicitly with `try allocator.Deallocate(block, layout) catch { _ => {} };`.
 
 A zero-sized layout is legal and gives a non-null aligned address that nothing may be read from or written to, and which must still be released. That is cheaper than a null case every caller has to branch on, and it keeps an empty collection from being a special shape.
 

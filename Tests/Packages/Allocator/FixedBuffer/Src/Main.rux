@@ -6,7 +6,7 @@ import Memory::IsPointerAligned;
 // buffer holds, that it aligns what it hands out and counts the padding, that it says `OutOfMemory` rather than
 // going past the end, and that a reset makes the whole buffer available again.
 
-func Main() -> !AllocError {
+func Run() -> !AllocError {
     // The buffer is a local array, so nothing here allocates at all.
     var storage: byte[512];
     // Safety: `storage` is a local array of 512 bytes that outlives `buffer` and is touched only through it.
@@ -138,5 +138,10 @@ func Main() -> !AllocError {
     }
     refused = empties.Allocate(zero)!;
 
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }
 

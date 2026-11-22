@@ -76,7 +76,7 @@ pub func TextFailureOf(error: TextError) -> TextFailureKind {
 
 /// `error` translated across the boundary between this package's status convention and the formatting protocol.
 /// This is the only sanctioned crossing: every text failure becomes a `TextFailure` carrying the reason. It is the
-/// mapper a formatting operation hands a text operation's failure to, as in `try builder.Append(view) catch {
+/// mapper a formatting operation hands a text operation's failure to, as in `builder.Append(view) catch {
 /// e => throw FromTextError(e) }`.
 /// @param error why the storage or validation operation failed
 /// @returns the matching formatting failure

@@ -36,8 +36,8 @@ TEST_CASE("a public error alias exposes its members across packages, a named wra
     CHECK(Errors(AnalyzeWithDep(R"(
         import Store::{ IoError, Load, LoadError, ParseError, Read };
         func Use() -> int32 {
-            let read = try Read() catch { _: ParseError => 1i32, _: IoError => 2i32 };
-            let load = try Load() catch { LoadError::Unreadable(cause) => 3i32 };
+            let read = Read() catch { _: ParseError => 1i32, _: IoError => 2i32 };
+            let load = Load() catch { LoadError::Unreadable(cause) => 3i32 };
             return read + load;
         }
     )",
@@ -48,7 +48,7 @@ TEST_CASE("a public error alias exposes its members across packages, a named wra
     const auto partial = Errors(AnalyzeWithDep(R"(
         import Store::{ ParseError, Read };
         func Use() -> int32 {
-            return try Read() catch { _: ParseError => 1i32 };
+            return Read() catch { _: ParseError => 1i32 };
         }
     )",
                                                "Store", dependency));

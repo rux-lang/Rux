@@ -330,7 +330,7 @@ TEST_CASE("propagation rolls back every completed variant payload in reverse ord
         }
 
         func Build(ok: bool) -> Choice ! Error {
-            return try Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok));
+            return Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok)!);
         }
     )");
     const auto handle = std::ranges::find(package.dropGlues, TypeRef::MakeNamed("Handle"), &DropGluePlan::type);

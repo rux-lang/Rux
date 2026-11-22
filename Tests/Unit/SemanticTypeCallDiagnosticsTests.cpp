@@ -740,7 +740,7 @@ TEST_CASE("a method call whose argument the method cannot take is reported, not 
         }
         func Append(sink: &var Sink) -> !int32 {
             if sink.count == 0 {
-                try sink.Push('z');
+                sink.Push('z')!;
             }
             let taken = Sink::Take('y');
         }

@@ -7,9 +7,9 @@ func Parse() -> int ! ParseError {
 }
 
 func Load() -> int ! IoError {
-    return try Parse();
+    return Parse()!;
 }
 
 func LoadEither() -> int ! IoError | ParseError {
-    return try Parse();
+    return Parse()!;
 }

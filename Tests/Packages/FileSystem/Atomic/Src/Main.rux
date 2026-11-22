@@ -51,7 +51,7 @@ func CountEntries(allocator: Allocator, directory: Path) -> uint {
     return count;
 }
 
-func Main() -> int ! IoError {
+func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);
@@ -100,6 +100,10 @@ func Main() -> int ! IoError {
     DeleteFile(allocator, target)!;
     DeleteDirectory(allocator, dir)!;
     return 0;
+}
+
+func Main() -> int {
+    return Run() !! 1;
 }
 
 // Begins a replacement, writes to it, and lets it fall out of scope undecided.

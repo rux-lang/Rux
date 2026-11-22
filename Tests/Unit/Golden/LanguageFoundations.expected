@@ -3,7 +3,7 @@
 21:31: error: interface 'Displya' is not defined
 32:18: error: type argument 'Plain' does not satisfy interface bound 'Display' on type parameter 'T'
 37:17: error: no interface bound on type parameter 'T' provides method 'Measure'
-46:21: error: call to 'Read' can throw 'ParseError', but 'Rethrown' throws 'IoError'
+46:17: error: call to 'Read' can fail with 'ParseError', but 'Rethrown' fails with 'IoError'
 51:25: error: '?' does not propagate errors
 55:21: error: 'int32' cannot be propagated with '?' because it is not an optional
 65:5: error: iterator method 'Next' on 'Cursor' must take a mutable receiver

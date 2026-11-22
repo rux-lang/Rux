@@ -1,5 +1,5 @@
-// A throwing call whose arguments are refused still reads as its success, so the uses that follow name the type the
-// program would have had, and the `try` that marks it is not reported as covering nothing.
+// A call that can fail whose arguments are refused still reads as its success under `!`, so the uses that follow name
+// the type the program would have had, and the `!` is not reported as passing on nothing.
 enum Oops { Bad }
 
 struct Token {
@@ -18,10 +18,10 @@ func Open(token: Token) -> Meter ! Oops { return Meter { count: token.id }; }
 
 func Close(meter: Meter) -> !Oops {}
 
-func Main() -> int ! Oops {
+func Run() -> int ! Oops {
     let token = Token { id: 1 };
-    let meter = try Open(token);
-    try Close(true);
-    try Close(false) catch { _ => {} };
+    let meter = Open(token)!;
+    Close(true)!;
+    Close(false) catch { _ => {} };
     return token.id + meter.Missing;
 }

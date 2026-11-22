@@ -1,6 +1,5 @@
 // Checks that fail a test with a message saying what was expected and what was found.
-// Each check declares `throws TestFailure`, so a test marks it with `try` and stops at the first check that does not
-// hold.
+// Each check returns `!TestFailure`, so a test passes it on with `!` and stops at the first check that does not hold.
 
 import Format::WriteFormat;
 import Test::TestFailure;

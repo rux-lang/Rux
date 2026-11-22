@@ -71,7 +71,7 @@ TEST_CASE("propagation continues with the success or returns the outer failure")
         struct IoError {}
         func Read() -> int32 ! IoError { return 1i32; }
         func Forward() -> int32 ! IoError {
-            let inner = try Read();
+            let inner = Read()!;
             return 1i32;
         }
     )");
@@ -95,7 +95,7 @@ TEST_CASE("a propagated error is injected into a wider failure channel") {
         struct IoError {}
         func Read() -> int32 ! ParseError { return 1i32; }
         func Widen() -> int32 ! (IoError | ParseError) {
-            let value = try Read();
+            let value = Read()!;
             return value;
         }
     )");
@@ -105,28 +105,4 @@ TEST_CASE("a propagated error is injected into a wider failure channel") {
     const auto *injected = dynamic_cast<const HirEnumConstructExpr *>(failure.payloads.front().get());
     REQUIRE(injected != nullptr);
     CHECK_EQ(injected->discriminant, "1");
-}
-
-TEST_CASE("a fallible Main is wrapped by an integer entry point") {
-    const HirPackage package = LowerSource(R"(
-        struct IoError {}
-        func Main() -> int ! IoError {
-            return 3;
-        }
-    )");
-    const HirFunc &entry = RequireFunction(package, "Main");
-    CHECK_EQ(entry.returnType, TypeRef::MakeInt());
-    const HirFunc &body = RequireFunction(package, "Main$fallible");
-    CHECK(body.returnType.IsFallible());
-
-    REQUIRE(entry.body.has_value());
-    const auto *returned = dynamic_cast<const HirReturnStmt *>(entry.body->stmts.front().get());
-    REQUIRE(returned != nullptr);
-    const auto *match = dynamic_cast<const HirMatchExpr *>(returned->value->get());
-    REQUIRE(match != nullptr);
-    CHECK(match->subject->consumption.has_value());
-    REQUIRE_EQ(match->arms.size(), 2);
-    const auto *failed = dynamic_cast<const HirLiteralExpr *>(match->arms[1].body.get());
-    REQUIRE(failed != nullptr);
-    CHECK_EQ(failed->value, "1");
 }

@@ -93,16 +93,19 @@ const std::string kCallProgram = R"(
     func Collapse<T, U>(value: T) -> T | U {
         return value;
     }
-    func Main() -> int ! E {
+    func Run() -> int ! E {
         let unit = UnitReturn();
         let unitParam = UnitParam(unit, 4i32);
         let missing: int32? = none;
         let many = Many(1i32, 2i32, 3i32, 4i32, 5i32, missing, 7i32, 8i32);
-        let big = try BigMany(Make(1i64), Make(2i64), Make(3i64), Make(4i64), Make(5i64));
+        let big = BigMany(Make(1i64)!, Make(2i64)!, Make(3i64)!, Make(4i64)!, Make(5i64)!);
         let tag = Tag(true);
-        let nested = try Nest(false);
+        let nested = Nest(false)!;
         let collapsed = Collapse<int32, int32>(1i32);
         return 0;
+    }
+    func Main() -> int {
+        return Run() !! 1;
     }
 )";
 } // namespace

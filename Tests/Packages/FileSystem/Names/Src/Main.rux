@@ -64,7 +64,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     reopenPath.Release();
 }
 
-func Main() -> int ! IoError {
+func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);
@@ -116,6 +116,10 @@ func Main() -> int ! IoError {
 
     DeleteDirectory(allocator, dir)!;
     return 0;
+}
+
+func Main() -> int {
+    return Run() !! 1;
 }
 
 // The combining-mark case, kept apart so its comment stays with it: the name is written decomposed and must

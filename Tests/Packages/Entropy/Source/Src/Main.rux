@@ -6,7 +6,7 @@ import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
 // not one byte more, that the same request twice does not give the same answer, that the error values behave, and
 // that the degenerate requests are handled rather than passed to the system.
 
-func Main() -> !EntropyError {
+func Run() -> !EntropyError {
     // The error values answer the question a caller has: whether to try again.
     Assert(EntropyError::Interrupted.IsTransient(), "an interruption is worth retrying");
     Assert(!EntropyError::Unsupported.IsTransient(), "a system with no source will not grow one");
@@ -135,5 +135,10 @@ func Main() -> !EntropyError {
         index++;
     }
     Assert(tailPattern < 256, "including the last bytes, where a short loop would have stopped");
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }
 

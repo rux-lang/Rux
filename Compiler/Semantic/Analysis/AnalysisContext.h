@@ -380,7 +380,8 @@ private:
     void ValidateIndexOperator(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateDestructor(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
-    /// Whether a constructor returning `returned` builds `type`: exactly it, or it with a `throws` clause.
+    /// Whether a constructor returning `returned` builds `type`: exactly it, or it as the success of a fallible, `T !
+    /// E`.
     [[nodiscard]] static bool ConstructsType(const TypeRef &returned, const TypeRef &type);
     [[nodiscard]] std::vector<const FuncDecl *> AccessibleMethodCandidates(const TypeRef &receiverType,
                                                                            const std::string &methodName) const;
@@ -803,9 +804,9 @@ private:
 
     // Typed throws (Throws.cpp).
 
-    /// A place an error raised in the code being checked can go to. A handler is a `try` block or a `try` expression
-    /// with `catch` or `?`; it gathers the errors thrown to it and the flow at each throw. A deferred statement and a
-    /// destructor body are barriers no error may cross.
+    /// A place an error raised in the code being checked can go to. A handler is a `catch`, `!!` or `!!;`; it gathers
+    /// the error of its operand and the flow at the throw. A deferred statement and a destructor body are barriers no
+    /// error may cross.
     struct ThrowHandlerFrame {
         enum class Kind : std::uint8_t {
             Handler,
@@ -814,29 +815,25 @@ private:
         };
 
         Kind kind = Kind::Handler;
-        const TryStmt *block = nullptr;
-        const TryMarkExpr *expression = nullptr;
+        const ErrorFormExpr *expression = nullptr;
         std::vector<TypeRef> errors;
         TrackedFlow shape;
         std::vector<TrackedFlow> edges;
         std::size_t sites = 0;
     };
 
-    /// The `try` that marks the throw sites being checked. A frame with neither node is a barrier, such as a catch arm
-    /// or a deferred statement, inside which a call needs a `try` of its own.
+    /// The postfix form whose operand is being checked. It marks only that operand: a fallible nested inside it stays a
+    /// value of its own. An empty frame, pushed for a handler's arms or a barrier, marks nothing.
     struct ThrowMarkFrame {
-        const TryStmt *block = nullptr;
-        const TryMarkExpr *expression = nullptr;
+        const ErrorFormExpr *expression = nullptr;
         std::size_t sites = 0;
-        /// A postfix `x!`, `x catch { ... }` or `x !! v` marks only its operand: a fallible nested inside it stays a
-        /// value of its own.
-        const Expr *onlyOperand = nullptr;
+        const Expr *operand = nullptr;
     };
 
     /// A postfix error handler written as a whole statement, `x !!;` or `x catch { ... };`, whose success is dropped.
-    const TryMarkExpr *statementHandler = nullptr;
+    const ErrorFormExpr *statementHandler = nullptr;
 
-    /// Whether a callee can throw, which makes every call to it a throw site that must be marked with `try`.
+    /// Whether a callee can fail, and how diagnostics name a call to it.
     struct ThrowingCallee {
         enum class Spelling : std::uint8_t {
             None,
@@ -851,8 +848,8 @@ private:
 
     std::vector<ThrowHandlerFrame> throwHandlerFrames;
     std::vector<ThrowMarkFrame> throwMarkFrames;
-    /// The operand of an older `?`, `? else` or postfix `catch` being checked, which consumes the outcome a call
-    /// returns as a value, so that call is not a throw site whatever its callee's spelling.
+    /// The operand of an older `?` or `? else` being checked, which consumes the outcome a call returns as a value, so
+    /// that call is not a throw site.
     const Expr *outcomeOperand = nullptr;
 
     // Named arguments (ArgumentLabels.cpp).
@@ -895,17 +892,15 @@ private:
     void ReportUnusedBlockValue(const BlockExpr &expression, const TypeRef &yielded);
 
     [[nodiscard]] ThrowingCallee ThrowingCalleeOf(const Expr &expression);
-    /// A call or operator whose type is the fallible `outcome`: a throw site when a `try` covers it, whose value is
-    /// the success payload, or an outcome value as before; an unmarked call of a `throws` callee is an error.
+    /// An expression whose type is the fallible `outcome`: the throw site of the postfix form whose operand it is,
+    /// whose value is the success payload, or a fallible value of its own.
     [[nodiscard]] TypeRef CheckThrowSite(const Expr &expression, const TypeRef &outcome);
     /// `x!`, `x catch { arms }`, `x !! v` and `x !!;`, which handle only their operand's own fallible.
-    [[nodiscard]] TypeRef CheckPostfixErrorForm(const TryMarkExpr &expression);
-    /// Sends `error`, thrown at `location`, to the innermost handler or the function's `throws` channel, recording the
-    /// flow edge and the target in `site`. False when it has nowhere to go, which has been reported.
+    [[nodiscard]] TypeRef CheckErrorForm(const ErrorFormExpr &expression);
+    /// Sends `error`, thrown at `location`, to the arms of `handler` when there is one, or out of the function,
+    /// recording the flow edge and the target in `site`. False when it has nowhere to go, which has been reported.
     bool RouteThrownError(ResolvedThrowSite &site, const TypeRef &error, SourceLocation location,
-                          const std::string &description);
-    [[nodiscard]] TypeRef CheckTryMark(const TryMarkExpr &expression);
-    void CheckTryStatement(const TryStmt &statement);
+                          const std::string &description, const ErrorFormExpr *handler = nullptr);
     /// The arms of a handler, which match `error` as a `match` would. An expression handler's arms produce `value`; a
     /// statement's discard what they produce. Each arm's exit flow is added to `exits`.
     void CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, const TypeRef &error,
@@ -1238,8 +1233,7 @@ private:
     /// without deciding again where it goes.
     std::unordered_map<const Expr *, ResolvedThrowSite> &throwSites;
     std::unordered_map<const FailStmt *, ResolvedThrowSite> &throwStatements;
-    std::unordered_map<const TryStmt *, ResolvedThrowHandler> &tryBlockHandlers;
-    std::unordered_map<const TryMarkExpr *, ResolvedThrowHandler> &tryExpressionHandlers;
+    std::unordered_map<const ErrorFormExpr *, ResolvedThrowHandler> &errorHandlers;
     /// One entry per accepted `??`, so lowering does not repeat structural Option recognition.
     std::unordered_map<const BinaryExpr *, ResolvedCoalescing> &coalescings;
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
@@ -1667,7 +1661,7 @@ private:
 
     // Cases written without their type (ContextualCases.cpp).
     /// Whether `expression` names a case without its type: `.Case`, `.Case(...)`, a native constructor that a user
-    /// case of the same name may take over, or a `try` marking one.
+    /// case of the same name may take over, or a postfix error form over one.
     [[nodiscard]] static bool IsContextualCaseExpression(const Expr &expression) noexcept;
     /// The type arguments an alias of an instantiation of `declaration` supplies to a case named through it, as
     /// `Kept::Success(...)` with `type Kept = Outcome<int, Error>`; nullopt for any other type name.

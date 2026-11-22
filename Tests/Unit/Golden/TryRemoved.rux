@@ -1,0 +1,19 @@
+// `try` is removed. Each form is reported where it is written, with the form that replaced it, and the expression
+// after it is read as if it were not there.
+struct Fault {}
+
+func Read() -> int ! Fault {
+    return 1;
+}
+
+func Sum(x: int) -> int ! Fault {
+    let marked = try Read();
+    let misplaced = x + try Read();
+    let optional = try? Read();
+    try {
+        let value = Read()!;
+    } catch {
+        _ => {}
+    };
+    return marked;
+}

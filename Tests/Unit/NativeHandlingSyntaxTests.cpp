@@ -147,12 +147,12 @@ TEST_CASE("none is a value") {
 }
 
 TEST_CASE("catch arms share the match arm grammar") {
-    CHECK(ParsesCleanly("func F() { let a = try Read() catch { e if e.code > 0 => 1, _ => 0 }; }"));
-    CHECK(ParsesCleanly("func F() { let a = try Read() catch { e => { Log(e); }, _ => throw Other {} }; }"));
-    CHECK(ParsesCleanly("func F() { let a = try Read() catch { e => 0, }; }"));
-    CHECK(ParsesCleanly("func F() { let a = try Read() catch { .Missing | .Denied => 0, _ => 1 }; }"));
-    CHECK(Reports("func F() { let a = try Read() catch { _ => 0, e => 1 }; }",
-                  "the default arm must be the last catch arm"));
+    CHECK(ParsesCleanly("func F() { let a = Read() catch { e if e.code > 0 => 1, _ => 0 }; }"));
+    CHECK(ParsesCleanly("func F() { let a = Read() catch { e => { Log(e); }, _ => throw Other {} }; }"));
+    CHECK(ParsesCleanly("func F() { let a = Read() catch { e => 0, }; }"));
+    CHECK(ParsesCleanly("func F() { let a = Read() catch { .Missing | .Denied => 0, _ => 1 }; }"));
+    CHECK(
+        Reports("func F() { let a = Read() catch { _ => 0, e => 1 }; }", "the default arm must be the last catch arm"));
     CHECK(ReportsContaining("func F() { let a = Read() catch e => 0; }", "expected '{' to start the catch arms"));
 }
 

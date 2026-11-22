@@ -139,16 +139,6 @@ protected:
     /// `break` or `continue` runs the defers registered inside the loop before it jumps.
     std::vector<std::pair<std::string, std::size_t>> loopDeferBases;
 
-    /// For each loop being lowered, beside its `loopDeferBases` entry: the label of the HIR loop, and whether it is the
-    /// hidden loop a handler leaves with a `break`. An unlabeled `break` or `continue` inside a handler names the
-    /// source loop around it, which is given a label for it when it has none.
-    struct LoopLabelSlot {
-        std::string *label = nullptr;
-        bool handler = false;
-        CleanupPlanner::LoopToken token;
-    };
-
-    std::vector<LoopLabelSlot> loopLabelSlots;
     std::size_t returnOrdinal = 0;
     /// Names the hidden locals a value block, an `if` value and a binding condition introduce.
     std::size_t blockValueOrdinal = 0;
@@ -212,11 +202,8 @@ protected:
     /// Lowers `stmt` into `block`.
     void LowerStmtInto(HirBlock &block, const Stmt &stmt);
     /// Opens a loop whose HIR node has the label `label`, which stays where it is until the loop ends.
-    CleanupPlanner::LoopToken BeginLoop(std::string &label, bool handler = false);
+    CleanupPlanner::LoopToken BeginLoop(const std::string &label);
     void EndLoop(CleanupPlanner::LoopToken token);
-    /// The label a `break` or `continue` written with `label` jumps by: the source loop it leaves, never the hidden
-    /// loop of a handler around it.
-    [[nodiscard]] std::string LoopExitLabel(const std::string &label);
     /// A `break` or `continue` that first runs the defers registered inside the loop it leaves.
     [[nodiscard]] HirStmtPtr LowerLoopExit(HirStmtPtr jump, const std::string &label, SourceLocation location);
     [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
@@ -294,43 +281,24 @@ protected:
     [[nodiscard]] HirExprPtr LowerNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType);
     /// `option ?? fallback` on a native optional: a match whose absent arm evaluates the fallback.
     [[nodiscard]] HirExprPtr LowerNativeCoalesce(const BinaryExpr &expression);
-    // Typed throws (AstToHirThrows.cpp). A handler is a hidden loop holding the code it handles, after which its
-    // arms match an outcome slot: the code stores its value as the success and leaves; a throw site stores its error
-    // as the failure and leaves the loop like a labeled `break`, running the defers and destroying the locals of every
-    // scope it leaves before the arms run.
+    // Errors (AstToHirThrows.cpp). The operand of a postfix error form is matched on its outcome: `x!` returns the
+    // failure from the function, and a handler's arms take it.
 
-    /// A handler whose code is being lowered: the hidden loop's label and the slot its arms match.
-    struct ActiveThrowHandler {
-        std::string label;
-        std::string slot;
-        TypeRef outcomeType;
-    };
-
-    std::unordered_map<const void *, ActiveThrowHandler> activeThrowHandlers;
     std::size_t throwOrdinal = 0;
     /// The throw site whose call is being lowered as the outcome it returns.
     const Expr *rawThrowSite = nullptr;
-    /// A call or operator that a `try` marks: a match whose success continues and whose failure is thrown.
+    /// The outcome a throw site produces, read whole: the call's fallible result, or a fallible kept in a local.
+    [[nodiscard]] HirExprPtr LowerSiteOutcome(const Expr &expression, const ResolvedThrowSite &site);
+    /// The operand of `x!`: a match whose success continues and whose failure leaves the function.
     [[nodiscard]] HirExprPtr LowerThrowSite(const Expr &expression, const ResolvedThrowSite &site);
-    /// Sends the lowered `error` where `site` says it goes: into its handler's slot and out of the handler's loop, or
-    /// out of the function as its failure.
-    [[nodiscard]] HirStmtPtr LowerThrowTo(const ResolvedThrowSite &site, HirExprPtr error, SourceLocation location);
-    [[nodiscard]] HirStmtPtr LowerTryStatement(const TryStmt &statement);
-    [[nodiscard]] HirExprPtr LowerTryMark(const TryMarkExpr &expression);
-    /// Lowers the code a handler handles into a hidden loop that leaves `slot` holding the outcome: `store` builds the
-    /// statement storing its success.
-    [[nodiscard]] std::unique_ptr<HirLoopStmt> LowerHandledCode(const void *handler, const ActiveThrowHandler &active,
-                                                                const std::function<void(HirBlock &)> &lower,
-                                                                SourceLocation location);
+    /// Returns the lowered `error` from the function as its failure.
+    [[nodiscard]] HirStmtPtr LowerThrowTo(HirExprPtr error, SourceLocation location);
+    /// `x!`, `x catch { arms }`, `x !! v` and `x !!;`.
+    [[nodiscard]] HirExprPtr LowerErrorForm(const ErrorFormExpr &expression);
     /// The `catch` arms of a handler, each matching inside the failure of `outcome`; an expression's arms produce
     /// `result`, a statement's are run for their effect.
     void LowerHandlerArms(const std::vector<MatchExpr::Arm> &arms, const TypeRef &outcome,
                           const std::optional<TypeRef> &result, std::vector<HirMatchArm> &lowered);
-    /// The symbol a fallible `Main` is renamed to, called by the synthesized entry point.
-    static constexpr std::string_view kFallibleMainBody = "Main$fallible";
-    /// `Main() -> int` calling the fallible `body`: a success exits with its integer payload or 0, a failure with 1,
-    /// after the failure's payload is destroyed.
-    [[nodiscard]] HirFunc FallibleEntryWrapper(const HirFunc &body);
 
     /// `value.Truncate<T>()`: a conversion that keeps the low bits rather than checking the value; null for any other
     /// call.

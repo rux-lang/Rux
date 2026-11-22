@@ -1,0 +1,10 @@
+// `x!` passes the error to the caller, so it needs a function that can fail.
+struct Fault {}
+
+func Read() -> int ! Fault {
+    return 1;
+}
+
+func Main() -> int {
+    return Read()!;
+}

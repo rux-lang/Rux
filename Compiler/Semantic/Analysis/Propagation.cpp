@@ -55,7 +55,7 @@ TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const
         EmitError(expression.location,
                   std::format("'?' propagates the absence of '{}', but the enclosing function returns {}",
                               operandType.ToString(), returned),
-                  {"absence leaves as an optional's 'none', or as the 'none' a '-> U? throws F' function returns; '?' "
+                  {"absence leaves as an optional's 'none', or as the 'none' a '-> U? ! F' function returns; '?' "
                    "never invents an error for it"},
                   "declare an optional result, as in '-> T?', or supply a fallback with '?"
                   "?'");
@@ -98,9 +98,8 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         return TypeRef::MakeUnknown();
     }
     if (operandType.IsFallible()) {
-        // Errors leave through `try`; a postfix `?` only propagates the absence of an optional.
-        EmitError(expression.location, "'?' does not propagate errors", {},
-                  "write 'try' before the expression to pass the error on");
+        // Errors leave through `!`; a postfix `?` only propagates the absence of an optional.
+        EmitError(expression.location, "'?' does not propagate errors", {}, "write '!' to pass the error on");
         return operandType.FallibleSuccess();
     }
     if (operandType.IsOptional()) {
@@ -113,7 +112,7 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
     case LegacyOutcomeShape::Result:
         notes.push_back("a variant with 'Success' and 'Error' cases is an ordinary variant; only a native fallible "
                         "propagates a failure");
-        help = "declare 'throws E' and pass errors on with 'try', or match the variant";
+        help = "declare '-> T ! E' and pass errors on with '!', or match the variant";
         break;
     case LegacyOutcomeShape::Option:
         notes.push_back("a variant with 'Some' and 'None' cases is an ordinary variant; only a native optional "

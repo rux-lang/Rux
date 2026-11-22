@@ -385,7 +385,7 @@ void Parser::ParseThrowsClause(std::optional<TypeExprPtr> &returnType) {
     fallible->error = ParseSumType("add the error type after 'throws'");
     if (const auto *optional = AstCast<const OptionalTypeExpr>(fallible->error.get());
         optional && !optional->parenthesized) {
-        EmitError(optional->location, "an optional error type must be grouped", "write 'throws (E?)'");
+        EmitError(optional->location, "an optional error type must be grouped", "write '! (E?)'");
     }
     returnType = std::move(fallible);
 }

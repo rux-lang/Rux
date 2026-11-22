@@ -44,7 +44,7 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     return move remembered;
 }
 
-func Main() -> int ! IoError {
+func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     // The system's temporary directory is a directory that exists.
@@ -98,4 +98,8 @@ func Main() -> int ! IoError {
     homePath.Release();
     root.Release();
     return 0;
+}
+
+func Main() -> int {
+    return Run() !! 1;
 }

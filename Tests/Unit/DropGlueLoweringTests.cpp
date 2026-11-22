@@ -257,9 +257,9 @@ TEST_SUITE("DropGlueLowering") {
             }
 
             func Build(ok: bool) -> Pair ! Error {
-                return try Pair {
+                return Pair {
                     first: Handle { slot: 1i32 },
-                    second: Read(ok),
+                    second: Read(ok)!,
                 };
             }
         )");

@@ -2,8 +2,8 @@
 // annotated binding, a parameter, a field, a return value, a `throw` operand, an assignment to a typed place, or an arm
 // of a match whose type is known. The expected type is the only place the case is looked up. A user variant that is
 // itself the expected type takes over `.Some(...)` when it declares a `Some` case, and `.Success(...)` and
-// `.Failure(...)` when it declares those; the type a `try` expression is expected to have is its operand's and its
-// `catch` arms' too.
+// `.Failure(...)` when it declares those; the type a `catch` expression is expected to have is its operand's and its
+// arms' too.
 
 import Core::Diagnostics::Assert;
 

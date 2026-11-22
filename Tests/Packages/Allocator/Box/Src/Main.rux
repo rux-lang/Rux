@@ -39,7 +39,7 @@ func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> !AllocError {
     Assert(taken.value == 27 && destroyedCount == 0, "and transfers rather than destroys the value");
 }
 
-func Main() -> !AllocError {
+func Run() -> !AllocError {
     let allocator = SystemAllocator::New();
 
     // An ordinary box holds its value and lends it where it sits in the box's own storage.
@@ -88,4 +88,9 @@ func Main() -> !AllocError {
     destroyed = 0;
     BoxAndTake(allocator, @destroyed)!;
     Assert(destroyed == 1, "a value taken from a box is destroyed by its new owner exactly once");
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }

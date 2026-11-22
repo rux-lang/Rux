@@ -167,7 +167,7 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "block";
     if (AstCast<const MatchExpr>(&expression))
         return "match";
-    if (AstCast<const TryMarkExpr>(&expression))
+    if (AstCast<const ErrorFormExpr>(&expression))
         return "try";
     return "unknown";
 }
@@ -505,7 +505,7 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         }
         return lowered;
     };
-    // A call a `try` marks continues with its success and throws its error.
+    // The operand of `x!` continues with its success and passes its error on; a handler lowers its own operand.
     if (&expr != rawThrowSite && !AstCast<const DivergeExpr>(&expr)) {
         if (const ResolvedThrowSite *site = model.TryGetThrowSite(expr)) {
             return finish(LowerThrowSite(expr, *site));
@@ -541,8 +541,8 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     if (const auto *e = AstCast<const DivergeExpr>(&expr)) {
         return LowerDiverge(*e);
     }
-    if (const auto *e = AstCast<const TryMarkExpr>(&expr)) {
-        return finish(LowerTryMark(*e));
+    if (const auto *e = AstCast<const ErrorFormExpr>(&expr)) {
+        return finish(LowerErrorForm(*e));
     }
     if (auto *e = AstCast<const SpreadExpr>(&expr)) {
         return finish(LowerExpr(*e->operand));

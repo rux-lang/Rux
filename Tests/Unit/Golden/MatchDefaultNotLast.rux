@@ -8,7 +8,7 @@ func Main() -> int {
         _ => {}
         1 => {}
     }
-    let value = try Read() catch {
+    let value = Read() catch {
         _ => 0,
         e => e,
     };

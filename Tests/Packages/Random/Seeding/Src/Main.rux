@@ -7,7 +7,7 @@ import Core::Diagnostics::Assert;
 import Entropy::EntropyError;
 import Random::{ Pcg64Dxsm, PcgFromEntropy, PcgFromEntropyWithStream, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
 
-func Main() -> !EntropyError {
+func Run() -> !EntropyError {
 
     // Entropy seeding succeeds on a supported system, and different calls give different streams.
     var first = XoshiroFromEntropy()!;
@@ -81,4 +81,9 @@ func Main() -> !EntropyError {
     let fromFork = forked.NextUint64();
     Assert(fromOriginal == fromFork, "a copy continues from where it was copied");
     Assert(original.NextUint64() == forked.NextUint64(), "and the two then advance independently in step");
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }

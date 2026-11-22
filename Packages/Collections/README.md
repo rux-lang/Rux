@@ -55,7 +55,7 @@ Running out of memory terminates the program. `Push`, `Insert`, `Reserve`, `Clon
 
 A `Try*` operation throws `Unsupported` for a size no allocator could serve, and otherwise what the allocator refused with; `AllocError::IsTransient` says whether trying again could help.
 
-What is left for a caller to handle is an index the collection does not have. `Set`, `Replace` and a vector's `Insert` throw `CollectionError`, whose one case is `IndexOutOfRange`, so a call to one is marked with `try`:
+What is left for a caller to handle is an index the collection does not have. `Set`, `Replace` and a vector's `Insert` throw `CollectionError`, whose one case is `IndexOutOfRange`, so a call to one is a fallible to handle:
 
 ```rux
 enum CollectionError: uint8 {

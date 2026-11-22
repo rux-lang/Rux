@@ -1,0 +1,28 @@
+// `Main` is `func Main() -> int`: its result is the exit status, and it cannot fail. The steps that can fail are a
+// function of their own whose error `Main` handles, here by exiting with status 1. Nothing fails, so the program exits
+// with the status the steps return.
+
+import Core::Diagnostics::Assert;
+
+struct Fault {
+    code: int32;
+}
+
+func Parse(text: int32) -> int32 ! Fault {
+    if text < 0i32 {
+        throw Fault { code: text };
+    }
+    return text;
+}
+
+func Run() -> int ! Fault {
+    let parsed = Parse(5i32)!;
+    Assert(parsed == 5i32, "a success continues");
+    let recovered = Parse(-1i32) catch { e => -e.code };
+    Assert(recovered == 1i32, "an error handled inside Main never reaches the exit");
+    return Parse(0i32)! * 7;
+}
+
+func Main() -> int {
+    return Run() !! 1;
+}

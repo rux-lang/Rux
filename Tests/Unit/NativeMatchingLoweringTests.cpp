@@ -275,7 +275,7 @@ TEST_CASE("an arm that never returns stores no value") {
             return value;
         }
         func Recovered() -> int64 {
-            let big = try ReadBig() catch { e => Panic("failed") };
+            let big = ReadBig() catch { e => Panic("failed") };
             return big.c;
         }
         func Chosen(flag: bool) -> int64 {

@@ -24,7 +24,7 @@ rux add Rux/Text
 - **Errors describe themselves** — `TextError`, `TextFailureKind`, `FormatError` and `Utf8Error` implement `Display` and `Debug`, and so do `AllocError` and `PageError`, which surface through the `Try*` operations and whose owning packages do not depend on this one. `Display` is the stable description a reader is shown, short enough to sit inside a sentence a program is already writing; `Debug` names the case and its payload, so `FormatError::InvalidSpecification(12)` says where. The descriptions are stable and are not a parsing contract: a program branches on the case, not the words. `EntropyError` is deliberately absent — presenting it would need a dependency edge the layering forbids in both directions — and callers handle its cases or wrap it in a diagnostic type of their own.
 - **Outcomes and runs show what is inside them** — `WriteOptionalDebug` and `WriteSliceDebug` write an optional `T?` as `Some(value)` or `none` and a run of elements as `[first, second, third]`. Neither can be an interface implementation, because native forms implement no interface and what a `T?` looks like is entirely a question about `T`; they are handwritten functions carrying the bound, resolved at each instantiation with nothing dispatched at run time. They borrow, which is the point: `??` and `?` consume the optional because taking a payload out is a transfer of ownership, while showing one is not, so an optional holding a move-only value can be written as often as wanted and still holds it. The specification reaches the elements unchanged; the brackets, commas and case names are punctuation and are never padded. Sequential containers are [`Rux/Collections`](../Collections)' own writers, built on `WriteSliceDebug`.
 
-- **`FormatError`** — why a value could not be turned into text, with no case for success. `TextError` next door is the same shape for this package's validation operations, which throw `TextError`; `FromTextError` is the one sanctioned crossing between the two, used in a `catch` arm that throws the mapped error: `try builder.AppendBytes(bytes) catch { e => throw FromTextError(e) }`.
+- **`FormatError`** — why a value could not be turned into text, with no case for success. `TextError` next door is the same shape for this package's validation operations, which throw `TextError`; `FromTextError` is the one sanctioned crossing between the two, used in a `catch` arm that throws the mapped error: `builder.AppendBytes(bytes) catch { e => throw FromTextError(e) }`.
 
 ## Example
 
@@ -33,10 +33,15 @@ import Allocator::{ Allocator, SystemAllocator };
 import Io::PrintLine;
 import Text::{ String, TextError };
 
-func Main() -> !TextError {
+func Greet() -> !TextError {
     let allocator = SystemAllocator::New();
     let greeting = String::FromBytes(allocator, "Hello")!;
     PrintLine(greeting);
+}
+
+func Main() -> int {
+    Greet() !! return 1;
+    return 0;
 }
 ```
 

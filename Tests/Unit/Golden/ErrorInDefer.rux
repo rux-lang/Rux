@@ -1,0 +1,12 @@
+// A deferred statement runs while its scope is already being left, so no error may leave it: it handles an error with
+// `catch` or drops it with `!!`.
+struct Fault {}
+
+func Close() -> !Fault {}
+
+func Main() -> int {
+    defer Close()!;
+    defer Close() !!;
+    defer Close() catch { _ => {} };
+    return 0;
+}

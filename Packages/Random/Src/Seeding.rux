@@ -12,7 +12,7 @@ import Entropy::{ EntropyError, NextUint64 };
 
 /// A `Xoshiro256` seeded from the operating system's entropy.
 /// Fails with why the entropy could not be obtained. A caller that is content with a predictable generator when
-/// the system has no entropy recovers explicitly, as in `try XoshiroFromEntropy() catch { _ => Xoshiro256(0u64) }`.
+/// the system has no entropy recovers explicitly, as in `XoshiroFromEntropy() !! Xoshiro256(0u64)`.
 /// @returns a generator seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/xoshiro256#xoshiro-from-entropy
 pub func XoshiroFromEntropy() -> Xoshiro256 ! EntropyError {

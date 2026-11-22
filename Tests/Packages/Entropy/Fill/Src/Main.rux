@@ -53,7 +53,7 @@ func AllBytesAre(buffer: byte[..], value: byte) -> bool {
     return true;
 }
 
-func Main() -> !EntropyError {
+func Run() -> !EntropyError {
     var storage: byte[64];
 
     // A source that always succeeds fills the buffer, in a single call.
@@ -155,5 +155,10 @@ func Main() -> !EntropyError {
     let firstSeed = NextUint64()!;
     let secondSeed = NextUint64()!;
     Assert(firstSeed != secondSeed, "and two seeds differ");
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }
 

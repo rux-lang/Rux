@@ -16,62 +16,29 @@ ExprPtr Parser::ParseExpr() {
 }
 
 ExprPtr Parser::ParseExprImpl() {
-    const bool savedEndsAtCatch = std::exchange(tryOperandEndsAtCatch, false);
-    ExprPtr expression = ParseTryPrefix();
-    tryOperandEndsAtCatch = savedEndsAtCatch;
-    return expression;
-}
-
-ExprPtr Parser::ParseTryPrefix() {
+    // The removed `try` is reported and the expression after it read as if it were not there.
     if (Check(TokenKind::TryKeyword)) {
-        return ParseTryExpr(false);
+        RejectTry();
     }
     return ParseAssign();
 }
 
-// `try` has the lowest precedence of every operator, so it covers the whole expression to its right, assignment
-// included: `try a() + b()` marks both calls. It is written only where an expression starts, so one to the right of
-// another operator is reported and read as if it were in the right place.
-ExprPtr Parser::ParseTryExpr(const bool misplaced) {
-    auto expression = std::make_unique<TryMarkExpr>();
-    expression->location = CurrentLocation();
-    Advance(); // consume 'try'
-    if (misplaced) {
-        EmitError(expression->location, "'try' cannot appear to the right of an operator",
-                  "write 'try' at the start of the whole expression, as in 'try x + F()'");
-    }
-    if (Check(TokenKind::Question) && !Peek().precededBySpace) {
+void Parser::RejectTry() {
+    const SourceLocation location = Advance().location;
+    const bool optional = Check(TokenKind::Question) && !Peek().precededBySpace;
+    if (optional) {
         Advance();
-        expression->form = TryMarkExpr::Form::Optional;
     }
-    const bool savedEndsAtCatch = std::exchange(tryOperandEndsAtCatch, true);
-    expression->operand = misplaced ? ParseUnary() : ParseAssign();
-    tryOperandEndsAtCatch = savedEndsAtCatch;
-    if (!expression->operand) {
-        EmitMissingExpression(expression->form == TryMarkExpr::Form::Optional ? "after 'try?'" : "after 'try'");
+    if (Check(TokenKind::LeftBrace)) {
+        EmitError(location, "'try' is not supported",
+                  "a block is not handled: move its statements into a function and handle that function's error with "
+                  "'catch { ... }'");
+        return;
     }
-    if (!Check(TokenKind::CatchKeyword)) {
-        return expression;
-    }
-    if (expression->form == TryMarkExpr::Form::Optional) {
-        EmitError(CurrentLocation(), "'try?' takes no 'catch' arms",
-                  "write 'try ... catch { ... }' to handle the error, or 'try?' alone to turn it into 'none'");
-    }
-    else {
-        expression->form = TryMarkExpr::Form::Catch;
-    }
-    expression->catchLocation = CurrentLocation();
-    Advance(); // consume 'catch'
-    if (Match(TokenKind::LeftBrace)) {
-        ParseArmList(expression->arms, "catch");
-    }
-    else {
-        EmitExpected(CurrentLocation(), "'{' to start the catch arms");
-    }
-    if (expression->form == TryMarkExpr::Form::Optional) {
-        expression->arms.clear();
-    }
-    return expression;
+    EmitError(location, "'try' is not supported",
+              optional
+                  ? "write 'x !! none' to turn an error into 'none'"
+                  : "write '!' after a call to pass its error on, as in 'F()!', or 'F() catch { ... }' to handle it");
 }
 
 ExprPtr Parser::ParseRequiredExpr(const std::string_view context) {
@@ -124,7 +91,7 @@ ExprPtr Parser::ParseAssign() {
             if (op == TokenKind::MoveArrow) {
                 EmitError(loc, "'<-' is not an assignment operator", "write 'target = move source'");
             }
-            auto right = ParseTryPrefix(); // right-associative, and `x = try F()` marks the value
+            auto right = ParseExprImpl(); // right-associative
             if (!right) {
                 EmitMissingExpression(std::format("after '{}'", opText));
             }
@@ -229,16 +196,15 @@ bool Parser::CheckReplaceError() const noexcept {
 
 /// Whether `expression` is an unparenthesized `x !! v` or `x catch { ... }`, which `??` does not take as an operand.
 static bool IsUnparenthesizedErrorHandler(const Expr *expression) noexcept {
-    const auto *handler = AstCast<const TryMarkExpr>(expression);
-    return handler && !handler->parenthesized && handler->postfix && handler->form == TryMarkExpr::Form::Catch;
+    const auto *handler = AstCast<const ErrorFormExpr>(expression);
+    return handler && !handler->parenthesized && handler->form == ErrorFormExpr::Form::Catch;
 }
 
 /// `x catch { arms }`, `x !! v` and `x !!;`, which bind as loosely as `??` and handle everything to their left.
 ExprPtr Parser::ParseErrorHandler(ExprPtr operand) {
-    auto handler = std::make_unique<TryMarkExpr>();
+    auto handler = std::make_unique<ErrorFormExpr>();
     handler->location = CurrentLocation();
-    handler->form = TryMarkExpr::Form::Catch;
-    handler->postfix = true;
+    handler->form = ErrorFormExpr::Form::Catch;
     handler->operand = std::move(operand);
     if (Match(TokenKind::CatchKeyword)) {
         handler->catchLocation = Previous().location;
@@ -289,8 +255,7 @@ ExprPtr Parser::ParseCoalesce() {
     if (!left) {
         return nullptr;
     }
-    // Inside the operand of `try`, `catch` belongs to that `try`.
-    if ((Check(TokenKind::CatchKeyword) && !tryOperandEndsAtCatch) || CheckReplaceError()) {
+    if (Check(TokenKind::CatchKeyword) || CheckReplaceError()) {
         return ParseErrorHandler(std::move(left));
     }
     if (!Check(TokenKind::QuestionQuestion)) {
@@ -601,7 +566,8 @@ ExprPtr Parser::ParseUnary() {
         return ParsePostfix();
     }
     if (Check(TokenKind::TryKeyword)) {
-        return ParseTryExpr(true);
+        RejectTry();
+        return ParseUnary();
     }
     // `move value` transfers ownership out of its operand, and binds as tightly as any other prefix operator: `move
     // a.b` moves the field and `move a + b` is `(move a) + b`. The removed prefix `<-` is reported and read as `move`.
@@ -831,8 +797,7 @@ ExprPtr Parser::ParsePostfix() {
             Advance();
             // The removed `value? else (e => mapped)` is reported and read for recovery.
             if (Check(TokenKind::ElseKeyword) && Peek(1).Is(TokenKind::LeftParen)) {
-                EmitError(CurrentLocation(), "'? else' is not supported",
-                          "write 'try value catch { e => throw mapped }'");
+                EmitError(CurrentLocation(), "'? else' is not supported", "write 'value catch { e => throw mapped }'");
                 SkipErrorMapper();
                 continue;
             }
@@ -845,9 +810,8 @@ ExprPtr Parser::ParsePostfix() {
         // `x!` passes the error of a fallible on. Only the tight form is postfix: a spaced `!!` is the binary
         // operator that replaces an error, and `x!!` with no space is two postfix marks.
         if (Check(TokenKind::Bang) && !Peek().precededBySpace) {
-            auto mark = std::make_unique<TryMarkExpr>();
+            auto mark = std::make_unique<ErrorFormExpr>();
             mark->location = Advance().location;
-            mark->postfix = true;
             mark->operand = std::move(left);
             left = std::move(mark);
             continue;

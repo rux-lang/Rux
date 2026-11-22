@@ -30,24 +30,31 @@ void AnalysisContext::CheckMainSignature(const FuncDecl &declaration, const Type
     if (const auto *info = programIndex.InfoFor(declaration); info == nullptr || !info->modulePath.empty()) {
         return;
     }
-    const bool takesNothing = declaration.params.empty();
-    // No result is a success that exits with 0, as finishing a fallible `Main` is.
-    const bool integer = returnType.IsInteger() || returnType.IsOpaque();
-    const bool fallible =
-        returnType.IsFallible() && (returnType.FallibleSuccess().IsUnit() || returnType.FallibleSuccess().IsInteger());
-    if (returnType.IsUnknown() || (takesNothing && declaration.typeParams.empty() && (integer || fallible))) {
+    // The result of `Main` is the process's exit status, so it has one signature and cannot fail: an error that reaches
+    // it is handled there.
+    const bool takesNothing = declaration.params.empty() && declaration.typeParams.empty();
+    if (returnType.IsUnknown() || (takesNothing && returnType == TypeRef::MakeInt())) {
         return;
     }
-    const std::string written =
-        declaration.returnType ? std::format("'{}'", returnType.DisplayString()) : std::string("no result");
-    EmitError(declaration.location,
-              std::format("'Main' must take no parameters and return nothing or an integer, and may throw, but it {}{}",
-                          takesNothing && declaration.typeParams.empty()
-                              ? ""
-                              : (declaration.typeParams.empty() ? "takes parameters and " : "is generic and "),
-                          declaration.returnType ? std::format("returns {}", written) : "has no result"),
-              {"the result of 'Main' is the process's exit status, which no other form defines"},
-              "declare it as 'func Main() -> int', 'func Main() throws E' or 'func Main() -> int throws E'");
+    std::string problem;
+    if (!declaration.params.empty()) {
+        problem = "takes parameters";
+    }
+    else if (!declaration.typeParams.empty()) {
+        problem = "is generic";
+    }
+    else if (!declaration.returnType) {
+        problem = "has no result";
+    }
+    else {
+        problem = std::format("returns '{}'", returnType.DisplayString());
+    }
+    EmitError(declaration.location, std::format("'Main' must be 'func Main() -> int', but it {}", problem),
+              {"the result of 'Main' is the process's exit status"},
+              returnType.IsFallible()
+                  ? "move the steps that can fail into a function and handle its error in 'Main', as in "
+                    "'return Run() !! 1;'"
+                  : "declare it as 'func Main() -> int' and return the exit status");
 }
 
 void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {

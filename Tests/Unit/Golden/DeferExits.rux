@@ -2,7 +2,7 @@
 // 'fail', '?', or 'break' or 'continue' out of it. A loop written inside the deferred statement is its own to leave.
 func Parse(text: char8[..]) -> int ! int {
     defer throw 1;
-    defer try Parse(text);
+    defer Parse(text)!;
     return 0;
 }
 

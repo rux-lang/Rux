@@ -211,14 +211,6 @@ private:
                 ResolveExpr(arm.body.get());
             }
         }
-        else if (auto *tryStmt = AstCast<TryStmt>(&stmt)) {
-            if (tryStmt->body) {
-                ResolveBlock(*tryStmt->body);
-            }
-            for (auto &arm : tryStmt->arms) {
-                ResolveExpr(arm.body.get());
-            }
-        }
         else if (auto *failStmt = AstCast<FailStmt>(&stmt)) {
             ResolveExpr(failStmt->value.get());
         }
@@ -258,7 +250,7 @@ private:
                 ResolveExpr(arm.body.get());
             }
         }
-        else if (auto *marked = AstCast<TryMarkExpr>(expr)) {
+        else if (auto *marked = AstCast<ErrorFormExpr>(expr)) {
             ResolveExpr(marked->operand.get());
             for (auto &arm : marked->arms) {
                 ResolveExpr(arm.body.get());

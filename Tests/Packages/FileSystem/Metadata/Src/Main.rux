@@ -20,7 +20,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-func Main() -> int ! IoError {
+func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
     let able = CapabilitiesOfSystem();
 
@@ -110,4 +110,8 @@ func Main() -> int ! IoError {
     DeleteDirectory(allocator, dir)!;
 
     return 0;
+}
+
+func Main() -> int {
+    return Run() !! 1;
 }

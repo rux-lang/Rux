@@ -29,7 +29,7 @@ func Digit(c: char) -> int ! DigitError {
 }
 
 func DigitOrZero(c: char) -> int {
-    return try Digit(c) catch {
+    return Digit(c) catch {
         _ => 0,
     };
 }

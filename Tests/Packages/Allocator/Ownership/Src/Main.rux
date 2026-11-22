@@ -188,7 +188,7 @@ func CheckSuccessfulReallocation(allocator: Allocator) -> !AllocError {
     allocator.Deallocate(steady, small)!;
 }
 
-func Main() -> !AllocError {
+func Run() -> !AllocError {
     let real = SystemAllocator::New();
 
     // --- The contract, asked of each allocator ------------------------------------------------------------------
@@ -291,5 +291,10 @@ func Main() -> !AllocError {
     Assert((late as uint) >= (@storage[0] as uint), "out of the caller's own bytes, which never moved");
     Assert((late as uint) < (@storage[0] as uint) + 65536, "and stays inside them");
 
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }
 

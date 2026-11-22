@@ -251,8 +251,8 @@ void AnalysisContext::CheckBlock(const Block &block, const ExprStmt *tail, TypeR
 }
 
 void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType) {
-    // Errors leave a body through its own `throws` channel, never into the handlers of the body being checked around
-    // it, and none leaves a destructor.
+    // Errors leave a body through its own error side, never into the handlers of the body being checked around it,
+    // and none leaves a destructor.
     auto savedHandlers = std::exchange(throwHandlerFrames, {});
     auto savedMarks = std::exchange(throwMarkFrames, {});
     if (function.name.starts_with('~')) {
@@ -329,8 +329,8 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
 void AnalysisContext::CheckStatement(const Stmt &statement) {
     if (const auto *expressionStatement = AstCast<const ExprStmt>(&statement)) {
         // A handler written as the whole statement drops the success value, so its arms may yield nothing.
-        if (const auto *handler = AstCast<const TryMarkExpr>(expressionStatement->expr.get());
-            handler && handler->postfix && handler->form == TryMarkExpr::Form::Catch) {
+        if (const auto *handler = AstCast<const ErrorFormExpr>(expressionStatement->expr.get());
+            handler && handler->form == ErrorFormExpr::Form::Catch) {
             statementHandler = handler;
         }
         const TypeRef type = CheckExpr(*expressionStatement->expr);
@@ -725,9 +725,6 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                 CheckFail(failStatement->value.get(), failStatement->location, failStatement->throwSpelling)) {
             throwStatements.insert_or_assign(failStatement, *site);
         }
-    }
-    else if (const auto *tryStatement = AstCast<const TryStmt>(&statement)) {
-        CheckTryStatement(*tryStatement);
     }
     else if (const auto *returnStatement = AstCast<const ReturnStmt>(&statement)) {
         CheckReturn(returnStatement->value ? returnStatement->value->get() : nullptr, returnStatement->location);
@@ -1554,15 +1551,6 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
                     return true;
                 }
             }
-            else if (const auto *handled = AstCast<const TryStmt>(inner.get())) {
-                if (containsBreak(*handled->body, label, allowUnlabeled) ||
-                    std::ranges::any_of(handled->arms, [&](const auto &arm) {
-                        const auto *body = AstCast<const BlockExpr>(arm.body.get());
-                        return body && containsBreak(*body->block, label, allowUnlabeled);
-                    })) {
-                    return true;
-                }
-            }
         }
         return false;
     };
@@ -1604,11 +1592,6 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
         }
         if (const auto *loop = AstCast<const LoopStmt>(&statement)) {
             return !containsBreak(*loop->body, loop->label, true);
-        }
-        // Every way out of the block, a `throw` to the arms included, leaves, and so does every arm.
-        if (const auto *handled = AstCast<const TryStmt>(&statement)) {
-            return blockReturns(*handled->body) &&
-                   std::ranges::all_of(handled->arms, [&](const auto &arm) { return expressionReturns(*arm.body); });
         }
         return false;
     };

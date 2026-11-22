@@ -524,23 +524,19 @@ struct NativeConstructExpr : Expr {
 /// `none`: the outer absence of the optional type its context expects.
 struct NoneExpr : Expr {};
 
-/// `try expr`, `try expr catch { arms }` or `try? expr`. `try` marks every call in its operand that can throw. The
-/// plain form passes their errors on to the innermost enclosing handler or the function's `throws` channel, `catch`
-/// hands them to its arms, which match the error as a `match` does, and `try?` turns them into `none`.
-struct TryMarkExpr : Expr {
+/// A postfix error form over one fallible operand: `x!` passes its error on out of the function, and `x catch { arms
+/// }`, `x !! v` and `x !!;` handle it, the arms matching the error as a `match` does. Each form handles only its own
+/// operand: a fallible nested inside the operand stays a value of its own.
+struct ErrorFormExpr : Expr {
     enum class Form : std::uint8_t {
         Propagate,
         Catch,
-        Optional,
     };
 
     Form form = Form::Propagate;
     ExprPtr operand;
     std::vector<MatchExpr::Arm> arms; // the `catch` arms of the `Catch` form
     SourceLocation catchLocation;
-    /// Written after its operand, as `x!`, `x catch { arms }` or `x !! v`: it handles the operand's own fallible
-    /// value, and a fallible nested inside the operand stays a value of its own.
-    bool postfix = false;
     /// `x !! v`: the `Catch` form with one arm, `_ => v`, that cannot see the error.
     bool replacesError = false;
     /// `x !!;`: the error, and the success value with it, is dropped, so there is no arm at all.
@@ -678,20 +674,11 @@ struct DeferStmt : Stmt {
     StmtPtr deferredStmt;
 };
 
-/// `throw error;` or the older `fail error;`: the error goes to the innermost enclosing handler, a `try` block or
-/// `try` expression with `catch` or `?`, or else leaves the function through its `throws` channel.
+/// `throw error;`, or the removed `fail error;` read as it: the error leaves the function through its error side.
 struct FailStmt : Stmt {
     ExprPtr value;
     /// Written with the `throw` keyword rather than `fail`.
     bool throwSpelling = false;
-};
-
-/// `try { ... } catch { pattern => body, ... }`: every call that can throw in the block is marked by the block itself,
-/// and its error, or a `throw` in the block, goes to the arms, which match it as a `match` matches its subject.
-struct TryStmt : Stmt {
-    std::unique_ptr<Block> body;
-    std::vector<MatchExpr::Arm> arms;
-    SourceLocation catchLocation;
 };
 
 // return [expr];

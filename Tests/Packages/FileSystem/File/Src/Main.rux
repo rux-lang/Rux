@@ -13,7 +13,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-func Main() -> int ! IoError {
+func Run() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
@@ -87,4 +87,8 @@ func Main() -> int ! IoError {
     Assert(TranslateNative(2).raw == 2, "and the raw code survives the translation");
 
     return 0;
+}
+
+func Main() -> int {
+    return Run() !! 1;
 }

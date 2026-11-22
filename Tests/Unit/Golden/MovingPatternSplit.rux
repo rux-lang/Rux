@@ -27,7 +27,7 @@ func SplitTupleMember(pair: (Handle, int32)) -> int32 {
 }
 
 func SplitCaught() -> int32 {
-    return try Fails() catch { Handle { code: code } => code };
+    return Fails() catch { Handle { code: code } => code };
 }
 
 func TestWithoutSplitting(pair: (Handle, int32)) -> int32 {

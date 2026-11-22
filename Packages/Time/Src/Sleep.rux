@@ -198,7 +198,7 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> !TimeError {
 /// days.
 /// Fails with `InvalidDuration` when the system refused the request, which a normalized non-negative span should not
 /// produce, and `Failed` for anything else. A caller with nothing to do about a failed wait says so with
-/// `try SleepFor(span) catch { _ => {} }`; the point is that it is no longer indistinguishable from success.
+/// `SleepFor(span) !!;`; the point is that it is no longer indistinguishable from success.
 /// @param span how long to wait for
 /// @returns nothing when the whole span was waited out, or why it was not
 /// @see https://rux-lang.dev/docs/api/time/sleep

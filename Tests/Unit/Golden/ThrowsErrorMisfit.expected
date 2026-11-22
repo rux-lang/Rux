@@ -1,1 +1,1 @@
-10:16: error: call to 'Parse' can throw 'ParseError', but 'Load' throws 'IoError'
+10:12: error: call to 'Parse' can fail with 'ParseError', but 'Load' fails with 'IoError'

@@ -49,7 +49,7 @@ std::vector<std::string> ErrorsIn(const std::string_view body) {
 TEST_CASE("a local moved inside the mapper stays owned on the continuing path") {
     CHECK(ErrorsIn(R"(
         func Load(path: char8[..], owned: Owned) -> Options ! ConfigError {
-            let value = try ReadAt(path) catch { e => throw Wrap(move owned) };
+            let value = ReadAt(path) catch { e => throw Wrap(move owned) };
             Keep(move owned);
             return value;
         }

@@ -1,0 +1,14 @@
+// There is no `finally`: cleanup that must run on every exit is a `defer`.
+struct Fault {}
+
+func Read() -> int ! Fault {
+    return 1;
+}
+
+func Main() -> int {
+    let value = Read() catch { _ => 0 };
+    finally {
+        let done = true;
+    }
+    return value;
+}

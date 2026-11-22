@@ -5,9 +5,9 @@ import Memory::{ MinimumPageSize, PageAlign, PageAllocate, PageError, PageExecut
 // The page layer is where four systems that agree on nothing are made to look the same, so what is checked here is
 // the shape of the agreement: that a length is rounded up rather than refused, that an empty request is reported
 // rather than quietly accepted, and that a protection actually applies. Every operation that must succeed is
-// marked with `try`, so a refusal the test did not expect fails `Main` itself.
+// passed on with `!`, so a refusal the test did not expect fails the test.
 
-func Main() -> !PageError {
+func Run() -> !PageError {
     let error = PageError::InvalidLength;
     let copiedError = error;
     Assert(copiedError == error, "page errors copy structurally");
@@ -117,5 +117,10 @@ func Main() -> !PageError {
     // The first allocation is released by the length it asked for.
     // Safety: `address` is the base `PageAllocate` returned for `size + 1` bytes, and nothing uses it afterwards.
     PageRelease(address, size + 1)!;
+}
+
+func Main() -> int {
+    Run() !! return 1;
+    return 0;
 }
 

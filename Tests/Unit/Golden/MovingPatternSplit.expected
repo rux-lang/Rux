@@ -1,5 +1,5 @@
 18:32: error: cannot split 'Handle' with a moving pattern, because it declares a destructor
 22:33: error: cannot split 'Handle' with a moving pattern, because it declares a destructor
 26:31: error: cannot split 'Handle' with a moving pattern, because it declares a destructor
-30:32: error: cannot split 'Handle' with a moving pattern, because it declares a destructor
+30:28: error: cannot split 'Handle' with a moving pattern, because it declares a destructor
 53:36: error: cannot split 'Counter' with a moving pattern, because it declares a destructor

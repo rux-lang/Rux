@@ -132,15 +132,18 @@ TEST_CASE("native arguments and results generate code for every AArch64 target")
             if stop { throw E { code: 5i32 }; }
             return .Some(none);
         }
-        func Main() -> int ! E {
+        func Run() -> int ! E {
             let unit = UnitReturn();
             let unitParam = UnitParam(unit, 4i32);
             let missing: float64? = none;
             let many = Many(1.0f64, 2.0f64, 3.0f64, missing, 5.0f64, 6.0f64);
-            let big = try BigMany(Make(1i64), Make(2i64), Make(3i64), Make(4i64), Make(5i64), Make(6i64),
-                                  Make(7i64), Make(8i64), Make(9i64));
-            let nested = try Nest(false);
+            let big = BigMany(Make(1i64)!, Make(2i64)!, Make(3i64)!, Make(4i64)!, Make(5i64)!, Make(6i64)!,
+                              Make(7i64)!, Make(8i64)!, Make(9i64)!);
+            let nested = Nest(false)!;
             return 0;
+        }
+        func Main() -> int {
+            return Run() !! 1;
         }
     )";
     for (const std::string_view triple : {"linux-aarch64", "windows-aarch64", "macos-aarch64", "freebsd-aarch64"}) {

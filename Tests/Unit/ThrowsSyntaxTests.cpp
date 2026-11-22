@@ -139,106 +139,92 @@ TEST_CASE("throw is a statement and a diverging value, and the removed fail is r
     CHECK(HasError(ParseSource("func F() -> !Fault { fail Fault {}; }"), "'fail' is not supported"));
 }
 
-TEST_CASE("try covers the whole expression to its right") {
+TEST_CASE("postfix ! binds tightly and marks only its operand") {
     const ParseResult result = ParseClean(R"(
         func Run() -> int ! Fault {
-            let sum = try A() + B() * C();
+            let sum = A()! + B()! * C()!;
             var total = 0;
-            total = try A();
-            total += try B();
-            let maybe = try? A() ?? 0;
-            Use(try A(), try? B());
-            return try A();
+            total = A()!;
+            let chained = Make()!.Read()!;
+            return A()!;
         }
     )");
     const FuncDecl &run = Function(result, "Run");
-    const auto *sum = dynamic_cast<const TryMarkExpr *>(&StatementExpression(run, 0));
+    const auto *sum = dynamic_cast<const BinaryExpr *>(&StatementExpression(run, 0));
     REQUIRE(sum != nullptr);
-    CHECK(sum->form == TryMarkExpr::Form::Propagate);
-    const auto *addition = dynamic_cast<const BinaryExpr *>(sum->operand.get());
-    REQUIRE(addition != nullptr);
-    CHECK(addition->op == TokenKind::Plus);
+    CHECK(sum->op == TokenKind::Plus);
+    const auto *left = dynamic_cast<const ErrorFormExpr *>(sum->left.get());
+    REQUIRE(left != nullptr);
+    CHECK(left->form == ErrorFormExpr::Form::Propagate);
+    CHECK(dynamic_cast<const CallExpr *>(left->operand.get()) != nullptr);
 
-    for (const std::size_t index : {std::size_t{2}, std::size_t{3}}) {
-        const auto *assignment = dynamic_cast<const AssignExpr *>(&StatementExpression(run, index));
-        REQUIRE(assignment != nullptr);
-        CHECK(dynamic_cast<const TryMarkExpr *>(assignment->value.get()) != nullptr);
-    }
+    const auto *assignment = dynamic_cast<const AssignExpr *>(&StatementExpression(run, 2));
+    REQUIRE(assignment != nullptr);
+    CHECK(dynamic_cast<const ErrorFormExpr *>(assignment->value.get()) != nullptr);
 
-    // `try?` also takes the `??` after it.
-    const auto *maybe = dynamic_cast<const TryMarkExpr *>(&StatementExpression(run, 4));
-    REQUIRE(maybe != nullptr);
-    CHECK(maybe->form == TryMarkExpr::Form::Optional);
-    const auto *coalesce = dynamic_cast<const BinaryExpr *>(maybe->operand.get());
-    REQUIRE(coalesce != nullptr);
-    CHECK(coalesce->op == TokenKind::QuestionQuestion);
-
-    const auto *call = dynamic_cast<const CallExpr *>(&StatementExpression(run, 5));
-    REQUIRE(call != nullptr);
-    REQUIRE(call->args.size() == 2);
-    CHECK(dynamic_cast<const TryMarkExpr *>(call->args[0].get())->form == TryMarkExpr::Form::Propagate);
-    CHECK(dynamic_cast<const TryMarkExpr *>(call->args[1].get())->form == TryMarkExpr::Form::Optional);
+    // `Make()!.Read()!` passes each call's error on in turn.
+    const auto *chained = dynamic_cast<const ErrorFormExpr *>(&StatementExpression(run, 3));
+    REQUIRE(chained != nullptr);
+    const auto *read = dynamic_cast<const CallExpr *>(chained->operand.get());
+    REQUIRE(read != nullptr);
+    CHECK(dynamic_cast<const ErrorFormExpr *>(dynamic_cast<const FieldExpr &>(*read->callee).object.get()) != nullptr);
 }
 
-TEST_CASE("catch after a try operand takes the arms, and a catch without try handles its left side") {
+TEST_CASE("catch, !! and !!; handle everything to their left") {
     const ParseResult result = ParseClean(R"(
         func Run() -> int {
-            let value = try A() + B() catch { .Empty => 0, e: IoError if e.code > 1 => 1, _ => 2, };
+            let value = A() + B() catch { .Empty => 0, e: IoError if e.code > 1 => 1, _ => 2, };
+            let port = Parse(text) !! Parse(other) !! 8080;
+            Flush() !!;
             return value;
         }
     )");
     const FuncDecl &run = Function(result, "Run");
-    const auto *value = dynamic_cast<const TryMarkExpr *>(&StatementExpression(run, 0));
+    const auto *value = dynamic_cast<const ErrorFormExpr *>(&StatementExpression(run, 0));
     REQUIRE(value != nullptr);
-    CHECK(value->form == TryMarkExpr::Form::Catch);
+    CHECK(value->form == ErrorFormExpr::Form::Catch);
     CHECK(dynamic_cast<const BinaryExpr *>(value->operand.get()) != nullptr);
     REQUIRE(value->arms.size() == 3);
     CHECK(dynamic_cast<const GuardedPattern *>(value->arms[1].pattern.get()) != nullptr);
     CHECK(dynamic_cast<const WildcardPattern *>(value->arms[2].pattern.get()) != nullptr);
 
-    const ParseResult postfix = ParseClean("func F() { let v = Use(C() catch { _ => 3 }); }");
-    const auto *handler = dynamic_cast<const TryMarkExpr *>(
-        dynamic_cast<const CallExpr &>(StatementExpression(Function(postfix, "F"), 0)).args.front().get());
+    // `a !! b !! c` is right-associative: the replacement of the first is the second handler.
+    const auto *port = dynamic_cast<const ErrorFormExpr *>(&StatementExpression(run, 1));
+    REQUIRE(port != nullptr);
+    CHECK(port->replacesError);
+    REQUIRE(port->arms.size() == 1);
+    const auto *next = dynamic_cast<const ErrorFormExpr *>(port->arms.front().body.get());
+    REQUIRE(next != nullptr);
+    CHECK(next->replacesError);
+
+    const auto *flush = dynamic_cast<const ErrorFormExpr *>(&StatementExpression(run, 2));
+    REQUIRE(flush != nullptr);
+    CHECK(flush->ignoresError);
+    CHECK(flush->arms.empty());
+
+    const ParseResult argument = ParseClean("func F() { let v = Use(C() catch { _ => 3 }); }");
+    const auto *handler = dynamic_cast<const ErrorFormExpr *>(
+        dynamic_cast<const CallExpr &>(StatementExpression(Function(argument, "F"), 0)).args.front().get());
     REQUIRE(handler != nullptr);
-    CHECK(handler->postfix);
-    CHECK(handler->form == TryMarkExpr::Form::Catch);
+    CHECK(handler->form == ErrorFormExpr::Form::Catch);
     CHECK(dynamic_cast<const CallExpr *>(handler->operand.get()) != nullptr);
 }
 
-TEST_CASE("a try block holds its statements and its catch arms") {
-    const ParseResult result = ParseClean(R"(
-        func Run() {
-            try {
-                let value = Read();
-                Use(value);
-            } catch {
-                .NotADigit(c) => Report(c),
-                .Blank | .Empty => {}
-                e => throw e,
-            }
-        }
-    )");
-    const FuncDecl &run = Function(result, "Run");
-    const auto *handler = dynamic_cast<const TryStmt *>(run.body->stmts.front().get());
-    REQUIRE(handler != nullptr);
-    REQUIRE(handler->body);
-    CHECK(handler->body->stmts.size() == 2);
-    REQUIRE(handler->arms.size() == 3);
-    CHECK(dynamic_cast<const AlternativePattern *>(handler->arms[1].pattern.get()) != nullptr);
-    CHECK(dynamic_cast<const DivergeExpr *>(handler->arms[2].body.get()) != nullptr);
-}
-
-TEST_CASE("misplaced try, try? with arms, a try block without arms and finally are reported") {
-    CHECK(
-        HasError(ParseSource("func F() { let x = 1 + try G(); }"), "'try' cannot appear to the right of an operator"));
-    CHECK(HasError(ParseSource("func F() { let x = !try G(); }"), "'try' cannot appear to the right of an operator"));
-    CHECK(HasError(ParseSource("func F() { let x = try? G() catch { _ => 1 }; }"), "'try?' takes no 'catch' arms"));
-    CHECK(HasError(ParseSource("func F() { try { G(); } }"), "a 'try' block needs 'catch' arms"));
-    const ParseResult finallyAfterCatch = ParseSource("func F() { try { G(); } catch { _ => {} } finally { H(); } }");
-    CHECK(HasError(finallyAfterCatch, "'finally' is not supported"));
-    const ParseResult finallyAlone = ParseSource("func F() { try { G(); } finally { H(); } }");
-    CHECK(HasError(finallyAlone, "'finally' is not supported"));
-    CHECK_FALSE(HasError(finallyAlone, "needs 'catch' arms"));
+TEST_CASE("the removed try is reported with what replaced it, and finally is reported") {
+    const auto help = [](const std::string_view source) {
+        const ParseResult parsed = ParseSource(source);
+        const auto found = std::ranges::find_if(parsed.diagnostics, [](const ParserDiagnostic &diagnostic) {
+            return diagnostic.message == "'try' is not supported";
+        });
+        REQUIRE(found != parsed.diagnostics.end());
+        REQUIRE(found->help.has_value());
+        return *found->help;
+    };
+    CHECK(help("func F() { let x = try G(); }").contains("'F()!'"));
+    CHECK(help("func F() { let x = 1 + try G(); }").contains("'F()!'"));
+    CHECK(help("func F() { let x = try? G(); }").contains("'x !! none'"));
+    CHECK(help("func F() { try { G(); } catch { _ => {} } }").contains("move its statements into a function"));
+    CHECK(HasError(ParseSource("func F() { G() catch { _ => {} } finally { H(); } }"), "'finally' is not supported"));
 }
 
 TEST_CASE("throw, throws, try and finally are reserved") {

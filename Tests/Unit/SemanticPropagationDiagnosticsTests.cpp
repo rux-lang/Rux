@@ -48,7 +48,7 @@ const std::string kPropagationPrelude = R"(
 TEST_CASE("a propagated outcome evaluates to its success payload") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
         func Doubled(flag: bool) -> int32 ! ParseError {
-            let value: int32 = try Read(flag);
+            let value: int32 = Read(flag)!;
             return value * 2i32;
         }
         func Found(flag: bool) -> int32? {
@@ -168,10 +168,10 @@ TEST_CASE("every variant with outcome case names is ordinary, whatever its paylo
 TEST_CASE("a propagated payload keeps its own type in a chained expression") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
         func Sum(flag: bool) -> int32 ! ParseError {
-            return try Read(flag) + Read(flag);
+            return Read(flag)! + Read(flag)!;
         }
         func Mistyped(flag: bool) -> int32 ! ParseError {
-            let value: bool = try Read(flag);
+            let value: bool = Read(flag)!;
             return 1i32;
         }
     )");

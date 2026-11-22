@@ -8,7 +8,7 @@ import Text::BufferWriter;
 const MessageRoom: uint = 480;
 
 /// Why a test did not pass. `Copy`.
-/// A test fails with it through `throw` or a check marked with `try`, and is counted as skipped rather than failed
+/// A test fails with it through `throw` or a check passed on with `!`, and is counted as skipped rather than failed
 /// when it was made with `Skip`.
 /// @see https://rux-lang.dev/docs/api/test/failure#test-failure
 pub struct TestFailure {

@@ -187,10 +187,6 @@ ConstantCallEvaluator::Completion ConstantCallEvaluator::ExecuteCompound(const S
         static_cast<void>(Unsupported(statement.location, "'defer'"));
         return Completion::Failed;
     }
-    if (AstCast<const TryStmt>(&statement)) {
-        static_cast<void>(Unsupported(statement.location, "a 'try' block"));
-        return Completion::Failed;
-    }
     static_cast<void>(Unsupported(statement.location, "this statement"));
     return Completion::Failed;
 }

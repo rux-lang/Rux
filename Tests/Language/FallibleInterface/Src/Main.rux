@@ -1,0 +1,71 @@
+// Errors in interface requirements and function types.
+// A requirement may return `T ! E`, and an implementation must declare the same signature, error included. A call
+// through the interface, or through a generic bound, is a fallible value like any other, handled with `!`, `!!` or
+// `catch`. A function type may also return `T ! E`, and a call through a function value of that type is the same.
+
+import Core::Diagnostics::Assert;
+
+struct Closed {
+    reason: int32;
+}
+
+interface Source {
+    func Next(&var self) -> int32 ! Closed;
+    func Reset(&var self) -> !Closed;
+}
+
+struct Countdown {
+    left: int32;
+}
+
+extend Countdown : Source {
+    func Next(&var self) -> int32 ! Closed {
+        if self.left <= 0i32 {
+            throw Closed { reason: 1i32 };
+        }
+        self.left = self.left - 1i32;
+        return self.left;
+    }
+
+    func Reset(&var self) -> !Closed {
+        if self.left < 0i32 {
+            throw Closed { reason: 2i32 };
+        }
+        self.left = 3i32;
+    }
+}
+
+func Drain<S: Source>(source: &var S) -> int32 ! Closed {
+    var total = 0i32;
+    loop {
+        let value = source.Next() catch { _ => break };
+        total = total + value;
+    }
+    source.Reset()!;
+    return total;
+}
+
+func Twice(step: func(int32) -> int32 ! Closed, value: int32) -> int32 ! Closed {
+    return step(value)! + step(value + 1i32)!;
+}
+
+func Halve(value: int32) -> int32 ! Closed {
+    if value % 2i32 != 0i32 {
+        throw Closed { reason: value };
+    }
+    return value / 2i32;
+}
+
+func Main() -> int {
+    var countdown = Countdown { left: 3i32 };
+    Assert((Drain(countdown) !! none) == .Some(3i32), "2 + 1 + 0 through the bound");
+    Assert(countdown.left == 3i32, "the source was reset");
+    var negative = Countdown { left: -1i32 };
+    Assert((Drain(negative) catch { e => e.reason }) == 2i32, "a requirement's error passes through");
+
+    let halve: func(int32) -> int32 ! Closed = Halve;
+    Assert((Twice(halve, 4i32) catch { e => -e.reason }) == -5i32, "a function value throws");
+    let reason = halve(3i32) catch { e => e.reason };
+    Assert(reason == 3i32, "a call through a function value is a throw site like any other");
+    return 0;
+}

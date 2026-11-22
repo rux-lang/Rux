@@ -98,16 +98,3 @@ TEST_CASE("diverging bodies never decide the type of the expression they stand i
     )")
               .empty());
 }
-
-TEST_CASE("a fallible entry point is accepted") {
-    CHECK(Errors(R"(
-        struct E {}
-        func Main() -> !E {}
-    )")
-              .empty());
-    CHECK(Errors(R"(
-        struct E {}
-        func Main() -> int ! E { return 0; }
-    )")
-              .empty());
-}

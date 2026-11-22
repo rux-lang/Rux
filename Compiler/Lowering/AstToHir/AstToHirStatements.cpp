@@ -82,37 +82,14 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
     return loweredBlock;
 }
 
-CleanupPlanner::LoopToken AstToHirContext::BeginLoop(std::string &label, const bool handler) {
+CleanupPlanner::LoopToken AstToHirContext::BeginLoop(const std::string &label) {
     loopDeferBases.emplace_back(label, deferStack.size());
-    const CleanupPlanner::LoopToken token = cleanupPlanner.BeginLoop(label);
-    loopLabelSlots.push_back({&label, handler, token});
-    return token;
+    return cleanupPlanner.BeginLoop(label);
 }
 
 void AstToHirContext::EndLoop(const CleanupPlanner::LoopToken token) {
     cleanupPlanner.EndLoop(token);
     loopDeferBases.pop_back();
-    loopLabelSlots.pop_back();
-}
-
-std::string AstToHirContext::LoopExitLabel(const std::string &label) {
-    if (!label.empty() || loopLabelSlots.empty() || !loopLabelSlots.back().handler) {
-        return label;
-    }
-    // An unlabeled jump inside a handler leaves the innermost source loop, which a label then has to name.
-    for (std::size_t index = loopLabelSlots.size(); index > 0; --index) {
-        LoopLabelSlot &slot = loopLabelSlots[index - 1];
-        if (slot.handler) {
-            continue;
-        }
-        if (slot.label->empty()) {
-            *slot.label = std::format("$loop.{}", throwOrdinal++);
-            loopDeferBases[index - 1].first = *slot.label;
-            cleanupPlanner.RenameLoop(slot.token, *slot.label);
-        }
-        return *slot.label;
-    }
-    return label;
 }
 
 HirStmtPtr AstToHirContext::LowerLoopExit(HirStmtPtr jump, const std::string &label, const SourceLocation location) {
@@ -365,12 +342,8 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         return LowerFail(statement->value.get(), statement->location, model.TryGetThrowSite(*statement));
     }
 
-    if (const auto *statement = AstCast<const TryStmt>(&stmt)) {
-        return LowerTryStatement(*statement);
-    }
-
     if (const auto *statement = AstCast<const BreakStmt>(&stmt)) {
-        const std::string label = LoopExitLabel(statement->label);
+        const std::string label = statement->label;
         auto lowered = std::make_unique<HirBreakStmt>();
         lowered->location = stmt.location;
         lowered->label = label;
@@ -379,7 +352,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = AstCast<const ContinueStmt>(&stmt)) {
-        const std::string label = LoopExitLabel(statement->label);
+        const std::string label = statement->label;
         auto lowered = std::make_unique<HirContinueStmt>();
         lowered->location = stmt.location;
         lowered->label = label;

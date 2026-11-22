@@ -331,14 +331,9 @@ const ResolvedThrowSite *SemanticModel::TryGetThrowSite(const FailStmt &statemen
     return site == facts.throwStatements.end() ? nullptr : &site->second;
 }
 
-const ResolvedThrowHandler *SemanticModel::TryGetThrowHandler(const TryStmt &statement) const noexcept {
-    const auto handler = facts.tryBlockHandlers.find(&statement);
-    return handler == facts.tryBlockHandlers.end() ? nullptr : &handler->second;
-}
-
-const ResolvedThrowHandler *SemanticModel::TryGetThrowHandler(const TryMarkExpr &expression) const noexcept {
-    const auto handler = facts.tryExpressionHandlers.find(&expression);
-    return handler == facts.tryExpressionHandlers.end() ? nullptr : &handler->second;
+const ResolvedThrowHandler *SemanticModel::TryGetThrowHandler(const ErrorFormExpr &expression) const noexcept {
+    const auto handler = facts.errorHandlers.find(&expression);
+    return handler == facts.errorHandlers.end() ? nullptr : &handler->second;
 }
 
 const ResolvedPropagation *SemanticModel::TryGetPropagation(const TryExpr &expression) const noexcept {

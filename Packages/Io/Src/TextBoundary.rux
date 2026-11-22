@@ -26,7 +26,7 @@ import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
 
 /// Turns an error a stream threw into what a formatter understands.
 /// Every failure becomes `WriterFailure`, which is the only thing `FormatError` can say about a destination, so a
-/// formatter passes a stream's error on with `try Write(...) catch { error => throw FromIoError(error) }`. The
+/// formatter passes a stream's error on with `Write(...) catch { error => throw FromIoError(error) }`. The
 /// details do not travel this way — an adapter records the original `IoError` where its caller can read it, which is
 /// what keeps the loss from being a loss.
 /// The end of a stream is a failure here. Nothing is being read, so a write that reports it is a destination that

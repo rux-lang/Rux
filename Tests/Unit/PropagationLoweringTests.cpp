@@ -73,7 +73,7 @@ const std::string kPropagationPrelude = R"(
 TEST_CASE("propagation lowers to a match that tests the operand's channel") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         func Doubled(ok: bool) -> int32 ! ParseError {
-            let value = try Read(ok);
+            let value = Read(ok)!;
             return value * 2i32;
         }
     )");
@@ -112,7 +112,7 @@ TEST_CASE("a propagated failure destroys every local that was live when it left"
         }
         func Guarded(ok: bool) -> int32 ! ParseError {
             let handle = Handle { value: 1i32 };
-            let value = try Read(ok);
+            let value = Read(ok)!;
             return value;
         }
     )");
@@ -132,7 +132,7 @@ TEST_CASE("a local declared after the propagation is not destroyed by it") {
             func ~(&var self) {}
         }
         func Later(ok: bool) -> int32 ! ParseError {
-            let value = try Read(ok);
+            let value = Read(ok)!;
             let handle = Handle { value: 1i32 };
             return value;
         }
@@ -167,7 +167,7 @@ TEST_CASE("propagating an optional returns the enclosing absence without a paylo
 TEST_CASE("two propagations in one expression bind their payloads separately") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         func Sum(ok: bool) -> int32 ! ParseError {
-            let total = try Read(ok) + Read(ok);
+            let total = Read(ok)! + Read(ok)!;
             return total;
         }
     )");
@@ -204,7 +204,7 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
         func Guarded(count: *var int32) -> int32 ! ParseError {
             let guard = Guard { count: count };
             defer *count += 10i32;
-            let value = try Read(false);
+            let value = Read(false)!;
             return value;
         }
     )");
@@ -236,7 +236,7 @@ TEST_CASE("a generic throwing function emits only concrete instantiations") {
             return input;
         }
         func Main() -> int32 {
-            let value = try Forward<uint64, Reason>(1u64, Reason::At(99u64), true) catch { _ => 0u64 };
+            let value = Forward<uint64, Reason>(1u64, Reason::At(99u64), true) catch { _ => 0u64 };
             return value as int32;
         }
     )");

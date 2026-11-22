@@ -128,7 +128,7 @@ TEST_CASE("a throw site to the function exit lowers like propagation") {
         struct Fault {}
         func Read() -> int32 ! Fault { return 1i32; }
         func Forward() -> int32 ! Fault {
-            let value = try Read();
+            let value = Read()!;
             return value;
         }
     )");
@@ -146,51 +146,12 @@ TEST_CASE("a throw site to the function exit lowers like propagation") {
     CHECK(dynamic_cast<const HirReturnStmt *>(failing->block.stmts.front().get()) != nullptr);
 }
 
-TEST_CASE("a try block stores the error in its slot, leaves its hidden loop, and matches the slot") {
-    const HirPackage package = LowerSource(R"(
-        struct Fault { code: int32; }
-        func Read() -> int32 ! Fault { return 1i32; }
-        func Handle() -> int32 {
-            var result = 0i32;
-            try {
-                result = Read();
-            } catch {
-                e => result = e.code,
-            }
-            return result;
-        }
-    )");
-    const HirFunc &handle = RequireFunction(package, "Handle");
-    const auto loops = StatementsOf<HirLoopStmt>(handle);
-    REQUIRE(loops.size() == 1);
-    const std::string label = loops.front()->label;
-    CHECK(label.starts_with("$try."));
-
-    // The success and the throw both leave the hidden loop by its label.
-    const auto breaks = StatementsOf<HirBreakStmt>(handle);
-    REQUIRE(breaks.size() == 2);
-    for (const HirBreakStmt *leave : breaks) {
-        CHECK(leave->label == label);
-    }
-
-    // After the loop, the arms match the slot: the success, then the source arm inside the failure.
-    const auto matches = StatementsOf<HirMatchStmt>(handle);
-    REQUIRE(matches.size() == 1);
-    const HirMatchStmt &arms = *matches.front();
-    CHECK(arms.subject->type.ToString() == "! Fault");
-    CHECK(arms.subject->consumption.has_value());
-    REQUIRE(arms.arms.size() == 2);
-    const auto *failure = dynamic_cast<const HirEnumPattern *>(arms.arms[1].pattern.get());
-    REQUIRE(failure != nullptr);
-    CHECK(failure->discriminant == "1");
-}
-
-TEST_CASE("try? and try ... catch are blocks whose value matches the outcome slot") {
+TEST_CASE("a handler is a match on its operand's outcome") {
     const HirPackage package = LowerSource(R"(
         struct Fault {}
         func Read() -> int32 ! Fault { return 1i32; }
-        func Optional() -> int32? { return try? Read(); }
-        func Recovered() -> int32 { return try Read() catch { _ => 0i32 }; }
+        func Optional() -> int32? { return Read() !! none; }
+        func Recovered() -> int32 { return Read() catch { _ => 0i32 }; }
     )");
     for (const auto &[name, type] :
          {std::pair{"Optional", std::string("int32?")}, std::pair{"Recovered", std::string("int32")}}) {
@@ -198,31 +159,24 @@ TEST_CASE("try? and try ... catch are blocks whose value matches the outcome slo
         const HirFunc &function = RequireFunction(package, name);
         const auto *returned = dynamic_cast<const HirReturnStmt *>(function.body->stmts.front().get());
         REQUIRE(returned != nullptr);
-        const auto *block = dynamic_cast<const HirBlockExpr *>(returned->value->get());
-        REQUIRE(block != nullptr);
-        CHECK(block->type.ToString() == type);
-        const auto *value = dynamic_cast<const HirMatchExpr *>(block->value.get());
+        const auto *value = dynamic_cast<const HirMatchExpr *>(returned->value->get());
         REQUIRE(value != nullptr);
+        CHECK(value->type.ToString() == type);
         CHECK(value->subject->type.ToString() == "int32 ! Fault");
-        CHECK(StatementsOf<HirLoopStmt>(function).size() == 1);
+        REQUIRE(value->arms.size() == 2);
+        CHECK(StatementsOf<HirLoopStmt>(function).empty());
     }
 }
 
-TEST_CASE("an unlabeled break in a try block leaves the source loop around it") {
+TEST_CASE("an unlabeled break in an arm leaves the source loop around it") {
     const HirPackage package = LowerSource(R"(
         struct Fault {}
         func Read(index: int32) -> int32 ! Fault { return index; }
         func Scan() -> int32 {
             var total = 0i32;
             while total < 10i32 {
-                try {
-                    if Read(total) == 3i32 {
-                        break;
-                    }
-                    total = total + 1i32;
-                } catch {
-                    _ => continue,
-                }
+                let value = Read(total) catch { _ => break };
+                total = total + value + 1i32;
             }
             return total;
         }
@@ -230,8 +184,8 @@ TEST_CASE("an unlabeled break in a try block leaves the source loop around it") 
     const HirFunc &scan = RequireFunction(package, "Scan");
     const auto loops = StatementsOf<HirWhileStmt>(scan);
     REQUIRE(loops.size() == 1);
+    // No hidden loop stands between the arm and the source loop, so the jump needs no label.
     const std::string label = loops.front()->label;
-    CHECK(label.starts_with("$loop."));
     const auto breaks = StatementsOf<HirBreakStmt>(scan);
     CHECK(std::ranges::count_if(breaks, [&](const HirBreakStmt *leave) { return leave->label == label; }) == 1);
 }

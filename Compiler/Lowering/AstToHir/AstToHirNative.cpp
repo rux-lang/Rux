@@ -368,7 +368,7 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
 HirStmtPtr AstToHirContext::LowerFail(const Expr *value, const SourceLocation location, const ResolvedThrowSite *site) {
     // A `throw` inside a handler stores its error there, as a call it covers would.
     if (site && !site->LeavesFunction() && value) {
-        return LowerThrowTo(*site, LowerExprAs(*value, SubstituteCurrentType(site->errorType)), location);
+        return LowerThrowTo(LowerExprAs(*value, SubstituteCurrentType(site->errorType)), location);
     }
     // Otherwise the statement selects the outer failure channel itself; only its operand converts, to that channel's
     // payload.
@@ -395,7 +395,7 @@ HirExprPtr AstToHirContext::LowerDiverge(const DivergeExpr &expression) {
     case DivergeExpr::Kind::Break: {
         auto exit = std::make_unique<HirBreakStmt>();
         exit->location = expression.location;
-        exit->label = LoopExitLabel(expression.label);
+        exit->label = expression.label;
         exit->cleanups = cleanupPlanner.LoopExitActions(exit->label);
         statement = std::move(exit);
         break;
@@ -403,7 +403,7 @@ HirExprPtr AstToHirContext::LowerDiverge(const DivergeExpr &expression) {
     case DivergeExpr::Kind::Continue: {
         auto exit = std::make_unique<HirContinueStmt>();
         exit->location = expression.location;
-        exit->label = LoopExitLabel(expression.label);
+        exit->label = expression.label;
         exit->cleanups = cleanupPlanner.LoopExitActions(exit->label);
         statement = std::move(exit);
         break;
@@ -692,102 +692,6 @@ HirExprPtr AstToHirContext::LowerNativeCoalesce(const BinaryExpr &expression) {
     lowered->arms.push_back(std::move(present));
     lowered->arms.push_back(std::move(absent));
     return lowered;
-}
-
-HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
-    const SourceLocation location = body.location;
-    const TypeRef outcome = body.returnType;
-    const TypeRef status = TypeRef::MakeInt();
-    const auto literal = [&](const std::string &value) {
-        auto result = std::make_unique<HirLiteralExpr>();
-        result->location = location;
-        result->type = status;
-        result->value = value;
-        return result;
-    };
-
-    auto call = std::make_unique<HirCallExpr>();
-    call->location = location;
-    call->type = outcome;
-    auto callee = std::make_unique<HirVarExpr>();
-    callee->location = location;
-    callee->name = std::string(kFallibleMainBody);
-    std::vector<TypeRef> parameterTypes;
-    for (const HirParam &parameter : body.params) {
-        parameterTypes.push_back(parameter.type);
-        auto argument = std::make_unique<HirVarExpr>();
-        argument->location = location;
-        argument->name = parameter.name;
-        argument->type = parameter.type;
-        call->args.push_back(std::move(argument));
-    }
-    callee->type = TypeRef::MakeFunc(std::move(parameterTypes), outcome);
-    call->callee = std::move(callee);
-
-    const TypeRef &success = outcome.FallibleSuccess();
-    HirMatchArm succeeded;
-    succeeded.location = location;
-    if (success.IsInteger()) {
-        auto value = std::make_unique<HirBindingPattern>();
-        value->location = location;
-        value->name = "$main.status";
-        value->type = success;
-        succeeded.pattern = NativeCasePattern(outcome, NativeSuccessTag, success, std::move(value), location);
-        auto read = std::make_unique<HirVarExpr>();
-        read->location = location;
-        read->name = "$main.status";
-        read->type = success;
-        auto cast = std::make_unique<HirCastExpr>();
-        cast->location = location;
-        cast->type = status;
-        cast->targetType = status;
-        cast->operand = std::move(read);
-        succeeded.body = std::move(cast);
-    }
-    else {
-        auto ignored = std::make_unique<HirWildcardPattern>();
-        ignored->location = location;
-        succeeded.pattern = NativeCasePattern(outcome, NativeSuccessTag, success, std::move(ignored), location);
-        succeeded.body = literal("0");
-    }
-    HirMatchArm failed;
-    failed.location = location;
-    auto ignoredError = std::make_unique<HirWildcardPattern>();
-    ignoredError->location = location;
-    failed.pattern =
-        NativeCasePattern(outcome, NativeFailureTag, outcome.FallibleError(), std::move(ignoredError), location);
-    failed.body = literal("1");
-
-    auto match = std::make_unique<HirMatchExpr>();
-    match->location = location;
-    match->type = status;
-    // The outcome is a temporary the entry point owns, so each arm destroys what it leaves unbound.
-    call->consumption = ValueConsumptionKind::MatchSubject;
-    match->subject = std::move(call);
-    match->arms.push_back(std::move(succeeded));
-    match->arms.push_back(std::move(failed));
-
-    auto returned = std::make_unique<HirReturnStmt>();
-    returned->location = location;
-    returned->value = std::move(match);
-
-    HirFunc entry;
-    entry.name = body.name;
-    entry.isPublic = body.isPublic;
-    entry.isExported = body.isExported;
-    entry.callConv = body.callConv;
-    entry.params = body.params;
-    for (HirParam &parameter : entry.params) {
-        parameter.bindingId = 0;
-    }
-    entry.returnType = status;
-    entry.location = location;
-    entry.sourceFile = body.sourceFile;
-    entry.sourceFunction = body.sourceFunction;
-    entry.body = HirBlock{};
-    entry.body->location = location;
-    entry.body->stmts.push_back(std::move(returned));
-    return entry;
 }
 
 HirExprPtr AstToHirContext::LowerPendingNative(const Expr &expression) {

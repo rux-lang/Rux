@@ -43,7 +43,7 @@ func Read(ok: bool) -> int32 ! ParseError {
 
 // Propagation out of a function that returns neither the same failure nor any at all.
 func Rethrown(ok: bool) -> int32 ! IoError {
-    let value = try Read(ok);
+    let value = Read(ok)!;
     return value;
 }
 

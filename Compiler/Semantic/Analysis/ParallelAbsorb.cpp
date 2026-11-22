@@ -156,8 +156,7 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.coalescings = OwnEntries(mine.coalescings, base.coalescings);
     own.throwSites = OwnEntries(mine.throwSites, base.throwSites);
     own.throwStatements = OwnEntries(mine.throwStatements, base.throwStatements);
-    own.tryBlockHandlers = OwnEntries(mine.tryBlockHandlers, base.tryBlockHandlers);
-    own.tryExpressionHandlers = OwnEntries(mine.tryExpressionHandlers, base.tryExpressionHandlers);
+    own.errorHandlers = OwnEntries(mine.errorHandlers, base.errorHandlers);
     own.indexOperators = OwnEntries(mine.indexOperators, base.indexOperators);
     own.indexAssignments = OwnEntries(mine.indexAssignments, base.indexAssignments);
     own.iterations = OwnEntries(mine.iterations, base.iterations);
@@ -317,13 +316,7 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
         [&] { MergeLaterWins(facts.coalescings, records, [](R &r) -> auto & { return r.facts.coalescings; }); },
         [&] { MergeLaterWins(facts.throwSites, records, [](R &r) -> auto & { return r.facts.throwSites; }); },
         [&] { MergeLaterWins(facts.throwStatements, records, [](R &r) -> auto & { return r.facts.throwStatements; }); },
-        [&] {
-            MergeLaterWins(facts.tryBlockHandlers, records, [](R &r) -> auto & { return r.facts.tryBlockHandlers; });
-        },
-        [&] {
-            MergeLaterWins(facts.tryExpressionHandlers, records,
-                           [](R &r) -> auto & { return r.facts.tryExpressionHandlers; });
-        },
+        [&] { MergeLaterWins(facts.errorHandlers, records, [](R &r) -> auto & { return r.facts.errorHandlers; }); },
         [&] { MergeLaterWins(facts.indexOperators, records, [](R &r) -> auto & { return r.facts.indexOperators; }); },
         [&] {
             MergeLaterWins(facts.indexAssignments, records, [](R &r) -> auto & { return r.facts.indexAssignments; });

@@ -1,9 +1,8 @@
-// `throw`: an error leaving through the `throws` channel or into the innermost handler.
-// `throws E` follows the return type, or the parameter list when there is none, and `E` may be a sum. `throw value`
-// is a statement, and also a whole arm body or the right side of `??`, where it produces no value. A case written
-// without its type takes the error type of where the error goes: the function's `throws` clause, or the errors a
-// `try` block has seen so far. Inside a `try` block a `throw` goes to the block's `catch` arms; anywhere else it leaves
-// the function. A `throw` needs no `try` of its own, and `fail` is its older spelling.
+// `throw`: an error leaving the function through its error side.
+// `-> T ! E` names the error, or `-> !E` when there is no value, and `E` may be a sum. `throw value` is a statement,
+// and also a whole arm body or the right side of `??`, where it produces no value. A case written without its type
+// takes the function's error type. A `throw` always leaves the function, from a `catch` arm as from anywhere else, and
+// the caller's arms receive it like a failed call's error.
 
 import Core::Diagnostics::Assert;
 
@@ -46,13 +45,6 @@ func Classify(c: char) -> int32 ! DigitError {
         ' ' => throw .Blank,
         _ => throw DigitError::NotADigit(c),
     };
-}
-
-func OlderSpelling(c: char) -> int ! DigitError {
-    if c == ' ' {
-        throw .Blank;
-    }
-    return 1;
 }
 
 func Code(error: DigitError) -> int32 {
@@ -116,8 +108,5 @@ func Main() -> int {
     var owner = 0i32;
     ThrowOwner() catch { e => { owner = Code(e); } };
     Assert(owner == 1i32, "a qualified throw needs no call before it");
-
-    // The older spelling sends its error to the same place.
-    Assert((OlderSpelling(' ') !! none) == none, "'fail' still leaves the function");
     return 0;
 }

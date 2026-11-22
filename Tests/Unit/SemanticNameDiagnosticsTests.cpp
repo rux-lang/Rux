@@ -202,21 +202,20 @@ std::vector<SemanticDiagnostic> AnalyzeEntryPoint(const std::string &source) {
 }
 } // namespace
 
-TEST_CASE("an executable's Main takes no parameters and returns nothing, an integer or a fallible of either") {
-    for (const std::string accepted :
-         {"func Main() -> int { return 0; }", "func Main() {}", "func Main() -> int32 { return 0; }",
-          "variant E { Bad }\nfunc Main() -> !E {}", "variant E { Bad }\nfunc Main() -> int ! E { return 0; }"}) {
-        CAPTURE(accepted);
-        CHECK(AnalyzeEntryPoint(accepted).empty());
-    }
+TEST_CASE("an executable's Main is func Main() -> int") {
+    CHECK(AnalyzeEntryPoint("func Main() -> int { return 0; }").empty());
     for (const std::string refused :
          {"func Main(count: int) -> int { return count; }", "func Main() -> bool { return true; }",
-          "func Main() -> float64 { return 0.0; }", "func Main<T>() -> int { return 0; }"}) {
+          "func Main() -> float64 { return 0.0; }", "func Main<T>() -> int { return 0; }", "func Main() {}",
+          "func Main() -> int32 { return 0; }", "variant E { Bad }\nfunc Main() -> !E {}",
+          "variant E { Bad }\nfunc Main() -> int ! E { return 0; }"}) {
         CAPTURE(refused);
         const auto diagnostics = AnalyzeEntryPoint(refused);
         REQUIRE_EQ(diagnostics.size(), 1);
-        CHECK(diagnostics.front().message.starts_with("'Main' must take no parameters and return nothing"));
+        CHECK(diagnostics.front().message.starts_with("'Main' must be 'func Main() -> int', but it"));
     }
     // A Main inside a module is an ordinary function.
-    CHECK(AnalyzeEntryPoint("module Tools {\n func Main(x: int) -> bool { return true; }\n}\nfunc Main() {}").empty());
+    CHECK(AnalyzeEntryPoint(
+              "module Tools {\n func Main(x: int) -> bool { return true; }\n}\nfunc Main() -> int { return 0; }")
+              .empty());
 }

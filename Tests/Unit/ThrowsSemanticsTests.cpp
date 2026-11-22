@@ -27,10 +27,6 @@ std::vector<std::string> Errors(const std::string &source) {
     return Messages(source, SemanticDiagnostic::Severity::Error);
 }
 
-std::vector<std::string> Warnings(const std::string &source) {
-    return Messages(source, SemanticDiagnostic::Severity::Warning);
-}
-
 bool AnyContains(const std::vector<std::string> &messages, const std::string_view text) {
     return std::ranges::any_of(messages, [&](const std::string &message) { return message.contains(text); });
 }
@@ -110,215 +106,143 @@ TEST_CASE("an unmarked call is a fallible value, an unused one is an error, and 
 
     const Analyzed analyzed = Analyze(WithDeclarations(R"(
         func Main() -> int ! DigitError {
-            let a = try ReadDigit('1') + ReadDigit('2');
+            let a = ReadDigit('1')! + ReadDigit('2')!;
             return a;
         }
     )"));
-    const auto *marked = dynamic_cast<const TryMarkExpr *>(&InitializerOf(Function(analyzed, "Main"), 0));
-    REQUIRE(marked != nullptr);
-    CHECK(ResolvedType(*analyzed.model, *marked) == TypeRef::MakeInt());
-    const auto *sum = dynamic_cast<const BinaryExpr *>(marked->operand.get());
+    const auto *sum = dynamic_cast<const BinaryExpr *>(&InitializerOf(Function(analyzed, "Main"), 0));
     REQUIRE(sum != nullptr);
-    for (const Expr *call : {sum->left.get(), sum->right.get()}) {
-        const ResolvedThrowSite *site = analyzed.model->TryGetThrowSite(*call);
+    for (const Expr *operand : {sum->left.get(), sum->right.get()}) {
+        const auto *marked = dynamic_cast<const ErrorFormExpr *>(operand);
+        REQUIRE(marked != nullptr);
+        CHECK(ResolvedType(*analyzed.model, *marked) == TypeRef::MakeInt());
+        const ResolvedThrowSite *site = analyzed.model->TryGetThrowSite(*marked->operand);
         REQUIRE(site != nullptr);
         CHECK(site->payloadType == TypeRef::MakeInt());
         CHECK(site->errorType.ToString() == "DigitError");
         CHECK(site->LeavesFunction());
         CHECK(site->markExpression == marked);
-        CHECK(site->markBlock == nullptr);
-        CHECK(ResolvedType(*analyzed.model, *call) == TypeRef::MakeInt());
     }
 }
 
-TEST_CASE("a try block marks its calls and sends their errors to its arms") {
+TEST_CASE("a handler takes only its own operand's error") {
     const Analyzed analyzed = Analyze(WithDeclarations(R"(
         func Main() -> int {
-            try {
-                let digit = ReadDigit('1');
-                let code = ReadFile(2i32);
-            } catch {
-                _: DigitError => {}
-                e: IoError => {}
-            }
-            return 0;
-        }
-    )"));
-    const FuncDecl &main = Function(analyzed, "Main");
-    const auto *handler = dynamic_cast<const TryStmt *>(main.body->stmts.front().get());
-    REQUIRE(handler != nullptr);
-    const ResolvedThrowHandler *resolved = analyzed.model->TryGetThrowHandler(*handler);
-    REQUIRE(resolved != nullptr);
-    // The handler takes the sum of what its calls throw.
-    CHECK(resolved->errorType == TypeRef::MakeSum({TypeRef::MakeNamed("DigitError"), TypeRef::MakeNamed("IoError")}));
-    for (const auto &statement : handler->body->stmts) {
-        const auto *let = dynamic_cast<const LetStmt *>(statement.get());
-        REQUIRE(let != nullptr);
-        const ResolvedThrowSite *site = analyzed.model->TryGetThrowSite(*let->init);
-        REQUIRE(site != nullptr);
-        CHECK(site->handlerBlock == handler);
-        CHECK(site->markBlock == handler);
-        CHECK_FALSE(site->LeavesFunction());
-    }
-}
-
-TEST_CASE("a throw goes to the innermost handler, and an arm's error goes further out") {
-    const Analyzed analyzed = Analyze(WithDeclarations(R"(
-        func Main() -> int ! IoError {
-            try {
-                ReadDigit('1');
-                throw DigitError::Blank;
-            } catch {
-                _ => throw IoError { code: 1i32 },
-            }
-            return 0;
-        }
-    )"));
-    const FuncDecl &main = Function(analyzed, "Main");
-    const auto *handler = dynamic_cast<const TryStmt *>(main.body->stmts.front().get());
-    REQUIRE(handler != nullptr);
-    const auto *thrown = dynamic_cast<const FailStmt *>(handler->body->stmts[1].get());
-    REQUIRE(thrown != nullptr);
-    const ResolvedThrowSite *inside = analyzed.model->TryGetThrowSite(*thrown);
-    REQUIRE(inside != nullptr);
-    CHECK(inside->handlerBlock == handler);
-    CHECK(inside->markBlock == nullptr);
-
-    const auto *rethrow = dynamic_cast<const DivergeExpr *>(handler->arms.front().body.get());
-    REQUIRE(rethrow != nullptr);
-    const ResolvedThrowSite *outside = analyzed.model->TryGetThrowSite(*rethrow);
-    REQUIRE(outside != nullptr);
-    CHECK(outside->LeavesFunction());
-}
-
-TEST_CASE("try? and try ... catch are handlers of their own operands") {
-    const Analyzed analyzed = Analyze(WithDeclarations(R"(
-        func Main() -> int {
-            let maybe = try? ReadDigit('1');
-            let value = try ReadDigit('2') catch { _ => 0 };
+            let maybe = ReadDigit('1') !! none;
+            let value = ReadDigit('2') catch { _ => 0 };
             return value;
         }
     )"));
     const FuncDecl &main = Function(analyzed, "Main");
-    const auto *maybe = dynamic_cast<const TryMarkExpr *>(&InitializerOf(main, 0));
+    const auto *maybe = dynamic_cast<const ErrorFormExpr *>(&InitializerOf(main, 0));
     REQUIRE(maybe != nullptr);
     CHECK(ResolvedType(*analyzed.model, *maybe).ToString() == "int?");
     const ResolvedThrowSite *optional = analyzed.model->TryGetThrowSite(*maybe->operand);
     REQUIRE(optional != nullptr);
     CHECK(optional->handlerExpression == maybe);
 
-    const auto *value = dynamic_cast<const TryMarkExpr *>(&InitializerOf(main, 1));
+    const auto *value = dynamic_cast<const ErrorFormExpr *>(&InitializerOf(main, 1));
     REQUIRE(value != nullptr);
     const ResolvedThrowHandler *handler = analyzed.model->TryGetThrowHandler(*value);
     REQUIRE(handler != nullptr);
     CHECK(handler->errorType.ToString() == "DigitError");
     CHECK(handler->valueType == TypeRef::MakeInt());
+
+    // An `x!` inside a handled operand leaves the function: the handler sees only its operand's own error.
+    CHECK(AnyContains(Errors(WithDeclarations(R"(
+        func Main() -> int {
+            return (ReadDigit('1')! + 1) catch { _ => 0 };
+        }
+    )")),
+                      "call to 'ReadDigit' can fail with 'DigitError', but 'Main' cannot fail"));
+}
+
+TEST_CASE("a throw leaves the function, from an arm as from anywhere else") {
+    const Analyzed analyzed = Analyze(WithDeclarations(R"(
+        func Main() -> int ! IoError {
+            let value = ReadDigit('1') catch { _ => throw IoError { code: 1i32 } };
+            return value;
+        }
+    )"));
+    const auto *value = dynamic_cast<const ErrorFormExpr *>(&InitializerOf(Function(analyzed, "Main"), 0));
+    REQUIRE(value != nullptr);
+    const auto *rethrow = dynamic_cast<const DivergeExpr *>(value->arms.front().body.get());
+    REQUIRE(rethrow != nullptr);
+    const ResolvedThrowSite *outside = analyzed.model->TryGetThrowSite(*rethrow);
+    REQUIRE(outside != nullptr);
+    CHECK(outside->LeavesFunction());
 }
 
 TEST_CASE("an error with nowhere to go, or one that does not fit, is reported") {
-    CHECK(AnyContains(Errors(WithDeclarations("func Main() -> int { return try ReadDigit('1'); }")),
-                      "call to 'ReadDigit' can throw 'DigitError', but 'Main' does not throw"));
-    CHECK(AnyContains(Errors(WithDeclarations("func Load() -> int ! IoError { return try ReadDigit('1'); }")),
-                      "call to 'ReadDigit' can throw 'DigitError', but 'Load' throws 'IoError'"));
+    CHECK(AnyContains(Errors(WithDeclarations("func Main() -> int { return ReadDigit('1')!; }")),
+                      "call to 'ReadDigit' can fail with 'DigitError', but 'Main' cannot fail"));
+    CHECK(AnyContains(Errors(WithDeclarations("func Load() -> int ! IoError { return ReadDigit('1')!; }")),
+                      "call to 'ReadDigit' can fail with 'DigitError', but 'Load' fails with 'IoError'"));
     // Injection into a sum and widening into a larger one are accepted.
     CHECK(Errors(WithDeclarations(R"(
-        func Either() -> int ! IoError | DigitError { return try ReadDigit('1'); }
-        func Wider() -> int ! IoError | DigitError | char { return try Either(); }
+        func Either() -> int ! IoError | DigitError { return ReadDigit('1')!; }
+        func Wider() -> int ! IoError | DigitError | char { return Either()!; }
     )"))
               .empty());
     CHECK(AnyContains(Errors(WithDeclarations("func F() { throw IoError { code: 1i32 }; }")),
-                      "'throw' needs a function that throws, but 'F' returns no value"));
-}
-
-TEST_CASE("a try that marks nothing is a warning") {
-    const auto warnings = Warnings(WithDeclarations(R"(
-        func Main() -> int {
-            let a = try 1 + 2;
-            let b = try? 3;
-            try {
-                let c = 4;
-            } catch {
-                _ => {}
-            }
-            return a;
-        }
-    )"));
-    CHECK(std::ranges::count(warnings, std::string("'try' has no call that can throw")) == 3);
-    // A `throw` is what a `try` block catches, so a block holding only one marks something.
-    CHECK(Warnings(WithDeclarations(R"(
-        func Main() -> int {
-            try { throw IoError { code: 1i32 }; } catch { _ => {} }
-            return 0;
-        }
-    )"))
-              .empty());
+                      "'throw' needs a function that can fail, but 'F' returns no value"));
 }
 
 TEST_CASE("no error leaves a deferred statement or a destructor") {
-    CHECK(AnyContains(Errors(WithDeclarations("func F() { defer try ReadDigit('1'); }")),
+    CHECK(AnyContains(Errors(WithDeclarations("func F() { defer ReadDigit('1')!; }")),
                       "an error cannot leave a deferred statement"));
     CHECK(AnyContains(Errors(WithDeclarations(R"(
         struct File { handle: int32; }
         extend File {
-            func ~(&var self) { try ReadFile(self.handle); }
+            func ~(&var self) { ReadFile(self.handle)!; }
         }
     )")),
                       "an error cannot leave a destructor"));
     CHECK(Errors(WithDeclarations(R"(
         func F() {
-            defer try? ReadDigit('1');
-            defer try ReadDigit('2') catch { _ => 0 };
-            defer if true { try { ReadDigit('3'); } catch { _ => {} } }
+            defer ReadDigit('1') !!;
+            defer ReadDigit('2') catch { _ => {} };
         }
     )"))
               .empty());
 }
 
-TEST_CASE("an arm needs its own try and the arms cover every error") {
+TEST_CASE("an arm's call is a value of its own and the arms cover every error") {
     CHECK(AnyContains(Errors(WithDeclarations(R"(
         func Main() -> int {
-            try { ReadDigit('1'); } catch { _ => { ReadDigit('2'); } }
+            ReadDigit('1') catch { _ => { ReadDigit('2'); } };
             return 0;
         }
     )")),
                       "'ReadDigit' can fail with 'DigitError', and the result is not used"));
     CHECK(AnyContains(Errors(WithDeclarations(R"(
         func Main() -> int {
-            try { ReadDigit('1'); } catch { .Blank => {} }
+            ReadDigit('1') catch { .Blank => {} };
             return 0;
         }
     )")),
                       "missing DigitError::NotADigit"));
 }
 
-TEST_CASE("an error thrown to a handler carries the state at the throw into the arms") {
+TEST_CASE("an error handled by the arms carries the state at the call into them") {
     const auto errors = Errors(WithDeclarations(R"(
         struct Resource { id: int32; }
         extend Resource { func ~(&var self) {} }
-        func Take(resource: Resource) {}
+        func Take(resource: Resource, digit: int) -> int32 { return 0i32; }
         func Read(resource: &Resource) -> int32 { return resource.id; }
         func Before() -> int32 {
             var resource = Resource { id: 1i32 };
-            try {
-                ReadDigit('1');
-                Take(move resource);
-            } catch {
-                _ => return Read(resource),
-            }
-            return 0i32;
+            let digit = ReadDigit('1') catch { _ => return Read(resource) };
+            return Take(move resource, digit);
         }
         func After() -> int32 {
             var resource = Resource { id: 1i32 };
-            try {
-                Take(move resource);
-                ReadDigit('1');
-            } catch {
-                _ => return Read(resource),
-            }
+            Take(move resource, 0);
+            ReadDigit('1') catch { _ => return Read(resource) };
             return 0i32;
         }
     )"));
-    // Only the throw after the move reaches the arm without the resource.
+    // Only the handler after the move reaches the arm without the resource.
     REQUIRE(errors.size() == 1);
     CHECK(errors.front().contains("'resource'"));
 }

@@ -58,7 +58,7 @@ public:
 
     void Print(const Decl &decl);
     [[nodiscard]] static std::string TypeString(const TypeExpr *type);
-    /// What follows a function's parameter list: ` -> T`, ` -> T throws E` or ` throws E`.
+    /// What follows a function's parameter list: ` -> T`, ` -> T ! E` or ` -> !E`.
     [[nodiscard]] static std::string ReturnClause(const TypeExpr *type);
     /// The type without the parentheses its source may have wrapped around it.
     [[nodiscard]] static std::string UngroupedTypeString(const TypeExpr *type);

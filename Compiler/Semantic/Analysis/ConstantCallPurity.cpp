@@ -193,11 +193,6 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanStateme
         return deferred->deferredStmt ? ScanStatement(*deferred->deferredStmt, owner) : std::nullopt;
     if (const auto *thrown = AstCast<const FailStmt>(&statement))
         return expression(thrown->value.get());
-    if (const auto *attempt = AstCast<const TryStmt>(&statement)) {
-        if (auto offense = block(attempt->body.get()))
-            return offense;
-        return ScanArms(attempt->arms, owner);
-    }
     if (const auto *result = AstCast<const ReturnStmt>(&statement))
         return result->value ? expression(result->value->get()) : std::nullopt;
     if (const auto *declaration = AstCast<const DeclStmt>(&statement))
@@ -332,7 +327,7 @@ std::optional<ConstantCallEvaluator::Offense> ConstantCallEvaluator::ScanExpress
     }
     if (const auto *construct = AstCast<const NativeConstructExpr>(&expression))
         return scan(construct->operand.get());
-    if (const auto *marked = AstCast<const TryMarkExpr>(&expression)) {
+    if (const auto *marked = AstCast<const ErrorFormExpr>(&expression)) {
         if (auto offense = scan(marked->operand.get()))
             return offense;
         return ScanArms(marked->arms, owner);

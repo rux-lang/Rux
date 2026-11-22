@@ -777,10 +777,9 @@ std::optional<EvaluatedValue> ConstantCallEvaluator::EvaluateOther(const Expr &e
     }
     if (AstCast<const IntrinsicExpr>(&expression))
         return Unsupported(expression.location, "a compiler-supplied value");
-    // A call a `try` marks runs as any other; an error it throws is an error at the constant, whatever would handle it
-    // at run time.
-    if (const auto *marked = AstCast<const TryMarkExpr>(&expression);
-        marked && marked->form != TryMarkExpr::Form::Optional)
+    // The operand of a postfix error form runs as any other expression; an error it throws is an error at the
+    // constant, whatever would handle it at run time.
+    if (const auto *marked = AstCast<const ErrorFormExpr>(&expression))
         return EvaluateExpression(*marked->operand);
     return Unsupported(expression.location, "this expression");
 }

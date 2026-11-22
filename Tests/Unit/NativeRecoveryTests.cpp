@@ -53,13 +53,13 @@ std::vector<std::string> ErrorsIn(const std::string_view body) {
 TEST_CASE("catch arms match the error alone and recover the success type") {
     CHECK(ErrorsIn(R"(
         func LoadWithDefaults() -> (Options | Defaults) ! IoError {
-            return try Read() catch {
+            return Read() catch {
                 _: ParseError => Defaults {},
                 e: IoError => throw e
             };
         }
         func LoadConfig() -> Options ! IoError {
-            let options = try ReadConfig() catch {
+            let options = ReadConfig() catch {
                 DecodeError::Missing => Options { verbose: false },
                 DecodeError::InvalidDigit(position) => Recover(position),
                 e: IoError => throw e
@@ -67,7 +67,7 @@ TEST_CASE("catch arms match the error alone and recover the success type") {
             return options;
         }
         func Fallback() -> int32 {
-            return try Count() catch { _ => 0i32 };
+            return Count() catch { _ => 0i32 };
         }
     )")
               .empty());
@@ -80,24 +80,24 @@ TEST_CASE("diverging arms never decide the recovered type") {
             Panic("stopped");
         }
         func Diverging() -> int32 ! IoError {
-            let first = try Count() catch { e => throw e };
-            let second = try Count() catch { e => Panic("unexpected") };
-            let third = try Count() catch { e => Stop() };
-            let fourth = try Count() catch { e => return 4i32 };
-            let fifth = try Count() catch { e => { return 5i32; } };
+            let first = Count() catch { e => throw e };
+            let second = Count() catch { e => Panic("unexpected") };
+            let third = Count() catch { e => Stop() };
+            let fourth = Count() catch { e => return 4i32 };
+            let fifth = Count() catch { e => { return 5i32; } };
             return first + second + third + fourth + fifth;
         }
         func Looping() -> int32 {
             var total = 0i32;
             while total < 10i32 {
-                let first = try Count() catch { e => break };
-                let second = try Count() catch {
+                let first = Count() catch { e => break };
+                let second = Count() catch {
                     e => {
                         total = total + e.code;
                         break;
                     }
                 };
-                let third = try Count() catch { _ => { continue; } };
+                let third = Count() catch { _ => { continue; } };
                 total = total + first + second + third;
             }
             return total;

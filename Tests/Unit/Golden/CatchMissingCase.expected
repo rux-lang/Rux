@@ -1,0 +1,2 @@
+15:25: error: match on 'ParseError' is not exhaustive; missing ParseError::Invalid
+16:41: error: match on 'ParseError' is not exhaustive; missing ParseError::Empty

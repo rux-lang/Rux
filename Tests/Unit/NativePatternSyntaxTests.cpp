@@ -207,8 +207,8 @@ TEST_CASE("'_' is the default arm, and it is last and unguarded") {
     };
     CHECK(reports("func F() { let a = match s { _ => 0, 1 => 1 }; }", "the default arm must be the last match arm"));
     CHECK(reports("func F() { match s { _ => {} 1 => {} } }", "the default arm must be the last match arm"));
-    CHECK(reports("func F() { let a = try Read() catch { _ => 0, e => 1 }; }",
-                  "the default arm must be the last catch arm"));
+    CHECK(
+        reports("func F() { let a = Read() catch { _ => 0, e => 1 }; }", "the default arm must be the last catch arm"));
 }
 
 TEST_CASE("formatting leaves native pattern spellings unchanged") {
