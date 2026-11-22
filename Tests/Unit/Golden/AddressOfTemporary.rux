@@ -1,0 +1,30 @@
+// '@' takes the address of storage: a local, a parameter, a field, an element, '*p', a module constant, or the referent
+// of a reference. A literal or a computed value is a temporary, and its address would dangle once the statement ends.
+struct Point {
+    x: int;
+}
+
+const Origin: int = 0;
+
+func Make() -> Point {
+    return Point { x: 1 };
+}
+
+func Read(value: &int) -> int {
+    let address = @value;
+    return *address;
+}
+
+func Main() -> int {
+    let score = 3;
+    let sum = @(score + 1);
+    let ten = @10;
+    let made = @Make();
+    let point = Point { x: 2 };
+    let field = @point.x;
+    let local = @score;
+    let constant = @Origin;
+    let items = [1, 2, 3];
+    let element = @items[1];
+    return Read(&score) + *local + *field + *element + *constant;
+}

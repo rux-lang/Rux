@@ -1,0 +1,3 @@
+22:10: error: '&var' lends a place for writing, but this is a temporary value
+23:10: error: '&var' lends a place for writing, but this is a temporary value
+24:10: error: '&var' lends a place for writing, but this is a temporary value

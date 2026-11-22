@@ -366,6 +366,10 @@ TypeRef AnalysisContext::CheckLoan(const LoanExpr &loan) {
     if (!place) {
         TypeRef lent = TypeRef::MakeReference(referent);
         if (loan.writes) {
+            // A write lent to a temporary would be lost with it, so only a place is lent for writing.
+            EmitError(loan.location, "'&var' lends a place for writing, but this is a temporary value",
+                      {"what is written through the loan would be lost when the statement ends"},
+                      "store the value in a 'var' local and lend the local");
             lent = lent.WithWritableInner(true);
         }
         return lent;
@@ -437,6 +441,19 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             // through a `&var`; the reference itself has no address a program can name.
             if (operandType->kind == TypeRef::Kind::Reference && !operandType->inner.empty()) {
                 return TypeRef::MakePointer(operandType->inner.front());
+            }
+            // Only storage has an address: a temporary is gone when its statement ends, and its address with it.
+            const Expr &operand = *unary->operand;
+            const auto *index = AstCast<const IndexExpr>(&operand);
+            const auto *inner = AstCast<const UnaryExpr>(&operand);
+            const bool place = AstCast<const IdentExpr>(&operand) || AstCast<const SelfExpr>(&operand) ||
+                               AstCast<const PathExpr>(&operand) || AstCast<const FieldExpr>(&operand) ||
+                               (index && !IsIndexOperatorCall(*index)) || (inner && inner->op == TokenKind::Star);
+            if (!place && !operandType.IsUnknown()) {
+                EmitError(unary->location, "'@' takes the address of a place, but this is a temporary value",
+                          {"only storage has an address, and a temporary is destroyed when its statement ends"},
+                          "store the value in a local and take the local's address");
+                return TypeRef::MakePointer(operandType);
             }
             checkingPlainAssignmentTarget = true;
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);

@@ -1,0 +1,31 @@
+// '&var' lends a place for writing. A literal, a call's result or any other temporary is gone when its statement ends,
+// so a write through a loan of it would be lost; a place, a reference and a reference a call returns are lent.
+struct Box {
+    value: int;
+}
+
+extend Box {
+    func Slot(&var self) -> &var int {
+        return self.value;
+    }
+}
+
+func Tick(count: &var int) {
+    count += 1;
+}
+
+func Make() -> int {
+    return 4;
+}
+
+func Main() -> int {
+    Tick(&var 5);
+    Tick(&var Make());
+    Tick(&var (Make() + 1));
+    var count = 1;
+    Tick(&var count);
+    var box = Box { value: 0 };
+    Tick(&var box.value);
+    Tick(&var box.Slot());
+    return count + box.value;
+}
