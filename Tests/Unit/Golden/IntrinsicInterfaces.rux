@@ -1,0 +1,13 @@
+// An intrinsic interface names a capability the compiler decides from a type. Only the ones it has a rule for are
+// accepted; any other would bound nothing and admit every type.
+intrinsic interface Copyable;
+intrinsic interface Integer;
+intrinsic interface Frobnicable;
+
+func Twice<T: Frobnicable>(value: T) -> T {
+    return value;
+}
+
+func Main() -> int {
+    return Twice(1);
+}

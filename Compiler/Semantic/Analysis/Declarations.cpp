@@ -641,6 +641,7 @@ void AnalysisContext::CheckUnionDecl(const UnionDecl &d) {
 }
 
 void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
+    ValidateIntrinsicInterface(d);
     // `Self` stands for whichever type implements this interface, which is not known here, so it is checked as a
     // type parameter and bound to the implementing type wherever the interface is actually read.
     const auto savedTypeParams = currentTypeParams;

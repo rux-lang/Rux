@@ -297,6 +297,17 @@ bool SatisfiesNumeric(const InterfaceDecl &interface, const TypeRef &type) {
 }
 } // namespace
 
+void AnalysisContext::ValidateIntrinsicInterface(const InterfaceDecl &declaration) {
+    // Each capability has a rule in the compiler that decides it from a type. Without one, a bound by the interface
+    // would have nothing to check and would admit every type.
+    if (!declaration.isIntrinsic || IsDecidedMarker(declaration)) {
+        return;
+    }
+    EmitError(declaration.location, std::format("'{}' is not a supported intrinsic interface", declaration.name),
+              {"the compiler decides 'Copyable', 'Sendable', 'Integer', 'SignedInteger' and 'Float'"},
+              "declare an ordinary interface, which a type implements in an 'extend' block");
+}
+
 bool AnalysisContext::ViolatesCopyableBound(const FuncDecl &declaration,
                                             const std::unordered_map<std::string, TypeRef> &substitutions) {
     for (const TypeParameter &parameter : declaration.typeParams) {

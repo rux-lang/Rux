@@ -1083,6 +1083,8 @@ private:
     /// `DebugAssert`, `Panic`, `#Error`, `#Warn`) to the signature its calls are emitted for. Checked arithmetic and
     /// zeroization have validators of their own.
     void ValidateIntrinsicFunction(const FuncDecl &declaration);
+    /// Reports an `intrinsic interface` naming a capability the compiler does not decide.
+    void ValidateIntrinsicInterface(const InterfaceDecl &declaration);
 
     /// How a `for` loop reads a subject. An array, a slice and a range are driven directly; anything else is driven
     /// through the iterator convention, either because it is an iterator or because it hands one out.
