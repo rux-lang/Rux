@@ -91,11 +91,11 @@ func Main() -> int {
         Scoped(@journal) catch { e => journal.Note(e.code) };
         journal.Note(outside.id * 10i32);
     }
-    // As for a return: the defers of the scopes the error leaves, innermost first, then their locals, innermost first,
-    // then the caller's arm, then the code after it.
+    // As for a return: each scope the error leaves, innermost first, runs its defers and destroys its locals as one
+    // sequence, the last declared first; then the caller's arm, then the code after it.
     Assert(journal.count == 7i32, "every cleanup ran once");
-    Assert(journal.entries[0] == 5i32 && journal.entries[1] == 3i32, "the defers run first");
-    Assert(journal.entries[2] == 4i32 && journal.entries[3] == 2i32, "then the locals are destroyed");
+    Assert(journal.entries[0] == 5i32 && journal.entries[1] == 4i32, "the inner scope's defer, then its local");
+    Assert(journal.entries[2] == 3i32 && journal.entries[3] == 2i32, "then the outer scope's defer and local");
     Assert(journal.entries[4] == 7i32, "then the arm");
     Assert(journal.entries[5] == 10i32 && journal.entries[6] == 1i32, "the outside local lives on");
 

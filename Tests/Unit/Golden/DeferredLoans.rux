@@ -1,0 +1,48 @@
+// A deferred statement runs where its scope ends. It may lend a value from outside it but not give one away, and from
+// the `defer` to the end of its scope a value it lends is not given away, returned or destroyed; it may be assigned.
+struct Token {
+    id: int;
+}
+
+extend Token {
+    destructor {}
+}
+
+func Take(token: Token) {}
+
+func Look(token: &Token) {}
+
+func GivesAway() {
+    let token = Token { id: 1 };
+    defer Take(token);
+}
+
+func Returns() -> Token {
+    let token = Token { id: 2 };
+    defer Look(&token);
+    return token;
+}
+
+func Destroys() {
+    let token = Token { id: 3 };
+    defer Look(&token);
+    destroy token;
+}
+
+func Assigns() {
+    var token = Token { id: 4 };
+    defer Look(&token);
+    token = Token { id: 5 };
+}
+
+func AfterScope() -> Token {
+    let token = Token { id: 6 };
+    if true {
+        defer Look(&token);
+    }
+    return token;
+}
+
+func Main() -> int {
+    return 0;
+}

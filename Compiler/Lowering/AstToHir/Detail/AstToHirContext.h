@@ -134,7 +134,18 @@ protected:
     std::vector<HirImplBlock> instanceVtables;
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
-    std::vector<std::vector<const DeferStmt *>> deferStack;
+
+    /// A `defer` of a scope, with how many destructors the scope had registered when it was written: an exit runs the
+    /// two in one sequence, the last declared first (O17).
+    struct RegisteredDefer {
+        const DeferStmt *statement = nullptr;
+        std::size_t dropMark = 0;
+    };
+
+    std::vector<std::vector<RegisteredDefer>> deferStack;
+    /// Lowers what leaving the innermost `frames` scopes runs into `block`: in each scope, innermost first, its defers
+    /// and the destructors of its live locals, the last declared first. Returns whether any defer was among them.
+    bool EmitScopeExit(HirBlock &block, std::size_t frames, SourceLocation location);
     /// For each loop being lowered, innermost last: its label and how many defer scopes were open around it, so a
     /// `break` or `continue` runs the defers registered inside the loop before it jumps.
     std::vector<std::pair<std::string, std::size_t>> loopDeferBases;

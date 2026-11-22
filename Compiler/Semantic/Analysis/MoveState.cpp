@@ -54,6 +54,9 @@ bool AnalysisContext::MayNeedDestruction(const TypeRef &type) {
 
 Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialized) {
     Symbol *defined = Define(std::move(symbol));
+    if (defined && checkingDeferred) {
+        deferredLocals.insert(defined);
+    }
     if (defined) {
         // A new local starts with no views; its storage may reuse an address a finished scope's local had.
         functionLocals.insert(defined);
@@ -996,7 +999,36 @@ bool AnalysisContext::ReachedThroughRawPointer(const Expr &expression) const {
     return ReachedThroughRawPointer(*object);
 }
 
+bool AnalysisContext::RejectDeferredTransfer(const Symbol &symbol, const SourceLocation location) {
+    if (symbol.kind != Symbol::Kind::Var || !MayNeedDestruction(symbol.type)) {
+        return false;
+    }
+    if (checkingDeferred && !deferredLocals.contains(&symbol)) {
+        EmitError(location, std::format("a deferred statement cannot give '{}' away", symbol.name),
+                  {"it runs where its scope ends, and a value given away then is still owned by that scope"},
+                  std::format("lend it with '&{}'", symbol.name));
+        return true;
+    }
+    const auto loan =
+        std::ranges::find_if(deferredLoans, [&](const DeferredLoan &entry) { return entry.symbol == &symbol; });
+    if (loan == deferredLoans.end()) {
+        return false;
+    }
+    EmitError(location,
+              std::format("'{}' is lent by the 'defer' at {}:{}, which runs after this", symbol.name,
+                          loan->location.line, loan->location.column),
+              {"a deferred statement runs where its scope ends, after the value being returned or given away is gone"},
+              std::format("give '{}' away after the scope ends, or assign it a new value instead", symbol.name));
+    return true;
+}
+
 bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLocation location) {
+    if (const auto *name = AstCast<const IdentExpr>(&expression)) {
+        if (const Symbol *symbol = currentScope->Lookup(name->name);
+            symbol && RejectDeferredTransfer(*symbol, location)) {
+            return false;
+        }
+    }
     if (EndingSelfField(expression)) {
         return true;
     }

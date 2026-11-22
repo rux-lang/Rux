@@ -191,7 +191,7 @@ TEST_CASE("two propagations in one expression bind their payloads separately") {
     CHECK_NE(boundName(*added->left), boundName(*added->right));
 }
 
-TEST_CASE("propagation captures its failure before deferred statements and ownership cleanup") {
+TEST_CASE("propagation captures its failure before the defers and destructors run as one sequence") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Guard { count: *var int32; }
         extend Guard {
@@ -214,18 +214,21 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
     REQUIRE_EQ(body->block.stmts.size(), 1);
     const auto *exit = dynamic_cast<const HirScopeStmt *>(body->block.stmts.front().get());
     REQUIRE(exit != nullptr);
-    REQUIRE_EQ(exit->block.stmts.size(), 3);
+    // The failure is captured first; then the defer and the guard run as one sequence, the last declared first.
+    REQUIRE_EQ(exit->block.stmts.size(), 4);
     const auto *capture = dynamic_cast<const HirLetStmt *>(exit->block.stmts.front().get());
     REQUIRE(capture != nullptr);
     CHECK(dynamic_cast<const HirEnumConstructExpr *>(capture->init.get()) != nullptr);
     CHECK(dynamic_cast<const HirExprStmt *>(exit->block.stmts[1].get()) != nullptr);
+    const auto *guard = dynamic_cast<const HirDropStmt *>(exit->block.stmts[2].get());
+    REQUIRE(guard != nullptr);
+    CHECK_EQ(guard->action.name, "guard");
     const auto *returned = dynamic_cast<const HirReturnStmt *>(exit->block.stmts.back().get());
     REQUIRE(returned != nullptr);
     const auto *preserved = dynamic_cast<const HirVarExpr *>(returned->value->get());
     REQUIRE(preserved != nullptr);
     CHECK_EQ(preserved->name, capture->name);
-    REQUIRE_EQ(returned->cleanups.size(), 1);
-    CHECK_EQ(returned->cleanups.front().name, "guard");
+    CHECK(returned->cleanups.empty());
 }
 
 TEST_CASE("a generic throwing function emits only concrete instantiations") {

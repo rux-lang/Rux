@@ -151,6 +151,32 @@ std::vector<HirDropAction> CleanupPlanner::LoopExitActions(const std::string &la
     return actions;
 }
 
+std::size_t CleanupPlanner::TopFrameSize() const noexcept {
+    return scopes.empty() ? 0 : scopes.back().size();
+}
+
+const std::vector<HirDropAction> &CleanupPlanner::FrameFromTop(const std::size_t fromTop) const {
+    assert(fromTop < scopes.size());
+    return scopes[scopes.size() - 1 - fromTop];
+}
+
+std::size_t CleanupPlanner::FunctionFrameCount() const noexcept {
+    return functionBase ? scopes.size() - *functionBase : 0;
+}
+
+std::size_t CleanupPlanner::LoopFrameCount(const std::string &label) const {
+    if (!loopBase) {
+        return 0;
+    }
+    for (std::size_t index = loops.size(); index > *loopBase; --index) {
+        const LoopBoundary &loop = loops[index - 1];
+        if (label.empty() || loop.label == label) {
+            return scopes.size() - loop.scopeDepth;
+        }
+    }
+    return 0;
+}
+
 std::optional<HirDropAction> CleanupPlanner::ActionFor(const std::uint64_t bindingId) const {
     if (bindingId == 0) {
         return std::nullopt;

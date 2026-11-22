@@ -209,6 +209,8 @@ void AnalysisContext::PushScope() {
 
 void AnalysisContext::PopScope() {
     assert(currentScope->Parent() != nullptr && "cannot pop global scope");
+    // The defers of the scope run as it ends, so their loans end with it.
+    std::erase_if(deferredLoans, [&](const DeferredLoan &loan) { return loan.scope == currentScope; });
     EndBorrowScope(*currentScope);
     moveStates.EndScope();
     currentScope = currentScope->Parent();
@@ -793,9 +795,23 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (deferStatement->deferredStmt) {
             std::optional<DeferredContext> saved =
                 std::exchange(checkingDeferred, DeferredContext{loopDepth, activeLabels});
+            const std::unordered_set<const Symbol *> readBefore = readSymbols;
+            auto savedDeferredLocals = std::exchange(deferredLocals, {});
+            // A deferred statement runs where its scope ends, so what it does to the flow here is only a check: the
+            // values it lends are still there afterwards, and nothing it does is seen by the statements after it.
+            const TrackedFlow registration = SaveTrackedFlow();
             // No error may leave a deferred statement: a call in it that can throw is handled there.
             CheckBehindThrowBarrier(ThrowHandlerFrame::Kind::Deferred,
                                     [&] { CheckStatement(*deferStatement->deferredStmt); });
+            RestoreTrackedFlow(registration);
+            // Every owning local it reads from outside is lent from where it runs, so it stays until then (O21).
+            for (const Symbol *symbol : readSymbols) {
+                if (!readBefore.contains(symbol) && !deferredLocals.contains(symbol) &&
+                    symbol->kind == Symbol::Kind::Var && MayNeedDestruction(symbol->type)) {
+                    deferredLoans.push_back({symbol, currentScope, deferStatement->location});
+                }
+            }
+            deferredLocals = std::move(savedDeferredLocals);
             checkingDeferred = std::move(saved);
         }
     }

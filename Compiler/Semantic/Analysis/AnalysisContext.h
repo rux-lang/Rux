@@ -1293,6 +1293,20 @@ private:
     };
 
     std::optional<DeferredContext> checkingDeferred;
+    /// The locals a deferred statement being checked declares itself, which it may give away (O18).
+    std::unordered_set<const Symbol *> deferredLocals;
+
+    /// An owning local a registered `defer` lends, with the scope that runs the defer and where it was written. Until
+    /// that scope ends the local is not given away or destroyed, since the defer would lend a value that is gone (O21).
+    struct DeferredLoan {
+        const Symbol *symbol = nullptr;
+        const Scope *scope = nullptr;
+        SourceLocation location;
+    };
+
+    std::vector<DeferredLoan> deferredLoans;
+    /// Reports giving away `symbol` from a deferred statement (O18) or while a `defer` lends it (O21).
+    [[nodiscard]] bool RejectDeferredTransfer(const Symbol &symbol, SourceLocation location);
     /// For each loop being checked, innermost last, the expressions its body has recorded types for.
     std::vector<std::vector<const Expr *>> loopCheckedExpressions;
     /// The parameters of the function whose default value is being checked, none of which a default may read.

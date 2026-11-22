@@ -63,7 +63,7 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
         }
         if (const auto *deferStatement = AstCast<const DeferStmt>(statement.get())) {
             if (!deferStack.empty() && deferStatement->deferredStmt) {
-                deferStack.back().push_back(deferStatement);
+                deferStack.back().push_back({deferStatement, cleanupPlanner.TopFrameSize()});
             }
             continue;
         }
@@ -98,17 +98,57 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
             loweredBlock.stmts.push_back(std::move(cleanup));
         }
     }
-    if (!deferStack.empty()) {
-        const auto deferred = deferStack.back();
-        for (auto defIt = deferred.rbegin(); defIt != deferred.rend(); ++defIt) {
-            if ((*defIt)->deferredStmt) {
-                LowerStmtInto(loweredBlock, *(*defIt)->deferredStmt);
-            }
-        }
+    // The scope's defers and the destructors of its locals run as one sequence, the last declared first.
+    if (!EmitScopeExit(loweredBlock, 1, block.location)) {
+        AppendCurrentScopeCleanups(loweredBlock);
     }
-    AppendCurrentScopeCleanups(loweredBlock);
     PopScope();
     return loweredBlock;
+}
+
+bool AstToHirContext::EmitScopeExit(HirBlock &block, const std::size_t frames, const SourceLocation location) {
+    // Snapshot first: lowering a deferred statement may push scopes of its own.
+    struct Entry {
+        const Stmt *deferred = nullptr;
+        HirDropAction drop;
+    };
+
+    std::vector<Entry> entries;
+    bool anyDefer = false;
+    for (std::size_t fromTop = 0; fromTop < frames; ++fromTop) {
+        const std::vector<HirDropAction> &drops = cleanupPlanner.FrameFromTop(fromTop);
+        const std::vector<RegisteredDefer> *defers =
+            fromTop < deferStack.size() ? &deferStack[deferStack.size() - 1 - fromTop] : nullptr;
+        std::size_t drop = drops.size();
+        if (defers) {
+            for (auto defer = defers->rbegin(); defer != defers->rend(); ++defer) {
+                while (drop > defer->dropMark) {
+                    entries.push_back({nullptr, drops[--drop]});
+                }
+                if (defer->statement->deferredStmt) {
+                    entries.push_back({defer->statement->deferredStmt.get(), {}});
+                    anyDefer = true;
+                }
+            }
+        }
+        while (drop > 0) {
+            entries.push_back({nullptr, drops[--drop]});
+        }
+    }
+    if (!anyDefer) {
+        return false;
+    }
+    for (Entry &entry : entries) {
+        if (entry.deferred) {
+            LowerStmtInto(block, *entry.deferred);
+            continue;
+        }
+        auto cleanup = std::make_unique<HirDropStmt>();
+        cleanup->location = location;
+        cleanup->action = std::move(entry.drop);
+        block.stmts.push_back(std::move(cleanup));
+    }
+    return true;
 }
 
 CleanupPlanner::LoopToken AstToHirContext::BeginLoop(const std::string &label) {
@@ -131,22 +171,12 @@ HirStmtPtr AstToHirContext::LowerLoopExit(HirStmtPtr jump, const std::string &la
     if (target == loopDeferBases.rend()) {
         return jump;
     }
-    std::vector<const Stmt *> deferred;
-    for (std::size_t scope = deferStack.size(); scope > target->second; --scope) {
-        const auto &registered = deferStack[scope - 1];
-        for (auto statement = registered.rbegin(); statement != registered.rend(); ++statement) {
-            if ((*statement)->deferredStmt)
-                deferred.push_back((*statement)->deferredStmt.get());
-        }
-    }
-    if (deferred.empty()) {
-        return jump;
-    }
     auto exit = std::make_unique<HirScopeStmt>();
     exit->location = location;
     exit->block.location = location;
-    for (const Stmt *statement : deferred)
-        LowerStmtInto(exit->block, *statement);
+    if (!EmitScopeExit(exit->block, deferStack.size() - target->second, location)) {
+        return jump;
+    }
     exit->block.stmts.push_back(std::move(jump));
     return exit;
 }
@@ -157,16 +187,12 @@ HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLo
     if (value)
         returned->value = std::move(value);
 
-    // Lowering a deferred conditional or a generic call may push scopes. Snapshot the registered statements before
-    // visiting them, and keep return capture separate from the cleanup flags of source-owned bindings.
-    std::vector<const Stmt *> deferred;
-    for (auto scope = deferStack.rbegin(); scope != deferStack.rend(); ++scope) {
-        for (auto statement = scope->rbegin(); statement != scope->rend(); ++statement) {
-            if ((*statement)->deferredStmt)
-                deferred.push_back((*statement)->deferredStmt.get());
-        }
-    }
-    if (deferred.empty()) {
+    // With no defer to place among them, the destructors run in the return itself.
+    const bool anyDefer = std::ranges::any_of(deferStack, [](const std::vector<RegisteredDefer> &scope) {
+        return std::ranges::any_of(
+            scope, [](const RegisteredDefer &defer) { return defer.statement->deferredStmt != nullptr; });
+    });
+    if (!anyDefer) {
         returned->cleanups = FunctionCleanups();
         return returned;
     }
@@ -187,9 +213,10 @@ HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLo
         returned->value = std::move(preserved);
         exit->block.stmts.push_back(std::move(capture));
     }
-    for (const Stmt *statement : deferred)
-        LowerStmtInto(exit->block, *statement);
-    returned->cleanups = FunctionCleanups();
+    // The value is computed first; then the defers and the destructors run as one sequence, innermost scope first and
+    // the last declared first in each, and the parameters last (O17).
+    static_cast<void>(
+        EmitScopeExit(exit->block, std::min(deferStack.size(), cleanupPlanner.FunctionFrameCount()), location));
     exit->block.stmts.push_back(std::move(returned));
     return exit;
 }

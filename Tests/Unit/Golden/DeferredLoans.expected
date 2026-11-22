@@ -1,0 +1,3 @@
+17:16: error: a deferred statement cannot give 'token' away
+23:5: error: 'token' is lent by the 'defer' at 22:5, which runs after this
+29:5: error: 'token' is lent by the 'defer' at 28:5, which runs after this

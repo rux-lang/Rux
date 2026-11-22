@@ -49,6 +49,14 @@ public:
     [[nodiscard]] std::vector<HirDropAction> FunctionExitActions() const;
     [[nodiscard]] std::vector<HirDropAction> LoopExitActions(const std::string &label) const;
     [[nodiscard]] std::optional<HirDropAction> ActionFor(std::uint64_t bindingId) const;
+    /// How many actions the innermost frame holds now, which places a `defer` among the destructors of its scope.
+    [[nodiscard]] std::size_t TopFrameSize() const noexcept;
+    /// The frame `fromTop` frames below the innermost one, in declaration order.
+    [[nodiscard]] const std::vector<HirDropAction> &FrameFromTop(std::size_t fromTop) const;
+    /// How many frames a return leaves: every frame of the active function.
+    [[nodiscard]] std::size_t FunctionFrameCount() const noexcept;
+    /// How many frames a `break` or `continue` to the loop `label`, or the innermost loop, leaves; none without one.
+    [[nodiscard]] std::size_t LoopFrameCount(const std::string &label) const;
 
     /// Number bindings from one again. Identities only have to be unique within a function, so each module starts
     /// afresh, which keeps a module's lowering independent of which modules were lowered before it.

@@ -1,0 +1,68 @@
+// At an exit, the value being returned is computed first. Then the deferred statements and the destructors of the
+// live locals run as one sequence: innermost scope first, the last declared first in each, and the parameters last.
+// A local declared after a `defer` is therefore destroyed before the deferred statement runs, so a defer may lend a
+// value declared before it.
+
+import Core::Diagnostics::Assert;
+
+var log: int = 0;
+
+func Note(digit: int) {
+    log = log * 10 + digit;
+}
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    destructor {
+        Note(self.id);
+    }
+}
+
+func Fallthrough() {
+    let first = Token { id: 1 };
+    defer Note(2);
+    let second = Token { id: 3 };
+}
+
+func Returned(parameter: Token) -> int {
+    let first = Token { id: 2 };
+    defer Note(3);
+    let second = Token { id: 4 };
+    if true {
+        let inner = Token { id: 5 };
+        defer Note(6);
+        return first.id + second.id;
+    }
+    return 0;
+}
+
+func Loop() {
+    var index = 0;
+    while index < 1 {
+        let first = Token { id: 1 };
+        defer Note(2);
+        let second = Token { id: 3 };
+        index += 1;
+        if index == 1 {
+            break;
+        }
+    }
+}
+
+func Main() -> int {
+    log = 0;
+    Fallthrough();
+    Assert(log == 321, "the later local, then the defer, then the earlier local");
+
+    log = 0;
+    Assert(Returned(Token { id: 1 }) == 6, "the value is computed first");
+    Assert(log == 654321, "inner scope first, the last declared first, the parameter last");
+
+    log = 0;
+    Loop();
+    Assert(log == 321, "a break runs the body's defers and destructors as one sequence");
+    return 0;
+}
