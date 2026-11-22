@@ -1,18 +1,20 @@
 name: CI
 
-# The one workflow every push, pull request and manual run starts with. It
-# decides once how much verification the run gets, calls one reusable workflow
-# per target with that decision, runs the host-independent checks itself, and
-# owns the single required check, `CI`.
+# The one workflow that verifies Rux. Every push, pull request and manual run
+# starts here, and Release.yml calls it, so a release is built by exactly the
+# jobs CI ran. The first job decides once how much verification the run gets:
 #
 #   docs      only documentation changed: nothing builds
 #   fast      a push to a topic branch: policy, formatting, Linux x86-64
 #   full      a pull request: every target, clang-tidy, the FreeBSD AArch64 smoke
-#   extended  pushes to dev and main, a dispatched run, and Release: full plus
-#             everything that runs under emulation
+#   extended  pushes to dev and main, a dispatched run, and a release: full
+#             plus everything that runs under emulation
 #
-# Release.yml calls the same target workflows with `extended`, so a release is
-# built by exactly the steps CI verified.
+# Each target is one job that lists its steps in the order they run. A step
+# that several jobs share is written once, where it is first used, with a YAML
+# anchor (`- &build`), and repeated elsewhere by alias (`- *build`). The shared
+# steps read the target from the job's RUX_TARGET, so an alias is the same step
+# for another target, not a copy that can drift.
 
 on:
   push:
@@ -27,13 +29,21 @@ on:
         type: choice
         options: [fast, full, extended]
         default: extended
+  workflow_call:
+    inputs:
+      scope:
+        description: fast, full, or extended
+        type: string
+        default: extended
 
 # A branch push and its pull request share one group so the same commit is
 # never built twice, and a newer push supersedes the run in flight, on dev too:
 # the compilation cache is saved before the tests, so a superseded run has
-# already warmed it. A dispatched run is never cancelled.
+# already warmed it. A dispatched run is never cancelled. The group carries the
+# workflow name, which is the caller's when Release.yml calls this workflow, so
+# a push can never cancel a release.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
@@ -46,8 +56,11 @@ jobs:
     timeout-minutes: 3
     outputs:
       scope: ${{ steps.resolve.outputs.scope }}
+      # What every job but the fast lane asks: does this run build every target?
+      every-target: ${{ steps.resolve.outputs.scope == 'full' || steps.resolve.outputs.scope == 'extended' }}
     steps:
-      - uses: actions/checkout@v7
+      - &checkout
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Resolve the verification scope
@@ -63,47 +76,542 @@ jobs:
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
           echo "Verification scope: **$scope**" >> "$GITHUB_STEP_SUMMARY"
 
-  # The jobs below share two toolchains and one FreeBSD guest disk. Each is put
-  # in the cache by one job before its users start, so a cold cache is filled
-  # once rather than by every user at the same time; warm, each takes seconds.
-  toolchain-linux-x86_64:
-    name: Linux x86-64 toolchain
-    needs: scope
-    if: needs.scope.outputs.scope != 'docs'
-    uses: ./.github/workflows/Toolchain.yml
-    with:
-      target: linux-x86_64
-      runner: ubuntu-26.04
+  # --- Native targets -------------------------------------------------------
 
-  toolchain-macos-aarch64:
-    name: macOS toolchain
+  # The fast lane: it runs in every scope that builds anything. It is also the
+  # host that checks every cross target, because rux emits and links every
+  # target format in-process, and the job that defines the steps the other
+  # native targets repeat.
+  linux-x86_64:
+    name: Linux x86-64
     needs: scope
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/Toolchain.yml
-    with:
-      target: macos-aarch64
-      runner: macos-26
-
-  freebsd-image:
-    name: FreeBSD image
-    needs: scope
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/FreeBSD-Image.yml
-
-  quality:
-    name: Policy and formatting
-    needs: [scope, toolchain-linux-x86_64]
     if: needs.scope.outputs.scope != 'docs'
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 25
+    env:
+      RUX_TARGET: linux-x86_64
     steps:
-      - uses: actions/checkout@v7
+      - *checkout
+
+      # Restores the pinned Clang and ccache prefix from the cache, or packs it
+      # from the pinned upstream assets and caches it, then exports the
+      # compiler and ccache settings every later step uses.
+      - &toolchain
+        name: Install the toolchain
+        uses: ./.github/actions/toolchain
         with:
-          persist-credentials: false
+          target: ${{ env.RUX_TARGET }}
+
+      # The sha suffix makes the primary key always miss, so every saving run
+      # writes back a cache warmer than the one it restored.
+      - &restore-cache
+        name: Restore the compilation cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-${{ env.RUX_TARGET }}-${{ hashFiles('.github/Toolchains.env') }}-${{ github.sha }}
+          restore-keys: ccache-${{ env.RUX_TARGET }}-${{ hashFiles('.github/Toolchains.env') }}-
+
+      - &build
+        name: Build
+        run: sh .github/Scripts/Verify.sh --stage build
+
+      # Saved before the tests so a slow or failing suite does not cost the next
+      # run its warm cache, and on pushes only: a pull request rebuilds the
+      # commit its branch push already cached.
+      - &save-cache
+        name: Save the compilation cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - &test
+        name: Test
+        run: sh .github/Scripts/Verify.sh --stage test
+
+      # The shipped compiler must depend only on system libraries.
+      - &closure
+        name: Check the runtime closure
+        run: sh .github/Scripts/Verify.sh --stage closure
+
+      # Rux formatting needs a built compiler, so it runs here rather than in
+      # the quality job.
+      - name: Check Rux formatting
+        run: sh .github/Scripts/Verify.sh --stage format
+
+      - name: Check every cross target
+        run: |
+          for target in freebsd-aarch64 freebsd-x86_64 linux-aarch64 macos-aarch64 \
+                        macos-x86_64 windows-aarch64 windows-x86_64; do
+            ./Bin/rux check --target "$target"
+          done
+
+      # A Linux host builds a FreeBSD AArch64 executable and static archive and
+      # inspects their ELF identity without a sysroot or an emulator.
+      - name: Cross-build FreeBSD AArch64 images and inspect them
+        run: sh Tests/Native/FreeBSDAArch64/VerifyCross.sh ./Bin/rux
+
+      # The same host builds a macOS executable and a dylib, then inspects the
+      # Mach-O headers, the embedded code signature, and a deterministic
+      # rebuild. It is the one place that proves a non-Mac host can target macOS.
+      - name: Cross-build macOS AArch64 images and inspect them
+        shell: pwsh
+        run: ./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux
+
+      # Release.yml packages what this step uploads, as rux-<target>.
+      - &upload
+        name: Upload the compiler
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-${{ env.RUX_TARGET }}
+          path: Bin/rux${{ runner.os == 'Windows' && '.exe' || '' }}
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-aarch64:
+    name: Linux AArch64
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 25
+    env:
+      RUX_TARGET: linux-aarch64
+    steps:
+      - *checkout
+      - *toolchain
+      - *restore-cache
+      - *build
+      - *save-cache
+      - *test
+      - *closure
+      - *upload
+
+  macos-aarch64:
+    name: macOS AArch64
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      RUX_TARGET: macos-aarch64
+    steps:
+      - *checkout
+      - *toolchain
+      - *restore-cache
+      - *build
+      - *save-cache
+      - *test
+      - *closure
+      - name: Run the native fixtures
+        run: sh Tests/Native/MacOSAArch64/Verify.sh
+      - *upload
+
+  # There is no Intel runner and no macOS x86-64 toolchain: LLVM publishes no
+  # macOS archive and Homebrew has no Intel bottle for macOS 26. The macOS SDK
+  # is universal, so the AArch64 prefix cross-builds the x86-64 compiler
+  # (RUX_OSX_ARCHITECTURE, which the build stage reads) and Rosetta runs it and
+  # its tests on the same machine.
+  macos-x86_64:
+    name: macOS x86-64
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      RUX_TARGET: macos-x86_64
+      RUX_OSX_ARCHITECTURE: x86_64
+    steps:
+      - *checkout
+      # The AArch64 prefix, shared with the macOS AArch64 job through one
+      # cache entry; everything after it is keyed on this job's own target.
       - name: Install the toolchain
         uses: ./.github/actions/toolchain
         with:
-          target: linux-x86_64
+          target: macos-aarch64
+      - *restore-cache
+      - *build
+      - *save-cache
+      - *test
+      - *closure
+      # The compiler built here is x86-64 and runs under Rosetta on this AArch64
+      # host, which is exactly the translated-compiler boundary these fixtures
+      # exist to check.
+      - name: Run the fixtures under Rosetta
+        run: sh Tests/Native/MacOSAArch64/VerifyRosetta.sh
+      - *upload
+
+  # The Windows jobs run the PowerShell peer of Verify.sh; the toolchain step
+  # also imports the Visual Studio environment once for every later step.
+  windows-x86_64:
+    name: Windows x86-64
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      RUX_TARGET: windows-x86_64
+    steps:
+      - *checkout
+      - *toolchain
+      - *restore-cache
+      - &build-windows
+        name: Build
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage build
+      - *save-cache
+      - &test-windows
+        name: Test
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage test
+      - &closure-windows
+        name: Check the runtime closure
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage closure
+      - *upload
+
+  windows-aarch64:
+    name: Windows AArch64
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    env:
+      RUX_TARGET: windows-aarch64
+    steps:
+      - *checkout
+      - *toolchain
+      - *restore-cache
+      - *build-windows
+      - *save-cache
+      - *test-windows
+      - *closure-windows
+      # Each verifier throws on failure, which ends the step. $LASTEXITCODE is
+      # not a verdict: the exit-code fixture deliberately leaves it at 73.
+      - &windows-aarch64-fixtures
+        name: Run the AArch64 fixtures
+        shell: pwsh
+        run: |
+          foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {
+            & "./Tests/Native/WindowsAArch64$fixture/Verify.ps1"
+          }
+          exit 0
+      - *upload
+
+  # The x86-64 compiler just built, running under the ARM64 host's emulation
+  # layer. Nothing is compiled here: the compiler needs no toolchain, so the job
+  # downloads it and drives it. It proves a translated compiler still produces
+  # working output for its own architecture and for the host's. macOS covers
+  # the same boundary inside its x86-64 job, under Rosetta.
+  windows-x86_64-emulated:
+    name: Windows x86-64 under emulation
+    needs: [scope, windows-x86_64]
+    if: needs.scope.outputs.scope == 'extended'
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - name: Download the compiler
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-windows-x86_64
+          path: Bin
+
+      # Prism approximates x87 arithmetic with float64 unless an app opts out
+      # by hand, so x86-64 float80 arithmetic at run time does not give the
+      # hardware's results. ApproximateX87 compiles out the checks that pin them.
+      - name: Test the translated compiler
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./Bin/rux.exe check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe lint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe test --release --jobs 4 --define ApproximateX87
+
+      # The translated compiler detects the native OS architecture and launches
+      # its AArch64 output directly.
+      - name: Test the AArch64 target
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./Bin/rux.exe check --target windows-aarch64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe test --release --target windows-aarch64 --jobs 4
+
+      - *windows-aarch64-fixtures
+
+  # --- FreeBSD ----------------------------------------------------------------
+
+  # There is no hosted FreeBSD runner, so both targets build inside one KVM
+  # x86-64 guest image on a Linux host. This job prepares that disk before
+  # either build starts: vmactions caches it after `prepare`, keyed on the
+  # prepare script and the sync method, and two jobs saving the same
+  # multi-gigabyte image at once left the loser uploading a copy that was
+  # thrown away while its workspace copy-back timed out. With nothing to copy
+  # back, this job is the only one that ever saves the disk; warm, it boots the
+  # cached disk and exits.
+  freebsd-image:
+    name: FreeBSD image
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      # Every pinned version reaches the guest and the cache keys from one
+      # file, so there is nothing to keep in sync.
+      - &manifest
+        name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+      - name: Prepare the FreeBSD guest
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: x86_64
+          mem: 8192
+          sync: rsync
+          copyback: false
+          cache-after-prepare: 'true'
+          # The one prepare script. The build jobs alias it, so the three
+          # guests cannot disagree about the disk they share. It installs the
+          # toolchain from pkg's latest branch, the only one that carries
+          # llvm23, and unpacks the AArch64 base system the cross-build uses
+          # as its sysroot.
+          prepare: &freebsd-prepare |
+            set -eu
+            export ASSUME_ALWAYS_YES=yes IGNORE_OSVERSION=yes
+            mkdir -p /usr/local/etc/pkg/repos
+            cat >/usr/local/etc/pkg/repos/FreeBSD.conf <<'REPO'
+            FreeBSD-ports: {
+              url: "pkg+https://pkg.FreeBSD.org/${ABI}/latest",
+              mirror_type: "srv",
+              signature_type: "fingerprints",
+              fingerprints: "/usr/share/keys/pkg",
+              enabled: yes
+            }
+            REPO
+            pkg update -f
+            pkg install -y ${{ env.FREEBSD_PKG_LLVM }} cmake-core ninja ccache4 git-lite
+            fetch -q -o /tmp/base.txz "${{ env.FREEBSD_BASE_URL }}/${{ env.FREEBSD_BASE_ASSET }}"
+            [ "$(sha256 -q /tmp/base.txz)" = "${{ env.SHA256_FREEBSD_BASE_AARCH64 }}" ]
+            mkdir -p /opt/sysroot/freebsd-aarch64
+            tar -xf /tmp/base.txz -C /opt/sysroot/freebsd-aarch64 ./lib ./usr/lib ./usr/include ./usr/libdata
+            rm -f /tmp/base.txz
+          run: |
+            freebsd-version
+            clang++23 --version | head -1
+            [ -f /opt/sysroot/freebsd-aarch64/usr/lib/libc.so ]
+
+  # The build and tests run inside the guest. The compilation cache rides in
+  # with the workspace and comes back out with it.
+  freebsd-x86_64:
+    name: FreeBSD x86-64
+    needs: [scope, freebsd-image]
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      RUX_TARGET: freebsd-x86_64
+    steps:
+      - *checkout
+      - *manifest
+      - *restore-cache
+
+      # Boots the prepared disk, mirrors the workspace at the same path inside
+      # it, and registers the `freebsd` shell the steps below use; each of
+      # those steps is synced in before it runs and back out after.
+      - &freebsd-guest
+        name: Boot the FreeBSD guest
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: x86_64
+          mem: 8192
+          sync: rsync
+          copyback: true
+          custom-shell-name: freebsd
+          cache-after-prepare: 'true'
+          prepare: *freebsd-prepare
+          run: |
+            freebsd-version
+            clang++23 --version | head -1
+            cmake --version | head -1
+            ninja --version
+            ccache --version | head -1
+            [ -f /opt/sysroot/freebsd-aarch64/usr/lib/libc.so ]
+
+      # FreeBSDEnv.sh exports inside the guest what the toolchain action
+      # exports on a host: the guest has no GITHUB_ENV.
+      - name: Build
+        shell: freebsd {0}
+        run: |
+          set -eu
+          . .github/Scripts/FreeBSDEnv.sh
+          sh .github/Scripts/Verify.sh --stage build
+      - *save-cache
+      - name: Test
+        shell: freebsd {0}
+        run: |
+          set -eu
+          . .github/Scripts/FreeBSDEnv.sh
+          sh .github/Scripts/Verify.sh --stage test
+      - name: Check the runtime closure
+        shell: freebsd {0}
+        run: |
+          set -eu
+          sh .github/Scripts/Verify.sh --stage closure
+
+      # The transfer payload is a sealed set of AArch64 binaries this x86-64
+      # compiler cross-built, for a guest that has no compiler at all.
+      - name: Produce the AArch64 transfer payload
+        if: needs.scope.outputs.scope == 'extended'
+        shell: freebsd {0}
+        run: |
+          set -eu
+          sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh ./Bin/rux FreeBSDAArch64Payload
+      - *upload
+      - name: Upload the transfer payload
+        if: needs.scope.outputs.scope == 'extended'
+        uses: actions/upload-artifact@v7
+        with:
+          name: freebsd-aarch64-payload
+          path: FreeBSDAArch64Payload
+          if-no-files-found: error
+          retention-days: 1
+
+  # No hosted runner accelerates an AArch64 guest, so the compiler is
+  # cross-compiled for freebsd-aarch64 inside the same x86-64 guest, with the
+  # guest's own Clang and lld against the AArch64 base system as a sysroot.
+  freebsd-aarch64:
+    name: FreeBSD AArch64
+    needs: [scope, freebsd-image]
+    if: needs.scope.outputs.every-target == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      RUX_TARGET: freebsd-aarch64
+    steps:
+      - *checkout
+      - *manifest
+      - *restore-cache
+      - *freebsd-guest
+
+      # CMake honours CMAKE_TOOLCHAIN_FILE from the environment on the first
+      # configure, so Run.sh needs no new option; the guest's Build/ is fresh.
+      # The unit tests are left out: they would be AArch64 binaries this guest
+      # cannot run, and the AArch64 guest below has no toolchain to need them.
+      - name: Cross-build for freebsd-aarch64
+        shell: freebsd {0}
+        run: |
+          set -eu
+          . .github/Scripts/FreeBSDEnv.sh
+          export CMAKE_TOOLCHAIN_FILE="$PWD/Compiler/CMake/Toolchains/FreeBSD-AArch64.cmake"
+          export RUX_FREEBSD_AARCH64_SYSROOT=/opt/sysroot/freebsd-aarch64
+          export RUX_BUILD_TESTS=OFF
+          sh .github/Scripts/Verify.sh --stage build
+      - *save-cache
+
+      # On the copied-back Bin/rux: the FreeBSD OS ABI at byte 7 and the
+      # AArch64 machine at bytes 18 and 19, read the way the repository's own
+      # verifiers read ELF headers.
+      - name: Verify the compiler is a FreeBSD AArch64 ELF image
+        run: |
+          set -eu
+          set -- $(od -An -tu1 -j 0 -N 8 Bin/rux)
+          [ "$1 $2 $3 $4 $5 $6 $7 $8" = "127 69 76 70 2 1 1 9" ] ||
+            { echo '::error::Bin/rux is not a little-endian FreeBSD ELF64 image'; exit 1; }
+          set -- $(od -An -tu1 -j 18 -N 2 Bin/rux)
+          [ "$1 $2" = "183 0" ] || { echo '::error::Bin/rux is not AArch64'; exit 1; }
+      - *upload
+
+  # The cross-built compiler on a native AArch64 kernel, in a guest with no
+  # toolchain installed. The guest runs under emulation on the x86-64 host,
+  # several times slower than native, so the full scope runs a bounded smoke —
+  # every workspace package checked, the native fixtures, the runtime closure,
+  # and one language test built and launched — and the extended scope adds the
+  # lint and the complete Rux test suite.
+  freebsd-aarch64-emulated:
+    name: FreeBSD AArch64 under emulation
+    needs: [scope, freebsd-aarch64]
+    runs-on: ubuntu-26.04
+    timeout-minutes: ${{ needs.scope.outputs.scope == 'extended' && 180 || 60 }}
+    steps:
+      - *checkout
+      - *manifest
+      - name: Download the compiler
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-freebsd-aarch64
+          path: Bin
+      - name: Run the compiler in an AArch64 guest
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        env:
+          RUX_SCOPE: ${{ needs.scope.outputs.scope }}
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: aarch64
+          mem: 6144
+          envs: 'RUX_SCOPE'
+          sync: rsync
+          copyback: false
+          run: |
+            set -eu
+            chmod +x Bin/rux
+            ./Bin/rux version
+            ./Bin/rux check
+            sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
+            sh .github/Scripts/Verify.sh --stage closure
+            ./Bin/rux --manifest Tests/Language/Arithmetic/Rux.toml run --release
+            if [ "$RUX_SCOPE" = extended ]; then
+              ./Bin/rux lint
+              ./Bin/rux test --release --jobs 4
+            fi
+
+  # A two-machine contract: a fresh AArch64 guest with no toolchain installed
+  # consumes the payload the x86-64 guest produced. Its emptiness is the point.
+  freebsd-transfer:
+    name: FreeBSD transfer
+    needs: [scope, freebsd-x86_64]
+    if: needs.scope.outputs.scope == 'extended'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - *checkout
+      - *manifest
+      - name: Download the transfer payload
+        uses: actions/download-artifact@v8
+        with:
+          name: freebsd-aarch64-payload
+          path: FreeBSDAArch64Payload
+      - name: Consume it in a guest with no toolchain
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: aarch64
+          mem: 4096
+          sync: rsync
+          copyback: false
+          run: |
+            set -eu
+            sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload
+
+  # --- Host-independent checks ------------------------------------------------
+
+  quality:
+    name: Policy and formatting
+    needs: scope
+    if: needs.scope.outputs.scope != 'docs'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      RUX_TARGET: linux-x86_64
+    steps:
+      - *checkout
+      - *toolchain
       - name: Check component boundaries
         run: sh Run.sh policy
       - name: Check C++ formatting
@@ -111,25 +619,22 @@ jobs:
           find Compiler Tests/Unit \( -name '*.cpp' -o -name '*.h' \) -not -path '*ThirdParty*' -print0 |
             xargs -0 clang-format-23 --dry-run -Werror
 
+  # clang-tidy is slow, so it waits for something that can reach dev.
   tidy:
     name: clang-tidy (shard ${{ matrix.shard }})
-    needs: [scope, toolchain-linux-x86_64]
-    # clang-tidy is slow, so it waits for something that can reach dev.
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
+    needs: scope
+    if: needs.scope.outputs.every-target == 'true'
     strategy:
       fail-fast: false
       matrix:
         shard: [0, 1, 2]
     runs-on: ubuntu-26.04
     timeout-minutes: 25
+    env:
+      RUX_TARGET: linux-x86_64
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Install the toolchain
-        uses: ./.github/actions/toolchain
-        with:
-          target: linux-x86_64
+      - *checkout
+      - *toolchain
       # Configure only: `Run.sh tidy` needs the compilation database, and
       # `Run.sh build` would also compile everything. The flags mirror the
       # configure line in Run.sh with PCH off, the database clang-tidy can read.
@@ -155,73 +660,6 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
-  # The fast lane runs in every scope that builds anything; it is also the
-  # host that checks every cross target.
-  linux-x86_64:
-    name: Linux x86-64
-    needs: [scope, toolchain-linux-x86_64]
-    if: needs.scope.outputs.scope != 'docs'
-    uses: ./.github/workflows/Linux-x86_64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  # Every other target waits for something that can reach dev.
-  linux-aarch64:
-    name: Linux AArch64
-    needs: scope
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/Linux-AArch64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  macos-aarch64:
-    name: macOS AArch64
-    needs: [scope, toolchain-macos-aarch64]
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/macOS-AArch64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  macos-x86_64:
-    name: macOS x86-64
-    needs: [scope, toolchain-macos-aarch64]
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/macOS-x86_64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  windows-x86_64:
-    name: Windows x86-64
-    needs: scope
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/Windows-x86_64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  windows-aarch64:
-    name: Windows AArch64
-    needs: scope
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/Windows-AArch64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  freebsd-x86_64:
-    name: FreeBSD x86-64
-    needs: [scope, freebsd-image]
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/FreeBSD-x86_64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
-  freebsd-aarch64:
-    name: FreeBSD AArch64
-    needs: [scope, freebsd-image]
-    if: needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == 'extended'
-    uses: ./.github/workflows/FreeBSD-AArch64.yml
-    with:
-      scope: ${{ needs.scope.outputs.scope }}
-
   # The single required check. `!cancelled()` rather than `always()` means
   # pressing Cancel ends the run immediately instead of leaving this job to
   # outlive it, and accepting `skipped` is what lets a docs-only change and the
@@ -231,20 +669,21 @@ jobs:
     if: ${{ !cancelled() }}
     needs:
       - scope
-      - toolchain-linux-x86_64
-      - toolchain-macos-aarch64
-      - freebsd-image
-      - quality
-      - tidy
-      - branch-policy
       - linux-x86_64
       - linux-aarch64
       - macos-aarch64
       - macos-x86_64
       - windows-x86_64
       - windows-aarch64
+      - windows-x86_64-emulated
+      - freebsd-image
       - freebsd-x86_64
       - freebsd-aarch64
+      - freebsd-aarch64-emulated
+      - freebsd-transfer
+      - quality
+      - tidy
+      - branch-policy
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

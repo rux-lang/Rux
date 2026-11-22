@@ -1,6 +1,6 @@
 # Release Pipeline
 
-How a dispatched run becomes a published, multi-platform GitHub Release. The pipeline is defined in [`.github/workflows/Release.yml`](../.github/workflows/Release.yml) and builds every target by calling the same workflows the per-push CI in [CI/CD Flow](CI-CD.md) runs.
+How a dispatched run becomes a published, multi-platform GitHub Release. The pipeline is defined in [`.github/workflows/Release.yml`](../.github/workflows/Release.yml) and builds every target by calling `CI.yml`, the workflow every push runs, described in [CI/CD Flow](CI-CD.md).
 
 ## Trigger
 
@@ -16,9 +16,8 @@ gh workflow run Release.yml --ref main -f version=0.4.0 -f dry-run=true   # rehe
 ## Stages
 
 ```
-verify ──► linux-x86_64, linux-aarch64, macos-aarch64, macos-x86_64,        ──► publish ──┐
-           windows-x86_64, windows-aarch64, freebsd-x86_64, freebsd-aarch64                ├──► draft
-           windows-x86_64 ──────────────────────────────────────────────────► installer ──┘
+verify ──► ci (all of CI.yml, extended scope) ──┬──► publish ────┐
+                                                └──► installer ──┴──► draft
 ```
 
 ### 1. `verify` (Fail Fast)
@@ -27,9 +26,9 @@ Checks that the requested version is a three-part number, that `project(Rux VERS
 
 > **Always bump the version in `CMakeLists.txt` and add its changelog section before dispatching, and dispatch the exact same version.**
 
-### 2. Target builds
+### 2. `ci` (Target builds)
 
-Each of the eight jobs `needs: verify` and calls the target's reusable workflow with the `extended` scope, so a release is built by the very steps CI verified and nothing that runs under emulation is skipped: every target builds Release **and runs its suites**, and a broken build or failing test blocks the release.
+One job `needs: verify` and calls `CI.yml` with the `extended` scope, so a release is built by the very jobs CI ran and nothing that runs under emulation is skipped: every target builds Release **and runs its suites**, and a broken build or failing test blocks the release. In the run's graph these jobs appear under `CI`, for example `CI / Linux x86-64`.
 
 | Job               | Runner                                                                        | Binary artifact       |
 | ----------------- | ----------------------------------------------------------------------------- | --------------------- |
@@ -46,13 +45,13 @@ Each job runs language tests from the repository root. Test manifests use local 
 
 ### 3. `publish` and `installer`
 
-`publish` needs all eight target jobs, downloads their `rux-<target>` artifacts, and packages them:
+`publish` needs `ci`, downloads the eight `rux-<target>` artifacts its jobs uploaded, and packages them:
 
 - `rux-{freebsd,linux,macos}-{x86_64,aarch64}.tar.gz` (preserving the executable bit)
 - `rux-windows-{x86_64,aarch64}.zip`
 - the architecture-unqualified filenames as compatibility aliases
 
-`installer` needs only `windows-x86_64` and packages the freshly built binary into a per-user MSI (`Packaging/Windows/Msi/Build.ps1`), uploaded as `rux-windows.msi`. An AArch64 MSI is not produced because the current WiX package is authored for x64; AArch64 Windows is distributed as a ZIP.
+`installer` needs `ci` as well and packages the freshly built Windows x86-64 binary into a per-user MSI (`Packaging/Windows/Msi/Build.ps1`), uploaded as `rux-windows.msi`. An AArch64 MSI is not produced because the current WiX package is authored for x64; AArch64 Windows is distributed as a ZIP.
 
 ### 4. `draft`
 

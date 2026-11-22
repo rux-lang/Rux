@@ -23,7 +23,7 @@ Opening a PR prefills [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUE
 
 Opening or updating a PR runs the full scope of `CI.yml` — every supported target builds and runs its test suite, clang-tidy analyzes every translation unit, and FreeBSD AArch64 gets its emulated smoke. A pull request that changes only documentation builds nothing. See [CI/CD Flow](CI-CD.md) for the exact scopes and jobs.
 
-One check blocks merging: **`CI`**, the gate job that aggregates every job of the run. The per-target check runs (`Linux x86-64 / Build`, `FreeBSD AArch64 / Test`, and so on) are where to look when it fails; none of them is informational, since any failure fails the gate.
+One check blocks merging: **`CI`**, the gate job that aggregates every job of the run. The per-target check runs (`Linux x86-64`, `FreeBSD AArch64 under emulation`, and so on) are where to look when it fails; none of them is informational, since any failure fails the gate.
 
 ## 3. Review
 
