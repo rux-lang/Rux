@@ -1,0 +1,58 @@
+// A loop that lends a container calls its 'Iterate'. An 'Iterate' that writes its receiver needs the container lent
+// for writing, so a read-only loan or an immutable place is an error; '&var' and a writable place are accepted.
+struct Cursor {
+    at: int;
+    end: int;
+}
+
+extend Cursor {
+    func Next(&var self) -> int? {
+        if self.at >= self.end {
+            return none;
+        }
+        self.at += 1;
+        return self.at;
+    }
+}
+
+struct Shelf {
+    count: int;
+    walks: int;
+}
+
+extend Shelf {
+    func Iterate(&var self) -> Cursor {
+        self.walks += 1;
+        return Cursor { at: 0, end: self.count };
+    }
+}
+
+func Walk(shelf: &Shelf) -> int {
+    var total = 0;
+    for item in shelf {
+        total += item;
+    }
+    return total;
+}
+
+func Main() -> int {
+    let shelf = Shelf { count: 3, walks: 0 };
+    var open = Shelf { count: 2, walks: 0 };
+    var total = 0;
+    for item in &shelf {
+        total += item;
+    }
+    for item in shelf {
+        total += item;
+    }
+    for item in &open {
+        total += item;
+    }
+    for item in &var open {
+        total += item;
+    }
+    for item in open {
+        total += item;
+    }
+    return total + Walk(&shelf);
+}

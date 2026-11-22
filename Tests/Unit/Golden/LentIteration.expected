@@ -1,0 +1,4 @@
+32:17: error: 'Iterate' writes its receiver, but 'shelf' is lent for reading
+42:17: error: 'Iterate' writes its receiver, but 'shelf' is lent for reading
+45:17: error: 'Iterate' writes its receiver, but 'shelf' is lent for reading
+48:17: error: 'Iterate' writes its receiver, but 'open' is lent for reading

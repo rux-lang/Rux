@@ -197,6 +197,25 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     const bool place = AstCast<const IdentExpr>(&subject) || AstCast<const SelfExpr>(&subject) ||
                        AstCast<const FieldExpr>(&subject) || (index && !IsIndexOperatorCall(*index)) ||
                        (unary && unary->op == TokenKind::Star);
+    // A loop that lends a container calls `Iterate` on it, so an `Iterate` that writes its receiver needs the container
+    // lent for writing: a read-only loan or an immutable place reaches only one that reads.
+    if (shape.kind == IterationShape::Kind::Iterable && shape.entry && ReceiverIsMutableBorrow(*shape.entry)) {
+        const auto recorded = expressionTypes.find(&subject);
+        const TypeRef subjectType = recorded != expressionTypes.end() ? recorded->second : TypeRef::MakeUnknown();
+        const bool reference = subjectType->kind == TypeRef::Kind::Reference && !subjectType->inner.empty();
+        if ((reference && !subjectType->inner.front().isMut) || (!reference && place && PlaceIsImmutable(subject))) {
+            const auto *loan = AstCast<const LoanExpr>(&subject);
+            const MovePlace lent = AnalyzeMovePlace(loan ? *loan->operand : subject);
+            const std::string name = lent.IsNamedStorage() || lent.IsBorrowedStorage() ? lent.Display() : "";
+            EmitError(subject.location,
+                      name.empty() ? std::string("'Iterate' writes its receiver, but the container is lent for reading")
+                                   : std::format("'Iterate' writes its receiver, but '{}' is lent for reading", name),
+                      {std::format("'Iterate' of '{}' takes '&var self'",
+                                   (reference ? subjectType->inner.front() : subjectType).DisplayString())},
+                      name.empty() ? std::string("declare 'Iterate(&self)' to walk the container without changing it")
+                                   : std::format("lend it with '&var {}', or declare 'Iterate(&self)'", name));
+        }
+    }
     if (shape.kind == IterationShape::Kind::Iterator && place) {
         iteration.advancesInPlace = true;
         if (PlaceIsImmutable(subject)) {
