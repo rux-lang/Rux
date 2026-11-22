@@ -1,0 +1,117 @@
+// A method may take its receiver as `~self`: it ends the value in place of the destructor. The destructor does not
+// run; inside the method each field of `self` is a local of its own, which is read, given away or ended, and the
+// fields still there where the method exits are destroyed, last declared first. A use of the value after the call is
+// an error, so the value stores no "ended" state and the destructor checks none.
+
+import Core::Diagnostics::Assert;
+
+var log: int = 0;
+
+// Appends a digit to the log, so the log reads as the order of events.
+func Note(digit: int) {
+    log = log * 10 + digit;
+}
+
+struct Part {
+    id: int;
+}
+
+extend Part {
+    destructor {
+        Note(self.id);
+    }
+}
+
+enum Failure: int32 { Busy = 1 }
+
+struct File {
+    handle: Part;
+    path: Part;
+    closes: int;
+}
+
+extend File {
+    // An ending that can fail says so; the fields are destroyed on both exits.
+    func Close(~self, refuse: bool) -> !Failure {
+        if refuse { throw .Busy; }
+        Note(9);
+    }
+
+    // A field of `~self` is given away like a local, and only what is left is destroyed.
+    func IntoPath(~self) -> Part {
+        return self.path;
+    }
+
+    // A field may be ended on its own, and the rest still goes in the usual order.
+    func Release(~self) -> int {
+        destroy self.path;
+        Note(8);
+        return self.closes;
+    }
+
+    destructor {
+        Note(7);
+    }
+}
+
+// A generic container hands its contents on with `~self`, so nothing is reset for the destructor to find.
+struct Holder<T> {
+    value: T;
+    tag: Part;
+}
+
+extend Holder<T> {
+    func Take(~self) -> T {
+        return self.value;
+    }
+
+    destructor {
+        Note(6);
+    }
+}
+
+func Open(handle: int, path: int) -> File {
+    return File { handle: Part { id: handle }, path: Part { id: path }, closes: 0 };
+}
+
+func Main() -> int {
+    log = 0;
+    let file = Open(1, 2);
+    file.Close(false) !!;
+    // The destructor does not run; 'path' and then 'handle' are destroyed, last declared first.
+    Assert(log == 921, "an ending runs instead of the destructor, then destroys the fields");
+
+    log = 0;
+    let failing = Open(1, 2);
+    var refused = false;
+    failing.Close(true) catch { _ => { refused = true; } };
+    Assert(refused, "a failing ending reports its error");
+    Assert(log == 21, "and destroys the fields on that exit too");
+
+    log = 0;
+    let named = Open(3, 4);
+    let path = named.IntoPath();
+    Assert(log == 3, "a field given away is not destroyed by the ending");
+    Assert(path.id == 4, "the caller owns the field it was given");
+    destroy path;
+    Assert(log == 34, "and destroys it once");
+
+    log = 0;
+    let released = Open(5, 4);
+    Assert(released.Release() == 0, "an ending returns a value like any method");
+    Assert(log == 485, "an ended field goes first, and the rest after the body");
+
+    log = 0;
+    let holder = Holder<Part> { value: Part { id: 1 }, tag: Part { id: 2 } };
+    let taken = holder.Take();
+    Assert(log == 2, "a generic ending gives its field away and destroys the rest, not the destructor");
+    destroy taken;
+    Assert(log == 21, "the taken value is destroyed by its new owner");
+
+    log = 0;
+    if true {
+        let unended = Open(1, 2);
+    }
+    Assert(log == 721, "a value nobody ended runs its destructor, then its fields");
+    return 0;
+}

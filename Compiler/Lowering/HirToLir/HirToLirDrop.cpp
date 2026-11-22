@@ -330,6 +330,10 @@ void HirToLirContext::EmitCleanup(const HirDropAction &action) {
     }
 
     const LirReg slot = DropFlagSlot(action.bindingId);
+    // A field of a `~self` receiver lives inside the receiver's storage, which has no flag of its own.
+    if (!action.fieldName.empty()) {
+        address = EmitFieldPtr(address, action.fieldName, action.type);
+    }
     const std::uint32_t dropBlock = NewBlock("drop.live");
     const std::uint32_t afterBlock = NewBlock("drop.done");
     Branch(EmitLoad(slot, TypeRef::MakeBool()), dropBlock, afterBlock);

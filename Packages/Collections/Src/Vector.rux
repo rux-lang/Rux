@@ -575,22 +575,15 @@ extend Vector<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns a cursor that consumes the vector as it goes
     /// @see https://rux-lang.dev/docs/api/collections/vector#into-iterator
-    pub func IntoIterator(self) -> VectorIntoIterator<T> {
-        // Into a local first, and emptied before it goes out of scope. The receiver is a live binding until the
-        // function ends, so a vector left holding the pointer would have its destructor release the very storage the
-        // iterator was just handed.
-        var vector = self;
-        let taken = VectorIntoIterator<T> {
-            data: vector.data,
-            length: vector.length,
-            capacity: vector.capacity,
+    pub func IntoIterator(~self) -> VectorIntoIterator<T> {
+        // The vector ends here without its destructor, so the storage now belongs to the iterator alone.
+        return VectorIntoIterator<T> {
+            data: self.data,
+            length: self.length,
+            capacity: self.capacity,
             position: 0,
-            allocator: vector.allocator
+            allocator: self.allocator
         };
-        vector.data = null;
-        vector.length = 0;
-        vector.capacity = 0;
-        return taken;
     }
 
     /// Copies the elements into a fixed-length array.
@@ -610,15 +603,10 @@ extend Vector<T> {
     /// to impossible, since it asks for less than the block already holds.
     /// @returns an array taking the vector's storage rather than copying it
     /// @see https://rux-lang.dev/docs/api/collections/vector#into-array
-    pub func IntoArray(self) -> Array<T> {
-        var vector = self;
-        vector.ShrinkToFit();
-
-        let taken = Array<T> { data: vector.data, length: vector.length, allocator: vector.allocator };
-        vector.data = null;
-        vector.length = 0;
-        vector.capacity = 0;
-        return taken;
+    pub func IntoArray(~self) -> Array<T> {
+        self.ShrinkToFit();
+        // The vector ends here without its destructor, so the storage now belongs to the array alone.
+        return Array<T> { data: self.data, length: self.length, allocator: self.allocator };
     }
 }
 

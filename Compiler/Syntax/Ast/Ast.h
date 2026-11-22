@@ -759,6 +759,9 @@ struct Param {
     /// A receiver written in its short form, `self`, `&self`, `&var self`, `*self` or `*var self`. The parser has
     /// already given it the type that form names, so only a signature printed back for a reader looks at this.
     bool shorthandReceiver = false;
+    /// Written `~self`: the method ends the value in place of its destructor. The receiver is taken by value, the
+    /// destructor does not run, and the fields still there where the method exits are destroyed.
+    bool endingReceiver = false;
 
     /// The method receiver, written `&self`, `&var self`, `self`, `*self` or `*var self`, or in the long form
     /// `self: &T`. A first parameter spelled this way is what makes a `func` inside an `extend` block a method rather
@@ -850,6 +853,12 @@ struct FuncDecl : Decl {
     /// a `func` inside an `extend` block that takes no receiver and is called as `Type::Func(...)`.
     [[nodiscard]] const Param *Receiver() const {
         return !params.empty() && params.front().IsReceiver() ? &params.front() : nullptr;
+    }
+
+    /// Whether the method takes its receiver as `~self` and so ends the value.
+    [[nodiscard]] bool EndsReceiver() const {
+        const Param *receiver = Receiver();
+        return receiver != nullptr && receiver->endingReceiver;
     }
 };
 

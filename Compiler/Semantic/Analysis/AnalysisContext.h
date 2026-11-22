@@ -691,6 +691,13 @@ private:
     void ConsumeExplicitValue(const Expr &expression, const TypeRef &type, SourceLocation location);
     /// Whether a value of `type` copies in generic code: a type parameter bound by `Copyable`.
     [[nodiscard]] bool CopiesUnderBound(const TypeRef &type) const;
+    /// In a method that takes `~self`, the tracked local that stands for field `name` of `self`, or null.
+    [[nodiscard]] Symbol *EndingSelfField(const Expr &expression) const;
+    /// Whether `expression` is `self` in a method that takes `~self`.
+    [[nodiscard]] bool IsEndingSelf(const Expr &expression) const;
+    /// Reports a use of `self` whole in a `~self` method after one of its fields was given away or ended.
+    void CheckEndingSelfWhole(SourceLocation location);
+    void CheckEndingReceiver(const FuncDecl &declaration, const Param &receiver);
     /// Whether a place is reached through a raw pointer, where a read takes the value out.
     [[nodiscard]] bool ReachedThroughRawPointer(const Expr &expression) const;
     /// Reports a move of a value whose type, or a part of it, is `#NoMove`.
@@ -1292,6 +1299,12 @@ private:
     const ImplDecl *currentImpl = nullptr;
     TypeRef currentExtendedType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
+    /// The fields of `self` in a method that takes `~self`, each tracked as a local of its own (D14).
+    std::unordered_map<std::string, Symbol *> endingSelfFields;
+    /// Set while the object of a field read is checked, so `self.field` does not read `self` whole.
+    bool checkingEndingFieldObject = false;
+    /// The call sites of `~self` methods, by source offset, so a later use of the value names the ending.
+    std::unordered_map<std::string, std::string> endingCalls;
     /// Interface bounds of the generic parameters currently in scope, keyed by parameter name. A type parameter passed
     /// on as a type argument satisfies a bound exactly when its own declaration carries that bound, so a generic body
     /// is checked once against what it promised rather than again at every instantiation.

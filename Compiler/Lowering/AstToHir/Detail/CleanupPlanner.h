@@ -38,6 +38,9 @@ public:
     /// Register an initialized or potentially initialized named binding. Copy and unresolved values return zero and
     /// never enter the cleanup stack because the semantic model has no destruction recipe for them.
     [[nodiscard]] std::uint64_t Register(const std::string &name, const TypeRef &type, SourceLocation origin);
+    /// Register one field of the binding `name` as a cleanup of its own, for the receiver of a `~self` method.
+    [[nodiscard]] std::uint64_t RegisterField(const std::string &name, const std::string &field, const TypeRef &type,
+                                              SourceLocation origin);
 
     /// Return only the innermost frame in reverse declaration order for ordinary lexical fallthrough.
     [[nodiscard]] std::vector<HirDropAction> CurrentScopeActions() const;

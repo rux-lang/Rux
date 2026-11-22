@@ -71,6 +71,24 @@ std::uint64_t CleanupPlanner::Register(const std::string &name, const TypeRef &t
     return bindingId;
 }
 
+std::uint64_t CleanupPlanner::RegisterField(const std::string &name, const std::string &field, const TypeRef &type,
+                                            SourceLocation origin) {
+    if (!functionBase || scopes.empty()) {
+        return 0;
+    }
+    const DropGluePlan *glue = model.TryGetDropGlue(type);
+    if (!glue) {
+        return 0;
+    }
+    assert(nextBindingId != std::numeric_limits<std::uint64_t>::max() && "cleanup binding identity overflow");
+    const std::uint64_t bindingId = nextBindingId++;
+    HirDropAction action{bindingId, name, type, glue->symbol, origin};
+    action.fieldName = field;
+    scopes.back().push_back(std::move(action));
+    assert(InvariantsHold());
+    return bindingId;
+}
+
 void CleanupPlanner::AppendReverseFrame(std::vector<HirDropAction> &actions, const std::size_t index) const {
     assert(index < scopes.size());
     const auto &frame = scopes[index];

@@ -43,6 +43,9 @@ struct HirDropAction {
     /// than in a binding: a referent replaced whole through `&var T`, or a field or element of a value. The value at
     /// that address is destroyed after the new value exists and before it is stored.
     bool destroysTarget = false;
+    /// When set, the action destroys this field of the binding named `name` rather than the whole value: the fields of
+    /// the receiver of a method that takes `~self`, each of which the method may give away or end on its own.
+    std::string fieldName = {};
     /// With `destroysTarget`, the binding whose value contains the place, or zero when the place is reached through a
     /// reference or a slice and is always initialized. The place holds a value only while that binding's drop flag is
     /// set, so the destruction is conditional on it; the store leaves the flag as it was.
@@ -228,7 +231,7 @@ struct HirVariantEqualityPayload {
     TypeRef type;
     Operation operation = Operation::Builtin;
     std::string customCallee;
-    std::string fieldName;
+    std::string fieldName = {};
     TypeRef customReceiverType;
     TypeRef customArgumentType;
     std::vector<HirVariantEqualityPayload> elements;
@@ -559,6 +562,8 @@ struct HirFunc {
     CallingConvention callConv = CallingConvention::Default;
     std::vector<std::string> typeParams;
     std::vector<HirParam> params;
+    /// Bindings that hold a value when the body starts besides the parameters: the fields of a `~self` receiver.
+    std::vector<std::uint64_t> liveAtEntry;
     TypeRef returnType;
     std::optional<HirBlock> body;  // absent for interface/extern signatures
     std::vector<AsmInstr> asmBody; // instructions when isAsm; body is absent

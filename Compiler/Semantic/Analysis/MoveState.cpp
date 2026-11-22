@@ -105,6 +105,8 @@ const FuncDecl *AnalysisContext::BeginTrackedFunction(const FuncDecl &function) 
 
 void AnalysisContext::EndTrackedFunction(const FuncDecl *previousFunction) {
     FinishBorrowAnalysis();
+    // The fields of a `~self` receiver are locals of the function that just ended.
+    endingSelfFields.clear();
     currentFunctionDecl = previousFunction;
     moveStates = std::move(savedMoveStates.back());
     savedMoveStates.pop_back();
@@ -173,6 +175,13 @@ void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocatio
                             [&](const SourceLocation &site) { return site == issue->previousTransition; })) {
         EmitError(location, std::format("'{}' is used after it was destroyed", symbol.name),
                   withParts(std::format("'{}' was destroyed with 'destroy' at {}:{}", symbol.name,
+                                        issue->previousTransition.line, issue->previousTransition.column)));
+        return;
+    }
+    if (const auto ending = endingCalls.find(std::format("{}:{}", currentFile, issue->previousTransition.offset));
+        issue->kind == MoveStateTracker::IssueKind::Moved && ending != endingCalls.end()) {
+        EmitError(location, std::format("'{}' is used after it was ended", symbol.name),
+                  withParts(std::format("'{}' was ended by '{}' at {}:{}", symbol.name, ending->second,
                                         issue->previousTransition.line, issue->previousTransition.column)));
         return;
     }
@@ -669,6 +678,10 @@ void AnalysisContext::RecordCheckedExpression(const Expr &expression, const Type
 }
 
 void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLocation location) {
+    if (Symbol *part = EndingSelfField(target)) {
+        moveStates.Assign(MoveStateTracker::Local(part), location);
+        return;
+    }
     // Walk out to the local, collecting the fields between it and the place, innermost first. An element write writes
     // the array it is in, so the path stops at the first index from the local.
     std::vector<std::string> fields;
@@ -871,6 +884,9 @@ void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const st
 
 std::optional<MoveStateTracker::Issue> AnalysisContext::MoveTrackedExpression(const Expr &expression,
                                                                               const SourceLocation location) {
+    if (Symbol *part = EndingSelfField(expression)) {
+        return moveStates.Move(MoveStateTracker::Local(part), location);
+    }
     if (const auto *identifier = AstCast<const IdentExpr>(&expression)) {
         if (Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
             return moveStates.Move(MoveStateTracker::Local(symbol), location);
@@ -906,6 +922,14 @@ bool AnalysisContext::ReachedThroughRawPointer(const Expr &expression) const {
 }
 
 bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLocation location) {
+    if (EndingSelfField(expression)) {
+        return true;
+    }
+    if (IsEndingSelf(expression)) {
+        EmitError(location, "the receiver of a '~self' method is never given away whole", {},
+                  "give its fields away one by one");
+        return false;
+    }
     if (!CheckBorrowedMove(expression, location)) {
         return false;
     }
@@ -1054,7 +1078,8 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
         // A read through a raw pointer takes the value out, as it does for a concrete type.
         const auto *name = AstCast<const IdentExpr>(&expression);
         const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
-        const bool whole = symbol && !symbol->isBorrowedBinding && AnalyzeMovePlace(expression).IsNamedStorage();
+        const bool whole = (symbol && !symbol->isBorrowedBinding && AnalyzeMovePlace(expression).IsNamedStorage()) ||
+                           EndingSelfField(expression) != nullptr;
         if (kind != ValueConsumptionKind::ArrayRepeat && type->kind != TypeRef::Kind::Reference &&
             (whole || ReachedThroughRawPointer(expression)) && !CopiesUnderBound(type)) {
             ConsumeExplicitValue(expression, type, location);
@@ -1092,6 +1117,39 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     }
     if (!MoveTrackedExpression(expression, location)) {
         valueConsumptions.insert_or_assign(&expression, ValueConsumption{kind, type, location});
+    }
+}
+
+Symbol *AnalysisContext::EndingSelfField(const Expr &expression) const {
+    if (endingSelfFields.empty()) {
+        return nullptr;
+    }
+    const auto *field = AstCast<const FieldExpr>(&expression);
+    if (!field || !AstCast<const SelfExpr>(field->object.get())) {
+        return nullptr;
+    }
+    const auto found = endingSelfFields.find(field->field);
+    return found == endingSelfFields.end() ? nullptr : found->second;
+}
+
+bool AnalysisContext::IsEndingSelf(const Expr &expression) const {
+    return !endingSelfFields.empty() && AstCast<const SelfExpr>(&expression) != nullptr;
+}
+
+void AnalysisContext::CheckEndingSelfWhole(const SourceLocation location) {
+    if (!trackedFlowReachable) {
+        return;
+    }
+    for (const auto &[name, symbol] : endingSelfFields) {
+        const MoveStateTracker::Record *record = moveStates.TryGet(MoveStateTracker::Local(symbol));
+        if (!record || record->state == MoveStateTracker::State::Initialized) {
+            continue;
+        }
+        EmitError(location, std::format("'self' is used whole after its field '{}' was given away", name),
+                  {std::format("'self.{}' was given away at {}:{}", name, record->previousTransition.line,
+                               record->previousTransition.column)},
+                  "use the fields that are still there one by one");
+        return;
     }
 }
 
@@ -1326,6 +1384,23 @@ void AnalysisContext::ConsumeMethodReceiver(const CallExpr &call, const Expr &re
     if (!declared || (*declared)->kind == TypeRef::Kind::Pointer || declared->IsSlice()) {
         return;
     }
+    // An ending ends the value, so a field of a live value cannot be ended by itself: the value would be destroyed
+    // whole later with that field gone.
+    if (method.EndsReceiver() && !EndingSelfField(receiver)) {
+        if (const MovePlace place = AnalyzeMovePlace(receiver); place.IsNamedStorage() && !place.IsComplete()) {
+            const std::string field = place.projections.empty() ? place.Display() : place.projections.back().value;
+            EmitError(receiver.location,
+                      std::format("'{}' is a field of '{}' and cannot be ended by itself", field, place.RootDisplay()),
+                      {},
+                      std::format("take '{}' apart with a pattern, or keep the field as an optional and take it "
+                                  "with 'Replace'",
+                                  place.RootDisplay()));
+            return;
+        }
+    }
     ConsumeValue(receiver, receiverType, ValueConsumptionKind::Receiver, call.location);
+    if (method.EndsReceiver()) {
+        endingCalls.insert_or_assign(std::format("{}:{}", currentFile, call.location.offset), method.name);
+    }
 }
 } // namespace Rux::SemanticDetail

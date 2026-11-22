@@ -279,16 +279,9 @@ extend TreeMap<K, V> {
     /// @returns a cursor that consumes the map as it goes, in key order
     /// @see https://rux-lang.dev/docs/api/collections/tree-map#into-iterator
     pub func IntoIterator(self) -> TreeMapIntoIterator<K, V> {
-        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
-        // function ends, and a map left holding the nodes would have its destructor free the very nodes the iterator
-        // was handed.
-        var map = self;
-        let taken = TreeMapIntoIterator<K, V> {
-            tree: Tree<K, V> { root: map.tree.root, length: map.tree.length, allocator: map.tree.allocator }
-        };
-        map.tree.root = null;
-        map.tree.length = 0;
-        return taken;
+        // The map declares no destructor, so a pattern takes it apart and the tree goes to the iterator whole.
+        let TreeMap { tree } = self;
+        return TreeMapIntoIterator<K, V> { tree };
     }
 }
 

@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "EndingReceiver"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: a method that takes ~self ends the value in place of its destructor"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

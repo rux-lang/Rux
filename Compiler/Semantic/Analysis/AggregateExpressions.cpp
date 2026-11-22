@@ -839,9 +839,16 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                 partReadPath = std::move(path);
             }
         }
+        Symbol *endingField = EndingSelfField(*field);
+        const bool wasEndingObject = std::exchange(checkingEndingFieldObject, endingField != nullptr);
         const TypeRef objectType = CheckExpr(*field->object);
+        checkingEndingFieldObject = wasEndingObject;
         partReadPath = std::move(enclosingPart);
         checkingBorrowProjectionRoot = wasProjectionRoot;
+        // A field of `~self` is a local of its own, read like one (D14).
+        if (endingField && !checkingPlainAssignmentTarget) {
+            CheckTrackedRead(*endingField, field->location);
+        }
         if (!wasProjectionRoot && !checkingPlainAssignmentTarget) {
             CheckBorrowedPlaceRead(*field, field->location);
         }

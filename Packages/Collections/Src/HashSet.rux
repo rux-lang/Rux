@@ -193,27 +193,9 @@ extend HashSet<T> {
     /// @returns a cursor that consumes the set as it goes
     /// @see https://rux-lang.dev/docs/api/collections/hash-set#into-iterator
     pub func IntoIterator(self) -> HashSetIntoIterator<T> {
-        var set = self;
-        let taken = HashSetIntoIterator<T> {
-            table: Table<T, ()> {
-                keys: set.table.keys,
-                values: set.table.values,
-                states: set.table.states,
-                tags: set.table.tags,
-                length: set.table.length,
-                capacity: set.table.capacity,
-                seed: set.table.seed,
-                allocator: set.table.allocator
-            },
-            cursor: 0
-        };
-        set.table.keys = null;
-        set.table.values = null;
-        set.table.states = null;
-        set.table.tags = null;
-        set.table.length = 0;
-        set.table.capacity = 0;
-        return taken;
+        // The set declares no destructor, so a pattern takes it apart and the table goes to the iterator whole.
+        let HashSet { table } = self;
+        return HashSetIntoIterator<T> { table, cursor: 0 };
     }
 
     /// Whether every element of this set is also in `other`.

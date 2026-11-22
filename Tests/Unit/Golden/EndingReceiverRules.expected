@@ -1,0 +1,6 @@
+13:26: error: value 'self.path' is used after it was moved
+17:9: error: the receiver of a '~self' method is never given away whole
+21:9: error: 'self' is used whole after its field 'path' was given away
+28:16: error: '~self' replaces a destructor, and 'Point' has none
+33:5: error: 'file' is used after it was ended
+36:12: error: 'file' is a field of 'journal' and cannot be ended by itself

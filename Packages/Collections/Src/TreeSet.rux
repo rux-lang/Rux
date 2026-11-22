@@ -178,16 +178,9 @@ extend TreeSet<T> {
     /// @returns a cursor that consumes the set as it goes, in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set#into-iterator
     pub func IntoIterator(self) -> TreeSetIntoIterator<T> {
-        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
-        // function ends, and a set left holding the nodes would have its destructor free the very nodes the
-        // iterator was handed.
-        var set = self;
-        let taken = TreeSetIntoIterator<T> {
-            tree: Tree<T, ()> { root: set.tree.root, length: set.tree.length, allocator: set.tree.allocator }
-        };
-        set.tree.root = null;
-        set.tree.length = 0;
-        return taken;
+        // The set declares no destructor, so a pattern takes it apart and the tree goes to the iterator whole.
+        let TreeSet { tree } = self;
+        return TreeSetIntoIterator<T> { tree };
     }
 
     /// Whether every element of this set is in `other`.

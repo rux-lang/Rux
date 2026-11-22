@@ -1396,6 +1396,9 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     for (const auto &param : hf.params) {
         MarkBindingLive(param.bindingId, true);
     }
+    for (const std::uint64_t binding : hf.liveAtEntry) {
+        MarkBindingLive(binding, true);
+    }
     if (hf.body) {
         LowerBlock(*hf.body);
         if (!IsTerminated()) {

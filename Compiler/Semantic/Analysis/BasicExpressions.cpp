@@ -247,6 +247,18 @@ TypeRef AnalysisContext::CheckDestroy(const DestroyExpr &destroy) {
         const auto found = expressionTypes.find(&expression);
         return found == expressionTypes.end() ? TypeRef::MakeUnknown() : found->second;
     };
+    // A field of `~self` is a local of its own, so it ends as one does (D14), and `self` itself is never ended whole.
+    if (EndingSelfField(*destroy.operand) || IsEndingSelf(*destroy.operand)) {
+        if (trackedFlowReachable && ValidateMoveSource(*destroy.operand, destroy.location)) {
+            endedSites.push_back(destroy.location);
+            if (!MoveTrackedExpression(*destroy.operand, destroy.location)) {
+                valueConsumptions.insert_or_assign(
+                    destroy.operand.get(),
+                    ValueConsumption{ValueConsumptionKind::ExplicitMove, operandType, destroy.location});
+            }
+        }
+        return TypeRef::MakeUnit();
+    }
     const Expr *current = destroy.operand.get();
     bool part = false;
     while (true) {

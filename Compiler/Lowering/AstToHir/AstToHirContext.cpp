@@ -279,6 +279,12 @@ void AstToHirContext::AppendCurrentScopeCleanups(HirBlock &block) const {
 }
 
 std::uint64_t AstToHirContext::BindingId(const HirExpr &expression) const {
+    // A field of the receiver of a `~self` method is a binding of its own.
+    if (const auto *field = HirCast<const HirFieldExpr>(&expression);
+        field && !endingFieldBindings.empty() && HirCast<const HirSelfExpr>(field->object.get())) {
+        const auto found = endingFieldBindings.find(field->field);
+        return found == endingFieldBindings.end() ? 0 : found->second;
+    }
     std::string_view name;
     if (const auto *variable = HirCast<const HirVarExpr>(&expression)) {
         name = variable->name;

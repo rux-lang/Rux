@@ -155,6 +155,8 @@ std::string FunctionSignature(const FuncDecl &function) {
         const auto &parameter = function.params[i];
         if (parameter.isVariadic)
             text += "...";
+        else if (parameter.endingReceiver)
+            text += "~self";
         else if (parameter.shorthandReceiver)
             text += ShorthandReceiverText(*parameter.type);
         else

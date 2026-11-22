@@ -97,6 +97,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             }
             EmitError(expr.location, "'self' used outside of an extend block");
         }
+        // `self` whole in a `~self` method is there only while every field is.
+        if (!checkingEndingFieldObject && !endingSelfFields.empty() && !checkingPlainAssignmentTarget) {
+            CheckEndingSelfWhole(expr.location);
+        }
         return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
     }
 

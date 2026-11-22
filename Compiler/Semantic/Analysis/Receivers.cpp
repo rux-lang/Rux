@@ -39,11 +39,54 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
         self.name = "self";
         self.location = receiver ? receiver->location : declaration.location;
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
-        self.isMut = false;
+        // A method that ends its receiver owns it until it is gone, so it may write it, as it may write a local.
+        self.isMut = receiver != nullptr && receiver->endingReceiver;
         self.isParameter = true;
         DefineTrackedLocal(std::move(self), true);
     }
+    // In a method that ends its receiver each field of `self` is a local of its own: it is read, lent, given away,
+    // ended or written, and the method destroys only what is left of it (D14).
+    endingSelfFields.clear();
+    if (isMethod && receiver && receiver->endingReceiver) {
+        CheckEndingReceiver(declaration, *receiver);
+        const std::string typeName = NamedBaseTypeName(currentSelfType);
+        if (const auto structure = structDecls.find(typeName); structure != structDecls.end()) {
+            for (const auto &field : structure->second->fields) {
+                Symbol part;
+                part.kind = Symbol::Kind::Var;
+                part.name = "self." + field.name;
+                part.location = receiver->location;
+                part.type = StructFieldType(currentSelfType, field.name);
+                part.isParameter = true;
+                part.isMut = true;
+                if (Symbol *defined = DefineTrackedLocal(std::move(part), true)) {
+                    endingSelfFields.emplace(field.name, defined);
+                }
+            }
+        }
+    }
     return savedSelfType;
+}
+
+/// `~self` ends the value in place of the destructor, so the type has to declare one, and a struct it is: a field of
+/// `self` is what the method gives away or ends.
+void AnalysisContext::CheckEndingReceiver(const FuncDecl &declaration, const Param &receiver) {
+    if (!currentImpl || currentExtendedType.IsUnknown()) {
+        return;
+    }
+    const std::string typeName = NamedBaseTypeName(currentExtendedType);
+    const auto methods = methodsByType.find(typeName);
+    const bool destructs = methods != methodsByType.end() && methods->second.contains("~");
+    if (!destructs) {
+        EmitError(receiver.location, std::format("'~self' replaces a destructor, and '{}' has none", typeName), {},
+                  "write 'self'");
+        return;
+    }
+    if (!structDecls.contains(typeName)) {
+        EmitError(receiver.location, std::format("'~self' ends a structure, and '{}' is not one", typeName), {},
+                  "write 'self'");
+    }
+    static_cast<void>(declaration);
 }
 
 /// A receiver in `extend T` is written `T`, `&T`, `&var T`, or a legacy pointer form and nothing else: it names the

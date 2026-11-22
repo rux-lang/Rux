@@ -179,25 +179,32 @@ bool Parser::CheckShorthandReceiver() const noexcept {
     if (Check(TokenKind::Amp) || Check(TokenKind::Star)) {
         ahead = Peek(1).Is(TokenKind::VarKeyword) ? 2 : 1;
     }
+    else if (Check(TokenKind::Tilde)) {
+        ahead = 1;
+    }
     return Peek(ahead).Is(TokenKind::SelfKeyword) &&
            (Peek(ahead + 1).Is(TokenKind::Comma) || Peek(ahead + 1).Is(TokenKind::RightParen));
 }
 
 void Parser::ParseShorthandReceiver(Param &parameter) {
     const SourceLocation location = CurrentLocation();
-    const bool reference = Match(TokenKind::Amp);
-    const bool pointer = !reference && Match(TokenKind::Star);
+    // `~self` ends the value: it is taken by value, as `self` is, and the method replaces the destructor.
+    const bool ending = Match(TokenKind::Tilde);
+    const bool reference = !ending && Match(TokenKind::Amp);
+    const bool pointer = !ending && !reference && Match(TokenKind::Star);
     const bool writable = (reference || pointer) && Match(TokenKind::VarKeyword);
     Advance(); // 'self'
     parameter.name = "self";
     parameter.location = location;
     parameter.shorthandReceiver = true;
+    parameter.endingReceiver = ending;
 
     if (selfScope.kind == SelfScope::Kind::None) {
         const std::string spelled = std::format("{}{}self",
-                                                reference ? "&"
-                                                : pointer ? "*"
-                                                          : "",
+                                                ending      ? "~"
+                                                : reference ? "&"
+                                                : pointer   ? "*"
+                                                            : "",
                                                 writable ? "var " : "");
         EmitError(
             location,

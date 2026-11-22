@@ -174,6 +174,8 @@ protected:
     [[nodiscard]] std::vector<HirDropAction> FunctionCleanups() const;
     void AppendCurrentScopeCleanups(HirBlock &block) const;
     [[nodiscard]] std::uint64_t BindingId(const HirExpr &expression) const;
+    /// The cleanup binding of each field of the receiver of the `~self` method being lowered.
+    std::unordered_map<std::string, std::uint64_t> endingFieldBindings;
     [[nodiscard]] std::uint64_t ConsumedBindingId(const HirExpr &expression) const;
     /// What a `=` or `<-` `assignment` to the lowered `target` destroys before it stores: the binding it writes whole,
     /// or the value semantic analysis recorded at the place it writes. Null when it replaces nothing.

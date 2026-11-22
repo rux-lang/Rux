@@ -1,0 +1,37 @@
+// A method that takes '~self' ends the value in place of its destructor: each field of 'self' is a local of its own,
+// 'self' is never given away whole or used whole after a field went, the type has to declare a destructor, a field
+// of a live value is not ended by itself, and a use after the ending names it.
+struct Part { id: int; }
+extend Part {
+    destructor {}
+}
+struct File { handle: Part; path: Part; }
+extend File {
+    func Close(~self) {}
+    func Twice(~self) -> int {
+        let first = self.path;
+        let second = self.path;
+        return 0;
+    }
+    func Whole(~self) -> File {
+        return self;
+    }
+    func Lent(~self) {
+        let kept = self.path;
+        self.Look();
+    }
+    func Look(&self) {}
+    destructor {}
+}
+struct Point { x: int; }
+extend Point {
+    func Reset(~self) {}
+}
+struct Journal { file: File; }
+func Use(file: File) {
+    file.Close();
+    file.Close();
+}
+func Field(journal: Journal) {
+    journal.file.Close();
+}

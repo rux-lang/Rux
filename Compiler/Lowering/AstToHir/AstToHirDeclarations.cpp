@@ -295,13 +295,32 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
             Define(sym);
         }
     }
+    auto savedEndingFields = std::exchange(endingFieldBindings, {});
+    std::vector<std::uint64_t> liveAtEntry;
     if (isMethod) {
         HirSymbol self;
         self.kind = HirSymbol::Kind::Var;
         self.name = "self";
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         self.isMut = true;
-        self.bindingId = RegisterCleanupBinding(self.name, self.type, d.location);
+        if (d.EndsReceiver()) {
+            // The method ends the value in place of its destructor, so the destructor never runs on it: each field is
+            // destroyed on its own, unless the method gave it away or ended it first.
+            const std::string typeName = NamedBaseTypeName(self.type);
+            if (const auto structure = structDecls.find(typeName); structure != structDecls.end()) {
+                for (const auto &field : structure->second->fields) {
+                    const TypeRef fieldType = StructFieldType(self.type, field.name);
+                    const std::uint64_t id = cleanupPlanner.RegisterField(self.name, field.name, fieldType, d.location);
+                    if (id != 0) {
+                        endingFieldBindings.emplace(field.name, id);
+                        liveAtEntry.push_back(id);
+                    }
+                }
+            }
+        }
+        else {
+            self.bindingId = RegisterCleanupBinding(self.name, self.type, d.location);
+        }
         Define(self);
     }
     for (const auto &param : d.params) {
@@ -350,6 +369,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.callConv = d.callConv;
     hf.typeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     hf.params = LowerParams(d.params);
+    hf.liveAtEntry = std::move(liveAtEntry);
     hf.returnType = retType;
     hf.body = std::move(body);
     hf.location = d.location;
@@ -358,6 +378,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
 
     cleanupPlanner.EndFunction(cleanupFunction);
     PopScope();
+    endingFieldBindings = std::move(savedEndingFields);
     deferStack = std::move(savedDefers);
     loopDeferBases = std::move(savedLoopDeferBases);
     currentSelfType = savedSelfType;

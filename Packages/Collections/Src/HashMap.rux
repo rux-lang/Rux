@@ -373,30 +373,9 @@ extend HashMap<K, V> {
     /// @returns a cursor that consumes the map as it goes
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#into-iterator
     pub func IntoIterator(self) -> HashMapIntoIterator<K, V> {
-        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
-        // function ends, and a map left holding the runs would have its destructor release the very storage the
-        // iterator was handed.
-        var map = self;
-        let taken = HashMapIntoIterator<K, V> {
-            table: Table<K, V> {
-                keys: map.table.keys,
-                values: map.table.values,
-                states: map.table.states,
-                tags: map.table.tags,
-                length: map.table.length,
-                capacity: map.table.capacity,
-                seed: map.table.seed,
-                allocator: map.table.allocator
-            },
-            cursor: 0
-        };
-        map.table.keys = null;
-        map.table.values = null;
-        map.table.states = null;
-        map.table.tags = null;
-        map.table.length = 0;
-        map.table.capacity = 0;
-        return taken;
+        // The map declares no destructor, so a pattern takes it apart and the table goes to the iterator whole.
+        let HashMap { table } = self;
+        return HashMapIntoIterator<K, V> { table, cursor: 0 };
     }
 }
 
