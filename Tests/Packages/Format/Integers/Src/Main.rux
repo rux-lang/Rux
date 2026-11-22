@@ -209,10 +209,10 @@ func Main() -> int {
                "whose all-ones value fills sixty-four digits");
     }
     else {
-        Assert(Same(try? Render(allocator, "{}", -2147483648i32 as int), "-2147483648"),
+        Assert(Same(Render(allocator, "{}", -2147483648i32 as int) !! none, "-2147483648"),
                "int carries thirty-two bits on this target");
-        Assert(Same(try? Render(allocator, "{:x}", 4294967295u32 as uint), "ffffffff"), "and so does uint");
-        Assert(RunOf(try? Render(allocator, "{:b}", 4294967295u32 as uint), false, c8'1', 32u),
+        Assert(Same(Render(allocator, "{:x}", 4294967295u32 as uint) !! none, "ffffffff"), "and so does uint");
+        Assert(RunOf(Render(allocator, "{:b}", 4294967295u32 as uint) !! none, false, c8'1', 32u),
                "whose all-ones value fills thirty-two digits");
     }
 

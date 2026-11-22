@@ -69,14 +69,14 @@ func Decodes(codec: StreamCodec, text: char8[..], chunk: uint, expected: char8[.
     while true {
         let room = out.length - length;
         let wanted = if chunk < room { chunk } else { room };
-        try {
-            let count = reader.Read(out[length..length + wanted]);
-            length = length + count;
-        } catch {
+        {
+            let count = reader.Read(out[length..length + wanted]) catch {
             error => {
                 if error.kind != IoErrorKind::EndOfStream { return false; }
                 break;
             },
+        };
+            length = length + count;
         }
     }
     return Same(out[..length], expected);
@@ -132,15 +132,15 @@ func Main() -> int {
     var out: char8[8] = [c8' '; 8];
     var reads: uint = 0;
     while true {
-        try {
-            let count = bad.Read(out[..]);
-            Assert(count == 3u && out[0] == c8'A', "the valid group before it decodes");
-            reads = reads + 1;
-        } catch {
+        {
+            let count = bad.Read(out[..]) catch {
             error => {
                 Assert(error.kind == IoErrorKind::InvalidInput && reads == 1u, "invalid text is InvalidInput");
                 break;
             },
+        };
+            Assert(count == 3u && out[0] == c8'A', "the valid group before it decodes");
+            reads = reads + 1;
         }
     }
     // Crockford Base32 skips hyphens.

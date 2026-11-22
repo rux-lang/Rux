@@ -18,10 +18,9 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 // Which refusal a parse reported, as a small code: 1 length, 2 character; negative when the offset is wrong.
 func Refusal(text: char8[..], at: uint) -> int {
     var caught: NanoIdParseError? = none;
-    try {
-        NanoId::Parse(text);
-    } catch {
-        error => { caught = error; }
+    match NanoId::Parse(text) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return 0;
     if reported.Offset() != at { return -1; }

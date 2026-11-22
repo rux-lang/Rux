@@ -196,11 +196,11 @@ func Main() -> int {
     };
     Assert(destroyed == 1, "setting destroys the element it replaces");
     Assert(replacements == 0, "and not the one it stores");
-    try {
-        owning.Set(2, Tracked { counter: @replacements, value: 99 });
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
+    match owning.Set(2, Tracked { counter: @replacements, value: 99 }) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
     }
     Assert(replacements == 1, "destroying the refused value rather than leaking it");
     var previous = owning.Replace(1, Tracked { counter: @replacements, value: 20 }) catch {

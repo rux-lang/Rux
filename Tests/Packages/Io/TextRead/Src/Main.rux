@@ -61,10 +61,9 @@ func CheckBytes(allocator: Allocator, bytes: char8[..], step: uint, limit: uint,
     var reader = BufferedReader::New(allocator, sourceHandle, 16) catch { _ => Panic("the reader takes its buffer") };
     var builder = StringBuilder::New(allocator);
     var reported: IoErrorKind? = none;
-    try {
-        ReadTextLine(reader, builder, limit);
-    } catch {
-        error => { reported = error.kind; }
+    match ReadTextLine(reader, builder, limit) {
+        .Success(_) => {},
+        .Failure(error) => { reported = error.kind; },
     }
     Assert(reported == expectedKind, "the outcome names the reason");
     let line = builder.TakeString();
@@ -129,11 +128,11 @@ func Main() -> int {
     let threeExpected = View("three");
     Assert(three.View().Equals(threeExpected), "with everything before the end");
     var fourth = StringBuilder::New(allocator);
-    try {
-        ReadTextLine(reader, fourth, 64);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.IsEnd(), "and after it, the end"),
+    match ReadTextLine(reader, fourth, 64) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.IsEnd(), "and after it, the end"),
     }
     fourth.Release();
     reader.Release();

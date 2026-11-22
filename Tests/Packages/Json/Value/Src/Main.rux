@@ -19,16 +19,14 @@ func Number(value: &JsonValue) -> &JsonNumber {
 // Whether `text` is refused as a number by both public constructors, each for the grammar's reason.
 func RefusedNumber(allocator: Allocator, text: char8[..]) -> bool {
     var number = false;
-    try {
-        JsonNumber::New(allocator, text);
-    } catch {
-        error => { number = error == JsonError::MalformedNumber; }
+    match JsonNumber::New(allocator, text) {
+        .Success(_) => {},
+        .Failure(error) => { number = error == JsonError::MalformedNumber; },
     }
     var value = false;
-    try {
-        JsonValue::Number(allocator, text);
-    } catch {
-        error => { value = error == JsonError::MalformedNumber; }
+    match JsonValue::Number(allocator, text) {
+        .Success(_) => {},
+        .Failure(error) => { value = error == JsonError::MalformedNumber; },
     }
     return number && value;
 }
@@ -186,19 +184,17 @@ func Main() -> int {
     Assert(nullValue.Length() is none && text.Length() is none, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
     var pushWrongKind = false;
-    try {
-        nullValue.Push(move pushRefused);
-    } catch {
-        error => { pushWrongKind = error == JsonError::WrongKind; }
+    match nullValue.Push(move pushRefused) {
+        .Success(_) => {},
+        .Failure(error) => { pushWrongKind = error == JsonError::WrongKind; },
     }
     Assert(pushWrongKind, "pushing into a scalar is refused rather than ignored");
     var memberName = String::FromBytes(allocator, "late") catch { _ => Panic("a name is built") };
     var insertRefused = JsonValue::Null(allocator);
     var insertWrongKind = false;
-    try {
-        array.Insert(move memberName, move insertRefused);
-    } catch {
-        error => { insertWrongKind = error == JsonError::WrongKind; }
+    match array.Insert(move memberName, move insertRefused) {
+        .Success(_) => {},
+        .Failure(error) => { insertWrongKind = error == JsonError::WrongKind; },
     }
     Assert(insertWrongKind, "and so is inserting a member into an array");
 

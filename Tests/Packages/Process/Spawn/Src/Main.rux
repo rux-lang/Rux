@@ -148,14 +148,14 @@ func Main() -> int {
     var received: char8[64] = ['\0'; 64];
     var length: uint = 0;
     while true {
-        try {
-            let count = output.Read(received[length..]);
-            length = length + count;
-        } catch {
+        {
+            let count = output.Read(received[length..]) catch {
             error => {
                 Assert(error.kind == IoErrorKind::EndOfStream, "the output ends cleanly");
                 break;
             },
+        };
+            length = length + count;
         }
     }
     Assert(Same(received[..length], "HELLO, CHILD"), "the child echoed its input");
@@ -185,11 +185,11 @@ func Main() -> int {
         Assert(!Is(variable.name, "RUX_SPAWN_A"), "a removed variable is not walked");
     }
     Assert(seen, "a variable set here is walked");
-    try {
-        SetVariable("BAD=NAME", "x");
-        Assert(false, "a name with an equals sign is refused");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::InvalidInput, "a name with an equals sign is refused"),
+    match SetVariable("BAD=NAME", "x") {
+        .Success(_) => {
+            Assert(false, "a name with an equals sign is refused");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a name with an equals sign is refused"),
     }
 
     // An argument with spaces, quotes and backslashes arrives whole.
@@ -201,11 +201,11 @@ func Main() -> int {
 
     // A program that does not exist is reported as not found.
     var missing = Command::New(allocator, "rux-no-such-program-anywhere");
-    try {
-        missing.Spawn();
-        Assert(false, "a missing program cannot start");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::NotFound, "a missing program is not found"),
+    match missing.Spawn() {
+        .Success(_) => {
+            Assert(false, "a missing program cannot start");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a missing program is not found"),
     }
 
     // A child can be killed while it waits.

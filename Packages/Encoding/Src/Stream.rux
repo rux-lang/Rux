@@ -206,14 +206,14 @@ extend DecodingReader {
         let room = 512 - self.textLength;
         let wanted = if room < 256u { room } else { 256u };
         var count: uint = 0;
-        try {
-            let read = self.source.Read(chunk[..wanted]);
-            count = read;
-        } catch {
+        {
+            let read = self.source.Read(chunk[..wanted]) catch {
             error => {
                 if error.kind == IoErrorKind::EndOfStream { return false; }
                 throw error;
             },
+        };
+            count = read;
         }
         var skipsHyphens = false;
         match self.codec {

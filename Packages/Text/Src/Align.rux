@@ -103,13 +103,13 @@ pub func WriteDisplayAligned(writer: &var TextWriter, value: &Display, spec: For
     var room: char8[256];
     var buffer = BufferWriter::New(room[..]);
     let into: &var TextWriter = buffer;
-    try {
-        value.WriteDisplay(into, unpadded);
-    } catch {
+    {
+        value.WriteDisplay(into, unpadded) catch {
         error => {
             if error != FormatError::InsufficientCapacity { throw error; }
             return value.WriteDisplay(writer, unpadded)!;
         },
+    };
     }
     return WriteAligned(writer, spec, buffer.Written(), false)!;
 }

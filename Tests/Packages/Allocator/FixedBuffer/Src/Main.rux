@@ -75,11 +75,11 @@ func Main() -> !AllocError {
 
     // Reallocating across alignments is refused rather than quietly moving the block.
     let realigned = Layout::Of(64, 32) ?? zero;
-    try {
-        allocator.Reallocate(grown, bigger, realigned);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::Unsupported, "changing the alignment of a block is refused"),
+    match allocator.Reallocate(grown, bigger, realigned) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::Unsupported, "changing the alignment of a block is refused"),
     }
 
     // Exhaustion: requests until the buffer says no, and it must say no rather than pass the end.
@@ -108,11 +108,11 @@ func Main() -> !AllocError {
 
     // Once exhausted it stays exhausted, and a zero-sized request still works.
     var again: *var opaque = null;
-    try {
-        allocator.Allocate(small);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory, "an exhausted buffer keeps refusing"),
+    match allocator.Allocate(small) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory, "an exhausted buffer keeps refusing"),
     }
     again = allocator.Allocate(zero)!;
 
@@ -130,11 +130,11 @@ func Main() -> !AllocError {
     // Safety: `unbacked` is a local that outlives `empties` and is never moved.
     let empties = unbacked.Handle();
     var refused: *var opaque = null;
-    try {
-        empties.Allocate(small);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory, "and refuses every request"),
+    match empties.Allocate(small) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory, "and refuses every request"),
     }
     refused = empties.Allocate(zero)!;
 

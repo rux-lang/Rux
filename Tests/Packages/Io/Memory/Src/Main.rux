@@ -23,21 +23,21 @@ func Main() -> int {
     var big: char8[32] = [c8' '; 32];
     let count = reader.Read(big[..]) catch { _ => return 2 };
     Assert(count == 7u && Same(big[..count], ", world"), "a read takes what is left");
-    try {
-        reader.Read(big[..]);
-        Assert(false, "nothing is left");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::EndOfStream, "the end is EndOfStream"),
+    match reader.Read(big[..]) {
+        .Success(_) => {
+            Assert(false, "nothing is left");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::EndOfStream, "the end is EndOfStream"),
     }
     Assert(((reader.Seek(SeekFrom::End, -5) catch { _ => 99u64 })) == 7u64, "seeks from the end");
     let tail = reader.Read(big[..]) catch { _ => return 3 };
     Assert(Same(big[..tail], "world"), "reads after a seek");
     Assert(((reader.Seek(SeekFrom::Current, -12) catch { _ => 99u64 })) == 0u64, "seeks back to the start");
-    try {
-        reader.Seek(SeekFrom::Start, 13);
-        Assert(false, "past the end");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::InvalidInput, "a seek past the end is refused"),
+    match reader.Seek(SeekFrom::Start, 13) {
+        .Success(_) => {
+            Assert(false, "past the end");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a seek past the end is refused"),
     }
 
     var writer = ByteWriter::New(SystemAllocator::New());

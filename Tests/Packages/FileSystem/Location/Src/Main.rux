@@ -79,11 +79,11 @@ func Main() -> int ! IoError {
     Assert(IsAbsolute(truth.AsPath()), "to an absolute name");
     Assert(EndsWith(truth, "FileSystemLoc.tmp/real.txt"), "ending in the file's real name");
 
-    try {
-        Canonicalize(allocator, absent);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::NotFound,
+    match Canonicalize(allocator, absent) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::NotFound,
             "a name with nothing behind it has no true form -- this is the difference from Absolute"),
     }
 

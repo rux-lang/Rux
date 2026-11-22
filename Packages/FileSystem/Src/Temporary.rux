@@ -110,11 +110,11 @@ extend TemporaryFile {
             var candidate = PathBuffer::FromPath(allocator, directory);
             var name = RandomName(allocator, prefix)!;
             candidate.Push(name.View());
-            try {
-                let opened = File::Open(allocator, candidate.AsPath(), options);
-                return Self { file: move opened, path: move candidate, owned: true };
-            } catch {
-                error => {
+            match File::Open(allocator, candidate.AsPath(), options) {
+                .Success(opened) => {
+                    return Self { file: move opened, path: move candidate, owned: true };
+                },
+                .Failure(error) => {
                     // Anything but a collision is the caller's problem, not something another name would fix.
                     if error.kind != IoErrorKind::AlreadyExists { throw error; }
                 },
@@ -199,11 +199,11 @@ extend TemporaryDirectoryHandle {
             var name = RandomName(allocator, prefix)!;
             candidate.Push(name.View());
             // MakeDirectory already refuses a name that is taken, which is the claim this needs.
-            try {
-                MakeDirectory(allocator, candidate.AsPath());
-                return Self { path: move candidate, owned: true };
-            } catch {
-                error => {
+            match MakeDirectory(allocator, candidate.AsPath()) {
+                .Success(_) => {
+                    return Self { path: move candidate, owned: true };
+                },
+                .Failure(error) => {
                     if error.kind != IoErrorKind::AlreadyExists { throw error; }
                 },
             }

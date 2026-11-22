@@ -36,11 +36,11 @@ func Main() -> int {
     smuggled[7] = c8'e';
     let hidden = StringView::FromBytes(smuggled[0..8]) ?? StringView::New();
     Assert(hidden.Length() == 8, "a zero byte is valid UTF-8 and makes a view");
-    try {
-        CString::FromView(allocator, hidden);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TextError::InvalidUtf8,
+    match CString::FromView(allocator, hidden) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TextError::InvalidUtf8,
             "but it does not cross the boundary, and the refusal says why"),
     }
 
@@ -57,11 +57,11 @@ func Main() -> int {
     unterminated[2] = c8'c';
     unterminated[3] = c8'd';
     // Safety: `unterminated` is a local array of four bytes, which is exactly the limit passed.
-    try {
-        CString::FromRaw(allocator, @unterminated[0], 4);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TextError::InvalidUtf8, "no terminator within the limit is refused"),
+    match CString::FromRaw(allocator, @unterminated[0], 4) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TextError::InvalidUtf8, "no terminator within the limit is refused"),
     }
 
     // Bytes from C that are not text are input, and input is validated.
@@ -71,11 +71,11 @@ func Main() -> int {
     mangled[2] = 0x80u8 as char8;
     mangled[3] = 0u8 as char8;
     // Safety: `mangled` is a local array of four bytes whose last byte is the terminator, so the walk stops there.
-    try {
-        CString::FromRaw(allocator, @mangled[0], 8);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TextError::InvalidUtf8, "a surrogate half from C is refused"),
+    match CString::FromRaw(allocator, @mangled[0], 8) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TextError::InvalidUtf8, "a surrogate half from C is refused"),
     }
 
     // Text crosses the boundary the same way a view does, since a view is what it becomes.

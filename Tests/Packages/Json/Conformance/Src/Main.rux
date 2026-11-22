@@ -171,30 +171,32 @@ func Main() -> int {
     // Resource limits, each refused under its own reason rather than a general failure.
     var tight = JsonLimits::Default();
     tight.maximumDepth = 4;
-    try {
-        ParseWith(allocator, "[[[[[1]]]]]", tight, DuplicateKeyPolicy::Reject);
-        Assert(false, "depth is bounded");
-    } catch {
-        refusal => Assert(RefusedWith(refusal, "JsonParseError::TooDeep(5)"), "depth is bounded"),
+    match ParseWith(allocator, "[[[[[1]]]]]", tight, DuplicateKeyPolicy::Reject) {
+        .Success(_) => {
+            Assert(false, "depth is bounded");
+        },
+        .Failure(refusal) => Assert(RefusedWith(refusal, "JsonParseError::TooDeep(5)"), "depth is bounded"),
     }
 
     tight = JsonLimits::Default();
     tight.maximumEntries = 3;
-    try {
-        ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject);
-        Assert(false, "entry counts are bounded");
-    } catch {
-        refusal => Assert(RefusedWith(refusal, "JsonParseError::TooManyEntries(8)"), "entry counts are bounded"),
+    match ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject) {
+        .Success(_) => {
+            Assert(false, "entry counts are bounded");
+        },
+        .Failure(refusal) => {
+            Assert(RefusedWith(refusal, "JsonParseError::TooManyEntries(8)"), "entry counts are bounded");
+        },
     }
 
     tight = JsonLimits::Default();
     tight.maximumBytes = 4;
-    try {
-        ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject);
-        Assert(false,
-           "document size is bounded, with the size as the reason and the byte it was reached at");
-    } catch {
-        refusal => Assert(RefusedWith(refusal, "JsonParseError::Lexical(TooManyBytes, 0)"),
+    match ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject) {
+        .Success(_) => {
+            Assert(false,
+               "document size is bounded, with the size as the reason and the byte it was reached at");
+        },
+        .Failure(refusal) => Assert(RefusedWith(refusal, "JsonParseError::Lexical(TooManyBytes, 0)"),
             "document size is bounded, with the size as the reason and the byte it was reached at"),
     }
 
@@ -210,12 +212,12 @@ func Main() -> int {
         nest[index] = 0x5Du8 as char8;
         index = index + 1;
     }
-    try {
-        Parse(allocator, nest[..600]);
-        Assert(false,
-           "three hundred levels exceeds the default depth and is refused rather than descended into");
-    } catch {
-        refusal => Assert(RefusedWith(refusal, "JsonParseError::TooDeep(129)"),
+    match Parse(allocator, nest[..600]) {
+        .Success(_) => {
+            Assert(false,
+               "three hundred levels exceeds the default depth and is refused rather than descended into");
+        },
+        .Failure(refusal) => Assert(RefusedWith(refusal, "JsonParseError::TooDeep(129)"),
             "three hundred levels exceeds the default depth and is refused rather than descended into"),
     }
 

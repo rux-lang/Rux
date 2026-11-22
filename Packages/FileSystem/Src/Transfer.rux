@@ -147,23 +147,23 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
         var failure: IoError? = none;
         var copying = true;
         while copying {
-            try {
-                let filled = source.Read(buffer);
-                // A read of zero is the end however the stream says it, rather than a reason to ask again.
-                if filled == 0 {
-                    copying = false;
-                }
-                else {
-                    let piece = buffer[0..filled];
-                    WriteAll(destination, piece) catch {
-                        error => {
-                            failure = error;
-                            copying = false;
-                        },
-                    };
-                }
-            } catch {
-                error => {
+            match source.Read(buffer) {
+                .Success(filled) => {
+                    // A read of zero is the end however the stream says it, rather than a reason to ask again.
+                    if filled == 0 {
+                        copying = false;
+                    }
+                    else {
+                        let piece = buffer[0..filled];
+                        WriteAll(destination, piece) catch {
+                            error => {
+                                failure = error;
+                                copying = false;
+                            },
+                        };
+                    }
+                },
+                .Failure(error) => {
                     if error.IsEnd() {
                         copying = false;
                     }

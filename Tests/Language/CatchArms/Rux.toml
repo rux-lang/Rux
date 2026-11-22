@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "TryCatch"
+Name = "CatchArms"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: TryCatch"
+Description = "Language test: x catch { arms } handling the error of one operand with match arms"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

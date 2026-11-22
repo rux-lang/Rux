@@ -84,11 +84,11 @@ func Main() -> int ! IoError {
     // A rename is the same content under a new name, the old name gone.
     Rename(allocator, b, c)!;
     CheckWhole(allocator, c, "the original bytes");
-    try {
-        File::Open(allocator, b, OpenOptions::Reading());
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::NotFound, "the old name is gone"),
+    match File::Open(allocator, b, OpenOptions::Reading()) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::NotFound, "the old name is gone"),
     }
 
     // Renaming onto an existing name replaces it.

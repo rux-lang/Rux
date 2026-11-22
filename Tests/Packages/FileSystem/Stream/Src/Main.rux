@@ -50,11 +50,11 @@ func Main() -> int ! IoError {
     ReadExact(reading, head)!;
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     let room = storage[..4];
-    try {
-        reading.Read(room);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.IsEnd(), "past them is the end"),
+    match reading.Read(room) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.IsEnd(), "past them is the end"),
     }
     Assert(reading.Seek(SeekFrom::Current, 0)! == 10, "and the position says so");
     reading.Close()!;
@@ -100,11 +100,11 @@ func Main() -> int ! IoError {
     let gammaWant = View("gamma");
     Assert(gamma.View().Equals(gammaWant), "with everything before the end");
     var last = StringBuilder::New(allocator);
-    try {
-        ReadTextLine(buffered, last, 64);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.IsEnd(), "and then the end"),
+    match ReadTextLine(buffered, last, 64) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.IsEnd(), "and then the end"),
     }
     last.Release();
     buffered.Release();
@@ -122,10 +122,9 @@ func Main() -> int ! IoError {
     var storage2: char8[4];
     storage2[0] = c8'z';
     var caughtRefused: IoError? = none;
-    try {
-        stale.Read(storage2[..4]);
-    } catch {
-        error => { caughtRefused = error; }
+    match stale.Read(storage2[..4]) {
+        .Success(_) => {},
+        .Failure(error) => { caughtRefused = error; },
     }
     let refused = caughtRefused ?? Panic("the operation was expected to fail");
     Assert(refused.kind == IoErrorKind::InvalidHandle, "the stream refuses through the closed file");

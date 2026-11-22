@@ -98,11 +98,11 @@ func Main() -> int {
     Assert(addresses.length == 2u, "one IPv4 and one IPv6 address");
     Assert(addresses[0].Equals(SocketAddress::Parse("10.1.2.3:8080") ?? Loopback(0)), "IPv4 first");
     Assert(addresses[1].Equals(SocketAddress::Parse("[2001:db8::5]:8080") ?? Loopback(0)), "then IPv6");
-    try {
-        resolver.Lookup(allocator, "missing.test", 80);
-        Panic("the name does not exist");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::NotFound, "a name that does not exist is not found"),
+    match resolver.Lookup(allocator, "missing.test", 80) {
+        .Success(_) => {
+            Panic("the name does not exist");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a name that does not exist is not found"),
     }
     Assert(serving.Join(), "the name server answered every query");
 
@@ -112,11 +112,11 @@ func Main() -> int {
     var patient = Resolver::WithServers(allocator, quiet[..]);
     patient.SetTimeout(Duration::FromMilliseconds(100));
     patient.SetAttempts(1);
-    try {
-        patient.Lookup(allocator, "example.test", 80);
-        Panic("nobody answered");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::TimedOut, "a server that never answers times out"),
+    match patient.Lookup(allocator, "example.test", 80) {
+        .Success(_) => {
+            Panic("nobody answered");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::TimedOut, "a server that never answers times out"),
     }
     return 0;
 }

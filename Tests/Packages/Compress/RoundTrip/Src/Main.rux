@@ -52,11 +52,9 @@ func SameBytes(left: byte[..], right: byte[..]) -> bool {
 // Decompresses a reference stream and checks it is the fox text.
 func DecodesToFox(stream: byte[..], format: Format) -> bool {
     let fox = Fox();
-    try {
-        let data = Decompress(SystemAllocator::New(), stream, format);
+    {
+        let data = Decompress(SystemAllocator::New(), stream, format) catch { _ => return false };
         return SameBytes(data.AsSlice(), fox.AsSlice());
-    } catch {
-        _ => return false,
     }
 }
 
@@ -149,23 +147,23 @@ func Main() -> int {
     var damaged = Vector<byte>::New(SystemAllocator::New());
     damaged.PushSlice(packed.AsSlice());
     damaged.AsMutableSlice()[damaged.Length() - 6u] = damaged.AsSlice()[damaged.Length() - 6u] ^ 0x01u8;
-    try {
-        Decompress(SystemAllocator::New(), damaged.AsSlice(), Format::Gzip);
-        Assert(false, "a damaged checksum is caught");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::InvalidInput, "a damaged checksum is invalid input"),
+    match Decompress(SystemAllocator::New(), damaged.AsSlice(), Format::Gzip) {
+        .Success(_) => {
+            Assert(false, "a damaged checksum is caught");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a damaged checksum is invalid input"),
     }
-    try {
-        Decompress(SystemAllocator::New(), packed.AsSlice()[..packed.Length() - 3u], Format::Gzip);
-        Assert(false, "a truncated stream is caught");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::InvalidInput, "a truncated stream is invalid input"),
+    match Decompress(SystemAllocator::New(), packed.AsSlice()[..packed.Length() - 3u], Format::Gzip) {
+        .Success(_) => {
+            Assert(false, "a truncated stream is caught");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "a truncated stream is invalid input"),
     }
-    try {
-        Decompress(SystemAllocator::New(), fox.AsSlice(), Format::Zlib);
-        Assert(false, "text is not a zlib stream");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::InvalidInput, "text is not a zlib stream"),
+    match Decompress(SystemAllocator::New(), fox.AsSlice(), Format::Zlib) {
+        .Success(_) => {
+            Assert(false, "text is not a zlib stream");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "text is not a zlib stream"),
     }
 
     // Text compresses as its UTF-8 bytes, with no cast to bytes first, and a stream held as text decompresses.

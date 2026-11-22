@@ -56,11 +56,11 @@ func Rendered(reason: &JsonParseError, into: var char8[..]) -> uint {
 
 // Parses, requires a refusal, and checks its rendering — the case and the offset together.
 func Refuses(allocator: Allocator, text: char8[..], expected: char8[..], what: char8[..]) {
-    try {
-        Parse(allocator, text);
-        Assert(false, what);
-    } catch {
-        refusal => Assert(Refusal(refusal, expected), what),
+    match Parse(allocator, text) {
+        .Success(_) => {
+            Assert(false, what);
+        },
+        .Failure(refusal) => Assert(Refusal(refusal, expected), what),
     }
 }
 
@@ -228,12 +228,12 @@ func Main() -> int {
     var shallow = JsonLimits::Default();
     shallow.maximumDepth = 3;
     var deepParser = JsonParser::New(allocator, "[[[[1]]]]", shallow);
-    try {
-        deepParser.Parse();
-        Assert(false,
-           "nesting past the depth limit is refused before the stack is at risk");
-    } catch {
-        refusal => Assert(Refusal(refusal, "JsonParseError::TooDeep(4)"),
+    match deepParser.Parse() {
+        .Success(_) => {
+            Assert(false,
+               "nesting past the depth limit is refused before the stack is at risk");
+        },
+        .Failure(refusal) => Assert(Refusal(refusal, "JsonParseError::TooDeep(4)"),
             "nesting past the depth limit is refused before the stack is at risk"),
     }
     var fittingParser = JsonParser::New(allocator, "[[[1]]]", shallow);
@@ -242,12 +242,12 @@ func Main() -> int {
     var few = JsonLimits::Default();
     few.maximumEntries = 2;
     var manyParser = JsonParser::New(allocator, "[1,2,3]", few);
-    try {
-        manyParser.Parse();
-        Assert(false,
-           "a container past the entry limit is refused");
-    } catch {
-        refusal => Assert(Refusal(refusal, "JsonParseError::TooManyEntries(6)"),
+    match manyParser.Parse() {
+        .Success(_) => {
+            Assert(false,
+               "a container past the entry limit is refused");
+        },
+        .Failure(refusal) => Assert(Refusal(refusal, "JsonParseError::TooManyEntries(6)"),
             "a container past the entry limit is refused"),
     }
     var enoughParser = JsonParser::New(allocator, "[1,2]", few);
@@ -256,12 +256,12 @@ func Main() -> int {
     // A lexical failure carries the lexer's own reason inside it rather than in a second field a caller has to
     // know to read, which is what makes it impossible to hold half of one.
     var badParser = JsonParser::New(allocator, "[01]", JsonLimits::Default());
-    try {
-        badParser.Parse();
-        Assert(false,
-           "a lexical failure keeps the lexer's own reason and its position");
-    } catch {
-        refusal => Assert(Refusal(refusal, "JsonParseError::Lexical(MalformedNumber, 1)"),
+    match badParser.Parse() {
+        .Success(_) => {
+            Assert(false,
+               "a lexical failure keeps the lexer's own reason and its position");
+        },
+        .Failure(refusal) => Assert(Refusal(refusal, "JsonParseError::Lexical(MalformedNumber, 1)"),
             "a lexical failure keeps the lexer's own reason and its position"),
     }
 
@@ -269,12 +269,12 @@ func Main() -> int {
     let directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
         catch { _ => Panic("the one-call form honours a chosen policy") };
     Assert(directAll.Length() is .Some(2), "the one-call form honours a chosen policy");
-    try {
-        ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::Reject);
-        Assert(false,
-           "and refuses under the default one, so the choice is per call rather than per program");
-    } catch {
-        refusal => Assert(Refusal(refusal, "JsonParseError::DuplicateName(12)"),
+    match ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::Reject) {
+        .Success(_) => {
+            Assert(false,
+               "and refuses under the default one, so the choice is per call rather than per program");
+        },
+        .Failure(refusal) => Assert(Refusal(refusal, "JsonParseError::DuplicateName(12)"),
             "and refuses under the default one, so the choice is per call rather than per program"),
     }
 

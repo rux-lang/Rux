@@ -168,10 +168,9 @@ func FinishWork(work: Work) {
 func Produce(channel: Channel<uint64>) -> () {
     var value: uint64 = 1;
     while value <= Rounds {
-        try {
-            channel.Send(value);
-        } catch {
-            _ => Assert(false, "an open channel accepts every value"),
+        match channel.Send(value) {
+            .Success(_) => {},
+            .Failure(_) => Assert(false, "an open channel accepts every value"),
         }
         value = value + 1u64;
     }
@@ -291,11 +290,11 @@ func Main() -> int {
     channel.Close();
     let received = consumers[0].Join() + consumers[1].Join();
     Assert(received == 2u64 * (Rounds * (Rounds + 1u64) / 2u64), "every value arrived exactly once");
-    try {
-        channel.Send(1u64);
-        Assert(false, "a closed channel refuses a value");
-    } catch {
-        value => Assert(value == 1u64, "a closed channel hands the value back"),
+    match channel.Send(1u64) {
+        .Success(_) => {
+            Assert(false, "a closed channel refuses a value");
+        },
+        .Failure(value) => Assert(value == 1u64, "a closed channel hands the value back"),
     }
     Assert(channel.IsClosed() && channel.TryReceive() == none, "a closed, empty channel gives nothing");
     return 0;

@@ -159,10 +159,9 @@ func Main() -> int {
     var bigStorage: char8[8];
     let big = bigStorage[..8];
     var caughtCut: IoError? = none;
-    try {
-        ReadExact(short, big);
-    } catch {
-        error => { caughtCut = error; }
+    match ReadExact(short, big) {
+        .Success(_) => {},
+        .Failure(error) => { caughtCut = error; },
     }
     let cut = caughtCut ?? Panic("the operation was expected to fail");
     Assert(cut.kind == IoErrorKind::UnexpectedEnd, "a stream that ends mid-buffer is an unexpected end");
@@ -172,49 +171,49 @@ func Main() -> int {
 
     // A stream that has already ended reports the clean end, so a loop reading records stops between them.
     var finished = Scripted("", 4);
-    try {
-        ReadExact(finished, big);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.IsEnd(), "a stream ended before the first byte is the end"),
+    match ReadExact(finished, big) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.IsEnd(), "a stream ended before the first byte is the end"),
     }
     Assert(finished.calls == 1, "found on the first read");
 
     // A read of zero bytes is the end too, and is not asked again.
     var silent = Scripted("ab", 2);
     silent.endsSilently = true;
-    try {
-        ReadExact(silent, big);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::UnexpectedEnd,
+    match ReadExact(silent, big) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::UnexpectedEnd,
             "a read of zero partway through is an unexpected end"),
     }
     Assert(silent.calls == 2, "taken from the first zero rather than retried");
     var mute = Scripted("", 2);
     mute.endsSilently = true;
-    try {
-        ReadExact(mute, big);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.IsEnd(), "and a read of zero before anything is the end"),
+    match ReadExact(mute, big) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.IsEnd(), "and a read of zero before anything is the end"),
     }
     Assert(mute.calls == 1, "after one read");
 
     // A stream that is never ready is handed back after one call rather than spun on.
     var blocked = BlockedStream { calls: 0 };
-    try {
-        ReadExact(blocked, big);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::WouldBlock, "a would-block read is returned"),
+    match ReadExact(blocked, big) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::WouldBlock, "a would-block read is returned"),
     }
     Assert(blocked.calls == 1, "after a single attempt");
-    try {
-        WriteAll(blocked, TextBytes("data"));
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::WouldBlock, "and so is a would-block write"),
+    match WriteAll(blocked, TextBytes("data")) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::WouldBlock, "and so is a would-block write"),
     }
     Assert(blocked.calls == 2, "after a single attempt too");
 
@@ -243,11 +242,11 @@ func Main() -> int {
         interruptions: 0,
         calls: 0
     };
-    try {
-        WriteAll(stalled, TextBytes("data"));
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::WriteZero,
+    match WriteAll(stalled, TextBytes("data")) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::WriteZero,
             "a stream making no progress is refused, not spun on"),
     }
     Assert(stalled.calls == ZeroProgressLimit, "after exactly the tolerated number of empty rounds");

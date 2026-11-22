@@ -98,18 +98,18 @@ extend DecompressReader {
 
     // Reads more of the source, and says whether there was more.
     func Refill(&var self) -> bool ! IoError {
-        try {
+        {
             // Safety: the buffer invariant: `input` holds `InputCapacity` bytes. The `Reader` contract has the
             // source fill at most that many, which keeps `inputLength` within it.
-            let count = self.source.Read(self.input[..InputCapacity]);
-            self.inputLength = count;
-            self.inputAt = 0;
-            return count > 0;
-        } catch {
+            let count = self.source.Read(self.input[..InputCapacity]) catch {
             error => {
                 if error.kind == IoErrorKind::EndOfStream { return false; }
                 throw error;
             },
+        };
+            self.inputLength = count;
+            self.inputAt = 0;
+            return count > 0;
         }
     }
 

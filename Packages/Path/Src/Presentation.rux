@@ -136,13 +136,13 @@ else {
         var runStart: uint = 0;
         while index < units.length {
             var width: uint = 0;
-            try {
-                let decoded = DecodeAt(units, index);
-                width = decoded.width;
+            match DecodeAt(units, index) {
+                .Success(decoded) => {
+                    width = decoded.width;
 
-                index = index + width;
-            } catch {
-                _ => {
+                    index = index + width;
+                },
+                .Failure(_) => {
                     if index > runStart {
                         // Safety: `runStart < index`, and `index` is below `units.length`, the loop condition.
                         WriteBytes(writer, (@units.data[runStart])[..index - runStart])!;
@@ -170,13 +170,13 @@ else {
         var runStart: uint = 0;
         while index < units.length {
             var width: uint = 0;
-            try {
-                let decoded = DecodeAt(units, index);
-                width = decoded.width;
+            match DecodeAt(units, index) {
+                .Success(decoded) => {
+                    width = decoded.width;
 
-                index = index + width;
-            } catch {
-                _ => {
+                    index = index + width;
+                },
+                .Failure(_) => {
                     if index > runStart {
                         // Safety: `runStart < index`, and `index` is below `units.length`, the loop condition.
                         WriteEscaped(writer, (@units.data[runStart])[..index - runStart])!;

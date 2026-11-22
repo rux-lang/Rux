@@ -87,24 +87,24 @@ func Main() -> !AllocError {
     allocator.Deallocate(aligned, strict)!;
 
     // A release that does not match its allocation is reported rather than corrupting anything.
-    try {
-        allocator.Deallocate(block, odd);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::InvalidBlock, "a mismatched layout is refused"),
+    match allocator.Deallocate(block, odd) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::InvalidBlock, "a mismatched layout is refused"),
     }
-    try {
-        allocator.Deallocate(null, layout);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::InvalidBlock, "and so is a null block"),
+    match allocator.Deallocate(null, layout) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::InvalidBlock, "and so is a null block"),
     }
     var stackValue: uint64 = 0;
-    try {
-        allocator.Deallocate(@stackValue as *var opaque, layout);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::InvalidBlock, "and a pointer this allocator never gave out"),
+    match allocator.Deallocate(@stackValue as *var opaque, layout) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::InvalidBlock, "and a pointer this allocator never gave out"),
     }
 
     // Reallocation keeps what fits and reports the address to use.
@@ -128,11 +128,11 @@ func Main() -> !AllocError {
 
     // The two layouts must share an alignment; anything else is refused rather than silently moved.
     let realigned = Layout::Of(16, 32) ?? layout;
-    try {
-        allocator.Reallocate(shrunk, smaller, realigned);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::Unsupported, "changing the alignment is refused"),
+    match allocator.Reallocate(shrunk, smaller, realigned) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::Unsupported, "changing the alignment is refused"),
     }
     allocator.Deallocate(shrunk, smaller)!;
 }

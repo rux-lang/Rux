@@ -81,22 +81,18 @@ func CheckParseOverloads() -> int {
     // The bool-and-output-slot overload is gone: a caller reads the Result, which cannot be ignored the way a
     // returned bool could and carries why as well as whether.
     var value: int64 = 9;
-    try {
-        let parsedValue = ParseInt64("456");
+    {
+        let parsedValue = ParseInt64("456") catch { _ => return 121 };
         value = parsedValue;
-    } catch {
-        _ => return 121,
     }
     if value != 456 { return 122; }
     if (ParseInt64("invalid") !! none) is .Some(_) { return 123; }
     if value != 456 { return 124; }
 
     text = StringView::FromBytes("-789") ?? StringView::New();
-    try {
-        let parsedView = ParseInt64(text);
+    {
+        let parsedView = ParseInt64(text) catch { _ => return 126 };
         value = parsedView;
-    } catch {
-        _ => return 126,
     }
     if value != -789i64 { return 127; }
 

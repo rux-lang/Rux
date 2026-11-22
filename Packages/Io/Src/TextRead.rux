@@ -80,12 +80,12 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             var width: uint = 0;
             var decodedWhole = false;
             var reason = Utf8Error::InvalidStart;
-            try {
-                let decoded = DecodeAt(joined[0..carryLength + borrowed], 0);
-                width = decoded.width;
-                decodedWhole = true;
-            } catch {
-                problem => reason = problem,
+            match DecodeAt(joined[0..carryLength + borrowed], 0) {
+                .Success(decoded) => {
+                    width = decoded.width;
+                    decodedWhole = true;
+                },
+                .Failure(problem) => reason = problem,
             }
             if !decodedWhole && reason == Utf8Error::Truncated && borrowed == held.length {
                 // Still short — the source is trickling bytes. Take them into the carry and ask again.

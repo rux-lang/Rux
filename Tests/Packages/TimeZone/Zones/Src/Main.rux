@@ -101,23 +101,23 @@ func Main() -> int {
     Assert(back.dateTime.time.hour == 12u8 && back.offset.seconds == 7200, "a resolved time converts back");
 
     // Errors.
-    try {
-        TimeZone::FromRule(allocator, "Bad", "X5");
-        Assert(false, "a short abbreviation is refused");
-    } catch {
-        _ => {},
+    match TimeZone::FromRule(allocator, "Bad", "X5") {
+        .Success(_) => {
+            Assert(false, "a short abbreviation is refused");
+        },
+        .Failure(_) => {},
     }
-    try {
-        TimeZone::FromTzif(allocator, "Bad", BerlinData[..40]);
-        Assert(false, "truncated TZif data is refused");
-    } catch {
-        _ => {},
+    match TimeZone::FromTzif(allocator, "Bad", BerlinData[..40]) {
+        .Success(_) => {
+            Assert(false, "truncated TZif data is refused");
+        },
+        .Failure(_) => {},
     }
-    try {
-        TimeZone::Load(allocator, "../etc/passwd");
-        Assert(false, "a name that leaves the directory is refused");
-    } catch {
-        _ => {},
+    match TimeZone::Load(allocator, "../etc/passwd") {
+        .Success(_) => {
+            Assert(false, "a name that leaves the directory is refused");
+        },
+        .Failure(_) => {},
     }
     // The Unix systems keep the tz database where the zone can be loaded from by name.
     when #target.os == .Linux {
@@ -125,11 +125,11 @@ func Main() -> int {
         Assert(loaded.OffsetAt(summer).seconds == 7200 && Same(loaded.Name(), "Europe/Berlin"),
                "a zone loads from the system database");
     }
-    try {
-        let zone = TimeZone::Local(allocator);
-        Assert(zone.Name().length > 0u, "the local zone has a name");
-    } catch {
-        _ => {},
+    match TimeZone::Local(allocator) {
+        .Success(zone) => {
+            Assert(zone.Name().length > 0u, "the local zone has a name");
+        },
+        .Failure(_) => {},
     }
     return 0;
 }

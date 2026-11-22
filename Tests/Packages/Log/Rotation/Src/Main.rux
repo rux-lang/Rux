@@ -15,14 +15,14 @@ func PathIn(allocator: Allocator, directory: Path, name: char8[..]) -> PathBuffe
 }
 
 func Exists(allocator: Allocator, path: Path) -> bool {
-    try {
-        MetadataOf(allocator, path, false);
-        return true;
-    } catch {
+    {
+        MetadataOf(allocator, path, false) catch {
         error => {
             Assert(error.kind == IoErrorKind::NotFound, "a missing file is the only failure expected");
             return false;
         },
+    };
+        return true;
     }
 }
 
@@ -31,14 +31,14 @@ func Contents(allocator: Allocator, path: Path, buffer: var char8[..]) -> char8[
     var file = File::Open(allocator, path, OpenOptions::Reading()) catch { _ => Panic("the file opens") };
     var length: uint = 0;
     while true {
-        try {
-            let read = file.Read(buffer[length..]);
-            length = length + read;
-        } catch {
+        {
+            let read = file.Read(buffer[length..]) catch {
             error => {
                 Assert(error.IsEnd(), "the file reads to its end");
                 break;
             },
+        };
+            length = length + read;
         }
     }
     file.Close() catch { _ => Panic("the file closes") };
@@ -70,11 +70,11 @@ func Main() -> int {
     let second = PathIn(allocator, directory.AsPath(), "app.log.2");
     let third = PathIn(allocator, directory.AsPath(), "app.log.3");
 
-    try {
-        RotatingFile::Open(allocator, current.AsPath(), 0, 2);
-        Panic("a zero limit is refused");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::InvalidInput, "as invalid input"),
+    match RotatingFile::Open(allocator, current.AsPath(), 0, 2) {
+        .Success(_) => {
+            Panic("a zero limit is refused");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::InvalidInput, "as invalid input"),
     }
 
     var file = RotatingFile::Open(allocator, current.AsPath(), 100, 2) catch { _ => Panic("the log opens") };

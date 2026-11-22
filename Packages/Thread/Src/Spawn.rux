@@ -166,12 +166,10 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
         (((block as uint) + contextOffset) as *var T)[0] = move context;
     }
     let start: func(*var Packet<T, R>) -> *var opaque = Start;
-    try {
+    {
         // Safety: `Start` has the shape every system calls a thread's entry with, and `block` stays live for the new
         // thread because it holds one of the block's two owner counts, which it gives up only when it is done with it.
-        let thread = NativeStart(start as *opaque, block, options.stackSize);
-        return JoinHandle<R> { thread, block };
-    } catch {
+        let thread = NativeStart(start as *opaque, block, options.stackSize) catch {
         error => {
             // The thread never ran, so the context is still here to destroy.
             // Safety: the thread never ran, so the context written above is live in its slot and nobody else holds
@@ -180,6 +178,8 @@ pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func
             Release(block);
             throw error;
         },
+    };
+        return JoinHandle<R> { thread, block };
     }
 }
 

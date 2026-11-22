@@ -192,11 +192,11 @@ func Main() -> int {
     var small = BufferWriter::New(room[..8]);
     let smallSink: &var TextWriter = small;
     let full = FormatError::InsufficientCapacity;
-    try {
-        TomlWriteDocument(smallSink, bounded);
-        Assert(false, "a destination without room reports being full, not merely failing");
-    } catch {
-        refusal => Assert(SameFailure(refusal, full),
+    match TomlWriteDocument(smallSink, bounded) {
+        .Success(_) => {
+            Assert(false, "a destination without room reports being full, not merely failing");
+        },
+        .Failure(refusal) => Assert(SameFailure(refusal, full),
                           "a destination without room reports being full, not merely failing"),
     }
     Assert(small.Length() <= 8, "having written no more than it had");

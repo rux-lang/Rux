@@ -38,20 +38,20 @@ func Main() -> int {
     let listener = TcpListener::Bind(Loopback(0)) catch { _ => Panic("the listener binds") };
     let address = listener.LocalAddress() catch { _ => Panic("it has an address") };
     listener.SetNonBlocking(true) catch { _ => Panic("the listener becomes non-blocking") };
-    try {
-        listener.Accept();
-        Panic("no connection is waiting yet");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::WouldBlock, "accept would block"),
+    match listener.Accept() {
+        .Success(_) => {
+            Panic("no connection is waiting yet");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "accept would block"),
     }
 
     var poller = Poller::New(SystemAllocator::New()) catch { _ => Panic("a poller is made") };
     poller.Register(listener.PollSource(), 1, Interest::Readable()) catch { _ => Panic("the listener registers") };
-    try {
-        poller.Register(listener.PollSource(), 9, Interest::Readable());
-        Panic("a socket registers once");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::AlreadyExists, "a second registration is refused"),
+    match poller.Register(listener.PollSource(), 9, Interest::Readable()) {
+        .Success(_) => {
+            Panic("a socket registers once");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::AlreadyExists, "a second registration is refused"),
     }
     var events: PollEvent[4] = [PollEvent::New(); 4];
     let quiet = poller.Wait(events[..], Duration::FromMilliseconds(20)) catch { _ => Panic("the wait works") };
@@ -65,11 +65,11 @@ func Main() -> int {
     // The accepted stream blocks, whatever its listener does; made non-blocking, it has nothing to read yet.
     server.SetNonBlocking(true) catch { _ => Panic("the stream becomes non-blocking") };
     var buffer: char8[16] = ['\0'; 16];
-    try {
-        server.Read(buffer[..]);
-        Panic("nothing was sent yet");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::WouldBlock, "a read would block"),
+    match server.Read(buffer[..]) {
+        .Success(_) => {
+            Panic("nothing was sent yet");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "a read would block"),
     }
     poller.Register(server.PollSource(), 2, Interest::Readable()) catch { _ => Panic("the stream registers") };
     WriteAll(client, "ping") catch { _ => Panic("the client writes") };
@@ -88,18 +88,18 @@ func Main() -> int {
     Close(move client);
     let ended = WaitFor(poller, 2);
     Assert(ended.readable || ended.closed, "a closed peer is reported");
-    try {
-        server.Read(buffer[..]);
-        Panic("the peer sent nothing more");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::EndOfStream, "the read finds the end"),
+    match server.Read(buffer[..]) {
+        .Success(_) => {
+            Panic("the peer sent nothing more");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::EndOfStream, "the read finds the end"),
     }
     poller.Deregister(server.PollSource()) catch { _ => Panic("the stream deregisters") };
-    try {
-        poller.Deregister(server.PollSource());
-        Panic("a socket deregisters once");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::NotFound, "a second deregistration is refused"),
+    match poller.Deregister(server.PollSource()) {
+        .Success(_) => {
+            Panic("a socket deregisters once");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::NotFound, "a second deregistration is refused"),
     }
 
     // A datagram makes a UDP socket readable.
@@ -113,11 +113,11 @@ func Main() -> int {
     Assert(arrived.readable, "a socket with a datagram is readable");
     let datagram = receiver.ReceiveFrom(buffer[..]) catch { _ => Panic("the datagram is received") };
     Assert(datagram.length == 8u, "the whole datagram arrives");
-    try {
-        receiver.Receive(buffer[..]);
-        Panic("only one datagram was sent");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::WouldBlock, "the next receive would block"),
+    match receiver.Receive(buffer[..]) {
+        .Success(_) => {
+            Panic("only one datagram was sent");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "the next receive would block"),
     }
 
     poller.Deregister(receiver.PollSource()) catch { _ => Panic("the receiver deregisters") };

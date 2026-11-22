@@ -44,10 +44,9 @@ func Vector(plain: char8[..], form: Base32Variant, encoded: char8[..]) -> bool {
 func Refusal(text: char8[..], form: Base32Variant, room: uint, at: uint) -> int {
     var storage: byte[64] = [0x3F; 64];
     var caught: DecodeError? = none;
-    try {
-        Base32Decode(text, storage[..room], form);
-    } catch {
-        error => { caught = error; }
+    match Base32Decode(text, storage[..room], form) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return -1;
     for value in storage {
@@ -142,20 +141,18 @@ func Main() -> int {
     if Refusal("MZX", Base32Variant::StandardUnpadded, 64, 3) != 2 { return 25; }
     if Refusal("M1", Base32Variant::StandardUnpadded, 64, 1) != 1 { return 26; }
     if Refusal("MZXW6YTB", Base32Variant::Standard, 4, 5) != 6 { return 27; }
-    try {
-        let length = Base32DecodedLength("MZXW6YQ=");
+    {
+        let length = Base32DecodedLength("MZXW6YQ=") catch { _ => return 29 };
         if length != 4 { return 28; }
-    } catch {
-        _ => return 29,
     }
 
     // A short destination is refused before anything is written.
     var short: char8[7] = ['?'; 7];
-    try {
-        Base32Encode("f", short[..]);
-        return 30;
-    } catch {
-        _ => {},
+    match Base32Encode("f", short[..]) {
+        .Success(_) => {
+            return 30;
+        },
+        .Failure(_) => {},
     }
     for character in short {
         if character != '?' { return 31; }

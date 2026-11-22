@@ -196,19 +196,19 @@ func Main() -> int {
     var blocked = BufferedReader::New(allocator, @blockedHandle as Reader, 8) catch {
         _ => Panic("the reader takes its buffer")
     };
-    try {
-        blocked.Fill();
-        Panic("a source that is never ready fills nothing");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::WouldBlock, "the fill reports the would-block"),
+    match blocked.Fill() {
+        .Success(_) => {
+            Panic("a source that is never ready fills nothing");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "the fill reports the would-block"),
     }
     Assert(blockedCalls == 1, "after a single attempt");
     var wide: char8[16];
-    try {
-        blocked.Read(wide[..]);
-        Panic("a bypassing read of a source that is never ready reads nothing");
-    } catch {
-        error => Assert(error.kind == IoErrorKind::WouldBlock, "the bypass reports it too"),
+    match blocked.Read(wide[..]) {
+        .Success(_) => {
+            Panic("a bypassing read of a source that is never ready reads nothing");
+        },
+        .Failure(error) => Assert(error.kind == IoErrorKind::WouldBlock, "the bypass reports it too"),
     }
     Assert(blockedCalls == 2, "after a single attempt of its own");
 

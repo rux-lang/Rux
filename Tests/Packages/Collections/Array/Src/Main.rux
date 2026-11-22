@@ -37,11 +37,11 @@ func SetAndReplace(allocator: Allocator, destroyed: *var int32, replacements: *v
     Assert(*destroyed == 1, "setting destroys the element it replaces");
     // Safety: `replacements` points at a local of `Main`, which outlives this call.
     Assert(*replacements == 0, "and not the one it stores");
-    try {
-        array.Set(2, Tracked { counter: replacements, value: 99 });
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
+    match array.Set(2, Tracked { counter: replacements, value: 99 }) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
     }
     // Safety: `replacements` points at a local of `Main`, which outlives this call.
     Assert(*replacements == 1, "destroying the refused value rather than leaking it");
@@ -91,11 +91,11 @@ func Main() -> int {
     // Setting replaces an element and refuses an index the array does not have.
     filled.Set(2, 99) catch { _ => Panic("setting an element in range succeeds") };
     Assert(filled.Get(2) == .Some(99), "and replaces what was there");
-    try {
-        filled.Set(6, 1);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
+    match filled.Set(6, 1) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the end is refused"),
     }
     Assert(filled.Get(5) == .Some(7), "changing nothing");
 

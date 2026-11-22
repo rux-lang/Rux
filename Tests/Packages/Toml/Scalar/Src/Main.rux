@@ -50,14 +50,14 @@ func IntegerFails(text: char8[..]) -> bool {
 
 // Whether the integer is refused with exactly this rendering — the case and the position together.
 func IntegerRefused(text: char8[..], expected: char8[..]) -> bool {
-    try {
-        TomlParseInteger(text);
-    } catch {
+    {
+        TomlParseInteger(text) catch {
         reason => {
             var storage: char8[64];
             let length = Rendered(reason, storage[..64]);
             return Same(storage[..length], expected);
         },
+    };
     }
     return false;
 }
@@ -73,14 +73,14 @@ func FloatFails(text: char8[..]) -> bool {
 }
 
 func FloatRefused(text: char8[..], expected: char8[..]) -> bool {
-    try {
-        TomlParseFloat(text);
-    } catch {
+    {
+        TomlParseFloat(text) catch {
         reason => {
             var storage: char8[64];
             let length = Rendered(reason, storage[..64]);
             return Same(storage[..length], expected);
         },
+    };
     }
     return false;
 }
@@ -103,14 +103,14 @@ func MomentFails(text: char8[..]) -> bool {
 }
 
 func MomentRefused(text: char8[..], expected: char8[..]) -> bool {
-    try {
-        TomlParseDateTime(text);
-    } catch {
+    {
+        TomlParseDateTime(text) catch {
         reason => {
             var storage: char8[64];
             let length = Rendered(reason, storage[..64]);
             return Same(storage[..length], expected);
         },
+    };
     }
     return false;
 }

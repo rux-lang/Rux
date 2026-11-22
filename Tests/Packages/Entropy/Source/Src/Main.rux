@@ -19,21 +19,22 @@ func Main() -> !EntropyError {
     // A null buffer with a real length is refused rather than written through.
     // Safety: the null buffer is refused before anything is written, which is the behaviour under test.
     var caughtRefusal: EntropyError? = none;
-    try {
-        FillFromSource(null, 32);
-    } catch {
-        error => { caughtRefusal = error; }
+    match FillFromSource(null, 32) {
+        .Success(_) => {},
+        .Failure(error) => { caughtRefusal = error; },
     }
     let refusal = caughtRefusal ?? Panic("the operation was expected to fail");
     Assert(refusal == EntropyError::Failed, "a null buffer with a length is refused");
 
     // A request larger than the source accepts in one call is refused rather than truncated.
     // Safety: an oversized request is refused before the buffer is looked at, which is the behaviour under test.
-    try {
-        FillFromSource(null, MaxEntropyRequest + 1);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == EntropyError::TooLarge, "a request past the single-call limit is refused"),
+    match FillFromSource(null, MaxEntropyRequest + 1) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => {
+            Assert(refusal == EntropyError::TooLarge, "a request past the single-call limit is refused");
+        },
     }
 
     // A real fill writes every byte of the buffer and nothing outside it. The guard bytes on either side are a

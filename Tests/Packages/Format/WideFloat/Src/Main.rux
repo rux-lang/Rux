@@ -226,10 +226,9 @@ func Main() -> int {
     let widest = ParseFloat512(allocator, "Inf") catch { _ => Panic("an infinity reads") };
     Assert(widest.IsInfinite(), "and the widest width reads an infinity");
     var caught: ParseError? = none;
-    try {
-        ParseFloat128(allocator, "1e5000");
-    } catch {
-        error => { caught = error; }
+    match ParseFloat128(allocator, "1e5000") {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let failure = caught ?? Panic("a value past the format is refused");
     let named = match failure {

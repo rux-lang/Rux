@@ -18,11 +18,11 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 }
 
 func Compiled(pattern: char8[..]) -> Regex {
-    try {
-        let regex = Regex::New(SystemAllocator::New(), pattern);
-        return move regex;
-    } catch {
-        _ => {},
+    match Regex::New(SystemAllocator::New(), pattern) {
+        .Success(regex) => {
+            return move regex;
+        },
+        .Failure(_) => {},
     }
     Assert(false, "the pattern compiles");
     return Compiled("");
@@ -47,11 +47,11 @@ func FindsNothing(pattern: char8[..], text: char8[..]) -> bool {
 }
 
 func Refuses(pattern: char8[..], kind: RegexErrorKind, offset: uint) -> bool {
-    try {
-        Regex::New(SystemAllocator::New(), pattern);
+    {
+        Regex::New(SystemAllocator::New(), pattern) catch {
+            error => return error.kind == kind && error.offset == offset,
+        };
         return false;
-    } catch {
-        error => return error.kind == kind && error.offset == offset,
     }
 }
 

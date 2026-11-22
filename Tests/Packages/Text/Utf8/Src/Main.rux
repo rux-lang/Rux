@@ -9,10 +9,8 @@ import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf
 
 // Whether a run of bytes is refused, and refused for the stated reason.
 func Refuses(bytes: char8[..], expected: Utf8Error) -> bool {
-    try {
-        Validate(bytes);
-    } catch {
-        problem => return problem.reason == expected,
+    {
+        Validate(bytes) catch { problem => return problem.reason == expected };
     }
     return false;
 }

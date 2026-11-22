@@ -62,16 +62,16 @@ func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneE
     var bytes = Vector<byte>::New(allocator);
     var chunk: char8[4096] = ['\0'; 4096];
     while true {
-        try {
-            let count = file.Read(chunk[..]);
-            // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
-            let read = (chunk[..count].data as *byte)[..count];
-            bytes.PushSlice(read);
-        } catch {
+        {
+            let count = file.Read(chunk[..]) catch {
             error => {
                 if error.kind == IoErrorKind::EndOfStream { break; }
                 throw .Unreadable;
             },
+        };
+            // Safety: `Read` reports at most the `chunk.length` bytes it was given, and a `char8` is one `byte`.
+            let read = (chunk[..count].data as *byte)[..count];
+            bytes.PushSlice(read);
         }
     }
     return move bytes;
@@ -116,11 +116,11 @@ extend TimeZone {
         else {
             var index: uint = 0;
             while index < 4u {
-                try {
-                    let zone = Self::LoadFrom(allocator, SystemDirectory(index), name);
-                    return move zone;
-                } catch {
-                    error => {
+                match Self::LoadFrom(allocator, SystemDirectory(index), name) {
+                    .Success(zone) => {
+                        return move zone;
+                    },
+                    .Failure(error) => {
                         if error != TimeZoneError::NotFound { throw error; }
                     },
                 }
@@ -169,11 +169,11 @@ extend TimeZone {
                 let data = ReadFile(allocator, text)!;
                 return Self::FromTzif(allocator, text, data.AsSlice())!;
             }
-            try {
-                let zone = Self::Load(allocator, text);
-                return move zone;
-            } catch {
-                _ => {},
+            match Self::Load(allocator, text) {
+                .Success(zone) => {
+                    return move zone;
+                },
+                .Failure(_) => {},
             }
             return Self::FromRule(allocator, text, text)!;
         }

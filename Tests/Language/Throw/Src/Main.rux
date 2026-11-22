@@ -62,17 +62,29 @@ func Code(error: DigitError) -> int32 {
     };
 }
 
+func CheckBoth() -> !DigitError {
+    Check(true)!;
+    Check(false)!;
+}
+
+// A `throw` after a call takes the type the function's error side has.
+func ThrowAfterRead() -> int32 ! DigitError {
+    let value = ReadDigit('2')!;
+    if value == 2 {
+        throw .NotADigit('x');
+    }
+    return 50i32;
+}
+
+func ThrowOwner() -> !DigitError {
+    throw DigitError::Blank;
+}
+
 func Main() -> int {
     Assert((ReadDigit('3') !! none) == 3, "a digit is read");
     Assert((ReadDigit(' ') !! none) == none, "a blank throws");
     var thrown = 0i32;
-    try {
-        Check(true);
-        Check(false);
-        thrown = 99i32;
-    } catch {
-        e => thrown = Code(e),
-    }
+    CheckBoth() catch { e => { thrown = Code(e); } };
     Assert(thrown == 1i32, "a throws clause without a return type throws through it");
 
     // A sum error: each member leaves as itself.
@@ -93,27 +105,16 @@ func Main() -> int {
     Assert((Classify('a') !! none) == .Some(1i32), "a value arm");
     Assert((Classify(' ') catch { e => Code(e) }) == 1i32, "a throw arm");
 
-    // A `throw` inside a `try` block goes to its arms, with its case taking the type the block's calls throw.
-    var caught = 0i32;
-    try {
-        let value = ReadDigit('2');
-        if value == 2 {
-            throw .NotADigit('x');
-        }
-        caught = 50i32;
-    } catch {
-        .NotADigit(c) => caught = (c as int32),
-        .Blank => caught = -1i32,
-    }
-    Assert(caught == ('x' as int32), "a throw in a try block is caught by its arms");
+    // A `throw` reaches the caller's arms like a failed call.
+    let caught = ThrowAfterRead() catch {
+        .NotADigit(c) => (c as int32),
+        .Blank => -1i32,
+    };
+    Assert(caught == ('x' as int32), "a throw after a call is caught by the caller's arms");
 
     // A `throw` written with the owner, with no call before it.
     var owner = 0i32;
-    try {
-        throw DigitError::Blank;
-    } catch {
-        e => owner = Code(e),
-    }
+    ThrowOwner() catch { e => { owner = Code(e); } };
     Assert(owner == 1i32, "a qualified throw needs no call before it");
 
     // The older spelling sends its error to the same place.

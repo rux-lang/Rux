@@ -31,10 +31,8 @@ func CodeOf(error: &UuidParseError) -> int {
 // Whether `text` is refused with exactly `code` at exactly `at`. Both halves matter: a reason with the wrong
 // offset underlines the wrong character, and an offset with the wrong reason describes the wrong mistake.
 func Refuses(text: char8[..], code: int, at: uint) -> bool {
-    try {
-        Parse(text);
-    } catch {
-        reason => return CodeOf(reason) == code && reason.Offset() == at,
+    {
+        Parse(text) catch { reason => return CodeOf(reason) == code && reason.Offset() == at };
     }
     return false;
 }
@@ -104,10 +102,9 @@ func RefusedByWriter(value: Uuid, spec: FormatSpec, room: uint) -> bool {
     let sink: &var TextWriter = writer;
     let shown: Uuid = value;
     var caught: FormatError? = none;
-    try {
-        shown.WriteDisplay(sink, spec);
-    } catch {
-        error => { caught = error; }
+    match shown.WriteDisplay(sink, spec) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return false;
     return match reported {
@@ -123,10 +120,9 @@ func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
     let sink: &var TextWriter = writer;
     let shown: Uuid = value;
     var caught: FormatError? = none;
-    try {
-        shown.WriteDisplay(sink, spec);
-    } catch {
-        error => { caught = error; }
+    match shown.WriteDisplay(sink, spec) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return false;
     if writer.Length() != 0 { return false; }

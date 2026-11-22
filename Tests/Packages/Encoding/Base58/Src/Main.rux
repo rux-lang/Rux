@@ -36,10 +36,9 @@ func Vector(bytes: byte[..], encoded: char8[..]) -> bool {
 func InvalidAt(text: char8[..], at: uint) -> bool {
     var room: byte[8] = [0x3F; 8];
     var caught: DecodeError? = none;
-    try {
-        Base58Decode(text, room[..]);
-    } catch {
-        error => { caught = error; }
+    match Base58Decode(text, room[..]) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return false;
     for value in room {
@@ -80,21 +79,21 @@ func Main() -> int {
 
     // Too short a destination: refused, and left zeroed.
     var short: char8[10] = ['?'; 10];
-    try {
-        Base58Encode(helloBytes, short[..]);
-        return 9;
-    } catch {
-        _ => {},
+    match Base58Encode(helloBytes, short[..]) {
+        .Success(_) => {
+            return 9;
+        },
+        .Failure(_) => {},
     }
     for character in short {
         if character != '\0' { return 10; }
     }
     var shortBytes: byte[4] = [0x3F; 4];
-    try {
-        Base58Decode("2NEpo7TZRRrLZSi2U", shortBytes[..]);
-        return 12;
-    } catch {
-        error => {
+    match Base58Decode("2NEpo7TZRRrLZSi2U", shortBytes[..]) {
+        .Success(_) => {
+            return 12;
+        },
+        .Failure(error) => {
             match error {
                 .InsufficientCapacity(_) => {},
                 _ => return 11

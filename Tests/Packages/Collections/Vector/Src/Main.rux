@@ -247,11 +247,11 @@ func Main() -> !CollectionError {
     Assert(replacedCount == 0, "and not the one it stores");
     let stored = tracked.At(0) ?? Panic("the set element is there");
     Assert(stored.value == 10, "which now sits at the index");
-    try {
-        tracked.Set(5, Tracked { counter: @replacedCount, value: 99 });
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the length is refused"),
+    match tracked.Set(5, Tracked { counter: @replacedCount, value: 99 }) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == CollectionError::IndexOutOfRange, "setting past the length is refused"),
     }
     Assert(replacedCount == 1, "destroying the refused value rather than leaking it");
     Assert(destroyed == 1, "and touching no element");
@@ -277,11 +277,13 @@ func Main() -> !CollectionError {
     Assert(ordered.Length() == 5, "with one more element than before");
     ordered.Insert(5, 55) catch { _ => Panic("inserting at exactly the length appends") };
     Assert(ordered.Get(5) == .Some(55), "putting it at the end");
-    try {
-        ordered.Insert(7, 1);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == CollectionError::IndexOutOfRange, "and inserting past the length is refused"),
+    match ordered.Insert(7, 1) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => {
+            Assert(refusal == CollectionError::IndexOutOfRange, "and inserting past the length is refused");
+        },
     }
     Assert(ordered.Length() == 6, "changing nothing");
     ordered.Insert(3, 77) catch { _ => Panic("inserting in the middle succeeds") };

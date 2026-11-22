@@ -128,13 +128,13 @@ pub func RunTestsWith(tests: TestCase[..], options: TestOptions) -> int {
         if Chooses(options, test.name) {
             let run = test.run;
             let before = Instant::Now();
-            try {
-                run();
-                let spent = Instant::Now().Since(before) ?? Duration::Zero();
-                passed = passed + 1;
-                if !options.quiet { PrintLine("test {} ... ok ({} ms)", test.name, Milliseconds(spent)); }
-            } catch {
-                failure => {
+            match run() {
+                .Success(_) => {
+                    let spent = Instant::Now().Since(before) ?? Duration::Zero();
+                    passed = passed + 1;
+                    if !options.quiet { PrintLine("test {} ... ok ({} ms)", test.name, Milliseconds(spent)); }
+                },
+                .Failure(failure) => {
                     if failure.IsSkip() {
                         skipped = skipped + 1;
                         if !options.quiet { PrintLine("test {} ... skipped: {}", test.name, failure.Message()); }

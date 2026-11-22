@@ -223,15 +223,15 @@ extend Regex {
             return;
         }
         self.reverseStart = forward as uint32;
-        try {
-            self.CompileNode(nodes, root, true);
-        } catch {
+        {
+            self.CompileNode(nodes, root, true) catch {
             error => {
                 if error.kind != RegexErrorKind::TooLarge { throw error; }
                 self.instructions.Truncate(forward);
                 self.reverseStart = NoReverse;
                 return;
             },
+        };
         }
         self.Emit(Op::Match, 0, 0, 0)!;
     }

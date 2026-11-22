@@ -101,23 +101,23 @@ func Main() -> int {
     // shortest form instead, which is the behaviour these two cases exist to keep out.
     Assert(MaximumPrecision == 1100, "the supported precision is eleven hundred digits");
     Assert((Render(allocator, "{:.1100}", 1.0) !! none) is .Some(_), "the bound itself is supported");
-    try {
-        Render(allocator, "{:.1101}", 1.0);
-        Assert(false, "one past it is refused");
-    } catch {
-        refusal => Assert(Refused(refusal), "one past it is refused"),
+    match Render(allocator, "{:.1101}", 1.0) {
+        .Success(_) => {
+            Assert(false, "one past it is refused");
+        },
+        .Failure(refusal) => Assert(Refused(refusal), "one past it is refused"),
     }
-    try {
-        Render(allocator, "{:.2000}", 3.14159);
-        Assert(false, "and so is a request well past it");
-    } catch {
-        refusal => Assert(Refused(refusal), "and so is a request well past it"),
+    match Render(allocator, "{:.2000}", 3.14159) {
+        .Success(_) => {
+            Assert(false, "and so is a request well past it");
+        },
+        .Failure(refusal) => Assert(Refused(refusal), "and so is a request well past it"),
     }
-    try {
-        Render(allocator, "{:.1101}", 1.0f32);
-        Assert(false, "at the narrow width too");
-    } catch {
-        refusal => Assert(Refused(refusal), "at the narrow width too"),
+    match Render(allocator, "{:.1101}", 1.0f32) {
+        .Success(_) => {
+            Assert(false, "at the narrow width too");
+        },
+        .Failure(refusal) => Assert(Refused(refusal), "at the narrow width too"),
     }
 
     // A supported precision that the value cannot fill is still supported: the digits are there, they are zeros.

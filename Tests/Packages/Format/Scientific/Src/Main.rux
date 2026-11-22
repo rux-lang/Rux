@@ -72,17 +72,17 @@ func Main() -> int {
     Assert(Same(Render(allocator, "{:.1} {:.1e}", narrowNan, narrowInf) !! none, "NaN Inf"), "for a float32 as well");
 
     // Any other style, and a precision past the bound, are refused rather than answered differently.
-    try {
-        Render(allocator, "{:f}", 1.0);
-        Assert(false, "a style a float does not have is refused");
-    } catch {
-        refusal => Assert(Refused(refusal), "a style a float does not have is refused"),
+    match Render(allocator, "{:f}", 1.0) {
+        .Success(_) => {
+            Assert(false, "a style a float does not have is refused");
+        },
+        .Failure(refusal) => Assert(Refused(refusal), "a style a float does not have is refused"),
     }
-    try {
-        Render(allocator, "{:.1101e}", 1.0);
-        Assert(false, "and so is a precision past the bound");
-    } catch {
-        refusal => Assert(Refused(refusal), "and so is a precision past the bound"),
+    match Render(allocator, "{:.1101e}", 1.0) {
+        .Success(_) => {
+            Assert(false, "and so is a precision past the bound");
+        },
+        .Failure(refusal) => Assert(Refused(refusal), "and so is a precision past the bound"),
     }
     let longest = Render(allocator, "{:.1100e}", 1.0) catch { _ => Panic("the largest precision is accepted") };
     Assert(longest.Length() == 1106, "and honoured in full");

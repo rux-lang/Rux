@@ -52,11 +52,11 @@ func Main() -> int ! IoError {
     Assert(dirMetadata.kind == FileKind::Directory, "a directory reports as one");
     var missingHolder = OsString::New(allocator);
     let missing = PathOf(allocator, "Bin/FileSystemMeta.tmp/nothing.txt", missingHolder);
-    try {
-        MetadataOf(allocator, missing, true);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::NotFound, "and a missing name is NotFound"),
+    match MetadataOf(allocator, missing, true) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::NotFound, "and a missing name is NotFound"),
     }
 
     // Creation time is present exactly where the system claims it is.

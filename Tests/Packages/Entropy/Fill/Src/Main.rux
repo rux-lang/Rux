@@ -68,11 +68,11 @@ func Main() -> !EntropyError {
     var refusing = Scripted(EntropyError::Failed, 1);
     let refusingSource: &var EntropySource = refusing;
     // Safety: `storage` is a local array of exactly 64 bytes.
-    try {
-        FillFrom(refusingSource, @storage[0] as *var opaque, 64);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == EntropyError::Failed, "a refusal is reported as it was given"),
+    match FillFrom(refusingSource, @storage[0] as *var opaque, 64) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == EntropyError::Failed, "a refusal is reported as it was given"),
     }
     Assert(AllBytesAre(storage[..64], 0), "and the partial write is zeroized rather than left");
 
@@ -81,10 +81,9 @@ func Main() -> !EntropyError {
     let missingSource: &var EntropySource = missing;
     // Safety: `storage` is a local array of exactly 64 bytes.
     var caughtUnsupported: EntropyError? = none;
-    try {
-        FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4);
-    } catch {
-        error => { caughtUnsupported = error; }
+    match FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4) {
+        .Success(_) => {},
+        .Failure(error) => { caughtUnsupported = error; },
     }
     let unsupported = caughtUnsupported ?? Panic("the operation was expected to fail");
     Assert(unsupported == EntropyError::Unsupported, "a system with no source reports it");
@@ -103,10 +102,9 @@ func Main() -> !EntropyError {
     let stuckSource: &var EntropySource = stuck;
     // Safety: `storage` is a local array of exactly 64 bytes.
     var caughtGaveUp: EntropyError? = none;
-    try {
-        FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3);
-    } catch {
-        error => { caughtGaveUp = error; }
+    match FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3) {
+        .Success(_) => {},
+        .Failure(error) => { caughtGaveUp = error; },
     }
     let gaveUp = caughtGaveUp ?? Panic("the operation was expected to fail");
     Assert(gaveUp == EntropyError::Interrupted, "a source that stays interrupted is given up on");
@@ -118,10 +116,9 @@ func Main() -> !EntropyError {
     let onceSource: &var EntropySource = once;
     // Safety: `storage` is a local array of exactly 64 bytes.
     var caughtOneAttempt: EntropyError? = none;
-    try {
-        FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0);
-    } catch {
-        error => { caughtOneAttempt = error; }
+    match FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0) {
+        .Success(_) => {},
+        .Failure(error) => { caughtOneAttempt = error; },
     }
     let oneAttempt = caughtOneAttempt ?? Panic("the operation was expected to fail");
     Assert(oneAttempt == EntropyError::Interrupted, "no retries means one attempt");
@@ -134,10 +131,9 @@ func Main() -> !EntropyError {
     FillFrom(untouchedSource, @storage[0] as *var opaque, 0)!;
     // Safety: a null buffer is refused before the source is asked, which is the behaviour under test.
     var caughtNullRefusal: EntropyError? = none;
-    try {
-        FillFrom(untouchedSource, null, 64);
-    } catch {
-        error => { caughtNullRefusal = error; }
+    match FillFrom(untouchedSource, null, 64) {
+        .Success(_) => {},
+        .Failure(error) => { caughtNullRefusal = error; },
     }
     let nullRefusal = caughtNullRefusal ?? Panic("the operation was expected to fail");
     Assert(nullRefusal == EntropyError::Failed, "and a null buffer is refused");

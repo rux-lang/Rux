@@ -120,11 +120,11 @@ func CheckFailedReallocation(allocator: Allocator) -> !AllocError {
 
     // Changing the alignment is refused rather than served by moving the block.
     let realigned = LayoutOr(96, 32);
-    try {
-        allocator.Reallocate(block, original, realigned);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::Unsupported, "changing the alignment is refused"),
+    match allocator.Reallocate(block, original, realigned) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::Unsupported, "changing the alignment is refused"),
     }
     Assert(block == before, "the original address is unchanged");
     // Safety: `block` is a live allocation of at least 96 bytes, not yet released.

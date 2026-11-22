@@ -205,15 +205,15 @@ extend ScalarIterator : Iterator {
     pub func Next(&var self) -> char32? {
         var scalar = 0u32 as char32;
         var width: uint = 0;
-        try {
-            let decoded = DecodeAt(self.bytes, self.cursor);
-            scalar = decoded.scalar;
-            width = decoded.width;
-        } catch {
+        {
+            let decoded = DecodeAt(self.bytes, self.cursor) catch {
             _ => {
                 self.cursor = self.bytes.length;
                 return none;
             },
+        };
+            scalar = decoded.scalar;
+            width = decoded.width;
         }
         self.cursor = self.cursor + width;
         return scalar;

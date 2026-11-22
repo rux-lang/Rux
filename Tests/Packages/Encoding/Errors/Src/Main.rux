@@ -54,10 +54,9 @@ func Main() -> int {
     // An error reaches a caller through propagation like any other failure.
     var room: byte[1];
     var caught: DecodeError? = none;
-    try {
-        HexDecode("zz", room[..]);
-    } catch {
-        error => { caught = error; }
+    match HexDecode("zz", room[..]) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return 11;
     if (reported.Offset() ?? 99) != 0 { return 12; }

@@ -117,10 +117,9 @@ func MoveAside(allocator: Allocator, base: Path, from: uint, to: uint) -> !IoErr
     var toUnits: OsUnit[MaxRotatedUnits];
     let source = NumberedPath(base, from, fromUnits[..]);
     let target = NumberedPath(base, to, toUnits[..]);
-    try {
-        Rename(allocator, source, target);
-    } catch {
-        error => {
+    match Rename(allocator, source, target) {
+        .Success(_) => {},
+        .Failure(error) => {
             if error.kind != IoErrorKind::NotFound { throw error; }
         },
     }

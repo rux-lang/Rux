@@ -35,10 +35,9 @@ func Decoded(text: char8[..], set: PercentSet, expected: char8[..]) -> bool {
 func BadEscapeAt(text: char8[..], at: uint) -> bool {
     var room: byte[16] = [0x3F; 16];
     var caught: DecodeError? = none;
-    try {
-        PercentDecode(text, room[..]);
-    } catch {
-        error => { caught = error; }
+    match PercentDecode(text, room[..]) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return false;
     for value in room {
@@ -75,18 +74,16 @@ func Main() -> int {
     if !BadEscapeAt("%4", 0) || !BadEscapeAt("ab%", 2) || !BadEscapeAt("%G1", 0) || !BadEscapeAt("x%1g", 1) {
         return 16;
     }
-    try {
-        let length = PercentDecodedLength("%41%42c");
+    {
+        let length = PercentDecodedLength("%41%42c") catch { _ => return 18 };
         if length != 3 { return 17; }
-    } catch {
-        _ => return 18,
     }
     var short: byte[2] = [0x3F; 2];
-    try {
-        PercentDecode("%41%42c", short[..]);
-        return 21;
-    } catch {
-        error => {
+    match PercentDecode("%41%42c", short[..]) {
+        .Success(_) => {
+            return 21;
+        },
+        .Failure(error) => {
             match error {
                 .InsufficientCapacity(needed) => {
                     if needed != 3 { return 19; }

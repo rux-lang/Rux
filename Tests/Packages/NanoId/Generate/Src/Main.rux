@@ -43,10 +43,9 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 // Which alphabet failure was reported, as a small code, with its offset where it has one.
 func AlphabetFailure(alphabet: char8[..]) -> int {
     var caught: NanoIdError? = none;
-    try {
-        ValidateAlphabet(alphabet);
-    } catch {
-        error => { caught = error; }
+    match ValidateAlphabet(alphabet) {
+        .Success(_) => {},
+        .Failure(error) => { caught = error; },
     }
     let reported = caught ?? return 0;
     return match reported {
@@ -97,11 +96,11 @@ func Main() -> int {
     // A source that fails: the failure is reported and the destination holds no partial identifier.
     var failing = CountingSource { next: 0, failing: true, requests: 0 };
     var refused: char8[21] = ['x'; 21];
-    try {
-        GenerateNanoIdFrom(failing, refused[..]);
-        return 11;
-    } catch {
-        error => {
+    match GenerateNanoIdFrom(failing, refused[..]) {
+        .Success(_) => {
+            return 11;
+        },
+        .Failure(error) => {
             match error {
                 .Entropy(reason) => {
                     if reason != EntropyError::Failed { return 9; }
@@ -120,11 +119,11 @@ func Main() -> int {
     if AlphabetFailure("abé") != 402 { return 15; }
     if AlphabetFailure("01") != 0 || AlphabetFailure(NanoIdAlphabet) != 0 { return 16; }
     var spent = CountingSource { next: 0, failing: false, requests: 0 };
-    try {
-        GenerateNanoIdFrom(spent, short[..], "aa");
-        return 17;
-    } catch {
-        _ => {},
+    match GenerateNanoIdFrom(spent, short[..], "aa") {
+        .Success(_) => {
+            return 17;
+        },
+        .Failure(_) => {},
     }
     if spent.requests != 0 { return 18; }
 

@@ -86,10 +86,8 @@ func Ends(reader: &var JsonEventReader) -> bool {
 
 // The error the next call throws, or `none` when an event arrives or the document ends.
 func Thrown(reader: &var JsonEventReader) -> JsonReadError? {
-    try {
-        reader.Next();
-    } catch {
-        error => { return error; }
+    {
+        reader.Next() catch { error => { return error; } };
     }
     return none;
 }
@@ -142,10 +140,9 @@ func SameAsParser(allocator: Allocator, text: char8[..]) -> bool {
     var parsedValue = Parse(allocator, text) !! none;
     if parsedValue is .Some(_) { return false; }
     var parsed = JsonParseError::Unexpected(0);
-    try {
-        Parse(allocator, text);
-    } catch {
-        error => { parsed = error; }
+    match Parse(allocator, text) {
+        .Success(_) => {},
+        .Failure(error) => { parsed = error; },
     }
     var streamedStorage: char8[96];
     var streamedWriter = BufferWriter::New(streamedStorage[..96]);

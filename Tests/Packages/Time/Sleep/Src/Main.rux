@@ -166,32 +166,34 @@ func Main() -> int {
     // exactly as a completed one does, so returning success was indistinguishable from having waited.
     state = Fresh();
     state.outcome = TimeError::InvalidDuration;
-    try {
-        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TimeError::InvalidDuration, "a refused wait is reported rather than swallowed"),
+    match SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1)) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => {
+            Assert(refusal == TimeError::InvalidDuration, "a refused wait is reported rather than swallowed");
+        },
     }
     Assert(state.calls == 1, "and is not retried, because asking again would be refused again");
 
     state = Fresh();
     state.outcome = TimeError::Failed;
-    try {
-        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TimeError::Failed, "and so is an unnamed failure"),
+    match SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1)) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TimeError::Failed, "and so is an unnamed failure"),
     }
 
     // An interruption followed by a refusal reports the refusal, not the interruption.
     state = Fresh();
     state.interruptions = 2;
     state.outcome = TimeError::InvalidDuration;
-    try {
-        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TimeError::InvalidDuration,
+    match SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1)) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TimeError::InvalidDuration,
             "a refusal after an interruption is what gets reported"),
     }
     Assert(state.calls == 3, "after the two interruptions were retried");
@@ -202,11 +204,11 @@ func Main() -> int {
     // attempt count bounds it, and the result says the wait did not happen rather than that it did.
     state = Fresh();
     state.stalls = true;
-    try {
-        SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1));
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TimeError::Failed, "a waiter that never advances is given up on"),
+    match SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1)) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TimeError::Failed, "a waiter that never advances is given up on"),
     }
     Assert(state.calls == MaximumWaitAttempts, "after exactly the documented number of attempts");
 

@@ -66,35 +66,31 @@ func Main() -> int {
 
     // An error parameter joined with a concrete error.
     var timedOut = 0i32;
-    try {
-        WithTimeout<IoError>(IoError { code: 4i32 }, true);
-    } catch {
-        _: Timeout => { timedOut = 1i32; },
-        io: IoError => { timedOut = io.code; },
+    match WithTimeout<IoError>(IoError { code: 4i32 }, true) {
+        .Success(_) => {},
+        .Failure(_: Timeout) => { timedOut = 1i32; },
+        .Failure(io: IoError) => { timedOut = io.code; },
     }
     Assert(timedOut == 1i32, "the concrete member of a generic error sum");
     var collapsedError = 0i32;
-    try {
-        WithTimeout<Timeout>(Timeout { after: 9i32 }, false);
-    } catch {
-        timeout => { collapsedError = timeout.after; }
+    match WithTimeout<Timeout>(Timeout { after: 9i32 }, false) {
+        .Success(_) => {},
+        .Failure(timeout) => { collapsedError = timeout.after; },
     }
     Assert(collapsedError == 9i32, "an error parameter equal to the concrete member collapses");
 
     // Values built in the other module keep their payloads exactly.
     var failure = 0i32;
-    try {
-        Read(-12i32);
-    } catch {
-        error => { failure = Describe(error); }
+    match Read(-12i32) {
+        .Success(_) => {},
+        .Failure(error) => { failure = Describe(error); },
     }
     Assert(failure == 12i32, "an alias exposes its members across modules");
     var wrapped = 0i32;
-    try {
-        Load(5000i32);
-    } catch {
-        LoadError::Unreadable(cause) => { wrapped = Describe(cause); },
-        LoadError::Expired(_) => { wrapped = -1i32; },
+    match Load(5000i32) {
+        .Success(_) => {},
+        .Failure(LoadError::Unreadable(cause)) => { wrapped = Describe(cause); },
+        .Failure(LoadError::Expired(_)) => { wrapped = -1i32; },
     }
     Assert(wrapped == 5000i32, "a named wrapper keeps the original cause");
 

@@ -95,10 +95,9 @@ func CheckPauses(allocator: Allocator) {
     var blockedSource = PausingHandle { state: @blocked };
     var second = StringBuilder::New(allocator);
     var kind: IoErrorKind? = none;
-    try {
-        ReadLineFrom(blockedSource, second);
-    } catch {
-        error => { kind = error.kind; }
+    match ReadLineFrom(blockedSource, second) {
+        .Success(_) => {},
+        .Failure(error) => { kind = error.kind; },
     }
     Assert(kind == .Some(IoErrorKind::WouldBlock), "a source that is not ready is handed back");
     Assert(second.View().Equals(ab), "with the bytes read before it in the builder");
@@ -113,10 +112,9 @@ func CheckPauses(allocator: Allocator) {
 func CheckLine(allocator: Allocator, source: &var Reader, expectedKind: IoErrorKind?, expected: char8[..]) {
     var builder = StringBuilder::New(allocator);
     var reported: IoErrorKind? = none;
-    try {
-        ReadLineFrom(source, builder);
-    } catch {
-        error => { reported = error.kind; }
+    match ReadLineFrom(source, builder) {
+        .Success(_) => {},
+        .Failure(error) => { reported = error.kind; },
     }
     Assert(reported == expectedKind, "the outcome names the reason");
     let want = StringView::FromBytes(expected) ?? StringView::New();
@@ -180,19 +178,19 @@ func Main() -> int {
     var count: uint = 0;
     while count < 8 {
         var builder = StringBuilder::New(allocator);
-        try {
-            ReadLine(builder);
-            let line = builder.TakeString();
-            Print("[");
-            Print(line);
-            PrintLine("]");
-            count = count + 1;
-        } catch {
+        {
+            ReadLine(builder) catch {
             error => {
                 builder.Release();
                 if !error.IsEnd() { return 1; }
                 break;
             },
+        };
+            let line = builder.TakeString();
+            Print("[");
+            Print(line);
+            PrintLine("]");
+            count = count + 1;
         }
     }
     return 0;

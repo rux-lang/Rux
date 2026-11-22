@@ -43,61 +43,61 @@ func Main() -> int {
     var writer = BufferWriter::New(storage[..16]);
 
     // A full write reports success and nothing more.
-    try {
-        writer.Write("abc");
-        Assert((0) == 0, "a write that fits succeeds");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "a write that fits succeeds"),
+    match writer.Write("abc") {
+        .Success(_) => {
+            Assert((0) == 0, "a write that fits succeeds");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "a write that fits succeeds"),
     }
     Assert(writer.Length() == 3, "and its bytes landed");
     Assert(Same(writer.Written(), "abc"), "in order");
     Assert(writer.Remaining() == 13, "leaving the rest of the room");
 
     // Writes concatenate.
-    try {
-        writer.Write("de");
-        Assert((0) == 0, "a second write succeeds");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "a second write succeeds"),
+    match writer.Write("de") {
+        .Success(_) => {
+            Assert((0) == 0, "a second write succeeds");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "a second write succeeds"),
     }
     Assert(Same(writer.Written(), "abcde"), "and appends rather than replaces");
 
     // A run that does not fit is refused whole. This is the promise worth checking: after the refusal the buffer is
     // exactly what it was, so nothing partial has to be undone.
-    try {
-        writer.Write("0123456789ab");
-        Assert((0) == 1, "a run past the end reports InsufficientCapacity");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 1, "a run past the end reports InsufficientCapacity"),
+    match writer.Write("0123456789ab") {
+        .Success(_) => {
+            Assert((0) == 1, "a run past the end reports InsufficientCapacity");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 1, "a run past the end reports InsufficientCapacity"),
     }
     Assert(writer.Length() == 5, "and the buffer is unchanged");
     Assert(Same(writer.Written(), "abcde"), "with no prefix of the refused run left behind");
 
     // A run that fits exactly is not a run that does not fit.
     Assert(writer.Remaining() == 11, "eleven bytes remain");
-    try {
-        writer.Write("01234567890");
-        Assert((0) == 0, "a run filling the room exactly succeeds");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "a run filling the room exactly succeeds"),
+    match writer.Write("01234567890") {
+        .Success(_) => {
+            Assert((0) == 0, "a run filling the room exactly succeeds");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "a run filling the room exactly succeeds"),
     }
     Assert(writer.Remaining() == 0, "leaving none");
     Assert(Same(writer.Written(), "abcde01234567890"), "and the whole run landed");
 
     // A full buffer refuses more, and still accepts nothing.
-    try {
-        writer.Write("x");
-        Assert((0) == 1, "a full buffer refuses one more byte");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 1, "a full buffer refuses one more byte"),
+    match writer.Write("x") {
+        .Success(_) => {
+            Assert((0) == 1, "a full buffer refuses one more byte");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 1, "a full buffer refuses one more byte"),
     }
     Assert(writer.Length() == 16, "and stays full rather than growing");
     // An empty write is not a write past the end, even at capacity.
-    try {
-        writer.Write("");
-        Assert((0) == 0, "an empty run succeeds even with no room");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "an empty run succeeds even with no room"),
+    match writer.Write("") {
+        .Success(_) => {
+            Assert((0) == 0, "an empty run succeeds even with no room");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "an empty run succeeds even with no room"),
     }
 
     // Clearing keeps the room and drops the text.
@@ -109,39 +109,39 @@ func Main() -> int {
     var invalid: char8[2];
     invalid[0] = 0xC3u8 as char8;
     invalid[1] = 0x28u8 as char8;
-    try {
-        writer.Write(invalid[..2]);
-        Assert((0) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)"),
+    match writer.Write(invalid[..2]) {
+        .Success(_) => {
+            Assert((0) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)"),
     }
     Assert(writer.Length() == 0, "and nothing landed");
 
     // A lone continuation byte, and a truncated sequence, are refused the same way.
     var lone: char8[1];
     lone[0] = 0x80u8 as char8;
-    try {
-        writer.Write(lone[..1]);
-        Assert((0) == 2, "a lone continuation byte is not text");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 2, "a lone continuation byte is not text"),
+    match writer.Write(lone[..1]) {
+        .Success(_) => {
+            Assert((0) == 2, "a lone continuation byte is not text");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 2, "a lone continuation byte is not text"),
     }
     var truncated: char8[1];
     truncated[0] = 0xE2u8 as char8;
-    try {
-        writer.Write(truncated[..1]);
-        Assert((0) == 2, "nor is a sequence that runs out");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 2, "nor is a sequence that runs out"),
+    match writer.Write(truncated[..1]) {
+        .Success(_) => {
+            Assert((0) == 2, "nor is a sequence that runs out");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 2, "nor is a sequence that runs out"),
     }
     Assert(writer.Length() == 0, "and neither left anything behind");
 
     // Multi-byte text is text, and its bytes are not split.
-    try {
-        writer.Write("héllo");
-        Assert((0) == 0, "a multi-byte run succeeds");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "a multi-byte run succeeds"),
+    match writer.Write("héllo") {
+        .Success(_) => {
+            Assert((0) == 0, "a multi-byte run succeeds");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "a multi-byte run succeeds"),
     }
     Assert(writer.Length() == 6, "occupying six bytes for five characters");
 
@@ -154,63 +154,63 @@ func Main() -> int {
         long[fill] = 0x80u8 as char8;
         fill = fill + 1;
     }
-    try {
-        writer.Write(long[..20]);
-        Assert((0) == 1, "too long and invalid reports the capacity failure");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 1, "too long and invalid reports the capacity failure"),
+    match writer.Write(long[..20]) {
+        .Success(_) => {
+            Assert((0) == 1, "too long and invalid reports the capacity failure");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 1, "too long and invalid reports the capacity failure"),
     }
 
     // The shared helpers reach a writer through the same contract.
     writer.Clear();
-    try {
-        WriteBytes(writer, "raw");
-        Assert((0) == 0, "WriteBytes forwards to the writer");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "WriteBytes forwards to the writer"),
+    match WriteBytes(writer, "raw") {
+        .Success(_) => {
+            Assert((0) == 0, "WriteBytes forwards to the writer");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "WriteBytes forwards to the writer"),
     }
-    try {
-        WriteAscii(writer, c8'!');
-        Assert((0) == 0, "WriteAscii writes one byte");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "WriteAscii writes one byte"),
+    match WriteAscii(writer, c8'!') {
+        .Success(_) => {
+            Assert((0) == 0, "WriteAscii writes one byte");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "WriteAscii writes one byte"),
     }
-    try {
-        WriteScalar(writer, 0x20ACu32 as char32);
-        Assert((0) == 0, "WriteScalar encodes and writes");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "WriteScalar encodes and writes"),
+    match WriteScalar(writer, 0x20ACu32 as char32) {
+        .Success(_) => {
+            Assert((0) == 0, "WriteScalar encodes and writes");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "WriteScalar encodes and writes"),
     }
     Assert(Same(writer.Written(), "raw!\u{20AC}"), "and all three landed in order");
 
     // WriteAscii refuses a byte that is not a whole character rather than writing half of one.
-    try {
-        WriteAscii(writer, 0xC3u8 as char8);
-        Assert((0) == 2, "a byte above 0x7F is not one ASCII character");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 2, "a byte above 0x7F is not one ASCII character"),
+    match WriteAscii(writer, 0xC3u8 as char8) {
+        .Success(_) => {
+            Assert((0) == 2, "a byte above 0x7F is not one ASCII character");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 2, "a byte above 0x7F is not one ASCII character"),
     }
 
     // WriteScalar rejects a surrogate read from raw storage independently of checked character casts.
     var half: uint32 = 0xD800;
     // Safety: `half` is a live local `uint32`, and `char32` has the same size and alignment.
     let halfScalar = *((@half) as *char32);
-    try {
-        WriteScalar(writer, halfScalar);
-        Assert((0) == 2, "a surrogate half is not a scalar value");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 2, "a surrogate half is not a scalar value"),
+    match WriteScalar(writer, halfScalar) {
+        .Success(_) => {
+            Assert((0) == 2, "a surrogate half is not a scalar value");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 2, "a surrogate half is not a scalar value"),
     }
 
     // A helper's failure propagates the writer's own failure unchanged rather than replacing it.
     var tiny: char8[2];
     var small = BufferWriter::New(tiny[..2]);
-    try {
-        WriteScalar(small, 0x20ACu32 as char32);
-        Assert((0) == 1,
-           "a three-byte character into two bytes is a capacity failure, not an encoding one");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 1,
+    match WriteScalar(small, 0x20ACu32 as char32) {
+        .Success(_) => {
+            Assert((0) == 1,
+               "a three-byte character into two bytes is a capacity failure, not an encoding one");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 1,
             "a three-byte character into two bytes is a capacity failure, not an encoding one"),
     }
     Assert(small.Length() == 0, "and the buffer is untouched");
@@ -219,26 +219,26 @@ func Main() -> int {
     // which cannot be provoked here. What is checked is that it accepts and concatenates through the same contract.
     let allocator = SystemAllocator::New();
     var builder = StringBuilder::New(allocator);
-    try {
-        builder.Write("grows");
-        Assert((0) == 0, "a builder accepts a write");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "a builder accepts a write"),
+    match builder.Write("grows") {
+        .Success(_) => {
+            Assert((0) == 0, "a builder accepts a write");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "a builder accepts a write"),
     }
-    try {
-        WriteBytes(builder, " and grows");
-        Assert((0) == 0, "and another through the helper");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 0, "and another through the helper"),
+    match WriteBytes(builder, " and grows") {
+        .Success(_) => {
+            Assert((0) == 0, "and another through the helper");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 0, "and another through the helper"),
     }
     Assert(builder.Length() == 15, "concatenating both");
 
     // It validates too: a builder that accepted these would stop holding text.
-    try {
-        builder.Write(invalid[..2]);
-        Assert((0) == 2, "a builder refuses bytes that are not text");
-    } catch {
-        refusal => Assert(FailureCode(refusal) == 2, "a builder refuses bytes that are not text"),
+    match builder.Write(invalid[..2]) {
+        .Success(_) => {
+            Assert((0) == 2, "a builder refuses bytes that are not text");
+        },
+        .Failure(refusal) => Assert(FailureCode(refusal) == 2, "a builder refuses bytes that are not text"),
     }
     Assert(builder.Length() == 15, "and is unchanged by the refusal");
 

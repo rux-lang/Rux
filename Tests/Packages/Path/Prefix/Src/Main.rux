@@ -37,11 +37,11 @@ func Main() -> int {
         hostile[2] = 0x62u8 as char8;
     }
     let bad = OsStringView::FromUnits(hostile[0..3]);
-    try {
-        bad.ToText(allocator);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TextError::InvalidUtf8,
+    match bad.ToText(allocator) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TextError::InvalidUtf8,
             "a name that is not text refuses to become text, and says why"),
     }
 

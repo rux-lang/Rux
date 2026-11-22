@@ -36,10 +36,9 @@ func Main() -> !PageError {
 
     // An empty request is an arithmetic error at the caller, so it is reported rather than accepted.
     var refused = false;
-    try {
-        PageAllocate(0, PageRead | PageWrite);
-    } catch {
-        reason => { refused = reason == PageError::InvalidLength; }
+    match PageAllocate(0, PageRead | PageWrite) {
+        .Success(_) => {},
+        .Failure(reason) => { refused = reason == PageError::InvalidLength; },
     }
     Assert(refused, "a zero-length allocation is refused");
 
@@ -82,29 +81,29 @@ func Main() -> !PageError {
 
     // The degenerate arguments are reported rather than passed through.
     // Safety: each call is refused by the argument checks that run before any system call, so no page changes.
-    try {
-        PageProtect(null, size, PageRead);
-        Panic("the operation was expected to be refused");
-    } catch {
-        refusal => Assert(refusal == PageError::InvalidAddress, "a null address is refused"),
+    match PageProtect(null, size, PageRead) {
+        .Success(_) => {
+            Panic("the operation was expected to be refused");
+        },
+        .Failure(refusal) => Assert(refusal == PageError::InvalidAddress, "a null address is refused"),
     }
-    try {
-        PageProtect(second, 0, PageRead);
-        Panic("the operation was expected to be refused");
-    } catch {
-        refusal => Assert(refusal == PageError::InvalidLength, "a zero length is refused"),
+    match PageProtect(second, 0, PageRead) {
+        .Success(_) => {
+            Panic("the operation was expected to be refused");
+        },
+        .Failure(refusal) => Assert(refusal == PageError::InvalidLength, "a zero length is refused"),
     }
-    try {
-        PageRelease(null, size);
-        Panic("the operation was expected to be refused");
-    } catch {
-        refusal => Assert(refusal == PageError::InvalidAddress, "and so is releasing null"),
+    match PageRelease(null, size) {
+        .Success(_) => {
+            Panic("the operation was expected to be refused");
+        },
+        .Failure(refusal) => Assert(refusal == PageError::InvalidAddress, "and so is releasing null"),
     }
-    try {
-        PageRelease(second, 0);
-        Panic("the operation was expected to be refused");
-    } catch {
-        refusal => Assert(refusal == PageError::InvalidLength, "or releasing nothing"),
+    match PageRelease(second, 0) {
+        .Success(_) => {
+            Panic("the operation was expected to be refused");
+        },
+        .Failure(refusal) => Assert(refusal == PageError::InvalidLength, "or releasing nothing"),
     }
 
     // A protection of none is legal: it takes the space and refuses every access to it, which is a guard page.

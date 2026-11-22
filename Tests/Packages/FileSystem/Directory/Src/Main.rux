@@ -43,11 +43,11 @@ func Main() -> int ! IoError {
 
     // Made once; a second claim on the name is refused with the reason named.
     MakeDirectory(allocator, dir)!;
-    try {
-        MakeDirectory(allocator, dir);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::AlreadyExists, "a second make is AlreadyExists"),
+    match MakeDirectory(allocator, dir) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::AlreadyExists, "a second make is AlreadyExists"),
     }
 
     Touch(allocator, one);
@@ -96,11 +96,11 @@ func Main() -> int ! IoError {
     DeleteFile(allocator, one)!;
     DeleteFile(allocator, two)!;
     DeleteFile(allocator, accent)!;
-    try {
-        DeleteFile(allocator, one);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::NotFound, "deleting it again is NotFound"),
+    match DeleteFile(allocator, one) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::NotFound, "deleting it again is NotFound"),
     }
 
     var emptied = ReadDirectory(allocator, dir)!;
@@ -109,11 +109,11 @@ func Main() -> int ! IoError {
     emptied.Release();
 
     DeleteDirectory(allocator, dir)!;
-    try {
-        ReadDirectory(allocator, dir);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::NotFound, "and reading it afterward is NotFound"),
+    match ReadDirectory(allocator, dir) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::NotFound, "and reading it afterward is NotFound"),
     }
 
     return 0;

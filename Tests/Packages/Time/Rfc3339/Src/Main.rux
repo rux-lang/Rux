@@ -85,53 +85,57 @@ func PropagationCases() {
     Assert(FailsAt("2024-02-29T12:34:éZ", 1, 17) == 0, "a multibyte character fails at its first UTF-8 byte");
     Assert(FailsAt("2024-02-29T12:34:56.123456789😀", 1, 29) == 0, "a supplementary character is not an offset marker");
     Assert(FailsAt("2024-02-29T12:34:56Zé", 1, 20) == 0, "trailing Unicode keeps the byte position after Z");
-    try {
-        ParseDate("2024-13-01");
-        Assert(false, "date-only invalid months retain their category and offset");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 2, 5), "date-only invalid months retain their category and offset"),
+    match ParseDate("2024-13-01") {
+        .Success(_) => {
+            Assert(false, "date-only invalid months retain their category and offset");
+        },
+        .Failure(refusal) => {
+            Assert(HasFailure(refusal, 2, 5), "date-only invalid months retain their category and offset");
+        },
     }
-    try {
-        ParseDate("2023-02-29");
-        Assert(false, "date-only invalid days survive rewrapping");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 3, 8), "date-only invalid days survive rewrapping"),
+    match ParseDate("2023-02-29") {
+        .Success(_) => {
+            Assert(false, "date-only invalid days survive rewrapping");
+        },
+        .Failure(refusal) => Assert(HasFailure(refusal, 3, 8), "date-only invalid days survive rewrapping"),
     }
-    try {
-        ParseDate("2024-é-29");
-        Assert(false, "date-only Unicode is rejected at its first byte");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 1, 5), "date-only Unicode is rejected at its first byte"),
+    match ParseDate("2024-é-29") {
+        .Success(_) => {
+            Assert(false, "date-only Unicode is rejected at its first byte");
+        },
+        .Failure(refusal) => Assert(HasFailure(refusal, 1, 5), "date-only Unicode is rejected at its first byte"),
     }
-    try {
-        ParseTimeOfDay("12:60:00");
-        Assert(false, "time-only validation reports the local minute offset");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 4, 3), "time-only validation reports the local minute offset"),
+    match ParseTimeOfDay("12:60:00") {
+        .Success(_) => {
+            Assert(false, "time-only validation reports the local minute offset");
+        },
+        .Failure(refusal) => Assert(HasFailure(refusal, 4, 3), "time-only validation reports the local minute offset"),
     }
-    try {
-        ParseTimeOfDay("12:34:56.1234567890");
-        Assert(false, "time-only excessive fraction offset survives");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 5, 18), "time-only excessive fraction offset survives"),
+    match ParseTimeOfDay("12:34:56.1234567890") {
+        .Success(_) => {
+            Assert(false, "time-only excessive fraction offset survives");
+        },
+        .Failure(refusal) => Assert(HasFailure(refusal, 5, 18), "time-only excessive fraction offset survives"),
     }
-    try {
-        ParseTimeOfDay("12:34:56Z");
-        Assert(false, "time-only end check rejects an offset suffix");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 1, 8), "time-only end check rejects an offset suffix"),
+    match ParseTimeOfDay("12:34:56Z") {
+        .Success(_) => {
+            Assert(false, "time-only end check rejects an offset suffix");
+        },
+        .Failure(refusal) => Assert(HasFailure(refusal, 1, 8), "time-only end check rejects an offset suffix"),
     }
-    try {
-        ParseDateTime("2024-02-29T12:60:00");
-        Assert(false, "embedded time uses its position in the full text");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 4, 14), "embedded time uses its position in the full text"),
+    match ParseDateTime("2024-02-29T12:60:00") {
+        .Success(_) => {
+            Assert(false, "embedded time uses its position in the full text");
+        },
+        .Failure(refusal) => Assert(HasFailure(refusal, 4, 14), "embedded time uses its position in the full text"),
     }
-    try {
-        ParseDateTime("2024-02-29T12:34:56Z");
-        Assert(false, "local date-time rejects an offset without discarding it");
-    } catch {
-        refusal => Assert(HasFailure(refusal, 1, 19), "local date-time rejects an offset without discarding it"),
+    match ParseDateTime("2024-02-29T12:34:56Z") {
+        .Success(_) => {
+            Assert(false, "local date-time rejects an offset without discarding it");
+        },
+        .Failure(refusal) => {
+            Assert(HasFailure(refusal, 1, 19), "local date-time rejects an offset without discarding it");
+        },
     }
 }
 

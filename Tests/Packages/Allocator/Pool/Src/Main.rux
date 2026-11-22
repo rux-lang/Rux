@@ -152,11 +152,11 @@ func Main() -> !AllocError {
     // Safety: `starvedPool` is a local that outlives `starvedAllocator` and is never moved.
     let starvedAllocator = starvedPool.Handle();
     var refused: *var opaque = null;
-    try {
-        starvedAllocator.Allocate(small);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory,
+    match starvedAllocator.Allocate(small) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory,
             "a pool whose backing cannot hold a chunk reports the failure"),
     }
     Assert(starvedPool.ChunkCount() == 0, "having taken no chunk");

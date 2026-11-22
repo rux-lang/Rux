@@ -17,13 +17,13 @@ func TextBytes(text: char8[..]) -> char8[..] {
 // Zero when `text` fails to parse with `InvalidSpecification` carrying exactly `offset`, and non-zero otherwise,
 // so a caller can distinguish "parsed", "failed elsewhere" and "failed at the wrong place".
 func MalformedAt(text: char8[..], offset: uint) -> int {
-    try {
-        ParseFormatSpec(text);
-    } catch {
+    {
+        ParseFormatSpec(text) catch {
         reason => return match reason {
             .InvalidSpecification(found) => if found == offset { 0 } else { 2 },
             _ => 3
         },
+    };
     }
     return 1;
 }
@@ -38,13 +38,13 @@ func Matches(allocator: Allocator, format: char8[..], expected: char8[..]) -> bo
 // Whether rendering `format` is refused with `InvalidSpecification` at exactly `offset` — an offset into the whole
 // pattern, not into the specification inside it, which is what a caller pointing at a character needs.
 func RefusedAt(allocator: Allocator, format: char8[..], offset: uint) -> bool {
-    try {
-        Render(allocator, format, 0);
-    } catch {
+    {
+        Render(allocator, format, 0) catch {
         reason => return match reason {
             .InvalidSpecification(found) => found == offset,
             _ => false
         },
+    };
     }
     return false;
 }

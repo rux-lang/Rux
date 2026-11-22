@@ -74,11 +74,11 @@ func Main() -> !AllocError {
     var starved: FailingAllocator = failing;
     // Safety: `starved` is a local of `Main` that outlives every container below and is never moved.
     let budget = @starved as Allocator;
-    try {
-        starved.Allocate(small);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory, "the harness refuses when it has no budget"),
+    match starved.Allocate(small) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory, "the harness refuses when it has no budget"),
     }
     Assert(state.attempts == 1, "having counted the attempt");
     Assert(state.live == 0, "and handed out nothing");
@@ -131,11 +131,11 @@ func Main() -> !AllocError {
     var handle = arena.Handle();
     let arenaAllocator: Allocator = handle;
     var fromArena: *var opaque = null;
-    try {
-        arenaAllocator.Allocate(small);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory, "an arena with no block and no budget refuses"),
+    match arenaAllocator.Allocate(small) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory, "an arena with no block and no budget refuses"),
     }
     Assert(arena.BlockCount() == 0, "having taken no block");
     Assert(state.attempts == 1, "and asked exactly once");
@@ -145,11 +145,11 @@ func Main() -> !AllocError {
     fromArena = arenaAllocator.Allocate(small)!;
     Assert(arena.BlockCount() == 1, "having taken one block");
     let large = Layout::Of(4096, 8) ?? small;
-    try {
-        arenaAllocator.Allocate(large);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory,
+    match arenaAllocator.Allocate(large) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory,
             "and refuses one that needs another block it cannot take"),
     }
     Assert(arena.BlockCount() == 1, "still holding just the one");
@@ -162,11 +162,11 @@ func Main() -> !AllocError {
     // Safety: `pool` is a local that outlives `poolAllocator` and is never moved.
     let poolAllocator = pool.Handle();
     var fromPool: *var opaque = null;
-    try {
-        poolAllocator.Allocate(small);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory, "a pool with no budget refuses"),
+    match poolAllocator.Allocate(small) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => Assert(refusal == AllocError::OutOfMemory, "a pool with no budget refuses"),
     }
     Assert(pool.ChunkCount() == 0, "having taken no chunk");
     Assert(pool.LiveBlocks() == 0, "and handed out nothing");
@@ -177,11 +177,13 @@ func Main() -> !AllocError {
     fromPool = poolAllocator.Allocate(small)!;
     Assert(pool.ChunkCount() == 1, "having taken one chunk");
     let otherClass = Layout::Of(16, 8) ?? small;
-    try {
-        poolAllocator.Allocate(otherClass);
-        Panic("the allocator was expected to refuse");
-    } catch {
-        refusal => Assert(refusal == AllocError::OutOfMemory, "and refuses a class whose chunk it cannot take"),
+    match poolAllocator.Allocate(otherClass) {
+        .Success(_) => {
+            Panic("the allocator was expected to refuse");
+        },
+        .Failure(refusal) => {
+            Assert(refusal == AllocError::OutOfMemory, "and refuses a class whose chunk it cannot take");
+        },
     }
     Assert(pool.ChunkCount() == 1, "still holding just the one");
     fromPool = poolAllocator.Allocate(small)!;

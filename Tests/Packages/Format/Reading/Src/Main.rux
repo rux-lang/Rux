@@ -24,25 +24,25 @@ func Bits32(text: char8[..]) -> uint32 {
 }
 
 func Overflows(text: char8[..]) -> bool {
-    try {
-        ParseFloat64(text);
-    } catch {
+    {
+        ParseFloat64(text) catch {
         reason => return match reason {
             .Overflow(_) => true,
             _ => false
         },
+    };
     }
     return false;
 }
 
 func Overflows32(text: char8[..]) -> bool {
-    try {
-        ParseFloat32(text);
-    } catch {
+    {
+        ParseFloat32(text) catch {
         reason => return match reason {
             .Overflow(_) => true,
             _ => false
         },
+    };
     }
     return false;
 }

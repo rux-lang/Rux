@@ -74,10 +74,8 @@ func Code(error: &CommandLineError) -> int {
 }
 
 func Fails(spec: *CommandSpec, line: &Line, code: int) -> bool {
-    try {
-        Parse(spec, line.Arguments());
-    } catch {
-        error => return Code(error) == code,
+    {
+        Parse(spec, line.Arguments()) catch { error => return Code(error) == code };
     }
     return false;
 }
@@ -200,22 +198,22 @@ func Main() -> int {
     var high = NewLine();
     high.Add("--jobs=9223372036854775808");
     high.Add("in");
-    try {
-        Must(@tool, high).Integer("jobs");
-        return 26;
-    } catch {
-        error => {
+    match Must(@tool, high).Integer("jobs") {
+        .Success(_) => {
+            return 26;
+        },
+        .Failure(error) => {
             if Code(error) != 8 { return 27; }
         },
     }
     var word = NewLine();
     word.Add("-jabc");
     word.Add("in");
-    try {
-        Must(@tool, word).Integer("jobs");
-        return 28;
-    } catch {
-        _ => {},
+    match Must(@tool, word).Integer("jobs") {
+        .Success(_) => {
+            return 28;
+        },
+        .Failure(_) => {},
     }
 
     // Subcommands own everything after their name; options before it are the parent's.

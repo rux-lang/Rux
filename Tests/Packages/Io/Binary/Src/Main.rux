@@ -124,20 +124,20 @@ func Main() -> int {
     // A stream two bytes long cannot yield a four-byte value, and says so rather than inventing the rest.
     var shortStorage: char8[256];
     var short = MemoryState { room: shortStorage[..256], length: 2, offset: 0 };
-    try {
-        ReadUint32(short, Endian::Big);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.kind == IoErrorKind::UnexpectedEnd,
+    match ReadUint32(short, Endian::Big) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.kind == IoErrorKind::UnexpectedEnd,
             "a short stream is an unexpected end, not a value"),
     }
     var emptyStorage: char8[4];
     var empty = MemoryState { room: emptyStorage[..4], length: 0, offset: 0 };
-    try {
-        ReadUint32(empty, Endian::Big);
-        Panic("expected a failure");
-    } catch {
-        refusal => Assert(refusal.IsEnd(), "and an ended one is the clean end"),
+    match ReadUint32(empty, Endian::Big) {
+        .Success(_) => {
+            Panic("expected a failure");
+        },
+        .Failure(refusal) => Assert(refusal.IsEnd(), "and an ended one is the clean end"),
     }
 
     return 0;

@@ -73,11 +73,11 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> !IoEr
             carryLength = carryLength + 1;
             var reason = Utf8Error::InvalidStart;
             var complete = false;
-            try {
-                DecodeAt(carry[0..carryLength], 0);
-                complete = true;
-            } catch {
-                problem => reason = problem,
+            match DecodeAt(carry[0..carryLength], 0) {
+                .Success(_) => {
+                    complete = true;
+                },
+                .Failure(problem) => reason = problem,
             }
             if complete {
                 builder.AppendValidated(carry[0..carryLength]);
@@ -103,10 +103,9 @@ pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> !IoEr
             // The first byte of a longer character. One that cannot start a character fails the line at once.
             carry[0] = ch;
             carryLength = 1;
-            try {
-                DecodeAt(carry[0..1], 0);
-            } catch {
-                problem => {
+            match DecodeAt(carry[0..1], 0) {
+                .Success(_) => {},
+                .Failure(problem) => {
                     if problem != Utf8Error::Truncated {
                         invalid = true;
                         carryLength = 0;

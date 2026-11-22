@@ -34,11 +34,11 @@ func Main() -> int {
     broken[0] = 0xEDu8 as char8;
     broken[1] = 0xA0u8 as char8;
     broken[2] = 0x80u8 as char8;
-    try {
-        String::FromBytes(allocator, broken[0..3]);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TextError::InvalidUtf8,
+    match String::FromBytes(allocator, broken[0..3]) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TextError::InvalidUtf8,
             "a surrogate half is refused, and nothing is built from it"),
     }
 
@@ -60,11 +60,11 @@ func Main() -> int {
 
     let front = text.Substring(0, 4) catch { _ => Panic("an owning cut is made") };
     Assert(front.Length() == 4 && front.ScalarCount() == 3, "spanning what lies between the bounds");
-    try {
-        text.Substring(0, 3);
-        Panic("the operation was expected to fail");
-    } catch {
-        refusal => Assert(refusal == TextError::NotABoundary,
+    match text.Substring(0, 3) {
+        .Success(_) => {
+            Panic("the operation was expected to fail");
+        },
+        .Failure(refusal) => Assert(refusal == TextError::NotABoundary,
             "and a cut off a boundary is refused rather than rounded"),
     }
 

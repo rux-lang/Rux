@@ -168,11 +168,11 @@ func Main() -> int {
     var adapter = StreamWriter::New(@sink as Writer, @failure);
     let writer: &var TextWriter = adapter;
 
-    try {
-        writer.Write("hello");
-        Assert(false, "the formatter is told the destination failed");
-    } catch {
-        refusal => Assert(IsWriterFailure(refusal), "the formatter is told the destination failed"),
+    match writer.Write("hello") {
+        .Success(_) => {
+            Assert(false, "the formatter is told the destination failed");
+        },
+        .Failure(refusal) => Assert(IsWriterFailure(refusal), "the formatter is told the destination failed"),
     }
     Assert(Holds(failure, IoErrorKind::StorageFull), "and the caller is told what it was");
     Assert(state.length == 0, "with nothing written");
@@ -180,11 +180,11 @@ func Main() -> int {
 
     // Once a failure is recorded the stream is not touched again, which is what stops a value that is part-way
     // through rendering from going on writing into a destination that has already said no.
-    try {
-        writer.Write("more");
-        Assert(false, "a later write is refused too");
-    } catch {
-        refusal => Assert(IsWriterFailure(refusal), "a later write is refused too"),
+    match writer.Write("more") {
+        .Success(_) => {
+            Assert(false, "a later write is refused too");
+        },
+        .Failure(refusal) => Assert(IsWriterFailure(refusal), "a later write is refused too"),
     }
     Assert(state.calls == 1, "without asking the stream a second time");
     Assert(Holds(failure, IoErrorKind::StorageFull), "and the first failure is the one kept");
@@ -225,11 +225,11 @@ func Main() -> int {
     let thirdOut: &var TextWriter = thirdAdapter;
 
     var bad = Refuses {};
-    try {
-        WriteValueLine(thirdOut, bad);
-        Assert(false, "a value that refuses reports its own failure");
-    } catch {
-        refusal => Assert(IsUnsupported(refusal), "a value that refuses reports its own failure"),
+    match WriteValueLine(thirdOut, bad) {
+        .Success(_) => {
+            Assert(false, "a value that refuses reports its own failure");
+        },
+        .Failure(refusal) => Assert(IsUnsupported(refusal), "a value that refuses reports its own failure"),
     }
     Assert(third.length == 0, "and no newline follows it");
     Assert(!(thirdFailure is IoError), "the destination being blameless");
@@ -254,12 +254,12 @@ func Main() -> int {
     // Safety: `fourthSink` is a local of this function that outlives every use of the handle.
     var fourthAdapter = StreamWriter::New(@fourthSink as Writer, @fourthFailure);
     let fourthOut: &var TextWriter = fourthAdapter;
-    try {
-        WriteValueLine(fourthOut, value);
-        Assert(false,
-           "a destination with room for the value but not the newline reports a writer failure");
-    } catch {
-        refusal => Assert(IsWriterFailure(refusal),
+    match WriteValueLine(fourthOut, value) {
+        .Success(_) => {
+            Assert(false,
+               "a destination with room for the value but not the newline reports a writer failure");
+        },
+        .Failure(refusal) => Assert(IsWriterFailure(refusal),
             "a destination with room for the value but not the newline reports a writer failure"),
     }
     Assert(Same(fourth.written[..fourth.length], "owned-7"), "having written the value");
@@ -270,11 +270,11 @@ func Main() -> int {
     var recorded: IoError? = IoError::Of(IoErrorKind::PermissionDenied);
     var console = ConsoleWriter::New(@recorded);
     let consoleOut: &var TextWriter = console;
-    try {
-        consoleOut.Write("this must not appear");
-        Assert(false, "a failed console is not written to again");
-    } catch {
-        refusal => Assert(IsWriterFailure(refusal), "a failed console is not written to again"),
+    match consoleOut.Write("this must not appear") {
+        .Success(_) => {
+            Assert(false, "a failed console is not written to again");
+        },
+        .Failure(refusal) => Assert(IsWriterFailure(refusal), "a failed console is not written to again"),
     }
     Assert(Holds(recorded, IoErrorKind::PermissionDenied), "and the recorded failure is untouched");
 
@@ -283,11 +283,11 @@ func Main() -> int {
     var room: char8[4];
     var bounded = BufferWriter::New(room[..4]);
     let boundedOut: &var TextWriter = bounded;
-    try {
-        WriteValueLine(boundedOut, value);
-        Assert(true, "a destination that is merely full is not a destination that failed");
-    } catch {
-        refusal => Assert(!IsWriterFailure(refusal),
+    match WriteValueLine(boundedOut, value) {
+        .Success(_) => {
+            Assert(true, "a destination that is merely full is not a destination that failed");
+        },
+        .Failure(refusal) => Assert(!IsWriterFailure(refusal),
                           "a destination that is merely full is not a destination that failed"),
     }
     Assert(ToIoError(tooSmall).kind == IoErrorKind::LimitExceeded,

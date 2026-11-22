@@ -1,0 +1,131 @@
+// `x catch { arms }`: handling the error of one fallible operand. The arms are exactly the arms of `match error`:
+// patterns, `_`, `|` alternatives, guards, typed patterns over an error sum, block arms that yield their last
+// expression, and a trailing comma; they must cover every error. An arm is outside its handler: an arm's `throw`, or
+// an `x!` in it, goes to the caller. Written as a statement, the arms yield nothing and the success is dropped. A
+// sequence of calls whose errors one set of arms should take is a function of its own, handled where it is called.
+
+import Core::Diagnostics::Assert;
+
+variant ParseError {
+    Empty,
+    Invalid(int32),
+    TooLong(int32)
+}
+
+struct IoError {
+    code: int32;
+}
+
+func Parse(text: int32) -> int32 ! ParseError {
+    if text == 0i32 {
+        throw .Empty;
+    }
+    if text < 0i32 {
+        throw .Invalid(-text);
+    }
+    if text > 1000i32 {
+        throw .TooLong(text);
+    }
+    return text;
+}
+
+func Read(code: int32) -> int32 ! IoError {
+    if code != 0i32 {
+        throw IoError { code };
+    }
+    return 7i32;
+}
+
+func Describe(text: int32) -> int32 {
+    let value = Parse(text) catch {
+        .Empty => return -1i32,
+        .Invalid(at) if at > 50i32 => return -2i32,
+        .Invalid(_) | .TooLong(_) => return -3i32,
+    };
+    return value;
+}
+
+func Rethrow(text: int32) -> int32 ! ParseError {
+    // Passing an error on is an arm of its own; it goes to the caller, not back into the same arms.
+    return Parse(text) catch {
+        .Empty => 0i32,
+        e => throw e,
+    };
+}
+
+func Translate(text: int32) -> int32 ! IoError {
+    return Parse(text) catch { _ => throw IoError { code: 9i32 } };
+}
+
+// Two calls whose errors the caller handles together: the error side is the sum of both.
+func ReadThenParse(code: int32, offset: int32) -> int32 ! IoError | ParseError {
+    return Parse(Read(code)! + offset)!;
+}
+
+// An arm's `x!` passes its own error to the caller.
+func Recover(text: int32) -> int32 ! IoError {
+    return Parse(text) catch { _ => Read(5i32)! };
+}
+
+func Main() -> int {
+    Assert(Describe(5i32) == 5i32, "a success continues");
+    Assert(Describe(0i32) == -1i32, "a unit case");
+    Assert(Describe(-60i32) == -2i32, "a guard");
+    Assert(Describe(-6i32) == -3i32, "a failed guard falls to the next arm");
+    Assert(Describe(5000i32) == -3i32, "an alternative");
+
+    Assert((Rethrow(0i32) !! none) == .Some(0i32), "a recovered error");
+    Assert((Rethrow(-4i32) catch { .Invalid(at) => at, _ => 0i32 }) == 4i32, "an arm rethrows to the caller");
+    Assert((Translate(-1i32) catch { e => e.code }) == 9i32, "an arm throws a new error outward");
+
+    // A block arm yields its last expression; the sum of the errors is matched by type.
+    let value = ReadThenParse(0i32, 0i32) catch {
+        e: IoError => e.code,
+        _: ParseError => {
+            let fallback = 40i32;
+            fallback + 2i32
+        }
+    };
+    Assert(value == 7i32, "both calls succeed");
+    let ioFailure = ReadThenParse(3i32, 0i32) catch {
+        e: IoError => e.code,
+        _: ParseError => 0i32,
+    };
+    Assert(ioFailure == 3i32, "the first call's error type is selected");
+    let parseFailure = ReadThenParse(0i32, -7i32) catch {
+        _: IoError => 0i32,
+        _: ParseError => {
+            let fallback = 40i32;
+            fallback + 2i32
+        }
+    };
+    Assert(parseFailure == 42i32, "a block arm yields its value");
+
+    // A statement handler: the arms yield nothing, and code after it always runs when no arm leaves.
+    var trace = 0i32;
+    Parse(0i32) catch { _ => { trace = trace + 10i32; } };
+    trace = trace + 1i32;
+    Assert(trace == 11i32, "the arm runs, then the next statement");
+
+    Assert((Recover(-1i32) catch { e => e.code + 100i32 }) == 105i32, "a call in an arm passes its error outward");
+
+    // `break` and `continue` in an arm leave the loop around the handler.
+    var labeled = 0i32;
+    outerLoop: for row in 0i32..3i32 {
+        for column in 0i32..3i32 {
+            if column == 1i32 {
+                continue outerLoop;
+            }
+            labeled = labeled + (Parse(row + 1i32) catch { _ => break outerLoop });
+        }
+    }
+    Assert(labeled == 6i32, "labeled jumps leave from an arm");
+
+    var arms = 0i32;
+    for item in 0i32..4i32 {
+        arms = arms + (Parse(item) catch { _ => continue });
+        arms = arms + 100i32;
+    }
+    Assert(arms == 306i32, "an arm's 'continue' leaves the loop around the handler");
+    return 0;
+}
