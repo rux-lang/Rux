@@ -1,0 +1,41 @@
+// A fixed array stores no length: `.length` is a constant. Where a place is needed for it — a loan, an interface
+// view such as a format argument — the place is a temporary holding the constant, never the array's first element.
+
+import Core::Diagnostics::Assert;
+
+interface Counted {
+    func Value(&self) -> uint;
+}
+
+extend uint : Counted {
+    func Value(&self) -> uint {
+        return self;
+    }
+}
+
+func Read(value: &uint) -> uint {
+    return value;
+}
+
+// A variadic interface parameter, as a format argument is.
+func Total(values: &Counted...) -> uint {
+    var total: uint = 0;
+    for value in values {
+        total += value.Value();
+    }
+    return total;
+}
+
+func Count(values: &int32[4]) -> uint {
+    return Read(&values.length);
+}
+
+func Main() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    let maybe: int32?[3] = [1, none, 3];
+    Assert(Read(&primes.length) == 4, "a loan of an array's length");
+    Assert(Read(&maybe.length) == 3, "a loan of an optional array's length");
+    Assert(Count(&primes) == 4, "a loan of a borrowed array's length");
+    Assert(Total(primes.length, maybe.length) == 7, "interface views of arrays' lengths");
+    return 0;
+}

@@ -574,6 +574,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **A fixed array's length passed by reference** — `PrintLine("{}", primes.length)` on an `int32[4]` printed `12884901890`, the array's first two elements read as one number, because a place for `.length` (a format argument, any interface view or a loan `&primes.length`) pointed at the array itself. The length has no storage, so its place is now a temporary holding the constant.
 - **Division-by-zero trap preservation** — Release constant propagation no longer replaces `0 / divisor` with zero when the divisor is only known at runtime. Dynamic zero divisors retain the required panic on every target; division by a known nonzero constant can still fold.
 
 - **Volatile local memory reads** — LIR dead-code elimination no longer discards an unused volatile load just because its address is a nonescaping local stack slot. Volatile accesses remain observable regardless of result liveness.

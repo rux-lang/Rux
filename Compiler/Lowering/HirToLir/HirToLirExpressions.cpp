@@ -1234,10 +1234,21 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         return LowerRange(*e);
     }
     if (auto *e = HirCast<const HirFieldExpr>(&expr)) {
-        const bool indirect =
-            e->object->type->kind == TypeRef::Kind::Pointer || e->object->type->kind == TypeRef::Kind::Reference;
-        LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
-        return EmitFieldPtr(base, e->field, e->type);
+        const TypeRef &objectValueType =
+            e->object->type->kind == TypeRef::Kind::Reference && !e->object->type->inner.empty()
+                ? e->object->type->inner.front()
+                : e->object->type;
+        // A fixed array stores no length: `.length` is a constant with no storage of its own, so a place for it (an
+        // interface view, a format argument, a loan) is a temporary holding the constant. A field pointer named
+        // `length` into the array would point at its first element instead.
+        const bool fixedArrayLength =
+            objectValueType->kind == TypeRef::Kind::Array && objectValueType->arrayLength && e->field == "length";
+        if (!fixedArrayLength) {
+            const bool indirect =
+                e->object->type->kind == TypeRef::Kind::Pointer || e->object->type->kind == TypeRef::Kind::Reference;
+            LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
+            return EmitFieldPtr(base, e->field, e->type);
+        }
     }
 
     if (auto *e = HirCast<const HirIndexExpr>(&expr)) {
