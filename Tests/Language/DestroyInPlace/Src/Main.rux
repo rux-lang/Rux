@@ -1,4 +1,4 @@
-// `place.~()` destroys a value where it lies: its `~` if it declares one, then its parts, and nothing for plain data.
+// `destroy place;` destroys a value where it lies: its destructor if it declares one, then its parts, and nothing for plain data.
 // On a local or a parameter it ends the value, which is not destroyed again where its scope ends. Through a raw
 // pointer it destroys what is there and leaves the slot empty, so a write through the pointer fills it again and
 // destroys nothing. Nothing is moved, so a value whose move is prohibited ends the same way.
@@ -36,21 +36,21 @@ struct Pair {
 }
 
 func EndParameter(value: Tracked) -> int {
-    value.~();
+    destroy value;
     return drops;
 }
 
 func Main() -> int {
     let early = Tracked { id: 1 };
     let late = Tracked { id: 2 };
-    early.~();
-    Assert(drops == 1 && order == 1, "a local ends where '.~()' is written");
-    late.~();
+    destroy early;
+    Assert(drops == 1 && order == 1, "a local ends where 'destroy' is written");
+    destroy late;
     Assert(drops == 2 && order == 12, "in the order the endings are written");
 
     if true {
         let scoped = Tracked { id: 3 };
-        scoped.~();
+        destroy scoped;
     }
     Assert(drops == 3, "an ended local is not destroyed again at the end of its scope");
 
@@ -59,21 +59,21 @@ func Main() -> int {
 
     let pair = Pair { first: Tracked { id: 5 }, second: Tracked { id: 6 } };
     order = 0;
-    pair.~();
+    destroy pair;
     Assert(drops == 6 && order == 65, "an aggregate destroys its parts, last declared first");
 
     let pinned = Pinned { id: 7 };
-    pinned.~();
+    destroy pinned;
     Assert(drops == 7, "a value whose move is prohibited ends without moving");
 
     var slot = Tracked { id: 8 };
     let pointer: *var Tracked = @slot;
-    (*pointer).~();
+    destroy (*pointer);
     Assert(drops == 8, "a value is destroyed in place through a raw pointer");
     *pointer = Tracked { id: 9 };
     Assert(drops == 8, "and writing the empty slot destroys nothing");
 
     let count = 10;
-    count.~();
+    destroy count;
     return 0;
 }

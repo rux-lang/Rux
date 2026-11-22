@@ -28,6 +28,7 @@ enum class TokenKind : std::uint8_t {
     ConstKeyword,      // const
     ContinueKeyword,   // continue
     DeferKeyword,      // defer
+    DestroyKeyword,    // destroy
     DestructorKeyword, // destructor
     DoKeyword,         // do
     ElseKeyword,       // else

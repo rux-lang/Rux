@@ -629,6 +629,21 @@ ExprPtr Parser::ParseUnary() {
         binding->operand = ParseBitOr();
         return binding;
     }
+    // `destroy` is a statement. Written inside an expression it is reported and read as the destroy it names, so the
+    // rest of the expression is still checked.
+    if (Check(TokenKind::DestroyKeyword)) {
+        const auto loc = CurrentLocation();
+        Advance();
+        EmitError(loc, "'destroy' is a statement and has no value");
+        auto destroy = std::make_unique<DestroyExpr>();
+        destroy->location = loc;
+        destroy->operand = ParseUnary();
+        if (!destroy->operand) {
+            EmitMissingExpression("after 'destroy'");
+            return nullptr;
+        }
+        return destroy;
+    }
     // A bare value is given away, so the removed `move` and the older prefix `<-` are reported and the value after them
     // is read as it is.
     if (CheckAny({TokenKind::MoveKeyword, TokenKind::MoveArrow})) {
@@ -690,11 +705,15 @@ ExprPtr Parser::ParsePostfix() {
         // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
         if (Match(TokenKind::Dot)) {
             const SourceLocation memberLocation = CurrentLocation();
-            // `place.~()` destroys the value where it lies.
+            // The older `place.~()` is reported and read as `destroy place;`, so one mistake reports once.
             if (Check(TokenKind::Tilde) && Peek(1).Is(TokenKind::LeftParen) && Peek(2).Is(TokenKind::RightParen)) {
                 Advance();
                 Advance();
                 Advance();
+                const auto *name = AstCast<const IdentExpr>(left.get());
+                EmitError(memberLocation, "'.~()' is not supported",
+                          name ? std::format("write 'destroy {};'", name->name)
+                               : std::string("write 'destroy' before the place, as in 'destroy place;'"));
                 auto destroy = std::make_unique<DestroyExpr>();
                 destroy->location = memberLocation;
                 destroy->operand = std::move(left);

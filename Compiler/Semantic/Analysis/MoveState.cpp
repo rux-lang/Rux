@@ -172,7 +172,7 @@ void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocatio
         std::ranges::any_of(endedSites,
                             [&](const SourceLocation &site) { return site == issue->previousTransition; })) {
         EmitError(location, std::format("'{}' is used after it was destroyed", symbol.name),
-                  withParts(std::format("'{}' was destroyed with '.~()' at {}:{}", symbol.name,
+                  withParts(std::format("'{}' was destroyed with 'destroy' at {}:{}", symbol.name,
                                         issue->previousTransition.line, issue->previousTransition.column)));
         return;
     }

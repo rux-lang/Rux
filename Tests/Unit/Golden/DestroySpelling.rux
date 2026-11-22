@@ -1,0 +1,17 @@
+// `destroy` is a statement: the older `place.~()` is reported with the statement as its help, and `destroy` written
+// inside an expression has no value to give.
+struct Tracked {
+    id: int;
+}
+
+extend Tracked {
+    destructor {}
+}
+
+func Main() -> int {
+    let first = Tracked { id: 1 };
+    first.~();
+    let second = Tracked { id: 2 };
+    let value = destroy second;
+    return 0;
+}

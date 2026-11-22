@@ -1,4 +1,4 @@
-// `place.~()` ends a local or a parameter, or destroys a value in place through a raw pointer. A part of a live value
+// `destroy place;` ends a local or a parameter, or destroys a value in place through a raw pointer. A part of a live value
 // and a value reached through a loan are not destroyed by themselves, a temporary needs no ending, and an ended value
 // is not used again.
 struct Tracked {
@@ -15,7 +15,7 @@ struct Pair {
 }
 
 func Lent(value: &Tracked) {
-    value.~();
+    destroy value;
 }
 
 func Make() -> Tracked {
@@ -24,9 +24,9 @@ func Make() -> Tracked {
 
 func Main() -> int {
     let pair = Pair { first: Tracked { id: 1 }, second: Tracked { id: 2 } };
-    pair.first.~();
-    Make().~();
+    destroy pair.first;
+    destroy Make();
     let ended = Tracked { id: 3 };
-    ended.~();
+    destroy ended;
     return ended.id;
 }

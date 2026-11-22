@@ -16,6 +16,7 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"const", TokenKind::ConstKeyword},
     {"continue", TokenKind::ContinueKeyword},
     {"defer", TokenKind::DeferKeyword},
+    {"destroy", TokenKind::DestroyKeyword},
     {"destructor", TokenKind::DestructorKeyword},
     {"do", TokenKind::DoKeyword},
     {"else", TokenKind::ElseKeyword},
@@ -153,6 +154,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "MoveKeyword";
     case TokenKind::DestructorKeyword:
         return "DestructorKeyword";
+    case TokenKind::DestroyKeyword:
+        return "DestroyKeyword";
     case TokenKind::ThrowKeyword:
         return "ThrowKeyword";
     case TokenKind::ThrowsKeyword:

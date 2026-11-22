@@ -190,7 +190,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->name = external->symbolName.empty() ? external->name : external->symbolName;
         return lowered;
     }
-    // `place.~()` takes the value as `let _ = place;` would and destroys it there: an ended local is consumed,
+    // `destroy place;` takes the value as `let _ = place;` would and destroys it there: an ended local is consumed,
     // which clears its drop flag, and a place through a raw pointer is read out and destroyed with nothing tracked.
     if (const auto *destroy = AstCast<const DestroyExpr>(&expression)) {
         auto block = std::make_unique<HirBlockExpr>();

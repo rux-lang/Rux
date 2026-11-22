@@ -291,7 +291,7 @@ TypeRef AnalysisContext::CheckDestroy(const DestroyExpr &destroy) {
         return TypeRef::MakeUnit();
     }
     if (!place.IsNamedStorage()) {
-        EmitError(destroy.location, "'.~()' destroys a value that has a name", {},
+        EmitError(destroy.location, "'destroy' ends a value that has a name", {},
                   "a temporary is destroyed at the end of its statement already");
         return TypeRef::MakeUnit();
     }

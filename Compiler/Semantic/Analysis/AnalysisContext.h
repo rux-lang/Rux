@@ -1209,7 +1209,7 @@ private:
     bool currentPatternTakesParts = false;
     /// The names the pattern being checked binds are `var`, as `if var count? = ...` makes them.
     bool currentPatternBindsMutable = false;
-    /// Where a local or a parameter was ended with `.~()`, so a later use names that rather than a move.
+    /// Where a local or a parameter was ended with `destroy`, so a later use names that rather than a move.
     std::vector<SourceLocation> endedSites;
 
     /// Locals read as values; an assignment target is not a read.
@@ -1727,7 +1727,7 @@ private:
     [[nodiscard]] static std::optional<std::string> ImmutableBindingHelp(const Symbol &binding);
     /// `&place` or `&var place`, whose type is a reference to the place.
     [[nodiscard]] TypeRef CheckLoan(const LoanExpr &loan);
-    /// `place.~()`: ends a local or a parameter, or destroys a value in place through a raw pointer.
+    /// `destroy place;`: ends a local or a parameter, or destroys a value in place through a raw pointer.
     [[nodiscard]] TypeRef CheckDestroy(const DestroyExpr &destroy);
     /// Reports each place passed bare to a reference parameter whose loan must be written: one the callee writes, or
     /// an owning value. The argument a result borrows from is checked with the call's binding, in BorrowReturns.cpp.

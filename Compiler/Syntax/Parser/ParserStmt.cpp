@@ -204,6 +204,18 @@ StmtPtr Parser::ParseStmt() {
     if (Check(TokenKind::DeferKeyword)) {
         return ParseDeferStmt();
     }
+    // `destroy place;` destroys the value where it lies. It is a statement, so it never yields a value.
+    if (Check(TokenKind::DestroyKeyword)) {
+        Advance();
+        auto destroy = std::make_unique<DestroyExpr>();
+        destroy->location = loc;
+        destroy->operand = ParseRequiredExpr("after 'destroy'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the 'destroy' statement");
+        auto statement = std::make_unique<ExprStmt>();
+        statement->location = loc;
+        statement->expr = std::move(destroy);
+        return statement;
+    }
 
     if (Check(TokenKind::BreakKeyword)) {
         Advance();

@@ -349,8 +349,9 @@ struct UnaryExpr : Expr {
     ExprPtr operand;
 };
 
-/// `place.~()`: destroys the value where it lies. On a local or a parameter it ends the value's life; through a raw
-/// pointer it destroys what is there and leaves the slot empty.
+/// `destroy place;`: destroys the value where it lies. On a local or a parameter it ends the value's life; through a
+/// raw pointer it destroys what is there and leaves the slot empty. The parser builds it only as the expression of a
+/// statement.
 struct DestroyExpr : Expr {
     ExprPtr operand;
 };

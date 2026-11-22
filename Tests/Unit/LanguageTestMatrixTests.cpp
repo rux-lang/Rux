@@ -141,6 +141,7 @@ const std::map<std::string_view, std::string_view> kKeywordOwners = {
     {"const", "Const"},
     {"continue", "Continue"},
     {"defer", "Defer"},
+    {"destroy", "DestroyInPlace"},
     {"destructor", "Destruction"},
     {"do", "DoWhile"},
     {"else", "If"},
