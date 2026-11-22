@@ -100,7 +100,7 @@ pub const MinimumPageSize: uint = 4096;
 /// caller that needs the size more than once should keep it.
 /// @returns the page size in bytes, or the reason the system would not answer
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-size
-pub func PageSize() -> uint throws PageError {
+pub func PageSize() -> uint ! PageError {
     when #target.os {
         .Windows => {
             // GetSystemInfo has no failure to report; a system that could not answer could not have started the
@@ -133,7 +133,7 @@ pub func PageSize() -> uint throws PageError {
 /// @param protection what may be done with the pages, as `Page*` flags
 /// @returns the base address of the pages, or the reason the address space was not taken
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-allocate
-pub func PageAllocate(length: uint, protection: uint32) -> *var opaque throws PageError {
+pub func PageAllocate(length: uint, protection: uint32) -> *var opaque ! PageError {
     if length == 0 { throw .InvalidLength; }
     when #target.os {
         .Windows => {
@@ -164,7 +164,7 @@ pub func PageAllocate(length: uint, protection: uint32) -> *var opaque throws Pa
 /// @param length the length it was given
 /// @returns nothing on success, or the reason the system refused the release
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-release
-pub func PageRelease(address: *var opaque, length: uint) throws PageError {
+pub func PageRelease(address: *var opaque, length: uint) -> !PageError {
     if address == null { throw .InvalidAddress; }
     if length == 0 { throw .InvalidLength; }
     when #target.os {
@@ -191,7 +191,7 @@ pub func PageRelease(address: *var opaque, length: uint) throws PageError {
 /// @param protection what may be done with the pages afterwards
 /// @returns nothing on success, or the reason the system refused the change
 /// @see https://rux-lang.dev/docs/api/memory/pages#page-protect
-pub func PageProtect(address: *var opaque, length: uint, protection: uint32) throws PageError {
+pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> !PageError {
     if address == null { throw .InvalidAddress; }
     if length == 0 { throw .InvalidLength; }
     when #target.os {

@@ -8,7 +8,7 @@ import Entropy::EntropyError;
 import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid,
                UuidVariant };
 
-func Main() throws EntropyError {
+func Main() -> !EntropyError {
 
     // Version 4: well-formed, and distinct across many draws.
     var previous = Uuid::Nil();

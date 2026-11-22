@@ -21,7 +21,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
     let able = CapabilitiesOfSystem();
 

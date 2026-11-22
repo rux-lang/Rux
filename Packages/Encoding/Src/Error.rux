@@ -70,7 +70,7 @@ extend DecodeError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         try WriteBytes(writer, DescribeDecodeError(self));
         var digits: char8[20];
@@ -114,7 +114,7 @@ extend DecodeError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/decode-error#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }

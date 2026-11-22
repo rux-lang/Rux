@@ -2,7 +2,7 @@
 // `catch` or discards it with `try?`.
 struct Fault {}
 
-func Close() throws Fault {}
+func Close() -> !Fault {}
 
 func Main() -> int {
     defer try Close();

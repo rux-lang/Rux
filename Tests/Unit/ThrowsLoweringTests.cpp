@@ -126,8 +126,8 @@ std::vector<const Statement *> StatementsOf(const HirFunc &function) {
 TEST_CASE("a throw site to the function exit lowers like propagation") {
     const HirPackage package = LowerSource(R"(
         struct Fault {}
-        func Read() -> int32 throws Fault { return 1i32; }
-        func Forward() -> int32 throws Fault {
+        func Read() -> int32 ! Fault { return 1i32; }
+        func Forward() -> int32 ! Fault {
             let value = try Read();
             return value;
         }
@@ -149,7 +149,7 @@ TEST_CASE("a throw site to the function exit lowers like propagation") {
 TEST_CASE("a try block stores the error in its slot, leaves its hidden loop, and matches the slot") {
     const HirPackage package = LowerSource(R"(
         struct Fault { code: int32; }
-        func Read() -> int32 throws Fault { return 1i32; }
+        func Read() -> int32 ! Fault { return 1i32; }
         func Handle() -> int32 {
             var result = 0i32;
             try {
@@ -188,7 +188,7 @@ TEST_CASE("a try block stores the error in its slot, leaves its hidden loop, and
 TEST_CASE("try? and try ... catch are blocks whose value matches the outcome slot") {
     const HirPackage package = LowerSource(R"(
         struct Fault {}
-        func Read() -> int32 throws Fault { return 1i32; }
+        func Read() -> int32 ! Fault { return 1i32; }
         func Optional() -> int32? { return try? Read(); }
         func Recovered() -> int32 { return try Read() catch { _ => 0i32 }; }
     )");
@@ -211,7 +211,7 @@ TEST_CASE("try? and try ... catch are blocks whose value matches the outcome slo
 TEST_CASE("an unlabeled break in a try block leaves the source loop around it") {
     const HirPackage package = LowerSource(R"(
         struct Fault {}
-        func Read(index: int32) -> int32 throws Fault { return index; }
+        func Read(index: int32) -> int32 ! Fault { return index; }
         func Scan() -> int32 {
             var total = 0i32;
             while total < 10i32 {

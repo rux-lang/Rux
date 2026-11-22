@@ -49,7 +49,7 @@ func IsZoneName(name: char8[..]) -> bool {
 }
 
 // The whole file at `path`, or fails with `NotFound` when it is not there.
-func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> throws TimeZoneError {
+func ReadFile(allocator: Allocator, path: char8[..]) -> Vector<byte> ! TimeZoneError {
     let native = OsString::FromText(allocator, path);
     var file = try File::Open(allocator, Path { name: native.View() }, OpenOptions::Reading()) catch {
         error => {
@@ -99,7 +99,7 @@ extend TimeZone {
     /// @param name the zone's name, such as `Europe/Paris`
     /// @returns the zone, or fails with `NotFound`, `InvalidName` or `InvalidData`
     /// @see https://rux-lang.dev/docs/api/timezone/zone#load
-    pub func Load(allocator: Allocator, name: char8[..]) -> Self throws TimeZoneError {
+    pub func Load(allocator: Allocator, name: char8[..]) -> Self ! TimeZoneError {
         if !IsZoneName(name) { throw .InvalidName; }
         var directory = Vector<char8>::New(allocator);
         match Variable("TZDIR") {
@@ -131,7 +131,7 @@ extend TimeZone {
     }
 
     // Loads `name` from `directory`.
-    func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> Self throws TimeZoneError {
+    func LoadFrom(allocator: Allocator, directory: char8[..], name: char8[..]) -> Self ! TimeZoneError {
         var path = Vector<char8>::New(allocator);
         path.PushSlice(directory);
         path.Push(c8'/');
@@ -147,7 +147,7 @@ extend TimeZone {
     /// @param allocator what the zone is kept in
     /// @returns the zone, or fails when the system's setting cannot be read
     /// @see https://rux-lang.dev/docs/api/timezone/zone#local
-    pub func Local(allocator: Allocator) -> Self throws TimeZoneError {
+    pub func Local(allocator: Allocator) -> Self ! TimeZoneError {
         when #target.os == .Windows {
             return try Self::WindowsLocal(allocator);
         }
@@ -180,7 +180,7 @@ extend TimeZone {
     }
 
     // The Windows zone, from the system's rules.
-    func WindowsLocal(allocator: Allocator) -> Self throws TimeZoneError {
+    func WindowsLocal(allocator: Allocator) -> Self ! TimeZoneError {
         when #target.os == .Windows {
             var information = TimeZoneInformation {
                 bias: 0, standardName: [0u16; 32], standardDate: EmptyRuleDate(), standardBias: 0,

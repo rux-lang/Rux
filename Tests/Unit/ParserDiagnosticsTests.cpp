@@ -899,9 +899,11 @@ TEST_CASE("removed spellings report the form that replaced them") {
     };
 
     constexpr Case cases[] = {
-        {"func F() -> int ! E { return 1; }", "'T ! E' is not a type", "'-> T throws E'"},
-        {"func F() throws E { fail E {}; }", "'fail' is not supported", "write 'throw value;'"},
-        {"func F() -> int throws E { return G()? else (e => e); }", "'? else' is not supported",
+        {"func F() -> int throws E { return 1; }", "'throws' is not supported", "'-> T ! E'"},
+        {"func F() throws E { return; }", "'throws' is not supported", "'-> !E'"},
+        {"func F() -> int ! E? { return 1; }", "'?' cannot reach across '!'", "'T ! (E?)'"},
+        {"func F() -> !E { fail E {}; }", "'fail' is not supported", "write 'throw value;'"},
+        {"func F() -> int ! E { return G()? else (e => e); }", "'? else' is not supported",
          "write 'try value catch { e => throw mapped }'"},
         {"func F() -> int { return G() catch { _ => 0 }; }", "'catch' must follow 'try'",
          "write 'try value catch { ... }'"},

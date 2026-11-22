@@ -324,12 +324,12 @@ TEST_CASE("propagation rolls back every completed variant payload in reverse ord
         enum Error: uint8 { Bad = 1 }
         variant Choice { Empty, Build(Handle, Handle, int32) }
 
-        func Read(ok: bool) -> int32 throws Error {
+        func Read(ok: bool) -> int32 ! Error {
             if ok { return 7i32; }
             throw Error::Bad;
         }
 
-        func Build(ok: bool) -> Choice throws Error {
+        func Build(ok: bool) -> Choice ! Error {
             return try Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok));
         }
     )");

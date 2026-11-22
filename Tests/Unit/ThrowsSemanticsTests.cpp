@@ -38,12 +38,12 @@ bool AnyContains(const std::vector<std::string> &messages, const std::string_vie
 constexpr std::string_view kDeclarations = R"(
     variant DigitError { Blank, NotADigit(char) }
     struct IoError { code: int32; }
-    func ReadDigit(c: char) -> int throws DigitError {
+    func ReadDigit(c: char) -> int ! DigitError {
         if c == ' ' { throw .Blank; }
         return 1;
     }
-    func OldDigit(c: char) -> int throws DigitError { return 1; }
-    func ReadFile(code: int32) -> int32 throws IoError { return code; }
+    func OldDigit(c: char) -> int ! DigitError { return 1; }
+    func ReadFile(code: int32) -> int32 ! IoError { return code; }
 )";
 
 std::string WithDeclarations(const std::string_view body) {
@@ -91,7 +91,7 @@ const Expr &InitializerOf(const FuncDecl &function, const std::size_t index) {
 
 TEST_CASE("an unmarked call of a throws function is an error and a marked one evaluates to its success") {
     const auto errors = Errors(WithDeclarations(R"(
-        func Main() -> int throws DigitError {
+        func Main() -> int ! DigitError {
             let a = ReadDigit('1');
             return a;
         }
@@ -100,7 +100,7 @@ TEST_CASE("an unmarked call of a throws function is an error and a marked one ev
     CHECK(errors.front() == "call to 'ReadDigit' can throw 'DigitError' but is not marked with 'try'");
 
     const Analyzed analyzed = Analyze(WithDeclarations(R"(
-        func Main() -> int throws DigitError {
+        func Main() -> int ! DigitError {
             let a = try ReadDigit('1') + ReadDigit('2');
             return a;
         }
@@ -155,7 +155,7 @@ TEST_CASE("a try block marks its calls and sends their errors to its arms") {
 
 TEST_CASE("a throw goes to the innermost handler, and an arm's error goes further out") {
     const Analyzed analyzed = Analyze(WithDeclarations(R"(
-        func Main() -> int throws IoError {
+        func Main() -> int ! IoError {
             try {
                 ReadDigit('1');
                 throw DigitError::Blank;
@@ -209,12 +209,12 @@ TEST_CASE("try? and try ... catch are handlers of their own operands") {
 TEST_CASE("an error with nowhere to go, or one that does not fit, is reported") {
     CHECK(AnyContains(Errors(WithDeclarations("func Main() -> int { return try ReadDigit('1'); }")),
                       "call to 'ReadDigit' can throw 'DigitError', but 'Main' does not throw"));
-    CHECK(AnyContains(Errors(WithDeclarations("func Load() -> int throws IoError { return try ReadDigit('1'); }")),
+    CHECK(AnyContains(Errors(WithDeclarations("func Load() -> int ! IoError { return try ReadDigit('1'); }")),
                       "call to 'ReadDigit' can throw 'DigitError', but 'Load' throws 'IoError'"));
     // Injection into a sum and widening into a larger one are accepted.
     CHECK(Errors(WithDeclarations(R"(
-        func Either() -> int throws IoError | DigitError { return try ReadDigit('1'); }
-        func Wider() -> int throws IoError | DigitError | char { return try Either(); }
+        func Either() -> int ! IoError | DigitError { return try ReadDigit('1'); }
+        func Wider() -> int ! IoError | DigitError | char { return try Either(); }
     )"))
               .empty());
     CHECK(AnyContains(Errors(WithDeclarations("func F() { throw IoError { code: 1i32 }; }")),

@@ -328,7 +328,7 @@ extend Parser {
     }
 
     // Alternatives separated by `|`.
-    func ParseAlternation(&var self, regex: &var Regex, depth: uint) -> uint32 throws RegexError {
+    func ParseAlternation(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let first = try self.ParseConcat(regex, depth);
         if self.Peek() != 0x7Cu32 { return first; }
         let alternation = self.AddNode(NodeKind::Alternate, 0, 0, 0, 0, first);
@@ -343,7 +343,7 @@ extend Parser {
     }
 
     // Repeated atoms, up to a `|` or `)`.
-    func ParseConcat(&var self, regex: &var Regex, depth: uint) -> uint32 throws RegexError {
+    func ParseConcat(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         var first = NoNode;
         var last = NoNode;
         var count: uint = 0;
@@ -380,7 +380,7 @@ extend Parser {
     }
 
     // Reads a number of a count, refusing one over `MaximumCount`.
-    func ParseNumber(&var self) -> uint32 throws RegexError {
+    func ParseNumber(&var self) -> uint32 ! RegexError {
         let start = self.at;
         var value: uint32 = 0;
         while self.at < self.pattern.length && self.pattern[self.at] >= c8'0' && self.pattern[self.at] <= c8'9' {
@@ -393,7 +393,7 @@ extend Parser {
     }
 
     // An atom and the repetitions that follow it.
-    func ParseRepeat(&var self, regex: &var Regex, depth: uint) -> uint32 throws RegexError {
+    func ParseRepeat(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         var atom = try self.ParseAtom(regex, depth);
         while true {
             self.SkipLayout();
@@ -448,7 +448,7 @@ extend Parser {
     }
 
     // One character, class, group, assertion or escape.
-    func ParseAtom(&var self, regex: &var Regex, depth: uint) -> uint32 throws RegexError {
+    func ParseAtom(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let start = self.at;
         let byte = self.Peek();
         if byte == 0x28u32 { return try self.ParseGroup(regex, depth); }
@@ -490,7 +490,7 @@ extend Parser {
     }
 
     // A `(...)` group, or a `(?flags)` that sets flags for the rest of the enclosing group.
-    func ParseGroup(&var self, regex: &var Regex, depth: uint) -> uint32 throws RegexError {
+    func ParseGroup(&var self, regex: &var Regex, depth: uint) -> uint32 ! RegexError {
         let start = self.at;
         self.at = self.at + 1;
         let saved = self.flags;
@@ -560,7 +560,7 @@ extend Parser {
     }
 
     // A group's name up to its `>`, recorded as the name of group `index`.
-    func ParseName(&var self, regex: &var Regex, index: uint32) throws RegexError {
+    func ParseName(&var self, regex: &var Regex, index: uint32) -> !RegexError {
         let start = self.at;
         while self.at < self.pattern.length && self.pattern[self.at] != c8'>' {
             let byte = self.pattern[self.at] as uint8;
@@ -585,7 +585,7 @@ extend Parser {
     }
 
     // The name of a `\p` property: one letter, or the text between braces. A `^` after the brace negates it.
-    func ParseProperty(&var self, regex: &var Regex, negated: bool, start: uint) throws RegexError {
+    func ParseProperty(&var self, regex: &var Regex, negated: bool, start: uint) -> !RegexError {
         var name = self.pattern[self.at..self.at];
         var negate = negated;
         if self.Peek() == 0x7Bu32 {
@@ -616,7 +616,7 @@ extend Parser {
     }
 
     // Reads hexadecimal digits for `\x` and `\u`: exactly `count` of them, or any number between braces.
-    func ParseHex(&var self, count: uint, start: uint) -> uint32 throws RegexError {
+    func ParseHex(&var self, count: uint, start: uint) -> uint32 ! RegexError {
         var value: uint32 = 0;
         if self.Peek() == 0x7Bu32 {
             self.at = self.at + 1;
@@ -647,7 +647,7 @@ extend Parser {
     }
 
     // A `\` escape. Class escapes push their item; `\b`, `\B`, `\A` and `\z` are assertions outside a class only.
-    func ParseEscape(&var self, regex: &var Regex, inClass: bool) -> Escaped throws RegexError {
+    func ParseEscape(&var self, regex: &var Regex, inClass: bool) -> Escaped ! RegexError {
         let start = self.at;
         self.at = self.at + 1;
         let byte = self.Peek();
@@ -708,7 +708,7 @@ extend Parser {
     }
 
     // One end of a class range: a character or an escape for one. Class escapes push their item and give none.
-    func ParseClassCharacter(&var self, regex: &var Regex) -> uint32? throws RegexError {
+    func ParseClassCharacter(&var self, regex: &var Regex) -> uint32? ! RegexError {
         let start = self.at;
         if self.Peek() == 0x5Cu32 {
             let escape = try self.ParseEscape(regex, true);
@@ -722,7 +722,7 @@ extend Parser {
     }
 
     // A `[...]` class.
-    func ParseClass(&var self, regex: &var Regex) -> uint32 throws RegexError {
+    func ParseClass(&var self, regex: &var Regex) -> uint32 ! RegexError {
         let start = self.at;
         self.at = self.at + 1;
         var flags: uint8 = if (self.flags & FlagCase) != 0u8 { NodeFold } else { 0u8 };

@@ -11,8 +11,8 @@ struct Closed {
 }
 
 interface Source {
-    func Next(&var self) -> int32 throws Closed;
-    func Reset(&var self) throws Closed;
+    func Next(&var self) -> int32 ! Closed;
+    func Reset(&var self) -> !Closed;
 }
 
 struct Countdown {
@@ -20,7 +20,7 @@ struct Countdown {
 }
 
 extend Countdown : Source {
-    func Next(&var self) -> int32 throws Closed {
+    func Next(&var self) -> int32 ! Closed {
         if self.left <= 0i32 {
             throw Closed { reason: 1i32 };
         }
@@ -28,7 +28,7 @@ extend Countdown : Source {
         return self.left;
     }
 
-    func Reset(&var self) throws Closed {
+    func Reset(&var self) -> !Closed {
         if self.left < 0i32 {
             throw Closed { reason: 2i32 };
         }
@@ -36,7 +36,7 @@ extend Countdown : Source {
     }
 }
 
-func Drain<S: Source>(source: &var S) -> int32 throws Closed {
+func Drain<S: Source>(source: &var S) -> int32 ! Closed {
     var total = 0i32;
     loop {
         let value = try source.Next() catch { _ => break };
@@ -46,11 +46,11 @@ func Drain<S: Source>(source: &var S) -> int32 throws Closed {
     return total;
 }
 
-func Twice(step: func(int32) -> int32 throws Closed, value: int32) -> int32 throws Closed {
+func Twice(step: func(int32) -> int32 ! Closed, value: int32) -> int32 ! Closed {
     return try step(value) + step(value + 1i32);
 }
 
-func Halve(value: int32) -> int32 throws Closed {
+func Halve(value: int32) -> int32 ! Closed {
     if value % 2i32 != 0i32 {
         throw Closed { reason: value };
     }
@@ -64,7 +64,7 @@ func Main() -> int {
     var negative = Countdown { left: -1i32 };
     Assert((try Drain(negative) catch { e => e.reason }) == 2i32, "a requirement's error passes through");
 
-    let halve: func(int32) -> int32 throws Closed = Halve;
+    let halve: func(int32) -> int32 ! Closed = Halve;
     Assert((try Twice(halve, 4i32) catch { e => -e.reason }) == -5i32, "a function value throws");
     let reason = try halve(3i32) catch { e => e.reason };
     Assert(reason == 3i32, "a call through a function value is a throw site like any other");

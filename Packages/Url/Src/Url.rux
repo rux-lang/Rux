@@ -69,7 +69,7 @@ func IsNetworkScheme(scheme: char8[..]) -> bool {
 }
 
 // Builds a normalized URL from pieces, which must include a scheme.
-func Compose(allocator: Allocator, pieces: &Pieces) -> Url throws UrlError {
+func Compose(allocator: Allocator, pieces: &Pieces) -> Url ! UrlError {
     let scheme = pieces.scheme ?? throw .MissingScheme;
     if scheme.length == 0 || !IsAlpha(scheme[0] as uint8) { throw .InvalidScheme; }
     var out = Bytes::New(allocator);
@@ -220,7 +220,7 @@ extend Url {
     /// @param text the URL
     /// @returns the URL, or fails with what is wrong with it; a relative reference fails with `MissingScheme`
     /// @see https://rux-lang.dev/docs/api/url/url#parse
-    pub func Parse(allocator: Allocator, text: char8[..]) -> Self throws UrlError {
+    pub func Parse(allocator: Allocator, text: char8[..]) -> Self ! UrlError {
         let pieces = try SplitReference(text);
         return try Compose(allocator, pieces);
     }
@@ -231,7 +231,7 @@ extend Url {
     /// @param reference an absolute URL or a relative reference
     /// @returns the resolved URL, kept with this URL's allocator
     /// @see https://rux-lang.dev/docs/api/url/url#resolve
-    pub func Resolve(&self, reference: char8[..]) -> Self throws UrlError {
+    pub func Resolve(&self, reference: char8[..]) -> Self ! UrlError {
         var target = try SplitReference(reference);
         if IsSet(target.scheme) { return try Compose(self.allocator, target); }
         var merged = Bytes::New(self.allocator);
@@ -365,7 +365,7 @@ extend Url {
     /// @param path the new path, percent-encoded or not
     /// @returns nothing, or fails when the path cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-path
-    pub func SetPath(&var self, path: char8[..]) throws UrlError {
+    pub func SetPath(&var self, path: char8[..]) -> !UrlError {
         var pieces = self.Pieces();
         var rooted = Bytes::New(self.allocator);
         if self.hasAuthority && (path.length == 0 || path[0] != '/') { rooted.Push(c8'/'); }
@@ -378,7 +378,7 @@ extend Url {
     /// @param query the new query without its `?`, percent-encoded or not
     /// @returns nothing, or fails when the query cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-query
-    pub func SetQuery(&var self, query: char8[..]?) throws UrlError {
+    pub func SetQuery(&var self, query: char8[..]?) -> !UrlError {
         var pieces = self.Pieces();
         pieces.query = query;
         self = try move Compose(self.allocator, pieces);
@@ -388,7 +388,7 @@ extend Url {
     /// @param fragment the new fragment without its `#`, percent-encoded or not
     /// @returns nothing, or fails when the fragment cannot be normalized
     /// @see https://rux-lang.dev/docs/api/url/url#set-fragment
-    pub func SetFragment(&var self, fragment: char8[..]?) throws UrlError {
+    pub func SetFragment(&var self, fragment: char8[..]?) -> !UrlError {
         var pieces = self.Pieces();
         pieces.fragment = fragment;
         self = try move Compose(self.allocator, pieces);

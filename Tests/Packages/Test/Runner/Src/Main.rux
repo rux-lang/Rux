@@ -9,12 +9,12 @@ import Test::{
 };
 
 // The message of the failure `outcome` holds, or a failure of the test when it passed.
-func MessageOf(outcome: Result<(), TestFailure>) -> TestFailure throws TestFailure {
+func MessageOf(outcome: Result<(), TestFailure>) -> TestFailure ! TestFailure {
     return try ExpectFailure(move outcome, "the check should have failed");
 }
 
 #Test
-func ChecksThatHold() throws TestFailure {
+func ChecksThatHold() -> !TestFailure {
     try Expect(1 + 1 == 2, "arithmetic");
     try ExpectEqual(40 + 2, 42);
     try ExpectNotEqual(3, 4);
@@ -27,7 +27,7 @@ func ChecksThatHold() throws TestFailure {
 }
 
 #Test
-func FailureMessages() throws TestFailure {
+func FailureMessages() -> !TestFailure {
     let flag: Result<(), TestFailure> = try .Success(Expect(false, "the flag is set")) catch { f => .Failure(f) };
     try ExpectText(MessageOf(flag).Message(), "the flag is set");
     let equal: Result<(), TestFailure> = try .Success(ExpectEqual(1, 2)) catch { f => .Failure(f) };
@@ -44,7 +44,7 @@ func FailureMessages() throws TestFailure {
 }
 
 #Test
-func OutcomeChecks() throws TestFailure {
+func OutcomeChecks() -> !TestFailure {
     let good: Result<int32, TestFailure> = .Success(3);
     try ExpectEqual(ExpectSuccess(good, "succeeds"), 3);
     let bad: Result<int32, TestFailure> = .Failure(TestFailure::Of("broken"));
@@ -60,7 +60,7 @@ func ReturnsNothing() {
 }
 
 #Test
-func Skipped() throws TestFailure {
+func Skipped() -> !TestFailure {
     throw TestFailure::Skip("shows how a skip is reported");
 }
 
@@ -68,7 +68,7 @@ module Nested {
     import Test::{ ExpectEqual, TestFailure };
 
     #Test
-    func Inner() throws TestFailure {
+    func Inner() -> !TestFailure {
         try ExpectEqual(Twice(4), 8);
     }
 
@@ -77,14 +77,14 @@ module Nested {
     }
 }
 
-func Passes() throws TestFailure {}
+func Passes() -> !TestFailure {}
 
-func Fails() throws TestFailure {
+func Fails() -> !TestFailure {
     throw TestFailure::Of("on purpose");
 }
 
 #Test
-func Filtering() throws TestFailure {
+func Filtering() -> !TestFailure {
     let table = [TestCase { name: "Group::Passes", run: Passes }, TestCase { name: "Group::Fails", run: Fails }];
     var options = TestOptions::New();
     options.quiet = true;

@@ -23,7 +23,7 @@ extend Tracked {
     }
 }
 
-func Parse(value: int) -> int throws int {
+func Parse(value: int) -> int ! int {
     if value < 0 { throw value; }
     return value;
 }
@@ -41,16 +41,16 @@ func Both(first: Tracked, second: Tracked, value: int) -> int {
     return first.value + second.value + value;
 }
 
-func Thrown(value: int) -> int throws int {
+func Thrown(value: int) -> int ! int {
     return Take(Tracked { value: 1 }, try Parse(value));
 }
 
-func Moved(value: int) -> int throws int {
+func Moved(value: int) -> int ! int {
     let kept = Tracked { value: 1 };
     return Take(move kept, try Parse(value));
 }
 
-func Receiver(value: int) -> int throws int {
+func Receiver(value: int) -> int ! int {
     return Tracked { value: 1 }.Consume(try Parse(value));
 }
 
@@ -58,7 +58,7 @@ func Handled(value: int) -> int {
     return try Both(Tracked { value: 1 }, Tracked { value: 2 }, Parse(value)) catch { error => error };
 }
 
-func Nested(value: int) -> int throws int {
+func Nested(value: int) -> int ! int {
     return Take(Tracked { value: 1 }, Take(Tracked { value: 2 }, try Parse(value)));
 }
 

@@ -26,7 +26,7 @@ func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes) ?? StringView::New();
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
     var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp");
     let scratch = Path::FromView(holder.View());

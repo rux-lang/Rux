@@ -85,7 +85,7 @@ TEST_CASE("only an optional or an Option-shaped variant reports the end") {
         struct E {}
         struct Fallible { index: int32; }
         extend Fallible {
-            func Next(&var self) -> int32 throws E { return 1i32; }
+            func Next(&var self) -> int32 ! E { return 1i32; }
         }
         struct Shared { index: int32; }
         extend Shared {

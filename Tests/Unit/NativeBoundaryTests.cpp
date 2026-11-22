@@ -30,8 +30,8 @@ TEST_CASE("a public error alias exposes its members across packages, a named wra
         pub variant LoadError {
             Unreadable(ReadError)
         }
-        pub func Read() -> int32 throws ReadError { return 1i32; }
-        pub func Load() -> int32 throws LoadError { return 1i32; }
+        pub func Read() -> int32 ! ReadError { return 1i32; }
+        pub func Load() -> int32 ! LoadError { return 1i32; }
     )";
     CHECK(Errors(AnalyzeWithDep(R"(
         import Store::{ IoError, Load, LoadError, ParseError, Read };

@@ -38,7 +38,7 @@ import Allocator::{ Allocator, SystemAllocator };
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, String, TextWriter };
 
-func Main() -> int throws FormatError {
+func Main() -> int ! FormatError {
     // Into a destination the caller owns, allocating nothing.
     var storage: char8[64];
     var buffer = BufferWriter::New(storage[..64]);

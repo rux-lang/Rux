@@ -61,7 +61,7 @@ pub func Base58EncodedMaxLength(length: uint) -> uint {
 /// @param into the destination
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
-pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint throws FormatError {
+pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint ! FormatError {
     var zeros: uint = 0;
     while zeros < bytes.length && bytes[zeros] == 0 {
         zeros = zeros + 1;
@@ -124,7 +124,7 @@ pub func Base58Encode(bytes: byte[..], into: var char8[..]) -> uint throws Forma
 /// @param into the destination
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-encode
-pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint throws FormatError {
+pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint ! FormatError {
     return try Base58Encode(BytesOf(text), into);
 }
 
@@ -138,7 +138,7 @@ pub func Base58Encode(text: char8[..], into: var char8[..]) -> uint throws Forma
 /// @param into the destination
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/base58#base58-decode
-pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint throws DecodeError {
+pub func Base58Decode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
     var index: uint = 0;
     while index < text.length {
         if Base58Value(text[index]) < 0 { throw .InvalidCharacter(index); }

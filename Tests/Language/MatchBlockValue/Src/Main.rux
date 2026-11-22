@@ -55,7 +55,7 @@ func Pick(round: bool) -> Shape {
     return shape;
 }
 
-func Parse(value: int) -> int throws int {
+func Parse(value: int) -> int ! int {
     if value < 0 { throw value; }
     return value;
 }

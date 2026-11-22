@@ -1,19 +1,20 @@
-// The error forms that `throws`, `throw`, `try` and `catch` replaced. Each is reported where it is written, with the
-// spelling to write instead, and read the old way so the rest of the file still parses.
+// Error spellings that are no longer written: `throws`, replaced by `-> T ! E` and `-> !E`, and the older forms.
+// Each is reported where it is written, with the spelling to write instead, and read the old way so the rest of the
+// file still parses.
 
 struct ParseError {}
 
-func Read() -> int32 ! ParseError {
+func Read() -> int32 throws ParseError {
     return 1i32;
 }
 
-func Complete() -> ! ParseError {}
+func Complete() throws ParseError {}
 
-func Fail() throws ParseError {
+func Fail() -> !ParseError {
     fail ParseError {};
 }
 
-func Mapped() -> int32 throws ParseError {
+func Mapped() -> int32 ! ParseError {
     return Read()? else (e => e);
 }
 

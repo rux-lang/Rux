@@ -24,7 +24,7 @@ The module names describe where each declaration comes from; they are not part o
 import Allocator::SystemAllocator;
 import Url::{ Pairs, Url, UrlError };
 
-func SearchTerm(link: char8[..]) -> bool throws UrlError {
+func SearchTerm(link: char8[..]) -> bool ! UrlError {
     let page = try Url::Parse(SystemAllocator::New(), "https://example.com/docs/index.html");
     let target = try page.Resolve(link);
     for pair in Pairs(target.Query() ?? "") {

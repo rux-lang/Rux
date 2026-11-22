@@ -3,7 +3,7 @@
 import Core::Diagnostics::Assert;
 import Core::Result;
 
-func Half(value: int) -> int throws int {
+func Half(value: int) -> int ! int {
     if value % 2 != 0 { throw value; }
     return value / 2;
 }
@@ -13,7 +13,7 @@ func Store(value: int) -> Result<int, int> {
 }
 
 // A function that throws returns its success, so a returned case takes the success type as its expected type.
-func Checked(value: int) -> Result<int, int> throws bool {
+func Checked(value: int) -> Result<int, int> ! bool {
     if value < 0 { throw true; }
     if value % 2 != 0 { return .Failure(value); }
     return .Success(value / 2);

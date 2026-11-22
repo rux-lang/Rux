@@ -2,10 +2,10 @@
 // operator.
 struct Fault {}
 
-func Read() -> int throws Fault {
+func Read() -> int ! Fault {
     return 1;
 }
 
-func Sum(x: int) -> int throws Fault {
+func Sum(x: int) -> int ! Fault {
     return x + try Read();
 }

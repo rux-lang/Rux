@@ -126,7 +126,7 @@ extend PipeWriter : Writer {
     /// @param bytes the bytes to write
     /// @returns how many were written, or fails, with a broken pipe once the child closed its end
     /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.pipe == NoPipe { throw IoError::Of(IoErrorKind::InvalidHandle); }
         if bytes.length == 0 { return 0; }
         when #target.os == .Windows {
@@ -150,7 +150,7 @@ extend PipeWriter : Writer {
     /// Does nothing: a pipe keeps no buffer of its own.
     /// @returns nothing
     /// @see https://rux-lang.dev/docs/api/process/child#pipe-writer-flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
         if self.pipe == NoPipe { throw IoError::Of(IoErrorKind::InvalidHandle); }
     }
 }
@@ -173,7 +173,7 @@ extend PipeReader : Reader {
     /// @param into where to put the bytes
     /// @returns how many were read, or fails with `EndOfStream` once the child closed its end and all was read
     /// @see https://rux-lang.dev/docs/api/process/child#pipe-reader-read
-    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if self.pipe == NoPipe { throw IoError::Of(IoErrorKind::InvalidHandle); }
         if into.length == 0 { return 0; }
         when #target.os == .Windows {
@@ -260,7 +260,7 @@ extend Child {
     /// so a child reading its input to the end is not left waiting for more. Waiting again returns the same status.
     /// @returns how the child finished
     /// @see https://rux-lang.dev/docs/api/process/child#wait
-    pub func Wait(&var self) -> ExitStatus throws IoError {
+    pub func Wait(&var self) -> ExitStatus ! IoError {
         if self.finished { return self.status; }
         ClosePipe(self.input);
         self.input = NoPipe;
@@ -285,7 +285,7 @@ extend Child {
     /// How the child finished, or none while it still runs, without waiting.
     /// @returns the status once the child has finished
     /// @see https://rux-lang.dev/docs/api/process/child#try-wait
-    pub func TryWait(&var self) -> ExitStatus? throws IoError {
+    pub func TryWait(&var self) -> ExitStatus? ! IoError {
         if self.finished { return self.status; }
         when #target.os == .Windows {
             // Safety: waiting reads no memory, and `self.process` is the process handle this child owns until it drops.
@@ -308,7 +308,7 @@ extend Child {
     /// that has already finished does nothing. Wait for it afterwards to learn its status.
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/process/child#kill
-    pub func Kill(&var self) throws IoError {
+    pub func Kill(&var self) -> !IoError {
         if self.finished { return; }
         when #target.os == .Windows {
             // Safety: terminating reads no memory, and `self.process` is the process handle this child owns.
@@ -328,7 +328,7 @@ extend Child {
     }
 
     // Reads a finished Windows child's exit code.
-    func Collect(&var self) throws IoError {
+    func Collect(&var self) -> !IoError {
         when #target.os == .Windows {
             var code: uint32 = 0;
             // Safety: `self.process` is the process handle this child owns, and `code` is a local the call writes.

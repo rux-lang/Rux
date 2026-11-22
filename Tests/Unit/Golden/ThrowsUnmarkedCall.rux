@@ -4,14 +4,14 @@ variant DigitError {
     NotADigit(char)
 }
 
-func ReadDigit(c: char) -> int throws DigitError {
+func ReadDigit(c: char) -> int ! DigitError {
     if c == ' ' {
         throw .Blank;
     }
     return (c as int) - ('0' as int);
 }
 
-func Main() -> int throws DigitError {
+func Main() -> int ! DigitError {
     let tens = ReadDigit('4');
     return try tens * 10 + ReadDigit('2');
 }

@@ -4,7 +4,7 @@ variant ParseError {
     Invalid(int32)
 }
 
-func Parse(text: int32) -> int32 throws ParseError {
+func Parse(text: int32) -> int32 ! ParseError {
     if text == 0i32 {
         throw .Empty;
     }

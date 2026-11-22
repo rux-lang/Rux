@@ -66,13 +66,13 @@ const HirReturnStmt &RequireEarlyReturn(const HirMatchExpr &match) {
 
 const std::string kPropagationPrelude = R"(
     struct ParseError { code: int32; }
-    func Read(ok: bool) -> int32 throws ParseError { return 1i32; }
+    func Read(ok: bool) -> int32 ! ParseError { return 1i32; }
 )";
 } // namespace
 
 TEST_CASE("propagation lowers to a match that tests the operand's channel") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Doubled(ok: bool) -> int32 throws ParseError {
+        func Doubled(ok: bool) -> int32 ! ParseError {
             let value = try Read(ok);
             return value * 2i32;
         }
@@ -110,7 +110,7 @@ TEST_CASE("a propagated failure destroys every local that was live when it left"
         extend Handle {
             func ~(&var self) {}
         }
-        func Guarded(ok: bool) -> int32 throws ParseError {
+        func Guarded(ok: bool) -> int32 ! ParseError {
             let handle = Handle { value: 1i32 };
             let value = try Read(ok);
             return value;
@@ -131,7 +131,7 @@ TEST_CASE("a local declared after the propagation is not destroyed by it") {
         extend Handle {
             func ~(&var self) {}
         }
-        func Later(ok: bool) -> int32 throws ParseError {
+        func Later(ok: bool) -> int32 ! ParseError {
             let value = try Read(ok);
             let handle = Handle { value: 1i32 };
             return value;
@@ -166,7 +166,7 @@ TEST_CASE("propagating an optional returns the enclosing absence without a paylo
 
 TEST_CASE("two propagations in one expression bind their payloads separately") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Sum(ok: bool) -> int32 throws ParseError {
+        func Sum(ok: bool) -> int32 ! ParseError {
             let total = try Read(ok) + Read(ok);
             return total;
         }
@@ -201,7 +201,7 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
             }
         }
         // Safety: `count` must address a writable `int32` that outlives the call
-        func Guarded(count: *var int32) -> int32 throws ParseError {
+        func Guarded(count: *var int32) -> int32 ! ParseError {
             let guard = Guard { count: count };
             defer *count += 10i32;
             let value = try Read(false);
@@ -231,7 +231,7 @@ TEST_CASE("propagation captures its failure before deferred statements and owner
 TEST_CASE("a generic throwing function emits only concrete instantiations") {
     HirPackage hir = LowerSource(R"(
         variant Reason { At(uint64), Empty }
-        func Forward<T, E>(input: T, error: E, stop: bool) -> T throws E {
+        func Forward<T, E>(input: T, error: E, stop: bool) -> T ! E {
             if stop { throw error; }
             return input;
         }

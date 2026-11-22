@@ -8,7 +8,7 @@ import Memory::IsPointerAligned;
 // alignment a chunk is taken at, that a request no class can serve goes to the backing allocator, and that a pool
 // over an exhausted backing reports the failure rather than handing out storage it does not have.
 
-func Main() throws AllocError {
+func Main() -> !AllocError {
     // The class a layout lands in depends only on the layout, which is what makes a release match its allocation.
     let zero = Layout::Of(0, 8) ?? Layout { size: 0, alignment: 1 };
     Assert(ClassIndexFor(Layout::Of(1, 1) ?? zero) == 0, "one byte lands in the smallest class");

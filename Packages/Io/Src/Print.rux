@@ -10,7 +10,7 @@ import Format::WriteFormat;
 import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
-func PrintBytes(bytes: char8[..]) throws IoError {
+func PrintBytes(bytes: char8[..]) -> !IoError {
     var out = StandardOut::Acquire();
     try WriteAll(out, bytes);
 }

@@ -94,7 +94,7 @@ extend OsStringView {
     /// @param allocator where the storage comes from
     /// @returns the units converted to text, or a failure when they are not valid in it
     /// @see https://rux-lang.dev/docs/api/path/os-string-view#to-text
-    pub func ToText(&self, allocator: Allocator) -> String throws TextError {
+    pub func ToText(&self, allocator: Allocator) -> String ! TextError {
         when #target.os == .Windows {
             // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
             // checked builder so the promise chain stays intact.

@@ -17,7 +17,7 @@ import Core::Primitives::*;
 // `count * elementSize`, rejecting a product that does not fit in uint. A zero
 // count or element size is a zero-byte request rather than an error, so a
 // caller may pass a length it has not yet tested.
-func ByteSize(count: uint, elementSize: uint) -> uint throws AllocError {
+func ByteSize(count: uint, elementSize: uint) -> uint ! AllocError {
     if count == 0 || elementSize == 0 {
         return 0;
     }
@@ -32,7 +32,7 @@ func ByteSize(count: uint, elementSize: uint) -> uint throws AllocError {
 // `current + additional`, rejecting a sum that wraps. This is what turns a
 // `Reserve(uint::Max)` on a non-empty container into a reported error instead
 // of a silently tiny capacity.
-func AddLength(current: uint, additional: uint) -> uint throws AllocError {
+func AddLength(current: uint, additional: uint) -> uint ! AllocError {
     let sum = current +% additional;
     if sum < current { throw .Unsupported; }
     return sum;
@@ -44,7 +44,7 @@ func AddLength(current: uint, additional: uint) -> uint throws AllocError {
 // A doubling that would wrap falls back to `required` itself, and so does a
 // doubled capacity too large to size in bytes: a request that fits must never
 // be rejected merely because the next power of two does not.
-func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uint) -> uint throws AllocError {
+func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uint) -> uint ! AllocError {
     try ByteSize(required, elementSize);
 
     var grown = current;
@@ -74,7 +74,7 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
 // index with a mask: `& (capacity - 1)` is only the same as `% capacity` when
 // the capacity is a power of two, and that is what keeps wraparound and bucket
 // selection free of division.
-func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint) -> uint throws AllocError {
+func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint) -> uint ! AllocError {
     var grown = minimum;
     while grown < required {
         let doubled = grown *% 2;

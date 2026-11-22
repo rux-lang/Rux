@@ -87,7 +87,7 @@ pub func PercentEncodedLength(text: char8[..], set: PercentSet = PercentSet::Com
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encode
 pub func PercentEncode(bytes: byte[..], into: var char8[..],
-                       set: PercentSet = PercentSet::Component) -> uint throws FormatError {
+                       set: PercentSet = PercentSet::Component) -> uint ! FormatError {
     let needed = PercentEncodedLength(bytes, set);
     if into.length < needed { throw .InsufficientCapacity; }
     var to: uint = 0;
@@ -123,7 +123,7 @@ pub func PercentEncode(bytes: byte[..], into: var char8[..],
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/percent#percent-encode
 pub func PercentEncode(text: char8[..], into: var char8[..],
-                       set: PercentSet = PercentSet::Component) -> uint throws FormatError {
+                       set: PercentSet = PercentSet::Component) -> uint ! FormatError {
     return try PercentEncode(BytesOf(text), into, set);
 }
 
@@ -134,7 +134,7 @@ pub func PercentEncode(text: char8[..], into: var char8[..],
 /// @param text the percent-encoded text
 /// @returns the number of bytes `PercentDecode` writes for it
 /// @see https://rux-lang.dev/docs/api/encoding/percent#percent-decoded-length
-pub func PercentDecodedLength(text: char8[..]) -> uint throws DecodeError {
+pub func PercentDecodedLength(text: char8[..]) -> uint ! DecodeError {
     var length: uint = 0;
     var index: uint = 0;
     while index < text.length {
@@ -164,7 +164,7 @@ pub func PercentDecodedLength(text: char8[..]) -> uint throws DecodeError {
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/percent#percent-decode
 pub func PercentDecode(text: char8[..], into: var byte[..],
-                       set: PercentSet = PercentSet::Component) -> uint throws DecodeError {
+                       set: PercentSet = PercentSet::Component) -> uint ! DecodeError {
     let needed = try PercentDecodedLength(text);
     if into.length < needed { throw .InsufficientCapacity(needed); }
     var to: uint = 0;

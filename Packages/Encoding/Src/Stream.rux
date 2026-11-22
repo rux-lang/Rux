@@ -37,7 +37,7 @@ func GroupCharacters(codec: StreamCodec) -> uint {
     }
 }
 
-func EncodeWith(codec: StreamCodec, bytes: byte[..], into: var char8[..]) -> uint throws IoError {
+func EncodeWith(codec: StreamCodec, bytes: byte[..], into: var char8[..]) -> uint ! IoError {
     var written: uint = 0;
     match codec {
         StreamCodec::Hex(letterCase) => written = try HexEncode(bytes, into, letterCase) catch {
@@ -53,7 +53,7 @@ func EncodeWith(codec: StreamCodec, bytes: byte[..], into: var char8[..]) -> uin
     return written;
 }
 
-func DecodeWith(codec: StreamCodec, text: char8[..], into: var byte[..]) -> uint throws IoError {
+func DecodeWith(codec: StreamCodec, text: char8[..], into: var byte[..]) -> uint ! IoError {
     var written: uint = 0;
     match codec {
         StreamCodec::Hex(_) => written = try HexDecode(text, into) catch {
@@ -92,7 +92,7 @@ extend EncodingWriter {
     }
 
     // Encodes `bytes`, a whole number of groups or the final partial one, and writes the text.
-    func Emit(&var self, bytes: byte[..]) throws IoError {
+    func Emit(&var self, bytes: byte[..]) -> !IoError {
         var text: char8[512] = [c8' '; 512];
         let length = try EncodeWith(self.codec, bytes, text[..]);
         try WriteAll(self.sink, text[..length]);
@@ -102,7 +102,7 @@ extend EncodingWriter {
     /// flushes the writer underneath. Nothing more may be written afterwards.
     /// @returns nothing, or why the writer underneath failed
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-finish
-    pub func Finish(&var self) throws IoError {
+    pub func Finish(&var self) -> !IoError {
         if self.finished { return; }
         self.finished = true;
         if self.pendingLength > 0 {
@@ -120,7 +120,7 @@ extend EncodingWriter : Writer {
     /// @param bytes the bytes to encode
     /// @returns how many were taken, which is all of them, or fails with `InvalidInput` after `Finish`
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.finished { throw IoError::Of(IoErrorKind::InvalidInput); }
         // Safety: `char8` and `byte` are both one byte wide and every bit pattern is a valid `byte`, and `bytes.data`
         // addresses `bytes.length` live code units for the duration of this call.
@@ -160,7 +160,7 @@ extend EncodingWriter : Writer {
     /// not yet written; `Finish` is what writes it.
     /// @returns nothing, or why the writer underneath failed
     /// @see https://rux-lang.dev/docs/api/encoding/stream#encoding-writer-flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
         try self.sink.Flush();
     }
 }
@@ -201,7 +201,7 @@ extend DecodingReader {
     }
 
     // Reads more text, skipping what the form ignores; reports false once the source has ended.
-    func Fill(&var self) -> bool throws IoError {
+    func Fill(&var self) -> bool ! IoError {
         var chunk: char8[256] = [c8' '; 256];
         let room = 512 - self.textLength;
         let wanted = if room < 256u { room } else { 256u };
@@ -233,7 +233,7 @@ extend DecodingReader {
     }
 
     // Decodes the first `length` characters of text and keeps the rest for later.
-    func DecodeFront(&var self, length: uint) throws IoError {
+    func DecodeFront(&var self, length: uint) -> !IoError {
         let text = self.text;
         self.decodedEnd = try DecodeWith(self.codec, text[..length], self.decoded[..]);
         self.decodedStart = 0;
@@ -252,7 +252,7 @@ extend DecodingReader : Reader {
     /// @returns how many were decoded, or fails with `EndOfStream` after the last, or with `InvalidInput` for text
     ///   that is not in the form
     /// @see https://rux-lang.dev/docs/api/encoding/stream#decoding-reader-read
-    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if into.length == 0 { return 0; }
         let group = GroupCharacters(self.codec);
         while self.decodedStart == self.decodedEnd {

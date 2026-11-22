@@ -242,7 +242,7 @@ extend TomlEventReader {
     /// past a refusal would be read from a position the document never meant.
     /// @returns the next event, or `none` at the end of the document
     /// @see https://rux-lang.dev/docs/api/toml/toml-event-reader#next
-    pub func Next(&var self) -> TomlEvent? throws TomlParseFailure {
+    pub func Next(&var self) -> TomlEvent? ! TomlParseFailure {
         let event = self.Step();
         if self.stop != TomlStop::None { throw self.Stopped(); }
         return event;

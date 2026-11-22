@@ -120,7 +120,7 @@ TEST_CASE("a native level stores its tag first and its payload after the tag") {
         func Present() -> int32? {
             return .Some(7i32);
         }
-        func Failed() -> int64 throws ParseError {
+        func Failed() -> int64 ! ParseError {
             throw ParseError { code: 3i32 };
         }
     )");
@@ -137,7 +137,7 @@ TEST_CASE("payloads wider than a register and nested levels keep their place") {
     const LirPackage package = LowerToLir(R"(
         struct Big { a: int64; b: int64; c: int64; }
         struct E {}
-        func Wide() -> Big throws E {
+        func Wide() -> Big ! E {
             return Big { a: 1i64, b: 2i64, c: 3i64 };
         }
         func Nested() -> int32?? {
@@ -157,7 +157,7 @@ TEST_CASE("payloads wider than a register and nested levels keep their place") {
 TEST_CASE("a zero-sized payload writes no data bytes") {
     const LirPackage package = LowerToLir(R"(
         struct E {}
-        func Done() throws E {
+        func Done() -> !E {
             return;
         }
         func Unit() -> ()? {

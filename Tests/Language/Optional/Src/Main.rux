@@ -67,7 +67,7 @@ func Sum(left: int32?, right: int32?) -> int32? {
     return left? + right?;
 }
 
-func Required(value: int32?) -> int32 throws NotFound {
+func Required(value: int32?) -> int32 ! NotFound {
     return value ?? throw NotFound {};
 }
 

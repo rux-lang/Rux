@@ -54,7 +54,7 @@ extend NanoId {
     /// supply random bytes, and produces no identifier in that case.
     /// @returns the identifier, or why none could be made
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#generate
-    pub func Generate() -> Self throws EntropyError {
+    pub func Generate() -> Self ! EntropyError {
         var value = Self { text: ['A'; 21] };
         try GenerateNanoId(value.text[..]);
         return value;
@@ -67,7 +67,7 @@ extend NanoId {
     /// @param text the text to read
     /// @returns the identifier, or why the text is not one
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#parse
-    pub func Parse(text: char8[..]) -> Self throws NanoIdParseError {
+    pub func Parse(text: char8[..]) -> Self ! NanoIdParseError {
         if text.length != NanoIdLength {
             throw .WrongLength(if text.length < NanoIdLength { text.length } else { NanoIdLength });
         }
@@ -130,7 +130,7 @@ extend NanoId : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectStyle(spec);
         return try WriteBytes(writer, self.Text());
@@ -144,7 +144,7 @@ extend NanoId : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole identifier was accepted
     /// @see https://rux-lang.dev/docs/api/nanoid/nano-id#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }

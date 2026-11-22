@@ -24,7 +24,7 @@ extend Tracked {
 // A scope for a vector of tracked elements, so its destruction happens somewhere observable. `afterPushing` reports
 // what the counter read once everything was in, which is what separates the pushes from the destruction.
 func PushAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPushing: *var int32)
-    throws CollectionError {
+    -> !CollectionError {
     var vector = Vector<Tracked>::New(allocator);
     var index: uint = 0;
     while index < count {
@@ -101,7 +101,7 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAft
     }
 }
 
-func Main() throws CollectionError {
+func Main() -> !CollectionError {
     let allocator = SystemAllocator::New();
 
     // A new vector allocates nothing at all.

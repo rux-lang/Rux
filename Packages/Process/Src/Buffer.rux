@@ -19,7 +19,7 @@ extend Buffer<T> {
     }
 
     // Makes room for `extra` more values, reporting an allocation the allocator refused.
-    func Reserve(&var self, extra: uint) throws IoError {
+    func Reserve(&var self, extra: uint) -> !IoError {
         if self.length + extra <= self.capacity { return; }
         var capacity = if self.capacity == 0 { 16u } else { self.capacity * 2u };
         while capacity < self.length + extra {
@@ -43,14 +43,14 @@ extend Buffer<T> {
         self.capacity = capacity;
     }
 
-    func Push(&var self, value: T) throws IoError {
+    func Push(&var self, value: T) -> !IoError {
         try self.Reserve(1);
         // Safety: `Reserve` made room for one value past `length` in `self.data`.
         self.data[self.length] = value;
         self.length = self.length + 1;
     }
 
-    func PushAll(&var self, values: T[..]) throws IoError {
+    func PushAll(&var self, values: T[..]) -> !IoError {
         try self.Reserve(values.length);
         var index: uint = 0;
         while index < values.length {

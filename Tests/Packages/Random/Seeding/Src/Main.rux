@@ -7,7 +7,7 @@ import Core::Diagnostics::Assert;
 import Entropy::EntropyError;
 import Random::{ Pcg64Dxsm, PcgFromEntropy, PcgFromEntropyWithStream, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
 
-func Main() throws EntropyError {
+func Main() -> !EntropyError {
 
     // Entropy seeding succeeds on a supported system, and different calls give different streams.
     var first = try XoshiroFromEntropy();

@@ -37,7 +37,7 @@ pub func HexEncodedLength(length: uint) -> uint {
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-encode
 pub func HexEncode(bytes: byte[..], into: var char8[..], letterCase: HexCase = HexCase::Lower)
-    -> uint throws FormatError {
+    -> uint ! FormatError {
     let needed = HexEncodedLength(bytes.length);
     if into.length < needed { throw .InsufficientCapacity; }
     let upper = letterCase == HexCase::Upper;
@@ -60,7 +60,7 @@ pub func HexEncode(bytes: byte[..], into: var char8[..], letterCase: HexCase = H
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-encode
 pub func HexEncode(text: char8[..], into: var char8[..], letterCase: HexCase = HexCase::Lower)
-    -> uint throws FormatError {
+    -> uint ! FormatError {
     return try HexEncode(BytesOf(text), into, letterCase);
 }
 
@@ -70,7 +70,7 @@ pub func HexEncode(text: char8[..], into: var char8[..], letterCase: HexCase = H
 /// @param text the hexadecimal text
 /// @returns the number of bytes `HexDecode` writes for it
 /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-decoded-length
-pub func HexDecodedLength(text: char8[..]) -> uint throws DecodeError {
+pub func HexDecodedLength(text: char8[..]) -> uint ! DecodeError {
     if text.length % 2 != 0 { throw .InvalidLength(text.length); }
     return text.length / 2;
 }
@@ -84,7 +84,7 @@ pub func HexDecodedLength(text: char8[..]) -> uint throws DecodeError {
 /// @param into the destination, at least `HexDecodedLength(text)` bytes
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-decode
-pub func HexDecode(text: char8[..], into: var byte[..]) -> uint throws DecodeError {
+pub func HexDecode(text: char8[..], into: var byte[..]) -> uint ! DecodeError {
     let needed = try HexDecodedLength(text);
     var invalid: int32 = 0;
     var index: uint = 0;
@@ -149,7 +149,7 @@ extend HexView : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/hex#hex-view-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.HasPrecision() { throw .UnsupportedRequest; }
         var upper = self.letterCase == HexCase::Upper;
         if spec.HasStyle() {

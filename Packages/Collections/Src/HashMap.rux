@@ -168,7 +168,7 @@ extend HashMap<K, V> {
     /// @param value the value to act on
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-insert
-    pub func TryInsert(&var self, key: K, value: V) throws AllocError {
+    pub func TryInsert(&var self, key: K, value: V) -> !AllocError {
         let hashed = self.hash(key, self.table.seed.low, self.table.seed.high);
         match self.table.FindHashed(key, hashed, self.equals) {
             .Some(slot) => {
@@ -189,7 +189,7 @@ extend HashMap<K, V> {
 
     // Places an entry whose key is absent, growing the table first when it is full, and reports the slot it took.
     // A failure leaves the table as it was; `key` and `value` are then destroyed here.
-    func Place(&var self, key: K, value: V, hashed: uint64) -> uint throws AllocError {
+    func Place(&var self, key: K, value: V, hashed: uint64) -> uint ! AllocError {
         try self.table.TryEnsureRoom(self.hash);
         // The table has room and the probe can still run past what a distance byte holds, when the keys collide
         // badly enough that a larger table would spread the same collisions over more slots.
@@ -231,7 +231,7 @@ extend HashMap<K, V> {
     /// @param additional how many more elements to make room for
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/hash-map#try-reserve
-    pub func TryReserve(&var self, additional: uint) throws AllocError {
+    pub func TryReserve(&var self, additional: uint) -> !AllocError {
         try self.table.TryReserve(additional, self.hash);
     }
 

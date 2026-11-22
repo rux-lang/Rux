@@ -104,7 +104,7 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         let block = try (self.state.inner.Allocate(layout));
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
@@ -112,7 +112,7 @@ extend CountingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         try self.state.inner.Deallocate(block, layout);
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
@@ -120,7 +120,7 @@ extend CountingAllocator : Allocator {
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque throws AllocError {
+        -> *var opaque ! AllocError {
         // Safety: `state` points at the test's local `CountState`, which outlives every use of this allocator.
         return try self.state.inner.Reallocate(block, oldLayout, newLayout);
     }

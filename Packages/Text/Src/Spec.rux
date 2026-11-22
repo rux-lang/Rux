@@ -258,7 +258,7 @@ func IsDigit(byte: char8) -> bool {
 }
 
 // One malformed-specification failure, carrying where it was found.
-func Malformed(offset: uint) -> FormatSpec throws FormatError {
+func Malformed(offset: uint) -> FormatSpec ! FormatError {
     throw .InvalidSpecification(offset);
 }
 
@@ -305,7 +305,7 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
 /// @param text the specification body, without the surrounding braces or the colon
 /// @returns the parsed specification, or where it was malformed
 /// @see https://rux-lang.dev/docs/api/text/format-spec#parse-format-spec
-pub func ParseFormatSpec(text: char8[..]) -> FormatSpec throws FormatError {
+pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     var spec = FormatSpec::Plain();
     var index: uint = 0;
 
@@ -401,7 +401,7 @@ func BaseOfStyle(style: char8[..]) -> FormatBase {
 /// @param spec the specification to check
 /// @returns success when no style was named
 /// @see https://rux-lang.dev/docs/api/text/format-spec#reject-style
-pub func RejectStyle(spec: FormatSpec) throws FormatError {
+pub func RejectStyle(spec: FormatSpec) -> !FormatError {
     if spec.HasStyle() { throw .UnsupportedRequest; }
     return;
 }
@@ -414,7 +414,7 @@ pub func RejectStyle(spec: FormatSpec) throws FormatError {
 /// @param spec the specification to check
 /// @returns success when no style was named, or the style named a base
 /// @see https://rux-lang.dev/docs/api/text/format-spec#reject-non-base-style
-pub func RejectNonBaseStyle(spec: FormatSpec) throws FormatError {
+pub func RejectNonBaseStyle(spec: FormatSpec) -> !FormatError {
     if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
         throw .UnsupportedRequest;
     }

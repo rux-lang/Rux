@@ -161,10 +161,11 @@ std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
 }
 
 std::string DeclarationPrinter::ReturnClause(const TypeExpr *type) {
-    // A `throws` clause follows the return type, or the parameter list when there is none.
-    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type); fallible && fallible->throwsClause) {
-        return (fallible->success ? " -> " + TypeString(fallible->success.get()) : std::string()) + " throws " +
-               TypeString(fallible->error.get());
+    // A fallible return type writes its error after `!`, and `-> !E` has no success.
+    if (const auto *fallible = AstCast<const FallibleTypeExpr>(type)) {
+        return fallible->success
+                 ? " -> " + TypeString(fallible->success.get()) + " ! " + TypeString(fallible->error.get())
+                 : " -> !" + TypeString(fallible->error.get());
     }
     return " -> " + TypeString(type);
 }

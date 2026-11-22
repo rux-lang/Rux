@@ -12,13 +12,13 @@ struct Positive {
 }
 
 extend Positive {
-    func New(value: int32) -> Self throws RangeError {
+    func New(value: int32) -> Self ! RangeError {
         if value < 0 { throw .Negative; }
         return Self { value };
     }
 }
 
-func Doubled(value: int32) -> int32 throws RangeError {
+func Doubled(value: int32) -> int32 ! RangeError {
     let positive = try Positive::New(value);
     return positive.value * 2;
 }

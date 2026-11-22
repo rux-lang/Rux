@@ -141,7 +141,7 @@ extend IoErrorKind : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/io/io-error#io-error-kind-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         return try WriteAligned(writer, spec, DescribeKind(self), false);
     }
@@ -155,7 +155,7 @@ extend IoError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole text was accepted
     /// @see https://rux-lang.dev/docs/api/io/io-error#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         var text: char8[64] = ['\0'; 64];
         var length: uint = 0;

@@ -10,7 +10,7 @@ import Memory::{ IsPointerAligned, Set };
 struct ByteRun { bytes: uint8[9]; }
 struct Empty {}
 
-func Main() throws AllocError {
+func Main() -> !AllocError {
     // A layout that exists is valid, so the refusals happen at construction.
     Assert(!(Layout::Of(64, 0) is Layout), "an alignment of zero is not a layout");
     Assert(!(Layout::Of(64, 3) is Layout), "and neither is one that is not a power of two");

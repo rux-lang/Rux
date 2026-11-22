@@ -159,8 +159,8 @@ TEST_CASE("same-spelled nominal members from different modules stay distinct") {
 
 TEST_CASE("a diagnostic shows a fallible as the throwing function that returns it") {
     const TypeRef error = TypeRef::MakeNamed("Oops");
-    CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeInt64(), error).DisplayString(), "int64 throws Oops");
-    CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeUnit(), error).DisplayString(), "throws Oops");
+    CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeInt64(), error).DisplayString(), "int64 ! Oops");
+    CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeUnit(), error).DisplayString(), "!Oops");
     CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeOptional(TypeRef::MakeInt64()), error).DisplayString(),
-             "int64? throws Oops");
+             "int64? ! Oops");
 }

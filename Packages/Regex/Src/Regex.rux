@@ -240,7 +240,7 @@ extend Regex {
     /// @param pattern the pattern, in the syntax `Regex` describes
     /// @returns the compiled pattern, or why it could not be compiled and where
     /// @see https://rux-lang.dev/docs/api/regex/regex#new
-    pub func New(allocator: Allocator, pattern: char8[..]) -> Self throws RegexError {
+    pub func New(allocator: Allocator, pattern: char8[..]) -> Self ! RegexError {
         var regex = Self {
             allocator,
             instructions: Vector<Instruction>::New(allocator),

@@ -17,7 +17,7 @@ import Entropy::{ EntropyError, Fill };
 /// would be a valid-looking identifier that is entirely predictable.
 /// @returns a version 4 value drawn from the system's generator, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/random
-pub func Random() -> Uuid throws EntropyError {
+pub func Random() -> Uuid ! EntropyError {
     var bytes: byte[16];
     // Safety: `bytes` is a local array of sixteen bytes, exactly the sixteen `Fill` is asked to write.
     try Fill(@bytes[0] as *var opaque, 16);

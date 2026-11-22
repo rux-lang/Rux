@@ -538,7 +538,7 @@ extend TomlLexer {
 /// @returns the decoded text, or why it could not be stored
 /// @see https://rux-lang.dev/docs/api/toml/toml-lexer#toml-decode-text
 pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm,
-                    bad: *var bool) -> String throws TextError {
+                    bad: *var bool) -> String ! TextError {
     // Safety: the documented contract makes `bad` a non-null pointer to the caller's writable `bool`.
     *bad = false;
     if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {

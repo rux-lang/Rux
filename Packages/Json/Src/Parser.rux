@@ -74,7 +74,7 @@ extend JsonParseError : ParseFailure {
 }
 
 // The description of a lexical refusal, which a parse failure quotes rather than restates.
-func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) throws FormatError {
+func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) -> !FormatError {
     return match reason {
         .None => try WriteBytes(writer, "no error"),
         .UnexpectedByte => try WriteBytes(writer, "byte that begins no token"),
@@ -101,7 +101,7 @@ extend JsonParseError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/json/json-parse-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) throws FormatError {
+                          spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self {
@@ -118,7 +118,7 @@ extend JsonParseError : Display {
 }
 
 // The name of a lexical refusal, for the debug rendering that quotes it.
-func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) throws FormatError {
+func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) -> !FormatError {
     return match reason {
         .None => try WriteBytes(writer, "None"),
         .UnexpectedByte => try WriteBytes(writer, "UnexpectedByte"),
@@ -136,7 +136,7 @@ func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) throws For
 }
 
 // The case name, and the offset in parentheses after it.
-func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) throws FormatError {
+func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) -> !FormatError {
     try WriteBytes(writer, "JsonParseError::");
     try WriteBytes(writer, name);
     try WriteAscii(writer, c8'(');
@@ -154,7 +154,7 @@ extend JsonParseError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/json/json-parse-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) throws FormatError {
+                        spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self {
@@ -171,7 +171,7 @@ extend JsonParseError : Debug {
 }
 
 // The lexical case, which carries two things rather than one.
-func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) throws FormatError {
+func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) -> !FormatError {
     try WriteBytes(writer, "JsonParseError::Lexical(");
     try WriteLexicalName(writer, reason);
     try WriteBytes(writer, ", ");
@@ -291,7 +291,7 @@ extend JsonParser {
     }
 
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
-    func TakeText(&var self, token: JsonToken) -> String throws TextError {
+    func TakeText(&var self, token: JsonToken) -> String ! TextError {
         // Safety: the lexer produced `token` from `self.input`, so `token.start..token.end` lies inside it.
         let span = (@self.input.data[token.start])[..token.end - token.start];
         if !token.escaped { return try String::FromBytes(self.allocator, span); }
@@ -562,7 +562,7 @@ extend JsonParser {
     /// Fails with any case of `JsonParseError`, positioned at the byte where parsing stopped.
     /// @returns the document, or the failure that stopped it
     /// @see https://rux-lang.dev/docs/api/json/json-parser#parse
-    pub func Parse(&var self) -> JsonValue throws JsonParseError {
+    pub func Parse(&var self) -> JsonValue ! JsonParseError {
         var value = self.ParseValue(self.lexer.Next());
         if self.stop == JsonStop::None {
             let trailing = self.lexer.Next();
@@ -636,7 +636,7 @@ func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse
-pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue throws JsonParseError {
+pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue ! JsonParseError {
     var parser = JsonParser::New(allocator, input, JsonLimits::Default());
     return try parser.Parse();
 }
@@ -655,7 +655,7 @@ pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue throws JsonP
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse#parse-with
 pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits,
-                   duplicates: DuplicateKeyPolicy) -> JsonValue throws JsonParseError {
+                   duplicates: DuplicateKeyPolicy) -> JsonValue ! JsonParseError {
     var parser = JsonParser::New(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);
     return try parser.Parse();

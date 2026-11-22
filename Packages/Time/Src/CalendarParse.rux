@@ -67,7 +67,7 @@ func IsDigit(byte: char8) -> bool {
 }
 
 // Reads exactly `count` digits, or reports where the run stopped being digits.
-func Digits(reader: &var Reader, count: uint) -> uint32 throws TimeParseError {
+func Digits(reader: &var Reader, count: uint) -> uint32 ! TimeParseError {
     var total: uint32 = 0;
     var taken: uint = 0;
     while taken < count {
@@ -87,7 +87,7 @@ func Digits(reader: &var Reader, count: uint) -> uint32 throws TimeParseError {
 }
 
 // Consumes exactly `byte`, or reports where something else was.
-func Literal(reader: &var Reader, byte: char8) throws TimeParseError {
+func Literal(reader: &var Reader, byte: char8) -> !TimeParseError {
     if reader.at >= reader.text.length {
         throw .InvalidSyntax(reader.text.length);
     }
@@ -100,7 +100,7 @@ func Literal(reader: &var Reader, byte: char8) throws TimeParseError {
 }
 
 // The date-time separator, which RFC 3339 allows as `T`, `t` or a space.
-func ReadSeparator(reader: &var Reader) throws TimeParseError {
+func ReadSeparator(reader: &var Reader) -> !TimeParseError {
     if reader.at >= reader.text.length {
         throw .InvalidSyntax(reader.text.length);
     }
@@ -114,7 +114,7 @@ func ReadSeparator(reader: &var Reader) throws TimeParseError {
 }
 
 // Reads `YYYY-MM-DD` and validates it against the calendar.
-func ReadDate(reader: &var Reader) -> Date throws TimeParseError {
+func ReadDate(reader: &var Reader) -> Date ! TimeParseError {
     let year = try Digits(reader, 4);
     try Literal(reader, c8'-');
     let monthAt = reader.at;
@@ -134,7 +134,7 @@ func ReadDate(reader: &var Reader) -> Date throws TimeParseError {
 }
 
 // Reads `HH:MM:SS` with an optional fraction, folding second 60 as the package policy requires.
-func ReadTime(reader: &var Reader) -> TimeOfDay throws TimeParseError {
+func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
     let hourAt = reader.at;
     let hour = try Digits(reader, 2);
     if hour > 23 {
@@ -192,7 +192,7 @@ func ReadTime(reader: &var Reader) -> TimeOfDay throws TimeParseError {
 }
 
 // Reads `Z`, `z`, `+HH:MM` or `-HH:MM`.
-func ReadOffset(reader: &var Reader) -> UtcOffset throws TimeParseError {
+func ReadOffset(reader: &var Reader) -> UtcOffset ! TimeParseError {
     if reader.at >= reader.text.length {
         throw .InvalidSyntax(reader.text.length);
     }
@@ -224,7 +224,7 @@ func ReadOffset(reader: &var Reader) -> UtcOffset throws TimeParseError {
 }
 
 // Reports text left over after a complete value, which is a syntax failure at the first unread byte.
-func AtEnd(reader: &Reader) throws TimeParseError {
+func AtEnd(reader: &Reader) -> !TimeParseError {
     if reader.at != reader.text.length {
         throw .InvalidSyntax(reader.at);
     }
@@ -238,7 +238,7 @@ func AtEnd(reader: &Reader) throws TimeParseError {
 /// @param text the text to read
 /// @returns the date, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/date#parse-date
-pub func ParseDate(text: char8[..]) -> Date throws TimeParseError {
+pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
     var reader = Reader { text, at: 0 };
     let date = try ReadDate(reader);
     try AtEnd(reader);
@@ -251,7 +251,7 @@ pub func ParseDate(text: char8[..]) -> Date throws TimeParseError {
 /// @param text the text to read
 /// @returns the time of day, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/time-of-day#parse-time-of-day
-pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay throws TimeParseError {
+pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
     var reader = Reader { text, at: 0 };
     let time = try ReadTime(reader);
     try AtEnd(reader);
@@ -266,7 +266,7 @@ pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay throws TimeParseError {
 /// @param text the text to read
 /// @returns the local date and time, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/date-time#parse-date-time
-pub func ParseDateTime(text: char8[..]) -> DateTime throws TimeParseError {
+pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
     var reader = Reader { text, at: 0 };
     let date = try ReadDate(reader);
     try ReadSeparator(reader);
@@ -285,7 +285,7 @@ pub func ParseDateTime(text: char8[..]) -> DateTime throws TimeParseError {
 /// @param text the text to read
 /// @returns the moment with the offset it was stated in, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/offset-date-time#parse-rfc3339
-pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime throws TimeParseError {
+pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime ! TimeParseError {
     var reader = Reader { text, at: 0 };
     let date = try ReadDate(reader);
     try ReadSeparator(reader);

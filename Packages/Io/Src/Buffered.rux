@@ -43,7 +43,7 @@ extend BufferedReader {
     /// @param capacity how many bytes the buffer holds
     /// @returns the buffered stream; `Other` when the allocator refused the buffer
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#new
-    pub func New(allocator: Allocator, source: Reader, capacity: uint) -> Self throws IoError {
+    pub func New(allocator: Allocator, source: Reader, capacity: uint) -> Self ! IoError {
         var reader = Self {
             source,
             data: null,
@@ -91,7 +91,7 @@ extend BufferedReader {
     /// that reports success while handing over nothing is reported as the end rather than looped on.
     /// @returns success when at least one byte is buffered; `IsEnd` at the end of the source
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#fill
-    pub func Fill(&var self) throws IoError {
+    pub func Fill(&var self) -> !IoError {
         if self.Available() > 0 { return; }
         if self.data == null { throw IoError::Of(IoErrorKind::Other); }
         self.start = 0;
@@ -114,7 +114,7 @@ extend BufferedReader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader#read
-    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if into.length == 0 { return 0; }
         if self.Available() == 0 && into.length >= self.capacity {
             // The bypass: copying a buffer-sized read through the buffer would be pure overhead.
@@ -186,7 +186,7 @@ extend BufferedWriter {
     /// @param capacity how many bytes the buffer holds
     /// @returns the buffered stream; `Other` when the allocator refused the buffer
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#new
-    pub func New(allocator: Allocator, sink: Writer, capacity: uint) -> Self throws IoError {
+    pub func New(allocator: Allocator, sink: Writer, capacity: uint) -> Self ! IoError {
         var writer = Self { sink, data: null, capacity: 0, length: 0, allocator };
         let wanted = if capacity == 0 { DefaultBufferCapacity } else { capacity };
         let layout = Layout::Of(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
@@ -208,13 +208,13 @@ extend BufferedWriter {
     /// Sends everything gathered, then asks the sink to flush too.
     /// @returns success when everything buffered reached the sink
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
         try self.SendHeld();
         return try self.sink.Flush();
     }
 
     // Sends whatever is gathered, so that the bytes written after it keep their order.
-    func SendHeld(&var self) throws IoError {
+    func SendHeld(&var self) -> !IoError {
         if self.length == 0 { return; }
         // Safety: a non-zero `length` means the buffer is live, and `length` never passes its `capacity` bytes.
         let held = (self.data)[..self.length];
@@ -226,7 +226,7 @@ extend BufferedWriter {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which is all of them
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer#write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if bytes.length == 0 { return 0; }
         if self.data == null || bytes.length >= self.capacity {
             // The bypass, after clearing what order requires: bytes gathered earlier go first.

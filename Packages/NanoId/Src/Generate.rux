@@ -16,7 +16,7 @@ import Memory::ZeroizeBlock;
 const BatchSize: uint = 128;
 
 // Writes an identifier drawn from `alphabet`, which the caller has validated, into the whole of `into`.
-func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) throws EntropyError {
+func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) -> !EntropyError {
     let mask = IndexMask(alphabet.length);
     var batch: byte[128];
     var written: uint = 0;
@@ -56,7 +56,7 @@ func Fill(source: &var EntropySource, into: var char8[..], alphabet: char8[..]) 
 /// @param into the destination, filled completely
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
-pub func GenerateNanoId(into: var char8[..]) throws EntropyError {
+pub func GenerateNanoId(into: var char8[..]) -> !EntropyError {
     var system = SystemEntropy::New();
     return try Fill(system, into, NanoIdAlphabet);
 }
@@ -69,7 +69,7 @@ pub func GenerateNanoId(into: var char8[..]) throws EntropyError {
 /// @param alphabet between two and 256 distinct ASCII characters
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id
-pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) throws NanoIdError {
+pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) -> !NanoIdError {
     var system = SystemEntropy::New();
     return try GenerateNanoIdFrom(system, into, alphabet);
 }
@@ -85,7 +85,7 @@ pub func GenerateNanoId(into: var char8[..], alphabet: char8[..]) throws NanoIdE
 /// @returns success when every character was written
 /// @see https://rux-lang.dev/docs/api/nanoid/generate#generate-nano-id-from
 pub func GenerateNanoIdFrom(source: &var EntropySource, into: var char8[..],
-                            alphabet: char8[..] = NanoIdAlphabet) throws NanoIdError {
+                            alphabet: char8[..] = NanoIdAlphabet) -> !NanoIdError {
     try ValidateAlphabet(alphabet);
     try Fill(source, into, alphabet) catch {
         error => throw .Entropy(error)

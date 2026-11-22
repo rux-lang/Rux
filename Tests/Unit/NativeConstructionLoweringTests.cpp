@@ -194,12 +194,12 @@ TEST_CASE("widening rebuilds each alternative under the destination's tags") {
 
 TEST_CASE("unit completion and throw return explicit outer cases") {
     const HirPackage package = LowerSource(kErrors + R"(
-        func Early(stop: bool) throws ParseError {
+        func Early(stop: bool) -> !ParseError {
             if stop {
                 return;
             }
         }
-        func Fails(error: ParseError) -> int32 throws ParseError {
+        func Fails(error: ParseError) -> int32 ! ParseError {
             throw error;
         }
         func Unit() -> () {}

@@ -35,7 +35,7 @@ when #target.os {
 // returns the system's name for the thread.
 // Safety: `start` must be a function of the shape the system calls a thread's entry with, and `argument` must stay
 // live until the new thread has read what it needs from it.
-func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 throws ThreadError {
+func NativeStart(start: *opaque, argument: *var opaque, stackSize: uint) -> uint64 ! ThreadError {
     when #target.os == .Windows {
         var flags: uint32 = 0;
         if stackSize != 0 { flags = STACK_SIZE_PARAM_IS_A_RESERVATION; }

@@ -36,7 +36,7 @@ func Curve(value: int32) -> int32 {
     return value;
 }
 
-func Check(text: char8[..]) -> bool throws ParseError {
+func Check(text: char8[..]) -> bool ! ParseError {
     return true;
 }
 

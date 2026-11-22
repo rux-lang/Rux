@@ -13,7 +13,7 @@ import Text::StringView;
 // negated. An empty run of digits after a prefix is the error the prefix's index reports. `magnitude` and `negative`
 // must be non-null and writable; neither is meaningful after a failure.
 func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
-                           negative: *var bool) -> bool throws ParseError {
+                           negative: *var bool) -> bool ! ParseError {
     if str.length == 0 { throw ParseError::Empty; }
 
     var index: uint = 0;
@@ -83,7 +83,7 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint8
-pub func ParseUint8(str: char8[..]) -> uint8 throws ParseError {
+pub func ParseUint8(str: char8[..]) -> uint8 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -98,7 +98,7 @@ pub func ParseUint8(str: char8[..]) -> uint8 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int8
-pub func ParseInt8(str: char8[..]) -> int8 throws ParseError {
+pub func ParseInt8(str: char8[..]) -> int8 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -114,7 +114,7 @@ pub func ParseInt8(str: char8[..]) -> int8 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint16
-pub func ParseUint16(str: char8[..]) -> uint16 throws ParseError {
+pub func ParseUint16(str: char8[..]) -> uint16 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -129,7 +129,7 @@ pub func ParseUint16(str: char8[..]) -> uint16 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int16
-pub func ParseInt16(str: char8[..]) -> int16 throws ParseError {
+pub func ParseInt16(str: char8[..]) -> int16 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -145,7 +145,7 @@ pub func ParseInt16(str: char8[..]) -> int16 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint32
-pub func ParseUint32(str: char8[..]) -> uint32 throws ParseError {
+pub func ParseUint32(str: char8[..]) -> uint32 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -160,7 +160,7 @@ pub func ParseUint32(str: char8[..]) -> uint32 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int32
-pub func ParseInt32(str: char8[..]) -> int32 throws ParseError {
+pub func ParseInt32(str: char8[..]) -> int32 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -176,7 +176,7 @@ pub func ParseInt32(str: char8[..]) -> int32 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint64
-pub func ParseUint64(str: char8[..]) -> uint64 throws ParseError {
+pub func ParseUint64(str: char8[..]) -> uint64 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -193,7 +193,7 @@ pub func ParseUint64(str: char8[..]) -> uint64 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int64
-pub func ParseInt64(str: char8[..]) -> int64 throws ParseError {
+pub func ParseInt64(str: char8[..]) -> int64 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -209,7 +209,7 @@ pub func ParseInt64(str: char8[..]) -> int64 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint128
-pub func ParseUint128(str: char8[..]) -> uint128 throws ParseError {
+pub func ParseUint128(str: char8[..]) -> uint128 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -226,7 +226,7 @@ pub func ParseUint128(str: char8[..]) -> uint128 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int128
-pub func ParseInt128(str: char8[..]) -> int128 throws ParseError {
+pub func ParseInt128(str: char8[..]) -> int128 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -246,7 +246,7 @@ pub func ParseInt128(str: char8[..]) -> int128 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint256
-pub func ParseUint256(str: char8[..]) -> uint256 throws ParseError {
+pub func ParseUint256(str: char8[..]) -> uint256 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -263,7 +263,7 @@ pub func ParseUint256(str: char8[..]) -> uint256 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int256
-pub func ParseInt256(str: char8[..]) -> int256 throws ParseError {
+pub func ParseInt256(str: char8[..]) -> int256 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -283,7 +283,7 @@ pub func ParseInt256(str: char8[..]) -> int256 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint512
-pub func ParseUint512(str: char8[..]) -> uint512 throws ParseError {
+pub func ParseUint512(str: char8[..]) -> uint512 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -300,7 +300,7 @@ pub func ParseUint512(str: char8[..]) -> uint512 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int512
-pub func ParseInt512(str: char8[..]) -> int512 throws ParseError {
+pub func ParseInt512(str: char8[..]) -> int512 ! ParseError {
     var magnitude: uint512 = 0;
     var negative = false;
     try ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -318,7 +318,7 @@ pub func ParseInt512(str: char8[..]) -> int512 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint8
-pub func ParseUint8(str: StringView) -> uint8 throws ParseError {
+pub func ParseUint8(str: StringView) -> uint8 ! ParseError {
     return try ParseUint8(str.Bytes());
 }
 
@@ -326,7 +326,7 @@ pub func ParseUint8(str: StringView) -> uint8 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int8
-pub func ParseInt8(str: StringView) -> int8 throws ParseError {
+pub func ParseInt8(str: StringView) -> int8 ! ParseError {
     return try ParseInt8(str.Bytes());
 }
 
@@ -334,7 +334,7 @@ pub func ParseInt8(str: StringView) -> int8 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint16
-pub func ParseUint16(str: StringView) -> uint16 throws ParseError {
+pub func ParseUint16(str: StringView) -> uint16 ! ParseError {
     return try ParseUint16(str.Bytes());
 }
 
@@ -342,7 +342,7 @@ pub func ParseUint16(str: StringView) -> uint16 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int16
-pub func ParseInt16(str: StringView) -> int16 throws ParseError {
+pub func ParseInt16(str: StringView) -> int16 ! ParseError {
     return try ParseInt16(str.Bytes());
 }
 
@@ -350,7 +350,7 @@ pub func ParseInt16(str: StringView) -> int16 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint32
-pub func ParseUint32(str: StringView) -> uint32 throws ParseError {
+pub func ParseUint32(str: StringView) -> uint32 ! ParseError {
     return try ParseUint32(str.Bytes());
 }
 
@@ -358,7 +358,7 @@ pub func ParseUint32(str: StringView) -> uint32 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int32
-pub func ParseInt32(str: StringView) -> int32 throws ParseError {
+pub func ParseInt32(str: StringView) -> int32 ! ParseError {
     return try ParseInt32(str.Bytes());
 }
 
@@ -366,7 +366,7 @@ pub func ParseInt32(str: StringView) -> int32 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint64
-pub func ParseUint64(str: StringView) -> uint64 throws ParseError {
+pub func ParseUint64(str: StringView) -> uint64 ! ParseError {
     return try ParseUint64(str.Bytes());
 }
 
@@ -374,7 +374,7 @@ pub func ParseUint64(str: StringView) -> uint64 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int64
-pub func ParseInt64(str: StringView) -> int64 throws ParseError {
+pub func ParseInt64(str: StringView) -> int64 ! ParseError {
     return try ParseInt64(str.Bytes());
 }
 
@@ -382,7 +382,7 @@ pub func ParseInt64(str: StringView) -> int64 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint128
-pub func ParseUint128(str: StringView) -> uint128 throws ParseError {
+pub func ParseUint128(str: StringView) -> uint128 ! ParseError {
     return try ParseUint128(str.Bytes());
 }
 
@@ -390,7 +390,7 @@ pub func ParseUint128(str: StringView) -> uint128 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int128
-pub func ParseInt128(str: StringView) -> int128 throws ParseError {
+pub func ParseInt128(str: StringView) -> int128 ! ParseError {
     return try ParseInt128(str.Bytes());
 }
 
@@ -398,7 +398,7 @@ pub func ParseInt128(str: StringView) -> int128 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint256
-pub func ParseUint256(str: StringView) -> uint256 throws ParseError {
+pub func ParseUint256(str: StringView) -> uint256 ! ParseError {
     return try ParseUint256(str.Bytes());
 }
 
@@ -406,7 +406,7 @@ pub func ParseUint256(str: StringView) -> uint256 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int256
-pub func ParseInt256(str: StringView) -> int256 throws ParseError {
+pub func ParseInt256(str: StringView) -> int256 ! ParseError {
     return try ParseInt256(str.Bytes());
 }
 
@@ -414,7 +414,7 @@ pub func ParseInt256(str: StringView) -> int256 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-uint512
-pub func ParseUint512(str: StringView) -> uint512 throws ParseError {
+pub func ParseUint512(str: StringView) -> uint512 ! ParseError {
     return try ParseUint512(str.Bytes());
 }
 
@@ -422,6 +422,6 @@ pub func ParseUint512(str: StringView) -> uint512 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse#parse-int512
-pub func ParseInt512(str: StringView) -> int512 throws ParseError {
+pub func ParseInt512(str: StringView) -> int512 ! ParseError {
     return try ParseInt512(str.Bytes());
 }

@@ -29,7 +29,7 @@ struct CaptureSink {
 }
 
 extend CaptureSink : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         let capture = self.capture;
         var index: uint = 0;
         while index < bytes.length {
@@ -41,7 +41,7 @@ extend CaptureSink : Writer {
         return bytes.length;
     }
 
-    func Flush(&var self) throws IoError {}
+    func Flush(&var self) -> !IoError {}
 }
 
 // Encodes `data` written `chunk` bytes at a time.

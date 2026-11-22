@@ -13,7 +13,7 @@ func PathOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> Pat
     return Path::FromView(holder.View());
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     // A name that does not exist is NotFound, in the platform's own words, translated.

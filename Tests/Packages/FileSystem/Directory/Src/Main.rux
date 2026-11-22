@@ -23,7 +23,7 @@ func NameOf(allocator: Allocator, text: char8[..], holder: &var OsString) -> OsS
     return holder.View();
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);

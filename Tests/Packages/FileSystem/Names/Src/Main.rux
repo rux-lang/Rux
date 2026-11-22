@@ -64,7 +64,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     reopenPath.Release();
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);

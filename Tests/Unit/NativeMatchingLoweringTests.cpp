@@ -267,8 +267,8 @@ TEST_CASE("an arm that never returns stores no value") {
         intrinsic func Panic(message: char8[..]);
         struct IoError {}
         struct Big { a: int64; b: int64; c: int64; }
-        func Read() -> int32 throws IoError { return 1i32; }
-        func ReadBig() -> Big throws IoError { return Big { a: 1, b: 2, c: 3 }; }
+        func Read() -> int32 ! IoError { return 1i32; }
+        func ReadBig() -> Big ! IoError { return Big { a: 1, b: 2, c: 3 }; }
         func Read2() -> int32? { return 1i32; }
         func Matched() -> int32 {
             let value = match Read2() { .Some(value) => value, none => Panic("failed") };

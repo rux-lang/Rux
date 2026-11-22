@@ -27,7 +27,7 @@ when #target.os {
 /// @param port the port every address gets
 /// @returns the addresses, or fails with `NotFound` when the name has none, or with the resolver's reason
 /// @see https://rux-lang.dev/docs/api/net/resolve#resolve
-pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> throws IoError {
+pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
     var addresses = Vector<SocketAddress>::New(allocator);
     match IpAddress::Parse(host) {
         .Some(ip) => {
@@ -53,7 +53,7 @@ pub func Resolve(allocator: Allocator, host: char8[..], port: uint16) -> Vector<
 when #target.os != .Linux {
     // Asks the system's resolver, `getaddrinfo`, for `host`'s addresses, adding each once to those in `addresses`.
     func ResolveWithSystem(allocator: Allocator, host: char8[..], port: uint16, addresses: Vector<SocketAddress>)
-        -> Vector<SocketAddress> throws IoError {
+        -> Vector<SocketAddress> ! IoError {
         var results = move addresses;
         StartNetworking();
         var name = Vector<char8>::New(allocator);

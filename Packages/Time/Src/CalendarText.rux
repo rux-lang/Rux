@@ -48,7 +48,7 @@ extend OffsetDateTime {
 }
 
 // Writes `value` as exactly `width` decimal digits, zero-padded, which is what every calendar field but the year is.
-func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) throws FormatError {
+func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) -> !FormatError {
     var digits: char8[10];
     var index = width;
     var rest = value;
@@ -66,7 +66,7 @@ func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) throws Form
 // ISO 8601 requires a sign for a year outside 0 through 9999 because four digits is the agreed width and anything
 // else is ambiguous without one. Year 0 exists here and is 1 BCE, which is the astronomical numbering the rest of
 // this package uses.
-func WriteYear(writer: &var TextWriter, year: int32) throws FormatError {
+func WriteYear(writer: &var TextWriter, year: int32) -> !FormatError {
     if year < 0 {
         try WriteAscii(writer, c8'-');
         let magnitude = (0i32 - year) as uint32;
@@ -81,7 +81,7 @@ func WriteYear(writer: &var TextWriter, year: int32) throws FormatError {
 }
 
 // Writes an unsigned value in as many digits as it needs, for the years past four digits.
-func WriteWide(writer: &var TextWriter, value: uint32) throws FormatError {
+func WriteWide(writer: &var TextWriter, value: uint32) -> !FormatError {
     var digits: char8[10];
     var count: uint = 0;
     var rest = value;
@@ -107,7 +107,7 @@ func WriteWide(writer: &var TextWriter, value: uint32) throws FormatError {
 // short is a fraction read short, and rounding one up could carry into a second the value does not have. Without a
 // precision the fraction is written to whatever digits it actually has, trailing zeros trimmed, and omitted
 // entirely when it is zero — so a whole second renders as a whole second rather than as nine zeros.
-func WriteFraction(writer: &var TextWriter, nanosecond: uint32, spec: FormatSpec) throws FormatError {
+func WriteFraction(writer: &var TextWriter, nanosecond: uint32, spec: FormatSpec) -> !FormatError {
     var digits: char8[9];
     var index: uint = 9;
     var rest = nanosecond;
@@ -140,7 +140,7 @@ func AcceptsCalendarStyle(spec: FormatSpec) -> bool {
     return !spec.HasStyle() || spec.StyleIs("iso8601") || spec.StyleIs("rfc3339");
 }
 
-func RejectCalendarStyle(spec: FormatSpec) throws FormatError {
+func RejectCalendarStyle(spec: FormatSpec) -> !FormatError {
     if !AcceptsCalendarStyle(spec) { throw FormatError::UnsupportedRequest; }
     return;
 }
@@ -155,7 +155,7 @@ extend Date : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date was accepted
     /// @see https://rux-lang.dev/docs/api/time/date#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectCalendarStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
@@ -174,7 +174,7 @@ extend Date : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date was accepted
     /// @see https://rux-lang.dev/docs/api/time/date#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }
@@ -189,7 +189,7 @@ extend TimeOfDay : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole time was accepted
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectCalendarStyle(spec);
         try WriteFixed(writer, self.hour as uint32, 2);
@@ -208,7 +208,7 @@ extend TimeOfDay : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole time was accepted
     /// @see https://rux-lang.dev/docs/api/time/time-of-day#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }
@@ -224,7 +224,7 @@ extend UtcOffset : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole offset was accepted
     /// @see https://rux-lang.dev/docs/api/time/utc-offset#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectCalendarStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
@@ -246,7 +246,7 @@ extend UtcOffset : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole offset was accepted
     /// @see https://rux-lang.dev/docs/api/time/utc-offset#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }
@@ -263,7 +263,7 @@ extend DateTime : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date and time were accepted
     /// @see https://rux-lang.dev/docs/api/time/date-time#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectCalendarStyle(spec);
         try WriteDateOnly(writer, self.date);
@@ -279,14 +279,14 @@ extend DateTime : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date and time were accepted
     /// @see https://rux-lang.dev/docs/api/time/date-time#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }
 
 // The date part alone, without the precision check a bare `Date` applies: inside a date-time a precision belongs to
 // the fraction, and rejecting it here would refuse a specification the whole value accepts.
-func WriteDateOnly(writer: &var TextWriter, date: Date) throws FormatError {
+func WriteDateOnly(writer: &var TextWriter, date: Date) -> !FormatError {
     try WriteYear(writer, date.year);
     try WriteAscii(writer, c8'-');
     try WriteFixed(writer, date.month as uint32, 2);
@@ -306,7 +306,7 @@ extend OffsetDateTime : Display {
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/offset-date-time#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) throws FormatError {
+                          spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectCalendarStyle(spec);
         try self.dateTime.WriteDisplay(writer, spec);
@@ -322,13 +322,13 @@ extend OffsetDateTime : Debug {
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/offset-date-time#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) throws FormatError {
+                        spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }
 
 // The offset part alone, without the precision check a bare `UtcOffset` applies, for the same reason as the date.
-func WriteOffsetOnly(writer: &var TextWriter, offset: UtcOffset) throws FormatError {
+func WriteOffsetOnly(writer: &var TextWriter, offset: UtcOffset) -> !FormatError {
     let total = offset.TotalSeconds();
     if total == 0 { return try WriteAscii(writer, c8'Z'); }
     let negative = total < 0;

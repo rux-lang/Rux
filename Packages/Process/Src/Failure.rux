@@ -37,7 +37,7 @@ func FailureOf(code: int64) -> IoError {
 
 // Appends UTF-8 `text` as native units: UTF-16 on Windows, the bytes themselves elsewhere. A NUL cannot pass to the
 // system inside a string, and on Windows malformed UTF-8 has no UTF-16 form, so both are refused.
-func AppendText(buffer: &var Buffer<OsUnit>, text: char8[..]) throws IoError {
+func AppendText(buffer: &var Buffer<OsUnit>, text: char8[..]) -> !IoError {
     when #target.os == .Windows {
         var at: uint = 0;
         while at < text.length {
@@ -65,7 +65,7 @@ func AppendText(buffer: &var Buffer<OsUnit>, text: char8[..]) throws IoError {
 }
 
 // Appends native units, refusing a NUL inside them.
-func AppendUnits(buffer: &var Buffer<OsUnit>, units: OsUnit[..]) throws IoError {
+func AppendUnits(buffer: &var Buffer<OsUnit>, units: OsUnit[..]) -> !IoError {
     var index: uint = 0;
     while index < units.length {
         if units[index] == (0 as OsUnit) { throw IoError::Of(IoErrorKind::InvalidInput); }

@@ -65,7 +65,7 @@ extend QueryPairs : Iterator {
 /// @param form whether `+` stands for a space
 /// @returns the text, or fails when an escape is malformed or the bytes are not UTF-8
 /// @see https://rux-lang.dev/docs/api/url/query#decode
-pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) -> String throws UrlError {
+pub func Decode(allocator: Allocator, encoded: char8[..], form: bool = false) -> String ! UrlError {
     var out = Bytes::New(allocator);
     var index: uint = 0;
     while index < encoded.length {

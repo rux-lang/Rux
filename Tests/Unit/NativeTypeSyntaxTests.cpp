@@ -125,7 +125,8 @@ TEST_CASE("an optional sum member must be grouped") {
 
 TEST_CASE("function return types stay complete and function members are grouped") {
     CHECK_EQ(ParameterShape("func() -> A | B"), "func()->sum(A, B)");
-    CHECK_EQ(ParameterShape("func() -> A throws E"), "func()->fal(A, E)");
+    CHECK_EQ(ParameterShape("func() -> A ! E"), "func()->fal(A, E)");
+    CHECK_EQ(ParameterShape("func() -> !E"), "func()->fal(unit, E)");
     CHECK_EQ(ParameterShape("(func() -> A) | B"), "sum(func()->A, B)");
     CHECK(Reports("func F(value: B | func() -> A) {}", "a function type in a sum must be grouped"));
 }

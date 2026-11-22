@@ -33,7 +33,7 @@ struct ScriptedWaiter {
 }
 
 extend ScriptedWaiter : Waiter {
-    func WaitFor(&var self, span: Duration) -> Duration throws TimeError {
+    func WaitFor(&var self, span: Duration) -> Duration ! TimeError {
         // Safety: `state` points at a `WaiterState` local of `Main`, which outlives every waiter made over it.
         {
             self.state.calls = self.state.calls + 1;

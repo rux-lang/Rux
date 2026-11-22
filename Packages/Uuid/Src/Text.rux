@@ -91,7 +91,7 @@ func IsHyphenPosition(index: uint) -> bool {
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/text#parse
-pub func Parse(text: char8[..]) -> Uuid throws UuidParseError {
+pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     var start: uint = 0;
     if text.length == UuidUrnLength {
         let prefix = "urn:uuid:";
@@ -160,7 +160,7 @@ pub func Parse(text: char8[..]) -> Uuid throws UuidParseError {
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/text#parse
-pub func Parse(text: StringView) -> Uuid throws UuidParseError {
+pub func Parse(text: StringView) -> Uuid ! UuidParseError {
     return try Parse(text.Bytes());
 }
 
@@ -195,7 +195,7 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
 /// @see https://rux-lang.dev/docs/api/uuid/text#format
-pub func Format(value: &Uuid, into: var char8[..]) throws FormatError {
+pub func Format(value: &Uuid, into: var char8[..]) -> !FormatError {
     if into.length < UuidTextLength { throw FormatError::InsufficientCapacity; }
     WriteCanonicalInto(value, into);
     return;
@@ -208,7 +208,7 @@ pub func Format(value: &Uuid, into: var char8[..]) throws FormatError {
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
 /// @see https://rux-lang.dev/docs/api/uuid/text#format-upper
-pub func FormatUpper(value: &Uuid, into: var char8[..]) throws FormatError {
+pub func FormatUpper(value: &Uuid, into: var char8[..]) -> !FormatError {
     if into.length < UuidTextLength { throw FormatError::InsufficientCapacity; }
     WriteCanonicalInto(value, into);
     var index: uint = 0;
@@ -229,7 +229,7 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) throws FormatError {
 /// @param into the destination, at least `UuidUrnLength` bytes
 /// @returns success when the whole form was written
 /// @see https://rux-lang.dev/docs/api/uuid/text#format-urn
-pub func FormatUrn(value: &Uuid, into: var char8[..]) throws FormatError {
+pub func FormatUrn(value: &Uuid, into: var char8[..]) -> !FormatError {
     if into.length < UuidUrnLength { throw FormatError::InsufficientCapacity; }
     let prefix = "urn:uuid:";
     var index: uint = 0;
@@ -244,7 +244,7 @@ pub func FormatUrn(value: &Uuid, into: var char8[..]) throws FormatError {
 
 // The empty style is the canonical form and `hyphenated` names it; `urn` selects the URN form. Nothing else is
 // understood, and a precision has nothing to apply itself to on a value of exactly one length.
-func AcceptsUuidSpec(spec: FormatSpec) throws FormatError {
+func AcceptsUuidSpec(spec: FormatSpec) -> !FormatError {
     if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
     if !spec.HasStyle() || spec.StyleIs("hyphenated") || spec.StyleIs("urn") { return; }
     throw .UnsupportedRequest;
@@ -262,7 +262,7 @@ extend Uuid : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try AcceptsUuidSpec(spec);
         if spec.StyleIs("urn") { try WriteBytes(writer, "urn:uuid:"); }
@@ -279,7 +279,7 @@ extend Uuid : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }

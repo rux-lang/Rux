@@ -31,7 +31,7 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
         let block = try self.inner.Allocate(layout);
         // Safety: `counts` points at the test's local `AllocationCounts`, which outlives every use of this allocator.
         self.counts.live += 1;
@@ -39,7 +39,7 @@ extend CountingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         try self.inner.Deallocate(block, layout) catch {
             error => {
                 // Safety: `counts` points at the test's local `AllocationCounts`, which outlives this allocator.
@@ -53,7 +53,7 @@ extend CountingAllocator : Allocator {
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque throws AllocError {
+        -> *var opaque ! AllocError {
         return try self.inner.Reallocate(block, oldLayout, newLayout);
     }
 }
@@ -65,7 +65,7 @@ struct Point {
 }
 
 extend Point : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try WriteAscii(writer, c8'(');
         let first: int32 = self.x;
         try first.WriteDisplay(writer, FormatSpec::Plain());
@@ -82,7 +82,7 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         var remaining = self.count;
         while remaining > 0 {
             try WriteBytes(writer, "0123456789abcdef");
@@ -140,7 +140,7 @@ struct RefusingValue {
 }
 
 extend RefusingValue : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         // Safety: `calls` points at the test's local counter, which outlives every render of this value.
         *self.calls += 1;
         try WriteBytes(writer, "partial");

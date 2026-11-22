@@ -27,7 +27,7 @@ when #target.os {
 /// @param to the path it should have afterwards
 /// @returns success when the file is at its new path
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#rename
-pub func Rename(allocator: Allocator, from: Path, to: Path) throws IoError {
+pub func Rename(allocator: Allocator, from: Path, to: Path) -> !IoError {
     let fromNative = try NativePath::New(allocator, from);
     let toNative = try NativePath::New(allocator, to);
     when #target.os == .Windows {
@@ -57,7 +57,7 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) throws IoError {
 /// @param link the link to create
 /// @returns success when the new name refers to the same file
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-hard-link
-pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) throws IoError {
+pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> !IoError {
     let existingNative = try NativePath::New(allocator, existing);
     let linkNative = try NativePath::New(allocator, link);
     when #target.os == .Windows {
@@ -89,7 +89,7 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) throws
 /// @param targetIsDirectory whether the target is a directory, which Windows must be told in advance
 /// @returns success when the link was created; Windows needs a privilege for this
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#create-symbolic-link
-pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) throws IoError {
+pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> !IoError {
     let targetNative = try NativePath::New(allocator, target);
     let linkNative = try NativePath::New(allocator, link);
     when #target.os == .Windows {
@@ -122,7 +122,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// @param to the path it should have afterwards
 /// @returns success when the destination holds a copy
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#copy-file
-pub func CopyFile(allocator: Allocator, from: Path, to: Path) throws IoError {
+pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> !IoError {
     when #target.os == .Windows {
         let fromNative = try NativePath::New(allocator, from);
         let toNative = try NativePath::New(allocator, to);

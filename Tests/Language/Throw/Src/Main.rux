@@ -16,7 +16,7 @@ struct NotFound {
     key: int32;
 }
 
-func ReadDigit(c: char) -> int throws DigitError {
+func ReadDigit(c: char) -> int ! DigitError {
     if c == ' ' {
         throw .Blank;
     }
@@ -26,13 +26,13 @@ func ReadDigit(c: char) -> int throws DigitError {
     return (c as int) - ('0' as int);
 }
 
-func Check(ok: bool) throws DigitError {
+func Check(ok: bool) -> !DigitError {
     if !ok {
         throw DigitError::Blank;
     }
 }
 
-func Lookup(key: int32) -> int32 throws NotFound | DigitError {
+func Lookup(key: int32) -> int32 ! NotFound | DigitError {
     let found: int32? = if key > 0i32 { key * 2i32 } else { none };
     if key == 7i32 {
         throw DigitError::NotADigit('7');
@@ -40,7 +40,7 @@ func Lookup(key: int32) -> int32 throws NotFound | DigitError {
     return found ?? throw NotFound { key };
 }
 
-func Classify(c: char) -> int32 throws DigitError {
+func Classify(c: char) -> int32 ! DigitError {
     return match c {
         'a' => 1i32,
         ' ' => throw .Blank,
@@ -48,7 +48,7 @@ func Classify(c: char) -> int32 throws DigitError {
     };
 }
 
-func OlderSpelling(c: char) -> int throws DigitError {
+func OlderSpelling(c: char) -> int ! DigitError {
     if c == ' ' {
         throw .Blank;
     }

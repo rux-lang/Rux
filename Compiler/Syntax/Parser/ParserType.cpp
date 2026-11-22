@@ -14,8 +14,9 @@ bool Parser::CanStartType() const noexcept {
                      TokenKind::SelfKeyword, TokenKind::VarKeyword, TokenKind::Bang});
 }
 
-/// A complete type: a sum. The removed fallible spelling `T ! E` (or `! E`) is reported and read as one, so a function
-/// signature that still writes it parses on.
+/// A complete type: a sum, or a fallible `T ! E` whose error follows the `!`. `!` binds loosest, after `?` and `|`, so
+/// `int? ! IoError | ParseError` needs no parentheses, and it does not chain. `!E` with nothing before it is the
+/// fallible of a function that returns no value, which `-> !E` declares.
 TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
     const auto loc = CurrentLocation();
     TypeExprPtr success;
@@ -25,14 +26,19 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
             return success;
         }
     }
-    EmitError(CurrentLocation(), "'T ! E' is not a type",
-              "declare the error after the return type, as in '-> T throws E', or store an outcome in 'Result<T, E>'");
     Advance(); // consume '!'
     auto fallible = std::make_unique<FallibleTypeExpr>();
     fallible->location = loc;
     fallible->success = std::move(success);
     fallible->error = ParseSumType("add the error type after '!'");
-    while (Match(TokenKind::Bang)) {
+    if (const auto *optional = AstCast<const OptionalTypeExpr>(fallible->error.get());
+        optional && !optional->parenthesized) {
+        EmitError(optional->location, "'?' cannot reach across '!'",
+                  "write 'T ! (E?)' for an optional error, or '(T ! E)?' for an optional result");
+    }
+    while (Check(TokenKind::Bang)) {
+        EmitError(CurrentLocation(), "'!' does not chain in a type", "group the inner fallible, as in '(T ! E) ! F'");
+        Advance();
         ParseSumType();
     }
     return fallible;
@@ -369,8 +375,11 @@ void Parser::ParseThrowsClause(std::optional<TypeExprPtr> &returnType) {
     }
     const SourceLocation location = CurrentLocation();
     Advance(); // consume 'throws'
+    // The removed spelling is reported and read as the fallible type it stood for.
+    EmitError(location, "'throws' is not supported",
+              returnType ? "write the error after '!' in the return type, as in '-> T ! E'"
+                         : "write '-> !E' for a function that returns no value");
     auto fallible = std::make_unique<FallibleTypeExpr>();
-    fallible->throwsClause = true;
     fallible->success = returnType ? std::move(*returnType) : nullptr;
     fallible->location = fallible->success ? fallible->success->location : location;
     fallible->error = ParseSumType("add the error type after 'throws'");

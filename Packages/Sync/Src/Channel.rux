@@ -67,7 +67,7 @@ extend Channel<T> {
     /// @param value the value to send
     /// @returns nothing, or fails with the value when the channel is closed
     /// @see https://rux-lang.dev/docs/api/sync/channel#send
-    pub func Send(&self, value: T) throws T {
+    pub func Send(&self, value: T) -> !T {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.
@@ -97,7 +97,7 @@ extend Channel<T> {
     /// @param value the value to send
     /// @returns nothing, or fails with the value when the channel is full or closed
     /// @see https://rux-lang.dev/docs/api/sync/channel#try-send
-    pub func TrySend(&self, value: T) throws T {
+    pub func TrySend(&self, value: T) -> !T {
         let block = self.block;
         // Safety: this handle holds a count on `block`, so the block is live, and its lock word is reached only
         // atomically.

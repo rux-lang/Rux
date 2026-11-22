@@ -62,7 +62,7 @@ extend DecompressReader {
     /// @param format the container the stream is in
     /// @returns the reader, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/inflate#new
-    pub func New(allocator: Allocator, source: Reader, format: Format) -> Self throws IoError {
+    pub func New(allocator: Allocator, source: Reader, format: Format) -> Self ! IoError {
         var borrowed = allocator;
         let inputLayout = Layout::Of(InputCapacity, 1) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
         let input = try borrowed.Allocate(inputLayout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
@@ -86,7 +86,7 @@ extend DecompressReader {
     }
 
     // The next byte of the compressed stream; running out of it in the middle of the data is damage.
-    func NextByte(&var self) -> uint64 throws IoError {
+    func NextByte(&var self) -> uint64 ! IoError {
         if self.inputAt == self.inputLength {
             if try !self.Refill() { throw Corrupt(); }
         }
@@ -97,7 +97,7 @@ extend DecompressReader {
     }
 
     // Reads more of the source, and says whether there was more.
-    func Refill(&var self) -> bool throws IoError {
+    func Refill(&var self) -> bool ! IoError {
         try {
             // Safety: the buffer invariant: `input` holds `InputCapacity` bytes. The `Reader` contract has the
             // source fill at most that many, which keeps `inputLength` within it.
@@ -114,7 +114,7 @@ extend DecompressReader {
     }
 
     // The next `count` bits, least significant first.
-    func Bits(&var self, count: uint) -> uint throws IoError {
+    func Bits(&var self, count: uint) -> uint ! IoError {
         while self.bitCount < count {
             self.bits = try self.bits | (self.NextByte() << self.bitCount as uint64);
             self.bitCount = self.bitCount + 8;
@@ -126,7 +126,7 @@ extend DecompressReader {
     }
 
     // The next whole byte, after the bits of a partly read one are dropped.
-    func AlignedByte(&var self) -> uint throws IoError {
+    func AlignedByte(&var self) -> uint ! IoError {
         let partial = self.bitCount % 8u;
         self.bits = self.bits >> partial as uint64;
         self.bitCount = self.bitCount - partial;
@@ -134,14 +134,14 @@ extend DecompressReader {
     }
 
     // Whether any compressed input is left, without treating its absence as damage.
-    func HasInput(&var self) -> bool throws IoError {
+    func HasInput(&var self) -> bool ! IoError {
         if self.bitCount >= 8u || self.inputAt < self.inputLength { return true; }
         return try self.Refill();
     }
 
     // Decodes one symbol with the literal table, or with the distance table, which also carries the code-length
     // code while a block's tables are read.
-    func Decode(&var self, distance: bool) -> uint throws IoError {
+    func Decode(&var self, distance: bool) -> uint ! IoError {
         var code: int32 = 0;
         var first: int32 = 0;
         var index: int32 = 0;
@@ -171,7 +171,7 @@ extend DecompressReader {
     }
 
     // Reads the zlib or gzip header.
-    func ReadHeader(&var self) throws IoError {
+    func ReadHeader(&var self) -> !IoError {
         if self.format == Format::Zlib {
             let method = try self.AlignedByte();
             let flags = try self.AlignedByte();
@@ -208,7 +208,7 @@ extend DecompressReader {
     }
 
     // Reads and checks the zlib or gzip trailer.
-    func ReadTrailer(&var self) throws IoError {
+    func ReadTrailer(&var self) -> !IoError {
         if self.format == Format::Raw { return; }
         if self.format == Format::Zlib {
             var stored: uint32 = 0;
@@ -236,7 +236,7 @@ extend DecompressReader {
     }
 
     // Reads a block header and gets ready for its contents.
-    func StartBlock(&var self) throws IoError {
+    func StartBlock(&var self) -> !IoError {
         self.final = try self.Bits(1) == 1u;
         let kind = try self.Bits(2);
         if kind == 0u {
@@ -320,7 +320,7 @@ extend DecompressReader {
     }
 
     // Decodes into `into` until it is full or the stream ends, and returns how much it produced.
-    func Produce(&var self, into: var char8[..]) -> uint throws IoError {
+    func Produce(&var self, into: var char8[..]) -> uint ! IoError {
         var produced: uint = 0;
         var summed: uint = 0;
         while produced < into.length {
@@ -433,7 +433,7 @@ extend DecompressReader : Reader {
     /// @returns how many bytes were produced, or fails with `EndOfStream` after the last, or with `InvalidInput` for
     ///   damaged or truncated input
     /// @see https://rux-lang.dev/docs/api/compress/inflate#read
-    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if self.failed { throw Corrupt(); }
         if into.length == 0u { return 0; }
         let produced = try self.Produce(into) catch {

@@ -259,7 +259,7 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
 /// @param parts the value taken apart
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/float-text#write-precision
-pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) throws FormatError {
+pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) -> !FormatError {
     if spec.Precision() > MaximumPrecision {
         throw .UnsupportedRequest;
     }

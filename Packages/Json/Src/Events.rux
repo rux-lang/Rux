@@ -391,7 +391,7 @@ extend JsonEventReader {
     }
 
     // The byte a value must start with after a separator; the input ending there is a truncated document.
-    func ValueByte(&var self) -> uint8 throws JsonReadError {
+    func ValueByte(&var self) -> uint8 ! JsonReadError {
         if self.Peek() is .Some(c) { return c; }
         if self.stop != JsonStop::None { throw self.Stopped(); }
         throw self.Refuse(JsonStop::Truncated);
@@ -409,7 +409,7 @@ extend JsonEventReader {
     /// either, every later call throws the same error again.
     /// @returns the next event, or `none` once the top-level value and any whitespace after it have been read
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader#next
-    pub func Next(&var self) -> JsonEvent? throws JsonReadError {
+    pub func Next(&var self) -> JsonEvent? ! JsonReadError {
         if self.stop != JsonStop::None { throw self.Stopped(); }
         if self.state == JsonReadState::Done {
             // Only whitespace may follow the top-level value; anything else is a second value or trailing text.

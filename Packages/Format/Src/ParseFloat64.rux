@@ -73,7 +73,7 @@ pub struct DecimalReading {
 /// @param reading receives what the decimal spells
 /// @returns success when the whole text was the grammar
 /// @see https://rux-lang.dev/docs/api/format/parse-float#scan-decimal
-pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseError {
+pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> !ParseError {
     // The decimal is read into a local and handed over whole once the text has matched.
     var scanned = DecimalReading {
         digits: FixedNat::New(),
@@ -194,7 +194,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) throws ParseE
 /// @param str the text to read
 /// @returns the value, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float64
-pub func ParseFloat64(str: char8[..]) -> float64 throws ParseError {
+pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
     var reading = DecimalReading {
         digits: FixedNat::New(),
         exponent: 0,
@@ -235,7 +235,7 @@ pub func ParseFloat64(str: char8[..]) -> float64 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float64
-pub func ParseFloat64(str: StringView) -> float64 throws ParseError {
+pub func ParseFloat64(str: StringView) -> float64 ! ParseError {
     return try ParseFloat64(str.Bytes());
 }
 
@@ -248,7 +248,7 @@ pub func ParseFloat64(str: StringView) -> float64 throws ParseError {
 /// @param str the text to read
 /// @returns the value, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float32
-pub func ParseFloat32(str: char8[..]) -> float32 throws ParseError {
+pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
     var reading = DecimalReading {
         digits: FixedNat::New(),
         exponent: 0,
@@ -284,6 +284,6 @@ pub func ParseFloat32(str: char8[..]) -> float32 throws ParseError {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float32
-pub func ParseFloat32(str: StringView) -> float32 throws ParseError {
+pub func ParseFloat32(str: StringView) -> float32 ! ParseError {
     return try ParseFloat32(str.Bytes());
 }

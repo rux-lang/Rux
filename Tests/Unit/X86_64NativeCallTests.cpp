@@ -80,20 +80,20 @@ const std::string kCallProgram = R"(
     func BigMany(a: Big, b: Big, c: Big, d: Big, e: Big) -> int64 {
         return Total(a) + Total(b) + Total(c) + Total(d) + Total(e);
     }
-    func Make(seed: int64) -> Big throws E {
+    func Make(seed: int64) -> Big ! E {
         return Big { a: seed, b: seed, c: seed, d: seed };
     }
     func Tag(flag: bool) -> ()? {
         return if flag { .Some(()) } else { none };
     }
-    func Nest(stop: bool) -> int32?? throws E {
+    func Nest(stop: bool) -> int32?? ! E {
         if stop { throw E { code: 5i32 }; }
         return .Some(none);
     }
     func Collapse<T, U>(value: T) -> T | U {
         return value;
     }
-    func Main() -> int throws E {
+    func Main() -> int ! E {
         let unit = UnitReturn();
         let unitParam = UnitParam(unit, 4i32);
         let missing: int32? = none;

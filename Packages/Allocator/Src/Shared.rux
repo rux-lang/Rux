@@ -50,7 +50,7 @@ extend Rc<T> {
     /// @param value the value to share
     /// @returns the handle, or throws why there was no storage; the value is destroyed then
     /// @see https://rux-lang.dev/docs/api/allocator/shared#rc-try-create
-    pub func TryCreate(allocator: Allocator, value: T) -> Self throws AllocError {
+    pub func TryCreate(allocator: Allocator, value: T) -> Self ! AllocError {
         let storage = try allocator.Allocate(Layout::ForValue<SharedBlock<T>>());
         // Safety: `storage` was just allocated with the layout of a `SharedBlock<T>`, so it is aligned and large enough
         // for one, and nothing else holds it or has written to it.
@@ -153,7 +153,7 @@ extend Arc<T> {
     /// @param value the value to share
     /// @returns the handle, or throws why there was no storage; the value is destroyed then
     /// @see https://rux-lang.dev/docs/api/allocator/shared#arc-try-create
-    pub func TryCreate(allocator: Allocator, value: T) -> Self throws AllocError {
+    pub func TryCreate(allocator: Allocator, value: T) -> Self ! AllocError {
         let storage = try allocator.Allocate(Layout::ForValue<SharedBlock<T>>());
         // Safety: `storage` was just allocated with the layout of a `SharedBlock<T>`, so it is aligned and large enough
         // for one, and nothing else holds it or has written to it.

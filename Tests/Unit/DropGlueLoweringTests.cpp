@@ -252,11 +252,11 @@ TEST_SUITE("DropGlueLowering") {
                 second: int32;
             }
 
-            func Read(ok: bool) -> int32 throws Error {
+            func Read(ok: bool) -> int32 ! Error {
                 return 7i32;
             }
 
-            func Build(ok: bool) -> Pair throws Error {
+            func Build(ok: bool) -> Pair ! Error {
                 return try Pair {
                     first: Handle { slot: 1i32 },
                     second: Read(ok),

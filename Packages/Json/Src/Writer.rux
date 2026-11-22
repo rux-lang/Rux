@@ -62,7 +62,7 @@ const JsonHexDigits: char8[..] = "0123456789abcdef";
 /// @param text the UTF-8 bytes to escape and write
 /// @returns success when the whole quoted string was accepted
 /// @see https://rux-lang.dev/docs/api/json/write-value#write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) throws FormatError {
+pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> !FormatError {
     let sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
@@ -132,12 +132,12 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) throws FormatErr
 
 // One run of bytes to the destination, reporting exactly what the destination said. Named apart from Text's
 // `WriteBytes` deliberately: a name that shadows an imported one is a name that will be reached for by accident.
-func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) throws FormatError {
+func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> !FormatError {
     let sink = writer;
     return try sink.Write(bytes);
 }
 
-func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) throws FormatError {
+func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> !FormatError {
     if style.indent == 0 { return; }
     var newline: char8[1];
     newline[0] = 0x0Au8 as char8;
@@ -170,12 +170,12 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
 /// @param style compact or pretty
 /// @returns success when the whole document was accepted
 /// @see https://rux-lang.dev/docs/api/json/write-value
-pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) throws FormatError {
+pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> !FormatError {
     return try WriteAtLevel(writer, value, style, 0);
 }
 
 func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
-                  level: uint) throws FormatError {
+                  level: uint) -> !FormatError {
     // A document this deep cannot have been parsed — the parser's own limit is far shallower — so it was built in
     // memory, and refusing is better than descending until the stack runs out.
     if level > MaximumWriteDepth { throw FormatError::ValueOutOfRange; }

@@ -190,7 +190,7 @@ extend Resolver {
     /// @returns the addresses; `NotFound` when the name has none or does not exist, `TimedOut` when no server answered
     /// @see https://rux-lang.dev/docs/api/net/resolver#lookup
     pub func Lookup(&self, allocator: Allocator, host: char8[..], port: uint16)
-        -> Vector<SocketAddress> throws IoError {
+        -> Vector<SocketAddress> ! IoError {
         var found = Vector<SocketAddress>::New(allocator);
         var attempt: uint = 0;
         while attempt < self.attempts {
@@ -364,7 +364,7 @@ func ReadAnswer(message: uint8[..], id: uint16, kind: uint16, port: uint16, foun
 
 // Asks `server` for `host`'s records of `kind` over TCP, as an answer too long for a datagram must be fetched.
 func AskOverTcp(server: SocketAddress, query: uint8[..], timeout: Duration, answer: var uint8[..])
-    -> uint throws IoError {
+    -> uint ! IoError {
     var stream = try TcpStream::Connect(server);
     try stream.SetReadTimeout(timeout);
     try stream.SetWriteTimeout(timeout);
@@ -441,7 +441,7 @@ func NextQueryId() -> uint16 {
 }
 
 // The addresses of `host` from the hosts file, or else from the name servers: IPv4 addresses first, then IPv6.
-func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> throws IoError {
+func ResolveOnLinux(allocator: Allocator, host: char8[..], port: uint16) -> Vector<SocketAddress> ! IoError {
     var found = Vector<SocketAddress>::New(allocator);
     FromHostsFile(allocator, host, port, found);
     if found.Length() > 0u { return move found; }

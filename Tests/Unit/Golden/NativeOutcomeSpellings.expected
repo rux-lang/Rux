@@ -1,4 +1,4 @@
-7:38: error: an optional error type must be grouped
+7:33: error: '?' cannot reach across '!'
 11:36: error: an optional sum member must be grouped
 20:9: error: 'none' is a reserved keyword and cannot name a binding
 21:9: error: 'catch' is a reserved keyword and cannot name a binding

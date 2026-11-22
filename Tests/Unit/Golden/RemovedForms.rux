@@ -12,11 +12,11 @@ extend Cell {
     func <-(&var self, other: Cell);
 }
 
-func Read() -> int32 throws ParseError {
+func Read() -> int32 ! ParseError {
     return 1i32;
 }
 
-func Forward() -> int32 throws ParseError {
+func Forward() -> int32 ! ParseError {
     return Read()?;
 }
 

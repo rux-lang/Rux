@@ -37,11 +37,11 @@ constexpr std::string_view kDeclarations = R"(
     extend Pinned {
     }
     intrinsic func Panic(message: char8[..]);
-    func Read() -> (Options | Defaults) throws (ParseError | IoError) { return Defaults {}; }
-    func ReadConfig() -> Options throws (DecodeError | IoError) { return Options { verbose: false }; }
-    func Close() throws IoError {}
+    func Read() -> (Options | Defaults) ! (ParseError | IoError) { return Defaults {}; }
+    func ReadConfig() -> Options ! (DecodeError | IoError) { return Options { verbose: false }; }
+    func Close() -> !IoError {}
     func Log(error: IoError) {}
-    func Count() -> int32 throws IoError { return 1i32; }
+    func Count() -> int32 ! IoError { return 1i32; }
     func Recover(position: int32) -> Options { return Options { verbose: true }; }
 )";
 
@@ -52,13 +52,13 @@ std::vector<std::string> ErrorsIn(const std::string_view body) {
 
 TEST_CASE("catch arms match the error alone and recover the success type") {
     CHECK(ErrorsIn(R"(
-        func LoadWithDefaults() -> (Options | Defaults) throws IoError {
+        func LoadWithDefaults() -> (Options | Defaults) ! IoError {
             return try Read() catch {
                 _: ParseError => Defaults {},
                 e: IoError => throw e
             };
         }
-        func LoadConfig() -> Options throws IoError {
+        func LoadConfig() -> Options ! IoError {
             let options = try ReadConfig() catch {
                 DecodeError::Missing => Options { verbose: false },
                 DecodeError::InvalidDigit(position) => Recover(position),
@@ -79,7 +79,7 @@ TEST_CASE("diverging arms never decide the recovered type") {
         func Stop() {
             Panic("stopped");
         }
-        func Diverging() -> int32 throws IoError {
+        func Diverging() -> int32 ! IoError {
             let first = try Count() catch { e => throw e };
             let second = try Count() catch { e => Panic("unexpected") };
             let third = try Count() catch { e => Stop() };

@@ -69,7 +69,7 @@ func Guarded(value: int32, ready: bool) -> int32 {
     };
 }
 
-func Read(code: int32) -> int32 throws ReadError {
+func Read(code: int32) -> int32 ! ReadError {
     if code != 0i32 {
         throw ReadError { code };
     }

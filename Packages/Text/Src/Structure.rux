@@ -38,7 +38,7 @@ import Core::Result;
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-optional-debug
 pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
-                                    spec: FormatSpec) throws FormatError {
+                                    spec: FormatSpec) -> !FormatError {
     match value {
         .Some(payload) => {
             try WriteBytes(writer, "Some(");
@@ -64,7 +64,7 @@ pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &(T?),
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-result-debug
 pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &Result<T, E>,
-                                              spec: FormatSpec) throws FormatError {
+                                              spec: FormatSpec) -> !FormatError {
     match value {
         .Success(payload) => {
             try WriteBytes(writer, "Success(");
@@ -96,7 +96,7 @@ pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &R
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/debug#write-slice-debug
 pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
-                                   spec: FormatSpec) throws FormatError {
+                                   spec: FormatSpec) -> !FormatError {
     try WriteAscii(writer, c8'[');
     var index: uint = 0;
     while index < items.length {

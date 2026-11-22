@@ -53,7 +53,7 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written in this one pass, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill-from-source
-pub func FillFromSource(buffer: *var opaque, length: uint) throws EntropyError {
+pub func FillFromSource(buffer: *var opaque, length: uint) -> !EntropyError {
     if length == 0 { return; }
     if length > MaxEntropyRequest { throw .TooLarge; }
     if buffer == null { throw .Failed; }

@@ -105,7 +105,7 @@ extend ConsoleWriter : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/console-writer#write
-    pub func Write(&var self, bytes: char8[..]) throws FormatError {
+    pub func Write(&var self, bytes: char8[..]) -> !FormatError {
         // Safety: the documented `ConsoleWriter` contract requires the `failure` slot it was built over to outlive it.
         if *self.failure is IoError { throw .WriterFailure; }
         try PrintBytes(bytes) catch {
@@ -156,7 +156,7 @@ extend StreamWriter : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/stream-writer#write
-    pub func Write(&var self, bytes: char8[..]) throws FormatError {
+    pub func Write(&var self, bytes: char8[..]) -> !FormatError {
         // Safety: the documented `StreamWriter` contract requires the `failure` slot it was built over to outlive it.
         if *self.failure is IoError { throw .WriterFailure; }
         try WriteAll(self.sink, bytes) catch {
@@ -187,7 +187,7 @@ extend StreamWriter : TextWriter {
 /// @param value the value to write, borrowed for the call
 /// @returns success when both the value and the newline were accepted
 /// @see https://rux-lang.dev/docs/api/io/print-line#write-value-line
-pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) throws FormatError {
+pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> !FormatError {
     try value.WriteDisplay(writer, FormatSpec::Plain());
     return try writer.Write("\n");
 }
@@ -205,7 +205,7 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) throws F
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/io/print-line#write-format-line
 pub func WriteFormatLine(writer: &var TextWriter, #Format format: char8[..],
-                         args: &Display...) throws FormatError {
+                         args: &Display...) -> !FormatError {
     try WriteFormat(writer, format, args...);
     return try writer.Write("\n");
 }

@@ -61,7 +61,7 @@ pub func Base64EncodedLength(length: uint, form: Base64Variant = Base64Variant::
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
 pub func Base64Encode(bytes: byte[..], into: var char8[..],
-                      form: Base64Variant = Base64Variant::Standard) -> uint throws FormatError {
+                      form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
     let needed = Base64EncodedLength(bytes.length, form);
     if into.length < needed { throw .InsufficientCapacity; }
     let urlSafe = IsUrlSafe(form);
@@ -108,13 +108,13 @@ pub func Base64Encode(bytes: byte[..], into: var char8[..],
 /// @returns the number of characters written
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-encode
 pub func Base64Encode(text: char8[..], into: var char8[..],
-                      form: Base64Variant = Base64Variant::Standard) -> uint throws FormatError {
+                      form: Base64Variant = Base64Variant::Standard) -> uint ! FormatError {
     return try Base64Encode(BytesOf(text), into, form);
 }
 
 // How many characters at the end of a padded text are padding, after checking that only the last two may be and
 // that nothing but padding follows the first. Fails at the first padding character that is out of place.
-func CountPadding(text: char8[..]) -> uint throws DecodeError {
+func CountPadding(text: char8[..]) -> uint ! DecodeError {
     var first = text.length;
     var index: uint = 0;
     while index < text.length {
@@ -142,7 +142,7 @@ func CountPadding(text: char8[..]) -> uint throws DecodeError {
 /// @returns the number of bytes `Base64Decode` writes for it
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decoded-length
 pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Variant::Standard)
-    -> uint throws DecodeError {
+    -> uint ! DecodeError {
     if IsPadded(form) {
         if text.length % 4 != 0 { throw .InvalidLength(text.length); }
         let padding = try CountPadding(text);
@@ -170,7 +170,7 @@ pub func Base64DecodedLength(text: char8[..], form: Base64Variant = Base64Varian
 /// @returns the number of bytes written
 /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-decode
 pub func Base64Decode(text: char8[..], into: var byte[..],
-                      form: Base64Variant = Base64Variant::Standard) -> uint throws DecodeError {
+                      form: Base64Variant = Base64Variant::Standard) -> uint ! DecodeError {
     let needed = try Base64DecodedLength(text, form);
     let urlSafe = IsUrlSafe(form);
     // The characters that carry data: everything before the padding, whose shape is already checked.
@@ -255,7 +255,7 @@ extend Base64View : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/encoding/base64#base64-view-write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.HasPrecision() { throw .UnsupportedRequest; }
         try RejectStyle(spec);
         var before: uint = 0;

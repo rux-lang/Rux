@@ -102,7 +102,7 @@ extend TimeZone {
     /// @param rule the rule
     /// @returns the zone, or fails with `InvalidRule`
     /// @see https://rux-lang.dev/docs/api/timezone/zone#from-rule
-    pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> Self throws TimeZoneError {
+    pub func FromRule(allocator: Allocator, name: char8[..], rule: char8[..]) -> Self ! TimeZoneError {
         var zone = Self::Empty(allocator, name);
         zone.rule = try ParseRule(rule, zone.names);
         return move zone;
@@ -116,7 +116,7 @@ extend TimeZone {
     /// @param data the TZif data
     /// @returns the zone, or fails with `InvalidData`
     /// @see https://rux-lang.dev/docs/api/timezone/zone#from-tzif
-    pub func FromTzif(allocator: Allocator, name: char8[..], data: byte[..]) -> Self throws TimeZoneError {
+    pub func FromTzif(allocator: Allocator, name: char8[..], data: byte[..]) -> Self ! TimeZoneError {
         if data.length < 44u || data[0] != 0x54u8 || data[1] != 0x5Au8 || data[2] != 0x69u8 || data[3] != 0x66u8 {
             throw .InvalidData;
         }
@@ -274,7 +274,7 @@ extend TimeZone {
 }
 
 // How many bytes a TZif data section with times `width` bytes wide takes, read from its header at `at`.
-func SectionSize(data: byte[..], at: uint, width: uint) -> uint throws TimeZoneError {
+func SectionSize(data: byte[..], at: uint, width: uint) -> uint ! TimeZoneError {
     if data.length < at + 44u { throw .InvalidData; }
     let utcIndicators = BigEndian(data, at + 20u, 4) as uint;
     let standardIndicators = BigEndian(data, at + 24u, 4) as uint;

@@ -40,14 +40,14 @@ const SemanticDiagnostic &RequireDiagnostic(const std::vector<SemanticDiagnostic
 const std::string kPropagationPrelude = R"(
     enum ParseError: int32 { Empty, Bad }
     enum IoError: int32 { Closed }
-    func Read(flag: bool) -> int32 throws ParseError { return 7i32; }
+    func Read(flag: bool) -> int32 ! ParseError { return 7i32; }
     func Lookup(flag: bool) -> int32? { return 1i32; }
 )";
 } // namespace
 
 TEST_CASE("a propagated outcome evaluates to its success payload") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Doubled(flag: bool) -> int32 throws ParseError {
+        func Doubled(flag: bool) -> int32 ! ParseError {
             let value: int32 = try Read(flag);
             return value * 2i32;
         }
@@ -70,7 +70,7 @@ TEST_CASE("the conditional operator keeps its own parse beside the propagation o
 
 TEST_CASE("propagation rejects a value that is not an optional") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Bad(flag: bool) -> int32 throws ParseError {
+        func Bad(flag: bool) -> int32 ! ParseError {
             let value: int32 = 3i32?;
             return value;
         }
@@ -167,10 +167,10 @@ TEST_CASE("every variant with outcome case names is ordinary, whatever its paylo
 
 TEST_CASE("a propagated payload keeps its own type in a chained expression") {
     const auto diagnostics = AnalyzeSource(kPropagationPrelude + R"(
-        func Sum(flag: bool) -> int32 throws ParseError {
+        func Sum(flag: bool) -> int32 ! ParseError {
             return try Read(flag) + Read(flag);
         }
-        func Mistyped(flag: bool) -> int32 throws ParseError {
+        func Mistyped(flag: bool) -> int32 ! ParseError {
             let value: bool = try Read(flag);
             return 1i32;
         }

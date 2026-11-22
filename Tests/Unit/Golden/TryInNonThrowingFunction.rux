@@ -1,7 +1,7 @@
 // A `try` with no handler around it passes the error to the caller, which needs a function that throws.
 struct Fault {}
 
-func Read() -> int throws Fault {
+func Read() -> int ! Fault {
     return 1;
 }
 

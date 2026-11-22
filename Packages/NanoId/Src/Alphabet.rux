@@ -47,7 +47,7 @@ pub variant NanoIdError {
 /// @param alphabet the characters an identifier would be drawn from
 /// @returns success when the alphabet is usable
 /// @see https://rux-lang.dev/docs/api/nanoid/alphabet#validate-alphabet
-pub func ValidateAlphabet(alphabet: char8[..]) throws NanoIdError {
+pub func ValidateAlphabet(alphabet: char8[..]) -> !NanoIdError {
     if alphabet.length < 2 { throw .AlphabetTooSmall; }
     if alphabet.length > 256 { throw .AlphabetTooLarge; }
     var seen: bool[128] = [false; 128];

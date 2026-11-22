@@ -80,7 +80,7 @@ extend ByteCursor : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when every byte fitted
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor#write
-    pub func Write(&var self, bytes: char8[..]) throws FormatError {
+    pub func Write(&var self, bytes: char8[..]) -> !FormatError {
         self.PushBytes(bytes);
         if self.Overran() { throw FormatError::InsufficientCapacity; }
         return;

@@ -24,7 +24,7 @@ struct SourceHandle {
 }
 
 extend SourceHandle : Reader {
-    func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the `CountingSource` local of `Main`, which outlives every handle made from it.
         {
@@ -60,7 +60,7 @@ struct SinkHandle {
 }
 
 extend SinkHandle : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
         {
@@ -79,7 +79,7 @@ extend SinkHandle : Writer {
         }
     }
 
-    func Flush(&var self) throws IoError {
+    func Flush(&var self) -> !IoError {
         // Safety: `state` points at the `CountingSink` local of `Main`, which outlives every handle made from it.
         self.state.flushes = self.state.flushes + 1;
     }
@@ -91,7 +91,7 @@ struct BlockedHandle {
 }
 
 extend BlockedHandle : Reader {
-    func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         // Safety: `calls` points at a counter local of `Main`, which outlives the handle.
         *self.calls = *self.calls + 1;
         throw IoError::Of(IoErrorKind::WouldBlock);

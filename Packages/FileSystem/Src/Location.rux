@@ -33,7 +33,7 @@ pub const SymbolicLinkLimit: uint = 40;
 /// @param allocator where the storage comes from
 /// @returns the working directory
 /// @see https://rux-lang.dev/docs/api/filesystem/location#current-directory
-pub func CurrentDirectory(allocator: Allocator) -> OsString throws IoError {
+pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
     var units: OsUnit[4096];
     when #target.os == .Windows {
         // The length is reported without the terminator, and a length larger than the buffer means the answer
@@ -67,7 +67,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString throws IoError {
 /// @param path the path to act on
 /// @returns success when the working directory changed
 /// @see https://rux-lang.dev/docs/api/filesystem/location#set-current-directory
-pub func SetCurrentDirectory(allocator: Allocator, path: Path) throws IoError {
+pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> !IoError {
     let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
@@ -94,7 +94,7 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @param path the path to act on
 /// @returns the path made absolute without touching the file system
 /// @see https://rux-lang.dev/docs/api/filesystem/location#absolute
-pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer throws IoError {
+pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     if IsAbsolute(path) {
         return Normalize(allocator, path);
     }
@@ -110,7 +110,7 @@ when #target.os != .Windows {
     // The text a symbolic link at `path` holds, or `none` when it is not a link at all.
     // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
     // is the answer the walk below asks for at every component.
-    func ReadLinkText(allocator: Allocator, path: Path) -> OsString? throws IoError {
+    func ReadLinkText(allocator: Allocator, path: Path) -> OsString? ! IoError {
         let native = try NativePath::New(allocator, path);
         var units: OsUnit[4096];
         // Safety: `native` is the NUL-terminated copy `NativePath` made above, live while it is in scope, and
@@ -154,7 +154,7 @@ when #target.os != .Windows {
     // Walks `path`, appending each component to `resolved` and following any link it lands on.
     // Recursive, because a link's target is itself a path that must be walked the same way — and bounded by the
     // follow count rather than by the nesting, since it is the link chain that can loop.
-    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer, followed: *var uint) throws IoError {
+    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer, followed: *var uint) -> !IoError {
         if IsAbsolute(path) {
             // An absolute path abandons whatever was resolved so far and starts again from the root.
             var root: OsUnit[1];
@@ -214,7 +214,7 @@ when #target.os != .Windows {
 /// @param path the path to act on
 /// @returns the path with every link and relative component resolved, which needs the file system and so can fail
 /// @see https://rux-lang.dev/docs/api/filesystem/location#canonicalize
-pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer throws IoError {
+pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
         // carries no access rights, which is enough here and works on a file this process may not read.

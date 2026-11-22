@@ -69,8 +69,8 @@ TEST_CASE("propagation continues with the success or returns the outer failure")
     const HirPackage package = LowerSource(R"(
         struct ParseError {}
         struct IoError {}
-        func Read() -> int32 throws IoError { return 1i32; }
-        func Forward() -> int32 throws IoError {
+        func Read() -> int32 ! IoError { return 1i32; }
+        func Forward() -> int32 ! IoError {
             let inner = try Read();
             return 1i32;
         }
@@ -93,8 +93,8 @@ TEST_CASE("a propagated error is injected into a wider failure channel") {
     const HirPackage package = LowerSource(R"(
         struct ParseError {}
         struct IoError {}
-        func Read() -> int32 throws ParseError { return 1i32; }
-        func Widen() -> int32 throws (IoError | ParseError) {
+        func Read() -> int32 ! ParseError { return 1i32; }
+        func Widen() -> int32 ! (IoError | ParseError) {
             let value = try Read();
             return value;
         }
@@ -110,7 +110,7 @@ TEST_CASE("a propagated error is injected into a wider failure channel") {
 TEST_CASE("a fallible Main is wrapped by an integer entry point") {
     const HirPackage package = LowerSource(R"(
         struct IoError {}
-        func Main() -> int throws IoError {
+        func Main() -> int ! IoError {
             return 3;
         }
     )");

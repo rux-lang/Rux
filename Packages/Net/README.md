@@ -28,7 +28,7 @@ import Allocator::SystemAllocator;
 import Io::{ IoError, ReadExact, WriteAll };
 import Net::{ Resolve, TcpStream };
 
-func Greet(host: char8[..]) throws IoError {
+func Greet(host: char8[..]) -> !IoError {
     let addresses = try Resolve(SystemAllocator::New(), host, 7);
     var stream = try TcpStream::Connect(addresses.AsSlice()[0]);
     try WriteAll(stream, "hello");

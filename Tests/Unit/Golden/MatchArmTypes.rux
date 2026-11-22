@@ -43,7 +43,7 @@ struct RangeError {}
 
 func Nothing() {}
 
-func Parse() -> int throws DigitError | RangeError {
+func Parse() -> int ! DigitError | RangeError {
     return 1;
 }
 

@@ -15,7 +15,7 @@ import Allocator::{ AllocError, AllocationFailed, Allocator };
 /// @param layout which wide floating-point format the bits are in
 /// @returns the bit pattern, or the failure and where it was found
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-wide-float
-pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayout) -> uint512 throws ParseError {
+pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayout) -> uint512 ! ParseError {
     if str.length == 0 { throw ParseError::Empty; }
     var index: uint = 0;
     var negative = false;
@@ -99,7 +99,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
 
 // The bits nearest to `digits` times ten to `decimalExponent`, found by exact division.
 func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int, negative: bool,
-                layout: &FloatLayout, where: uint) -> uint512 throws ParseError {
+                layout: &FloatLayout, where: uint) -> uint512 ! ParseError {
     var numerator = BigNat::New(allocator);
     var denominator = BigNat::New(allocator);
     var power = BigNat::New(allocator);
@@ -205,7 +205,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float80
-pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 throws ParseError {
+pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 ! ParseError {
     let layout = FloatLayout::Extended80();
     let parsed = try ParseWideFloat(allocator, str, layout);
     return Float80::FromBits(parsed as uint128);
@@ -216,7 +216,7 @@ pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 throws Pa
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float128
-pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 throws ParseError {
+pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 ! ParseError {
     let layout = FloatLayout::Binary128();
     let parsed = try ParseWideFloat(allocator, str, layout);
     return Float128::FromBits(parsed as uint128);
@@ -227,7 +227,7 @@ pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 throws 
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float256
-pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 throws ParseError {
+pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 ! ParseError {
     let layout = FloatLayout::Binary256();
     let parsed = try ParseWideFloat(allocator, str, layout);
     return Float256::FromBits(parsed as uint256);
@@ -238,7 +238,7 @@ pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 throws 
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float#parse-float512
-pub func ParseFloat512(allocator: Allocator, str: char8[..]) -> Float512 throws ParseError {
+pub func ParseFloat512(allocator: Allocator, str: char8[..]) -> Float512 ! ParseError {
     let layout = FloatLayout::Binary512();
     let parsed = try ParseWideFloat(allocator, str, layout);
     return Float512::FromBits(parsed as uint512);

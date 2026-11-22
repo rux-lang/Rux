@@ -21,7 +21,7 @@ func Pick(index: int) -> int {
 }
 func Letter(code: uint32) -> char32 { return code as char32; }
 
-func Digit(c: char) -> int throws DigitError {
+func Digit(c: char) -> int ! DigitError {
     if c < '0' || c > '9' {
         throw .NotADigit;
     }

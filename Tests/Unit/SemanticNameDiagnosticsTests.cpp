@@ -205,8 +205,7 @@ std::vector<SemanticDiagnostic> AnalyzeEntryPoint(const std::string &source) {
 TEST_CASE("an executable's Main takes no parameters and returns nothing, an integer or a fallible of either") {
     for (const std::string accepted :
          {"func Main() -> int { return 0; }", "func Main() {}", "func Main() -> int32 { return 0; }",
-          "variant E { Bad }\nfunc Main() throws E {}",
-          "variant E { Bad }\nfunc Main() -> int throws E { return 0; }"}) {
+          "variant E { Bad }\nfunc Main() -> !E {}", "variant E { Bad }\nfunc Main() -> int ! E { return 0; }"}) {
         CAPTURE(accepted);
         CHECK(AnalyzeEntryPoint(accepted).empty());
     }

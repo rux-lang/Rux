@@ -1,5 +1,5 @@
 // A default arm takes every value the arms before it leave, so no arm can follow it.
-func Read() -> int throws int {
+func Read() -> int ! int {
     return 1;
 }
 

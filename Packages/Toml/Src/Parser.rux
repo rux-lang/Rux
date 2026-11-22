@@ -81,7 +81,7 @@ extend TomlParseFailure : ParseFailure {
 }
 
 // The description of a lexical refusal, which a parse failure quotes rather than restates.
-func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) throws FormatError {
+func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) -> !FormatError {
     return match reason {
         .None => try WriteBytes(writer, "no error"),
         .UnexpectedByte => try WriteBytes(writer, "byte that begins no token"),
@@ -105,7 +105,7 @@ extend TomlParseFailure : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) throws FormatError {
+                          spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self.reason {
@@ -127,7 +127,7 @@ extend TomlParseFailure : Display {
 
 // The case name alone, which the debug rendering puts the position after.
 func WriteReasonName(writer: &var TextWriter, reason: &TomlParseError,
-                     spec: FormatSpec) throws FormatError {
+                     spec: FormatSpec) -> !FormatError {
     return match reason {
         .Lexical(cause) => try WriteNested(writer, "Lexical", cause),
         .Unexpected => try WriteBytes(writer, "Unexpected"),
@@ -145,7 +145,7 @@ func WriteReasonName(writer: &var TextWriter, reason: &TomlParseError,
 }
 
 // `Lexical(BadEscape)`, whose payload is a scalar enum with a name of its own.
-func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError) throws FormatError {
+func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError) -> !FormatError {
     try WriteBytes(writer, name);
     try WriteAscii(writer, c8'(');
     try WriteLexicalName(writer, cause);
@@ -154,13 +154,13 @@ func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError)
 
 // `BadValue(TomlScalarError::Malformed(4))`, whose payload renders itself.
 func WriteScalarCase(writer: &var TextWriter, cause: &TomlScalarError,
-                     spec: FormatSpec) throws FormatError {
+                     spec: FormatSpec) -> !FormatError {
     try WriteBytes(writer, "BadValue(");
     try cause.WriteDebug(writer, spec);
     return try WriteAscii(writer, c8')');
 }
 
-func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) throws FormatError {
+func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) -> !FormatError {
     return match reason {
         .None => try WriteBytes(writer, "None"),
         .UnexpectedByte => try WriteBytes(writer, "UnexpectedByte"),
@@ -184,7 +184,7 @@ extend TomlParseFailure : Debug {
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) throws FormatError {
+                        spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         try WriteBytes(writer, "TomlParseError::");
@@ -807,7 +807,7 @@ extend TomlParser {
     /// reads configuration; it does not edit files.
     /// @returns the document, or the failure and where it was found
     /// @see https://rux-lang.dev/docs/api/toml/toml-parser#parse
-    pub func Parse(&var self) -> TomlValue throws TomlParseFailure {
+    pub func Parse(&var self) -> TomlValue ! TomlParseFailure {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;
         var current = @root;
@@ -855,7 +855,7 @@ extend TomlParser {
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/toml/toml-parse
-pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue throws TomlParseFailure {
+pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue ! TomlParseFailure {
     var parser = TomlParser::New(allocator, input, TomlLimits::Default());
     return try parser.Parse();
 }

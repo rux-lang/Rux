@@ -20,7 +20,7 @@
 import Allocator::{ AllocError, AllocationFailed, Allocator, Layout };
 
 // The layout of `count` elements of `T`, or `Unsupported` when no such layout can be represented.
-func ElementLayout<T>(count: uint) -> Layout throws AllocError {
+func ElementLayout<T>(count: uint) -> Layout ! AllocError {
     // An element occupying nothing still needs somewhere to be. A run of them would otherwise be a zero-sized
     // request, which every allocator here answers with the shared empty address — and a store into that address
     // faults, however few bytes it writes. One byte apiece gives the run a real address; every index lands on the
@@ -36,7 +36,7 @@ func ElementLayout<T>(count: uint) -> Layout throws AllocError {
 
 // Storage for `count` elements, uninitialized, or why there is none. Nothing is written to it: a container fills
 // what it hands out.
-func TryAllocateBlock<T>(allocator: Allocator, count: uint) -> (*var T) throws AllocError {
+func TryAllocateBlock<T>(allocator: Allocator, count: uint) -> (*var T) ! AllocError {
     let layout = try ElementLayout<T>(count);
     let block = try allocator.Allocate(layout);
     // Safety: the allocator answered `ElementLayout<T>(count)`, so the block is aligned for `T` and has room for
@@ -53,7 +53,7 @@ func AllocateBlock<T>(allocator: Allocator, count: uint) -> *var T {
 // the old block is untouched and still the caller's, which is what lets a `Try*` operation report a failed growth
 // and leave its container as it was.
 func TryReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, newCount: uint)
-    -> (*var T) throws AllocError {
+    -> (*var T) ! AllocError {
     let oldLayout = try ElementLayout<T>(oldCount);
     let newLayout = try ElementLayout<T>(newCount);
     let moved = try allocator.Reallocate(block as *var opaque, oldLayout, newLayout);

@@ -30,7 +30,7 @@ const NoCommand: uint = 0xFFFFFFFF;
 
 // Validates `source[start..]` against `spec`, and the subcommand's arguments with it.
 func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource, start: uint)
-    -> Parsed throws CommandLineError {
+    -> Parsed ! CommandLineError {
     let end = source.Count();
     var parsed = Parsed {
         spec,
@@ -92,7 +92,7 @@ func ParseLevel(spec: *CommandSpec, parent: *CommandSpec, source: ArgumentSource
 /// @param arguments the arguments, without the program's name
 /// @returns the parse, or why the arguments do not match
 /// @see https://rux-lang.dev/docs/api/commandline/parsed#parse
-pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed throws CommandLineError {
+pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed ! CommandLineError {
     return try ParseLevel(spec, null, ArgumentSource::Given(arguments), 0);
 }
 
@@ -102,7 +102,7 @@ pub func Parse(spec: *CommandSpec, arguments: OsStringView[..]) -> Parsed throws
 /// @param spec the command the arguments are for
 /// @returns the parse, or why the arguments do not match
 /// @see https://rux-lang.dev/docs/api/commandline/parsed#parse-process
-pub func ParseProcess(spec: *CommandSpec) -> Parsed throws CommandLineError {
+pub func ParseProcess(spec: *CommandSpec) -> Parsed ! CommandLineError {
     return try ParseLevel(spec, null, ArgumentSource::ProcessArguments, 0);
 }
 
@@ -321,7 +321,7 @@ extend Parsed {
     /// @param name an option's long name, or a positional's name
     /// @returns the number, none when the value was not given, or why it is not a number
     /// @see https://rux-lang.dev/docs/api/commandline/parsed#integer
-    pub func Integer(&self, name: char8[..]) -> int64? throws CommandLineError {
+    pub func Integer(&self, name: char8[..]) -> int64? ! CommandLineError {
         let text = self.Value(name) ?? self.Positional(name) ?? return none;
         let units = text.Units();
         var index: uint = 0;

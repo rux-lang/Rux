@@ -28,7 +28,7 @@ func Second<T>(first: T, second: T) -> T {
     return second;
 }
 
-func Half(value: int) -> int throws bool {
+func Half(value: int) -> int ! bool {
     if value % 2 != 0 { throw true; }
     return value / 2;
 }

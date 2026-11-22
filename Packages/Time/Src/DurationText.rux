@@ -40,7 +40,7 @@ func Magnitude(value: &Duration, whole: *var uint64, fraction: *var uint32) -> b
 }
 
 // Writes an unsigned value in as many digits as it needs.
-func WriteUnsigned(writer: &var TextWriter, value: uint64) throws FormatError {
+func WriteUnsigned(writer: &var TextWriter, value: uint64) -> !FormatError {
     var digits: char8[20];
     var count: uint = 0;
     var rest = value;
@@ -63,7 +63,7 @@ func WriteUnsigned(writer: &var TextWriter, value: uint64) throws FormatError {
 
 // Writes the fractional second under `spec`, by the same rules a time of day uses: a precision names exactly that
 // many digits and truncates; without one the fraction is trimmed of trailing zeros and omitted when it is zero.
-func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: FormatSpec) throws FormatError {
+func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: FormatSpec) -> !FormatError {
     var digits: char8[9];
     var index: uint = 9;
     var rest = fraction;
@@ -90,7 +90,7 @@ func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: Forma
 }
 
 // The empty style is the default rendering and `seconds` names it explicitly. Nothing else is understood.
-func RejectDurationStyle(spec: FormatSpec) throws FormatError {
+func RejectDurationStyle(spec: FormatSpec) -> !FormatError {
     if spec.HasStyle() && !spec.StyleIs("seconds") {
         throw .UnsupportedRequest;
     }
@@ -111,7 +111,7 @@ extend Duration : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         if spec.Width() > 0u { return try WriteDisplayAligned(writer, self, spec); }
         try RejectDurationStyle(spec);
         var whole: uint64 = 0;
@@ -131,7 +131,7 @@ extend Duration : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }
@@ -145,7 +145,7 @@ extend Duration : Debug {
 /// @param text the text to read
 /// @returns the span, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/duration#parse-duration
-pub func ParseDuration(text: char8[..]) -> Duration throws TimeParseError {
+pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     var at: uint = 0;
     var negative = false;
     // Safety: the read runs only when `at` is below `text.length`, checked first.

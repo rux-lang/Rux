@@ -52,7 +52,7 @@ func PlatformFailure(raw: int32) -> IoError {
 }
 
 // One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
-func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint throws IoError {
+func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoError {
     if bytes.length == 0 { return 0; }
     when #target.os == .Windows {
         if !console {
@@ -176,7 +176,7 @@ extend StandardIn : Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/standard-in#read
-    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if into.length == 0 { return 0; }
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
@@ -225,7 +225,7 @@ when #target.os == .Windows {
         // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
         // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
         // substitute character first in a read is the console's end-of-input.
-        func ReadConsole(&var self, into: var char8[..], served: uint) -> uint throws IoError {
+        func ReadConsole(&var self, into: var char8[..], served: uint) -> uint ! IoError {
             var wide: char16[257];
             var base: uint = 0;
             if self.hasHeldUnit {
@@ -329,14 +329,14 @@ extend StandardOut : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-out#write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         return try WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-out#flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
     }
 }
 
@@ -373,13 +373,13 @@ extend StandardError : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-error#write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         return try WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-error#flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
     }
 }

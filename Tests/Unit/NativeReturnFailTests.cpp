@@ -26,9 +26,9 @@ bool AnyContains(const std::vector<std::string> &errors, const std::string_view 
 TEST_CASE("a unit success completes without a written value") {
     CHECK(Errors(R"(
         struct E {}
-        func Shorthand() throws E {}
-        func Spelled() -> () throws E {}
-        func Early(stop: bool) throws E {
+        func Shorthand() -> !E {}
+        func Spelled() -> () ! E {}
+        func Early(stop: bool) -> !E {
             if stop {
                 return;
             }
@@ -54,8 +54,8 @@ TEST_CASE("a non-unit success still needs a value, and Core::Unit is not the uni
     const auto errors = Errors(R"(
         struct E {}
         struct Unit {}
-        func Missing() -> int32 throws E {}
-        func Named() -> Unit throws E {}
+        func Missing() -> int32 ! E {}
+        func Named() -> Unit ! E {}
     )");
     CHECK(AnyContains(errors, "function 'Missing' must return a value of type 'int32 ! E'"));
     CHECK(AnyContains(errors, "function 'Named' must return a value of type 'Unit ! E'"));
@@ -102,12 +102,12 @@ TEST_CASE("diverging bodies never decide the type of the expression they stand i
 TEST_CASE("a fallible entry point is accepted") {
     CHECK(Errors(R"(
         struct E {}
-        func Main() throws E {}
+        func Main() -> !E {}
     )")
               .empty());
     CHECK(Errors(R"(
         struct E {}
-        func Main() -> int throws E { return 0; }
+        func Main() -> int ! E { return 0; }
     )")
               .empty());
 }

@@ -14,14 +14,14 @@ func ComputeOption(x: int) -> int? {
     return v + 10;
 }
 
-func ParseResult(x: int) -> int throws int {
+func ParseResult(x: int) -> int ! int {
     if x > 0 {
         return x * 2;
     }
     throw -1;
 }
 
-func ComputeResult(x: int) -> int throws int {
+func ComputeResult(x: int) -> int ! int {
     let v = try ParseResult(x);
     return v + 10;
 }

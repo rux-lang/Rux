@@ -93,7 +93,7 @@ extend OpenOptions {
     }
 
     // The contradictions, refused before any platform is asked.
-    func Validate(&self) throws IoError {
+    func Validate(&self) -> !IoError {
         if !self.read && !self.write && !self.append { throw IoError::Of(IoErrorKind::InvalidInput); }
         if self.truncate && !self.write { throw IoError::Of(IoErrorKind::InvalidInput); }
         if (self.create || self.createNew) && !self.write && !self.append {
@@ -130,7 +130,7 @@ struct NativePath {
 extend NativePath {
     // A copy of `path` with a terminator. A name holding a NUL is refused with `InvalidInput`, because the platform
     // would silently truncate it there and act on another file; a block that cannot be allocated is `Other`.
-    func New(allocator: Allocator, path: Path) -> Self throws IoError {
+    func New(allocator: Allocator, path: Path) -> Self ! IoError {
         let units = path.name.units;
         var index: uint = 0;
         while index < units.length {
@@ -183,7 +183,7 @@ extend File {
     /// @param options what may be done with the file, and what to do about existence
     /// @returns the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#open
-    pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self throws IoError {
+    pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> Self ! IoError {
         try options.Validate();
         let native = try NativePath::New(allocator, path);
         when #target.os == .Windows {
@@ -267,7 +267,7 @@ extend File {
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     /// @returns success when the descriptor was released; closing twice is not an error
     /// @see https://rux-lang.dev/docs/api/filesystem/file#close
-    pub func Close(&var self) throws IoError {
+    pub func Close(&var self) -> !IoError {
         if !self.open { return; }
         self.open = false;
         when #target.os == .Windows {

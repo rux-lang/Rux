@@ -37,7 +37,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try WriteBytes(writer, "T(");
         let tag: int32 = self.tag;
         try tag.WriteDebug(writer, spec);

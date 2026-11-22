@@ -74,7 +74,7 @@ func CloneParcel(parcel: &Parcel) -> Parcel {
     };
 }
 
-func Fail(log: *var Log, id: int32) -> int32 throws Tracked {
+func Fail(log: *var Log, id: int32) -> int32 ! Tracked {
     throw Track(log, id);
 }
 

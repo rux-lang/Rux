@@ -48,7 +48,7 @@ func ThroughPointer(spec: *var Spec) {
     spec.options = options[..];
 }
 
-func Fallible() -> int32[..] throws bool {
+func Fallible() -> int32[..] ! bool {
     let options: int32[2] = [1, 2];
     return options[..];
 }

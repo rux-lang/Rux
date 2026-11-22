@@ -47,7 +47,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     try file.Close() catch { _ => Panic("and closes") };
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);

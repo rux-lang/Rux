@@ -100,7 +100,7 @@ func Fill(value: int32) -> Slot {
     return .Some(value);
 }
 
-func Load(value: int32) -> int32 throws Problem {
+func Load(value: int32) -> int32 ! Problem {
     if value == 0i32 {
         throw .NotFound;
     }
@@ -119,7 +119,7 @@ func Choose(warm: bool) -> Color {
 }
 
 // Throws for a negative `value`.
-func Checked(value: int32) -> int32 throws Problem {
+func Checked(value: int32) -> int32 ! Problem {
     if value < 0i32 { throw Problem::Invalid(value); }
     return value;
 }

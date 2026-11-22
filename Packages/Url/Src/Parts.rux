@@ -25,7 +25,7 @@ func IsTrimmed(byte: uint8) -> bool {
 }
 
 // The pieces of `text`, a URL or a relative reference.
-func SplitReference(input: char8[..]) -> Pieces throws UrlError {
+func SplitReference(input: char8[..]) -> Pieces ! UrlError {
     var first: uint = 0;
     var last = input.length;
     while first < last && IsTrimmed(input[first] as uint8) { first = first + 1; }
@@ -81,7 +81,7 @@ func SplitReference(input: char8[..]) -> Pieces throws UrlError {
 }
 
 // Cuts an authority into user information, host and port.
-func SplitAuthority(authority: char8[..], pieces: *var Pieces) throws UrlError {
+func SplitAuthority(authority: char8[..], pieces: *var Pieces) -> !UrlError {
     var hostStart: uint = 0;
     var index = authority.length;
     while index > 0 {

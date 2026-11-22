@@ -324,7 +324,7 @@ extend Table<K, V> {
     /// @param length how many elements
     /// @returns the table size that holds that many entries, or throws `Unsupported` when there is none
     /// @see https://rux-lang.dev/docs/api/collections/table#capacity-for
-    pub func CapacityFor(length: uint) -> uint throws AllocError {
+    pub func CapacityFor(length: uint) -> uint ! AllocError {
         if length == 0 {
             return MinimumTableCapacity;
         }
@@ -360,7 +360,7 @@ extend Table<K, V> {
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/table#try-rehash
     pub func TryRehash(&var self, capacity: uint, hash: func(K, uint64, uint64) -> uint64)
-        throws AllocError {
+        -> !AllocError {
         let keys = try TryAllocateBlock<K>(self.allocator, capacity);
         let values = try TryAllocateBlock<V>(self.allocator, capacity) catch {
             error => {
@@ -440,7 +440,7 @@ extend Table<K, V> {
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/table#try-ensure-room
-    pub func TryEnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) throws AllocError {
+    pub func TryEnsureRoom(&var self, hash: func(K, uint64, uint64) -> uint64) -> !AllocError {
         try self.TryReserve(1, hash);
     }
 
@@ -461,7 +461,7 @@ extend Table<K, V> {
     /// @returns nothing, or throws the allocator's refusal
     /// @see https://rux-lang.dev/docs/api/collections/table#try-reserve
     pub func TryReserve(&var self, additional: uint, hash: func(K, uint64, uint64) -> uint64)
-        throws AllocError {
+        -> !AllocError {
         let wanted = try Table::CapacityFor<K, V>(AddLength(self.length, additional));
         if wanted <= self.capacity { return; }
         // Safety: `CapacityFor` returns a power of two no smaller than `MinimumTableCapacity`.

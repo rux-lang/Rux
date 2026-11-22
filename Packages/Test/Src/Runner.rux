@@ -16,7 +16,7 @@ pub struct TestCase {
     /// The test's name, such as `Parser::ReadsNumbers`.
     pub name: char8[..];
     /// What runs it.
-    pub run: func() throws TestFailure;
+    pub run: func() -> !TestFailure;
 }
 
 /// Which tests a run chooses and how it reports them. `Copy`.

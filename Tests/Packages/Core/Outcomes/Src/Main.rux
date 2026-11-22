@@ -16,7 +16,7 @@ enum Failure: int8 {
 }
 
 // Throws `Invalid` for a negative `value`.
-func Checked(value: int32) -> int32 throws Failure {
+func Checked(value: int32) -> int32 ! Failure {
     if value < 0 { throw Failure::Invalid; }
     return value;
 }

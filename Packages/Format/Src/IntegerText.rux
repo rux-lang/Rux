@@ -22,7 +22,7 @@ import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, Padding
 /// @returns success when the complete rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/integer-text#write-integer-digits
 pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: char8[..], count: uint,
-                            negative: bool) throws FormatError {
+                            negative: bool) -> !FormatError {
     // Every integer width, narrow and wide, reaches the writer through here, so this is where an integer says
     // which styles it has meaning for: the four bases, and nothing else.
     try RejectNonBaseStyle(spec);
@@ -83,7 +83,7 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
 /// @returns success when the complete rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/integer-text#write-integer-spec
 pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: uint64,
-                          negative: bool) throws FormatError {
+                          negative: bool) -> !FormatError {
     var digits: char8[64];
     var count: uint = 0;
     var radix: uint64 = 10;
@@ -119,7 +119,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
 /// @param scalar the Unicode scalar value to render
 /// @returns success when the padded character was accepted
 /// @see https://rux-lang.dev/docs/api/format/character-text#format-scalar
-pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) throws FormatError {
+pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) -> !FormatError {
     try RejectStyle(spec);
     var encoded: char8[4];
     var written: uint = 0;

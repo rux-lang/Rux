@@ -131,7 +131,7 @@ extend Poller {
     /// @param allocator where Windows' registrations and the room for events come from
     /// @returns the poller, or why the system would not make one
     /// @see https://rux-lang.dev/docs/api/net/poller#new
-    pub func New(allocator: Allocator) -> Self throws IoError {
+    pub func New(allocator: Allocator) -> Self ! IoError {
         var poller = Self { handle: NoSocket, registrations: Vector<Registration>::New(allocator),
                               buffer: Vector<uint64>::New(allocator) };
         when #target.os == .Linux {
@@ -157,7 +157,7 @@ extend Poller {
     /// @param interest the readiness wanted
     /// @returns success, or `AlreadyExists` when the socket is registered already
     /// @see https://rux-lang.dev/docs/api/net/poller#register
-    pub func Register(&var self, source: PollSource, token: uint64, interest: Interest) throws IoError {
+    pub func Register(&var self, source: PollSource, token: uint64, interest: Interest) -> !IoError {
         try self.Change(source, token, interest, true);
     }
 
@@ -167,7 +167,7 @@ extend Poller {
     /// @param interest the readiness wanted
     /// @returns success, or `NotFound` when the socket is not registered
     /// @see https://rux-lang.dev/docs/api/net/poller#modify
-    pub func Modify(&var self, source: PollSource, token: uint64, interest: Interest) throws IoError {
+    pub func Modify(&var self, source: PollSource, token: uint64, interest: Interest) -> !IoError {
         try self.Change(source, token, interest, false);
     }
 
@@ -175,7 +175,7 @@ extend Poller {
     /// @param source the socket
     /// @returns success, or `NotFound` when the socket is not registered
     /// @see https://rux-lang.dev/docs/api/net/poller#deregister
-    pub func Deregister(&var self, source: PollSource) throws IoError {
+    pub func Deregister(&var self, source: PollSource) -> !IoError {
         when #target.os == .Linux {
             var bytes: uint8[16] = [0u8; 16];
             // Safety: `bytes` is a local of 16 bytes, at least `EpollEventBytes`.
@@ -200,7 +200,7 @@ extend Poller {
     /// @param timeout how long to wait, zero to only look, or `none` to wait without end
     /// @returns how many events were filled; zero after the timeout or when a signal ended the wait early
     /// @see https://rux-lang.dev/docs/api/net/poller#wait
-    pub func Wait(&var self, events: var PollEvent[..], timeout: Duration?) -> uint throws IoError {
+    pub func Wait(&var self, events: var PollEvent[..], timeout: Duration?) -> uint ! IoError {
         if events.length == 0u { throw IoError::Of(IoErrorKind::InvalidInput); }
         let capacity = if events.length > 1024u { 1024u } else { events.length };
         let milliseconds = TimeoutMilliseconds(timeout);
@@ -308,7 +308,7 @@ extend Poller {
     }
 
     // Registers a socket, or changes its registration.
-    func Change(&var self, source: PollSource, token: uint64, interest: Interest, adding: bool) throws IoError {
+    func Change(&var self, source: PollSource, token: uint64, interest: Interest, adding: bool) -> !IoError {
         when #target.os == .Linux {
             var mask: uint32 = 0;
             if interest.readable { mask = mask | EPOLLIN | EPOLLRDHUP; }
@@ -354,7 +354,7 @@ extend Poller {
 
     // Sets the kqueue filters of `handle` to `interest`: each wanted direction added or updated with `token`, and each
     // unwanted one removed, which may find nothing to remove.
-    func Apply(&var self, handle: uint64, token: uint64, interest: Interest) throws IoError {
+    func Apply(&var self, handle: uint64, token: uint64, interest: Interest) -> !IoError {
         when #target.os == .FreeBSD || #target.os == .macOS {
             var changes: Kevent[2] = [
                 Kevent::Of(handle, EVFILT_READ, (if interest.readable {
@@ -395,7 +395,7 @@ extend Poller {
     }
 
     // Makes the event buffer at least `bytes` long.
-    func Reserve(&var self, bytes: uint) throws IoError {
+    func Reserve(&var self, bytes: uint) -> !IoError {
         let words = (bytes + 7) / 8;
         while self.buffer.Length() < words {
             self.buffer.Push(0);

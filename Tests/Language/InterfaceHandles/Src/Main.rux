@@ -80,21 +80,21 @@ struct Counting {
 }
 
 extend Counting : Allocator {
-    func Allocate(&var self, layout: Layout) -> *var opaque throws AllocError {
+    func Allocate(&var self, layout: Layout) -> *var opaque ! AllocError {
         var system = SystemAllocator::New();
         let block = try system.Allocate(layout);
         self.live += 1;
         return block;
     }
 
-    func Deallocate(&var self, block: *var opaque, layout: Layout) throws AllocError {
+    func Deallocate(&var self, block: *var opaque, layout: Layout) -> !AllocError {
         var system = SystemAllocator::New();
         try system.Deallocate(block, layout);
         self.live -= 1;
     }
 
     func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque throws AllocError {
+        -> *var opaque ! AllocError {
         var system = SystemAllocator::New();
         return try system.Reallocate(block, oldLayout, newLayout);
     }

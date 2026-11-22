@@ -23,7 +23,7 @@ extend Instant : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole reading was accepted
     /// @see https://rux-lang.dev/docs/api/time/instant#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         try WriteBytes(writer, "Instant(nanoseconds: ");

@@ -39,7 +39,7 @@ func EndsWith(buffer: &PathBuffer, tail: char8[..]) -> bool {
     return true;
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     // The working directory is absolute, and reading it does not disturb anything.

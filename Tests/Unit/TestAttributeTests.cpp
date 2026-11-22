@@ -30,7 +30,7 @@ bool Reports(const ParseResult &parsed, const std::string &message) {
 TEST_CASE("#Test marks a function as a test, with or without empty parentheses") {
     const auto parsed = ParseSource(R"(
         #Test
-        func Adds() throws TestFailure {}
+        func Adds() -> !TestFailure {}
 
         #Test
         func Older() {}

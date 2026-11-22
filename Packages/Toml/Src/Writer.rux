@@ -75,12 +75,12 @@ func IsBareKey(name: char8[..]) -> bool {
     return true;
 }
 
-func Emit(writer: &var TextWriter, bytes: char8[..]) throws FormatError {
+func Emit(writer: &var TextWriter, bytes: char8[..]) -> !FormatError {
     let sink = writer;
     return try sink.Write(bytes);
 }
 
-func EmitByte(writer: &var TextWriter, byte: uint8) throws FormatError {
+func EmitByte(writer: &var TextWriter, byte: uint8) -> !FormatError {
     var one: char8[1];
     one[0] = byte as char8;
     return try Emit(writer, one[0..1]);
@@ -88,7 +88,7 @@ func EmitByte(writer: &var TextWriter, byte: uint8) throws FormatError {
 
 // A basic string: the quote, the backslash and every control character escaped, and nothing else. The short
 // escapes are used where TOML defines them, and a four-digit form otherwise.
-func EmitBasicString(writer: &var TextWriter, text: char8[..]) throws FormatError {
+func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> !FormatError {
     try EmitByte(writer, 0x22);
     var index: uint = 0;
     while index < text.length {
@@ -133,7 +133,7 @@ func HexDigit(value: uint8) -> uint8 {
 }
 
 // A key, bare where TOML allows it and quoted where it does not.
-func EmitKey(writer: &var TextWriter, name: char8[..]) throws FormatError {
+func EmitKey(writer: &var TextWriter, name: char8[..]) -> !FormatError {
     if IsBareKey(name) { return try Emit(writer, name); }
     return try EmitBasicString(writer, name);
 }
@@ -141,7 +141,7 @@ func EmitKey(writer: &var TextWriter, name: char8[..]) throws FormatError {
 // A float, at the fewest digits that read back as the same value. Fifteen digits is what a float64 always
 // carries cleanly, and seventeen is what always round-trips; trying the three in order gives text that is both
 // short and exact, and the same value always produces the same text.
-func EmitFloat(writer: &var TextWriter, value: float64) throws FormatError {
+func EmitFloat(writer: &var TextWriter, value: float64) -> !FormatError {
     if value != value { return try Emit(writer, "nan"); }
     if value > 1.7976931348623157e308 { return try Emit(writer, "inf"); }
     if value < -1.7976931348623157e308 { return try Emit(writer, "-inf"); }
@@ -179,7 +179,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) throws FormatError {
 
 // An integer, in decimal. The other three bases are spellings of the same value, and picking one of them would
 // make the output depend on how the value was written rather than on what it is.
-func EmitInteger(writer: &var TextWriter, value: int64) throws FormatError {
+func EmitInteger(writer: &var TextWriter, value: int64) -> !FormatError {
     var storage: char8[24];
     var length: uint = 0;
     var negative = value < 0;
@@ -208,7 +208,7 @@ func EmitInteger(writer: &var TextWriter, value: int64) throws FormatError {
 }
 
 // Two digits, which every part of a date and a time is written with except the year and the fraction.
-func EmitPadded(writer: &var TextWriter, value: uint32, width: uint) throws FormatError {
+func EmitPadded(writer: &var TextWriter, value: uint32, width: uint) -> !FormatError {
     var storage: char8[10];
     var index = width;
     var rest = value;
@@ -221,7 +221,7 @@ func EmitPadded(writer: &var TextWriter, value: uint32, width: uint) throws Form
 }
 
 // A date-time in whichever of the four forms the kind names, which is what keeps a local reading local.
-func EmitDateTime(writer: &var TextWriter, value: &TomlValue) throws FormatError {
+func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> !FormatError {
     let kind = value.Kind();
     if kind != TomlKind::LocalTime {
         try EmitPadded(writer, value.date.year as uint32, 4);
@@ -255,7 +255,7 @@ func EmitDateTime(writer: &var TextWriter, value: &TomlValue) throws FormatError
 
 // A value written where a value belongs: on the right of an equals sign, or inside an array. A table reached
 // this way is written inline, because inside an array TOML has no other spelling for one.
-func EmitValue(writer: &var TextWriter, value: &TomlValue) throws FormatError {
+func EmitValue(writer: &var TextWriter, value: &TomlValue) -> !FormatError {
     let kind = value.Kind();
     if kind == TomlKind::Boolean { return try Emit(writer, if value.boolean { "true" } else { "false" }); }
     if kind == TomlKind::Integer { return try EmitInteger(writer, value.integer); }
@@ -307,7 +307,7 @@ func IsBodyEntry(value: &TomlValue) -> bool {
 }
 
 // The entries of a table that are written as `key = value` lines, in the order the table holds them.
-func EmitBody(writer: &var TextWriter, table: &TomlValue) throws FormatError {
+func EmitBody(writer: &var TextWriter, table: &TomlValue) -> !FormatError {
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
         if table.EntryAt(index) is .Some(entry) && IsBodyEntry(entry.value) {
@@ -322,7 +322,7 @@ func EmitBody(writer: &var TextWriter, table: &TomlValue) throws FormatError {
 }
 
 // A header, `[path]` or `[[path]]`, followed by a newline.
-func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bool) throws FormatError {
+func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bool) -> !FormatError {
     if !first {
         // A blank line before every header but the first, which is what makes a configuration file readable and
         // is also the only whitespace this writer ever produces.
@@ -337,7 +337,7 @@ func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bo
 // The sub-tables of a table, each under a header of its own, after the body has been written. The order is the
 // table's own, so the output of a tree is the same every time.
 func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPath, written: &var uint,
-                  root: bool) throws FormatError {
+                  root: bool) -> !FormatError {
     var index: uint = 0;
     while index < (table.Length() ?? 0) {
         if table.EntryAt(index) is .Some(entry) {
@@ -350,7 +350,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
 
 // One entry of a table under the header, or headers, of its own, unless it is written in the table's body.
 func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath, written: &var uint,
-                 root: bool) throws FormatError {
+                 root: bool) -> !FormatError {
     if IsBodyEntry(entry.value) { return; }
     let mark = path.length;
     if !root {
@@ -380,12 +380,12 @@ func EmitSection(writer: &var TextWriter, entry: &TomlEntry, path: &var TomlPath
 
 // A path that will not fit: the document is one this writer cannot spell a header for, which is a fact about the
 // form rather than about the destination.
-func PathTooLong() throws FormatError {
+func PathTooLong() -> !FormatError {
     throw .ValueOutOfRange;
 }
 
 // A key appended to the header path, in the form a header would spell it.
-func KeyIntoPath(path: &var TomlPath, name: char8[..]) throws FormatError {
+func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> !FormatError {
     if IsBareKey(name) {
         if !path.Append(name) { try PathTooLong(); }
         return;
@@ -413,7 +413,7 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) throws FormatError {
 /// @param table the document to write, borrowed for the call
 /// @returns success when the whole document was accepted
 /// @see https://rux-lang.dev/docs/api/toml/toml-write-document
-pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) throws FormatError {
+pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> !FormatError {
     if table.Kind() != TomlKind::Table { return try EmitValue(writer, table); }
     var storage: char8[1024];
     // Safety: `storage` is a local array of `MaximumHeaderPath` bytes, and `path` does not outlive it.

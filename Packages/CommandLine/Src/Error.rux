@@ -35,7 +35,7 @@ pub variant CommandLineError {
 
 // Writes native text a person can read: UTF-16 decoded on Windows, bytes passed through elsewhere, and anything that
 // is not a well-formed character written as U+FFFD, so that a malformed argument still prints.
-func WriteNative(writer: &var TextWriter, view: OsStringView) throws FormatError {
+func WriteNative(writer: &var TextWriter, view: OsStringView) -> !FormatError {
     let units = view.Units();
     var index: uint = 0;
     while index < units.length {
@@ -105,7 +105,7 @@ extend CommandLineError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-display
-    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         match self {
             .UnknownOption(argument) => {
@@ -160,7 +160,7 @@ extend CommandLineError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/commandline/command-line-error#write-debug
-    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    pub func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         return try self.WriteDisplay(writer, spec);
     }
 }

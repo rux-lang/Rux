@@ -47,7 +47,7 @@ func NoRule() -> Rule {
 }
 
 // Reads `text` as a rule, adding its abbreviations to `names`.
-func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule throws TimeZoneError {
+func ParseRule(text: char8[..], names: &var Vector<char8>) -> Rule ! TimeZoneError {
     var rule = NoRule();
     var at: uint = 0;
     rule.standard = ZoneType { offset: 0, daylight: false, abbreviation: 0, abbreviationLength: 0 };
@@ -91,7 +91,7 @@ func IsDecimal(c: char8) -> bool {
 }
 
 // Reads an abbreviation, three or more letters or anything between `<` and `>`, into `names`.
-func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: &var ZoneType) throws TimeZoneError {
+func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: &var ZoneType) -> !TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
     var start = *at;
     var end = start;
@@ -117,7 +117,7 @@ func ParseName(text: char8[..], at: *var uint, names: &var Vector<char8>, into: 
 }
 
 // Reads `[+-]h[h][:mm[:ss]]` as seconds, its hours at most `maximumHours`.
-func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 throws TimeZoneError {
+func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 ! TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
     var cursor = *at;
     var sign: int32 = 1;
@@ -146,7 +146,7 @@ func ParseOffset(text: char8[..], at: *var uint, maximumHours: int32) -> int32 t
 }
 
 // Reads one to `digits` decimal digits.
-func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 throws TimeZoneError {
+func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 ! TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
     var cursor = *at;
     var value: int32 = 0;
@@ -163,7 +163,7 @@ func ParseNumber(text: char8[..], at: *var uint, digits: uint) -> int32 throws T
 }
 
 // Reads a date, `Jn`, `n` or `Mm.w.d`, and its optional `/time`.
-func ParseDate(text: char8[..], at: *var uint) -> RuleDate throws TimeZoneError {
+func ParseDate(text: char8[..], at: *var uint) -> RuleDate ! TimeZoneError {
     // Safety: every caller in this file passes the address of its own cursor local, a live, writable `uint`.
     var cursor = *at;
     var date = RuleDate { kind: 1, day: 0, month: 0, week: 0, weekday: 0, time: 7200 };

@@ -117,7 +117,7 @@ extend JsonNumber {
     /// @param text the number's text, borrowed for the call
     /// @returns the number, holding a copy of the text; `MalformedNumber` when the text is not a JSON number
     /// @see https://rux-lang.dev/docs/api/json/json-number#constructor
-    pub func New(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
+    pub func New(allocator: Allocator, text: char8[..]) -> Self ! JsonError {
         if !IsJsonNumberText(text) { throw .MalformedNumber; }
         return Self::Lexed(allocator, text);
     }
@@ -251,7 +251,7 @@ extend JsonValue {
     /// @param text the number's text, borrowed for the call
     /// @returns that text as a number value; `MalformedNumber` when the text is not a JSON number
     /// @see https://rux-lang.dev/docs/api/json/json-value#number
-    pub func Number(allocator: Allocator, text: char8[..]) -> Self throws JsonError {
+    pub func Number(allocator: Allocator, text: char8[..]) -> Self ! JsonError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Number;
         held.number = try JsonNumber::New(allocator, text);
@@ -272,7 +272,7 @@ extend JsonValue {
     /// @param value the value to act on
     /// @returns that text as a string value, or `InvalidUtf8` when it is not text
     /// @see https://rux-lang.dev/docs/api/json/json-value#text
-    pub func Text(allocator: Allocator, value: char8[..]) -> Self throws TextError {
+    pub func Text(allocator: Allocator, value: char8[..]) -> Self ! TextError {
         var held = Self::Null(allocator);
         held.kind = JsonKind::Text;
         held.text = try String::FromBytes(allocator, value);
@@ -351,7 +351,7 @@ extend JsonValue {
     /// decide who owns it on failure. Terminates the program when the array cannot grow.
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/json/json-value#push
-    pub func Push(&var self, value: Self) throws JsonError {
+    pub func Push(&var self, value: Self) -> !JsonError {
         if self.kind != JsonKind::Array { throw .WrongKind; }
         self.elements.Push(move value);
     }
@@ -365,7 +365,7 @@ extend JsonValue {
     /// @param name the member's name
     /// @param value the value to act on
     /// @see https://rux-lang.dev/docs/api/json/json-value#insert
-    pub func Insert(&var self, name: String, value: Self) throws JsonError {
+    pub func Insert(&var self, name: String, value: Self) -> !JsonError {
         if self.kind != JsonKind::Object { throw .WrongKind; }
         var member = JsonMember { name: move name, value: move value };
         self.members.Push(move member);

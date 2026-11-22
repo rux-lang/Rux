@@ -18,7 +18,7 @@ struct IoError {
     code: int32;
 }
 
-func Parse(text: int32) -> int32 throws ParseError {
+func Parse(text: int32) -> int32 ! ParseError {
     if text == 0i32 {
         throw .Empty;
     }
@@ -31,7 +31,7 @@ func Parse(text: int32) -> int32 throws ParseError {
     return text;
 }
 
-func Read(code: int32) -> int32 throws IoError {
+func Read(code: int32) -> int32 ! IoError {
     if code != 0i32 {
         throw IoError { code };
     }
@@ -49,7 +49,7 @@ func Describe(text: int32) -> int32 {
     }
 }
 
-func Rethrow(text: int32) -> int32 throws ParseError {
+func Rethrow(text: int32) -> int32 ! ParseError {
     // Passing an error on is an arm of its own; it goes to the caller, not back into the same arms.
     return try Parse(text) catch {
         .Empty => 0i32,
@@ -57,7 +57,7 @@ func Rethrow(text: int32) -> int32 throws ParseError {
     };
 }
 
-func Translate(text: int32) -> int32 throws IoError {
+func Translate(text: int32) -> int32 ! IoError {
     try {
         return Parse(text);
     } catch {

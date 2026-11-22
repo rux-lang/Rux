@@ -131,9 +131,9 @@ TEST_CASE("semantic layouts and runtime layouts agree for native types") {
         struct Holder { marker: (); value: int32; }
         func Use(optional: int32?, nested: int32??, unitOptional: ()?, sum: int8 | int64, items: int32?[3],
                  pair: ((), int32), holder: Holder) {}
-        func Complete() throws Done {}
-        func Wide() -> int64 throws int8 { return 0i64; }
-        func OptionalError() -> int32 throws (int32?) { return 0i32; }
+        func Complete() -> !Done {}
+        func Wide() -> int64 ! int8 { return 0i64; }
+        func OptionalError() -> int32 ! (int32?) { return 0i32; }
     )");
     const std::vector<TypeRef> types = {
         Optional,

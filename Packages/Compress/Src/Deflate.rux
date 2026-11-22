@@ -58,7 +58,7 @@ pub struct CompressWriter {
 }
 
 // Allocates `size` bytes or fails.
-func Take(allocator: Allocator, size: uint) -> *var opaque throws IoError {
+func Take(allocator: Allocator, size: uint) -> *var opaque ! IoError {
     var borrowed = allocator;
     let layout = Layout::Of(size, 8) ?? throw IoError::Of(IoErrorKind::LimitExceeded);
     return try borrowed.Allocate(layout) catch { _ => throw IoError::Of(IoErrorKind::LimitExceeded) };
@@ -81,7 +81,7 @@ extend CompressWriter {
     /// @returns the writer, or fails when the allocator refused
     /// @see https://rux-lang.dev/docs/api/compress/deflate#new
     pub func New(allocator: Allocator, sink: Writer, format: Format, level: Level = Level::Default)
-        -> Self throws IoError {
+        -> Self ! IoError {
         // Safety: `Take` returns a fresh block of the bytes asked for, eight-byte aligned, which holds exactly
         // `DataCapacity` bytes.
         let data = try Take(allocator, DataCapacity) as *var uint8;
@@ -111,7 +111,7 @@ extend CompressWriter {
     /// the sink. Writing after finishing fails; finishing twice does nothing.
     /// @returns nothing, or fails with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#finish
-    pub func Finish(&var self) throws IoError {
+    pub func Finish(&var self) -> !IoError {
         if self.finished { return; }
         try self.Start();
         try self.EncodeBlock(true);
@@ -133,7 +133,7 @@ extend CompressWriter {
     }
 
     // Writes the container's header, once.
-    func Start(&var self) throws IoError {
+    func Start(&var self) -> !IoError {
         if self.started { return; }
         self.started = true;
         if self.format == Format::Zlib {
@@ -160,16 +160,16 @@ extend CompressWriter {
     }
 
     // Appends whole bytes to the output, after any pending bits.
-    func PutByte(&var self, value: uint8) throws IoError {
+    func PutByte(&var self, value: uint8) -> !IoError {
         try self.PutBits(value as uint64, 8);
     }
 
-    func PutWord(&var self, value: uint32) throws IoError {
+    func PutWord(&var self, value: uint32) -> !IoError {
         try self.PutBits(value as uint64, 32);
     }
 
     // Appends `count` bits of `value`, least significant first.
-    func PutBits(&var self, value: uint64, count: uint) throws IoError {
+    func PutBits(&var self, value: uint64, count: uint) -> !IoError {
         self.bits = self.bits | ((value & ((1u64 << count as uint64) - 1u64)) << self.bitCount as uint64);
         self.bitCount = self.bitCount + count;
         while self.bitCount >= 8u {
@@ -183,12 +183,12 @@ extend CompressWriter {
     }
 
     // Pads the output to a whole byte.
-    func AlignBits(&var self) throws IoError {
+    func AlignBits(&var self) -> !IoError {
         if self.bitCount > 0u { try self.PutBits(0, 8u - self.bitCount); }
     }
 
     // Hands the output gathered so far to the sink.
-    func SendOutput(&var self) throws IoError {
+    func SendOutput(&var self) -> !IoError {
         var sent: uint = 0;
         while sent < self.outputLength {
             // Safety: the buffer invariant: the first `outputLength` bytes of `output` are in use, and `sent` is below
@@ -306,7 +306,7 @@ extend CompressWriter {
     }
 
     // Encodes the data waiting since the last block as one or more blocks, the last of them final when `final`.
-    func EncodeBlock(&var self, final: bool) throws IoError {
+    func EncodeBlock(&var self, final: bool) -> !IoError {
         let start = self.blockStart;
         let end = self.dataLength;
         if start == end && !final { return; }
@@ -473,7 +473,7 @@ extend CompressWriter {
 
     // Writes the block's tokens with the given code lengths, and the end-of-block code.
     // Safety: `literalLengths` must be readable for 288 lengths and `distanceLengths` for 30.
-    func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) throws IoError {
+    func WriteTokens(&var self, literalLengths: *uint8, distanceLengths: *uint8) -> !IoError {
         var literalCodes: uint16[288] = [0u16; 288];
         var distanceCodes: uint16[30] = [0u16; 30];
         AssignCodes(literalLengths, 288, @literalCodes[0]);
@@ -503,7 +503,7 @@ extend CompressWriter {
     }
 
     // Writes data as stored blocks of at most 65535 bytes, the last final when `final`.
-    func WriteStored(&var self, start: uint, end: uint, final: bool) throws IoError {
+    func WriteStored(&var self, start: uint, end: uint, final: bool) -> !IoError {
         var at = start;
         while true {
             let length = if end - at > 65535u { 65535u } else { end - at };
@@ -574,7 +574,7 @@ extend CompressWriter : Writer {
     /// @param bytes the data
     /// @returns how many bytes were taken, which is all of them, or fails after `Finish` or with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if self.finished { throw IoError::Of(IoErrorKind::InvalidHandle); }
         try self.Start();
         if self.format == Format::Zlib {
@@ -612,7 +612,7 @@ extend CompressWriter : Writer {
     /// then flushes the sink. The stream continues afterwards.
     /// @returns nothing, or fails with the sink's error
     /// @see https://rux-lang.dev/docs/api/compress/deflate#flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
         if self.finished { return; }
         try self.Start();
         try self.EncodeBlock(false);

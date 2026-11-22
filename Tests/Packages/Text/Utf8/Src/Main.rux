@@ -17,7 +17,7 @@ func Refuses(bytes: char8[..], expected: Utf8Error) -> bool {
     return false;
 }
 
-func Main() throws Utf8Error {
+func Main() -> !Utf8Error {
     // The widths, at each boundary and one either side.
     Assert(EncodedLength(0u32 as char32) == 1, "U+0000 takes one byte");
     Assert(EncodedLength(0x7Fu32 as char32) == 1, "and so does the last one-byte value");

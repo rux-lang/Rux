@@ -17,7 +17,7 @@ const MaximumInstructions: uint = 100000;
 const NoPatch: uint32 = 0xFFFFFFFF;
 
 extend Regex {
-    func Emit(&var self, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 throws RegexError {
+    func Emit(&var self, op: Op, flags: uint8, a: uint32, b: uint32) -> uint32 ! RegexError {
         let index = self.instructions.Length();
         if index >= MaximumInstructions { throw RegexError::At(RegexErrorKind::TooLarge, 0); }
         self.instructions.Push(Instruction { op, flags, a, b, c: 0 });
@@ -48,7 +48,7 @@ extend Regex {
 
     // Emits node `index` and what it holds. With `reverse`, emits what matches the same text read backwards: the
     // parts of a sequence in the other order, the assertions about the start and the end exchanged, and no groups.
-    func CompileNode(&var self, nodes: Node[..], index: uint32, reverse: bool) throws RegexError {
+    func CompileNode(&var self, nodes: Node[..], index: uint32, reverse: bool) -> !RegexError {
         let node = nodes[index as uint];
         match node.kind {
             NodeKind::Empty => {},
@@ -141,7 +141,7 @@ extend Regex {
         }
     }
 
-    func CompileRepeat(&var self, nodes: Node[..], node: Node, reverse: bool) throws RegexError {
+    func CompileRepeat(&var self, nodes: Node[..], node: Node, reverse: bool) -> !RegexError {
         let greedy = (node.flags & NodeGreedy) != 0u8;
         let low = node.low;
         let high = node.high;
@@ -189,7 +189,7 @@ extend Regex {
 
     // Compiles the whole pattern from `root`, with the whole match as group 0, and works out how a search can skip
     // ahead to where a match can start.
-    func CompileProgram(&var self, nodes: Node[..], root: uint32) throws RegexError {
+    func CompileProgram(&var self, nodes: Node[..], root: uint32) -> !RegexError {
         try self.Emit(Op::Save, 0, 0, 0);
         try self.CompileNode(nodes, root, false);
         try self.Emit(Op::Save, 0, 1, 0);
@@ -215,7 +215,7 @@ extend Regex {
     // Emits the pattern read backwards after the forward program, for the search that finds where a match starts
     // once its end is known. A pattern too large to hold twice keeps only the forward program, and its searches find
     // starts with the Pike matcher instead.
-    func CompileReverse(&var self, nodes: Node[..], root: uint32) throws RegexError {
+    func CompileReverse(&var self, nodes: Node[..], root: uint32) -> !RegexError {
         let forward = self.instructions.Length();
         self.forwardLength = forward;
         if forward * 2 > MaximumInstructions {

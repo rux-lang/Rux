@@ -123,7 +123,7 @@ func Lower(c: uint8) -> char8 {
 
 // Appends `text` to `out` in the normalized form of `component`. A host refuses characters it cannot hold rather than
 // escaping them, since an escaped host would name a different machine.
-func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) throws UrlError {
+func AppendNormalized(out: &var Bytes, text: char8[..], component: Component) -> !UrlError {
     let lower = component == Component::Host;
     var index: uint = 0;
     while index < text.length {

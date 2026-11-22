@@ -2,14 +2,14 @@
 struct ParseError {}
 struct IoError {}
 
-func Parse() -> int throws ParseError {
+func Parse() -> int ! ParseError {
     return 1;
 }
 
-func Load() -> int throws IoError {
+func Load() -> int ! IoError {
     return try Parse();
 }
 
-func LoadEither() -> int throws IoError | ParseError {
+func LoadEither() -> int ! IoError | ParseError {
     return try Parse();
 }

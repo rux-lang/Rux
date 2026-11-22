@@ -8,14 +8,14 @@ struct Fault {
     code: int32;
 }
 
-func Parse(text: int32) -> int32 throws Fault {
+func Parse(text: int32) -> int32 ! Fault {
     if text < 0i32 {
         throw Fault { code: text };
     }
     return text;
 }
 
-func Main() -> int throws Fault {
+func Main() -> int ! Fault {
     let parsed = try Parse(5i32);
     Assert(parsed == 5i32, "a success continues");
     let recovered = try Parse(-1i32) catch { e => -e.code };

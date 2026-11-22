@@ -23,7 +23,7 @@ The module names describe where each declaration comes from; they are not part o
 import Allocator::SystemAllocator;
 import Regex::{ Regex, RegexError };
 
-func Year(text: char8[..]) -> uint throws RegexError {
+func Year(text: char8[..]) -> uint ! RegexError {
     let date = try Regex::New(SystemAllocator::New(), "(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})");
     match date.Capture(text) {
         .Some(groups) => return (groups.Named("year") ?? return 0).start,

@@ -19,7 +19,7 @@ struct ScriptedSource {
 }
 
 extend ScriptedSource : EntropySource {
-    func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError {
+    func Fill(&var self, buffer: *var opaque, length: uint) -> !EntropyError {
         self.calls = self.calls + 1;
 
         // Write a recognizable pattern first, exactly as a real source that fails part-way through would. If the
@@ -54,7 +54,7 @@ func AllBytesAre(buffer: byte[..], value: byte) -> bool {
     return true;
 }
 
-func Main() throws EntropyError {
+func Main() -> !EntropyError {
     var storage: byte[64];
 
     // A source that always succeeds fills the buffer, in a single call.

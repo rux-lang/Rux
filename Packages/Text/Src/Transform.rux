@@ -42,7 +42,7 @@ enum CaseMapping: uint8 {
 }
 
 // Copies `view`, replacing every scalar value by its full mapping of the given kind.
-func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> String throws TextError {
+func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> String ! TextError {
     var builder = StringBuilder::New(allocator);
     builder.Reserve(view.bytes.length);
     var scalars = view.Scalars();
@@ -75,7 +75,7 @@ func MapCase(allocator: Allocator, view: StringView, mapping: CaseMapping) -> St
 /// @param view the borrowed text to act on
 /// @returns the text in upper case, or why it could not be made
 /// @see https://rux-lang.dev/docs/api/text/transform#to-upper
-pub func ToUpper(allocator: Allocator, view: StringView) -> String throws TextError {
+pub func ToUpper(allocator: Allocator, view: StringView) -> String ! TextError {
     return try MapCase(allocator, view, CaseMapping::Upper);
 }
 
@@ -85,7 +85,7 @@ pub func ToUpper(allocator: Allocator, view: StringView) -> String throws TextEr
 /// @param view the borrowed text to act on
 /// @returns the text in lower case, or why it could not be made
 /// @see https://rux-lang.dev/docs/api/text/transform#to-lower
-pub func ToLower(allocator: Allocator, view: StringView) -> String throws TextError {
+pub func ToLower(allocator: Allocator, view: StringView) -> String ! TextError {
     return try MapCase(allocator, view, CaseMapping::Lower);
 }
 
@@ -95,7 +95,7 @@ pub func ToLower(allocator: Allocator, view: StringView) -> String throws TextEr
 /// @param view the borrowed text to act on
 /// @returns the folded text, or why it could not be made
 /// @see https://rux-lang.dev/docs/api/text/transform#fold-case
-pub func FoldCase(allocator: Allocator, view: StringView) -> String throws TextError {
+pub func FoldCase(allocator: Allocator, view: StringView) -> String ! TextError {
     return try MapCase(allocator, view, CaseMapping::Folded);
 }
 

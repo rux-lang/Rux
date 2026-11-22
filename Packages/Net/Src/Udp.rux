@@ -29,7 +29,7 @@ extend UdpSocket {
     /// @param address the address to receive at
     /// @returns the socket, or fails with `AddressInUse` or `AddressUnavailable`
     /// @see https://rux-lang.dev/docs/api/net/udp#bind
-    pub func Bind(address: SocketAddress) -> Self throws IoError {
+    pub func Bind(address: SocketAddress) -> Self ! IoError {
         let handle = try OpenSocket(address, false);
         var udp = Self { handle };
         try BindSocket(handle, address, false);
@@ -41,7 +41,7 @@ extend UdpSocket {
     /// @param target where to send it
     /// @returns how many bytes were sent
     /// @see https://rux-lang.dev/docs/api/net/udp#send-to
-    pub func SendTo(&self, bytes: char8[..], target: SocketAddress) -> uint throws IoError {
+    pub func SendTo(&self, bytes: char8[..], target: SocketAddress) -> uint ! IoError {
         return try SendSocket(self.handle, bytes, target);
     }
 
@@ -49,7 +49,7 @@ extend UdpSocket {
     /// @param into where to put it
     /// @returns its length and its sender
     /// @see https://rux-lang.dev/docs/api/net/udp#receive-from
-    pub func ReceiveFrom(&self, into: var char8[..]) -> Datagram throws IoError {
+    pub func ReceiveFrom(&self, into: var char8[..]) -> Datagram ! IoError {
         var source = SocketAddress { ip: IpAddress::FromIpv4(Ipv4Address::Unspecified()), port: 0 };
         let length = try ReceiveSocket(self.handle, into, @source);
         return Datagram { length, source };
@@ -59,7 +59,7 @@ extend UdpSocket {
     /// @param peer the one address to talk to
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/udp#connect
-    pub func Connect(&self, peer: SocketAddress) throws IoError {
+    pub func Connect(&self, peer: SocketAddress) -> !IoError {
         try ConnectSocket(self.handle, peer);
     }
 
@@ -67,7 +67,7 @@ extend UdpSocket {
     /// @param bytes the datagram
     /// @returns how many bytes were sent
     /// @see https://rux-lang.dev/docs/api/net/udp#send
-    pub func Send(&self, bytes: char8[..]) -> uint throws IoError {
+    pub func Send(&self, bytes: char8[..]) -> uint ! IoError {
         return try SendSocket(self.handle, bytes, none);
     }
 
@@ -75,14 +75,14 @@ extend UdpSocket {
     /// @param into where to put it
     /// @returns its length
     /// @see https://rux-lang.dev/docs/api/net/udp#receive
-    pub func Receive(&self, into: var char8[..]) -> uint throws IoError {
+    pub func Receive(&self, into: var char8[..]) -> uint ! IoError {
         return try ReceiveSocket(self.handle, into, null);
     }
 
     /// The address the socket is bound to.
     /// @returns the address
     /// @see https://rux-lang.dev/docs/api/net/udp#local-address
-    pub func LocalAddress(&self) -> SocketAddress throws IoError {
+    pub func LocalAddress(&self) -> SocketAddress ! IoError {
         return try SocketName(self.handle, false);
     }
 
@@ -90,7 +90,7 @@ extend UdpSocket {
     /// @param timeout the limit
     /// @returns nothing, or fails when the system refused
     /// @see https://rux-lang.dev/docs/api/net/udp#set-read-timeout
-    pub func SetReadTimeout(&self, timeout: Duration?) throws IoError {
+    pub func SetReadTimeout(&self, timeout: Duration?) -> !IoError {
         try SetTimeout(self.handle, true, Nanoseconds(timeout));
     }
 
@@ -99,7 +99,7 @@ extend UdpSocket {
     /// @param enabled whether calls fail rather than wait
     /// @returns success when the mode is set
     /// @see https://rux-lang.dev/docs/api/net/udp#set-non-blocking
-    pub func SetNonBlocking(&self, enabled: bool) throws IoError {
+    pub func SetNonBlocking(&self, enabled: bool) -> !IoError {
         try SetSocketNonBlocking(self.handle, enabled);
     }
 

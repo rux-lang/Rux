@@ -24,7 +24,7 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
         let current = *state;
@@ -51,7 +51,7 @@ struct BrokenHandle {
 }
 
 extend BrokenHandle : Reader {
-    func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         // Safety: `state` points at the test's local `SliceState`, which outlives every read through it.
         let current = *state;

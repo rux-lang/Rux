@@ -50,7 +50,7 @@ TEST_CASE("'?' on an optional removes one presence level") {
             let inner: int32? = found?;
             return inner;
         }
-        func SuccessfulAbsence(count: int32?) -> int32? throws IoError {
+        func SuccessfulAbsence(count: int32?) -> int32? ! IoError {
             let value = count?;
             return value;
         }
@@ -72,7 +72,7 @@ TEST_CASE("'?' on an optional removes one presence level") {
 TEST_CASE("coalescing takes the payload or a fallback that converts or leaves") {
     CHECK(ErrorsIn(R"(
         intrinsic func Panic(message: char8[..]);
-        func Fallbacks(count: int32?, nested: int32??, unit: ()?) -> int32 throws ParseError {
+        func Fallbacks(count: int32?, nested: int32??, unit: ()?) -> int32 ! ParseError {
             let a = count ?? 0i32;
             let b = count ?? throw ParseError {};
             let c = count ?? Panic("absent");

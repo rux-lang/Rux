@@ -119,14 +119,10 @@ struct OptionalTypeExpr : TypeExpr {
     TypeExprPtr payload;
 };
 
-/// A fallible type `T ! E`, or `! E` with a unit success, in which case `success` is null. A function's `throws E`
-/// clause is the same node with `throwsClause` set: `-> T throws E` and `-> T ! E` are one type, and only the spelling
-/// differs, which decides whether a call needs `try`.
+/// A fallible type `T ! E`, or `!E` with a unit success, in which case `success` is null.
 struct FallibleTypeExpr : TypeExpr {
     TypeExprPtr success;
     TypeExprPtr error;
-    /// Written as a `throws` clause after the return type, or after the parameter list when there is none.
-    bool throwsClause = false;
 };
 
 /// Whether `type` is a native sum, optional, or fallible type form.

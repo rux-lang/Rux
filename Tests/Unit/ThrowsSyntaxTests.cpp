@@ -70,16 +70,15 @@ const FallibleTypeExpr &ThrowsClause(const std::optional<TypeExprPtr> &returnTyp
     REQUIRE(returnType.has_value());
     const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(returnType->get());
     REQUIRE(fallible != nullptr);
-    CHECK(fallible->throwsClause);
     return *fallible;
 }
 } // namespace
 
 TEST_CASE("a throws clause follows the return type or the parameter list") {
     const ParseResult result = ParseClean(R"(
-        func Read(c: char) -> int throws DigitError { return 1; }
-        func Close() throws IoError {}
-        func Load() -> Config throws IoError | ParseError { return Config {}; }
+        func Read(c: char) -> int ! DigitError { return 1; }
+        func Close() -> !IoError {}
+        func Load() -> Config ! IoError | ParseError { return Config {}; }
     )");
     const FallibleTypeExpr &read = ThrowsClause(Function(result, "Read").returnType);
     REQUIRE(read.success);
@@ -98,10 +97,10 @@ TEST_CASE("a throws clause follows the return type or the parameter list") {
 TEST_CASE("function types and interface requirements declare throws") {
     const ParseResult result = ParseClean(R"(
         interface Source {
-            func Next(&var self) -> int32 throws Closed;
-            func Reset(&var self) throws Closed;
+            func Next(&var self) -> int32 ! Closed;
+            func Reset(&var self) -> !Closed;
         }
-        func Apply(step: func(int32) -> int32 throws Closed, done: func() throws Closed) {}
+        func Apply(step: func(int32) -> int32 ! Closed, done: func() -> !Closed) {}
     )");
     const auto *source = dynamic_cast<const InterfaceDecl *>(result.module.items.front().get());
     REQUIRE(source != nullptr);
@@ -121,7 +120,7 @@ TEST_CASE("function types and interface requirements declare throws") {
 
 TEST_CASE("throw is a statement and a diverging value, and the removed fail is reported") {
     const ParseResult result = ParseClean(R"(
-        func Run(value: int?) -> int throws Fault {
+        func Run(value: int?) -> int ! Fault {
             throw Fault {};
             let present = value ?? throw Fault {};
             return match present { 0 => throw Fault {}, _ => present };
@@ -137,12 +136,12 @@ TEST_CASE("throw is a statement and a diverging value, and the removed fail is r
     REQUIRE(fallback != nullptr);
     CHECK(fallback->kind == DivergeExpr::Kind::Fail);
     CHECK(fallback->throwSpelling);
-    CHECK(HasError(ParseSource("func F() throws Fault { fail Fault {}; }"), "'fail' is not supported"));
+    CHECK(HasError(ParseSource("func F() -> !Fault { fail Fault {}; }"), "'fail' is not supported"));
 }
 
 TEST_CASE("try covers the whole expression to its right") {
     const ParseResult result = ParseClean(R"(
-        func Run() -> int throws Fault {
+        func Run() -> int ! Fault {
             let sum = try A() + B() * C();
             var total = 0;
             total = try A();

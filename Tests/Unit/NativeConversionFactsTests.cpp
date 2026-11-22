@@ -69,7 +69,7 @@ TEST_CASE("arguments and returns convert through the same rules") {
     const auto analyzed = Analyze(R"(
         struct E {}
         func Take(value: int32?) {}
-        func Give(value: int32) -> int32 throws E { return value; }
+        func Give(value: int32) -> int32 ! E { return value; }
         func Payload<T>(value: T?) -> T { return Payload(value); }
         func Use() {
             Take(3i32);

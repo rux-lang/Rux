@@ -18,7 +18,7 @@ struct Log {
     last: int32;
 }
 
-func Step(log: &var Log, value: int32) -> int32 throws Overflow {
+func Step(log: &var Log, value: int32) -> int32 ! Overflow {
     log.calls = log.calls + 1i32;
     log.last = value;
     if value > 100i32 {
@@ -27,11 +27,11 @@ func Step(log: &var Log, value: int32) -> int32 throws Overflow {
     return value;
 }
 
-func Sum(log: &var Log, a: int32, b: int32, c: int32) -> int32 throws Overflow {
+func Sum(log: &var Log, a: int32, b: int32, c: int32) -> int32 ! Overflow {
     return try Step(log, a) + Step(log, b) + Step(log, c);
 }
 
-func Find(key: int32) -> int32 throws Missing {
+func Find(key: int32) -> int32 ! Missing {
     if key < 0i32 {
         throw Missing {};
     }
@@ -39,7 +39,7 @@ func Find(key: int32) -> int32 throws Missing {
 }
 
 // Both errors widen into the sum this function throws.
-func Combined(log: &var Log, key: int32) -> int32 throws Overflow | Missing {
+func Combined(log: &var Log, key: int32) -> int32 ! Overflow | Missing {
     return try Step(log, Find(key)) * 2i32;
 }
 
@@ -48,7 +48,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(&var self) -> int32 throws Overflow {
+    func Next(&var self) -> int32 ! Overflow {
         self.value = self.value + 1i32;
         if self.value > 2i32 {
             throw Overflow { limit: 2i32 };
@@ -61,19 +61,19 @@ extend Counter {
     }
 }
 
-func MakeCounter(start: int32) -> Counter throws Overflow {
+func MakeCounter(start: int32) -> Counter ! Overflow {
     if start > 10i32 {
         throw Overflow { limit: 10i32 };
     }
     return Counter { value: start };
 }
 
-func Chain(start: int32) -> int32 throws Overflow {
+func Chain(start: int32) -> int32 ! Overflow {
     // A call that throws evaluates to its success, which the chain continues on.
     return try MakeCounter(start).Doubled();
 }
 
-func Assigned(counter: &var Counter) -> int32 throws Overflow {
+func Assigned(counter: &var Counter) -> int32 ! Overflow {
     var total = 0i32;
     total = try counter.Next();
     total += try counter.Next();
@@ -81,14 +81,14 @@ func Assigned(counter: &var Counter) -> int32 throws Overflow {
 }
 
 // A generic function throws and marks its calls the same way; each instance throws its own types.
-func Checked<T>(value: T, ok: bool) -> T throws Overflow {
+func Checked<T>(value: T, ok: bool) -> T ! Overflow {
     if !ok {
         throw Overflow { limit: 0i32 };
     }
     return value;
 }
 
-func CheckedTwice<T>(value: T, ok: bool) -> T throws Overflow {
+func CheckedTwice<T>(value: T, ok: bool) -> T ! Overflow {
     let first = try Checked(value, true);
     return try Checked(first, ok);
 }

@@ -29,7 +29,7 @@ struct Placeholder {
 }
 
 // Reads the placeholder opening at `at`, where `format[at]` is a `{` that is not part of a `{{`.
-func ReadPlaceholder(format: char8[..], at: uint) -> Placeholder throws FormatError {
+func ReadPlaceholder(format: char8[..], at: uint) -> Placeholder ! FormatError {
     var close = at + 1;
     while close < format.length && format[close] != c8'}' {
         close = close + 1;
@@ -55,7 +55,7 @@ func ReadPlaceholder(format: char8[..], at: uint) -> Placeholder throws FormatEr
 // The parser reports where it stopped inside the body it was given; a caller reading the failure is looking at the
 // whole pattern, so the body's own start is added. That is the composition rule `ParseFailure` states, applied at
 // the one place in this package that embeds another parser.
-func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec throws FormatError {
+func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec ! FormatError {
     if found.bodyEnd == found.bodyStart {
         return FormatSpec::Plain();
     }
@@ -68,7 +68,7 @@ func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec thro
 
 // Walks the pattern without writing, counting its placeholders and rejecting every brace the grammar does not
 // allow. This is what lets a failed pattern leave the destination untouched.
-func ValidatePattern(format: char8[..]) -> uint throws FormatError {
+func ValidatePattern(format: char8[..]) -> uint ! FormatError {
     var placeholders: uint = 0;
     var index: uint = 0;
     while index < format.length {
@@ -116,7 +116,7 @@ func ValidatePattern(format: char8[..]) -> uint throws FormatError {
 /// @param format the pattern to write
 /// @returns success when the whole pattern and every argument were accepted
 /// @see https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &Display...) throws FormatError {
+pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &Display...) -> !FormatError {
     let expected = try ValidatePattern(format);
     if expected != args.length {
         throw .ArgumentCountMismatch(expected, args.length);
@@ -178,7 +178,7 @@ pub func WriteFormat(writer: &var TextWriter, #Format format: char8[..], args: &
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced
 /// @see https://rux-lang.dev/docs/api/format/render
-pub func Render(allocator: Allocator, #Format format: char8[..], args: &Display...) -> String throws FormatError {
+pub func Render(allocator: Allocator, #Format format: char8[..], args: &Display...) -> String ! FormatError {
     var builder = StringBuilder::New(allocator);
     builder.Reserve(format.length + args.length * 8);
     let sink: &var TextWriter = builder;

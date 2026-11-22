@@ -14,11 +14,11 @@ struct Meter {
     count: int;
 }
 
-func Open(token: Token) -> Meter throws Oops { return Meter { count: token.id }; }
+func Open(token: Token) -> Meter ! Oops { return Meter { count: token.id }; }
 
-func Close(meter: Meter) throws Oops {}
+func Close(meter: Meter) -> !Oops {}
 
-func Main() -> int throws Oops {
+func Main() -> int ! Oops {
     let token = Token { id: 1 };
     let meter = try Open(token);
     try Close(true);

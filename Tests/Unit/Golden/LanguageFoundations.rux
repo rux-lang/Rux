@@ -37,12 +37,12 @@ func Missing<T: Display>(value: T) -> int32 {
     return value.Measure();
 }
 
-func Read(ok: bool) -> int32 throws ParseError {
+func Read(ok: bool) -> int32 ! ParseError {
     return 1i32;
 }
 
 // Propagation out of a function that returns neither the same failure nor any at all.
-func Rethrown(ok: bool) -> int32 throws IoError {
+func Rethrown(ok: bool) -> int32 ! IoError {
     let value = try Read(ok);
     return value;
 }
@@ -51,7 +51,7 @@ func Discarded(ok: bool) {
     let value = Read(ok)?;
 }
 
-func NotPropagatable() -> int32 throws ParseError {
+func NotPropagatable() -> int32 ! ParseError {
     let value = 3i32?;
     return value;
 }

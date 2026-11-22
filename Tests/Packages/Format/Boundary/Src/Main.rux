@@ -35,7 +35,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 // A helper in this package taking Text's interface and Text's writer, so the borrowed forms cross a package
 // boundary in both directions: the value came from Core, the interface from Text, the implementation from Format.
-func Render(value: &Display, spec: FormatSpec, into: &var TextWriter) throws FormatError {
+func Render(value: &Display, spec: FormatSpec, into: &var TextWriter) -> !FormatError {
     return try value.WriteDisplay(into, spec);
 }
 

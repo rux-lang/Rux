@@ -7,7 +7,7 @@ import Memory::{ MinimumPageSize, PageAlign, PageAllocate, PageError, PageExecut
 // rather than quietly accepted, and that a protection actually applies. Every operation that must succeed is
 // marked with `try`, so a refusal the test did not expect fails `Main` itself.
 
-func Main() throws PageError {
+func Main() -> !PageError {
     let error = PageError::InvalidLength;
     let copiedError = error;
     Assert(copiedError == error, "page errors copy structurally");

@@ -13,7 +13,7 @@ func Absent() -> int32? {
 }
 
 // In a fallible result whose success is optional, `none` is the successful absence.
-func SuccessfullyAbsent() -> int32? throws ParseError {
+func SuccessfullyAbsent() -> int32? ! ParseError {
     return none;
 }
 

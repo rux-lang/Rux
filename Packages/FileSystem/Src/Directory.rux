@@ -25,7 +25,7 @@ when #target.os {
 /// @param path the path to act on
 /// @returns success when the directory now exists
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#make-directory
-pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
+pub func MakeDirectory(allocator: Allocator, path: Path) -> !IoError {
     let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
@@ -50,7 +50,7 @@ pub func MakeDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @param path the path to act on
 /// @returns success when the directory is gone
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#delete-directory
-pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
+pub func DeleteDirectory(allocator: Allocator, path: Path) -> !IoError {
     let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
@@ -74,7 +74,7 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) throws IoError {
 /// @param path the path to act on
 /// @returns success when the file is gone
 /// @see https://rux-lang.dev/docs/api/filesystem/file-operations#delete-file
-pub func DeleteFile(allocator: Allocator, path: Path) throws IoError {
+pub func DeleteFile(allocator: Allocator, path: Path) -> !IoError {
     let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
@@ -131,7 +131,7 @@ func DirectoryBufferSize() -> uint {
 /// @param path the path to act on
 /// @returns a cursor over the directory's entries
 /// @see https://rux-lang.dev/docs/api/filesystem/directories#read-directory
-pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator throws IoError {
+pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! IoError {
     var iterator = DirectoryIterator {
         allocator,
         handle: NoFile(),
@@ -209,7 +209,7 @@ extend DirectoryIterator {
     /// enumeration. The `.` and `..` entries are skipped.
     /// @returns the next entry's name, or `none` when the directory is done
     /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-next
-    pub func Next(&var self) -> OsString? throws IoError {
+    pub func Next(&var self) -> OsString? ! IoError {
         if !self.open { throw IoError::Of(IoErrorKind::InvalidHandle); }
         when #target.os == .Windows {
             while true {

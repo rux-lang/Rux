@@ -24,7 +24,7 @@ struct FailingAllocator {
 }
 
 extend FailingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
         {
             self.state.attempts = self.state.attempts + 1;
@@ -40,7 +40,7 @@ extend FailingAllocator : Allocator {
         }
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
         try self.state.backing.Deallocate(block, layout);
         if layout.size != 0 && !IsEmptyBlock(block) {
@@ -49,7 +49,7 @@ extend FailingAllocator : Allocator {
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque throws AllocError {
+        -> *var opaque ! AllocError {
         // Safety: `state` is the address of the local `state` in `Main`, which outlives every adapter made from it.
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {
@@ -64,7 +64,7 @@ func Failing(state: *var FailureState) -> FailingAllocator {
     return FailingAllocator { state };
 }
 
-func Main() throws AllocError {
+func Main() -> !AllocError {
     let real = SystemAllocator::New();
     let small = Layout::Of(64, 8) ?? Layout { size: 64, alignment: 8 };
 

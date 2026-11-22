@@ -35,14 +35,14 @@ extend Guard {
     }
 }
 
-func Fail(code: int32) -> int32 throws Failure {
+func Fail(code: int32) -> int32 ! Failure {
     if code != 0i32 {
         throw Failure { code };
     }
     return 0i32;
 }
 
-func Passes(journal: *var Journal) -> int32 throws Failure {
+func Passes(journal: *var Journal) -> int32 ! Failure {
     let guard = Guard { journal, id: 30i32 };
     // Safety: `journal` is `@journal` from `Main`, which outlives this call.
     defer (*journal).Note(31i32);

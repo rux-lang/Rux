@@ -16,7 +16,7 @@ struct SliceSource {
 }
 
 extend SliceSource : Reader {
-    func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if self.at == self.data.length { throw IoError::Of(IoErrorKind::EndOfStream); }
         var count = self.data.length - self.at;
         if count > into.length { count = into.length; }
@@ -44,21 +44,21 @@ struct GatherSink {
 }
 
 extend GatherSink : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         // Safety: `self.target` addresses the `Gathered` local of the function that made this sink, which outlives
         // the stream; `bytes` is readable for its length, and `char8` and `uint8` are both single bytes.
         try AppendGathered(self.target, bytes.data as *uint8, bytes.length);
         return bytes.length;
     }
 
-    func Flush(&var self) throws IoError {}
+    func Flush(&var self) -> !IoError {}
 }
 
 // Appends `count` bytes to the storage, growing it as needed.
 // Safety: `target` must address live gathered storage whose `data` is null with `capacity` zero, or a block of
 // `capacity` bytes from `allocator` with the first `length` in use; `bytes` must be readable for `count` bytes and
 // lie outside that block.
-func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) throws IoError {
+func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) -> !IoError {
     if target.length + count > target.capacity {
         var capacity = if target.capacity == 0u { 4096u } else { target.capacity * 2u };
         while capacity < target.length + count { capacity = capacity * 2u; }
@@ -79,7 +79,7 @@ func AppendGathered(target: *var Gathered, bytes: *uint8, count: uint) throws Io
 
 // Moves gathered bytes into a vector and releases the storage.
 // Safety: `gathered` must address live gathered storage, as `AppendGathered` requires.
-func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byte> throws IoError {
+func Collect(allocator: Allocator, gathered: *var Gathered) -> Vector<byte> ! IoError {
     var result = Vector<byte>::New(allocator);
     if gathered.length > 0u {
         result.PushSlice((gathered.data as *byte)[..gathered.length]);
@@ -106,7 +106,7 @@ func Release(gathered: *var Gathered) {
 /// @returns the compressed bytes, or fails when the allocator refused
 /// @see https://rux-lang.dev/docs/api/compress/buffers#compress
 pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: Level = Level::Default)
-    -> Vector<byte> throws IoError {
+    -> Vector<byte> ! IoError {
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
     var sink = GatherSink { target: @gathered };
     // Safety: `sink` is a local that outlives `writer`, the only holder of the handle, and is never moved.
@@ -131,7 +131,7 @@ pub func Compress(allocator: Allocator, data: byte[..], format: Format, level: L
 /// @returns the compressed bytes, or fails when the allocator refused
 /// @see https://rux-lang.dev/docs/api/compress/buffers#compress
 pub func Compress(allocator: Allocator, data: char8[..], format: Format, level: Level = Level::Default)
-    -> Vector<byte> throws IoError {
+    -> Vector<byte> ! IoError {
     // Safety: `data` is readable for its length, and `char8` and `byte` are both single bytes.
     return try Compress(allocator, (data.data as *byte)[..data.length], format, level);
 }
@@ -142,7 +142,7 @@ pub func Compress(allocator: Allocator, data: char8[..], format: Format, level: 
 /// @param format the container it is in
 /// @returns the data, or fails with `InvalidInput` for damaged or truncated input
 /// @see https://rux-lang.dev/docs/api/compress/buffers#decompress
-pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vector<byte> throws IoError {
+pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vector<byte> ! IoError {
     var gathered = Gathered { data: null, length: 0, capacity: 0, allocator };
     // Safety: `data` is readable for its length, and `byte` and `char8` are both single bytes.
     let text = (data.data as *char8)[..data.length];
@@ -178,7 +178,7 @@ pub func Decompress(allocator: Allocator, data: byte[..], format: Format) -> Vec
 /// @param format the container it is in
 /// @returns the data, or fails with `InvalidInput` for damaged or truncated input
 /// @see https://rux-lang.dev/docs/api/compress/buffers#decompress
-pub func Decompress(allocator: Allocator, data: char8[..], format: Format) -> Vector<byte> throws IoError {
+pub func Decompress(allocator: Allocator, data: char8[..], format: Format) -> Vector<byte> ! IoError {
     // Safety: `data` is readable for its length, and `char8` and `byte` are both single bytes.
     return try Decompress(allocator, (data.data as *byte)[..data.length], format);
 }

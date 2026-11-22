@@ -28,7 +28,7 @@ extend File : Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of the file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#read
-    pub func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    pub func Read(&var self, into: var char8[..]) -> uint ! IoError {
         if !self.open { throw ClosedFile(); }
         if into.length == 0 { return 0; }
         when #target.os == .Windows {
@@ -63,7 +63,7 @@ extend File : Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/filesystem/file#write
-    pub func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    pub func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         if !self.open { throw ClosedFile(); }
         if bytes.length == 0 { return 0; }
         when #target.os == .Windows {
@@ -90,7 +90,7 @@ extend File : Writer {
     /// Nothing: these writes hold nothing back. Durability is `Sync`, which is a different promise.
     /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/filesystem/file#flush
-    pub func Flush(&var self) throws IoError {
+    pub func Flush(&var self) -> !IoError {
         if !self.open { throw ClosedFile(); }
     }
 }
@@ -104,7 +104,7 @@ extend File : Seeker {
     /// @param offset how far to move
     /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/filesystem/file#seek
-    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 throws IoError {
+    pub func Seek(&var self, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
         if !self.open { throw ClosedFile(); }
         when #target.os == .Windows {
             var landed: int64 = 0;
@@ -137,7 +137,7 @@ extend File {
     /// failure, and the one a caller who just wrote something they cannot lose actually wants.
     /// @returns success when the system reported the data durable
     /// @see https://rux-lang.dev/docs/api/filesystem/file#sync
-    pub func Sync(&var self) throws IoError {
+    pub func Sync(&var self) -> !IoError {
         if !self.open { throw ClosedFile(); }
         when #target.os == .Windows {
             // Safety: `handle` is this file's open handle, `open` was checked above.
@@ -157,7 +157,7 @@ extend File {
     /// arrives with the metadata work.
     /// @returns the file's size in bytes
     /// @see https://rux-lang.dev/docs/api/filesystem/file#size
-    pub func Size(&var self) -> uint64 throws IoError {
+    pub func Size(&var self) -> uint64 ! IoError {
         if !self.open { throw ClosedFile(); }
         when #target.os == .Windows {
             var reported: int64 = 0;
@@ -184,7 +184,7 @@ extend File {
     /// @param length the size the file should have afterwards
     /// @returns success when the file is that size; extending reads back as zeros
     /// @see https://rux-lang.dev/docs/api/filesystem/file#set-length
-    pub func SetLength(&var self, length: uint64) throws IoError {
+    pub func SetLength(&var self, length: uint64) -> !IoError {
         if !self.open { throw ClosedFile(); }
         when #target.os == .Windows {
             // SetEndOfFile cuts at the current position, so the position moves there and back.

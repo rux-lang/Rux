@@ -59,7 +59,7 @@ extend TomlScalarError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-scalar-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) throws FormatError {
+                          spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         return match self {
@@ -78,7 +78,7 @@ extend TomlScalarError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/toml/toml-scalar-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) throws FormatError {
+                        spec: FormatSpec) -> !FormatError {
         try RejectStyle(spec);
         if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
         try WriteBytes(writer, "TomlScalarError::");
@@ -166,7 +166,7 @@ func IsBaseDigit(c: uint8) -> bool {
 /// @param text the scalar's own bytes
 /// @returns the integer, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/scalars#toml-parse-integer
-pub func TomlParseInteger(text: char8[..]) -> int64 throws TomlScalarError {
+pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
     if text.length == 0 { throw TomlScalarError::Malformed(0); }
     if text.length > ScalarCapacity {
         throw .TooLong(ScalarCapacity);
@@ -251,7 +251,7 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 /// @param text the scalar's own bytes
 /// @returns the float, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/scalars#toml-parse-float
-pub func TomlParseFloat(text: char8[..]) -> float64 throws TomlScalarError {
+pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     if text.length == 0 { throw TomlScalarError::Malformed(0); }
     if text.length > ScalarCapacity {
         throw .TooLong(ScalarCapacity);
@@ -415,7 +415,7 @@ pub struct TomlDateTime {
 /// @param text the scalar's own bytes
 /// @returns the date-time and which shape it is, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/scalars#toml-parse-date-time
-pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime throws TomlScalarError {
+pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
     var built = TomlDateTime {
         shape: TomlDateTimeShape::DateOnly,
         date: Date { year: 1970, month: 1, day: 1 },

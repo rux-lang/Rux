@@ -735,10 +735,10 @@ TEST_CASE("a method call whose argument the method cannot take is reported, not 
     const auto diagnostics = AnalyzeSource(R"(
         struct Sink { count: uint; }
         extend Sink {
-            func Push(&var self, value: char8) throws int32 { self.count = self.count + 1; }
+            func Push(&var self, value: char8) -> !int32 { self.count = self.count + 1; }
             func Take(value: char8) -> uint { return 1; }
         }
-        func Append(sink: &var Sink) throws int32 {
+        func Append(sink: &var Sink) -> !int32 {
             if sink.count == 0 {
                 try sink.Push('z');
             }

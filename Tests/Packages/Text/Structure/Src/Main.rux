@@ -35,7 +35,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try WriteBytes(writer, "T(");
         try WriteNumber(writer, self.tag);
         return try WriteAscii(writer, c8')');
@@ -49,7 +49,7 @@ extend Tracked : Debug {
 struct Spy {}
 
 extend Spy : Debug {
-    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDebug(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try WriteAscii(writer, c8'w');
         try WriteNumber(writer, spec.Width());
         try WriteAscii(writer, c8'p');
@@ -58,7 +58,7 @@ extend Spy : Debug {
 }
 
 // A decimal count, written here because this package converts no numbers and depends on nothing that does.
-func WriteNumber(writer: &var TextWriter, value: uint) throws FormatError {
+func WriteNumber(writer: &var TextWriter, value: uint) -> !FormatError {
     if value >= 10 {
         try WriteNumber(writer, value / 10);
     }

@@ -36,7 +36,7 @@ struct RecordingStream {
 }
 
 extend RecordingStream : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         // Safety: `state` points at a `StreamState` local of `Main`, which outlives every stream made over it.
         {
             self.state.calls = self.state.calls + 1;
@@ -54,7 +54,7 @@ extend RecordingStream : Writer {
         return bytes.length;
     }
 
-    func Flush(&var self) throws IoError {
+    func Flush(&var self) -> !IoError {
         return;
     }
 }
@@ -75,7 +75,7 @@ extend Owned {
 }
 
 extend Owned : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         try WriteBytes(writer, "owned-");
         let tag: int32 = self.tag;
         return try tag.WriteDisplay(writer, spec);
@@ -88,7 +88,7 @@ struct Refuses {
 }
 
 extend Refuses : Display {
-    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) throws FormatError {
+    func WriteDisplay(&self, writer: &var TextWriter, spec: FormatSpec) -> !FormatError {
         throw .UnsupportedRequest;
     }
 }

@@ -15,7 +15,7 @@ struct CountingSource {
 }
 
 extend CountingSource : EntropySource {
-    func Fill(&var self, buffer: *var opaque, length: uint) throws EntropyError {
+    func Fill(&var self, buffer: *var opaque, length: uint) -> !EntropyError {
         self.requests = self.requests + 1;
         if self.failing { throw .Failed; }
         // Safety: the `EntropySource` contract requires `buffer` to be writable for `length` bytes.

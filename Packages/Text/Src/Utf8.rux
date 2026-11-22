@@ -104,7 +104,7 @@ pub func IsContinuation(byte: char8) -> bool {
 /// @param into receives the bytes
 /// @returns how many bytes were written, or why none were
 /// @see https://rux-lang.dev/docs/api/text/utf8#encode
-pub func Encode(scalar: char32, into: var char8[..]) -> uint throws Utf8Error {
+pub func Encode(scalar: char32, into: var char8[..]) -> uint ! Utf8Error {
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
     if width == 0 { throw .InvalidStart; }
@@ -191,7 +191,7 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// @param index the byte offset
 /// @returns the scalar and its width, or why the bytes there are not one
 /// @see https://rux-lang.dev/docs/api/text/utf8#decode-at
-pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar throws Utf8Error {
+pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
     if index >= bytes.length { throw .Truncated; }
 
     // Safety: `index` is below `bytes.length`, checked above.
@@ -232,7 +232,7 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar throws Utf8Err
 /// @param bytes the bytes to act on
 /// @returns nothing when every byte is part of a valid sequence, or where and why the first one is not
 /// @see https://rux-lang.dev/docs/api/text/utf8#validate
-pub func Validate(bytes: char8[..]) throws Utf8Failure {
+pub func Validate(bytes: char8[..]) -> !Utf8Failure {
     var index: uint = 0;
     while index < bytes.length {
         let decoded = try DecodeAt(bytes, index) catch { reason => throw Utf8Failure { reason, index } };

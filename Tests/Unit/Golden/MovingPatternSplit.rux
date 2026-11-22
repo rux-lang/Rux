@@ -10,7 +10,7 @@ func MakeHandle() -> Handle {
     return Handle { code: 1 };
 }
 
-func Fails() -> int32 throws Handle {
+func Fails() -> int32 ! Handle {
     throw Handle { code: 2 };
 }
 

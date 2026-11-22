@@ -17,7 +17,7 @@ struct MemoryState {
 }
 
 extend MemoryState : Reader {
-    func Read(&var self, into: var char8[..]) -> uint throws IoError {
+    func Read(&var self, into: var char8[..]) -> uint ! IoError {
         var give = self.length - self.offset;
         if give == 0 {
             throw IoError::Of(IoErrorKind::EndOfStream);
@@ -36,7 +36,7 @@ extend MemoryState : Reader {
 }
 
 extend MemoryState : Writer {
-    func Write(&var self, bytes: char8[..]) -> uint throws IoError {
+    func Write(&var self, bytes: char8[..]) -> uint ! IoError {
         var index: uint = 0;
         while index < bytes.length {
             self.room[self.length + index] = bytes[index];
@@ -46,7 +46,7 @@ extend MemoryState : Writer {
         return bytes.length;
     }
 
-    func Flush(&var self) throws IoError {
+    func Flush(&var self) -> !IoError {
         return;
     }
 }

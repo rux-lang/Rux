@@ -38,7 +38,7 @@ struct RefusingAllocator {
 }
 
 extend RefusingAllocator : Allocator {
-    func Allocate(&self, layout: Layout) -> *var opaque throws AllocError {
+    func Allocate(&self, layout: Layout) -> *var opaque ! AllocError {
         // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
         self.state.requests = self.state.requests + 1;
         // Safety: `state` points at the test's live `StorageState`.
@@ -50,7 +50,7 @@ extend RefusingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(&self, block: *var opaque, layout: Layout) throws AllocError {
+    func Deallocate(&self, block: *var opaque, layout: Layout) -> !AllocError {
         // Safety: `state` points at the test's live `StorageState`.
         try self.state.backing.Deallocate(block, layout);
         // Safety: `state` points at the test's live `StorageState`.
@@ -58,7 +58,7 @@ extend RefusingAllocator : Allocator {
     }
 
     func Reallocate(&self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque throws AllocError {
+        -> *var opaque ! AllocError {
         // Safety: `state` points at a `StorageState` the test keeps alive for as long as this allocator is used.
         self.state.requests = self.state.requests + 1;
         // Safety: `state` points at the test's live `StorageState`.

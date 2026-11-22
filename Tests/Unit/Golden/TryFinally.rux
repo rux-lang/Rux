@@ -1,7 +1,7 @@
 // There is no `finally`: cleanup that must run on every exit is a `defer` inside the `try` block.
 struct Fault {}
 
-func Read() -> int throws Fault {
+func Read() -> int ! Fault {
     return 1;
 }
 

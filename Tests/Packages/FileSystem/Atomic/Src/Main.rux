@@ -51,7 +51,7 @@ func CountEntries(allocator: Allocator, directory: Path) -> uint {
     return count;
 }
 
-func Main() -> int throws IoError {
+func Main() -> int ! IoError {
     let allocator = SystemAllocator::New();
 
     var dirHolder = OsString::New(allocator);
@@ -103,7 +103,7 @@ func Main() -> int throws IoError {
 }
 
 // Begins a replacement, writes to it, and lets it fall out of scope undecided.
-func Dropped(allocator: Allocator, target: Path) throws IoError {
+func Dropped(allocator: Allocator, target: Path) -> !IoError {
     var replacement = try AtomicWrite::Begin(allocator, target);
     try WriteAll(replacement, TextBytes("abandoned by scope"));
 }

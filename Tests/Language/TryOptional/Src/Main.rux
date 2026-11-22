@@ -26,14 +26,14 @@ struct Small {
     value: int32;
 }
 
-func Check(counter: *var Counter, value: int32) -> int32 throws Problem {
+func Check(counter: *var Counter, value: int32) -> int32 ! Problem {
     if value < 0i32 {
         throw Problem { counter, code: value };
     }
     return value;
 }
 
-func Touch(counter: *var Counter, fails: bool) throws Small {
+func Touch(counter: *var Counter, fails: bool) -> !Small {
     // Safety: every caller passes `@counter`, a live local of `Main`.
     counter.count = counter.count + 100i32;
     if fails {
@@ -41,7 +41,7 @@ func Touch(counter: *var Counter, fails: bool) throws Small {
     }
 }
 
-func Lookup(key: int32) -> int32? throws Small {
+func Lookup(key: int32) -> int32? ! Small {
     if key < 0i32 {
         throw Small { value: key };
     }

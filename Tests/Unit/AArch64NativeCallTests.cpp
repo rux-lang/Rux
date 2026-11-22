@@ -125,14 +125,14 @@ TEST_CASE("native arguments and results generate code for every AArch64 target")
         func BigMany(a: Big, b: Big, c: Big, d: Big, e: Big, f: Big, g: Big, h: Big, i: Big) -> int64 {
             return Total(a) + Total(b) + Total(i);
         }
-        func Make(seed: int64) -> Big throws E {
+        func Make(seed: int64) -> Big ! E {
             return Big { a: seed, b: seed, c: seed, d: seed };
         }
-        func Nest(stop: bool) -> int32?? throws E {
+        func Nest(stop: bool) -> int32?? ! E {
             if stop { throw E { code: 5i32 }; }
             return .Some(none);
         }
-        func Main() -> int throws E {
+        func Main() -> int ! E {
             let unit = UnitReturn();
             let unitParam = UnitParam(unit, 4i32);
             let missing: float64? = none;

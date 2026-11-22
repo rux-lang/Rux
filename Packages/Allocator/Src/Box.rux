@@ -50,7 +50,7 @@ extend Box<T> {
     /// @param value the value to move into it
     /// @returns the box, or throws why the allocator refused
     /// @see https://rux-lang.dev/docs/api/allocator/box#try-create
-    pub func TryCreate(allocator: Allocator, value: T) -> Self throws AllocError {
+    pub func TryCreate(allocator: Allocator, value: T) -> Self ! AllocError {
         let layout = Layout::ForValue<T>();
         let block = try allocator.Allocate(layout);
         // Safety: `block` was just allocated with `Layout::ForValue<T>()`, so it is aligned and large enough for a

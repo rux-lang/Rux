@@ -362,7 +362,7 @@ when #target.os == .Windows {
 /// @param followLinks whether a final symbolic link is followed rather than described
 /// @returns what the system knows about the path
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata#metadata-of
-pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Metadata throws IoError {
+pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Metadata ! IoError {
     let native = try NativePath::New(allocator, path);
     var buffer: char8[256];
     when #target.os == .Windows {
@@ -400,7 +400,7 @@ extend File {
     /// query the way a path-based one can.
     /// @returns what the system knows about the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file#metadata
-    pub func Metadata(&self) -> Metadata throws IoError {
+    pub func Metadata(&self) -> Metadata ! IoError {
         if !self.open { throw IoError::Of(IoErrorKind::InvalidHandle); }
         var buffer: char8[256];
         when #target.os == .Windows {
@@ -431,7 +431,7 @@ extend File {
 /// @param permissions the permissions to apply
 /// @returns success when the permissions were applied
 /// @see https://rux-lang.dev/docs/api/filesystem/permissions#set-permissions
-pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) throws IoError {
+pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> !IoError {
     let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         // Safety: `native` is the NUL-terminated UTF-16 copy `NativePath` made above, live while it is
@@ -477,7 +477,7 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 /// @returns success when the times were applied
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata#set-times
 pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
-              followLinks: bool) throws IoError {
+              followLinks: bool) -> !IoError {
     let native = try NativePath::New(allocator, path);
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);

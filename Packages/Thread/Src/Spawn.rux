@@ -137,7 +137,7 @@ extend JoinHandle<R> {
 /// @param context the value the function is called with
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn
-pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> throws ThreadError {
+pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> JoinHandle<R> ! ThreadError {
     return try SpawnWith<T, R>(ThreadOptions::New(), entry, move context);
 }
 
@@ -150,7 +150,7 @@ pub func Spawn<T: Sendable, R: Sendable>(entry: func(T) -> R, context: T) -> Joi
 /// @returns a handle to join the thread with
 /// @see https://rux-lang.dev/docs/api/thread/spawn#spawn-with
 pub func SpawnWith<T: Sendable, R: Sendable>(options: ThreadOptions, entry: func(T) -> R, context: T)
-    -> JoinHandle<R> throws ThreadError {
+    -> JoinHandle<R> ! ThreadError {
     let contextOffset = ContextOffset<T, R>();
     let resultOffset = ResultOffset<T, R>();
     let length = PageAlign(resultOffset + sizeof(R));

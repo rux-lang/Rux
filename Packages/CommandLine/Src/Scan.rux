@@ -155,7 +155,7 @@ extend Scanner {
     }
 
     // The next item, none at the end, or why the arguments do not match.
-    func Next(&var self) -> Item? throws CommandLineError {
+    func Next(&var self) -> Item? ! CommandLineError {
         if self.cluster > 0 { return try self.NextShort(); }
         if self.index >= self.end { return none; }
         let at = self.index;
@@ -176,7 +176,7 @@ extend Scanner {
         return try self.Positional(argument, at);
     }
 
-    func Long(&var self, argument: OsStringView, at: uint) -> Item? throws CommandLineError {
+    func Long(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
         let spec = self.Declared();
         let units = argument.Units();
         var equals: uint = 2;
@@ -199,7 +199,7 @@ extend Scanner {
     }
 
     // The next short option in the cluster that started at the argument before `index`.
-    func NextShort(&var self) -> Item? throws CommandLineError {
+    func NextShort(&var self) -> Item? ! CommandLineError {
         let at = self.index - 1;
         let argument = self.source.At(at);
         let units = argument.Units();
@@ -224,7 +224,7 @@ extend Scanner {
         return .Some(Item::Option(option, .Some(value), at));
     }
 
-    func Positional(&var self, argument: OsStringView, at: uint) -> Item? throws CommandLineError {
+    func Positional(&var self, argument: OsStringView, at: uint) -> Item? ! CommandLineError {
         let spec = self.Declared();
         if spec.commands.length > 0 {
             let command = FindCommand(spec, argument) ?? 0xFFFFFFFF;

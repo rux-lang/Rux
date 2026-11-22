@@ -35,7 +35,7 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter,
 // One run of elements written into an open sequence, with `written` saying how many are already there so that the
 // separator lands between elements and never before the first.
 func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
-                        written: uint) throws FormatError {
+                        written: uint) -> !FormatError {
     var index: uint = 0;
     while index < items.length {
         if written + index != 0 {
@@ -62,7 +62,7 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/vector#write-vector-debug
 pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
-                                    spec: FormatSpec) throws FormatError {
+                                    spec: FormatSpec) -> !FormatError {
     return try WriteSliceDebug<T>(writer, value.AsSlice(), spec);
 }
 
@@ -78,7 +78,7 @@ pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/array#write-array-debug
 pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
-                                   spec: FormatSpec) throws FormatError {
+                                   spec: FormatSpec) -> !FormatError {
     return try WriteSliceDebug<T>(writer, value.AsSlice(), spec);
 }
 
@@ -97,7 +97,7 @@ pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/deque#write-deque-debug
 pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
-                                   spec: FormatSpec) throws FormatError {
+                                   spec: FormatSpec) -> !FormatError {
     let (front, back) = value.AsSlices();
 
     try WriteAscii(writer, c8'[');
@@ -124,7 +124,7 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/hash-map#write-hash-map-debug
 pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
-                                               spec: FormatSpec) throws FormatError {
+                                               spec: FormatSpec) -> !FormatError {
     try WriteAscii(writer, c8'{');
     var index: uint = 0;
     var written: uint = 0;
@@ -159,7 +159,7 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/hash-set#write-hash-set-debug
 pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>,
-                                     spec: FormatSpec) throws FormatError {
+                                     spec: FormatSpec) -> !FormatError {
     try WriteAscii(writer, c8'{');
     var index: uint = 0;
     var written: uint = 0;
@@ -193,7 +193,7 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/tree-map#write-tree-map-debug
 pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
-                                               spec: FormatSpec) throws FormatError {
+                                               spec: FormatSpec) -> !FormatError {
     try WriteAscii(writer, c8'{');
     // Safety: the tree invariant: the map's `root` is null or a live node of its tree.
     var node = Tree::Minimum<K, V>(value.tree.root);
@@ -227,7 +227,7 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/tree-set#write-tree-set-debug
 pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
-                                     spec: FormatSpec) throws FormatError {
+                                     spec: FormatSpec) -> !FormatError {
     try WriteAscii(writer, c8'{');
     // Safety: the tree invariant: the set's `root` is null or a live node of its tree.
     var node = Tree::Minimum<T, ()>(value.tree.root);
@@ -248,7 +248,7 @@ pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>
 
 // Whether the specification is one an error description can answer. Neither a style nor a precision is: a
 // description has one form, and truncating it produces a sentence that says something else.
-func AcceptsErrorSpec(spec: FormatSpec) throws FormatError {
+func AcceptsErrorSpec(spec: FormatSpec) -> !FormatError {
     try RejectStyle(spec);
     if spec.HasPrecision() { throw FormatError::UnsupportedRequest; }
     return;
@@ -263,7 +263,7 @@ extend CollectionError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-display
     pub func WriteDisplay(&self, writer: &var TextWriter,
-                          spec: FormatSpec) throws FormatError {
+                          spec: FormatSpec) -> !FormatError {
         try AcceptsErrorSpec(spec);
         return match self {
             .IndexOutOfRange => try WriteBytes(writer, "index the collection does not have")
@@ -279,7 +279,7 @@ extend CollectionError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-debug
     pub func WriteDebug(&self, writer: &var TextWriter,
-                        spec: FormatSpec) throws FormatError {
+                        spec: FormatSpec) -> !FormatError {
         try AcceptsErrorSpec(spec);
         try WriteBytes(writer, "CollectionError::");
         return match self {

@@ -187,7 +187,7 @@ extend Command {
     /// @returns the child, or fails: with a part of the command the system could not take, with `NotFound` for a
     ///   program that is not there, or with the system's reason
     /// @see https://rux-lang.dev/docs/api/process/command#spawn
-    pub func Spawn(&self) -> Child throws IoError {
+    pub func Spawn(&self) -> Child ! IoError {
         if self.failure != none { throw self.failure ?? IoError::Of(IoErrorKind::Other); }
         return try self.Launch(self.input, self.output, self.error);
     }
@@ -195,7 +195,7 @@ extend Command {
     /// Starts the program and waits for it to finish.
     /// @returns how it finished
     /// @see https://rux-lang.dev/docs/api/process/command#run
-    pub func Run(&self) -> ExitStatus throws IoError {
+    pub func Run(&self) -> ExitStatus ! IoError {
         var child = try self.Spawn();
         return try child.Wait();
     }
@@ -232,7 +232,7 @@ extend Command {
     }
 
     // The child's environment as `name=value` entries, each followed by a NUL.
-    func EnvironmentEntries(&self) -> Buffer<OsUnit> throws IoError {
+    func EnvironmentEntries(&self) -> Buffer<OsUnit> ! IoError {
         var entries = Buffer<OsUnit>::New(self.allocator);
         if !self.clearEnvironment {
             for variable in Environment() {
@@ -261,7 +261,7 @@ extend Command {
     }
 
     // Starts the child with the given streams.
-    func Launch(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
+    func Launch(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
         when #target.os == .Windows {
             return try self.LaunchWindows(input, output, error);
         }
@@ -271,7 +271,7 @@ extend Command {
     }
 
     // `posix_spawnp` with an argument vector, an environment vector and the file actions for the streams.
-    func LaunchPosix(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
+    func LaunchPosix(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
         when #target.os != .Windows {
             let words = self.words.View();
             var arguments = Buffer<*char8>::New(self.allocator);
@@ -376,7 +376,7 @@ extend Command {
     }
 
     // `CreateProcessW` with a quoted command line, an environment block and inheritable standard handles.
-    func LaunchWindows(&self, input: Stdio, output: Stdio, error: Stdio) -> Child throws IoError {
+    func LaunchWindows(&self, input: Stdio, output: Stdio, error: Stdio) -> Child ! IoError {
         when #target.os == .Windows {
             var line = Buffer<OsUnit>::New(self.allocator);
             let words = self.words.View();
@@ -497,7 +497,7 @@ extend Command {
 // Appends one argument to a Windows command line so the C runtime's splitting gives it back unchanged: quoted when it
 // is empty or holds a space, tab or quote, with each quote escaped and each run of backslashes before a quote, or
 // before the closing quote, doubled.
-func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) throws IoError {
+func QuoteArgument(line: &var Buffer<OsUnit>, argument: OsUnit[..]) -> !IoError {
     var plain = argument.length != 0;
     var index: uint = 0;
     while index < argument.length {

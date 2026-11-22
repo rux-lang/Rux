@@ -195,7 +195,7 @@ extend Pool {
 
     // Takes one chunk from the backing allocator and carves it into blocks of `classIndex`.
     // Safety: the chunk invariant holds for `self`.
-    func TakeChunk(&var self, classIndex: uint) throws AllocError {
+    func TakeChunk(&var self, classIndex: uint) -> !AllocError {
         let blockSize = PoolSmallestClass << classIndex;
         let blocks = self.blocksPerChunk;
         if blocks > uint::Max / blockSize { throw .Unsupported; }
@@ -257,7 +257,7 @@ extend Pool : Allocator {
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/pool#allocate
-    pub func Allocate(&var self, layout: Layout) -> *var opaque throws AllocError {
+    pub func Allocate(&var self, layout: Layout) -> *var opaque ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
@@ -291,7 +291,7 @@ extend Pool : Allocator {
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/pool#deallocate
-    pub func Deallocate(&var self, block: *var opaque, layout: Layout) throws AllocError {
+    pub func Deallocate(&var self, block: *var opaque, layout: Layout) -> !AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { throw .InvalidBlock; } return; }
         if block == null { throw .InvalidBlock; }
 
@@ -320,7 +320,7 @@ extend Pool : Allocator {
     /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/pool#reallocate
     pub func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque throws AllocError {
+        -> *var opaque ! AllocError {
         if oldLayout.alignment != newLayout.alignment { throw .Unsupported; }
         if oldLayout.size == newLayout.size {
             return block;

@@ -53,7 +53,7 @@ func LayoutOr(size: uint, alignment: uint) -> Layout {
 /// Asked of every alignment a caller might reasonably want, and asked of whichever allocator is passed. An
 /// allocator that cannot serve an alignment must refuse it — what it may not do is serve it misaligned, which is
 /// the failure a caller has no way to notice until something faults much later.
-func CheckAlignment(allocator: Allocator, name: char8[..]) throws AllocError {
+func CheckAlignment(allocator: Allocator, name: char8[..]) -> !AllocError {
     var alignment: uint = 1;
     while alignment <= 256 {
         let layout = LayoutOr(64, alignment);
@@ -74,7 +74,7 @@ func CheckAlignment(allocator: Allocator, name: char8[..]) throws AllocError {
 }
 
 /// The fourth promise: a zero-sized layout is legal, gives the shared empty address, and must still be released.
-func CheckZeroSize(allocator: Allocator) throws AllocError {
+func CheckZeroSize(allocator: Allocator) -> !AllocError {
     let zero = LayoutOr(0, 8);
     let block = try allocator.Allocate(zero);
     Assert(block != null, "and is not null, so no caller has to branch on it");
@@ -111,7 +111,7 @@ func CheckZeroSize(allocator: Allocator) throws AllocError {
 /// An alignment change is the failure every allocator here reports the same way, and it is a real one rather than a
 /// contrived one: `Unsupported` exists precisely so that no allocator silently moves a block to a different
 /// alignment.
-func CheckFailedReallocation(allocator: Allocator) throws AllocError {
+func CheckFailedReallocation(allocator: Allocator) -> !AllocError {
     let original = LayoutOr(96, 8);
     let block = try allocator.Allocate(original);
     // Safety: `block` is a live allocation of at least 96 bytes, served just above.
@@ -144,7 +144,7 @@ func CheckFailedReallocation(allocator: Allocator) throws AllocError {
 }
 
 /// A successful reallocation preserves the first `min(old, new)` bytes, whether it moved the block or not.
-func CheckSuccessfulReallocation(allocator: Allocator) throws AllocError {
+func CheckSuccessfulReallocation(allocator: Allocator) -> !AllocError {
     let small = LayoutOr(64, 8);
     let large = LayoutOr(256, 8);
     let block = try allocator.Allocate(small);
@@ -188,7 +188,7 @@ func CheckSuccessfulReallocation(allocator: Allocator) throws AllocError {
     try allocator.Deallocate(steady, small);
 }
 
-func Main() throws AllocError {
+func Main() -> !AllocError {
     let real = SystemAllocator::New();
 
     // --- The contract, asked of each allocator ------------------------------------------------------------------
