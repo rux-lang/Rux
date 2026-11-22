@@ -146,7 +146,7 @@ Each removed form is rejected with a `help:` line naming its replacement.
 | `Option<T>`, `Option<Option<T>>`                                          | `T?`, `T??`                                                                                     |
 | `Option::Some(value)`, `Option::None`                                     | The plain value, `none`                                                                         |
 | Presence patterns `x?`, `x??`, `none?`                                    | Kept: `x?`, `x??`, `none?`                                                                       |
-| `IsSome`/`IsNone`                                                         | `value is T`, or a presence match                                                               |
+| `IsSome`/`IsNone`                                                         | `value != none` / `value == none`, or `if let v? = value`                                       |
 | `ValueOr` on an option / on a result                                      | `option ?? fallback` / `F() !! fallback`                                                        |
 | Status enum with a success member (`-> IoError` with `None = 0`)          | `-> !E` with the success member, `IsOk`, and `IsError` removed                                  |
 | Output slot beside a status (`Write(bytes, taken: *var uint) -> IoError`) | The slot becomes the result: `-> uint ! IoError`                                                |
@@ -174,7 +174,7 @@ Pitfalls:
 - `!!` and `catch` take everything to their left, `+` included: write `base + (F() !! 0)`.
 - `==` binds tighter than `??`: write `a == (b ?? c)`.
 - `opt == none` and `opt != none` compare no payload; `opt == v` needs `==` on the payload, and makes `v` present to compare.
-- A named move-only value as a `match` subject is written `move name`.
+- A named move-only `match` subject is taken by the match; write `match &name` to lend it and keep it.
 - A block arm `{ ... }` yields its last expression written without a ';', and `()` otherwise, so a `catch` arm recovers a non-unit success only with such a value or by leaving.
 - An arm is outside its handler: an `x!` in it leaves the function, and its error goes to the caller.
 - `x !! none` keeps an optional success at its level: on an `int? ! E` it is an `int?`, where `try?` gave an `int??`.
