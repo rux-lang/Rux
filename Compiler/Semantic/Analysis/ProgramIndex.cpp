@@ -39,8 +39,10 @@ std::optional<TypeRef> ProvisionalRepresentation(const TypeExpr &type) {
     return std::nullopt;
 }
 
-/// Levenshtein distance, used to suggest the name an unresolved identifier probably meant.
+/// The edit distance a typo is measured by, used to suggest the name an unresolved identifier probably meant: an
+/// insertion, a deletion, a substitution, or swapping two neighbouring characters each counts one edit.
 std::size_t EditDistance(const std::string_view left, const std::string_view right) {
+    std::vector<std::size_t> beforePrevious(right.size() + 1);
     std::vector<std::size_t> previous(right.size() + 1);
     std::vector<std::size_t> current(right.size() + 1);
     for (std::size_t i = 0; i <= right.size(); ++i) {
@@ -51,7 +53,11 @@ std::size_t EditDistance(const std::string_view left, const std::string_view rig
         for (std::size_t j = 0; j < right.size(); ++j) {
             current[j + 1] =
                 std::min({current[j] + 1, previous[j + 1] + 1, previous[j] + (left[i] == right[j] ? 0U : 1U)});
+            if (i > 0 && j > 0 && left[i] == right[j - 1] && left[i - 1] == right[j]) {
+                current[j + 1] = std::min(current[j + 1], beforePrevious[j - 1] + 1);
+            }
         }
+        beforePrevious.swap(previous);
         previous.swap(current);
     }
     return previous.back();
@@ -174,8 +180,11 @@ const Symbol *Scope::Suggest(const std::string &name) const {
             consider(*through);
         }
     }
-    const std::size_t threshold = name.size() < 4 ? 1 : std::min<std::size_t>(3, (name.size() + 2) / 3);
-    return bestDistance <= threshold ? best : nullptr;
+    // A short name is close to many unrelated ones: 'note' is two edits from 'byte'. One edit is a typo at any length,
+    // and a longer name may differ by one more edit for every four characters, so a suggestion stays a likely typo;
+    // a candidate that changes every character of the name is never suggested.
+    const std::size_t threshold = std::min<std::size_t>(3, 1 + (name.size() > 4 ? (name.size() - 1) / 4 : 0));
+    return bestDistance <= threshold && bestDistance < name.size() ? best : nullptr;
 }
 
 Scope *Scope::Parent() const {

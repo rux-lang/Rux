@@ -75,6 +75,26 @@ TEST_CASE("semantic name diagnostics distinguish missing names and deterministic
     CHECK_FALSE(diagnostics[2].help.has_value());
 }
 
+TEST_CASE("a short name is offered only a one-edit near match") {
+    // 'note' is two edits from 'byte', which is no likely typo of it; a name of four characters is offered one edit.
+    const auto diagnostics = AnalyzeSource(R"(
+        func Main() {
+            let byte = 1;
+            let item = 2;
+            note;
+            itme;
+            iten;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].message, "name 'note' is not defined in this scope");
+    CHECK_FALSE(diagnostics[0].help.has_value());
+    // Two neighbouring characters swapped are one edit.
+    CHECK_EQ(diagnostics[1].help, "did you mean 'item'?");
+    CHECK_EQ(diagnostics[2].help, "did you mean 'item'?");
+}
+
 TEST_CASE("semantic declaration diagnostics identify duplicate and conflicting kinds") {
     const auto diagnostics = AnalyzeSource(R"(
         const Answer = 1;
