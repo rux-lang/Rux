@@ -1463,12 +1463,30 @@ std::optional<TypeRef> AnalysisContext::GenericParameterType(const FuncDecl &dec
 }
 
 void AnalysisContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
-                                           const std::vector<TypeRef> *parameterTypes) {
+                                           const std::vector<TypeRef> *parameterTypes,
+                                           const std::optional<TypeRef> &variadicElement) {
+    // Each element of a variadic tail binds the element type, so an element of a reference type borrows its argument
+    // exactly as a fixed reference parameter does: an owning place passed to `args: &Display...` is lent for the call
+    // and stays with its owner. A spread passes the slice whole and binds no element.
+    const bool lendsElements = variadicElement && (*variadicElement)->kind == TypeRef::Kind::Reference;
+    const auto tailType = [&](const std::size_t index) {
+        return !lendsElements || (call.args[index] && AstCast<const SpreadExpr>(call.args[index].get()))
+                 ? TypeRef::MakeUnknown()
+                 : *variadicElement;
+    };
     // Arguments whose labels skip parameters bind the parameters the labels name.
     std::vector<TypeRef> bound;
     if (const auto slots = argumentSlots.find(&call); parameterTypes && slots != argumentSlots.end()) {
-        for (const std::size_t slot : slots->second) {
-            bound.push_back(slot < parameterTypes->size() ? (*parameterTypes)[slot] : TypeRef::MakeUnknown());
+        for (std::size_t index = 0; index < slots->second.size(); ++index) {
+            const std::size_t slot = slots->second[index];
+            bound.push_back(slot < parameterTypes->size() ? (*parameterTypes)[slot] : tailType(index));
+        }
+        parameterTypes = &bound;
+    }
+    else if (parameterTypes && lendsElements) {
+        bound = *parameterTypes;
+        for (std::size_t index = bound.size(); index < call.args.size(); ++index) {
+            bound.push_back(tailType(index));
         }
         parameterTypes = &bound;
     }

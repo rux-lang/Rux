@@ -712,7 +712,8 @@ private:
                                                               const std::vector<TypeRef> &checkedTypes);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
     void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
-                              const std::vector<TypeRef> *parameterTypes = nullptr);
+                              const std::vector<TypeRef> *parameterTypes = nullptr,
+                              const std::optional<TypeRef> &variadicElement = std::nullopt);
     /// Consumes a match subject the arms take from and records whether they own it, which is what the result says.
     template <typename Arm>
     bool ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,

@@ -24,7 +24,7 @@ pub func ExpectEqual<T: Display>(actual: T, expected: T) -> !TestFailure {
     if actual == expected { return; }
     var failure = TestFailure::Of("expected ");
     var writer = failure.Rest();
-    WriteFormat(&var writer, "{}, but got {}", expected, actual) catch { _ => {} };
+    WriteFormat(&var writer, "{}, but got {}", &expected, &actual) catch { _ => {} };
     failure.Grow(writer);
     throw failure;
 }
@@ -39,7 +39,7 @@ pub func ExpectNotEqual<T: Display>(actual: T, unexpected: T) -> !TestFailure {
     if actual != unexpected { return; }
     var failure = TestFailure::Of("expected anything but ");
     var writer = failure.Rest();
-    WriteFormat(&var writer, "{}", unexpected) catch { _ => {} };
+    WriteFormat(&var writer, "{}", &unexpected) catch { _ => {} };
     failure.Grow(writer);
     throw failure;
 }

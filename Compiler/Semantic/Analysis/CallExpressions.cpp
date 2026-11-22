@@ -400,13 +400,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             const std::size_t paramCount =
                 funcType->kind == TypeRef::Kind::Func && !funcType->inner.empty() ? funcType->inner.size() - 1 : 0;
             const std::vector<TypeRef> fixedTypes(funcType->inner.begin(), funcType->inner.begin() + paramCount);
-            callAccepted = checkBoundArguments(ident->name, argTypes, *decl, false, fixedTypes,
-                                               ResolveVariadicElementType(*decl, substitutions)) &&
-                           callAccepted;
+            const std::optional<TypeRef> variadicElement = ResolveVariadicElementType(*decl, substitutions);
+            callAccepted =
+                checkBoundArguments(ident->name, argTypes, *decl, false, fixedTypes, variadicElement) && callAccepted;
             if (callAccepted) {
                 const std::vector<TypeRef> parameterTypes(funcType->inner.begin(),
                                                           funcType->inner.begin() + paramCount);
-                ConsumeCallArguments(*e, argTypes, &parameterTypes);
+                ConsumeCallArguments(*e, argTypes, &parameterTypes, variadicElement);
                 CheckFormatArguments(*e, *decl, false);
             }
             RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
@@ -484,7 +484,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             callAccepted =
                 CheckRequirementReceiverMutability(*e, *field->object, receiverType, operation) && callAccepted;
             if (callAccepted) {
-                ConsumeCallArguments(*e, argTypes, &paramTypes);
+                ConsumeCallArguments(*e, argTypes, &paramTypes, variadicElement);
             }
             RecordConstrainedBinding(*e, *constrained, receiverType);
             return ResolveInterfaceMethodReturnType(operation, receiverBase, constrained->interface,
@@ -522,8 +522,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             QueueGenericInstantiation(*method, methodSubstitutions,
                                       expression.callee ? expression.callee->location : expression.location);
 
-            callAccepted = checkBoundArguments(field->field, argTypes, *method, true, paramTypes,
-                                               ResolveMethodVariadicType(receiverType, *method, methodSubstitutions));
+            const std::optional<TypeRef> variadicElement =
+                ResolveMethodVariadicType(receiverType, *method, methodSubstitutions);
+            callAccepted = checkBoundArguments(field->field, argTypes, *method, true, paramTypes, variadicElement);
 
             // A compiler-parameter method such as `#config.Has(name)` is answered while compiling, so its argument
             // must be written in the source; a value computed at run time has nothing to be looked up by.
@@ -549,7 +550,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             callAccepted = CheckReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
             if (callAccepted) {
                 ConsumeMethodReceiver(*e, *field->object, receiverType, *method);
-                ConsumeCallArguments(*e, argTypes, &paramTypes);
+                ConsumeCallArguments(*e, argTypes, &paramTypes, variadicElement);
                 CheckFormatArguments(*e, *method, true);
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method, methodSubstitutions,
@@ -629,13 +630,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 return TypeRef::MakeUnknown();
             }
             std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method, receiverType);
-            bool callAccepted = checkBoundArguments(field->field, argTypes, *method, true, paramTypes,
-                                                    ResolveInterfaceMethodVariadicType(*method, receiverType));
+            const std::optional<TypeRef> variadicElement = ResolveInterfaceMethodVariadicType(*method, receiverType);
+            bool callAccepted = checkBoundArguments(field->field, argTypes, *method, true, paramTypes, variadicElement);
 
             callAccepted =
                 CheckRequirementReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
             if (callAccepted) {
-                ConsumeCallArguments(*e, argTypes, &paramTypes);
+                ConsumeCallArguments(*e, argTypes, &paramTypes, variadicElement);
                 CheckFormatArguments(*e, *method, true);
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Interface, {}, receiverType);
@@ -824,11 +825,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     NoteDeclarationUse(*method, CallSiteLocation(*e));
                     QueueGenericInstantiation(*method, methodSubstitutions,
                                               expression.callee ? expression.callee->location : expression.location);
-                    const bool callAccepted = checkBoundArguments(
-                        std::format("{}::{}", path->segments[0], methodName), argTypes, *method, false, paramTypes,
-                        ResolveMethodVariadicType(receiverType, *method, methodSubstitutions));
+                    const std::optional<TypeRef> variadicElement =
+                        ResolveMethodVariadicType(receiverType, *method, methodSubstitutions);
+                    const bool callAccepted =
+                        checkBoundArguments(std::format("{}::{}", path->segments[0], methodName), argTypes, *method,
+                                            false, paramTypes, variadicElement);
                     if (callAccepted) {
-                        ConsumeCallArguments(*e, argTypes, &paramTypes);
+                        ConsumeCallArguments(*e, argTypes, &paramTypes, variadicElement);
                         CheckFormatArguments(*e, *method, false);
                     }
                     RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,

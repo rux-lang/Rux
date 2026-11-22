@@ -1,0 +1,2 @@
+47:18: error: 'Total' borrows its argument, and 'T' owns resources, so the loan must be written
+54:30: error: 'Total' borrows its argument, and 'Names' owns resources, so the loan must be written

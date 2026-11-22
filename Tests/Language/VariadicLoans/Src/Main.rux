@@ -1,0 +1,66 @@
+// Each element of a variadic tail of reference type borrows its argument for the call, as a fixed reference parameter
+// does. An owning value lent with `&` to `values: &Shape...`, as to a format function's `args: &Display...`, stays
+// with its owner: it is read by the call, used again afterwards, and destroyed once, when its owner's scope ends.
+
+import Core::Diagnostics::Assert;
+
+var destroyed: int = 0;
+
+interface Shape {
+    func Area(&self) -> int;
+}
+
+struct Tracked {
+    id: int;
+}
+
+extend Tracked : Shape {
+    func Area(&self) -> int {
+        return self.id;
+    }
+
+    destructor {
+        destroyed += 1;
+    }
+}
+
+struct Scale {
+    factor: int;
+}
+
+extend Scale {
+    func Apply(&self, values: &Shape...) -> int {
+        return self.factor * Total(values...);
+    }
+}
+
+func Total(values: &Shape...) -> int {
+    var total = 0;
+    for value in values {
+        total += value.Area();
+    }
+    return total;
+}
+
+func Generic<T: Shape>(value: T) -> int {
+    return Total(&value, &value);
+}
+
+func Lend() -> int {
+    let first = Tracked { id: 2 };
+    let second = Tracked { id: 3 };
+    let total = Total(&first, &second, &first);
+    Assert(destroyed == 0, "a lent value is not destroyed by the call");
+    let scale = Scale { factor: 2 };
+    let scaled = scale.Apply(&second, &first);
+    Assert(destroyed == 0, "a value lent to a method's variadic tail is not destroyed by the call");
+    return total + scaled + first.id + second.id;
+}
+
+func Main() -> int {
+    Assert(Lend() == 22, "each lent value is read in place");
+    Assert(destroyed == 2, "each lent value is destroyed once, at the end of its owner's scope");
+    Assert(Generic(Tracked { id: 4 }) == 8, "a bound value is lent to a variadic view");
+    Assert(destroyed == 3, "the generic parameter is destroyed once");
+    return 0;
+}

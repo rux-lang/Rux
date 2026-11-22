@@ -1,0 +1,58 @@
+// Each element of a variadic tail of reference type binds its argument as a reference parameter does: plain data and
+// temporaries are lent bare, while an owning place is lent with a written '&' and stays with its owner. A bare owning
+// place is never given away to a parameter that only borrows it.
+interface Shape {
+    func Area(&self) -> int;
+}
+
+struct Square {
+    side: int;
+}
+
+extend Square : Shape {
+    func Area(&self) -> int {
+        return self.side * self.side;
+    }
+}
+
+struct Names {
+    count: int;
+}
+
+extend Names : Shape {
+    func Area(&self) -> int {
+        return self.count;
+    }
+
+    destructor {}
+}
+
+func Total(shapes: &Shape...) -> int {
+    var total = 0;
+    for shape in shapes {
+        total += shape.Area();
+    }
+    return total;
+}
+
+func Sum(values: &int...) -> int {
+    var total = 0;
+    for value in values {
+        total += value;
+    }
+    return total;
+}
+
+func Generic<T: Shape>(value: T) -> int {
+    return Total(value) + Total(&value);
+}
+
+func Main() -> int {
+    let square = Square { side: 2 };
+    let names = Names { count: 3 };
+    let count = 4;
+    let bare = Total(square, names, Square { side: 1 });
+    let lent = Total(&square, &names, &names);
+    let kept = names.count;
+    return bare + lent + kept + Sum(count, count) + Generic(Square { side: 3 });
+}

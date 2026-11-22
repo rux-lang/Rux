@@ -129,7 +129,7 @@ func TakeMany(seed: uint, values: &Reader...) -> uint {
 
 func Bound<T: Reader>(value: T) -> uint { return Take(&value); }
 func BoundBorrow<T: Reader>(value: &T) -> uint { return Borrow(value); }
-func BoundMany<T: Reader>(value: T) -> uint { return TakeMany(1u, value, value); }
+func BoundMany<T: Reader>(value: T) -> uint { return TakeMany(1u, &value, &value); }
 func BoundNested<T: Reader>(value: T) -> uint { return Bound<T>(value); }
 
 // An explicit primitive conformance is available to interface bounds as well as direct coercion.
