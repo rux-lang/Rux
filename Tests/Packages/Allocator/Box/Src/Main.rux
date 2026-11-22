@@ -1,4 +1,5 @@
-import Allocator::{ AllocError, Allocator, Box, SystemAllocator };
+import Allocator::{ AllocError, Allocator, SystemAllocator };
+import Allocator::Pointers::Box;
 import Core::Diagnostics::{ Assert, Panic };
 
 // A Box owns an allocation, so what is checked is that the allocation is released exactly once: not twice when the

@@ -1,4 +1,5 @@
-import Allocator::{ Arc, Rc, SystemAllocator };
+import Allocator::SystemAllocator;
+import Allocator::Pointers::{ Arc, Rc };
 import Core::Diagnostics::Assert;
 import Core::Machine::{ AtomicFetchAdd, AtomicLoad, MemoryOrder };
 import Thread::Spawn;

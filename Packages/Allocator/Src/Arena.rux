@@ -16,317 +16,319 @@ import Core::Primitives::*;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Memory::AlignUp;
 
-/// The default payload of an arena's first block.
-/// One page on every supported system. Each later block doubles, so an arena that keeps growing stops asking the
-/// system after a handful of requests.
-/// @see https://rux-lang.dev/docs/api/allocator/arena#default-arena-block-size
-pub const DefaultArenaBlockSize: uint = 4096;
+pub module Strategies {
+    /// The default payload of an arena's first block.
+    /// One page on every supported system. Each later block doubles, so an arena that keeps growing stops asking the
+    /// system after a handful of requests.
+    /// @see https://rux-lang.dev/docs/api/allocator/arena#default-arena-block-size
+    pub const DefaultArenaBlockSize: uint = 4096;
 
-/// The alignment every arena block is taken at, and so the strictest alignment an arena can serve from one.
-/// @see https://rux-lang.dev/docs/api/allocator/arena#arena-block-alignment
-pub const ArenaBlockAlignment: uint = 16;
+    /// The alignment every arena block is taken at, and so the strictest alignment an arena can serve from one.
+    /// @see https://rux-lang.dev/docs/api/allocator/arena#arena-block-alignment
+    pub const ArenaBlockAlignment: uint = 16;
 
-/// One block of arena storage, with the bookkeeping for what has been handed out of it.
-/// Never constructed by a caller. The payload follows the header immediately, and `capacity` counts only the
-/// payload.
-/// @see https://rux-lang.dev/docs/api/allocator/arena#arena-block
-pub struct ArenaBlock {
-    /// The block taken before this one, or null for the first.
-    previous: *var ArenaBlock;
-    /// Payload bytes in this block, not counting the header.
-    capacity: uint;
-    /// Payload bytes handed out so far.
-    used: uint;
-}
-
-/// An allocator that advances a pointer and reclaims everything at once.
-/// Move-only, because it owns its blocks. Borrow it as `&var Allocator` for a call, and pass its `Handle` where a
-/// stored `Allocator` handle is needed.
-/// @see https://rux-lang.dev/docs/api/allocator/arena
-pub struct Arena {
-    /// Where the blocks come from.
-    backing: Allocator;
-    /// The block being handed out of, or null before the first request.
-    current: *var ArenaBlock;
-    /// The payload the next block will be taken with.
-    nextBlockSize: uint;
-    /// The address the most recent allocation returned, or null. Kept so that releasing or growing the most recent
-    /// allocation can rewind rather than waste the space.
-    lastAllocation: uint;
-    /// How many blocks the arena holds.
-    blocks: uint;
-}
-
-extend Arena {
-    /// An arena that will take its storage from `backing`.
-    /// `backing` is borrowed for the call and kept. `blockSize` is the payload of the first block; zero asks for the
-    /// default. Cannot fail and allocates nothing: the first block is taken when the first request arrives, so an
-    /// arena that is never used costs nothing.
-    /// @param backing where the arena's blocks come from
-    /// @param blockSize the first block's payload in bytes; zero asks for the default
-    /// @returns the arena, holding no block yet
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#new
-    pub func New(backing: Allocator, blockSize: uint) -> Self {
-        let size = if blockSize == 0 { DefaultArenaBlockSize } else { blockSize };
-        return Self {
-            backing,
-            current: null,
-            nextBlockSize: size,
-            lastAllocation: 0,
-            blocks: 0
-        };
+    /// One block of arena storage, with the bookkeeping for what has been handed out of it.
+    /// Never constructed by a caller. The payload follows the header immediately, and `capacity` counts only the
+    /// payload.
+    /// @see https://rux-lang.dev/docs/api/allocator/arena#arena-block
+    pub struct ArenaBlock {
+        /// The block taken before this one, or null for the first.
+        previous: *var ArenaBlock;
+        /// Payload bytes in this block, not counting the header.
+        capacity: uint;
+        /// Payload bytes handed out so far.
+        used: uint;
     }
 
-    /// An `Allocator` handle addressing this arena, for a container to keep.
-    /// `self` stays the caller's. Allocations through the handle update this arena rather than copied state.
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    /// Safety: the handle addresses the arena and must not outlive it, nor survive the arena being moved, and nothing
-    /// may `Reset` the arena while an allocation made through the handle is still in use. Nothing here tracks that: a
-    /// handle held past its arena's life points at released storage.
-    /// @returns a copyable handle addressing this arena
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#handle
-    pub func Handle(*var self) -> Allocator {
-        return self as Allocator;
+    /// An allocator that advances a pointer and reclaims everything at once.
+    /// Move-only, because it owns its blocks. Borrow it as `&var Allocator` for a call, and pass its `Handle` where a
+    /// stored `Allocator` handle is needed.
+    /// @see https://rux-lang.dev/docs/api/allocator/arena
+    pub struct Arena {
+        /// Where the blocks come from.
+        backing: Allocator;
+        /// The block being handed out of, or null before the first request.
+        current: *var ArenaBlock;
+        /// The payload the next block will be taken with.
+        nextBlockSize: uint;
+        /// The address the most recent allocation returned, or null. Kept so that releasing or growing the most recent
+        /// allocation can rewind rather than waste the space.
+        lastAllocation: uint;
+        /// How many blocks the arena holds.
+        blocks: uint;
     }
 
-    /// Rewinds every allocation, keeping the largest block for the next round of work.
-    /// `self` is borrowed mutably. Every pointer the arena ever handed out becomes invalid, including any still held
-    /// by a caller — an arena reclaims in one operation, which is what makes it fast and what makes this the one
-    /// dangerous call on it.
-    /// The kept block is the current one, which is the largest, so a second round of the same work runs without
-    /// asking the system for anything. Runs in time proportional to the number of blocks.
-    /// Nothing may be read from or written to any earlier allocation afterwards.
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#reset
-    pub func Reset(&var self) {
-        if self.current == null { return; }
-        // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
-        // `backing`.
-        var block = self.current.previous;
-        while block != null {
-            // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
-            // from `backing`; the link is read before the block is released, and nothing reaches it after.
-            {
-                let earlier = block.previous;
-                self.ReleaseBlock(block);
-                block = earlier;
-            }
+    extend Arena {
+        /// An arena that will take its storage from `backing`.
+        /// `backing` is borrowed for the call and kept. `blockSize` is the payload of the first block; zero asks for
+        /// the default. Cannot fail and allocates nothing: the first block is taken when the first request arrives, so
+        /// an arena that is never used costs nothing.
+        /// @param backing where the arena's blocks come from
+        /// @param blockSize the first block's payload in bytes; zero asks for the default
+        /// @returns the arena, holding no block yet
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#new
+        pub func New(backing: Allocator, blockSize: uint) -> Self {
+            let size = if blockSize == 0 { DefaultArenaBlockSize } else { blockSize };
+            return Self {
+                backing,
+                current: null,
+                nextBlockSize: size,
+                lastAllocation: 0,
+                blocks: 0
+            };
         }
-        // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
-        // `backing`, and `current` is not null, checked above.
-        self.current.previous = null;
-        self.current.used = 0;
-        self.lastAllocation = 0;
-        self.blocks = 1;
-    }
 
-    /// How many payload bytes the arena has handed out, summed over every block it holds.
-    /// `self` is borrowed. Alignment padding between allocations counts as used. The tail a block was left with when
-    /// a request did not fit in it and the arena moved on to a new block is not counted: nothing was handed out of
-    /// it, and nothing will be until a `Reset`. Runs in time proportional to the number of blocks and allocates
-    /// nothing.
-    /// @returns how many payload bytes the arena's blocks have handed out
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#bytes-used
-    pub func BytesUsed(&self) -> uint {
-        var total: uint = 0;
-        var block = self.current;
-        while block != null {
+        /// An `Allocator` handle addressing this arena, for a container to keep.
+        /// `self` stays the caller's. Allocations through the handle update this arena rather than copied state.
+        /// Cannot fail. Runs in constant time and allocates nothing.
+        /// Safety: the handle addresses the arena and must not outlive it, nor survive the arena being moved, and
+        /// nothing may `Reset` the arena while an allocation made through the handle is still in use. Nothing here
+        /// tracks that: a handle held past its arena's life points at released storage.
+        /// @returns a copyable handle addressing this arena
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#handle
+        pub func Handle(*var self) -> Allocator {
+            return self as Allocator;
+        }
+
+        /// Rewinds every allocation, keeping the largest block for the next round of work.
+        /// `self` is borrowed mutably. Every pointer the arena ever handed out becomes invalid, including any still
+        /// held by a caller — an arena reclaims in one operation, which is what makes it fast and what makes this the
+        /// one dangerous call on it. The kept block is the current one, which is the largest, so a second round of the
+        /// same work runs without asking the system for anything. Runs in time proportional to the number of blocks.
+        /// Nothing may be read from or written to any earlier allocation afterwards.
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#reset
+        pub func Reset(&var self) {
+            if self.current == null { return; }
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
             // from `backing`.
-            total = total + block.used;
-            block = block.previous;
-        }
-        return total;
-    }
-
-    /// How many blocks the arena holds.
-    /// `self` is borrowed. Zero before the first request.
-    /// @returns how many blocks the arena holds
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#block-count
-    pub func BlockCount(&self) -> uint {
-        return self.blocks;
-    }
-
-    // Gives one block back to the backing allocator, with the layout it was taken under.
-    // Safety: `block` must be a live block this arena took from `backing`, and nothing may reach it afterwards.
-    func ReleaseBlock(&var self, block: *var ArenaBlock) {
-        let total = sizeof(ArenaBlock) + block.capacity;
-        let layout = Layout::Of(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
-        // The block came from the backing allocator with this layout, and the arena is giving it up either way.
-        self.backing.Deallocate(block as *var opaque, layout) catch { _ => {} };
-    }
-
-    // Takes a block able to hold `payload` bytes, chains it in front of the current one, and makes it current.
-    // Safety: the chain invariant holds for `self`.
-    func TakeBlock(&var self, payload: uint) -> !AllocError {
-        var capacity = self.nextBlockSize;
-        if capacity < payload {
-            capacity = payload;
-        }
-        let header = sizeof(ArenaBlock);
-        if capacity > uint::Max - header { throw .Unsupported; }
-        let total = header + capacity;
-        let layout = Layout::Of(total, ArenaBlockAlignment) ?? throw .Unsupported;
-
-        let storage = self.backing.Allocate(layout)!;
-        let block = storage as *var ArenaBlock;
-        block.previous = self.current;
-        block.capacity = capacity;
-        block.used = 0;
-        self.current = block;
-        self.blocks = self.blocks + 1;
-        // The next block doubles, up to whatever does not overflow, so a growing arena stops asking the system.
-        self.nextBlockSize = if capacity > uint::Max / 2 { capacity } else { capacity * 2 };
-    }
-
-    // The bump allocation itself: align within the current block, take the space, and remember where it went.
-    // Safety: the chain invariant holds for `self`.
-    func Bump(&var self, layout: Layout) -> uint {
-        if self.current == null { return 0; }
-        let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
-        let unaligned = payloadStart + self.current.used;
-        let aligned = AlignUp(unaligned, layout.alignment);
-        if aligned < unaligned { return 0; }
-        let padding = aligned - unaligned;
-        if padding > self.current.capacity - self.current.used { return 0; }
-        let remaining = self.current.capacity - self.current.used - padding;
-        if layout.size > remaining { return 0; }
-        self.current.used = self.current.used + padding + layout.size;
-        self.lastAllocation = aligned;
-        return aligned;
-    }
-
-    /// Gives every block back to the backing allocator.
-    /// Runs when the arena's life ends. Every pointer the arena handed out becomes invalid.
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#destructor
-    destructor {
-        var block = self.current;
-        while block != null {
+            var block = self.current.previous;
+            while block != null {
+                // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
+                // from `backing`; the link is read before the block is released, and nothing reaches it after.
+                {
+                    let earlier = block.previous;
+                    self.ReleaseBlock(block);
+                    block = earlier;
+                }
+            }
             // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
-            // from `backing`; the link is read before the block is released, and nothing reaches it after.
+            // from `backing`, and `current` is not null, checked above.
+            self.current.previous = null;
+            self.current.used = 0;
+            self.lastAllocation = 0;
+            self.blocks = 1;
+        }
+
+        /// How many payload bytes the arena has handed out, summed over every block it holds.
+        /// `self` is borrowed. Alignment padding between allocations counts as used. The tail a block was left with
+        /// when a request did not fit in it and the arena moved on to a new block is not counted: nothing was handed
+        /// out of it, and nothing will be until a `Reset`. Runs in time proportional to the number of blocks and
+        /// allocates nothing.
+        /// @returns how many payload bytes the arena's blocks have handed out
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#bytes-used
+        pub func BytesUsed(&self) -> uint {
+            var total: uint = 0;
+            var block = self.current;
+            while block != null {
+                // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
+                // from `backing`.
+                total = total + block.used;
+                block = block.previous;
+            }
+            return total;
+        }
+
+        /// How many blocks the arena holds.
+        /// `self` is borrowed. Zero before the first request.
+        /// @returns how many blocks the arena holds
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#block-count
+        pub func BlockCount(&self) -> uint {
+            return self.blocks;
+        }
+
+        // Gives one block back to the backing allocator, with the layout it was taken under.
+        // Safety: `block` must be a live block this arena took from `backing`, and nothing may reach it afterwards.
+        func ReleaseBlock(&var self, block: *var ArenaBlock) {
+            let total = sizeof(ArenaBlock) + block.capacity;
+            let fallback = Layout { size: total, alignment: ArenaBlockAlignment };
+            let layout = Layout::Of(total, ArenaBlockAlignment) ?? fallback;
+            // The block came from the backing allocator with this layout, and the arena is giving it up either way.
+            self.backing.Deallocate(block as *var opaque, layout) catch { _ => {} };
+        }
+
+        // Takes a block able to hold `payload` bytes, chains it in front of the current one, and makes it current.
+        // Safety: the chain invariant holds for `self`.
+        func TakeBlock(&var self, payload: uint) -> !AllocError {
+            var capacity = self.nextBlockSize;
+            if capacity < payload {
+                capacity = payload;
+            }
+            let header = sizeof(ArenaBlock);
+            if capacity > uint::Max - header { throw .Unsupported; }
+            let total = header + capacity;
+            let layout = Layout::Of(total, ArenaBlockAlignment) ?? throw .Unsupported;
+
+            let storage = self.backing.Allocate(layout)!;
+            let block = storage as *var ArenaBlock;
+            block.previous = self.current;
+            block.capacity = capacity;
+            block.used = 0;
+            self.current = block;
+            self.blocks = self.blocks + 1;
+            // The next block doubles, up to whatever does not overflow, so a growing arena stops asking the system.
+            self.nextBlockSize = if capacity > uint::Max / 2 { capacity } else { capacity * 2 };
+        }
+
+        // The bump allocation itself: align within the current block, take the space, and remember where it went.
+        // Safety: the chain invariant holds for `self`.
+        func Bump(&var self, layout: Layout) -> uint {
+            if self.current == null { return 0; }
+            let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
+            let unaligned = payloadStart + self.current.used;
+            let aligned = AlignUp(unaligned, layout.alignment);
+            if aligned < unaligned { return 0; }
+            let padding = aligned - unaligned;
+            if padding > self.current.capacity - self.current.used { return 0; }
+            let remaining = self.current.capacity - self.current.used - padding;
+            if layout.size > remaining { return 0; }
+            self.current.used = self.current.used + padding + layout.size;
+            self.lastAllocation = aligned;
+            return aligned;
+        }
+
+        /// Gives every block back to the backing allocator.
+        /// Runs when the arena's life ends. Every pointer the arena handed out becomes invalid.
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#destructor
+        destructor {
+            var block = self.current;
+            while block != null {
+                // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
+                // from `backing`; the link is read before the block is released, and nothing reaches it after.
+                {
+                    let earlier = block.previous;
+                    self.ReleaseBlock(block);
+                    block = earlier;
+                }
+            }
+            self.current = null;
+            self.blocks = 0;
+            self.lastAllocation = 0;
+        }
+    }
+
+    extend Arena : Allocator {
+        /// Takes storage matching `layout` by advancing the arena's pointer.
+        /// `result` receives the address when this reports `None`. A zero-sized layout gives the shared empty block and
+        /// consumes none of the arena.
+        /// Takes a new block when the current one cannot serve the request, which is the only path here that can fail.
+        /// The storage lives until the arena is reset or destroyed, whichever comes first, and not one moment longer.
+        /// @param layout the size and alignment wanted
+        /// @returns the address of the storage, or why none was taken
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#allocate
+        pub func Allocate(&var self, layout: Layout) -> *var opaque ! AllocError {
+            if layout.size == 0 {
+                return EmptyBlockAddress();
+            }
+            if layout.alignment > ArenaBlockAlignment { throw .Unsupported; }
+
+            // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
+            // from `backing`.
+            var address = self.Bump(layout);
+            if address == 0 {
+                // Safety: the chain invariant, as above.
+                self.TakeBlock(layout.size + layout.alignment)!;
+                // Safety: the chain invariant, as above; `TakeBlock` keeps it.
+                address = self.Bump(layout);
+                if address == 0 { throw .OutOfMemory; }
+            }
+            return address as *var opaque;
+        }
+
+        /// Accepts a release and reclaims only what it can.
+        /// An arena reclaims in one operation, so an ordinary release has nothing to give back and reports `None`
+        /// having done nothing. The exception is the most recent allocation, whose space is rewound — which is what
+        /// lets a growing collection in an arena not waste every earlier size it passed through. Accepting rather than
+        /// refusing is deliberate: it lets an arena stand in for any allocator in generic code that releases what it
+        /// takes.
+        /// @param block an address this allocator returned
+        /// @param layout the layout it was allocated with
+        /// @returns nothing when the release was accepted, or why it was refused
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#deallocate
+        pub func Deallocate(&var self, block: *var opaque, layout: Layout) -> !AllocError {
+            if layout.size == 0 { if !IsEmptyBlock(block) { throw .InvalidBlock; } return; }
+            if block == null { throw .InvalidBlock; }
+            let address = block as uint;
+            // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
+            // from `backing`, so a non-null `current` is live.
+            if address == self.lastAllocation && self.current != null {
+                let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
+                let offset = address - payloadStart;
+                if offset + layout.size <= self.current.used {
+                    self.current.used = offset;
+                    self.lastAllocation = 0;
+                }
+            }
+        }
+
+        /// Grows or shrinks a block, extending the most recent allocation in place where it can.
+        /// The two layouts must share an alignment. Growing the most recent allocation extends it without moving when
+        /// the current block has room; anything else takes new storage and copies, leaving the old space behind for the
+        /// next reset to reclaim.
+        /// Shrinking to a zero-sized layout releases the block and reports the shared empty address rather than the one
+        /// it rewound off of, so the result is releasable with the layout it was asked for.
+        /// @param block the existing allocation's address
+        /// @param oldLayout the layout `block` was allocated with
+        /// @param newLayout the layout wanted, which must have the same alignment
+        /// @returns the address the block is at afterwards, or why it was not resized
+        /// @see https://rux-lang.dev/docs/api/allocator/arena#reallocate
+        pub func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+            -> *var opaque ! AllocError {
+            if oldLayout.alignment != newLayout.alignment { throw .Unsupported; }
+            if oldLayout.size == newLayout.size {
+                return block;
+            }
+            // Shrinking to nothing has to give the shared empty address, not the address it is rewinding off of. Every
+            // allocator here answers a zero-sized layout with `EmptyBlockAddress`, and `Deallocate` refuses a
+            // zero-sized release that arrives with anything else — so returning the real address would hand the caller
+            // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
+            if newLayout.size == 0 {
+                self.Deallocate(block, oldLayout)!;
+                return EmptyBlockAddress();
+            }
+
+            let address = block as uint;
+            // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
+            // from `backing`, so a non-null `current` is live.
+            if address != 0 && address == self.lastAllocation && self.current != null {
+                let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
+                let offset = address - payloadStart;
+                if offset + oldLayout.size == self.current.used {
+                    if newLayout.size <= oldLayout.size {
+                        self.current.used = offset + newLayout.size;
+                        return block;
+                    }
+                    let extra = newLayout.size - oldLayout.size;
+                    if extra <= self.current.capacity - self.current.used {
+                        self.current.used = self.current.used + extra;
+                        return block;
+                    }
+                }
+            }
+
+            let fresh = self.Allocate(newLayout)!;
+            let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
+            // Safety: `fresh` was just allocated with `newLayout.size` bytes, the `Allocator` contract makes `block` an
+            // allocation of this arena with `oldLayout.size` bytes, and `offset` stays below the smaller of the two.
             {
-                let earlier = block.previous;
-                self.ReleaseBlock(block);
-                block = earlier;
-            }
-        }
-        self.current = null;
-        self.blocks = 0;
-        self.lastAllocation = 0;
-    }
-}
-
-extend Arena : Allocator {
-    /// Takes storage matching `layout` by advancing the arena's pointer.
-    /// `result` receives the address when this reports `None`. A zero-sized layout gives the shared empty block and
-    /// consumes none of the arena.
-    /// Takes a new block when the current one cannot serve the request, which is the only path here that can fail.
-    /// The storage lives until the arena is reset or destroyed, whichever comes first, and not one moment longer.
-    /// @param layout the size and alignment wanted
-    /// @returns the address of the storage, or why none was taken
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#allocate
-    pub func Allocate(&var self, layout: Layout) -> *var opaque ! AllocError {
-        if layout.size == 0 {
-            return EmptyBlockAddress();
-        }
-        if layout.alignment > ArenaBlockAlignment { throw .Unsupported; }
-
-        // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took
-        // from `backing`.
-        var address = self.Bump(layout);
-        if address == 0 {
-            // Safety: the chain invariant, as above.
-            self.TakeBlock(layout.size + layout.alignment)!;
-            // Safety: the chain invariant, as above; `TakeBlock` keeps it.
-            address = self.Bump(layout);
-            if address == 0 { throw .OutOfMemory; }
-        }
-        return address as *var opaque;
-    }
-
-    /// Accepts a release and reclaims only what it can.
-    /// An arena reclaims in one operation, so an ordinary release has nothing to give back and reports `None` having
-    /// done nothing. The exception is the most recent allocation, whose space is rewound — which is what lets a
-    /// growing collection in an arena not waste every earlier size it passed through.
-    /// Accepting rather than refusing is deliberate: it lets an arena stand in for any allocator in generic code
-    /// that releases what it takes.
-    /// @param block an address this allocator returned
-    /// @param layout the layout it was allocated with
-    /// @returns nothing when the release was accepted, or why it was refused
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#deallocate
-    pub func Deallocate(&var self, block: *var opaque, layout: Layout) -> !AllocError {
-        if layout.size == 0 { if !IsEmptyBlock(block) { throw .InvalidBlock; } return; }
-        if block == null { throw .InvalidBlock; }
-        let address = block as uint;
-        // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
-        // `backing`, so a non-null `current` is live.
-        if address == self.lastAllocation && self.current != null {
-            let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
-            let offset = address - payloadStart;
-            if offset + layout.size <= self.current.used {
-                self.current.used = offset;
-                self.lastAllocation = 0;
-            }
-        }
-    }
-
-    /// Grows or shrinks a block, extending the most recent allocation in place where it can.
-    /// The two layouts must share an alignment. Growing the most recent allocation extends it without moving when
-    /// the current block has room; anything else takes new storage and copies, leaving the old space behind for the
-    /// next reset to reclaim.
-    /// Shrinking to a zero-sized layout releases the block and reports the shared empty address rather than the one
-    /// it rewound off of, so the result is releasable with the layout it was asked for.
-    /// @param block the existing allocation's address
-    /// @param oldLayout the layout `block` was allocated with
-    /// @param newLayout the layout wanted, which must have the same alignment
-    /// @returns the address the block is at afterwards, or why it was not resized
-    /// @see https://rux-lang.dev/docs/api/allocator/arena#reallocate
-    pub func Reallocate(&var self, block: *var opaque, oldLayout: Layout, newLayout: Layout)
-        -> *var opaque ! AllocError {
-        if oldLayout.alignment != newLayout.alignment { throw .Unsupported; }
-        if oldLayout.size == newLayout.size {
-            return block;
-        }
-        // Shrinking to nothing has to give the shared empty address, not the address it is rewinding off of. Every
-        // allocator here answers a zero-sized layout with `EmptyBlockAddress`, and `Deallocate` refuses a
-        // zero-sized release that arrives with anything else — so returning the real address would hand the caller
-        // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
-        if newLayout.size == 0 {
-            self.Deallocate(block, oldLayout)!;
-            return EmptyBlockAddress();
-        }
-
-        let address = block as uint;
-        // Safety: the chain invariant: `current` and every `previous` link address a live block this arena took from
-        // `backing`, so a non-null `current` is live.
-        if address != 0 && address == self.lastAllocation && self.current != null {
-            let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
-            let offset = address - payloadStart;
-            if offset + oldLayout.size == self.current.used {
-                if newLayout.size <= oldLayout.size {
-                    self.current.used = offset + newLayout.size;
-                    return block;
-                }
-                let extra = newLayout.size - oldLayout.size;
-                if extra <= self.current.capacity - self.current.used {
-                    self.current.used = self.current.used + extra;
-                    return block;
+                var offset: uint = 0;
+                let target = fresh as *var byte;
+                let origin = block as *byte;
+                while offset < keep {
+                    *(target + offset) = *(origin + offset);
+                    offset++;
                 }
             }
+            return fresh;
         }
-
-        let fresh = self.Allocate(newLayout)!;
-        let keep = if oldLayout.size < newLayout.size { oldLayout.size } else { newLayout.size };
-        // Safety: `fresh` was just allocated with `newLayout.size` bytes, the `Allocator` contract makes `block` an
-        // allocation of this arena with `oldLayout.size` bytes, and `offset` stays below the smaller of the two.
-        {
-            var offset: uint = 0;
-            let target = fresh as *var byte;
-            let origin = block as *byte;
-            while offset < keep {
-                *(target + offset) = *(origin + offset);
-                offset++;
-            }
-        }
-        return fresh;
     }
 }

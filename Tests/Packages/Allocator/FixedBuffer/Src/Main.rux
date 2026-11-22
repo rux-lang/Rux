@@ -1,4 +1,5 @@
-import Allocator::{ AllocError, Allocator, FixedBuffer, IsEmptyBlock, Layout };
+import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout };
+import Allocator::Strategies::FixedBuffer;
 import Core::Diagnostics::{ Assert, Panic };
 import Memory::IsPointerAligned;
 

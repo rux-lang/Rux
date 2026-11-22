@@ -10,19 +10,19 @@ rux add Rux/Allocator
 
 ## What it provides
 
-| Module     | Covers                                                                    |
-| ---------- | -------------------------------------------------------------------------- |
-| `Layout`   | a validated size-and-alignment pair, and the layouts a type or array needs |
-| `Error`    | `AllocError`, the questions worth asking of one, and `AllocationFailed`    |
-| `Contract` | the `Allocator` interface every allocator here implements                  |
-| `System`   | `SystemAllocator`, which asks the operating system for pages               |
-| `Box`      | `Box<T>`, one heap value with exactly one owner                             |
-| `Shared`   | `Rc<T>` and `Arc<T>`, one heap value shared by counted handles               |
-| `Arena`    | `Arena`, which advances a pointer and reclaims everything at once           |
-| `FixedBuffer` | `FixedBuffer`, which hands out storage the caller already has            |
-| `Pool`     | `Pool`, which serves small blocks from per-class free lists                 |
+| Import from             | File          | Covers                                                                     |
+| ----------------------- | ------------- | -------------------------------------------------------------------------- |
+| `Allocator`             | `Layout`      | a validated size-and-alignment pair, and the layouts a type or array needs |
+| `Allocator`             | `Error`       | `AllocError`, the questions worth asking of one, and `AllocationFailed`    |
+| `Allocator`             | `Contract`    | the `Allocator` interface every allocator here implements                  |
+| `Allocator`             | `System`      | `SystemAllocator`, which asks the operating system for pages               |
+| `Allocator::Pointers`   | `Box`         | `Box<T>`, one heap value with exactly one owner                            |
+| `Allocator::Pointers`   | `Shared`      | `Rc<T>` and `Arc<T>`, one heap value shared by counted handles             |
+| `Allocator::Strategies` | `Arena`       | `Arena`, which advances a pointer and reclaims everything at once          |
+| `Allocator::Strategies` | `FixedBuffer` | `FixedBuffer`, which hands out storage the caller already has              |
+| `Allocator::Strategies` | `Pool`        | `Pool`, which serves small blocks from per-class free lists                |
 
-The module names describe where each declaration comes from; they are not part of an import path.
+The contract, `Layout`, the errors and `SystemAllocator` are imported from the package root, because nearly every allocating package needs them; the allocators built on top of another one live in `Allocator::Strategies`, and the owning handles in `Allocator::Pointers`.
 
 A `Layout` that exists is valid. `Layout::Of` refuses an alignment that is not a power of two, or a size whose rounding would pass the end of the address space — so nothing downstream checks again. That second case is the one worth naming: it is how a request for a huge array becomes an allocation far smaller than the caller asked for. Use `Layout::ForValue<T>()` or `Layout::ForArray<T>(count)` when storage follows a type; neither requires a sample value, so describing a move-only type consumes nothing.
 
@@ -48,7 +48,8 @@ An `Arena` hands out storage by advancing a pointer and takes it all back at onc
 There are three ways to take an allocator. A function that allocates for the length of a call borrows it, as `&var Allocator`, or bounds a generic by it, `func Build<A: Allocator>(allocator: &var A)`, which resolves each call for the concrete type with nothing dispatched at run time. A value that keeps its allocator — every container, string and box here — keeps an `Allocator` value, which is a copyable handle that addresses an implementation and owns nothing. `SystemAllocator` carries no state, so it converts to a handle wherever one is wanted and the handle stays valid for the whole program: `Vector<int>::New(SystemAllocator::New())` and `let allocator = SystemAllocator::New();` are the everyday spellings. An `Arena`, `Pool` or `FixedBuffer` has state of its own, so its handle comes only from `Handle`, whose caller promises that the allocator outlives every copy of the handle, is not moved while one exists, and is not reset while an allocation made through one is still in use. Nothing checks that, and a handle held past it points at released or moved storage:
 
 ```rux
-import Allocator::{ Arena, SystemAllocator };
+import Allocator::SystemAllocator;
+import Allocator::Strategies::Arena;
 import Collections::Vector;
 
 func Main() -> int {

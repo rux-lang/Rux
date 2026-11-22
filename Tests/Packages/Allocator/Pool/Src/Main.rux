@@ -1,5 +1,6 @@
-import Allocator::{ AllocError, Allocator, ClassIndexFor, FixedBuffer, IsEmptyBlock, Layout, Pool, PoolAlignment,
-                    PoolClassCount, PoolLargestClass, PoolSmallestClass, SystemAllocator };
+import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout, SystemAllocator };
+import Allocator::Strategies::{ ClassIndexFor, FixedBuffer, Pool, PoolAlignment, PoolClassCount, PoolLargestClass,
+                                PoolSmallestClass };
 import Core::Diagnostics::{ Assert, Panic };
 import Memory::IsPointerAligned;
 

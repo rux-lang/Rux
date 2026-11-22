@@ -1,4 +1,6 @@
-import Allocator::{ AllocError, Allocator, Arc, Arena, Box, IsEmptyBlock, Layout, Pool, Rc, SystemAllocator };
+import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout, SystemAllocator };
+import Allocator::Pointers::{ Arc, Box, Rc };
+import Allocator::Strategies::{ Arena, Pool };
 import Core::Diagnostics::{ Assert, Panic };
 
 // The phase gate for allocation: every site that can ask for storage is made to fail, and what happens next is

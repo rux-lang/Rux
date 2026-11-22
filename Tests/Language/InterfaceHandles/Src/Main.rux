@@ -4,7 +4,8 @@
 // whose maker promises the implementation outlives every copy. A container keeps its allocator as
 // such a handle, so it can be returned from the function that made it, and what it owns is destroyed exactly once.
 
-import Allocator::{ AllocError, Allocator, Arena, Layout, SystemAllocator };
+import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
+import Allocator::Strategies::Arena;
 import Collections::Vector;
 import Core::Diagnostics::Assert;
 

@@ -12,8 +12,8 @@
 // pointing at one. The adapter holds an address, so two handles from one owner share its state and a handle does
 // not survive its owner moving — both documented, neither checked.
 
-import Allocator::{ AllocError, Allocator, Arena, EmptyBlockAddress, FixedBuffer, IsEmptyBlock, Layout, Pool,
-                    SystemAllocator };
+import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, SystemAllocator };
+import Allocator::Strategies::{ Arena, FixedBuffer, Pool };
 import Core::Diagnostics::{ Assert, Panic };
 
 /// A recognizable byte for position `index`, chosen so that a block filled with these cannot be mistaken for
