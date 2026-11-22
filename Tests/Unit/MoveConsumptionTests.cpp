@@ -207,6 +207,34 @@ TEST_CASE("only a local, a parameter, a temporary or a read through a raw pointe
     for (std::size_t index = 0; index < expected.size(); ++index) {
         CHECK_EQ(diagnostics[index].message, expected[index]);
     }
+    // A place that cannot be written cannot be taken with 'Replace' or 'Swap', so the help offers neither.
+    CHECK_EQ(diagnostics[0].help, "clone it; it cannot be taken with 'Replace' or 'Swap', which write the place");
+    CHECK_EQ(diagnostics[2].help,
+             "take 'holder' apart with a pattern; it cannot be taken with 'Replace' or 'Swap', which write the place");
+}
+
+TEST_CASE("a part that can be written is offered 'Replace' and 'Swap'") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        struct Handle { value: int32; }
+        extend Handle {
+            destructor {}
+        }
+        struct Holder { handle: Handle; count: int32; }
+
+        func ThroughWritableReference(holder: &var Holder) {
+            let field = holder.handle;
+        }
+
+        func Partial() {
+            var holder = Holder { handle: Handle { value: 3 }, count: 4 };
+            let partial = holder.handle;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].help, "take it with 'Replace(&var holder.handle, value)' or 'Swap', or clone it");
+    CHECK_EQ(diagnostics[1].help,
+             "take it with 'Replace(&var holder.handle, value)' or 'Swap', or take 'holder' apart with a pattern");
 }
 
 TEST_CASE("bare transfers retain source drop-flag transfers in HIR") {

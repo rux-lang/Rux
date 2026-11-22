@@ -1783,6 +1783,9 @@ private:
     [[nodiscard]] TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName);
     void CheckStructInitExpression(const StructInitExpr &expression);
     [[nodiscard]] bool PlaceIsWritable(const Expr &place, const TypeRef &placeType);
+    /// Whether a field or element place can be written, read off the binding at its root and the loans and pointers it
+    /// is reached through, from the types already recorded: a `let` local or a `&T` along the way makes it read-only.
+    [[nodiscard]] bool PartPlaceIsWritable(const Expr &place) const;
     [[nodiscard]] bool CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
                                              std::string_view operatorName);
     /// The reference binding a write to `target` stores through, or null when `target` is not a name bound to a

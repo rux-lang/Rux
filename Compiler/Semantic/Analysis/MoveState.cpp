@@ -11,6 +11,16 @@
 #include <utility>
 
 namespace Rux::SemanticDetail {
+namespace {
+/// The help for an owning part that cannot be given away by itself: `Replace` or `Swap` where the place can be written,
+/// which takes a `&var` loan of it, and otherwise what is left.
+std::string TakePartHelp(const bool writable, const std::string &place, const std::string &alternative) {
+    return writable
+             ? std::format("take it with 'Replace(&var {}, value)' or 'Swap', or {}", place, alternative)
+             : std::format("{}; it cannot be taken with 'Replace' or 'Swap', which write the place", alternative);
+}
+} // namespace
+
 Symbol *AnalysisContext::Define(Symbol symbol) {
     const std::string name = symbol.name;
     if (!currentScope->Define(std::move(symbol), diags, currentFile)) {
@@ -1122,7 +1132,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
         const MovePlace place = AnalyzeMovePlace(expression);
         EmitError(location, std::format("'{}' is reached through a loan and cannot be given away", place.Display()),
                   {"a loan does not own the value it reaches"},
-                  std::format("take it with 'Replace(&var {}, value)' or 'Swap', or clone it", place.Display()));
+                  TakePartHelp(PartPlaceIsWritable(expression), place.Display(), "clone it"));
         return false;
     }
     // A read through a raw pointer takes the value out and leaves the storage empty: a pointer cannot say whether its
@@ -1134,7 +1144,7 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
     if (place.IsBorrowedStorage()) {
         EmitError(location, std::format("'{}' is reached through a loan and cannot be given away", place.Display()),
                   {"a loan does not own the value it reaches"},
-                  std::format("take it with 'Replace(&var {}, value)' or 'Swap', or clone it", place.Display()));
+                  TakePartHelp(PartPlaceIsWritable(expression), place.Display(), "clone it"));
         return false;
     }
     if (place.IsComplete()) {
@@ -1150,9 +1160,41 @@ bool AnalysisContext::ValidateMoveSource(const Expr &expression, const SourceLoc
               : std::format("{} of '{}' cannot be given away by itself", place.LastProjectionDescription(),
                             place.ContainerDisplay()),
         {"only a local, a parameter or a temporary is given away; the rest of the value would be left without it"},
-        std::format("take it with 'Replace(&var {}, value)' or 'Swap', or take '{}' apart with a pattern",
-                    place.Display(), place.ContainerDisplay()));
+        TakePartHelp(PartPlaceIsWritable(expression), place.Display(),
+                     std::format("take '{}' apart with a pattern", place.ContainerDisplay())));
     return false;
+}
+
+bool AnalysisContext::PartPlaceIsWritable(const Expr &place) const {
+    // Read off the types already recorded for the place, so asking checks nothing again.
+    const Expr *current = &place;
+    while (true) {
+        const Expr *object = nullptr;
+        if (const auto *field = AstCast<const FieldExpr>(current)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = AstCast<const IndexExpr>(current)) {
+            object = index->object.get();
+        }
+        else if (const auto *identifier = AstCast<const IdentExpr>(current)) {
+            const Symbol *symbol = currentScope->Lookup(identifier->name);
+            return symbol == nullptr || symbol->kind != Symbol::Kind::Var || symbol->isMut;
+        }
+        else if (AstCast<const SelfExpr>(current)) {
+            const Symbol *symbol = currentScope->Lookup("self");
+            return symbol == nullptr || symbol->isMut;
+        }
+        else {
+            return true;
+        }
+        if (const auto found = expressionTypes.find(object);
+            found != expressionTypes.end() &&
+            (found->second->kind == TypeRef::Kind::Reference || found->second->kind == TypeRef::Kind::Pointer) &&
+            !found->second->inner.empty()) {
+            return found->second->inner[0].isMut;
+        }
+        current = object;
+    }
 }
 
 bool AnalysisContext::RejectSelfMove(const Expr &target, const Expr &value, const SourceLocation location) {
