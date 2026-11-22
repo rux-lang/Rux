@@ -726,3 +726,17 @@ TEST_CASE("a native form passed for a bound points at the value inside it") {
                                   "?' or 'if let'");
     CHECK_EQ(diagnostics[2].help, "pass a type that implements 'Show'; an optional implements no interface");
 }
+
+TEST_CASE("a write to a for variable is offered a local of the body") {
+    // A loop variable takes no binding keyword, so the help never suggests declaring it with 'var'.
+    const auto diagnostics = AnalyzeSource(R"(
+        func Count() -> int {
+            var total = 0;
+            for i in 0..3 { i += 1; total += i; }
+            return total;
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "cannot modify immutable variable 'i'");
+    CHECK_EQ(diagnostics[0].help, "declare a 'var' local from it in the body, as in 'var i = i;'");
+}

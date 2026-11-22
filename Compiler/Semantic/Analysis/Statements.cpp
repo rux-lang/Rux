@@ -702,6 +702,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             variable.location = forStatement->location;
             variable.type = elementType;
             variable.isMut = false;
+            variable.isLoopVariable = true;
             loopVariable = DefineTrackedLocal(std::move(variable), true);
             // Each element it lends keeps the sequence borrowed while the variable is in use.
             if (lendsElements && loopVariable && trackedFlowReachable) {

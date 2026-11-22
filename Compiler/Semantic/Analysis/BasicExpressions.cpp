@@ -1826,6 +1826,11 @@ bool AnalysisContext::PlaceIsWritable(const Expr &place, const TypeRef &placeTyp
 }
 
 std::optional<std::string> AnalysisContext::ImmutableBindingHelp(const Symbol &binding) {
+    // A loop variable takes no binding keyword, so a value to change is a local of the body's own.
+    if (binding.isLoopVariable) {
+        return std::format("declare a 'var' local from it in the body, as in 'var {} = {};'", binding.name,
+                           binding.name);
+    }
     if (!binding.isParameter) {
         return std::format("declare '{}' with 'var' to make it mutable", binding.name);
     }
