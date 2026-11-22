@@ -67,7 +67,36 @@ HirBlock AstToHirContext::LowerBlock(const Block &block, const BlockValue *value
             }
             continue;
         }
+        // A local a join inside the statement left dead on some paths is destroyed where the statement ends, on the
+        // paths that still hold it. Its binding is found before the statement, which may declare the same name.
+        std::vector<HirDropAction> joinActions;
+        if (const std::vector<std::string> *names = model.TryGetJoinDrops(*statement)) {
+            for (const std::string &name : *names) {
+                std::uint64_t binding = 0;
+                if (name.starts_with("self.")) {
+                    if (const auto found = endingFieldBindings.find(name.substr(5));
+                        found != endingFieldBindings.end()) {
+                        binding = found->second;
+                    }
+                }
+                else if (const HirSymbol *symbol = currentScope->Lookup(name);
+                         symbol && symbol->kind == HirSymbol::Kind::Var) {
+                    binding = symbol->bindingId;
+                }
+                if (const std::optional<HirDropAction> action = cleanupPlanner.ActionFor(binding)) {
+                    joinActions.push_back(*action);
+                }
+            }
+        }
         LowerStmtInto(loweredBlock, *statement);
+        // The last declared goes first, as at the end of a scope.
+        std::ranges::sort(joinActions, std::ranges::greater{}, &HirDropAction::bindingId);
+        for (HirDropAction &action : joinActions) {
+            auto cleanup = std::make_unique<HirDropStmt>();
+            cleanup->location = statement->location;
+            cleanup->action = std::move(action);
+            loweredBlock.stmts.push_back(std::move(cleanup));
+        }
     }
     if (!deferStack.empty()) {
         const auto deferred = deferStack.back();

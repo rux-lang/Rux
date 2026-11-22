@@ -139,6 +139,7 @@ AnalysisContext::BodyRecords AnalysisContext::ExtractBodyRecords(const AnalysisC
     own.variantEqualityPlans = OwnEntries(mine.variantEqualityPlans, base.variantEqualityPlans);
     own.aggregateEqualities = OwnEntries(mine.aggregateEqualities, base.aggregateEqualities);
     own.noneTests = OwnEntries(mine.noneTests, base.noneTests);
+    own.joinDrops = OwnEntries(mine.joinDrops, base.joinDrops);
     own.aggregateEqualityOperandTypes =
         OwnEntries(mine.aggregateEqualityOperandTypes, base.aggregateEqualityOperandTypes);
     own.aggregateEqualityPlans = OwnEntries(mine.aggregateEqualityPlans, base.aggregateEqualityPlans);
@@ -272,6 +273,7 @@ void AnalysisContext::AbsorbBodyRecords(std::vector<BodyRecords> &records, Paral
                            [](R &r) -> auto & { return r.facts.aggregateEqualities; });
         },
         [&] { MergeLaterWins(facts.noneTests, records, [](R &r) -> auto & { return r.facts.noneTests; }); },
+        [&] { MergeLaterWins(facts.joinDrops, records, [](R &r) -> auto & { return r.facts.joinDrops; }); },
         [&] {
             MergeLaterWins(facts.aggregateEqualityOperandTypes, records,
                            [](R &r) -> auto & { return r.facts.aggregateEqualityOperandTypes; });

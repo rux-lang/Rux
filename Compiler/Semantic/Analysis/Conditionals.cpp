@@ -381,7 +381,7 @@ TypeRef AnalysisContext::CheckIfExpression(const MatchExpr &expression) {
     const TypeRef elseType = checkBranch(otherwise);
     PopScope();
     const TrackedFlow elseExit = SaveTrackedFlow();
-    MergeTrackedFlows({thenExit, elseExit});
+    MergeTrackedFlows({thenExit, elseExit}, afterCondition);
 
     UnifyArm(unification, *taken.body, thenType, taken.location);
     UnifyArm(unification, *otherwise.body, elseType, otherwise.location);
@@ -401,7 +401,7 @@ TypeRef AnalysisContext::CheckBindingConjunction(const BinaryExpr &expression, c
     const TypeRef right = CheckExpr(*expression.right);
     conditionReceivesBindings = false;
     const TrackedFlow evaluatedExit = SaveTrackedFlow();
-    MergeTrackedFlows({shortCircuitExit, evaluatedExit});
+    MergeTrackedFlows({shortCircuitExit, evaluatedExit}, shortCircuitExit);
     const TypeRef result =
         CheckBinary(expression.op, left, right, *expression.left, *expression.right, expression.location);
     if (!receivesBindings) {

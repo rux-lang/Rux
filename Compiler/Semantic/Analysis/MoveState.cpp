@@ -290,6 +290,81 @@ void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows) {
     trackedFlowReachable = true;
 }
 
+void AnalysisContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows, const TrackedFlow &entry) {
+    MergeTrackedFlows(flows);
+    if (!trackedFlowReachable || !entry.reachable) {
+        return;
+    }
+    const auto index = [](const MoveStateTracker::Snapshot &snapshot) {
+        std::unordered_map<const void *, const MoveStateTracker::Record *> records;
+        for (const MoveStateTracker::SnapshotEntry &item : snapshot.entries) {
+            if (item.identity.kind == MoveStateTracker::IdentityKind::Local) {
+                records.try_emplace(item.identity.address, &item.record);
+            }
+        }
+        return records;
+    };
+    const auto before = index(entry.states);
+    std::vector<std::unordered_map<const void *, const MoveStateTracker::Record *>> paths;
+    for (const TrackedFlow &flow : flows) {
+        if (flow.reachable) {
+            paths.push_back(index(flow.states));
+        }
+    }
+    const MoveStateTracker::Snapshot merged = moveStates.Save();
+    for (const MoveStateTracker::SnapshotEntry &item : merged.entries) {
+        if (item.identity.kind != MoveStateTracker::IdentityKind::Local ||
+            item.record.state == MoveStateTracker::State::Initialized) {
+            continue;
+        }
+        const auto *symbol = static_cast<const Symbol *>(item.identity.address);
+        // Plain data keeps the definite-initialization rule: nothing destroys it, so nothing depends on the path.
+        if (!symbol || symbol->kind != Symbol::Kind::Var || !MayNeedDestruction(symbol->type)) {
+            continue;
+        }
+        const auto entered = before.find(item.identity.address);
+        if (entered == before.end()) {
+            continue;
+        }
+        bool live = false;
+        std::optional<SourceLocation> gone;
+        for (const auto &path : paths) {
+            const auto found = path.find(item.identity.address);
+            if (found == path.end()) {
+                continue;
+            }
+            if (found->second->state == MoveStateTracker::State::Initialized) {
+                live = true;
+            }
+            else if (!gone) {
+                gone = found->second->previousTransition;
+            }
+        }
+        if (!live) {
+            continue;
+        }
+        if (entered->second->state == MoveStateTracker::State::Initialized) {
+            // O7: the value is destroyed where the statement ends on the flows that still hold it, and is dead after.
+            if (joinDropStatement) {
+                std::vector<std::string> &names = joinDrops[joinDropStatement];
+                if (std::ranges::find(names, symbol->name) == names.end()) {
+                    names.push_back(symbol->name);
+                }
+            }
+            const SourceLocation transition = gone.value_or(item.record.previousTransition);
+            moveStates.Assign(item.identity, transition);
+            static_cast<void>(moveStates.Move(item.identity, transition));
+            continue;
+        }
+        // O20: with no drop flag, nothing could tell at run time whether the local holds a value after the join.
+        EmitError(gone.value_or(item.record.previousTransition),
+                  std::format("'{}' holds a value on some paths only where they rejoin", symbol->name),
+                  {std::format("'{}' was empty before the paths split, and a value that may be absent is a '{}?'",
+                               symbol->name, symbol->type.DisplayString())},
+                  std::format("assign '{}' on every path or on none", symbol->name));
+    }
+}
+
 void AnalysisContext::BeginTrackedLoop(const std::string_view label) {
     trackedLoops.push_back({std::string(label), moveStates.Save(), SaveBorrows(), {}, {}});
 }
@@ -410,7 +485,7 @@ TypeRef AnalysisContext::CheckShortCircuitExpression(const BinaryExpr &expressio
         hasConstantLeft && ((expression.op == TokenKind::AmpAmp && literal->token.text == "true") ||
                             (expression.op == TokenKind::PipePipe && literal->token.text == "false"));
     if (!hasConstantLeft) {
-        MergeTrackedFlows({shortCircuitExit, evaluatedExit});
+        MergeTrackedFlows({shortCircuitExit, evaluatedExit}, shortCircuitExit);
     }
     else {
         RestoreTrackedFlow(evaluatesRight ? evaluatedExit : shortCircuitExit);
@@ -640,7 +715,7 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         ReportNonExhaustiveMatch(expression.location, patterns, subjectType);
         exits.push_back(matchEntry);
     }
-    MergeTrackedFlows(exits);
+    MergeTrackedFlows(exits, matchEntry);
     return resultType;
 }
 

@@ -219,8 +219,13 @@ void AnalysisContext::CheckBlock(const Block &block, const ExprStmt *tail, TypeR
     auto savedEndedProvenance = std::move(endedBorrowProvenance);
     endedBorrowProvenance.clear();
     PushScope();
+    const Stmt *savedJoinStatement = joinDropStatement;
     for (const auto &statement : block.stmts) {
         currentBorrowStatement = statement.get();
+        // A yielded value belongs to the statement that holds the block, so a join inside it ends there.
+        if (!(tail && statement.get() == tail)) {
+            joinDropStatement = statement.get();
+        }
         endedBorrowProvenance.clear();
         const auto checkStatement = [&] {
             if (tail && statement.get() == tail && tailType) {
@@ -247,6 +252,7 @@ void AnalysisContext::CheckBlock(const Block &block, const ExprStmt *tail, TypeR
     }
     PopScope();
     currentBorrowStatement = savedBorrowStatement;
+    joinDropStatement = savedJoinStatement;
     endedBorrowProvenance = std::move(savedEndedProvenance);
 }
 
@@ -484,6 +490,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
     }
     else if (const auto *ifStatement = AstCast<const IfStmt>(&statement)) {
+        const TrackedFlow ifEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         // A branch's condition may bind names for that branch alone: they get a scope the later branches are outside,
         // which start from the flow after the condition with that scope left.
@@ -519,7 +526,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         else {
             exits.push_back(std::move(fallthrough));
         }
-        MergeTrackedFlows(exits);
+        MergeTrackedFlows(exits, ifEntry);
     }
     else if (const auto *whileStatement = AstCast<const WhileStmt>(&statement)) {
         if (!whileStatement->label.empty()) {
@@ -554,7 +561,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
             exits.push_back(bodyExit);
         }
-        MergeTrackedFlows(exits);
+        MergeTrackedFlows(exits, loopEntry);
         if (binds) {
             PopScope();
         }
@@ -592,7 +599,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (!alwaysTrue) {
             exits.push_back(SaveTrackedFlow());
         }
-        MergeTrackedFlows(exits);
+        MergeTrackedFlows(exits, loopEntry);
 
         if (!doWhileStatement->label.empty()) {
             ExitLoopLabel(doWhileStatement->label);
@@ -686,7 +693,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         std::vector<TrackedFlow> exits = {loopEntry, bodyExit};
         exits.insert(exits.end(), loop.breaks.begin(), loop.breaks.end());
         exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
-        MergeTrackedFlows(exits);
+        MergeTrackedFlows(exits, loopEntry);
     }
     else if (const auto *matchStatement = AstCast<const MatchStmt>(&statement)) {
         const TypeRef expressionType = CheckExpr(*matchStatement->subject);
@@ -742,7 +749,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             ReportNonExhaustiveMatch(matchStatement->location, patterns, subjectType);
             exits.push_back(matchEntry);
         }
-        MergeTrackedFlows(exits);
+        MergeTrackedFlows(exits, matchEntry);
     }
     else if (const auto *failStatement = AstCast<const FailStmt>(&statement)) {
         if (const std::optional<ResolvedThrowSite> site =

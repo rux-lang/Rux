@@ -1,0 +1,68 @@
+// Where paths that rejoin disagree, a value that is live on some of them and given away on the others is destroyed
+// where the statement holding the branch ends, on the paths that still hold it, and it is dead after the join. Nothing
+// waits for the end of the scope, so what follows the statement sees the value already gone.
+
+import Core::Diagnostics::Assert;
+
+var log: int = 0;
+
+struct Token {
+    id: int;
+}
+
+extend Token {
+    destructor {
+        log = log * 10 + self.id;
+    }
+}
+
+func Take(token: Token) {}
+
+func Branch(give: bool) -> int {
+    log = 0;
+    let token = Token { id: 1 };
+    if give {
+        Take(token);
+    }
+    // On the path that kept it, the token is destroyed before this line.
+    log = log * 10 + 2;
+    return log;
+}
+
+func Choose(which: int) -> int {
+    log = 0;
+    let first = Token { id: 1 };
+    let second = Token { id: 3 };
+    match which {
+        0 => Take(first),
+        1 => Take(second),
+        _ => {}
+    }
+    log = log * 10 + 5;
+    return log;
+}
+
+func Loop(stop: int) -> int {
+    log = 0;
+    let token = Token { id: 4 };
+    var index = 0;
+    while index < 3 {
+        if index == stop {
+            Take(token);
+            break;
+        }
+        index += 1;
+    }
+    log = log * 10 + 6;
+    return log;
+}
+
+func Main() -> int {
+    Assert(Branch(true) == 12, "a value given away is destroyed by its taker");
+    Assert(Branch(false) == 12, "a value kept on one path is destroyed where the branch ends");
+    Assert(Choose(0) == 135, "each kept value is destroyed where the match ends");
+    Assert(Choose(2) == 315, "and in reverse declaration order when both are kept");
+    Assert(Loop(1) == 46, "a value given away by a break is destroyed by its taker");
+    Assert(Loop(9) == 46, "a value the loop kept is destroyed where the loop ends");
+    return 0;
+}

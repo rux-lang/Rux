@@ -1,0 +1,3 @@
+15:5: error: 'token' holds a value on some paths only where they rejoin
+23:10: error: 'held' holds a value on some paths only where they rejoin
+45:12: error: value 'token' is used after it was moved

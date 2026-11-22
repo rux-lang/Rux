@@ -363,16 +363,11 @@ TEST_CASE("a bare owning value is consumed in every by-value context") {
     )");
 
     const std::vector<std::string> expected = {
-        "value 'initialized' is used after it was moved",
-        "value 'assigned' is used after it was moved",
-        "value 'argument' is used after it was moved",
-        "value 'field' is used after it was moved",
-        "value 'arrayValue' is used after it was moved",
-        "value 'tupleValue' is used after it was moved",
-        "value 'receiver' is used after it was moved",
-        "value 'ternaryLeft' may have been moved on some control-flow paths",
-        "value 'ternaryRight' may have been moved on some control-flow paths",
-        "value 'reusable' is used after it was moved",
+        "value 'initialized' is used after it was moved",  "value 'assigned' is used after it was moved",
+        "value 'argument' is used after it was moved",     "value 'field' is used after it was moved",
+        "value 'arrayValue' is used after it was moved",   "value 'tupleValue' is used after it was moved",
+        "value 'receiver' is used after it was moved",     "value 'ternaryLeft' is used after it was moved",
+        "value 'ternaryRight' is used after it was moved", "value 'reusable' is used after it was moved",
     };
     REQUIRE_EQ(diagnostics.size(), expected.size());
     for (std::size_t index = 0; index < expected.size(); ++index) {

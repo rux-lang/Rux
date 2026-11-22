@@ -396,6 +396,10 @@ struct SemanticFacts {
     /// Every `x == none` or `x != none`, which tests the presence of `x`'s outer level and compares no payload; the
     /// value is whether it is `!=`.
     std::unordered_map<const BinaryExpr *, bool> noneTests;
+    /// The owning locals, by name, that a join inside a statement leaves dead on some flows only. Each is destroyed
+    /// where the statement ends, on the flows that still hold it, and is dead afterwards (O7). A field of a `~self`
+    /// receiver is named `self.field`.
+    std::unordered_map<const Stmt *, std::vector<std::string>> joinDrops;
     /// The one type both operands of a structural tuple comparison are built as, when one operand is a literal that
     /// takes the other's type, as in `pair == (3, true)`.
     std::unordered_map<const BinaryExpr *, TypeRef> aggregateEqualityOperandTypes;
@@ -506,6 +510,7 @@ struct SemanticModel {
     [[nodiscard]] const bool *TryGetAggregateEquality(const BinaryExpr &expression) const noexcept;
     /// Whether `expression` is `x != none` (true) or `x == none` (false); null for any other comparison.
     [[nodiscard]] const bool *TryGetNoneTest(const BinaryExpr &expression) const noexcept;
+    [[nodiscard]] const std::vector<std::string> *TryGetJoinDrops(const Stmt &statement) const noexcept;
     [[nodiscard]] const TypeRef *TryGetAggregateEqualityOperandType(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPayload *TryGetAggregateEqualityPlan(const TypeRef &type) const noexcept;
 

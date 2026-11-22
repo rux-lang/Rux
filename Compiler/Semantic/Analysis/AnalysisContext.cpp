@@ -211,6 +211,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output, c
     , variantEqualityPlans(output.variantEqualityPlans)
     , aggregateEqualities(output.aggregateEqualities)
     , noneTests(output.noneTests)
+    , joinDrops(output.joinDrops)
     , aggregateEqualityOperandTypes(output.aggregateEqualityOperandTypes)
     , aggregateEqualityPlans(output.aggregateEqualityPlans)
     , valueConsumptions(output.valueConsumptions)

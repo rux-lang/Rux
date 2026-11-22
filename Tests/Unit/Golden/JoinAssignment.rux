@@ -1,0 +1,50 @@
+// Where paths rejoin, an owning local that was empty or given away before the branch is assigned on every path or on
+// none: with no drop flag, nothing could tell at run time whether it holds a value. Plain data keeps the ordinary
+// definite-initialization rule, and a value given away on some paths only is simply dead after the join.
+struct Token {
+    id: int;
+}
+
+extend Token {
+    destructor {}
+}
+
+func Take(token: Token) {}
+
+func Empty(flag: bool) {
+    var token: Token;
+    if flag {
+        token = Token { id: 1 };
+    }
+}
+
+func Refilled(flag: bool, token: Token) {
+    var held = token;
+    Take(held);
+    if flag {
+        held = Token { id: 2 };
+    }
+}
+
+func Everywhere(flag: bool) -> int {
+    var token: Token;
+    if flag {
+        token = Token { id: 1 };
+    }
+    else {
+        token = Token { id: 2 };
+    }
+    return token.id;
+}
+
+func GivenAway(flag: bool) -> int {
+    let token = Token { id: 3 };
+    if flag {
+        Take(token);
+    }
+    return token.id;
+}
+
+func Main() -> int {
+    return 0;
+}

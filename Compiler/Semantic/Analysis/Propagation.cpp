@@ -189,7 +189,7 @@ TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const
                      expression.right->location);
     }
     const TrackedFlow absentExit = SaveTrackedFlow();
-    MergeTrackedFlows({presentExit, absentExit});
+    MergeTrackedFlows({presentExit, absentExit}, presentExit);
     if (payloadValid && fallbackValid && !payload.IsUnknown()) {
         ResolvedCoalescing coalescing;
         coalescing.payloadType = payload;

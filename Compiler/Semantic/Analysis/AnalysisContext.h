@@ -729,6 +729,11 @@ private:
     [[nodiscard]] TrackedFlow SaveTrackedFlow() const;
     void RestoreTrackedFlow(const TrackedFlow &flow);
     void MergeTrackedFlows(const std::vector<TrackedFlow> &flows);
+    /// Merges the flows that rejoin after a branch that started at `entry`. An owning local that held a value at
+    /// `entry` and was given away on some of the flows only is dead after the join, and it is destroyed where the
+    /// enclosing statement ends on the flows that still hold it (O7). An owning local that was empty at `entry` and is
+    /// assigned on some of the flows only is an error (O20).
+    void MergeTrackedFlows(const std::vector<TrackedFlow> &flows, const TrackedFlow &entry);
 
     struct TrackedLoop {
         std::string label;
@@ -1225,6 +1230,7 @@ private:
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;
     std::unordered_map<const BinaryExpr *, bool> &noneTests;
+    std::unordered_map<const Stmt *, std::vector<std::string>> &joinDrops;
     std::unordered_map<const BinaryExpr *, TypeRef> &aggregateEqualityOperandTypes;
     std::unordered_map<std::string, VariantEqualityPayload> &aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
@@ -1345,6 +1351,9 @@ private:
         savedBorrowLastUseOffsets;
     std::vector<std::unordered_map<const Symbol *, ActiveBorrow>> savedEndedBorrowProvenance;
     const Stmt *currentBorrowStatement = nullptr;
+    /// The statement whose end destroys the locals a join inside it leaves dead on some flows only: the innermost
+    /// statement of a block that is not the block's yielded value.
+    const Stmt *joinDropStatement = nullptr;
     std::vector<const Stmt *> savedBorrowStatements;
     std::unordered_set<std::string> referenceStorageChecks;
     /// The types `UnsendablePart` is inside, so a recursive type ends its own walk.
