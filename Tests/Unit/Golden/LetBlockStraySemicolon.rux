@@ -1,0 +1,10 @@
+// A plain block given to an annotated binding must yield a value, so a ';' after its last expression is reported at
+// the ';' rather than as a '()' that cannot be assigned.
+func Main() -> int {
+    let width: int = {
+        let base = 3;
+        base * 2;
+    };
+    let height: int = { 4 };
+    return width + height;
+}

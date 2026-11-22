@@ -575,6 +575,11 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 ### Fixed
 
 - **A fixed array's length passed by reference** — `PrintLine("{}", primes.length)` on an `int32[4]` printed `12884901890`, the array's first two elements read as one number, because a place for `.length` (a format argument, any interface view or a loan `&primes.length`) pointed at the array itself. The length has no storage, so its place is now a temporary holding the constant.
+- **A `catch` that misses an error says so** — arms that leave an error case unhandled reported `match on 'ParseError' is not exhaustive`, as if they were a `match`. They now report `'catch' arms do not cover every error of type 'ParseError'; missing ParseError::Invalid`, with the help to add a `_` arm or bind the whole error.
+- **A stray `;` in a block given to an annotated binding** — `let width: int = { let base = 3; base * 2; };` reported `cannot assign '()' to 'int'` at the `let`; the `;` is now reported where it is, `this block yields '()' because of the ';'`, as it already was for `if` branches and `match` arms.
+- **Native pattern hints without `.Some`** — the help for a pattern that cannot match a native optional still suggested `.Some(...)`, which no longer exists; it now suggests `name?` and `none`. On a native fallible it suggests a typed pattern such as `value: T`, and a bare error case such as `.ByZero` is pointed at `.Failure(.ByZero)`.
+- **`_` in naming lints** — `rux lint` warned `loop variable name '_' should be camelCase` on `for _ in 0..3`, and the same for a parameter or a binding named `_`; the discard name is no longer held to a convention.
+
 - **Division-by-zero trap preservation** — Release constant propagation no longer replaces `0 / divisor` with zero when the divisor is only known at runtime. Dynamic zero divisors retain the required panic on every target; division by a known nonzero constant can still fold.
 
 - **Volatile local memory reads** — LIR dead-code elimination no longer discards an unused volatile load just because its address is a nonescaping local stack slot. Volatile accesses remain observable regardless of result liveness.

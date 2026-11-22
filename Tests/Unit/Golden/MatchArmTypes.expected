@@ -3,5 +3,5 @@
 19:14: error: case '.Failure' needs an enum or variant, but the expected type is 'int32?'
 25:14: error: case '.Success' needs an expected type to name its enum or variant
 26:14: error: case '.Failure' needs an expected type to name its enum or variant
-52:9: error: match on 'DigitError | RangeError' is not exhaustive; missing _: RangeError
+52:9: error: 'catch' arms do not cover every error of type 'DigitError | RangeError'; missing _: RangeError
 56:9: error: match arm type mismatch: expected 'int', found '()'

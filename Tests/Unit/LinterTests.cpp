@@ -55,6 +55,24 @@ TEST_CASE("linter warns on bad function name") {
     CHECK(result.diagnostics[0].help == "rename it to 'BadName'");
 }
 
+TEST_CASE("linter does not hold the discard name to a naming convention") {
+    auto result = Rux::Linting::Lint(R"(
+        func Ignore(_: int32) {}
+
+        func Main() -> int {
+            var count = 0;
+            for _ in 0..3 {
+                count += 1;
+            }
+            Ignore(count);
+            return 0;
+        }
+    )",
+                                     "discard_names.rux");
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
 TEST_CASE("linter leaves the hidden variable of a for pattern alone and checks the names it binds") {
     auto result = Rux::Linting::Lint(R"(
         func Main() -> int {

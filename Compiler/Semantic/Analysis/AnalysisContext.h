@@ -850,6 +850,9 @@ private:
 
     /// A postfix error handler written as a whole statement, `x !!;` or `x catch { ... };`, whose success is dropped.
     const ErrorFormExpr *statementHandler = nullptr;
+    /// Set while the arms of a `catch` are validated, so a missing case is reported as an error the arms leave
+    /// unhandled rather than as a `match` that is not exhaustive.
+    bool validatingCatchArms = false;
 
     /// Whether a callee can fail, and how diagnostics name a call to it.
     struct ThrowingCallee {
@@ -937,6 +940,10 @@ private:
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
     void ValidateMatchPatterns(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
     void ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType);
+    /// The message and help for arms that leave `missing` without a match: a `match`'s own wording, or that of the
+    /// `catch` whose arms are being validated.
+    [[nodiscard]] std::pair<std::string, std::string> NonExhaustiveMessage(const TypeRef &subjectType,
+                                                                           const std::string &missing) const;
     /// Reports a match on a bool, an integer, a tuple, or any other open subject that leaves some value without an
     /// arm. Enums and native subjects report their missing cases while their patterns are validated.
     void ReportNonExhaustiveMatch(SourceLocation location, const std::vector<const Pattern *> &patterns,

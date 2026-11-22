@@ -1,2 +1,2 @@
-15:25: error: match on 'ParseError' is not exhaustive; missing ParseError::Invalid
-16:41: error: match on 'ParseError' is not exhaustive; missing ParseError::Empty
+15:25: error: 'catch' arms do not cover every error of type 'ParseError'; missing ParseError::Invalid
+16:41: error: 'catch' arms do not cover every error of type 'ParseError'; missing ParseError::Empty

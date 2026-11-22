@@ -822,7 +822,7 @@ An error leaving the function follows ordinary return behavior: it is captured b
 
 ### Handling errors
 
-The arms of `catch` are exactly the arms of `match error { ... }`: patterns, `_`, alternatives, guards, typed patterns over a sum, block arms that yield their last expression, and a trailing comma. They must cover every error (`'catch' arms do not cover every error of type 'ParseError'`, with `help: add a '_' arm, or bind the whole error, as in 'e => ...'`), so passing an error on is an arm of its own, `e => throw e`:
+The arms of `catch` are exactly the arms of `match error { ... }`: patterns, `_`, alternatives, guards, typed patterns over a sum, block arms that yield their last expression, and a trailing comma. They must cover every error (`'catch' arms do not cover every error of type 'ParseError'; missing ParseError::Empty`, with `help: add a '_' arm, or bind the whole error, as in 'e => ...'`), so passing an error on is an arm of its own, `e => throw e`:
 
 ```rux
 func LoadWithDefaults() -> Options | Defaults ! IoError {

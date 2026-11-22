@@ -643,9 +643,11 @@ void AnalysisContext::CheckNativeCasePattern(const EnumPattern &pattern, const T
                                   name == "Some" ? "optional" : "fallible", subject));
         }
         else {
-            EmitError(pattern.location,
-                      std::format("native {} '{}' has no case '{}'", fallible ? "fallible" : "optional", subject, name),
-                      {}, fallible ? "match '.Success(...)' or '.Failure(...)'" : "match '.Some(...)' or 'none'");
+            EmitError(
+                pattern.location,
+                std::format("native {} '{}' has no case '{}'", fallible ? "fallible" : "optional", subject, name), {},
+                fallible ? std::format("match a case of the error inside '.Failure(...)', as in '.Failure(.{})'", name)
+                         : std::string("match a present value with 'name?', and absence with 'none'"));
         }
         DefinePatternBindings(pattern);
         return;
@@ -1135,9 +1137,11 @@ bool AnalysisContext::NativeMatchCoverage(const std::vector<const Pattern *> &pa
         for (const WitnessRow &witness : missing) {
             names += (names.empty() ? "" : ", ") + translator.Describe(witness.front(), subjectType);
         }
-        issues->push_back(PatternIssue{
-            patterns.empty() || !patterns.back() ? SourceLocation{} : patterns.back()->location,
-            std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), names), std::nullopt});
+        // A match leaves its help to the arms it lists; a catch also names the arm that takes every error.
+        auto [message, help] = NonExhaustiveMessage(subjectType, names);
+        issues->push_back(
+            PatternIssue{patterns.empty() || !patterns.back() ? SourceLocation{} : patterns.back()->location,
+                         std::move(message), validatingCatchArms ? std::optional(std::move(help)) : std::nullopt});
     }
     return missing.empty();
 }

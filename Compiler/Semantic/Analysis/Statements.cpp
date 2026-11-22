@@ -450,8 +450,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                       declarationType.IsOptional() ? std::optional<std::string>("write 'none' for an absent optional")
                                                    : std::nullopt);
         }
+        // A plain block whose last expression ends in a ';' yields '()'; that is reported at the ';', as for a branch.
         if (letStatement->init && letStatement->type && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
-            !initializerAccepted) {
+            !initializerAccepted && !ReportStrayTailSemicolon(*letStatement->init, declarationType)) {
             const bool refusedInterface = RefusesInterfaceValue(initializerType, declarationType);
             EmitError(letStatement->location,
                       AssignmentErrorMessage(*letStatement->init, declarationType,
@@ -1181,8 +1182,9 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                       std::format("this pattern cannot match native {} '{}'", optional ? "optional" : "fallible",
                                   subjectType.ToString()),
                       {},
-                      optional ? "match a present value with '.Some(...)', and absence with 'none'"
-                               : "match a channel with '.Success(...)' or '.Failure(...)'");
+                      optional ? "match a present value with 'name?', and absence with 'none'"
+                               : "match a side by its type, as in 'value: T', or with '.Success(...)' or "
+                                 "'.Failure(...)'");
             DefinePatternBindings(pattern);
             return;
         }
@@ -1465,10 +1467,21 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         for (const auto &name : missing) {
             names += (names.empty() ? "" : ", ") + name;
         }
-        EmitError(patterns.empty() ? SourceLocation{} : patterns.back()->location,
-                  std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), names), {},
-                  "add arms for the missing cases, or a '_' arm");
+        auto [message, help] = NonExhaustiveMessage(subjectType, names);
+        EmitError(patterns.empty() ? SourceLocation{} : patterns.back()->location, std::move(message), {},
+                  std::move(help));
     }
+}
+
+std::pair<std::string, std::string> AnalysisContext::NonExhaustiveMessage(const TypeRef &subjectType,
+                                                                          const std::string &missing) const {
+    if (validatingCatchArms) {
+        return {std::format("'catch' arms do not cover every error of type '{}'; missing {}", subjectType.ToString(),
+                            missing),
+                "add a '_' arm, or bind the whole error, as in 'e => ...'"};
+    }
+    return {std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), missing),
+            "add arms for the missing cases, or a '_' arm"};
 }
 
 void AnalysisContext::ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType) {

@@ -338,8 +338,10 @@ void AnalysisContext::CheckHandlerArms(const std::vector<MatchExpr::Arm> &arms, 
     if (error.IsUnknown()) {
         return;
     }
-    // The arms handle every error, as a match covers its subject.
+    // The arms handle every error, as a match covers its subject; a case they miss is reported in the catch's words.
+    const bool validatingBefore = std::exchange(validatingCatchArms, true);
     ValidateMatchPatterns(patterns, error);
+    validatingCatchArms = validatingBefore;
     if (!MatchPatternsAreExhaustive(patterns, error) && !IsNativeMatchSubject(error) &&
         !(error->kind == TypeRef::Kind::Named && EnumNamed(BaseTypeName(error->name)))) {
         EmitError(location, std::format("'catch' arms do not cover every error of type '{}'", error.ToString()), {},

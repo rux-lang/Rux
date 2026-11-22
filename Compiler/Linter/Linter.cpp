@@ -41,6 +41,11 @@ bool IsCompilerGeneratedName(const std::string_view name) {
     return !name.empty() && !std::isalpha(static_cast<unsigned char>(name.front())) && name.front() != '_';
 }
 
+// `_` binds nothing, so it has no name to follow a convention: `for _ in 0..3` and an ignored parameter are clean.
+bool IsDiscardName(std::string_view name) {
+    return name == "_";
+}
+
 bool IsCamelCase(std::string_view name) {
     if (name.empty()) {
         return false;
@@ -536,7 +541,7 @@ private:
             }
             const auto parameterNames = Names(fn->params);
             for (const auto &p : fn->params) {
-                if (!IsCamelCase(p.name)) {
+                if (!IsDiscardName(p.name) && !IsCamelCase(p.name)) {
                     WarnNaming(p.location, "parameter name", p.name, NamingConvention::CamelCase, parameterNames);
                 }
             }
@@ -700,7 +705,7 @@ private:
             }
         }
         else if (const auto *letStmt = AstCast<const LetStmt>(&stmt)) {
-            if (!letStmt->name.empty() && !IsCamelCase(letStmt->name)) {
+            if (!letStmt->name.empty() && !IsDiscardName(letStmt->name) && !IsCamelCase(letStmt->name)) {
                 WarnNaming(letStmt->location, "local variable name", letStmt->name, NamingConvention::CamelCase,
                            scopeNames);
             }
@@ -754,7 +759,7 @@ private:
         else if (const auto *forStmt = AstCast<const ForStmt>(&stmt)) {
             std::vector loopNames(scopeNames.begin(), scopeNames.end());
             loopNames.push_back(forStmt->variable);
-            if (!forStmt->variable.empty() && !IsCamelCase(forStmt->variable)) {
+            if (!forStmt->variable.empty() && !IsDiscardName(forStmt->variable) && !IsCamelCase(forStmt->variable)) {
                 WarnNaming(forStmt->location, "loop variable name", forStmt->variable, NamingConvention::CamelCase,
                            loopNames);
             }
